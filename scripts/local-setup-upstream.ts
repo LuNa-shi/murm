@@ -2,6 +2,9 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 
 export const SETUP_MARKER = 'MURM_LOCAL_SETUP_VERIFIED';
+export const SETUP_BASH = `printf '%s' '{"key":"smoke"}' | swarm service invoke setup-probe verify --stdin --request-id setup-probe && printf '%s\\n' '${SETUP_MARKER}' > setup-smoke.txt`;
+export const SETUP_READ = 'setup-smoke.txt';
+export const SETUP_RESULT = 'SETUP_OK';
 
 function event(type: string, fields: Record<string, unknown>) {
   return `event: ${type}\ndata: ${JSON.stringify({ type, ...fields })}\n\n`;
@@ -43,19 +46,18 @@ export async function createLocalSetupUpstream() {
       arrivals++;
       let item;
       if (arrivals === 1) {
-        const command = `printf '%s' '{"key":"smoke"}' | swarm service invoke setup-probe verify --stdin --request-id setup-probe && printf '%s\\n' '${SETUP_MARKER}' > setup-smoke.txt`;
         item = { type: 'function_call', id: 'fc_setup_bash', call_id: 'call_setup_bash', name: 'bash',
-          arguments: JSON.stringify({ command, timeout: 10 }) };
+          arguments: JSON.stringify({ command: SETUP_BASH, timeout: 10 }) };
       } else if (arrivals === 2) {
         if (!body.input.some((value: any) => value.type === 'function_call_output' && value.call_id === 'call_setup_bash')) throw new Error('bash');
         item = { type: 'function_call', id: 'fc_setup_read', call_id: 'call_setup_read', name: 'read',
-          arguments: JSON.stringify({ path: 'setup-smoke.txt' }) };
+          arguments: JSON.stringify({ path: SETUP_READ }) };
       } else if (arrivals === 3) {
         const read = body.input.find((value: any) => value.type === 'function_call_output' && value.call_id === 'call_setup_read');
         if (typeof read?.output !== 'string' || read.output.trim() !== SETUP_MARKER) throw new Error('read');
         verifiedRead = true;
         item = { type: 'message', id: 'msg_setup_final', role: 'assistant', status: 'completed',
-          content: [{ type: 'output_text', text: 'SETUP_OK', annotations: [] }] };
+          content: [{ type: 'output_text', text: SETUP_RESULT, annotations: [] }] };
       } else throw new Error('boundary');
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       response.end(streamResponse('k3', arrivals, item));

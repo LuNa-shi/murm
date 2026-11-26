@@ -85,10 +85,16 @@ export async function checkLocalHost(config: LocalEnvironmentConfig): Promise<Di
     check('host.linux', platform() === 'linux', `Host operating system ${platform()}`, 'Run setup on the same Linux host as a rootful Docker Engine.'),
     check('host.node', major > 22 || major === 22 && minor >= 19, `Node.js ${process.versions.node}`, 'Install Node.js 22.19 or newer.'),
   ];
-  const localAddresses = Object.values(networkInterfaces()).flat().filter(Boolean).map(value => value!.address);
   const addressValid = isIP(config.advertiseHost) === 4 && !config.advertiseHost.startsWith('127.') && config.advertiseHost !== '0.0.0.0';
-  checks.push(check('host.advertise-ipv4', addressValid && localAddresses.includes(config.advertiseHost),
-    addressValid ? `Advertise IPv4 ${config.advertiseHost} ${localAddresses.includes(config.advertiseHost) ? 'belongs to this host' : 'is absent from this host'}` : 'Advertise host requires a non-loopback IPv4 address',
+  let hostOwnsAddress = addressValid && Object.values(networkInterfaces()).flat().some(value => value?.address === config.advertiseHost);
+  if (addressValid && !hostOwnsAddress && platform() === 'linux') {
+    // An idle Docker bridge can be down until the first Sandbox joins it.
+    const interfaces: { addr_info: { local: string }[] }[] = await run('ip', ['-j', '-4', 'address', 'show'])
+      .then(value => JSON.parse(value)).catch(() => []);
+    hostOwnsAddress = interfaces.some(device => device.addr_info?.some(info => info.local === config.advertiseHost));
+  }
+  checks.push(check('host.advertise-ipv4', hostOwnsAddress,
+    addressValid ? `Advertise IPv4 ${config.advertiseHost} ${hostOwnsAddress ? 'belongs to this host' : 'is absent from this host'}` : 'Advertise host requires a non-loopback IPv4 address',
     'Set advertiseHost to the local Docker bridge gateway or another host interface reachable by Sandbox containers.'));
   if (platform() !== 'linux') return checks;
   let dockerLocal = false;

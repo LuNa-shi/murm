@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { createRuntime, type AgentEvent, type CloseReceipt, type PendingCleanup, type Runtime } from '../src/core/index.js';
 import { ServiceRegistry } from '../src/core/public-services.js';
 import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
-import { createLocalSetupUpstream, SETUP_MARKER } from './local-setup-upstream.js';
+import { createLocalSetupUpstream, SETUP_MARKER, SETUP_READ, SETUP_RESULT } from './local-setup-upstream.js';
 
 export interface LocalSmokeOptions {
   image: string;
@@ -36,6 +36,9 @@ export interface LocalSmokeReceipt {
   interrupted: boolean;
   durationMs: number;
 }
+
+export const SETUP_PROFILE_PROMPT = 'Perform the fixed local infrastructure probe.';
+export const SETUP_FOLLOW_UP = 'Verify the local Service, write and read setup-smoke.txt, and return the confirmed result.';
 
 const execute = promisify(execFile);
 
@@ -95,7 +98,7 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
         models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
         isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
       }),
-      profiles: { probe: { prompt: 'Perform the fixed local infrastructure probe.', model: 'default', image: options.image,
+      profiles: { probe: { prompt: SETUP_PROFILE_PROMPT, model: 'default', image: options.image,
         writable: true, services: { 'setup-probe': ['verify'] } } },
       services, maxAgents: 1, outputDir: temporary,
     });
@@ -113,11 +116,11 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
     unsubscribe = runtime.onEvent(event => {
       if (event.agentId === agent.id && (event.type === 'settled' || event.type === 'exit')) settle(event);
     });
-    const input = await untilAborted(runtime.send(agent.id, 'Verify the local Service, write and read setup-smoke.txt, and return the confirmed result.',
+    const input = await untilAborted(runtime.send(agent.id, SETUP_FOLLOW_UP,
       { requestId: 'setup-smoke-input', mode: 'followUp' }), signal);
     if (input.status !== 'accepted') throw new Error('input');
     const outcome = await untilAborted(settled, signal);
-    if (outcome.type !== 'settled' || outcome.outcome !== 'completed' || outcome.output?.trim() !== 'SETUP_OK' || serviceCaller !== agent.id) {
+    if (outcome.type !== 'settled' || outcome.outcome !== 'completed' || outcome.output?.trim() !== SETUP_RESULT || serviceCaller !== agent.id) {
       throw new Error('roundtrip');
     }
     const observed = upstream.receipt();
@@ -129,7 +132,7 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
     const stopped = await untilAborted(runtime.stop(agent.id, { timeoutMs: 25_000 }), signal);
     if (stopped.execution !== 'stopped' || stopped.cleanup !== 'complete') throw new Error('stop');
     const directory = stopped.artifacts.find(path => basename(path) === 'files');
-    if (!directory || await readFile(join(directory, 'setup-smoke.txt'), 'utf8') !== `${SETUP_MARKER}\n`) throw new Error('export');
+    if (!directory || await readFile(join(directory, SETUP_READ), 'utf8') !== `${SETUP_MARKER}\n`) throw new Error('export');
     passed(stage, 'Stopped Agent export delivered the independently checked file bytes to the host');
   } catch {
     receipt.interrupted = options.signal?.aborted ?? false;

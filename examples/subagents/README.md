@@ -4,23 +4,17 @@ Repository TypeScript sources compile with `npm run build` into `dist/`. `npm pa
 
 Give Root a task. Root looks for independent work it can delegate early, chooses the assignments, and works on a complementary part while the team is active. A Child can delegate again. Team members can send notices, assign more work, wait and interrupt. A Child's result goes to its direct parent.
 
-This example requires Node.js 22.19 or newer and the same local Docker OpenSandbox provider and Pi 1.3.0 Worker image as the [Notes example](../notes/README.md). Build and install a tarball in an independent directory:
+From the checkout, generate and install the editable project with one command.
 
 ```sh
-repo=/absolute/path/to/murm
-example_dir=$(mktemp -d)
-npm pack "$repo" --pack-destination "$example_dir"
-cd "$example_dir"
-npm init -y
-npm pkg set type=module
-npm install --omit=dev --ignore-scripts ./murm-core-0.2.0.tgz
-for name in main controller collaboration-service prompts config; do
-  tar -xOf murm-core-0.2.0.tgz "package/dist/examples/subagents/$name.js" > "$name.js"
-done
-tar -xOf murm-core-0.2.0.tgz package/dist/src/harnesses/shared/run-report.js > run-report.js
+./scripts/setup --template subagents --dir ../my-murm
+cd ../my-murm
+npm run doctor
 ```
 
-Set `MURM_SUBAGENTS_IMAGE` to the tested immutable Worker image and `MURM_SUBAGENTS_MODEL_URL` to a Responses endpoint ending in `/v1/responses`. Optional host variables use the `MURM_SUBAGENTS_` prefix: `MODEL_TOKEN`, `ADVERTISE_HOST`, `LIFECYCLE_URL`, `ENDPOINT_HOST` and `LIFECYCLE_TOKEN`. Tokens stay on the host. Then run a one-shot task or open an interactive session.
+An installed `murm` command also accepts `murm setup --template subagents --dir ./my-murm`. Setup resolves the Worker image, local OpenSandbox addresses and Sandbox-reachable IPv4, verifies the infrastructure with a local Responses endpoint, and installs a candidate tarball in the generated directory. The project runs there with its own dependencies. See [host requirements and diagnostics](../../docs/architecture/07-run-configuration.md#local-setup-and-doctor).
+
+Set `MURM_SUBAGENTS_MODEL_URL` in the generated `.env` to a streaming Responses endpoint accepting `k3`, including its `/v1/responses` path. Fill in `MURM_SUBAGENTS_MODEL_TOKEN` if the endpoint requires a bearer token. Set `MURM_SUBAGENTS_LIFECYCLE_TOKEN` if an existing provider requires it. The editable `config.js` reads the same environment for the project and doctor. Use `npm start` for an interactive session, or run the entry directly.
 
 ```sh
 node main.js config.js 'Review the task files and write a short explanation.'

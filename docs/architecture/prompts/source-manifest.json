@@ -42,6 +42,14 @@
       "sha256": "a0bd275313438826134862912fd9a60774f11e0d2ade4a5de450a8ce07ce5052"
     },
     {
+      "path": "scripts/local-setup-smoke.ts",
+      "sha256": "96cc3a1c5046c7d2d2c4ef45fdb1a14e56e19556e3e27840b6a1ed9d16597aed"
+    },
+    {
+      "path": "scripts/local-setup-upstream.ts",
+      "sha256": "01483bed8622e6b646a4641370661e89c01afbdb58cf49aa5362945b7f40f06e"
+    },
+    {
       "path": "examples/notes/main.ts",
       "sha256": "a472cca057e6a079d48cdb1db10ea4bfdbca9df8bfbfd40540349c82379597c8"
     },
@@ -580,6 +588,10 @@
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
       "sha256": "0dd9780f082c954cdf7cfa5514190b3770539f0f56f7d904d71ca19c6a3df180"
+    },
+    {
+      "path": "docs/architecture/prompts/10-local-setup-probe.md",
+      "sha256": "ea8346b1e23788b07fd64198d0daef0acebded749d83379de6774b455e2f055f"
     },
     {
       "path": "docs/architecture/prompts/07-notes-harness.md",
