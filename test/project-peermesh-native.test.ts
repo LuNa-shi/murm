@@ -11,7 +11,7 @@ import { createLocalPeerMeshStack } from './fixtures/peermesh-local-stack.js';
 
 function peerCommand(id: number, prompt: string) {
   return `python3 - <<'MURM_PROJECT_PEER'
-import hashlib,json,os,pathlib,subprocess,time
+import json,os,pathlib,subprocess,time
 def git(*args):
  return subprocess.check_output(['git',*args],stderr=subprocess.PIPE,text=True,timeout=15).strip()
 repo={'owner':os.environ['RUN_OWNER'],'repo':os.environ['RUN_REPO']}
@@ -184,8 +184,11 @@ export default config;
   assert.equal(peers[0].initial, peers[1].initial);
   assert.equal(peers[1].merge, result.export.receipt.commit);
   const archive = result.export.receipt.archive;
+  const { stdout: archivePaths } = await execute('tar', ['-tzf', archive]);
   for (const path of ['producer.txt', 'adopted.txt']) {
-    const { stdout: bytes } = await execute('tar', ['-xOzf', archive, path]);
+    const entries = archivePaths.trim().split('\n').filter(name => name === path || name.endsWith('/' + path));
+    assert.equal(entries.length, 1);
+    const { stdout: bytes } = await execute('tar', ['-xOzf', archive, '--', entries[0]]);
     assert.equal(bytes, value + '\n');
   }
   await assert.rejects(readFile(join(project, 'adopted.txt')), { code: 'ENOENT' });

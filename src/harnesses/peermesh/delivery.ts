@@ -128,31 +128,53 @@ export function createPeerMeshDelivery({ facilities, adminToken, maxReadinessRea
       attempts.add(row);
       requests.set(key, row);
       row.work = (async () => {
-        for (let index = 0; index < maxReadinessReads; index++) {
-          row.readinessReads++;
-          const pr = await request('GET', `${scope}/pulls/${number}`, undefined, { signal });
-          const allowedHead = facilities.project
-            ? typeof pr?.head?.ref === 'string' && pr.head.ref.length > 0 && pr.head.ref !== 'main' &&
-              pr.head.repo?.full_name === `${facilities.repository.owner}/${facilities.repository.name}`
-            : pr?.head?.ref === peer.branch;
-          if (!allowedHead || pr?.head?.sha !== headSha || pr.base?.ref !== 'main' ||
-              String(pr.user?.id) !== peer.gitea.accountId || pr.merged) throw fail('DELIVERY_INVALID');
-          if (pr.mergeable === true) break;
-          if (index === maxReadinessReads - 1) throw fail('DELIVERY_NOT_READY');
-          await delay(readinessIntervalMs, undefined, { signal });
-        }
-        if (!accepting) throw fail('DELIVERY_STOPPING');
-        row.state = 'submitted'; row.phase = 'submit';
-        try { await request('POST', `${scope}/pulls/${number}/merge`, { Do: 'merge', head_commit_id: headSha }, { signal }); row.acknowledgement = 'confirmed'; }
-        catch (error: any) {
-          row.failure = { phase: row.phase, code: error.code, ...(error.status === undefined ? {} : { status: error.status }) };
-          if ([401, 403, 404, 405, 409, 422].includes(error.status)) {
-            row.state = 'rejected';
-            row.acknowledgement = 'rejected';
-            throw fail('DELIVERY_NOT_READY');
+        async function confirmReady() {
+          while (row.readinessReads < maxReadinessReads) {
+            row.readinessReads++;
+            const pr = await request('GET', `${scope}/pulls/${number}`, undefined, { signal });
+            const allowedHead = facilities.project
+              ? typeof pr?.head?.ref === 'string' && pr.head.ref.length > 0 && pr.head.ref !== 'main' &&
+                pr.head.repo?.full_name === `${facilities.repository.owner}/${facilities.repository.name}`
+              : pr?.head?.ref === peer.branch;
+            if (!allowedHead || pr?.head?.sha !== headSha || pr.base?.ref !== 'main' ||
+                String(pr.user?.id) !== peer.gitea.accountId || pr.merged) throw fail('DELIVERY_INVALID');
+            if (pr.mergeable === true) return;
+            if (row.readinessReads < maxReadinessReads) await delay(readinessIntervalMs, undefined, { signal });
           }
-          row.state = 'unknown';
-          row.acknowledgement = 'unknown';
+          throw fail('DELIVERY_NOT_READY');
+        }
+        for (let submission = 0; submission < 2; submission++) {
+          row.state = 'checking';
+          row.phase = 'preflight';
+          await confirmReady();
+          if (!accepting) throw fail('DELIVERY_STOPPING');
+          row.state = 'submitted';
+          row.phase = 'submit';
+          try {
+            await request('POST', `${scope}/pulls/${number}/merge`, { Do: 'merge', head_commit_id: headSha }, {
+              signal, recognizedRejection: { status: 405, message: 'Please try again later', code: 'GITEA_MERGE_RECHECKING' },
+            });
+            row.acknowledgement = 'confirmed';
+            break;
+          } catch (error: any) {
+            row.failure = { phase: row.phase, code: error.code, ...(error.status === undefined ? {} : { status: error.status }) };
+            if (error.code === 'GITEA_MERGE_RECHECKING' && submission === 0 && row.readinessReads < maxReadinessReads) {
+              row.recheckRejection = row.failure;
+              delete row.failure;
+              row.acknowledgement = 'rejected';
+              row.state = 'checking';
+              await delay(Math.max(150, readinessIntervalMs), undefined, { signal });
+              continue;
+            }
+            if ([401, 403, 404, 405, 409, 422].includes(error.status)) {
+              row.state = 'rejected';
+              row.acknowledgement = 'rejected';
+              throw fail('DELIVERY_NOT_READY');
+            }
+            row.state = 'unknown';
+            row.acknowledgement = 'unknown';
+            break;
+          }
         }
         return readback(row, signal);
       })().catch((error: any) => { if (row.state === 'checking') { row.state = 'rejected'; row.failure = { phase: row.phase, code: error.code ?? 'DELIVERY_PREFLIGHT_FAILED', ...(error.status === undefined ? {} : { status: error.status }) }; } throw error; }).finally(() => { row.finished = true; });
