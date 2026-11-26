@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { createRuntime } from '@murm/core';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
 import { ServiceRegistry } from '@murm/core/services';
 import { createArtifactsUpstream } from './fixtures/core-artifacts-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
@@ -81,15 +81,15 @@ export async function verifyArtifactTree({ manifestPath, filesPath, agentId, com
     totalBytes, contentHashesVerified: true, uncommittedVerified: true, commitVerified: commit, gitObjectsVerified: true };
 }
 
-test('required artifacts survive a recoverable host save failure and remain readable after sandbox deletion', {
-  skip: process.env.MURM_CORE_ARTIFACTS_REAL_TEST !== '1' && 'Review combined implementation/image pin before fixed local opt-in', timeout: 160_000,
+for (const executor of ['pi', 'codex'] as const) test(`${executor}: required artifacts survive a recoverable host save failure and remain readable after sandbox deletion`, {
+  skip: process.env[executor === 'pi' ? 'MURM_CORE_ARTIFACTS_REAL_TEST' : 'MURM_CODEX_ARTIFACTS_REAL_TEST'] !== '1' && 'Review combined implementation/image pin before fixed local opt-in', timeout: 160_000,
 }, async t => {
   const image = process.env.MURM_CORE_TEST_IMAGE; assert.ok(image);
   const outputDir = join(process.cwd(), 'experiments', `core-artifacts-${Date.now()}`);
   await mkdir(outputDir, { recursive: true, mode: 0o700 });
-  const upstream = await createArtifactsUpstream(); t.after(() => upstream.close());
+  const upstream = await createArtifactsUpstream(executor); t.after(() => upstream.close());
   const runtimes = []; const resources = {};
-  const report = { version: 1, failure: true, image, workloadLimitMs: 120_000, cleanupLimitMs: 30_000, actions: [], stops: [] };
+  const report = { version: 1, failure: true, image, executor, workloadLimitMs: 120_000, cleanupLimitMs: 30_000, actions: [], stops: [] };
   let blockerPath;
   let blockerArmed = false;
   let deadlineExpired = false;
@@ -113,13 +113,13 @@ test('required artifacts survive a recoverable host save failure and remain read
     assert.ok(Object.values(resources).every(row => row.empty));
   });
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-  const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
+  const runtime = await createRuntime({ backend: createOpenSandboxBackend({ executor,
     sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
       resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
     bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
     modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 30_000, maxOutputTokens: 128 },
-    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
+    models: { default: { provider: executor === 'codex' ? 'openai' : 'kimi_proxy', model: executor === 'codex' ? 'gpt-5.4' : 'k3', upstream: { url: upstream.url, headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
   }), profiles: { worker: { prompt: 'Execute the fixed local artifact command without any network publication.', model: 'default', image, writable: true, services: {} } },
     services: new ServiceRegistry(), maxAgents: 1, outputDir });
@@ -147,6 +147,10 @@ test('required artifacts survive a recoverable host save failure and remain read
   const result = await settled; assert.equal(result.outcome, 'completed'); assert.equal(result.output, 'T07_ARTIFACTS_READY');
   assert.equal(upstream.receipt().arrivals, 2); assert.equal(upstream.receipt().failure, undefined);
   const expectedCommit = upstream.receipt().evidence.commit;
+  if (executor === 'codex') {
+    report.agentProcessesBeforeStop = await countAgentProcesses();
+    assert.ok(report.agentProcessesBeforeStop >= 2, 'The live detached shell child must be included in stop confirmation');
+  }
   blockerPath = join(outputDir, runtime.id, agent.id);
   await writeFile(blockerPath, 'CONTROLLED_REQUIRED_SAVE_BLOCKER\n', { flag: 'wx', mode: 0o600 }); blockerArmed = true;
   report.actions.push({ action: 'install-required-save-blocker', outcome: 'complete' });
@@ -183,6 +187,13 @@ test('required artifacts survive a recoverable host save failure and remain read
   assert.equal(summary.config.models.default.maxOutputTokens, 128);
   assert.equal(summary.config.models.default.requestTimeoutMs, 30_000);
   assert.deepEqual(summary.agents, [stopped]);
+  if (executor === 'codex') {
+    const ready = lines.find(row => row.type === 'spawn' && row.state === 'ready');
+    assert.equal(ready.backend.kind, 'codex');
+    assert.equal(ready.backend.version, '0.172.0');
+    assert.equal(ready.backend.authMode, 'api-key');
+    assert.match(ready.backend.threadId, /^[a-f0-9-]{36}$/);
+  }
   assert.equal(close.evidence.recorded, lines.length);
   assert.ok(lines.every((row, index) => row.runtimeId === runtime.id && row.seq === index + 1));
   assert.ok(lines.some(row => row.type === 'spawn' && row.agentId === agent.id && row.requestId === 'artifact-spawn'));

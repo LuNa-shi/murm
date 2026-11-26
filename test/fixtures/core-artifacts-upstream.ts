@@ -24,7 +24,10 @@ assert.equal(git('status','--porcelain'), '?? uncommitted.txt');
 console.log(JSON.stringify({tracked:true,uncommitted:true,untracked:true,noRemote:true,commit:git('rev-parse','HEAD')}));
 CORE_ARTIFACT_EVIDENCE`;
 
-export async function createArtifactsUpstream() {
+export async function createArtifactsUpstream(executor = 'pi') {
+  const codex = executor === 'codex';
+  const model = codex ? 'gpt-5.4' : 'k3';
+  const command = codex ? 'setsid sleep 60 </dev/null >/dev/null 2>&1 &\n' + artifactCommand : artifactCommand;
   let arrivals = 0;
   let failure;
   let evidence;
@@ -39,15 +42,18 @@ export async function createArtifactsUpstream() {
       const chunks = []; let bytes = 0;
       for await (const chunk of request) { bytes += chunk.length; assert.ok(bytes <= 2 * 1024 ** 2); chunks.push(chunk); }
       const body = JSON.parse(Buffer.concat(chunks).toString());
-      assert.equal(body.model, 'k3'); assert.ok(Array.isArray(body.input));
+      assert.equal(body.model, model); assert.ok(Array.isArray(body.input));
       assert.ok(JSON.stringify(body.input).includes('FIXED_ARTIFACT_CAPTURE'));
       let item;
-      if (ordinal === 1) item = { type: 'function_call', id: 'fc_artifact', call_id: 'call_artifact', name: 'bash',
-        arguments: JSON.stringify({ command: artifactCommand, timeout: 20 }) };
+      if (ordinal === 1) item = { type: 'function_call', id: 'fc_artifact', call_id: 'call_artifact', name: codex ? 'exec_command' : 'bash',
+        arguments: JSON.stringify(codex ? { cmd: command, yield_time_ms: 10_000 } : { command, timeout: 20 }) };
       else {
         const result = body.input.find(item => item.type === 'function_call_output' && item.call_id === 'call_artifact');
         assert.equal(typeof result?.output, 'string');
-        const parsed = JSON.parse(result.output.trim());
+        const text = result.output.trim();
+        const marker = 'Output:\n';
+        if (codex) assert.ok(text.includes('Process exited with code 0') && text.includes(marker));
+        const parsed = JSON.parse(codex ? text.slice(text.indexOf(marker) + marker.length) : text);
         assert.deepEqual(Object.keys(parsed).sort(), ['commit', 'noRemote', 'tracked', 'uncommitted', 'untracked']);
         assert.equal(parsed.tracked, true); assert.equal(parsed.uncommitted, true); assert.equal(parsed.untracked, true); assert.equal(parsed.noRemote, true);
         assert.match(parsed.commit, /^[a-f0-9]{40}$/);
@@ -56,7 +62,7 @@ export async function createArtifactsUpstream() {
           content: [{ type: 'output_text', text: 'T07_ARTIFACTS_READY', annotations: [] }] };
       }
       receipts.push({ ordinal, verified: ordinal === 2 });
-      response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse('k3', ordinal, item));
+      response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse(model, ordinal, item));
     } catch { failure = 'CONTROLLED_ARTIFACTS_FAILED'; response.writeHead(400); response.end(JSON.stringify({ error: { message: failure } })); }
   });
   server.requestTimeout = 10_000; server.headersTimeout = 10_000;
