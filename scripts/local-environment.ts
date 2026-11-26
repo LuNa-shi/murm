@@ -127,7 +127,7 @@ export async function checkLocalHost(config: LocalEnvironmentConfig): Promise<Di
 interface ProviderInfo {
   Id: string;
   Image: string;
-  Config: { Image: string; Cmd?: string[]; Labels?: Record<string, string> };
+  Config: { Image: string; Cmd?: string[]; Env?: string[]; Labels?: Record<string, string> };
   State: { Running: boolean };
   HostConfig: { NetworkMode: string; Binds?: string[] };
 }
@@ -145,9 +145,13 @@ function lifecycleUrl(config: LocalEnvironmentConfig): URL | undefined {
 async function inspectProvider(config: LocalEnvironmentConfig): Promise<ProviderInfo | undefined> {
   const url = lifecycleUrl(config);
   if (!url) return;
-  const rows: ProviderInfo[] = JSON.parse(await run('docker', ['ps', '--no-trunc', '--format', '{{.ID}}']).then(async ids => ids ? run('docker', ['inspect', ...ids.split('\n')]) : '[]'));
+  const expectedImage = await run('docker', ['image', 'inspect', '--format', '{{.Id}}', localProviderImage]).catch(() => '');
+  if (!expectedImage) return;
+  const rows: ProviderInfo[] = JSON.parse(await run('docker', ['ps', '--no-trunc', '--filter', `ancestor=${localProviderImage}`, '--format', '{{.ID}}']).then(async ids => ids ? run('docker', ['inspect', ...ids.split('\n')]) : '[]'));
   for (const row of rows) {
-    if (!row.State.Running || row.HostConfig.NetworkMode !== 'host' || row.Config.Image !== localProviderImage) continue;
+    const dockerHost = row.Config.Env?.find(value => value.startsWith('DOCKER_HOST='))?.slice('DOCKER_HOST='.length);
+    const localSocket = row.HostConfig.Binds?.some(value => /^\/(?:var\/)?run\/docker\.sock:\/var\/run\/docker\.sock(?::(?:rw|ro))?$/.test(value));
+    if (!row.State.Running || row.HostConfig.NetworkMode !== 'host' || row.Image !== expectedImage || !localSocket || dockerHost && dockerHost !== 'unix:///var/run/docker.sock') continue;
     const args = row.Config.Cmd ?? [];
     const position = args.indexOf('--config');
     const configPath = args[position + 1];
