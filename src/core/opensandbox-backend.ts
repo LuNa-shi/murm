@@ -24,6 +24,7 @@ interface InputSubmission {
 
 type SharedWorkspace = Extract<NonNullable<SpawnOptions['workspace']>, { id: string }>;
 interface WorkspaceOwners {
+  provider: OpenSandboxProvider;
   owners: Set<string>;
   ready: Promise<void>;
   retiring?: Promise<unknown>;
@@ -34,6 +35,7 @@ type SnapshotOptions = Parameters<import('./types.js').Runtime['files']['snapsho
 interface BackendAgent {
   workspace?: SharedWorkspace;
   id: string;
+  provider: OpenSandboxProvider;
   manager: SandboxManager;
   onEvent(event: BackendEvent): void;
   onExecutionStart?: () => void;
@@ -81,7 +83,7 @@ interface WorkerReply {
   status?: string;
 }
 
-interface SandboxManager {
+export interface SandboxManager {
   agentRpc(agentId: string, input: Record<string, unknown>, options: {
     timeoutMs: number; since?: number; transportTimeoutMs?: number; signal?: AbortSignal;
   }): Promise<WorkerReply>;
@@ -104,30 +106,19 @@ interface SandboxManager {
   stopExecution(agentId: string): Promise<unknown>;
 }
 
-interface SandboxManagerConstructor {
-  new (options: OpenSandboxBackendConfig['sandbox'] & { image: string }): SandboxManager;
-}
-
-interface AgentNetwork {
-  isolate(options: {
-    sandboxId: string;
-    agent: { agent_id: string; runtime_id: string; resource_key: string };
-    bridgeUrl: string;
-    modelUrl: string;
-    additionalEndpoints: readonly string[];
-  }): Promise<void>;
-}
-
 interface BackendOptions {
   runtimeId: string;
   outputDir: string;
   bridge: Awaited<ReturnType<typeof createCoreBridge>>;
   modelAccess: Awaited<ReturnType<typeof createCoreModelAccess>>;
   registerPrivateValues?: (values: readonly unknown[]) => void;
+  providers?: readonly OpenSandboxProvider[];
 }
 
 interface AllocationRecord {
   state: string;
+  providerId: string;
+  resourceKey: string;
   timeoutSeconds?: number;
   sandboxId?: string;
   observation?: string;
@@ -151,9 +142,8 @@ import { selectExecutorDriver, type ExecutorDriver } from './executor-driver.js'
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import { createWorkerEventPoll } from './worker-event-poll.js';
-import { OpenSandboxManager } from '../runtime/opensandbox-manager.js';
-import { DockerAgentNetwork } from '../runtime/docker-agent-network.js';
-import { DockerAgentDisk } from '../runtime/docker-agent-disk.js';
+import { validId } from './config.js';
+import { checkLocalWorkspaceQuota, createLocalOpenSandboxProvider, type OpenSandboxProvider } from './opensandbox-provider.js';
 
 export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'> & { readonly driver: Readonly<ExecutorDriver> };
 
@@ -203,7 +193,7 @@ export function createOpenSandboxBackend(config: OpenSandboxBackendConfig): Back
     throw invalid('modelGateway.selectionReasoningEffort must be low when configured');
   }
   if (!Number.isSafeInteger(config.isolation.disk?.bytes) || !Number.isSafeInteger(config.isolation.disk?.inodes)) throw invalid('Explicit disk byte and inode limits are required');
-  try { new DockerAgentDisk(config.isolation.disk); } catch (caught) {
+  try { checkLocalWorkspaceQuota(config.isolation.disk); } catch (caught) {
     const error = caught as Error & { code: string }; throw invalid(error.message); }
   const bridgeOrigin = httpUrl(config.bridge.publicUrl.replaceAll('{port}', '12345'), 'Bridge origin');
   for (const host of [bridgeOrigin.hostname, config.modelGateway.advertiseHost]) {
@@ -236,13 +226,18 @@ export function claimOpenSandboxBackend(handle: Backend) {
   return entry.config;
 }
 
-export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, { runtimeId, bridge, modelAccess, registerPrivateValues = () => {} }: BackendOptions) {
+export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, {
+  runtimeId, bridge, modelAccess, registerPrivateValues = () => {}, providers = [createLocalOpenSandboxProvider(config)],
+}: BackendOptions) {
   const { driver } = config;
   const agents = new Map<string, BackendAgent>();
   const workspaces = new Map<string, WorkspaceOwners>();
+  const targets = [...providers];
+  if (!targets.length || targets.some(target => !validId(target.id)) || new Set(targets.map(target => target.id)).size !== targets.length) {
+    throw invalid('OpenSandbox targets require distinct service identities');
+  }
   let closing = false;
-  const network = new DockerAgentNetwork() as unknown as AgentNetwork;
-  const disk = new DockerAgentDisk(config.isolation.disk);
+  let nextTarget = 0;
 
   function trace(agent: BackendAgent, record: Readonly<Record<string, unknown>>) {
     // Trace persistence is observational and cannot fail an Agent's execution.
@@ -336,16 +331,22 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         forkSession = await source.manager.coreSessionSnapshot(source.id);
         if (source.stopping || source.exited || source.historyLost || signal?.aborted || closing) throw Object.assign(new Error('Context Fork source stopped during capture'), { code: 'NOT_ALLOWED' });
       }
-      const manager = new (OpenSandboxManager as unknown as SandboxManagerConstructor)({ ...config.sandbox, image: profile.image });
-      const agent: BackendAgent = { id: agentId, manager, onEvent, onExecutionStart, onTrace, cursor: 0, output: '', error: null,
+      const workspace = options.workspace?.mode !== 'frozen-copy' ? options.workspace : undefined;
+      let entry = workspace && workspaces.get(workspace.id);
+      if (entry?.retiring) {
+        await entry.retiring;
+        entry = workspaces.get(workspace!.id);
+      }
+      if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
+      const provider = entry?.provider ?? targets[nextTarget];
+      if (!entry) nextTarget = (nextTarget + 1) % targets.length;
+      const manager = provider.openManager(profile.image);
+      const agent: BackendAgent = { id: agentId, provider, manager, onEvent, onExecutionStart, onTrace, cursor: 0, output: '', error: null,
         stopping: false, exited: false, eventPoll: createWorkerEventPoll(), nativeExecuting: false, pendingInputs: 0 };
       agents.set(agentId, agent);
-      const workspace = options.workspace?.mode !== 'frozen-copy' ? options.workspace : undefined;
       if (workspace) {
-        let entry = workspaces.get(workspace.id);
-        if (entry?.retiring) { await entry.retiring; entry = workspaces.get(workspace.id); }
         if (!entry) {
-          entry = { owners: new Set(), ready: disk.sharedWorkspace('create', { runtimeId, workspaceId: workspace.id }) };
+          entry = { provider, owners: new Set(), ready: provider.createSharedWorkspace(runtimeId, workspace.id) };
           workspaces.set(workspace.id, entry);
         }
         agent.workspace = workspace;
@@ -357,10 +358,11 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         if (closing || agent.stopping || signal?.aborted) throw Object.assign(new Error('Agent startup is closing'), { code: 'NOT_ALLOWED' });
       };
       assertOpen();
+      const allocation = { providerId: provider.id, resourceKey: agentId };
       const sandbox = await manager.ensureExecution({ executionId: agentId, agentId, timeoutSeconds: config.sandbox.timeoutSeconds ?? 3600, projectQuotaRequired: true, cleanupOnFailure: false,
         metadata: { runtime_id: runtimeId }, onWorkerToken: (token: string) => registerPrivateValues([token]),
-        onCreateDispatch: (entry: { timeout_seconds: number }) => recordAllocation({ state: 'allocation-dispatched', timeoutSeconds: entry.timeout_seconds }),
-        onCreated: (entry: { sandbox_id: string; expires_at?: string }) => recordAllocation({ state: 'allocation-observed', sandboxId: entry.sandbox_id,
+        onCreateDispatch: (entry: { timeout_seconds: number }) => recordAllocation({ ...allocation, state: 'allocation-dispatched', timeoutSeconds: entry.timeout_seconds }),
+        onCreated: (entry: { sandbox_id: string; expires_at?: string }) => recordAllocation({ ...allocation, state: 'allocation-observed', sandboxId: entry.sandbox_id,
           observation: Object.hasOwn(entry, 'expires_at') ? 'create-response' : 'cleanup-lookup', expiresAt: sandboxExpiry(entry.expires_at) }),
       });
       assertOpen();
@@ -368,11 +370,8 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       const credentials = modelAccess.credentialsForAgent(agentId, profile.model);
       const bridgeCredentials = bridge.credentialsForAgent(agentId);
       registerPrivateValues([...Object.values(credentials.secretEnvironment), ...Object.values(bridgeCredentials.secretEnvironment)]);
-      await network.isolate({ sandboxId: sandbox.sandbox_id, agent: identity, bridgeUrl: bridge.publicUrl, modelUrl: credentials.baseUrl, additionalEndpoints: profile.network?.allow ?? [] });
-      assertOpen();
-      const quota = await disk.isolate({ sandboxId: sandbox.sandbox_id, agent: identity });
-      if (workspace) await disk.sharedWorkspace('attach', { runtimeId, workspaceId: workspace.id, mode: workspace.mode,
-        sandboxId: sandbox.sandbox_id, agent: identity });
+      const quota = await provider.prepareSandbox({ sandboxId: sandbox.sandbox_id, agent: identity, bridgeUrl: bridge.publicUrl,
+        modelUrl: credentials.baseUrl, additionalEndpoints: profile.network?.allow ?? [], workspace, assertOpen });
       const versions = await manager.agentVersions({ executionId: agentId, executor: driver.kind });
       if (versions[`${driver.kind}Version`] !== driver.version) throw invalid(`Backend requires ${driver.kind} ${driver.version}`);
       assertOpen();
@@ -392,7 +391,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       consume(agent, ready.records ?? []);
       assertOpen();
       agent.polling = agent.eventPoll.run(signal => readWorkerEvents(agent, signal));
-      return { sandboxId: sandbox.sandbox_id, versions, ...(startup?.backend ? { backend: startup.backend } : {}) };
+      return { ...allocation, sandboxId: sandbox.sandbox_id, versions, ...(startup?.backend ? { backend: startup.backend } : {}) };
     },
     async snapshotFiles(agentId: string, input: SnapshotOptions) {
       const agent = agents.get(agentId);
@@ -538,7 +537,9 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
     },
     resource(agentId: string) {
       const agent = agents.get(agentId);
-      return agent?.manager.coreResource(agentId);
+      if (!agent) return;
+      const resource = agent.manager.coreResource(agentId);
+      return resource && { ...resource, providerId: agent.provider.id };
     },
     async destroy(agentId: string) {
       const agent = agents.get(agentId);
@@ -552,7 +553,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         const entry = workspaces.get(workspaceId)!;
         entry.owners.delete(agentId);
         if (!entry.owners.size) {
-          entry.retiring = disk.sharedWorkspace('delete', { runtimeId, workspaceId }).then(() => workspaces.delete(workspaceId));
+          entry.retiring = entry.provider.deleteSharedWorkspace(runtimeId, workspaceId).then(() => workspaces.delete(workspaceId));
           try { await entry.retiring; } catch (error) { entry.retiring = undefined; throw error; }
         }
       }
