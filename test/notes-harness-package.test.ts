@@ -120,7 +120,7 @@ try {
 } finally {await bridge.close()}
 
 const expectedExports = {
- '@murm/core': ['createRuntime'],
+ '@murm/core': ['createRuntime', 'finalizeRun'],
  '@murm/core/services': ['ServiceRegistry', 'builtinAgentRegistration', 'createHttpJsonAdapter',
   'createInProcessAdapter', 'getAdapterMetadata', 'invokeService', 'isJson', 'snapshotServiceRegistry'],
  '@murm/core/backends/opensandbox': ['createOpenSandboxBackend', 'getOpenSandboxBackendCapabilities'],
