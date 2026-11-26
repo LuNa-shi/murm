@@ -1,7 +1,7 @@
 import type { ServiceRegistration } from '../../core/services.js';
 import { MurmError } from '../../errors.js';
 import { assertNewExecutionWork } from '../../task/execution-budget.js';
-import { createMathlibSearchManifest, type MathlibSearchService } from '../../services/mathlib-search-service.js';
+import { createMathlibSearchManifest, type MathlibSearchService } from '../../services/mathlib-search/service.js';
 
 export function createTaskPoolMathlibService({ provider, runtimeId, taskService, missionId, deadline }: {
   provider: MathlibSearchService;

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 export async function assertShippedModelPair({ provider, model }: { provider: unknown; model: unknown }) {
-  const catalogBytes = await readFile(new URL('../../services/opensandbox-agent/pi-models.json', import.meta.url));
+  const catalogBytes = await readFile(new URL('../../deploy/worker/pi-models.json', import.meta.url));
   const catalog = JSON.parse(catalogBytes.toString('utf8'));
   const name = typeof provider === 'string' && /^[a-zA-Z0-9_-]+$/.test(provider) ? provider : null;
   const entry = name && Object.hasOwn(catalog.providers, name) ? catalog.providers[name] : null;
