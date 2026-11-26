@@ -7,11 +7,11 @@ order: 1
 
 ## 1. Prepare a local Subagents project
 
-Use Node.js 22.19 or newer and npm on the same Linux host as rootful Docker Engine. The host needs Landlock ABI 5 or newer and noninteractive permission for the namespace, nftables and workspace mount operations. The setup command checks these capabilities before packaging or building. [Host requirements and diagnosis](https://github.com/LuNa-shi/SwarmEnv/blob/main/docs/architecture/07-run-configuration.md#local-setup-and-doctor)
+Use Node.js 22.19 or newer and npm on the same Linux host as rootful Docker Engine. The host needs Landlock ABI 5 or newer and noninteractive permission for the namespace, nftables and workspace mount operations. The setup command checks these capabilities before packaging or building. [Host requirements and diagnosis](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/07-run-configuration.md#local-setup-and-doctor)
 
 ```bash
-git clone https://github.com/LuNa-shi/SwarmEnv.git
-cd SwarmEnv
+git clone https://github.com/LuNa-shi/murm.git
+cd murm
 ./scripts/setup --template subagents --dir ../my-murm
 cd ../my-murm
 ```
@@ -35,7 +35,7 @@ Enter a task for Root. Root can start child Agents, assign work, and combine the
 node main.js config.js 'Split this task into two independent subtasks and combine the results.'
 ```
 
-Doctor checks the configured host, image and OpenSandbox profile. Run `npm run doctor -- --smoke` to repeat the temporary end-to-end infrastructure probe. The output reports infrastructure, model configuration and real-model verification separately. Setup and doctor use the local controlled endpoint for their probe. [Subagents configuration and controls](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/README.md)
+Doctor checks the configured host, image and OpenSandbox profile. Run `npm run doctor -- --smoke` to repeat the temporary end-to-end infrastructure probe. The output reports infrastructure, model configuration and real-model verification separately. Setup and doctor use the local controlled endpoint for their probe. [Subagents configuration and controls](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md)
 
 ## 3. Inspect the Run
 

@@ -2,7 +2,7 @@ import { parseArgs } from 'node:util';
 
 export const setupUsage = 'Usage: murm setup --template subagents --dir <directory>';
 export const doctorUsage = 'Usage: murm doctor --config <config.js> [--smoke]';
-export const murmUsage = `${setupUsage}\n${doctorUsage}`;
+export const murmUsage = `${setupUsage}\n${doctorUsage}\nUsage: murm trace --root <runs-dir> [--port 8787] (requires @murm/trace-viewer)`;
 
 export type LocalCommand =
   | { command: 'setup'; directory: string }
