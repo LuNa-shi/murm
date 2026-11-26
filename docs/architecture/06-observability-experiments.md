@@ -2,7 +2,7 @@
 
 ## Process and read boundary
 
-The standalone `@murm/trace-viewer` package provides the thin `murm` host command. Selecting `trace` loads the reader and HTTP server. `--root` is required and `--port` defaults to 8787. Port 0 asks the OS to select an available port. The server binds IPv4 loopback and prints its URL. A local browser can connect directly or through an SSH tunnel. Core's package and Sandbox's Agent-side `swarm` CLI install independently.
+The standalone `@murm/trace-viewer` package provides the thin `murm` host command. Selecting `trace` loads the reader and HTTP server. `--root` is required and `--port` defaults to 8787. Port 0 asks the OS to select an available port. The server binds IPv4 loopback and prints its URL. A local browser can connect directly or through an SSH tunnel. Core's package and Sandbox's Agent-side `swarm` CLI install independently. The package exports `@murm/trace-viewer/command` for a host dispatcher. `runTraceCommand(args)` accepts the arguments after `trace`, prints the listening URL and returns a close handle. The standalone bin registers that handle for process signals.
 
 Each browser request must use a loopback Host header. Browser cross-site requests and differing Origins are rejected. The viewer serves GET, with no cross-origin sharing or runtime mutation surface. Records are inserted into the DOM as text. The browser's content security policy restricts loaded assets and connections to the viewer origin. SIGINT and SIGTERM close the listener and active connections. The viewer can start after the Harness has exited, model access has ended, and its Sandboxes have been deleted.
 

@@ -21,6 +21,11 @@ test('installed CLI serves read-only Run evidence and resumes a live stream', { 
   assert.ok(files.some(entry => entry.path === 'public/index.html'));
   assert.ok(files.every(entry => !entry.path.endsWith('.test.mjs')));
   await exec('npm', ['install', '--offline', '--no-audit', '--no-fund', './' + filename], { cwd: consumer });
+  const help = await exec(process.execPath, [
+    '--input-type=module', '-e',
+    "import { runTraceCommand } from '@murm/trace-viewer/command'; await runTraceCommand(['--help']);",
+  ], { cwd: consumer });
+  assert.match(help.stdout, /murm trace/);
   const run = join(root, 'fixture');
   await mkdir(run);
   await writeFile(join(run, 'runtime.json'), JSON.stringify({

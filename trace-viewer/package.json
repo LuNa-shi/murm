@@ -21,5 +21,8 @@
   "private": true,
   "os": [
     "linux"
-  ]
+  ],
+  "exports": {
+    "./command": "./command.mjs"
+  }
 }
