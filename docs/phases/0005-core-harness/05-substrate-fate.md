@@ -1,12 +1,12 @@
 # ScaleMAS 论文机制与 FATE 验收
 
-[总览](README.md) · [Environment §7](02-harness.md#7-substrate) · [执行票 #202](https://github.com/LuNa-shi/SwarmEnv/issues/202)
+[总览](README.md) · [Harness §7](02-harness.md#7-substrate) · [执行票 #202](https://github.com/LuNa-shi/SwarmEnv/issues/202)
 
 本修订合入后规定 #202 的论文对齐配置及验收。原有通用示例与历史证据继续按各自固定版本解释。[固定审核](https://github.com/LuNa-shi/SwarmEnv/blob/66536e631fdea8cbf1a16bc7643c5b13433021d1/docs/reviews/scalemas-example-review.md) 记录原版论文、源码差距和评测来源，本文记录首轮交付范围。
 
 ## 普通入口与运行
 
-- 从安装包普通 ScaleMAS 入口启动 FATE 配置。固定数量的同级 Agent 在不同 Session、私有目录与 sandbox 中收到相同原题，自主查找、阅读、检查、发布与提交。宿主不派工、不广播成果、不追加要求发表的固定续轮。Core 管理 Agent、模型、Service 和收尾，Environment 管理协作、任务与截止时间。
+- 从安装包普通 Substrate 入口启动 FATE 配置。固定数量的同级 Agent 在不同 Session、私有目录与 sandbox 中收到相同原题，自主查找、阅读、检查、发布与提交。宿主不派工、不广播成果、不追加要求发表的固定续轮。Core 管理 Agent、模型、Service 和收尾，Environment 管理协作、任务与截止时间。
 - `shared` 同组共享库，`private` 按 Bridge 可信 Agent 身份隔离内容、索引统计、时钟和引用。两组开放相同的协作工具。`none` 只开放同样的解题工具和提交入口。三组独立启动，权限边界在 Service 执行，每次运行用新的目录与库。
 - 每个 Agent 可显式提交并更新当前候选，宿主保留截止前最后一次确认提交。Agent 自然结束、提交并结束、失败或到时后，关闭该 Agent 的写入，其他 Agent 可继续。提交冻结后独立评分所有最终候选，任何一份通过即记团队成功。没有候选、超时、基础设施失败和清理 pending 均保留。
 - 首轮固定 FATE-M [上游提交和原题](https://github.com/frenzymath/FATE-M/blob/4eb33c8ccd0ff058b461cd763cc406509129743f/FATE-M.json) ID 1，Lean 4.28.0，Mathlib `8f9d9cff6bd728b17a24e163c9402775d9e6a365`。模型为 `kimi_proxy/k3`，每组 4 Agent，三种条件按 shared、private、none 顺序各一次。Agent 就绪后每组最多 1,800 秒，全部结束可提前收尾。准备、复评、清理单独计时和设有界等待。记录实际模型用量，本场没有 K3 请求数、Token 或费用上限。按[实验流程](../../workflows/experiment.md)固定配置与登记跑次。

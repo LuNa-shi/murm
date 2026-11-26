@@ -125,7 +125,7 @@ interface SubstrateOptions {
   resourceExists(agentId: string, address: string): boolean;
 }
 
-/** Versioned tables in the Environment-owned SQLite store. Legacy tables retain their own contracts. */
+/** Versioned tables in the Harness-owned SQLite store. Legacy tables retain their own contracts. */
 export function createPaperSubstrate({ databasePath, runId, mode, services, authorize, countOperation, resourceExists }: SubstrateOptions) {
   if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(runId) || !['shared', 'private'].includes(mode)) throw new TypeError('Invalid Substrate run or sharing mode');
   mkdirSync(dirname(databasePath), { recursive: true, mode: 0o700 });

@@ -5,7 +5,7 @@ const invalid = () => Object.assign(new Error('Ordered host checkpoints do not e
 const requireEvidence = (condition: any) => { if (!condition) throw invalid(); };
 const digest = (content: any) => createHash('sha256').update(content).digest('hex');
 
-/** Host-only check of Environment §7.5 handoff evidence. Checkpoints must be
+/** Host-only check of Harness §7.5 handoff evidence. Checkpoints must be
  * captured by the trusted host in argument order, after awaiting publisherStop
  * and before publishing the successor. Snapshots contain no stop/publication
  * clock; this function cannot authenticate caller-supplied chronology.

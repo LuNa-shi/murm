@@ -31,7 +31,7 @@ test('Environment admits one real Core peer with bindings, native Git secret and
   const receipt = await harness.close({ timeoutMs: 200 });
   assert.equal(receipt.cleanup, 'pending'); assert.equal(receipt.agents[0].execution, 'stopped');
   assert.equal(facilityClosed, false, 'required export pending preserves owned dependencies');
-  await assert.rejects(harness.runInput('later', { requestId: 'later', timeoutMs: 50 }), { code: 'ENVIRONMENT_CLOSING' });
+  await assert.rejects(harness.runInput('later', { requestId: 'later', timeoutMs: 50 }), { code: 'HARNESS_CLOSING' });
 });
 
 test('partial facility startup closes only registered owned resources and retains a sanitized pending ledger', async () => {

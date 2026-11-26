@@ -136,7 +136,7 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
       return result;
     }
     if (operation === 'task_view') {
-      if (task.workspace?.workspace_id && task.workspace.workspace_id !== workspaceId) denied('Task Workspace belongs to another Environment');
+      if (task.workspace?.workspace_id && task.workspace.workspace_id !== workspaceId) denied('Task Workspace belongs to another Harness');
       const snapshot = await missionWorkspace.exportRevision({ workspaceId, revision: task.workspace?.revision ?? 'main', signal });
       signal?.throwIfAborted();
       eligibleAgent(agent.agent_id, core.id);

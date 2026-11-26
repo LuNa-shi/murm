@@ -51,11 +51,11 @@
     },
     {
       "path": "src/harnesses/substrate/index.ts",
-      "sha256": "0f9ad76d6238a55fce98a54596dfd1741f538be5c8c57ca48d68d90987d0b493"
+      "sha256": "450b7f3e871e336767ea40e8b099b36e8a1626a4abaeceae1a40cb49ce86554f"
     },
     {
       "path": "src/harnesses/substrate/substrate.ts",
-      "sha256": "35a73f5a9b7fd705be00060ac6994ddc63104081e14d6ee5cf383d37c849c6b4"
+      "sha256": "0e92cc37bf2c510ce53a2f751185ea184c24f45ada73058fc2a5aae68dc582c0"
     },
     {
       "path": "src/harnesses/taskpool/controller.ts",
@@ -75,7 +75,7 @@
     },
     {
       "path": "src/harnesses/substrate/paper-substrate.ts",
-      "sha256": "58793fea646d9ae53659c37485d4dabe85bddb19f318a487bbe1927eaeb2d20c"
+      "sha256": "dc42877418a21a773d51cecb7378015d0cf97bb4009f63a776c5ad1ae32866f8"
     },
     {
       "path": "benchmarks/putnambench-taskpool/run.ts",
@@ -115,7 +115,7 @@
     },
     {
       "path": "src/harnesses/peermesh/index.ts",
-      "sha256": "ef8e3303d58677da7379cd0212129d7907204941f92f9cbb046f990471638657"
+      "sha256": "b09f68f4b0ad1721c0dab6afa3836d508fdc280e7d9a921865433794132fdbdc"
     },
     {
       "path": "src/harnesses/peermesh/router.ts",

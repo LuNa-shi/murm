@@ -24,7 +24,7 @@ export function substratePeerProfile({ image, model = 'default' }: any) {
     collect: { paths: ['.'], includeGit: false, maxBytes: 2 * 1024 ** 2, required: true } };
 }
 
-/** Fixed no-Task pool. Environment owns content and drivers; Core owns all Agents. */
+/** Fixed no-Task pool. Harness owns content and drivers; Core owns all Agents. */
 export async function runSubstrate({ backend, runId, image, outputDir, question, model = 'default', poolSize = 3, maxRounds = 2,
   workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle, maxConcurrentInputs }: any, signal: any) {
   if (typeof outputDir !== 'string' || !outputDir || typeof question !== 'string' || !question.trim() || Buffer.byteLength(question) > 8192 ||

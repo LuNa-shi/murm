@@ -24,7 +24,7 @@ export function createPeerProfile({ image, model = 'default', facilities }: any)
           message: ['post_message', ...(facilities.project ? ['peer_list', 'send_dm'] : [])], 'peermesh-context': ['board_read', 'board_write', 'board_grep', 'board_unfold'] } };
 }
 
-/** A single input owner. Core owns the Agent; Environment owns facilities. */
+/** A single input owner. Core owns the Agent; Harness owns facilities. */
 export async function createPeerMeshHarness(options: any) {
   const { runId, image, model = 'default', exportLimit, outputDir, backend } = options;
   if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId) || typeof image !== 'string' || !image || !Number.isSafeInteger(exportLimit) || exportLimit < 1) throw new TypeError('PeerMesh Harness requires run, image and actual export limit');
@@ -75,7 +75,7 @@ export async function createPeerMeshHarness(options: any) {
       profiles: { peer: createPeerProfile({ image, model, facilities }) } });
     checkStartup();
     unsubscribe = runtime.onEvent((event: any) => {
-      // Core owns raw execution evidence. The Environment report keeps indexes.
+      // Core owns raw execution evidence. The Harness report keeps indexes.
       events.push({ agentId: event.agentId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
     });
     checkStartup();
@@ -85,7 +85,7 @@ export async function createPeerMeshHarness(options: any) {
     service.bindAgent({ runtimeId: runtime.id, agentId: peer.id });
     return Object.freeze({ id: runtime.id, peer: Object.freeze({ ...peer }), snapshot, close, redact, onEvent: (listener: any) => runtime.onEvent(listener),
       async runInput(input: any, wait: any) {
-        if (closing) throw Object.assign(new Error('Environment is closing'), { code: 'ENVIRONMENT_CLOSING' });
+        if (closing) throw Object.assign(new Error('Harness is closing'), { code: 'HARNESS_CLOSING' });
         const row: any = { requestId: wait?.requestId }; inputs.push(row);
         try {
           const result = await runInput(runtime, peer.id, input, { ...wait, signal: AbortSignal.any([lifetime.signal, ...(wait?.signal ? [wait.signal] : [])]) });

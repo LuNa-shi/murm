@@ -17,7 +17,7 @@ const capability = (operation: 'publish' | 'search' | 'visit', description: stri
   side_effect: operation === 'publish' ? 'write' : 'read', idempotent: true, help: { when: 'Share, discover and adopt peer contributions' },
   input_schema, output_schema, errors: ['CONFLICT', 'NOT_FOUND', 'NOT_ALLOWED', 'INVALID_CONTRACT'].map((code: any) => ({ code, retryable: false })) });
 
-/** Environment-owned persistent content; no Task/Execution or private directory access. */
+/** Harness-owned persistent content; no Task/Execution or private directory access. */
 export function createSubstrateService({ databasePath, runId, poolSize = 3 }: any) {
   if (typeof databasePath !== 'string' || !databasePath || typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(runId)) throw new TypeError('Substrate requires a database path and bounded run ID');
   if (!Number.isSafeInteger(poolSize) || poolSize < 3 || poolSize > 8) throw new TypeError('Substrate pool size must be an integer from three to eight');

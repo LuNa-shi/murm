@@ -1,6 +1,6 @@
 # Phase 0005：Core / Harness — Build your own swarm
 
-本阶段沿用原设计和验收边界。术语采用 murm 网站的 Agent、Service、Harness、Runtime、Sandbox、Run。原文的 Agent 对应 Agent，Environment 对应 Harness。五种 Harness 的现名为 Subagents、TaskPool（原 `flat`）、PeerMesh（原 `agensh`）、Substrate（原 `scaleMAS`）、Lead-Worker（原 `lead-helper`）。历史链接与示例中的协议字面值仍按各自版本解释。
+本阶段沿用原设计和验收边界。术语采用 murm 网站的 Agent、Service、Harness、Runtime、Sandbox、Run。原文的 Bot 对应 Agent，Environment 对应 Harness。五种 Harness 的现名为 Subagents、TaskPool（原 `flat`）、PeerMesh（原 `agensh`）、Substrate（原 `scaleMAS`）、Lead-Worker（原 `lead-helper`）。历史链接与示例中的协议字面值仍按各自版本解释。
 
 > 本阶段唯一权威设计 · 2026-11-23 · 目标规范，尚待实现和验收
 

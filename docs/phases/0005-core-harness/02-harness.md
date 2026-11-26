@@ -936,7 +936,7 @@ type Guard = { active: boolean; unresolved: boolean; used: Set<string> };
 const guards = new WeakMap<Runtime, Map<string, Guard>>();
 
 /**
- * Environment-only helper: one input source, idle Agent, no queued input or
+ * Harness-only helper: one input source, idle Agent, no queued input or
  * automatic continuation. A new requestId is required for every invocation.
  * Timeout/abort end this host wait; they do not cancel the Agent or its input.
  */
