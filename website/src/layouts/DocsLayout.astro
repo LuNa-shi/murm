@@ -27,12 +27,21 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
   <div class="docs-shell">
     <Sidebar currentSlug={currentSlug} />
 
-    <main class="docs-main">
-      <div class="docs-eyebrow">{section}</div>
+    <main class="docs-main" id="docs-content">
+      <div class="docs-header-row">
+        <div class="docs-eyebrow">{section}</div>
+        <button type="button" class="copy-page-btn" id="copy-page-btn" aria-label="Copy page text">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <rect x="9" y="9" width="13" height="13" rx="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+          <span>Copy page</span>
+        </button>
+      </div>
       <h1 class="docs-title">{title}</h1>
       <p class="docs-lead">{description}</p>
 
-      <article class="prose">
+      <article class="prose" id="docs-article">
         <slot />
       </article>
 
@@ -61,7 +70,7 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
           <ul class="toc-list">
             {toc.map((h) => (
               <li>
-                <a class:list={['toc-link', { 'depth-3': h.depth === 3 }]} href={`#${h.slug}`}>
+                <a class:list={['toc-link', { 'depth-3': h.depth === 3 }]} href={`#${h.slug}`} data-toc-id={h.slug}>
                   {h.text}
                 </a>
               </li>
@@ -71,4 +80,58 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
       )}
     </aside>
   </div>
+
+  <script is:inline>
+    (function () {
+      const copyBtn = document.getElementById('copy-page-btn');
+      if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+          const titleEl = document.querySelector('.docs-title');
+          const leadEl = document.querySelector('.docs-lead');
+          const articleEl = document.getElementById('docs-article');
+          if (!articleEl) return;
+          const clone = articleEl.cloneNode(true);
+          clone.querySelectorAll('.copy-btn').forEach((el) => el.remove());
+          const parts = [
+            titleEl ? '# ' + titleEl.textContent.trim() : '',
+            leadEl ? leadEl.textContent.trim() : '',
+            clone.innerText.trim(),
+          ].filter(Boolean);
+          const label = copyBtn.querySelector('span');
+          try {
+            await navigator.clipboard.writeText(parts.join('\n\n'));
+            if (label) label.textContent = 'Copied';
+            setTimeout(() => { if (label) label.textContent = 'Copy page'; }, 1500);
+          } catch {
+            if (label) label.textContent = 'Error';
+          }
+        });
+      }
+
+      const tocLinks = Array.from(document.querySelectorAll('.toc-link[data-toc-id]'));
+      if (!tocLinks.length || !('IntersectionObserver' in window)) return;
+      const headings = tocLinks
+        .map((link) => document.getElementById(link.dataset.tocId))
+        .filter(Boolean);
+      if (!headings.length) return;
+
+      const setActive = (id) => {
+        tocLinks.forEach((link) => {
+          link.classList.toggle('active', link.dataset.tocId === id);
+        });
+      };
+      setActive(headings[0].id);
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const visible = entries
+            .filter((e) => e.isIntersecting)
+            .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+          if (visible.length) setActive(visible[0].target.id);
+        },
+        { rootMargin: '-72px 0px -70% 0px', threshold: 0 }
+      );
+      headings.forEach((h) => observer.observe(h));
+    })();
+  </script>
 </BaseLayout>

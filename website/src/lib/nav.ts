@@ -10,10 +10,11 @@ export interface NavGroup {
 
 export const DOC_NAV: NavGroup[] = [
   {
-    label: 'GETTING STARTED',
+    label: 'GET STARTED',
     items: [
-      { title: 'Quick Start', slug: 'quickstart' },
-      { title: 'Core Concepts', slug: 'concepts' },
+      { title: 'Overview', slug: 'overview' },
+      { title: 'Quickstart', slug: 'quickstart' },
+      { title: 'How murm Works', slug: 'concepts' },
     ],
   },
   {
@@ -21,6 +22,12 @@ export const DOC_NAV: NavGroup[] = [
     items: [
       { title: 'System Architecture', slug: 'architecture' },
       { title: 'Anatomy of a Run', slug: 'run-lifecycle' },
+    ],
+  },
+  {
+    label: 'BUILD ON MURM',
+    items: [
+      { title: 'Build Your Own Harness', slug: 'build-your-harness' },
     ],
   },
   {
@@ -35,16 +42,10 @@ export const DOC_NAV: NavGroup[] = [
     ],
   },
   {
-    label: 'DEVELOPERS',
-    items: [
-      { title: 'Build Your Own Harness', slug: 'build-your-harness' },
-    ],
-  },
-  {
     label: 'REFERENCE',
     items: [
       { title: 'API & Configuration', slug: 'reference/api' },
-      { title: 'Types & Mapping', slug: 'reference/types' },
+      { title: 'Types & Source Map', slug: 'reference/types' },
       { title: 'Deployment', slug: 'reference/deploy' },
     ],
   },

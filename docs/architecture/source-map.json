@@ -2193,44 +2193,12 @@
       "role": "Locally bundled Departure Mono font asset"
     },
     {
-      "path": "website/src/assets/images/agent-lifecycle.jpg",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Source illustration for the public architecture and Harness guides"
-    },
-    {
-      "path": "website/src/assets/images/architecture-overview.jpg",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Source illustration for the public architecture and Harness guides"
-    },
-    {
-      "path": "website/src/assets/images/five-programs-compare.jpg",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Source illustration for the public architecture and Harness guides"
-    },
-    {
-      "path": "website/src/assets/images/service-bridge-flow.jpg",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Source illustration for the public architecture and Harness guides"
-    },
-    {
       "path": "website/src/components/CoreModelBlueprint.astro",
       "category": "public documentation website",
       "chapters": [
         "docs/architecture/22-website.md"
       ],
-      "role": "Interactive diagram of the six Core concepts"
+      "role": "Interactive Tactical Sandtable mental model diagram"
     },
     {
       "path": "website/src/components/DomainStrip.astro",
@@ -2383,6 +2351,14 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Published documentation content for TaskPool"
+    },
+    {
+      "path": "website/src/content/docs/overview.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation landing overview page"
     },
     {
       "path": "website/src/content/docs/quickstart.md",

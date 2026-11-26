@@ -1,42 +1,49 @@
 ---
 title: Subagents
-description: Hierarchical recursive delegation, non-waking mailbox messaging, context forking, and safe interrupts built on one custom collaboration Service.
+description: Hierarchical recursive delegation, session context forking, non-waking mailbox messaging, and lossless interrupts built on one custom collaboration Service.
 section: BUILT-IN HARNESSES
-order: 6
+order: 7
 ---
 
-**Subagents** models a lead agent (`/root`) that breaks down a problem, spawns named child agents recursively, coordinates via messages in real time, and integrates their work. Source code: [examples/subagents](https://github.com/LuNa-shi/SwarmEnv/tree/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/subagents).
+**Subagents** models a lead agent (`/root`) that breaks down a task, spawns named child agents recursively (up to `maxDepth`), exchanges messages in real time, and integrates results. Source: [examples/subagents](https://github.com/LuNa-shi/SwarmEnv/tree/main/examples/subagents).
 
-## 1. Registered Service
+## 1. Registered Service (`collaboration`)
 
-Instead of exposing raw `agent` primitives directly to the model, Subagents registers a domain-specific **`collaboration` Service** ([collaboration-service.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/subagents/collaboration-service.ts)) that gives every participant a hierarchical path (`/root`, `/root/reviewer`, up to `maxDepth`):
+Rather than exposing raw `agent` primitives directly, Subagents registers one domain-specific **`collaboration` Service** ([collaboration-service.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/collaboration-service.ts)) that addresses every team member by hierarchical path (`/root`, `/root/reviewer`, `/root/reviewer/parser`):
 
-| Operation | Example Arguments | Host Behavior |
+| Operation | Key arguments | Host behavior |
 | --- | --- | --- |
-| `spawn_agent` | `--task-name reviewer --message '...' --fork-turns none\|all` | Validates depth & uniqueness → calls `runtime.spawn()` (passing `forkFrom` when `fork_turns: 'all'`) → delivers initial task |
-| `send_message` | `--target /root --message '...'` | Enqueues in target mailbox → attempts `runtime.send(..., { mode: 'steer', wakeIfIdle: false })`; never wakes idle members |
-| `followup_task` | `--target /root/reviewer --message '...'` | Flushes pending mailbox messages together with the new instruction using `wakeIfIdle: true` to resume the existing session |
-| `wait_agent` | `--timeout-ms 60000` | Suspends within the current turn until any new message/child result arrives or timeout expires |
-| `interrupt_agent` | `--target /root/reviewer` | Calls `runtime.interrupt()` and restores `discardedInputHashes` back into the member's mailbox |
-| `list_agents` | `--path-prefix /root` | Combines `runtime.list()` with hierarchy metadata to show visible paths, status, and latest output |
+| `spawn_agent` | `task_name`, `message`, `fork_turns?: 'all' \| 'none'` | Checks depth & path uniqueness → calls `runtime.spawn({ forkFrom })` when `fork_turns` is `'all'` (default) → delivers initial task |
+| `send_message` | `target`, `message` | Adds to target inbox → offers via `runtime.send(..., { mode: 'steer', wakeIfIdle: false })`; never wakes an idle member |
+| `followup_task` | `target`, `message` | Flushes pending inbox messages together with the new task using `wakeIfIdle: true` to resume the child's existing session (rejects `/root`) |
+| `wait_agent` | `timeout_ms?` *(default 30s, min 10s, max 1h)* | Suspends within the current turn until a pending/new message arrives, a new input wakes the agent, or timeout expires |
+| `interrupt_agent` | `target` | Calls `runtime.interrupt()` and restores confirmed `discardedInputHashes` back into the member's inbox (rejects `/root` and self) |
+| `list_agents` | `path_prefix?` | Joins `runtime.list()` with tree paths to return visible live members, status, and `lastOutcome` |
 
-## 2. Runtime primitives used
+Inside the container, agents use the standard `swarm` CLI:
 
-1. **Session forking (`spawn({ forkFrom })`)**: when a parent spawns a child without `--fork-turns none`, the host passes `forkFrom: caller.id` so the child inherits the parent's full conversation prefix; pass `none` for a clean context.
-2. **Non-waking conditional delivery (`send(..., { mode: 'steer', wakeIfIdle: false })`)**: eliminates mailbox race conditions. Busy recipients receive messages before their next model step; idle recipients return `not-accepted` so messages stay buffered without wasting a model turn.
-3. **Lossless interruption (`interrupt` + `discardedInputHashes`)**: the host tracks SHA-256 digests of queued steer messages and restores any unconsumed payloads discarded by Pi back into the member's inbox.
-4. **Optional shared workspace (`workspace: { id, mode: 'read-write' }`)**: members default to private directories, or can mount one shared runtime workspace for large codebase edits (stopping child writers before final export).
+```bash
+swarm service view collaboration
+swarm collaboration spawn_agent \
+  --task-name reviewer \
+  --message 'Audit src/parser.ts edge cases and report back.' \
+  --fork-turns none \
+  --request-id reviewer-start
+swarm collaboration wait_agent --timeout-ms 60000 --request-id wait-reviewer
+```
 
-## 3. Host control loop
+## 2. How the controller coordinates delivery
 
-Strip away validation and [controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/subagents/controller.ts) revolves around each member's `inbox` and `wait` handle:
+The heart of [examples/subagents/controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/controller.ts) is per-member serialization (`serial(member, ...)`) combined with non-waking steer offers and automatic parent forwarding:
 
 ```ts
-// 1. Offer a message to a member without disturbing idle agents
+// 1. Offer a message to a member: wake an active wait_agent first, else steer only if running
 async function offer(member: Member, message: Message) {
-  if (releaseWait(member)) return;
-
-  const body = JSON.stringify(message);
+  if (message.state === 'returned' || (message.state === 'pending' && releaseWait(member))) {
+    return;
+  }
+  const { state: _state, ...payload } = message;
+  const body = JSON.stringify(payload);
   const receipt = await runtime.send(member.id!, body, {
     requestId: message.id,
     source: message.from,
@@ -45,39 +52,94 @@ async function offer(member: Member, message: Message) {
   });
 
   if (receipt.status === 'accepted') {
+    message.state = 'queued';
+    // Index queued payload by SHA-256 so interrupt_agent can recover it if discarded
     if (receipt.disposition === 'queued') {
-      member.submitted.set(sha256(body), message);
+      member.submitted.set(createHash('sha256').update(body).digest('hex'), message);
     }
-    removeFromInbox(member, message);
+    removeMemberMessage(member, message);
+    member.wait?.({ reason: 'input' });
+  } else if (receipt.status === 'unknown') {
+    message.state = 'unknown';
+  } else {
+    // Confirmed idle ('not-accepted'): keep safely pending in member.inbox
+    message.state = 'pending';
+    releaseWait(member);
   }
-  // If status === 'not-accepted' (idle), the message stays safely in member.inbox
 }
 
-// 2. Forward completed child turns to their direct parent
-runtime.onEvent((event) => {
+// 2. Automatically route settled child outcomes back to their direct parent
+const unsubscribe = runtime.onEvent((event) => {
   const member = byId.get(event.agentId);
-  if (!member?.parent) return;
-  if (event.type === 'settled' && event.outcome !== 'aborted') {
-    const resultMsg = buildChildResultMessage(member, event);
-    member.parent.inbox.push(resultMsg);
-    void offer(member.parent, resultMsg);
+  if (!member) return;
+  if (event.type === 'settled' || event.type === 'exit') member.executionRevision++;
+  if (event.type === 'settled') {
+    member.lastOutcome = event.outcome === 'aborted' ? 'interrupted' : event.outcome;
+    if (event.outcome !== 'aborted' && !(member.fatalReported && event.outcome === 'failed')) {
+      resultFor(member, event); // pushes result into member.parent.inbox and calls offer()
+    }
+  } else if (event.type === 'error' && event.fatal && !member.fatalReported) {
+    member.lastOutcome = 'failed';
+    member.fatalReported = true;
+    resultFor(member, event);
   }
 });
 ```
 
-User prompts from CLI or `--interactive` mode call `submit(root, ...)`, flushing `/root`'s unread inbox together with the user prompt using `wakeIfIdle: true`.
+When a user sends a prompt to `/root` (or a parent calls `followup_task`), `submit()` first reconciles any `unknown` inbox deliveries, freezes all `pending` messages into the input JSON batch, and delivers them with `wakeIfIdle: true`.
 
-## 4. End-to-end validation (ProgramBench `fd`)
+## 3. Shared workspace closeout safety
 
-In [EXP-20261125-10](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/docs/experiments/EXP-20261125-10-issue199-fd.md), Subagents ran with 3 slots (`/root` + 2 children) on a shared workspace for a 1-hour rebuild of `fd 10.3.0`:
+By default, every member gets a private working directory and children return findings or patches as messages. When `config.workspace` mounts one shared `read-write` workspace across `/root` and children and `/root` has a `collect` spec, [examples/subagents/main.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/main.ts) stops all child writers **before** calling `runtime.close()` so Root's collected files are guaranteed quiescent:
 
-- **Measured concurrency**: `/root` spawned `/root/probe_patterns` and `/root/probe_filters` with **515 seconds** of overlapping child model execution;
-- **Verified adoption**: `/root/probe_filters` authored 66 filter tests handed off to `/root`, exposing 38 failures that `/root` fixed to green;
-- **Mid-flight user input**: a symlink/cycle requirement injected at minute 3 propagated to `/root/probe_patterns`, yielding 16 dedicated tests;
-- **Clean teardown**: 43m 54s wall time, **1,042 / 1,235 (84.37%)** offline cleanroom tests passing, all 3 sessions, 200 model traces, and container deletions confirmed complete.
+```ts
+if (sharedWriters && collect && !sharedDeliveryUnverified) {
+  const children = (await runtime.list()).filter((a) => a.parentId && a.status !== 'closed');
+  const stops = await Promise.allSettled(
+    children.map((a) => runtime.stop(a.id, { timeoutMs: childStopBudgetMs })),
+  );
+  sharedDeliveryUnverified = stops.some(
+    (s) => s.status === 'rejected' || s.value.execution !== 'stopped',
+  );
+}
+const receipt = await runtime.close({ timeoutMs: remainingCloseMs });
+```
+
+If any child writer fails to confirm `execution === 'stopped'`, the harness appends `SHARED_WRITERS_UNCONFIRMED` and keeps `cleanup: 'pending'`.
+
+## 4. Programmatic & CLI usage
+
+Run from the CLI (one-shot or interactive):
+
+```bash
+export MURM_SUBAGENTS_IMAGE=$(docker image inspect murm-worker:local --format '{{.Id}}')
+export MURM_SUBAGENTS_MODEL_URL='https://your-model-endpoint/v1/responses'
+export MURM_SUBAGENTS_MODEL_TOKEN='your-bearer-token'
+
+node dist/examples/subagents/main.js dist/examples/subagents/config.js \
+  'Split this task into two independent checks and summarize the results.'
+
+node dist/examples/subagents/main.js dist/examples/subagents/config.js --interactive
+```
+
+Or embed `createSubagentsHarness` in Node.js:
+
+```ts
+import { createSubagentsHarness } from './main.js';
+
+const team = await createSubagentsHarness(config);
+try {
+  await team.input('Analyze the repository structure and delegate module reviews.', 'req-1');
+  const reply = await team.waitForReply({ signal });
+  console.log('Root reply:', reply);
+} finally {
+  await team.close({ timeoutMs: 30_000 });
+}
+```
 
 ## Source files
 
-- Entrypoint & interactive CLI: [examples/subagents/main.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/subagents/main.ts)
-- Controller & mailbox: [examples/subagents/controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/subagents/controller.ts)
-- Service manifest: [examples/subagents/collaboration-service.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/subagents/collaboration-service.ts)
+- Entry point & interactive CLI: [examples/subagents/main.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/main.ts)
+- Controller, mailbox & interrupt recovery: [examples/subagents/controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/controller.ts)
+- `collaboration` Service manifest: [examples/subagents/collaboration-service.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/collaboration-service.ts)
+- Setup & verification notes: [examples/subagents/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/README.md) · [ProgramBench `fd` run record](https://github.com/LuNa-shi/SwarmEnv/blob/main/docs/experiments/EXP-20261125-10-issue199-fd.md)

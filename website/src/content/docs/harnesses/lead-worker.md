@@ -1,49 +1,75 @@
 ---
 title: Lead-Worker
-description: Staged direction-and-feedback loop combining transactional SQLite Board claims, causal read gates, and Git commit SHA-256 verification.
+description: Staged direction-and-feedback loop combining asymmetric Board permissions, transactional SQLite claims, causal read gates, and Git SHA-256 verification.
 section: BUILT-IN HARNESSES
-order: 10
+order: 11
 ---
 
-**Lead-Worker** *(repository module: `src/harnesses/lead-worker`)* fits teams that need one clear owner of direction while forcing field constraints discovered during execution back into the next round of planning. One **lead** and 2–7 **workers** (`helper` roles in code) coordinate through a local SQLite **Board** and personal Gitea branches. Source code: [src/harnesses/lead-worker](https://github.com/LuNa-shi/SwarmEnv/tree/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/lead-worker).
+**Lead-Worker** (`src/harnesses/lead-worker/`) fits teams that want one explicit owner of direction while enforcing that worker feedback discovered during execution actually reaches the next round of planning. One `lead` and 2–7 workers (`helper1..helperN`) run in persistent sessions with separate Gitea accounts, personal Git branches, and a local SQLite **`board` Service**.
 
-## 1. Registered Services
+## 1. Registered Services & asymmetric permissions
 
-Lead-Worker registers two Services with asymmetric role permissions ([board.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/lead-worker/board.ts)):
-
-- **`board` (transactional SQLite state machine)**:
-  - `lead`: `read`, `list_subtasks`, `announce` (set/revise direction), `assign`, `create_subtask`, `update_subtask`, `note`.
-  - `helper` (worker): `read`, `list_subtasks`, `create_subtask`, `claim` (exclusive transactional claim), `update_subtask`, `note` (feedback), `landed`, `complete`.
-- **`gitea`**: `pull_request_write` for both roles, paired with native `git` pushes to personal branches.
-
-The `board` Service enforces three strict invariants:
-1. **Exclusive transactional claims**: `claim` checks `expected_revision` inside `BEGIN IMMEDIATE` to assign a single permanent `owner`.
-2. **Read-before-write causal gates**: `lead` cannot `announce` citing `feedback_ids` unless `reads` proves it read them; workers cannot `complete` unless they read the latest `direction_id`.
-3. **Byte-level Git verification**: `complete` submits `{ commit, path, sha256, bytes }`, which the Board verifies live against Gitea via `git.verifyDelivery` before committing.
-
-## 2. Runtime primitives used
-
-- **Fixed team with isolated credentials**: spawns `lead` and `helper1..helperN` upfront with distinct Profiles, Gitea `bindings`, `secretEnv.GITEA_TOKEN`, and required `collect(includeGit: true)`. Built-in `agent` Service is disabled.
-- **Fatal failure fence**: `runtime.onEvent` watches for any `fatal` error or unexpected `exit`, calling `board.fence()` to freeze writes while preserving ownership state and failure artifacts.
-- **Staged turn orchestration**: uses `runInput` across alternating lead/worker stages in persistent sessions.
-
-## 3. Host control loop
-
-[src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/lead-worker/index.ts) implements the two-round `runWorkflow` (and extensible `runStage` with candidate verification):
+[src/harnesses/lead-worker/board.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/lead-worker/board.ts) enforces distinct operations per role at both the Service Bridge (`Profile.services`) and inside the adapter:
 
 ```ts
-// Step 1: Lead publishes initial direction, assignments, and ready subtasks
-await dispatch('lead', 'lead-initialize', { type: 'initialize', goal, helpers });
-assertInitialBoardReady(board.snapshot());
+export const boardPermissions = Object.freeze({
+  lead: ['read', 'list_subtasks', 'announce', 'assign', 'create_subtask', 'update_subtask', 'note'],
+  helper: ['read', 'list_subtasks', 'create_subtask', 'claim', 'update_subtask', 'note', 'landed', 'complete'],
+});
+```
 
-// Step 2: Workers concurrently claim subtasks, push Git commits, and post feedback
+Both roles also receive `gitea: ['pull_request_write']` plus native `git` access to their own branch over the allowlisted Gitea origin (`Profile.network.allow` + `secretEnv.GITEA_TOKEN`). The built-in `agent` Service is not enabled.
+
+Inside the Board's SQLite `BEGIN IMMEDIATE` transaction, three strict invariants are enforced:
+
+1. **Exclusive permanent claims**: `claim` verifies `row.owner === null && row.state === 'ready' && row.revision === input.expected_revision` before setting a permanent `owner`. Claims never expire or reassign automatically.
+2. **Causal read-before-write gates**:
+   - `announce` rejects with `FEEDBACK_NOT_READ` if `lead` cites `feedback_ids` it has not previously observed via `board read`.
+   - `landed` / `complete` rejects with `DIRECTION_NOT_READ` if the helper has not observed the latest `direction_id` via `board read`.
+3. **Live byte-level Git verification**: before committing `landed` or `complete`, the adapter calls `git.verifyDelivery()` against Gitea to confirm the helper's own branch commit SHA, file path, byte length, and exact SHA-256 digest (and on later rounds, verifies the artifact contains the revised direction text).
+
+```ts
+// Excerpt from src/harnesses/lead-worker/board.ts
+if (['landed', 'complete'].includes(operation)) {
+  const subtask = deliveryGuard(state, caller, input, role);
+  delivery = await verifyDelivery({
+    actor: caller.agentId,
+    subtask: structuredClone(subtask),
+    delivery: structuredClone(input.delivery),
+    direction: structuredClone(state.directions.at(-1)),
+    requireDirectionText: state.directions.length > 1,
+    signal,
+  });
+  if (!delivery || delivery.verified !== true) throw error('DELIVERY_INVALID');
+}
+```
+
+Example commands run by agents inside Bash:
+
+```bash
+swarm board read --request-id helper1-read
+swarm board claim --input claim.json --request-id helper1-claim
+swarm board complete --input complete.json --request-id helper1-done
+```
+
+## 2. Staged control loop & failure fencing
+
+In [src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/lead-worker/index.ts), `createLeadWorkerHarness()` spawns the fixed team upfront (`maxAgents: 1 + helperCount`), binds their IDs into `board` and `git`, and subscribes to `runtime.onEvent()` so any fatal error, non-completed settlement, or unexpected exit immediately calls `board.fence()` — freezing further Board mutations while preserving all records for inspection.
+
+The default workflow runs two alternating stages using `runInput`:
+
+```ts
+// Stage 1a: Lead publishes initial direction, assignments, and ready subtasks
+await dispatch('lead', 'lead-initialize', { type: 'initialize', goal, helpers });
+
+// Stage 1b: Helpers concurrently claim subtasks, push Git commits, and post feedback notes
 await Promise.all(
   helperRoles.map((role) =>
-    dispatch(role, `${role}-initial`, { type: 'helper-initial' })
-  )
+    dispatch(role, `${role}-initial`, { type: 'helper-initial' }),
+  ),
 );
 
-// Step 3: Register supplemental user input; Lead reads all feedback and updates direction
+// Stage 2a: Register supplemental user input; Lead reads all feedback & updates direction
 board.registerUserInput('lead-adjust', supplement);
 await dispatch('lead', 'lead-adjust', {
   type: 'user-and-feedback',
@@ -51,19 +77,28 @@ await dispatch('lead', 'lead-adjust', {
   supplement,
 });
 
-// Step 4: Same workers read the revised direction in their preserved sessions and ship round 2
+// Stage 2b: Original helpers read the updated direction in their preserved sessions and ship round 2
 await Promise.all(
   helperRoles.map((role) =>
-    dispatch(role, `${role}-followup`, { type: 'helper-followup' })
-  )
+    dispatch(role, `${role}-followup`, { type: 'helper-followup' }),
+  ),
 );
 ```
 
-On close, the host waits for `runtime.close()` to confirm all Git checkouts are archived and containers removed before closing SQLite and revoking temporary Gitea tokens.
+For longer multi-round host schedules (`helperCount: 3`), `createLeadWorkerHarness()` also exposes `prepareStages({ signal })` and `runStage({ goal | supplement, paths, tasks?, signal, deadlineAtMs?, verifyCandidate? })` to drive up to four serial stages on the same team while checking every stage's distinct file paths.
+
+## 3. Running the example
+
+```bash
+# Set run ID, immutable worker image, OpenSandbox URL, Gitea admin credentials, and model URL
+node dist/examples/lead-worker/main.js dist/examples/lead-worker/config.js
+```
+
+On close, `close()` waits for `runtime.close()` to confirm every agent's execution stopped and private Git checkout was archived before closing the SQLite connection and revoking temporary Gitea tokens. The shared repository, Board SQLite file, commits, and PRs remain intact for review.
 
 ## Source files
 
-- Orchestrator (`runWorkflow` / `runStage`): [src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/lead-worker/index.ts)
-- SQLite Board & causal checks: [src/harnesses/lead-worker/board.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/lead-worker/board.ts)
-- Gitea provisioning & delivery verification: [src/harnesses/lead-worker/git.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/lead-worker/git.ts)
-- Usage guide: [examples/lead-worker/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/lead-worker/README.md)
+- Harness orchestrator (`runWorkflow`, `prepareStages`, `runStage`): [src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/lead-worker/index.ts)
+- SQLite `board` Service & causal gates: [src/harnesses/lead-worker/board.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/lead-worker/board.ts)
+- Gitea provisioning & SHA-256 delivery verification: [src/harnesses/lead-worker/git.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/lead-worker/git.ts)
+- Example config & guide: [examples/lead-worker/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/lead-worker/README.md)

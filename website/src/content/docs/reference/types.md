@@ -1,24 +1,25 @@
 ---
-title: Types & Mapping
-description: Public TypeScript definitions for @murm/core 0.2.0 (f98eb71d0eac61ac99a1b98a9d04ef353f781fec) and their mapping to murm concepts.
+title: Types & Source Map
+description: Exact public TypeScript declarations for @murm/core 0.2.0 and source links into the SwarmEnv repository.
 section: REFERENCE
 order: 13
 ---
 
-Selected public TypeScript declarations from `@murm/core` `0.2.0` at commit [`f98eb71d`](https://github.com/LuNa-shi/SwarmEnv/commit/f98eb71d0eac61ac99a1b98a9d04ef353f781fec).
+All declarations below are taken directly from `@murm/core` `0.2.0` on `main`.
 
-## Concept-to-code mapping
+## Concept-to-source mapping
 
-| `murm` concept | Package symbol / directory | Source file |
+| Concept | Package symbol / path | Source file |
 | --- | --- | --- |
-| `Runtime` | `createRuntime`, `Runtime` | [src/core/types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/core/types.ts) |
-| `Agent` | `AgentInfo`, `AgentStatus`, `AgentEvent`, `Profile` | [src/core/types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/core/types.ts) |
-| `Service` | `ServiceRegistry`, `ServiceManifest`, `ServiceAdapter`, `ServiceRequest` | [src/core/service-types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/core/service-types.ts) |
-| `Sandbox` | `createPiOpenSandboxBackend`, `PiOpenSandboxBackendConfig` | [src/core/backend-config.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/core/backend-config.ts) |
-| `Harness` | `src/harnesses/` and `examples/` | [src/harnesses/](https://github.com/LuNa-shi/SwarmEnv/tree/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses) |
-| `Run` | `runtime.id` + `outputDir/<runtimeId>/` + `CloseReceipt` | [src/core/run-records.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/core/run-records.ts) |
+| **Runtime** | `createRuntime`, `Runtime` | [src/core/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/index.ts) · [src/core/types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/types.ts) |
+| **Agent & Profile** | `Profile`, `AgentInfo`, `AgentStatus`, `AgentEvent` | [src/core/types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/types.ts) · [src/core/agent-service.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/agent-service.ts) |
+| **Service** | `ServiceRegistry`, `ServiceManifest`, `ServiceAdapter`, `ServiceRequest` | [src/core/services.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/services.ts) · [src/core/service-types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/service-types.ts) |
+| **Sandbox backend** | `createPiOpenSandboxBackend`, `PiOpenSandboxBackendConfig` | [src/core/backend-config.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/backend-config.ts) · [src/core/pi-opensandbox-backend.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/pi-opensandbox-backend.ts) |
+| **Harnesses** | TaskPool, PeerMesh, Substrate, Lead-Worker, Subagents, Notes | [src/harnesses/](https://github.com/LuNa-shi/SwarmEnv/tree/main/src/harnesses) · [examples/](https://github.com/LuNa-shi/SwarmEnv/tree/main/examples) |
+| **Run & Traces** | `runtime.id`, `outputDir/<runtimeId>/`, `CloseReceipt` | [src/core/run-records.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/run-records.ts) · [src/core/model-trace.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/model-trace.ts) · [src/core/service-trace.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/service-trace.ts) |
+| **`swarm` CLI** | `runSwarmCli` | [src/cli/swarm-cli.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/cli/swarm-cli.ts) |
 
-## Runtime control surface
+## Runtime control surface (`@murm/core`)
 
 ```ts
 export interface Runtime {
@@ -51,7 +52,7 @@ export interface Runtime {
 }
 ```
 
-## Profile, Spawn & Status
+## Profile, Spawn, Files & Status
 
 ```ts
 export interface Profile {
@@ -76,6 +77,26 @@ export interface CreateRuntimeOptions {
   modelAccessPolicy?: ModelAccessPolicy;
 }
 
+export interface FileEntry {
+  encoding: 'utf8' | 'base64';
+  data: string;
+  mode?: 0o644 | 0o755;
+}
+
+export type FileSeed = Readonly<Record<string, FileEntry>>;
+
+export interface CollectionSpec {
+  paths: readonly string[];
+  includeGit: boolean;
+  allowMissingGit?: boolean;
+  maxBytes: number;
+  required: boolean;
+}
+
+export type WorkspaceOptions =
+  | { id: string; mode: 'read-only' | 'read-write' }
+  | { mode: 'frozen-copy'; files: FileSeed };
+
 export interface SpawnOptions {
   forkFrom?: string;
   requestId: string;
@@ -89,7 +110,40 @@ export interface SpawnOptions {
   collect?: CollectionSpec;
 }
 
+export interface PreparedFiles {
+  readonly agentId: string;
+  readonly version: number;
+  readonly digest: string;
+}
+
+export interface FileSnapshot {
+  readonly agentId: string;
+  readonly requestId: string;
+  readonly version: number;
+  readonly digest: string;
+  readonly files: FileSeed;
+}
+
+export interface FileInstall {
+  readonly agentId: string;
+  readonly requestId: string;
+  readonly version: number;
+  readonly digest: string;
+  readonly phase: 'installed' | 'committed';
+}
+
+export interface GrantReceipt {
+  readonly agentId: string;
+  readonly version: number;
+  readonly writable: true;
+}
+
 export type AgentStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+
+export interface AgentListFilter {
+  parentId?: string | null;
+  status?: AgentStatus | readonly AgentStatus[];
+}
 
 export interface AgentInfo {
   id: string;
@@ -103,7 +157,7 @@ export interface AgentInfo {
 }
 ```
 
-## Input, Events & Interrupt Receipts
+## Input, Events, Receipts & Errors
 
 ```ts
 export type InputMode = 'steer' | 'followUp';
@@ -133,15 +187,70 @@ export interface InterruptReceipt {
   discardedInputHashes?: readonly string[];
 }
 
+export type AgentInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
+
+export interface AgentSpawnReceipt {
+  agent: AgentInfo;
+  initialInput: AgentInitialInputResult;
+}
+
 export type AgentEvent = { agentId: string; seq: number } & (
   | { type: 'output'; text: string }
   | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
   | { type: 'error'; error: ErrorInfo; fatal: boolean }
   | { type: 'exit'; reason: string; expected: boolean }
 );
+
+export interface ErrorInfo {
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
+export interface ResourceError extends Error {
+  code: string;
+  operation: string;
+  runtimeId?: string;
+  agentId?: string;
+  requestId?: string;
+  cleanup: 'complete' | 'pending';
+  reportPath?: string;
+  details: readonly ErrorInfo[];
+}
+
+export interface PendingCleanup {
+  kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report';
+  id: string;
+  action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+  error?: ErrorInfo;
+  resourceKey?: string;
+  sandboxId?: string;
+  creation?: 'created' | 'pending' | 'absent';
+  executionStopped?: boolean;
+}
+
+export interface StopReceipt {
+  agentId: string;
+  execution: 'stopped' | 'unknown';
+  cleanup: 'complete' | 'pending';
+  artifacts: readonly string[];
+  sessionArchive?: string;
+  errors: readonly ErrorInfo[];
+  pending?: PendingCleanup;
+}
+
+export interface CloseReceipt {
+  agents: readonly StopReceipt[];
+  cleanup: 'complete' | 'pending';
+  errors: readonly ErrorInfo[];
+  pending: readonly PendingCleanup[];
+  outputDir: string;
+  reportPath?: string;
+  evidence: { path?: string; recorded: number; lost: number; pending: number };
+}
 ```
 
-## Service Protocol & Model Access Policy
+## Service Protocol (`@murm/core/services`) & Model Access Policy
 
 ```ts
 export type JsonValue =
@@ -155,6 +264,20 @@ export interface ServiceManifest {
   contract_version: '2';
   endpoint: { transport: 'in-process' } | { transport: 'http-json'; url: string };
   capabilities: readonly ServiceCapability[];
+}
+
+export interface ServiceCapability {
+  name: string;
+  operation: string;
+  description: string;
+  side_effect: 'read' | 'write';
+  idempotent: boolean;
+  help: { when: string; ref?: string };
+  input_schema: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
+  errors: readonly { code: string; retryable: boolean }[];
+  path?: string;
+  timeout_ms?: number;
 }
 
 export interface ServiceCaller {
@@ -179,6 +302,13 @@ export interface ServiceAdapter {
   exportState?(options: { signal: AbortSignal }): JsonValue | Promise<JsonValue>;
 }
 
+export interface ModelCaller {
+  readonly runtimeId: string;
+  readonly agentId: string;
+  readonly profile: string;
+  readonly model: string;
+}
+
 export interface ModelPermit {
   phase: 'selection' | 'work' | 'closeout';
   deadlineAt: number;
@@ -186,12 +316,40 @@ export interface ModelPermit {
 }
 
 export interface ModelAccessPolicy {
-  authorize(caller: {
-    readonly runtimeId: string;
-    readonly agentId: string;
-    readonly profile: string;
-    readonly model: string;
-  }): ModelPermit | null;
+  authorize(caller: ModelCaller): ModelPermit | null;
   withCommit<T>(commit: () => T): T;
+}
+```
+
+## Pi/OpenSandbox Backend (`@murm/core/backends/pi-opensandbox`)
+
+```ts
+export interface PiOpenSandboxBackendConfig {
+  sandbox: {
+    lifecycleBaseUrl: string;
+    apiKey?: string;
+    execdToken?: string;
+    endpointHost?: string;
+    resourceLimits?: { cpu: string; memory: string };
+    commandTimeoutMs?: number;
+    timeoutSeconds?: number;
+  };
+  bridge: { host: string; publicUrl: string };
+  modelGateway: {
+    host: string;
+    advertiseHost: string;
+    requestTimeoutMs?: number;
+    maxOutputTokens?: number | null;
+    selectionReasoningEffort?: 'low';
+  };
+  models: Readonly<Record<string, {
+    provider: string;
+    model: string;
+    upstream: { url: string; headers: Readonly<Record<string, string>> };
+  }>>;
+  isolation: {
+    network: 'local-docker';
+    disk: { bytes: number; inodes: number };
+  };
 }
 ```
