@@ -212,7 +212,7 @@ output('09-substrate-harness.md', header('Substrate peer prompts',
   + block('FATE initial input with verified completion and a 30-minute work window', fateVerifiedInput(1_800_000),
     'The host supplies the configured workTimeoutMs. The displayed duration uses whole minutes when divisible by 60,000, otherwise seconds. The initial task is sent after all peers are ready.')
   + block('FATE continuation before verified completion', fateVerificationContinuation,
-    'A verified-completion peer receives this followUp through runInput in the same Session after a known natural settlement without a verified finish, while the work window remains open. It uses a fresh continuation request ID. The final scorer sends no prompt.'));
+    'A verified-completion peer receives this followUp through runInput in the same Session after a known natural settlement without a verified finish, while the work window remains open and the peer can still check and submit, or can submit an already passing proof. Eligibility is checked again before dispatch. The input uses a fresh continuation request ID. The final scorer sends no prompt.'));
 output('08-peermesh-harness.md', header('PeerMesh peer, batch and notice prompts',
   'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper. The project path uses Core start for ordinary batches and Core steer for eligible peer notices during an active batch. The compatibility paths use explicit followUp.')
   + block('Compatibility peer Profile prompt', between('src/harnesses/peermesh/index.ts', 'export const peerPrompt = `', '`;'))

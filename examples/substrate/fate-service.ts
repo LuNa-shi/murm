@@ -89,6 +89,7 @@ export function createFateTaskService(options: TaskOptions) {
   const db = new DatabaseSync(options.path);
   let closed = false;
   const checks = new Map<string, number>();
+  const checking = new Map<string, Set<Promise<JsonValue>>>();
   const passedProofs = new Map<string, Set<string>>();
   const declaredFinished = new Set<string>();
   const requests = new Map<string, { fingerprint: string; result: Promise<JsonValue> }>();
@@ -200,11 +201,29 @@ export function createFateTaskService(options: TaskOptions) {
         requests.set(key, { fingerprint, result });
         pending.add(result);
         void result.then(() => pending.delete(result), () => pending.delete(result));
+        if (capability.operation === 'check_lean') {
+          const agentChecks = checking.get(caller.agentId) ?? new Set<Promise<JsonValue>>();
+          checking.set(caller.agentId, agentChecks);
+          agentChecks.add(result);
+          const settled = () => {
+            agentChecks.delete(result);
+            if (!agentChecks.size) checking.delete(caller.agentId);
+          };
+          void result.then(settled, settled);
+        }
         return result;
       } }),
     });
     return Object.freeze({
       resourceExists,
+      completionStatus(agentId: string) {
+        return {
+          remainingChecks: maxChecks - (checks.get(agentId) ?? 0),
+          hasPassingProof: Boolean(passedProofs.get(agentId)?.size),
+          checkPending: Boolean(checking.get(agentId)?.size),
+        };
+      },
+      settleChecks: (agentId: string) => Promise.allSettled([...(checking.get(agentId) ?? [])]),
       snapshot() {
         const candidates = db.prepare('SELECT candidate FROM fate_candidates ORDER BY agent_id').all()
           .map(row => JSON.parse(String(row.candidate)) as FateCandidate);
