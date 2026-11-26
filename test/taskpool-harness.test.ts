@@ -457,7 +457,6 @@ for (const [operation, method, payload] of [
     deadlineAt: Date.now() + 15_000, sandbox: {}, model: 'default', image: 'fixture', capacity: 2,
     snapshotProject: async () => { throw new Error('No capture is needed for a public read'); },
     async drive(controller, runtime) {
-      controller.halt('public-read-probe');
       const [first, second] = controller.snapshot().agents;
       const call = async (agent, requestId) => {
         const credentials = controls.credentials.get(agent.agentId);
@@ -493,7 +492,9 @@ for (const [operation, method, payload] of [
       };
       try {
         canceled = call(first, 'canceled-reader');
-        const trustedSignal = await queued.promise;
+        const trustedSignal = await Promise.race([queued.promise, canceled.then(() => {
+          throw new Error('The public Workspace read did not reach its lock');
+        })]);
         let survivorFinished = false, writeFinished = false;
         surviving = call(second, 'surviving-reader').then(result => { survivorFinished = true; return result; });
         writing = stores.workspace.save({ workspaceId: stores.workspaceId, baseRevision: '0.1',
@@ -528,6 +529,7 @@ for (const [operation, method, payload] of [
         release.resolve();
         await Promise.allSettled([holding, canceled, surviving, writing]);
         stores.workspace[method] = original;
+        controller.halt('public-read-probe');
       }
     },
   });

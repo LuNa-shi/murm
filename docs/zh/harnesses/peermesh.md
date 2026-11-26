@@ -60,7 +60,7 @@ const router = createPeerMeshRouter({
     }),
   // 完整工作批次串行执行，每次自动前置最新的 Board 渲染快照
   runInput: (text, wait) =>
-    runInput(runtime, agent.id, text, { ...wait, operation: 'start', signal }),
+    runInput(runtime, agent.id, text, { ...wait, signal }),
   readContext: async ({ signal }) =>
     (await board('GET', `/board/${boardId}/read?viewer=${peer.board.workerId}`, undefined, { signal })).rendered,
 });

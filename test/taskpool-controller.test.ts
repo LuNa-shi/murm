@@ -358,7 +358,8 @@ test('host close records intent for a still-unbound discovery Agent before final
 
 test('host close with unknown execution retains its active Task owner until a stopped receipt is reconciled',async t=>{
   const f=await fixture(t);const execution=f.take();
-  f.controller.halt();controls.stopError=Object.assign(new Error('Fixed host close uncertainty'),{code:'OPERATION_UNKNOWN'});
+  controls.stopError=Object.assign(new Error('Fixed host close uncertainty'),{code:'OPERATION_UNKNOWN'});
+  f.controller.halt();
   const unknown=await f.runtime.close({timeoutMs:100});
   await f.controller.reconcileClose(unknown);
   assert.equal(f.tasks.getAgent(f.agent.agentId).state,'CLOSING');assert.equal(f.tasks.getTask(f.task.task_id).state,'RUNNING');

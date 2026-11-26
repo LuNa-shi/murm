@@ -68,6 +68,7 @@ test('flat Workspace save captures trusted bytes once and keeps immutable revisi
     captures++; assert.equal(agentId,f.agentId);
     return {execution_id:executionId,binding_version:fencingVersion,state:'ACTIVE',files:Object.fromEntries(Object.entries(files).map(([p,b])=>[p,b.toString('base64')])),manifest,content_hash:hash(stableStringify(manifest))};
   }});
+  await assert.rejects(f.call('workspace','workspace_apply',{ from:'0.1' },'injected-apply'),{code:'NOT_FOUND'});
   const saved=await f.call('workspace','workspace_save',{},'save');
   assert.notEqual(saved.revision,'0.1');
   const published=await f.workspace.exportRevision({workspaceId:f.workspaceId,revision:saved.revision});
@@ -336,7 +337,7 @@ test('Core snapshot save recovers the original bytes after a lost reply and adap
   assert.deepEqual(await f.call('workspace', 'workspace_save', {}, 'same-save'), saved);
 });
 
-for (const capture of ['core', 'injected']) test(`TaskPool apply uses the complete Core tree with ${capture} publication capture`, async t => {
+test('TaskPool apply keeps the original owner and records both proof parents before subsequent save', async t => {
   let files = { 'input.txt': { encoding: 'utf8', data: 'fixed λ\n' }, 'own.lean': { encoding: 'utf8', data: 'my progress\n' } };
   const snapshots = new Map();
   const replacements = new Map();
@@ -358,17 +359,7 @@ for (const capture of ['core', 'injected']) test(`TaskPool apply uses the comple
       return { agentId, requestId: input.requestId, status: 'unknown' };
     },
   } };
-  let injectedCaptures = 0;
-  const snapshot = async ({ executionId, fencingVersion }) => {
-    injectedCaptures++;
-    const { entries } = decodeFileSeed(files);
-    const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-    const manifest = Object.fromEntries(entries.map(({ path, bytes }) => [path, { bytes: bytes.length, content_hash: hash(bytes) }]));
-    return { execution_id: executionId, binding_version: fencingVersion, state: 'ACTIVE', manifest,
-      files: Object.fromEntries(entries.map(({ path, bytes }) => [path, bytes.toString('base64')])),
-      content_hash: hash(stableStringify(manifest)) };
-  };
-  const f = await fixture(t, { runtime, ...(capture === 'core' ? { workspaceCapture: 'core' } : { snapshotProject: snapshot }) });
+  const f = await fixture(t, { runtime, workspaceCapture: 'core' });
   const incoming = await f.workspace.save({ workspaceId: f.workspaceId, baseRevision: '0.1', files: { 'input.txt': 'fixed λ\n', 'lemma.lean': 'peer lemma\n' } });
   await assert.rejects(f.call('workspace', 'workspace_apply', { from: incoming.revision }, 'dirty'), { code: 'WORKSPACE_BUSY' });
   const own = await f.call('workspace', 'workspace_save', {}, 'own');
@@ -385,5 +376,4 @@ for (const capture of ['core', 'injected']) test(`TaskPool apply uses the comple
   assert.equal(Buffer.from(exported.files['own.lean']).toString(), 'my progress\n');
   assert.equal(Buffer.from(exported.files['lemma.lean']).toString(), 'peer lemma\n');
   assert.deepEqual(saved.parents, [own.revision, incoming.revision]);
-  assert.equal(injectedCaptures, capture === 'injected' ? 2 : 0);
 });

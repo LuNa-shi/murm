@@ -103,9 +103,9 @@ export class ExecutionWorkspace {
     return { files, manifest, content_hash: snapshot.content_hash, core: snapshot.core as { digest: CompleteFileDigest; files: FileTree } | undefined };
   }
 
-  async #capture(execution: any, identity: any, forApply = false) {
+  async #capture(execution: any, identity: any) {
     this.guard(identity);
-    const snapshot = await this.sandbox.snapshotAgentProject({ executionId: execution.execution_id, forApply, requestId: `taskpool:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}` });
+    const snapshot = await this.sandbox.snapshotAgentProject({ executionId: execution.execution_id, requestId: `taskpool:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}` });
     this.guard(identity);
     return this.#decodeSnapshot(snapshot, execution);
   }
@@ -197,7 +197,7 @@ export class ExecutionWorkspace {
       this.db.prepare(`INSERT OR IGNORE INTO execution_workspace_requests (execution_id, request_id, fingerprint, phase, created_at, updated_at) VALUES (?, ?, ?, 'capturing', ?, ?)`)
         .run(execution.execution_id, requestId, fingerprint, timestamp, timestamp);
       try {
-        const snapshot = await this.#capture(execution, identity, operation === 'apply');
+        const snapshot = await this.#capture(execution, identity);
         let captured: any = { kind: operation, workspace_id: current.workspace_id, base_revision: current.last_saved_revision ?? current.initial_revision, parents: current.parents,
           state_version: current.version, manifest: snapshot.manifest, files: Object.fromEntries(Object.entries(snapshot.files).map(([path, bytes]: any) => [path, bytes.toString('base64')])),
           source: { mission_id: this.tasks.getTask(execution.task_id).mission_id, task_id: execution.task_id, execution_id: execution.execution_id, agent_id: execution.owner_ref, fencing_version: execution.fencing_version },

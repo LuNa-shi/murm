@@ -148,9 +148,9 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
         }
         return receipt;
       },
-      recoverSnapshot: workspaceCapture === 'core', async snapshotAgentProject({executionId,requestId,forApply}: any) {
+      recoverSnapshot: workspaceCapture === 'core', async snapshotAgentProject({executionId,requestId}: any) {
       const execution=taskService.getExecution(executionId);
-      if (workspaceCapture === 'core' || forApply) {
+      if (workspaceCapture === 'core') {
         const core = getRuntime();
         if (typeof core?.files?.snapshot !== 'function') fail('SERVICE_NOT_READY', 'Core file snapshot capability is unavailable');
         const snapshot = await core.files.snapshot(execution.owner_ref, { requestId, paths: ['.'] });

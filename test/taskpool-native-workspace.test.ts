@@ -87,6 +87,7 @@ if ${injectApplyFailure ? 'True' : 'False'}:
  pending(*args)
  p=subprocess.run(['swarm','workspace','save','--request-id','B-blocked-save'],capture_output=True,text=True,timeout=45)
  assert p.returncode!=0 and 'WORKSPACE_RESULT_UNKNOWN' in p.stderr, p.stdout+p.stderr
+ pending('workspace','apply','--from',${JSON.stringify(revision)},'--request-id','B-blocked-apply')
  p=subprocess.run(['swarm','task','finish','--outcome','done','--request-id','B-blocked-finish'],capture_output=True,text=True,timeout=45)
  assert p.returncode!=0 and 'WORKSPACE_BUSY' in p.stderr, p.stdout+p.stderr
  open('apply-pending-checked','wb').close()
