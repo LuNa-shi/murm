@@ -19,7 +19,7 @@ async function configuration(t) {
   const peers = ['a', 'b'].map(key => ({ key, branch: `branch-${key}`,
     gitea: { username: key, binding: `git-${key}`, accountId: key, token: `git-secret-${key}` },
     message: { binding: `mm-${key}`, accountId: key, token: `mm-secret-${key}` }, board: { binding: `board-${key}`, workerId: `worker-${key}` } }));
-  return { mode: 'peermesh', timeoutMs: 5000, options: { runId: 'foreground', image: 'fixture', outputDir, backend: {}, closeTimeoutMs: 1000,
+  return { mode: 'peermesh', timeoutMs: 5000, options: { runId: 'foreground', image: 'fixture', outputDir, sandbox: {}, closeTimeoutMs: 1000,
     prepare: async () => ({ runId: 'foreground', repository: { owner: 'owner', name: 'repo' }, repositoryUrl: 'http://172.17.0.1:3000/owner/repo.git', channelId: 'channel', boardId: 'board', issueNumber: 1,
       endpoints: { gitea: 'http://172.17.0.1:3000', message: 'http://127.0.0.1:3001', board: 'http://127.0.0.1:3002' }, peers }),
     router: { workTimeoutMs: 5000, turnTimeoutMs: 1000, readContext: async () => 'private board context', subscribe: async () => ({ ready: true, stop: async () => {} }) } } };

@@ -22,7 +22,7 @@ test('installed Notes and subagents CLIs preserve cancellation received during c
     await writeFile(join(installed.directory, 'delayed-config.mjs'), `
 process.send('config-ready');
 await new Promise(resolve => setTimeout(resolve, 150));
-export default {backend:{},image:'unused',outputDir:${JSON.stringify(outputDir)}};
+export default {sandbox:{},image:'unused',outputDir:${JSON.stringify(outputDir)}};
 `);
     const child = fork(join(installed.directory, mode === 'notes' ? 'main.mjs' : 'main.js'), [join(installed.directory, 'delayed-config.mjs')], {
       cwd: installed.directory, env: installed.env, silent: true, timeout: 15_000, killSignal: 'SIGKILL',

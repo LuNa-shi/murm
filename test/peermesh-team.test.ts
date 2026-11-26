@@ -21,7 +21,7 @@ async function setup(t, extra = {}) {
   const peers = (extra.peerKeys ?? ['a', 'b']).map(key => ({ key, branch: `branch-${key}`, gitea: { username: key, binding: `git-${key}`, accountId: key, token: `git-private-${key}` },
     message: { binding: `mm-${key}`, accountId: key, token: `mm-private-${key}` }, board: { binding: `board-${key}`, workerId: `worker-${key}` } }));
   let facilityClosed = false; const ready = [];
-  harness = await createPeerMeshTeam({ runId: 'team', image: 'fixture', outputDir, backend: {},
+  harness = await createPeerMeshTeam({ runId: 'team', image: 'fixture', outputDir, sandbox: {},
     prepare: async ({ resources }) => { resources.own({ kind: 'facility', id: 'shared', close() { facilityClosed = true; } }); return { runId: 'team', repository: { owner: 'owner', name: 'repo' }, repositoryUrl: 'http://172.17.0.1:3000/owner/repo.git', channelId: 'channel', boardId: 'board', issueNumber: 1,
       endpoints: { gitea: 'http://172.17.0.1:3000', message: 'http://127.0.0.1:3001', board: 'http://127.0.0.1:3002' }, peers }; },
     router: { workTimeoutMs: 3000, turnTimeoutMs: 1000, readContext: async () => 'shared board', subscribe: async ({ mapping }) => { ready.push(mapping); return { ready: true, stop: async () => {} }; } }, ...extra });

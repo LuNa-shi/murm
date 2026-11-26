@@ -40,7 +40,7 @@ test('foreground PeerMesh example validates host configuration without starting 
   const observed = await execute(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
     import configuration from ${JSON.stringify(config.href)};
-    import { claimOpenSandboxBackend } from ${JSON.stringify(backendModule.href)};
+    import { claimOpenSandboxBackend, createSandbox } from ${JSON.stringify(backendModule.href)};
     const { mode, options, timeoutMs } = configuration;
     assert.equal(mode, 'peermesh');
     assert.equal(options.runId, 'local-example');
@@ -51,7 +51,7 @@ test('foreground PeerMesh example validates host configuration without starting 
     assert.equal(options.project.durationMs, 3_600_000);
     assert.deepEqual(options.peerKeys, ['a', 'b', 'c', 'd']);
     assert.equal(typeof options.startBoard, 'function');
-    const backend = claimOpenSandboxBackend(options.backend);
+    const backend = claimOpenSandboxBackend(createSandbox(options.sandbox), options);
     assert.equal(backend.sandbox.timeoutSeconds, 3_750);
   `], options);
   assert.equal(observed.stdout, '');

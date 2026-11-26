@@ -63,7 +63,8 @@ test('offline archive ships the native PeerMesh host configuration and declared 
     assert.equal(config.mode, 'peermesh');
     assert.equal(config.options.runId, 'installed-fixture');
     assert.equal(config.options.project.title, 'Installed project');
-    assert.ok(config.options.backend);
+    assert.ok(config.options.sandbox);
+    assert.ok(config.options.models.default);
     assert.equal(typeof config.options.startBoard, 'function');
   `], {
     cwd: installed.directory,

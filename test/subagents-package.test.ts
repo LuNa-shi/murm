@@ -16,7 +16,7 @@ import {runSubagentsHarness} from './main.js';
 assert.ok(import.meta.resolve('@murm/core').startsWith(new URL('./node_modules/',import.meta.url).href));
 const cancelled=new AbortController(); cancelled.abort();
 for (const maxAgents of [2,3,7]) {
-const report=await runSubagentsHarness({maxAgents,backend:{},image:'unused',outputDir:'./runs-'+maxAgents},cancelled.signal);
+const report=await runSubagentsHarness({maxAgents,sandbox:{},image:'unused',outputDir:'./runs-'+maxAgents},cancelled.signal);
 assert.equal(report.businessFailure.message,'This operation was aborted'); assert.equal(report.cleanup,null); assert.ok(report.reportPath);
 }
 console.log(JSON.stringify({external:true,cancelled:true}));

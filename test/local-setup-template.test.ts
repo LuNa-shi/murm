@@ -34,7 +34,7 @@ test('generated Subagents installs a real archive outside the checkout and retai
   await writeFile(join(directory, 'config.js'), config);
   await writeFile(join(directory, '.env'), 'MURM_SUBAGENTS_MODEL_URL=http://127.0.0.1:9999/v1/responses\nMURM_SUBAGENTS_MODEL_TOKEN=fixture-only\n');
   const read = await execute(process.execPath, ['--input-type=module', '-e',
-    'import config from "./config.js"; console.log(JSON.stringify({maxAgents:config.maxAgents,url:config.backend.models.default.upstream.url,token:config.backend.models.default.upstream.headers.authorization}));'],
+    'import config from "./config.js"; console.log(JSON.stringify({maxAgents:config.maxAgents,url:config.models.default.upstream.url,token:config.models.default.upstream.headers.authorization}));'],
   { cwd: directory, env });
   assert.deepEqual(JSON.parse(read.stdout), { maxAgents: 2, url: 'http://127.0.0.1:9999/v1/responses', token: 'Bearer fixture-only' });
   const repeated = await execute(join(directory, 'node_modules/.bin/murm'), ['init', '--template', 'subagents', '--dir', '.'], {
