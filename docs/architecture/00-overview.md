@@ -34,9 +34,9 @@ The package has three primary public entries: `@murm/core`, `@murm/core/services
 
 ### 1. The host assembles the application
 
-The host registers Service manifests and adapters, chooses named Profiles, supplies the model and OpenSandbox configuration, and creates a backend handle. `createRuntime` claims that handle and captures the Profiles and Service registry. The host also specifies capacity and an output root. There is no public hot-registration or Service-operation grant/revoke API in the current Runtime.
+The host registers Service manifests and adapters, chooses named Profiles, supplies the model and OpenSandbox configuration, and creates a backend handle. `createRuntime` claims that handle and captures the Profiles and Service registry. The host also specifies capacity and an output root. After assembly, the host can register Profiles, register or retire Services, and change an Agent’s Service-operation grants through [Runtime management](15-core-runtime.md#runtime-management).
 
-A Service can be a local function, an HTTP JSON v2 endpoint, or a custom adapter for an existing application. The adapter keeps its remote credential on the host. Agent Profiles name the operations each Agent may call. These permissions are enforced by the Bridge, not by instructions in a prompt. [Services](04-services.md) explains validation, caller identity, cancellation and commit guards.
+A Service can be a local function, an HTTP JSON v2 endpoint, or a custom adapter for an existing application. The adapter keeps its remote credential on the host. Agent Profiles seed the operations each Agent may call. The Bridge enforces each Agent’s current access. [Services](04-services.md) explains validation, caller identity, cancellation and commit guards.
 
 ### 2. The Runtime prepares each Agent
 

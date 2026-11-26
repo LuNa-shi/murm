@@ -13,7 +13,7 @@ Follow the [Messages handoff](https://github.com/LuNa-shi/murm/blob/main/example
 
 The host first chooses an OpenSandbox backend, registers Services and defines Profiles. The writer Profile permits `messages.put`; the reader permits `messages.get` and declares `received.txt` as a required collected artifact. `createRuntime` validates and snapshots that configuration, creates `outputDir/<runtime.id>/`, and opens the Model Gateway and Service Bridge.
 
-No Agent sandbox exists at this point. The Runtime owns its listeners and records, including cleanup if initialization fails. A backend handle can be claimed by only one Runtime. Profiles and registrations stay fixed for the lifetime of that Runtime; the Harness can choose among its configured Profiles as it creates Agents.
+No Agent sandbox exists at this point. The Runtime owns its listeners and records, including cleanup if initialization fails. A backend handle can be claimed by only one Runtime. The Harness can choose a startup Profile or register a new one before creating an Agent. It can also register or retire Services and update per-Agent grants through the [Runtime management API](reference/api.md#runtime-management).
 
 ## 2. Observe before dispatching work
 

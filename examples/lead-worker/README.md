@@ -68,13 +68,13 @@ After a successful Run, execute the offline verifier from that package using its
 node dist/examples/lead-worker/verify-orders.js <harness-report.json> <orders-candidate.json>
 ```
 
-The command returns a nonzero exit code for a missing or mismatched artifact, incomplete cleanup receipt, or any failed oracle case. The real-model run limits and required collaboration evidence are in the [acceptance design](../../docs/designs/dynamic-lead-worker.md).
+The command verifies the frozen candidate and saved cleanup receipts, then reruns the nine independent orders cases. It exits nonzero for a missing or mismatched artifact, incomplete saved cleanup, or a failed case. Full L4 collaboration replay remains a follow-up for [Issue #235](https://github.com/LuNa-shi/murm/issues/235). It must verify grant/revoke, original Worker Session continuity and checker feedback adoption from frozen Run evidence. The [acceptance design](../../docs/designs/dynamic-lead-worker.md) specifies these requirements.
 
 ### 动态订单模式
 
 在现有配置中设置上面的 `dynamic` 字段，检查容器镜像使用本地不可变 Docker image ID。Lead 和两名原 Worker 先启动。Lead 可以部署检查服务、登记 checker Profile、加入第四名成员，并给原 Worker 授权或撤权。任务与反馈仍由同一个 Board 和 Git 项目推进。
 
-宿主从 Lead 提交的固定 Git 版本提取文件，用包内冻结的独立测试检查退出码、stdout 和 stderr。Run 关闭后，用上面的 `verify-orders.js` 和私有报告及候选包离线复验全部用例。真实模型验收还需核对实际分工、反馈采用、Session 连续性和物理回收。
+宿主从 Lead 提交的固定 Git 版本提取文件，用包内冻结的独立测试检查退出码、stdout 和 stderr。Run 关闭后，用上面的 `verify-orders.js`、Run 报告和候选包核对冻结产物与保存的清理回执，并重跑九项独立用例。完整 L4 复验留待 [Issue #235](https://github.com/LuNa-shi/murm/issues/235) 的后续切片，需要从冻结的 Run 证据核对 grant/revoke、原 Worker Session 连续性和 checker 反馈采用。
 
 The installed native scripted gate can be run with `MURM_LEAD_WORKER_DYNAMIC_NATIVE_TEST=1` and the immutable `MURM_CORE_TEST_IMAGE` and `MURM_LEAD_WORKER_SERVICE_IMAGE` IDs. Build the Checkout first, then run `node --test dist/test/lead-worker-dynamic-native.test.js`. The gate provisions a fresh private Gitea facility, runs the packaged example at an external installation, and reruns its oracle offline.
 

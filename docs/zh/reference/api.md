@@ -34,7 +34,7 @@ runtime.observe(options?: RuntimeObservationOptions): RuntimeObservation
 
 `runtime.observe()` 一次返回当前 `snapshot` 和紧接同一游标之后的异步迭代器 `events`。用 `runtime.observe({ after: lastCursor })` 续读时返回 `snapshot: null`，应把增量应用到已有状态。遇到 `gap` 时重新调用 `observe()` 取得快照。Runtime 保留 256 条更新，最多允许 64 个活动订阅，每个订阅可有一个等待中的读取。调用 `cancel()`、触发 AbortSignal 或退出 `for await` 可释放订阅；Runtime 关闭本身不会结束订阅。游标只属于同一个存活的 Runtime 实例，不能用来恢复重启后的进程。
 
-更新类型包括 `runtime`、`agent`、`input`、`execution`、`service`、`trace-gap`、`persistence` 与 `gap`。输入回执、实际执行边界、Service attempt 和清理各有对应字段。该流只提供精简的身份与状态；输出文本通过 `onEvent` 读取，详细载荷见保存的 trace。Runtime 游标给实时增量排序，Agent 序号给旧版 Agent 事件排序，`recordSeq` 在可用时引用 Run 持久证据。原生执行事件缺少输入身份时，关联状态为 `unknown`。需要核对输入时使用原请求 ID。快照与持久化事件提供写入进度和丢失记录。
+更新类型包括 `runtime`、`agent`、`input`、`execution`、`service`、`management`、`trace-gap`、`persistence` 与 `gap`。输入回执、实际执行边界、Service attempt 和清理各有对应字段。该流只提供精简的身份与状态；输出文本通过 `onEvent` 读取，详细载荷见保存的 trace。Runtime 游标给实时增量排序，Agent 序号给旧版 Agent 事件排序，`recordSeq` 在可用时引用 Run 持久证据。原生执行事件缺少输入身份时，关联状态为 `unknown`。需要核对输入时使用原请求 ID。快照与持久化事件提供写入进度和丢失记录。
 
 ## `createRuntime(options)`
 
@@ -50,8 +50,23 @@ createRuntime(options: CreateRuntimeOptions): Promise<Runtime>
 | `maxAgents` | 是 | 正安全整数，限定并发 Agent 槽位上限 |
 | `outputDir` | 是 | 根输出目录；Core 将本次运行全部记录写入 `outputDir/<runtime.id>/` |
 | `modelAccessPolicy` | 否 | 同步 Model Gateway 门控（`authorize(caller): ModelPermit \| null`、`withCommit(commit)`），供 [TaskPool](../harnesses/taskpool.md) 等租约型 Harness 使用 |
+| `agentAccessPolicy` | 否 | 同步检查 Agent 发起的权限查询、授予和撤销，默认拒绝这些操作 |
 
-装配过程受固定 60 秒宿主等待限制，且此阶段不分配任何 Agent 沙箱。Profile、Service 注册与后端配置在该 Runtime 中固定；当前没有运行时新增 Profile 或 Service、修改操作授权或替换执行器的公共方法。
+装配过程受固定 60 秒的宿主等待限制。Runtime 保存初始 Profile 和 Service 注册表的快照，调用 `spawn()` 时才分配 Agent 沙箱。后端与执行器在装配时选定，贯穿本次运行。
+
+## Runtime 管理
+
+| 接口 | 操作 |
+| --- | --- |
+| `runtime.profiles` | `register({ id, requestId, profile })`、`get(id)`、`list()` |
+| `runtime.services` | `register({ requestId, registration, deploymentRef, implementationId, ownership })`、`get(id)`、`list()`、`retire({ serviceId, requestId, timeoutMs? })` |
+| `runtime.access` | `get(agentId)`、`grant({ agentId, serviceId, operations, requestId, binding? })`、`revoke({ agentId, serviceId, operations, requestId })` |
+
+登记后的 Profile 可用于后续创建 Agent，引用的模型、执行器能力和 Service 操作必须可用。登记 Service 会发布已就绪的 v2 Service。宿主或 Harness 负责部署，并传入部署引用、稳定的实现 ID 和所有权（`run` 或 `external`）。Profile 和 Service ID 不可覆盖。退役时，Service 会立即从发现列表移除并停止接收新调用，再等待已接收的调用结束并导出可选状态。等待超时后，状态可以保留为 `retiring`。
+
+Profile 为每个 Agent 设置初始访问权限。授予或撤销操作会更新该 Agent 的权限，实际发生变更时才递增权限版本。Agent ID、Session 和工作目录保持连续。可信宿主首次为该 Service 授权时可以附带绑定。Agent 通过 Bridge 调用 `swarm agent access_get`、`swarm agent grant` 或 `swarm agent revoke`，须拥有对应的操作权限，且宿主的 `agentAccessPolicy` 必须明确允许目标和所请求的操作。Agent 请求禁止给自己授予或撤销权限，也无法传入绑定。
+
+用原请求 ID 和参数重放变更以取得原回执。重放 Service 登记时还须使用原 Adapter。冲突的重放返回 `CONFLICT`。通过 `runtime.observe()` 的管理快照和更新跟踪登记、退役及授权变更。[Core Runtime 架构](../../architecture/15-core-runtime.md#runtime-management)
 
 ## Agent 生命周期：`spawn`、`get`、`list`
 
@@ -132,9 +147,9 @@ runtime.close(options?: { timeoutMs?: number }): Promise<CloseReceipt>
 
 - **注册（`ServiceRegistry.registerService`）**：要求 `contract_version: '2'`、唯一 `id`（不得使用保留名 `'agent'`）、`title`、`purpose`、`provider_version`、`endpoint`（`in-process` 或 `http-json`）及非空 `capabilities`。Schema 使用 Ajv `8.20.0` 严格同步 draft-07 编译（不做强制转换与默认值注入）。
 - **调用（`ServiceAdapter.invoke`）**：接收 `{ manifest, capability, input, envelope: { operation_id }, caller: { runtimeId, agentId, profile, binding? }, signal, assertAuthorized }`。单次超时默认 `30_000` ms（可在能力上通过 `timeout_ms` 配置 `1..86_400_000`）。
-- **状态导出（`ServiceAdapter.exportState({ signal })`）**：`runtime.close()` 期间调用一次（30 秒上限），落盘至 `service-state.<id>.json`。
+- **状态导出（`ServiceAdapter.exportState({ signal })`）**：在显式退役 Service 或关闭 Runtime 时调用，结果写入 `service-state.<id>.json`。每次尝试最多 30 秒。Core 复用成功的导出结果，失败后可以重试。
 - **HTTP JSON 协议（`createHttpJsonAdapter`）**：向 `endpoint.url + (capability.path ?? '/v2/' + capability.operation)` 发送 POST `{ input, envelope, caller }`，附带 `Idempotency-Key: <operation_id>` 与可选宿主 `Authorization: Bearer <token>`，要求返回 `{ "ok": true, "result": <json> }`（上限 2 MiB，禁用重定向）。
-- **内置 `agent` Service**：通过 `Profile.services.agent` 逐项授权 `['spawn', 'get', 'send', 'stop']`。
+- **内置 `agent` Service**：通过 `Profile.services.agent` 设置初始控制操作权限（`spawn`、`get`、`send`、`stop`）。权限管理操作还需通过宿主策略检查。[Runtime 管理](#runtime-管理)
   - `spawn` 需配合 `Profile.spawnProfiles` 白名单；`fork: true` 需配合 `Profile.allowContextFork: true`。
   - `get` 与 `send` 可操作自身或直属子 Agent；`stop` 仅可操作直属子 Agent。
 

@@ -34,7 +34,7 @@ runtime.observe(options?: RuntimeObservationOptions): RuntimeObservation
 
 `runtime.observe()` returns a current `snapshot` and an async iterable `events` immediately after the same cursor. Resume with `runtime.observe({ after: lastCursor })`, which returns `snapshot: null`, and apply its updates to your previous state. On `gap`, call `observe()` for a fresh snapshot. The Runtime retains 256 updates, supports 64 active subscriptions and permits one pending read per subscription. Use `cancel()`, an AbortSignal or a `for await` exit to release the subscription. Runtime close does not end subscriptions. A cursor is valid only for the same live Runtime instance; this API does not restore a process after restart.
 
-Updates have types `runtime`, `agent`, `input`, `execution`, `service`, `trace-gap`, `persistence` and `gap`. Input receipt events, actual execution boundaries, Service attempts and cleanup all have separate fields. The stream contains status and identities; use `onEvent` for output text and the saved traces for payloads. Runtime cursor sequence orders the live stream, Agent sequence orders the Agent's legacy events, and a present `recordSeq` refers to the durable Run evidence row. Execution events report `association: 'unknown'` while native records lack an input ID. Use the same request identity for reconciliation. The snapshot and persistence updates report storage progress and evidence loss.
+Updates have types `runtime`, `agent`, `input`, `execution`, `service`, `management`, `trace-gap`, `persistence` and `gap`. Input receipt events, actual execution boundaries, Service attempts and cleanup all have separate fields. The stream contains status and identities; use `onEvent` for output text and the saved traces for payloads. Runtime cursor sequence orders the live stream, Agent sequence orders the Agent's legacy events, and a present `recordSeq` refers to the durable Run evidence row. Execution events report `association: 'unknown'` while native records lack an input ID. Use the same request identity for reconciliation. The snapshot and persistence updates report storage progress and evidence loss.
 
 ## `createRuntime(options)`
 
@@ -50,8 +50,23 @@ createRuntime(options: CreateRuntimeOptions): Promise<Runtime>
 | `maxAgents` | Yes | Positive safe integer bounding concurrent Agent Slots |
 | `outputDir` | Yes | Base output directory; Core writes all run data under `outputDir/<runtime.id>/` |
 | `modelAccessPolicy` | No | Synchronous Model Gateway gate (`authorize(caller): ModelPermit \| null`, `withCommit(commit)`) for lease-bounded harnesses like [TaskPool](../harnesses/taskpool.md) |
+| `agentAccessPolicy` | No | Synchronous gate for Agent-originated access queries, grants and revocations. Defaults to denying these operations |
 
-Assembly uses a fixed 60-second host wait. No Agent sandboxes are allocated during `createRuntime()`. Profiles, registrations and backend configuration are fixed for that Runtime. There are no public methods to add Profiles or Services, change their grants, or replace the executor after assembly.
+Assembly uses a fixed 60-second host wait. It snapshots the supplied Profiles and Service registry and leaves Agent allocation to `spawn()`. The backend and executor selected at assembly apply for the life of the Runtime.
+
+## Runtime management
+
+| Surface | Operations |
+| --- | --- |
+| `runtime.profiles` | `register({ id, requestId, profile })`, `get(id)`, `list()` |
+| `runtime.services` | `register({ requestId, registration, deploymentRef, implementationId, ownership })`, `get(id)`, `list()`, `retire({ serviceId, requestId, timeoutMs? })` |
+| `runtime.access` | `get(agentId)`, `grant({ agentId, serviceId, operations, requestId, binding? })`, `revoke({ agentId, serviceId, operations, requestId })` |
+
+A registered Profile can be selected by later spawns. It must reference supported models, executor features and available Service operations. Service registration publishes an already-ready v2 Service. The host or Harness manages the deployment and passes its reference, stable implementation ID and ownership (`run` or `external`). Profile and Service IDs cannot be replaced. Retirement removes the Service from discovery and new admissions before draining admitted work and exporting optional state. If the wait expires, its state can remain `retiring`.
+
+Profiles seed each Agent’s access. Grant and revoke update that Agent’s operation map and increment its access version on effective changes. The Agent ID, Session and working directory stay in place. The trusted host can supply a binding when granting a Service for the first time. An Agent uses `swarm agent access_get`, `swarm agent grant` or `swarm agent revoke` through Bridge. It needs the corresponding operation grant and explicit authorization from `agentAccessPolicy` for the target and requested operations. Agent requests cannot grant or revoke their own permissions and carry no binding.
+
+Replay a mutation with its original request ID and arguments to recover its receipt. Service-registration replay also requires the original adapter. A conflicting replay returns `CONFLICT`. Use the management snapshot and updates from `runtime.observe()` to follow registrations, retirements and access changes. [Core Runtime architecture](../../architecture/15-core-runtime.md#runtime-management)
 
 ## Agent lifecycle: `spawn`, `get`, `list`
 
@@ -132,9 +147,9 @@ runtime.close(options?: { timeoutMs?: number }): Promise<CloseReceipt>
 
 - **Registration (`ServiceRegistry.registerService`)**: requires `contract_version: '2'`, unique `id` (not reserved `'agent'`), `title`, `purpose`, `provider_version`, `endpoint` (`{ transport: 'in-process' }` or `{ transport: 'http-json', url }`), and non-empty `capabilities`. Schemas compile strictly with Ajv `8.20.0` draft-07 (synchronous, no coercion, no defaults).
 - **Invocation (`ServiceAdapter.invoke`)**: receives `{ manifest, capability, input, envelope: { operation_id }, caller: { runtimeId, agentId, profile, binding? }, signal, assertAuthorized }`. Default per-call timeout is `30_000` ms (configurable per capability via `timeout_ms`: `1..86_400_000`).
-- **Optional state export (`ServiceAdapter.exportState({ signal })`)**: called once during `runtime.close()` (30-second cap) and written to `service-state.<id>.json`.
+- **Optional state export (`ServiceAdapter.exportState({ signal })`)**: runs during explicit Service retirement or Runtime close and writes `service-state.<id>.json`. Each attempt has a 30-second cap. Core reuses successful exports and can retry failed ones.
 - **HTTP JSON wire contract (`createHttpJsonAdapter`)**: POSTs `{ input, envelope, caller }` to `endpoint.url + (capability.path ?? '/v2/' + capability.operation)` with headers `Content-Type: application/json`, `Idempotency-Key: <operation_id>`, and optional host `Authorization: Bearer <token>`. Must return `{ "ok": true, "result": <json> }` (2 MiB max, redirects disabled).
-- **Built-in `agent` Service**: grant operations explicitly via `Profile.services.agent` (`['spawn', 'get', 'send', 'stop']`).
+- **Built-in `agent` Service**: seed control operations (`spawn`, `get`, `send`, `stop`) through `Profile.services.agent`. Access management operations have additional policy checks. [Runtime management](#runtime-management)
   - `spawn` requires target role in `Profile.spawnProfiles`; `fork: true` requires `Profile.allowContextFork: true`.
   - `get` and `send` target the caller itself or a direct child; `stop` targets only a direct child.
 

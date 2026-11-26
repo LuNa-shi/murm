@@ -7,7 +7,7 @@ order: 11
 
 **Lead-Worker** (`src/harnesses/lead-worker/`) fits teams that want one explicit owner of direction while enforcing that worker feedback discovered during execution actually reaches the next round of planning. One `lead` and 2–7 workers (`helper1..helperN`) run in persistent sessions with separate Gitea accounts, personal Git branches, and a local SQLite **`board` Service**.
 
-The host composes Runtime, Services and the OpenSandbox backend using the [SDK](../sdk.md). `createLeadWorkerHarness` and `runLeadWorker` are repository modules under `src/harnesses/lead-worker/`, not public package exports. The current example configures the team before startup; changing Profiles or Services at runtime is a separate [design](../../designs/dynamic-lead-worker.md), not behavior provided by this example.
+The host composes Runtime, Services and the OpenSandbox backend using the [SDK](../sdk.md). `createLeadWorkerHarness` and `runLeadWorker` are repository modules under `src/harnesses/lead-worker/`, not public package exports. The default mode configures the team before startup. The packaged [dynamic orders example](../../../examples/lead-worker/README.md) lets the Lead deploy a checking Service, register a Profile, admit a new member and change an original Worker’s grants while work is underway.
 
 ## 1. Registered Services & asymmetric permissions
 
