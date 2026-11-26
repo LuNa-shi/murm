@@ -15,7 +15,7 @@ The owner directed the use of `gpt_proxy/gpt-6.1-sol` and a time bound in place 
 | EXP-20261126-05 / orders-a | `orders-0100a9a3613f3e` | 33 | Operator stopped the active Run when the owner selected a ProgramBench workload. The Lead completed Service deployment, Profile registration and checker admission. |
 | EXP-20261126-06 / orders-b | `orders-0d16ea4e2fb9c0` | 0 | The sequential driver began setup. The operator stopped it before model requests. |
 
-Both Runs reported complete cleanup and the physical Worker inventory was empty. The first attempt recorded 29 completed responses with 268,716 input and 7,155 output tokens. Four interrupted streams have unknown usage. Neither Run submitted a final candidate.
+The first Run returned a complete Core close receipt. The second stopped during startup before returning a Core close receipt. Both test facilities reported complete cleanup and the physical Worker inventory was empty for each Run. The first attempt recorded 29 completed responses with 268,716 input and 7,155 output tokens. Four interrupted streams have unknown usage. Neither Run submitted a final candidate.
 
 ## Analysis
 
