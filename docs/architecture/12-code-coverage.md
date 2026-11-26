@@ -4,13 +4,13 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **224 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **231 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/subagents/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes-environment/.npmignore`, `examples/subagents-environment/.npmignore`, `examples/lead-helper-environment/.npmignore`, `examples/scalemas-environment/.npmignore`, `examples/agensh-environment/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/subagents/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes-environment/.npmignore`, `examples/subagents-environment/.npmignore`, `examples/lead-helper-environment/.npmignore`, `examples/scalemas-environment/.npmignore`, `examples/scalemas-environment/FateProofGuard.lean`, `examples/scalemas-environment/VerifyFateProof.lean`, `examples/agensh-environment/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -64,12 +64,13 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [tsconfig.json](../../tsconfig.json) | Strict TypeScript and Node ESM compiler configuration for the mirrored dist tree. | [07-run-configuration](07-run-configuration.md) | `5fc7619b62546e9359d78248b6b4d880f575ff24e57e2057aceb1faeb4f68ccb` |
 | [tsconfig.tests.json](../../tsconfig.tests.json) | TypeScript test emission configuration for the executable test tree. | [07-run-configuration](07-run-configuration.md) | `9927b0d021c575089dd66a4b84056140dd25b9dd24201df5913ee42d8acf8d0f` |
 
-### Environment composition (3)
+### Environment composition (4)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [src/environments/scalemas/collaboration-evidence.ts](../../src/environments/scalemas/collaboration-evidence.ts) | Host-only verification of ordered immutable collaboration checkpoints and separate publisher stop evidence | [19-scalemas-environment](19-scalemas-environment.md) | `61639a9939ed26b1db7e9949c276c8252d43c24c1b29dc9a8f9a14006d833255` |
 | [src/environments/scalemas/index.ts](../../src/environments/scalemas/index.ts) | Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `8b42231510f94c8108709ad6cc2ddbc5d0682120ba4f1d7918896718ab1caaab` |
+| [src/environments/scalemas/paper-substrate.ts](../../src/environments/scalemas/paper-substrate.ts) | Paper-style immutable publications, anonymous scoped retrieval, transactional replay and decaying citation ranking | [19-scalemas-environment](19-scalemas-environment.md) | `f884707ff33449aa1effe2f76dcc2c8748780cc50feadcea0943f1829aa8c6d7` |
 | [src/environments/scalemas/substrate.ts](../../src/environments/scalemas/substrate.ts) | Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `67465d3b8f76aacb0c959f451f14982ef75f90f2372f6844b0b93e9f805afb9d` |
 
 ### Environment execution (1)
@@ -78,12 +79,18 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 |---|---|---|---|
 | [src/environments/shared/input-admission.ts](../../src/environments/shared/input-admission.ts) | Optional bounded FIFO actual-input admission shared across peer routers; cancellation and unknown-outcome queue fence | [18-agensh-environment](18-agensh-environment.md), [19-scalemas-environment](19-scalemas-environment.md) | `ac0f437672f4d5e3c9f7a4bd77286cac6727956bf24006a32203fbf42c04f8d4` |
 
-### Environment integration (19)
+### Environment integration (25)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [examples/lead-helper-environment/config.ts](../../examples/lead-helper-environment/config.ts) | Kimi K3 fixed-team sample configuration and finite resource bounds | [20-lead-helper-environment](20-lead-helper-environment.md) | `6f70853eea615e89bb6cac3f6f19dedfc94a8e5d9656d9a0db62beeb99f05b8d` |
 | [examples/lead-helper-environment/main.ts](../../examples/lead-helper-environment/main.ts) | Editable lead-helper CLI with public backend assembly and report output | [20-lead-helper-environment](20-lead-helper-environment.md) | `31dc857b6e140cb8250fa53af61d59dc7cf45c216d9842ccb6e3d40f70c08c61` |
+| [examples/scalemas-environment/fate-checker.ts](../../examples/scalemas-environment/fate-checker.ts) | Frozen dependency checks and isolated Lean compilation and replay | [19-scalemas-environment](19-scalemas-environment.md) | `b23c203095ba67532c8df6a993187c0ecab0bd9012b5fb0b6f6d9e88d72a1b9b` |
+| [examples/scalemas-environment/fate-config.ts](../../examples/scalemas-environment/fate-config.ts) | Frozen FATE host settings, benchmark selection and model authorization inputs | [19-scalemas-environment](19-scalemas-environment.md) | `425c5c6037c10ae708806ab7a4e743c19a05142cbdb96b647d92fdae9747d2bd` |
+| [examples/scalemas-environment/fate-run.ts](../../examples/scalemas-environment/fate-run.ts) | Autonomous FATE startup, time fencing, observed progress, candidate freezing and grading | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `231a17cc837745887d65f071f17d4dc848f66e98b9df4078266f159cd3b51acc` |
+| [examples/scalemas-environment/fate-service.ts](../../examples/scalemas-environment/fate-service.ts) | Task search, working Lean budget, stable request scope and durable proof submission | [19-scalemas-environment](19-scalemas-environment.md) | `23aa63f7fe43edb5d0936d987be2d095c100b21e8c3f37fd67c393d5bbe9528c` |
+| [examples/scalemas-environment/FateProofGuard.lean](../../examples/scalemas-environment/FateProofGuard.lean) | Single proof term parsing inside the trusted declaration | [19-scalemas-environment](19-scalemas-environment.md) | `436f1934936f11cb7c8791ba5cd2915021556c907841dcc8b2fa5c6762d76dfb` |
+| [examples/scalemas-environment/VerifyFateProof.lean](../../examples/scalemas-environment/VerifyFateProof.lean) | Original target comparison, kernel replay and axiom auditing | [19-scalemas-environment](19-scalemas-environment.md) | `9df9cc34141f9df070f537fd0f8bc376aced586010ec839dd7ed0a8cef709694` |
 | [scripts/git-credential-agensh.ts](../../scripts/git-credential-agensh.ts) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `6aeed7b20e3e77f5828e4a5e6261dfec2f08f5f53987132214a4a763e296b23c` |
 | [src/environments/agensh/board-process.ts](../../src/environments/agensh/board-process.ts) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `69261ed2336b26599d56e310631cbc34f424333273688db887a023d2007965e5` |
 | [src/environments/agensh/delivery.ts](../../src/environments/agensh/delivery.ts) | Trusted scoped fixed-head merge receipts and immutable main-file verification | [18-agensh-environment](18-agensh-environment.md) | `ea34310fbc35d1c7883673b013fe2f0cff209f5c329a3c944866be3093371915` |
@@ -217,7 +224,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [scripts/check-architecture.ts](../../scripts/check-architecture.ts) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `0df92907ec29c96b93503d09ffbe8902732676ed040dba3546a9d7205c4e25da` |
 | [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `56fd25bcb95009277ea65a94315ffd8fd05920a70d2ca79a5713e30ec8d1b5b1` |
 | [scripts/generate-architecture-coverage.ts](../../scripts/generate-architecture-coverage.ts) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `02854fccac16e25dab914c4585d0824c8ec4b2c7d8b5e2d40348c3ef20028582` |
-| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `ba4df513e188ae428dffaec97b04c5d9e16e2f1386085cba13726decb9fe7fff` |
+| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `365a81a71d704143984d2c81f2ee7f931d1b88f909f9378d3cb9b8f10cdd76c5` |
 
 ### durable storage (3)
 
@@ -237,9 +244,9 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [examples/agensh-environment/config.ts](../../examples/agensh-environment/config.ts) | Installed foreground Agensh configuration with host-owned prerequisites and finite defaults | [17-environment-reporting](17-environment-reporting.md), [18-agensh-environment](18-agensh-environment.md) | `becaa95a3049a0f397b0929de0b75fbf89ce391fd19703504837e5b51cbaa3de` |
 | [examples/scalemas-environment/.npmignore](../../examples/scalemas-environment/.npmignore) | Exclude default scaleMAS run evidence from packaged examples | [19-scalemas-environment](19-scalemas-environment.md) | `96d2d52c4436fe5ca685974790d77ab96fd18d5cf03f688004ae26b0e0616811` |
 | [examples/scalemas-environment/config.ts](../../examples/scalemas-environment/config.ts) | Host-only Kimi K3 scaleMAS configuration and finite resource defaults | [19-scalemas-environment](19-scalemas-environment.md) | `26217013a60c9300010e5d7285b0813155347487479c6e22a0d24cc209484a64` |
-| [examples/scalemas-environment/main.ts](../../examples/scalemas-environment/main.ts) | Editable installed scaleMAS host, public backend assembly and saved result CLI | [19-scalemas-environment](19-scalemas-environment.md) | `631624d70f01e6b5e2c9d0cf1c3e8b8e01a2f4ce15c4b46e575497468751c6b5` |
-| [npm-shrinkwrap.json](../../npm-shrinkwrap.json) | Shipped exact dependency resolution for public package and image builds | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `6a40aaf1cbfccac446a776f430c5346a0dcf27c44943bdd4d947120248bea27a` |
-| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `c647d7e009bd78f8fbe9dce792ad53d4984dac90255df2093a57115f8d8cc107` |
+| [examples/scalemas-environment/main.ts](../../examples/scalemas-environment/main.ts) | Editable installed scaleMAS host, public backend assembly and saved result CLI | [19-scalemas-environment](19-scalemas-environment.md) | `ae50f06eb79c784b835058374078f96675f4c79dee49a96114ae0f7b293b1a46` |
+| [npm-shrinkwrap.json](../../npm-shrinkwrap.json) | Shipped exact dependency resolution for public package and image builds | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `181736776c5c63f5e62e278e0dd7d61758a8cfe41966a7a62d469e949e05c737` |
+| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `719e23f9e8092ef3c83650177c1c50322e4f99c8973f7c0a7f636ce0e17b8519` |
 | [scripts/mathlib-search-service.ts](../../scripts/mathlib-search-service.ts) | Mathlib HTTP provider process and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `1aed08fd45737f05d34d9bdcb3da3caa41c29fa777ed0e0c85fc0c9b2ca59b3f` |
 | [scripts/read-environment-result.ts](../../scripts/read-environment-result.ts) | Host CLI for saved result inspection using the shared reader | [17-environment-reporting](17-environment-reporting.md) | `7adba972abf2177d7d59892d2963948a99568319ffe6cd4437500c398f6cb027` |
 | [scripts/run-environment.ts](../../scripts/run-environment.ts) | Foreground host CLI for explicit local Environment configuration and bounded control | [17-environment-reporting](17-environment-reporting.md) | `7a15ab5e8c8966ce7ca0e1622547f0590af0015b47ef3f38e7ddfba81c60d5ac` |
@@ -343,7 +350,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/swarm.ts](../../scripts/swarm.ts) | Executable swarm CLI entry point and exit-code boundary | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `f238e4f144b40f5c414e2a1e70daa5767f0ca6e1bdc30f67d8af45636cf13410` |
-| [src/cli/service-command.ts](../../src/cli/service-command.ts) | Shared mapping between registered Service operations and model-visible CLI commands | [04-services](04-services.md), [08-prompts](08-prompts.md) | `67ac954a55204ddc46fdf8c0462067b3da94c41f6c688ab4a23f15e2f88ce87f` |
+| [src/cli/service-command.ts](../../src/cli/service-command.ts) | Shared mapping between registered Service operations and model-visible CLI commands | [04-services](04-services.md), [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md) | `67ac954a55204ddc46fdf8c0462067b3da94c41f6c688ab4a23f15e2f88ce87f` |
 | [src/cli/swarm-cli.ts](../../src/cli/swarm-cli.ts) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md) | `18dd810d9189366cc739e9d226c0080d5260d94c801dd126a08dd282b33ca818` |
 | [src/protocol/http-request.ts](../../src/protocol/http-request.ts) | Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `6efc0ed8d79ec86ab74b84cf9c63a744f575b9ffe579740738ca7f4079c82d2d` |
 

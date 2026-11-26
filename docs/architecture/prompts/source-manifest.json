@@ -58,6 +58,18 @@
       "sha256": "67465d3b8f76aacb0c959f451f14982ef75f90f2372f6844b0b93e9f805afb9d"
     },
     {
+      "path": "examples/scalemas-environment/fate-run.ts",
+      "sha256": "231a17cc837745887d65f071f17d4dc848f66e98b9df4078266f159cd3b51acc"
+    },
+    {
+      "path": "examples/scalemas-environment/fate-service.ts",
+      "sha256": "23aa63f7fe43edb5d0936d987be2d095c100b21e8c3f37fd67c393d5bbe9528c"
+    },
+    {
+      "path": "src/environments/scalemas/paper-substrate.ts",
+      "sha256": "f884707ff33449aa1effe2f76dcc2c8748780cc50feadcea0943f1829aa8c6d7"
+    },
+    {
       "path": "src/environments/flat/controller.ts",
       "sha256": "4d718d125e2b409f3b8b5c0ab6d92f85c3eb9d2bba7891c58fcff62162dce76c"
     },
@@ -234,6 +246,18 @@
       "sha256": "1e96fc7dae086fcde47e0d5648f0ab79d43e74c4b8653f574ef05f6ad03cf2f6"
     },
     {
+      "path": "examples/scalemas-environment/fate-run.ts",
+      "anchor": "export const fateSharingPrompt = ",
+      "line": 14,
+      "sha256": "7ff4c5380303146e92f355f40eba5ae009425023e3ecf1555270b22fce8a40fb"
+    },
+    {
+      "path": "examples/scalemas-environment/fate-run.ts",
+      "anchor": "export const fatePrivatePrompt = ",
+      "line": 20,
+      "sha256": "05c26ed53c67fbb7695f75540d677abf442593c7cc128144dedd0a612098d4f2"
+    },
+    {
       "path": "src/environments/scalemas/index.ts",
       "anchor": "export const peerPrompt = '",
       "line": 8,
@@ -274,6 +298,12 @@
       "anchor": "                  const text = ",
       "line": 99,
       "sha256": "de42b6aff46ba3ae542d606c5787836d6ee3f25900a68b336ce82004ae828926"
+    },
+    {
+      "path": "examples/scalemas-environment/fate-run.ts",
+      "anchor": "export const fateInput = ",
+      "line": 25,
+      "sha256": "6430a48b9dce088568b31fe6d537888fd59bcfa9bedf8308434285d4759ccf24"
     },
     {
       "path": "src/environments/agensh/index.ts",
@@ -565,7 +595,7 @@
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
-      "sha256": "8564a96233f423d0953059055a6eb5ca920f87e7346ed85398e7323aeae6d79d"
+      "sha256": "96bdd1add30fa07dd512883dfe97a4c5ba36caed17c8f6eec4c4bdcc2b0b1e01"
     },
     {
       "path": "docs/architecture/prompts/08-agensh-environment.md",

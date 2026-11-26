@@ -23,6 +23,17 @@ test('installed scaleMAS host resolves the public backend and saves an aborted r
     assert.deepEqual(saved.peers,[]);assert.equal(saved.businessFailure.code,'CONTROLLED_ABORT');
     assert.equal(JSON.stringify(saved).includes('PRIVATE_MODEL_TOKEN'),false);
     assert.ok(import.meta.resolve('@swarmenv/core/backends/pi-opensandbox').includes('/node_modules/@swarmenv/core/'));
+    const fate = { ...config, poolSize: 4, fate: {projectRoot:'unused', leanRoot:'unused'} };
+    const withModel = (provider, model) => ({
+      ...fate,
+      backend: {
+        ...fate.backend,
+        models: {default: {...fate.backend.models.default, provider, model}},
+      },
+    });
+    await assert.rejects(runScaleMASExample(fate,signal),{code:'CONTROLLED_ABORT'});
+    await assert.rejects(runScaleMASExample(withModel('gpt_proxy','gpt-6.1-sol'),signal),{code:'CONTROLLED_ABORT'});
+    await assert.rejects(runScaleMASExample(withModel('kimi_proxy','gpt-6.1-sol'),signal),{code:'FATE_MODEL_INVALID'});
     console.log(JSON.stringify({aborted:true}));`;
   const child = await execute(process.execPath, ['--input-type=module', '-e', script], {
     cwd: installed.directory, env: installed.env, timeout: 15_000, maxBuffer: 1024 ** 2,
