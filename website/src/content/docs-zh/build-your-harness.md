@@ -172,20 +172,20 @@ const profiles: Record<string, Profile> = {
 ```
 
 按需可为角色开启的常见能力：
-- **内置子 Agent 控制**：授予 `{ agent: ['spawn', 'get', 'send', 'stop'] }`，通过 `spawnProfiles: ['worker']` 限定允许派生的角色，并通过 `allowContextFork: true` 开启会话分叉。（也可以像 [Subagents](../harnesses/subagents/) 那样封装成专属领域 Service。）
+- **内置子 Agent 控制**：授予 `{ agent: ['spawn', 'get', 'send', 'stop'] }`，通过 `spawnProfiles: ['worker']` 限定允许派生的角色。后端声明支持 `contextFork` 时，可以设置 `allowContextFork: true` 开启会话分叉。（也可以像 [Subagents](../harnesses/subagents/) 那样封装成专属领域 Service。）
 - **多 Agent 共享仓库**：在 `runtime.spawn()` 中传入 `workspace: { id: 'shared-repo', mode: 'read-write' }`（或 `'read-only'`）。
 - **访问内部设施（如 Gitea）**：在 `Profile.network: { allow: ['http://172.17.0.1:3000'] }` 中放行具体非回环 IPv4 来源，并通过 `spawn({ secretEnv })` 注入隔离令牌。
 
 ## 4. 编写宿主控制循环
 
-每次 Run 装配一次 Runtime：
+每次 Run 装配一次 Runtime。从源码构建时，可用 `config.backend.executor` 选择 `pi` 或 `codex`，省略时默认使用 Pi。
 
 ```ts
 import { createRuntime } from '@murm/core';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
 
 const runtime = await createRuntime({
-  backend: createPiOpenSandboxBackend(config.backend),
+  backend: createOpenSandboxBackend(config.backend),
   services,
   profiles,
   maxAgents: 4,
@@ -263,7 +263,7 @@ const report = await runWithReport({
   redact: (value) => scrubConfiguredSecrets(value),
   createRuntime: () =>
     createRuntime({
-      backend: createPiOpenSandboxBackend(config.backend),
+      backend: createOpenSandboxBackend(config.backend),
       services,
       profiles,
       maxAgents: 2,

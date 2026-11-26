@@ -9,24 +9,25 @@ import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { createNativeEvidenceDirectory, installNativeNotesExample } from './fixtures/notes-installed-package.js';
 import { createNotesHarnessUpstream } from './fixtures/notes-harness-upstream.js';
 
-test('installed Notes Environment exchanges a native fact and retains the reader Session through its second turn', {
-  skip: process.env.MURM_NOTES_HARNESS_REAL_TEST !== '1' && 'Two independent exact reviews and explicit local opt-in required',
+for (const executor of ['pi', 'codex']) {
+test(`installed Notes ${executor} exchanges a native fact and retains the reader Session through its second turn`, {
+  skip: (executor === 'codex' ? process.env.MURM_CODEX_NOTES_REAL_TEST : process.env.MURM_NOTES_HARNESS_REAL_TEST) !== '1' && 'Two independent exact reviews and explicit local opt-in required',
   timeout: 340_000,
 }, async t => {
   const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
-  const evidenceDir = await createNativeEvidenceDirectory('notes-environment');
+  const evidenceDir = await createNativeEvidenceDirectory('notes-' + executor);
   const installed = await installNativeNotesExample();
   // Retain the external consumer on uncertainty; durable inputs and outputs stay in evidenceDir.
   let child;
   let nativeSessions;
-  const upstream = await createNotesHarnessUpstream({ verifyStartup: true, onFailure: () => child?.kill('SIGTERM'),
+  const upstream = await createNotesHarnessUpstream({ executor, verifyStartup: true, onFailure: () => child?.kill('SIGTERM'),
     observeSessions: async (phase, row) => {
       const ids = (await readdir(outputDir)).filter(id => /^[a-f0-9-]{36}$/.test(id));
       assert.equal(ids.length, 1);
       const containers = (await ownedContainers(ids[0])).sort(); assert.equal(containers.length, 2);
       const observed = await Promise.all(containers.map(async container => ({ container,
-        ...await sessionEvidence(container, promisify(execFile)) })));
+        ...await sessionEvidence(container, promisify(execFile), executor) })));
       assert.equal(new Set(observed.map(item => item.sessionId)).size, 2);
       if (phase === 'before-followup') nativeSessions = observed;
       else { assert.deepEqual(observed, nativeSessions); assert.ok(observed.some(item => item.sessionId === row.sessionId)); }
@@ -37,19 +38,20 @@ test('installed Notes Environment exchanges a native fact and retains the reader
   const config = {
     image, outputDir, turnTimeoutMs: 35_000, closeTimeoutMs: 25_000,
     backend: {
+      executor,
       sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
         endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
         resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
       bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-      modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 128, requestTimeoutMs: 30_000 },
-      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
+      modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: executor === 'codex' ? null : 128, requestTimeoutMs: 30_000 },
+      models: { default: { provider: executor === 'codex' ? 'openai' : 'kimi_proxy', model: executor === 'codex' ? 'gpt-5.4' : 'k3', upstream: { url: upstream.url, headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
     },
   };
   await writeFile(join(evidenceDir, 'config.mjs'), `const config = ${JSON.stringify(config)};
 config.backend.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;\n`, { mode: 0o600 });
-  const proof = { package: installed.metadata, externalDirectory: installed.directory, image, failure: true };
+  const proof = { package: installed.metadata, externalDirectory: installed.directory, image, executor, failure: true };
   let stdout = ''; let stderr = ''; let expired = false;
   t.after(async () => {
     const runtimeIds = (await readdir(outputDir).catch(() => [])).filter(id => /^[a-f0-9-]{36}$/.test(id));
@@ -99,3 +101,5 @@ export default config;\n`, { mode: 0o600 });
   assert.deepEqual(JSON.parse(await readFile(report.reportPath, 'utf8')).result, report.result);
   proof.failure = false;
 });
+
+}

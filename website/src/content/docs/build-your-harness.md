@@ -174,20 +174,22 @@ const profiles: Record<string, Profile> = {
 ```
 
 Common optional capabilities you can enable per role:
-- **Built-in child agent control**: grant `{ agent: ['spawn', 'get', 'send', 'stop'] }`, restrict child roles with `spawnProfiles: ['worker']`, and allow session inheritance with `allowContextFork: true`. (Alternatively, wrap `runtime.spawn`/`send`/`interrupt` inside your own domain Service as [Subagents](../harnesses/subagents/) does.)
-- **Shared workspace**: pass `workspace: { id: 'shared-repo', mode: 'read-write' }` (or `'read-only'`) in `runtime.spawn()`.
-- **Internal network access (such as Gitea)**: list the concrete non-loopback IPv4 origin in `Profile.network: { allow: ['http://172.17.0.1:3000'] }` and inject per-agent tokens via `spawn({ secretEnv })`.
+- **Built-in child Agent control**. Grant `{ agent: ['spawn', 'get', 'send', 'stop'] }` and restrict child roles with `spawnProfiles: ['worker']`. Set `allowContextFork: true` when the selected backend declares `contextFork`. [Subagents](../harnesses/subagents/) wraps coordination operations in a domain Service.
+- **Shared workspace**. Pass `workspace: { id: 'shared-repo', mode: 'read-write' }` (or `'read-only'`) in `runtime.spawn()`.
+- **Internal network access (such as Gitea)**. List a concrete non-loopback IPv4 origin in `Profile.network.allow` and pass per-Agent credentials in `spawn({ secretEnv })`.
 
 ## 4. Write the host control loop
 
 Assemble the Runtime once per Run:
 
+For source builds with executor selection, `config.backend.executor` selects `pi` or `codex`. Omitting it selects Pi.
+
 ```ts
 import { createRuntime } from '@murm/core';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
 
 const runtime = await createRuntime({
-  backend: createPiOpenSandboxBackend(config.backend),
+  backend: createOpenSandboxBackend(config.backend),
   services,
   profiles,
   maxAgents: 4,
@@ -265,7 +267,7 @@ const report = await runWithReport({
   redact: (value) => scrubConfiguredSecrets(value),
   createRuntime: () =>
     createRuntime({
-      backend: createPiOpenSandboxBackend(config.backend),
+      backend: createOpenSandboxBackend(config.backend),
       services,
       profiles,
       maxAgents: 2,

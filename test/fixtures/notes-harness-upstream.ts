@@ -5,7 +5,7 @@ import { streamResponse } from './core-controlled-upstream.js';
 
 // Pinned pi-coding-agent 1.3.0 cli/setup.js uses APP_NAME=pi; rpc-entry.js uses pi-rpc.
 // Linux stat comm and starttime survive its process.title rewrite; original argv does not.
-export function notesHarnessCommand(role) {
+export function notesHarnessCommand(role, executor = 'pi') {
   return `python3 - <<'NOTES_HARNESS'
 import json,os,pathlib,re,subprocess
 key='core-service-boundary'
@@ -25,12 +25,12 @@ for _ in range(12):
  stat=pathlib.Path(f'/proc/{pid}/stat').read_text()
  name=stat[stat.index('(')+1:stat.rindex(')')]
  fields=stat[stat.rindex(')')+2:].split()
- if name in ['pi','pi-rpc']:
+ if name in ${executor === 'codex' ? "['codex','codex-exec']" : "['pi','pi-rpc']"}:
   identity={'pid':pid,'starttime':fields[19]}
   break
  pid=int(fields[1])
  assert pid>1
-else: raise AssertionError('Native Pi process was not found in the ancestry')
+else: raise AssertionError('Native executor process was not found in the ancestry')
 evidence={'role':${JSON.stringify(role)},'cwd':os.getcwd(),'process':identity}
 ${role === 'writer' ? `assert json.loads(pathlib.Path('note-request.json').read_text())=={'key':key,'text':raw}
 record=cli('notes','put','--input','note-request.json','--request-id','notes-put')
@@ -47,9 +47,9 @@ pathlib.Path('continuity.json').write_text(json.dumps({'process':identity,'cwd':
 pathlib.Path('denied-request.json').write_text(json.dumps({'key':key,'text':raw}))
 evidence.update(author=record['author'],read=True,permission=denied(['CLI_ERROR','NOT_ALLOWED'],'notes','put','--input','denied-request.json','--request-id','reader-denied'))` : `before=json.loads(pathlib.Path('continuity.json').read_text())
 assert before=={'process':identity,'cwd':os.getcwd()}
-sessions=list(pathlib.Path('/workspace/runtime/pi-session').rglob('*.jsonl'))
+sessions=list(pathlib.Path('${executor === 'codex' ? '/workspace/runtime/codex-home/sessions' : '/workspace/runtime/pi-session'}').rglob('*.jsonl'))
 assert len(sessions)==1
-match=re.fullmatch(r'\\d{4}-\\d{2}-\\d{2}T[\\d-]+Z_([a-f0-9-]{36})[.]jsonl',sessions[0].name)
+match=re.fullmatch(r'${executor === 'codex' ? 'rollout-\\d{4}-\\d{2}-\\d{2}T[\\d-]+-' : '\\d{4}-\\d{2}-\\d{2}T[\\d-]+Z_'}([a-f0-9-]{36})[.]jsonl',sessions[0].name)
 assert match
 evidence['sessionId']=match[1]
 content=pathlib.Path('review.md').read_bytes()
@@ -59,8 +59,9 @@ print(json.dumps(evidence))
 NOTES_HARNESS`;
 }
 
-export async function createNotesHarnessUpstream({ onFailure = () => {}, observeSessions = async () => {}, verifyStartup = false } = {}) {
+export async function createNotesHarnessUpstream({ onFailure = () => {}, observeSessions = async () => {}, verifyStartup = false, executor = 'pi' } = {}) {
   let arrivals = 0; let accepted = 0; let failure; const evidence = [];
+  const model = executor === 'codex' ? 'gpt-5.4' : 'k3';
   const deadlineAt = Date.now() + 120_000;
   const roles = ['writer', 'reader', 'followup'];
   const server = createServer(async (request, response) => {
@@ -74,13 +75,13 @@ export async function createNotesHarnessUpstream({ onFailure = () => {}, observe
       const chunks = []; let bytes = 0;
       for await (const chunk of request) { bytes += chunk.length; assert.ok(bytes <= 2 * 1024 ** 2); chunks.push(chunk); }
       const body = JSON.parse(Buffer.concat(chunks).toString());
-      assert.equal(body.model, 'k3'); assert.ok(Array.isArray(body.input));
+      assert.equal(body.model, model); assert.ok(Array.isArray(body.input));
       const role = roles[Math.floor((ordinal - 1) / 2)]; const callId = `notes_${role}`;
       let item;
       if (ordinal % 2) {
         if (verifyStartup && role !== 'followup') {
           stage = role + '-startup';
-          const developer = body.input.find(item => item.role === 'developer')?.content;
+          const developer = body.input.filter(item => item.role === 'developer').flatMap(item => typeof item.content === 'string' ? [{ text: item.content }] : item.content);
           const system = typeof developer === 'string' ? developer : developer?.map(item => item.text ?? '').join('');
           const task = role === 'writer' ? 'Read review-input.json and note-request.json' : 'Compare the note text with review-input.json';
           assert.equal(system.match(/<services>/g)?.length, 1);
@@ -92,13 +93,20 @@ export async function createNotesHarnessUpstream({ onFailure = () => {}, observe
         }
         stage = 'tool-dispatch';
         if (role === 'followup') await observeSessions('before-followup');
-        item = { type: 'function_call', id: `fc_${callId}`, call_id: callId, name: 'bash',
-          arguments: JSON.stringify({ command: notesHarnessCommand(role), timeout: 40 }) };
+        item = { type: 'function_call', id: `fc_${callId}`, call_id: callId, name: executor === 'codex' ? 'exec_command' : 'bash',
+          arguments: JSON.stringify(executor === 'codex'
+            ? { cmd: notesHarnessCommand(role, executor), yield_time_ms: 10000, max_output_tokens: 2048 }
+            : { command: notesHarnessCommand(role, executor), timeout: 40 }) };
       } else {
         stage = `${role}-tool-evidence`;
         const output = body.input.filter(item => item.type === 'function_call_output' && item.call_id === callId);
         assert.equal(output.length, 1);
-        const row = JSON.parse(output[0].output.trim());
+        const text = output[0].output.trim();
+        if (executor === 'codex') {
+          assert.match(text, /Process exited with code 0/);
+          assert.ok(text.includes('Output:'));
+        }
+        const row = JSON.parse(executor === 'codex' ? text.slice(text.indexOf('Output:') + 'Output:'.length).trim() : text);
         assert.equal(row.role, role); assert.ok(Number.isSafeInteger(row.process?.pid) && row.process.pid > 1); assert.match(row.process.starttime, /^[0-9]+$/); assert.equal(row.cwd, '/workspace/project');
         if (role === 'writer') { assert.ok(row.replay && row.conflict && row.forged && row.permission); assert.equal(typeof row.author, 'string'); }
         if (role === 'reader') { assert.ok(row.read && row.permission); assert.equal(row.author, evidence[0].author); }
@@ -108,12 +116,12 @@ export async function createNotesHarnessUpstream({ onFailure = () => {}, observe
           content: [{ type: 'output_text', text: `${role}_OK`, annotations: [] }] };
       }
       assert.ok(!failure); accepted++;
-      response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse('k3', ordinal, item));
+      response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse(model, ordinal, item));
     } catch {
       const first = !failure;
       failure ??= { code: 'CONTROLLED_NOTES_HARNESS_FAILED', stage, ordinal };
       response.writeHead(200, { 'content-type': 'text/event-stream' });
-      const terminal = { type: 'response.failed', response: { id: `notes_rejected_${ordinal}`, object: 'response', model: 'k3',
+      const terminal = { type: 'response.failed', response: { id: `notes_rejected_${ordinal}`, object: 'response', model,
         status: 'failed', output: [], error: { code: failure.code, message: failure.code },
         usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } } };
       response.end(`event: response.failed\ndata: ${JSON.stringify(terminal)}\n\n`);

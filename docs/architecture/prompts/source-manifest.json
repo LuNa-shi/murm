@@ -23,7 +23,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "24658498abfe7af71dcf97dd5263100283facc11f71bb0040bbd6f71a7ea3254"
+      "sha256": "303e8742d65e0b47e2d87a9d4c8c65e382ec85851e0bc16016ba802eee4d0b63"
     },
     {
       "path": "src/core/bridge.ts",
@@ -31,19 +31,31 @@
     },
     {
       "path": "src/core/startup-prompt.ts",
-      "sha256": "6d8cdea9ed793d3eb22637d5811b450c65f68ef83e055bc389588be34d799151"
+      "sha256": "a0a07d64d49ec8effab76dddb84e7be77c340a173bc6370374b27c743fada761"
     },
     {
-      "path": "src/core/pi-opensandbox-backend.ts",
-      "sha256": "691a2447cd4c10b17b59165f9a41e32518853b0bd176568a75eca7284d54273d"
+      "path": "src/core/opensandbox-backend.ts",
+      "sha256": "0fca7879aa7376c9e3cfeeeefabdb938f8e3bd3769d3438430753ea877b7b8f2"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "a0bd275313438826134862912fd9a60774f11e0d2ade4a5de450a8ce07ce5052"
+      "sha256": "44e862e1732aea83c9319fe2cfe1a1ef83ed1bb57892b410b5719c31b3a8a3da"
+    },
+    {
+      "path": "scripts/codex-app-server-driver.ts",
+      "sha256": "98558cb0602dc484429981ea0daa21c98c6e2dad298dc736af7340a0c3e0b272"
+    },
+    {
+      "path": "scripts/local-setup-smoke.ts",
+      "sha256": "cedceb0812320a478b46bd815498afa68342fb719b76301d9ded6bfddc282126"
+    },
+    {
+      "path": "scripts/local-setup-upstream.ts",
+      "sha256": "01483bed8622e6b646a4641370661e89c01afbdb58cf49aa5362945b7f40f06e"
     },
     {
       "path": "examples/notes/main.ts",
-      "sha256": "a472cca057e6a079d48cdb1db10ea4bfdbca9df8bfbfd40540349c82379597c8"
+      "sha256": "6a4b03ed1dd659b35d21083dfc04799ed08df81cd599a5b8fff7fa71b5ae722f"
     },
     {
       "path": "src/harnesses/shared/run-input.ts",
@@ -87,7 +99,7 @@
     },
     {
       "path": "examples/subagents/main.ts",
-      "sha256": "81b8894ae5748fc1a031e6f0111257c133fd8aa480fd8ee18e3c3d6ab876114e"
+      "sha256": "0c721b66f8c1a8f25a98e6688fe26762221f8502fbcdda60efae5f465af1cf9e"
     },
     {
       "path": "examples/subagents/controller.ts",
@@ -99,7 +111,7 @@
     },
     {
       "path": "examples/subagents/collaboration-service.ts",
-      "sha256": "cbc1aeec07e52f9d916fc91ce7806a4a3c0f37fa271e6ae07a5525b8e354618b"
+      "sha256": "d8fba63bf48fa426f24f83c76b6a92ed8a07f593ce6c15e0b17ffd9669c2f281"
     },
     {
       "path": "test-support/subagents/communication-fixture.ts",
@@ -582,6 +594,10 @@
       "sha256": "0dd9780f082c954cdf7cfa5514190b3770539f0f56f7d904d71ca19c6a3df180"
     },
     {
+      "path": "docs/architecture/prompts/10-local-setup-probe.md",
+      "sha256": "ea8346b1e23788b07fd64198d0daef0acebded749d83379de6774b455e2f055f"
+    },
+    {
       "path": "docs/architecture/prompts/07-notes-harness.md",
       "sha256": "f6b6e047322ecdd0941bd41d70840773203020e270332d605442187a4f5a3ecd"
     },
@@ -591,7 +607,7 @@
     },
     {
       "path": "docs/architecture/prompts/01-core-startup.md",
-      "sha256": "bcdb9d7a038449fecfac0891ac2a3b996e1cf71442a35d34ed1e77c95fa191eb"
+      "sha256": "04cb91f1d4933d146043fb8939cd99e4fc79e14ef039cdcb7507806e85b1632d"
     },
     {
       "path": "docs/architecture/prompts/09-substrate-harness.md",

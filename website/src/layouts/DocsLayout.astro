@@ -111,11 +111,18 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
           const articleEl = document.getElementById('docs-article');
           if (!articleEl) return;
           const clone = articleEl.cloneNode(true);
+          clone.removeAttribute('id');
           clone.querySelectorAll('.copy-btn').forEach((el) => el.remove());
+          clone.style.position = 'fixed';
+          clone.style.insetInlineStart = '-10000px';
+          clone.setAttribute('aria-hidden', 'true');
+          articleEl.after(clone);
+          const articleText = clone.innerText.trim();
+          clone.remove();
           const parts = [
             titleEl ? '# ' + titleEl.textContent.trim() : '',
             leadEl ? leadEl.textContent.trim() : '',
-            clone.innerText.trim(),
+            articleText,
           ].filter(Boolean);
           const label = copyBtn.querySelector('span');
           try {

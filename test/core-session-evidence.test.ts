@@ -21,3 +21,13 @@ test('missing, ambiguous or malformed Session filename evidence cannot pass', as
     await assert.rejects(sessionEvidence('physical-container', async () => ({ stdout })));
   }
 });
+
+test('Codex native Session evidence identifies the persisted rollout without reading its contents', async () => {
+  const valid = 'rollout-2026-11-25T20-01-02-019abcde-1234-5678-9abc-123456789abc.jsonl';
+  const observed = await sessionEvidence('codex-container', async (_command, args) => {
+    assert.equal(args[3], '/workspace/runtime/codex-home/sessions');
+    return { stdout: valid + '\n' };
+  }, 'codex');
+  assert.deepEqual(observed, { sessionId: '019abcde-1234-5678-9abc-123456789abc', sessionFile: valid });
+  await assert.rejects(sessionEvidence('codex-container', async () => ({ stdout: valid + '\n' + valid }), 'codex'));
+});

@@ -240,15 +240,17 @@ Without adding any logging code to your Harness, a Run records:
 
 Combine the pieces above into a complete minimal Harness (adapted directly from [examples/notes/main.ts](https://github.com/LuNa-shi/murm/blob/main/examples/notes/main.ts)):
 
+For source builds with executor selection, `config.backend.executor` selects `pi` or `codex`. Omitting it selects Pi.
+
 ```ts
 import { createRuntime } from '@murm/core';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
 import { runInput } from './run-input.js';
 
 const { services, records } = createNotesService();
 
 const runtime = await createRuntime({
-  backend: createPiOpenSandboxBackend(config.backend),
+  backend: createOpenSandboxBackend(config.backend),
   services,
   profiles,
   maxAgents: 2,

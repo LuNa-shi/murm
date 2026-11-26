@@ -380,6 +380,23 @@
       "role": "Sandbox-resident Pi worker and authenticated RPC, file collection and lifecycle HTTP surface"
     },
     {
+      "path": "scripts/codex-app-server-driver.ts",
+      "category": "guest execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Codex App Server thread, turn, event, steering and interruption protocol"
+    },
+    {
+      "path": "scripts/rpc-submissions.ts",
+      "category": "guest execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Authenticated Worker command replay and receipt ledger"
+    },
+    {
       "path": "scripts/project-install.ts",
       "category": "runtime and execution",
       "chapters": [
@@ -1328,12 +1345,22 @@
       "role": "Runtime-scoped model gateway lifecycle, credentials and policy"
     },
     {
-      "path": "src/core/pi-opensandbox-backend.ts",
-      "category": "programmable Core",
+      "path": "src/core/opensandbox-backend.ts",
+      "category": "Core runtime",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Shared OpenSandbox lifecycle, session control, input polling and cleanup"
+    },
+    {
+      "path": "src/core/executor-driver.ts",
+      "category": "Core runtime",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Core backend lifecycle, Worker transport and confirmed cleanup"
+      "role": "Executor startup, version, configuration checks and capability contract"
     },
     {
       "path": "src/core/backends/pi-opensandbox.ts",
@@ -1342,6 +1369,15 @@
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Public opaque Pi/OpenSandbox backend factory export"
+    },
+    {
+      "path": "src/core/backends/opensandbox.ts",
+      "category": "Core API",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Public configuration-based selection of the OpenSandbox execution driver"
     },
     {
       "path": "src/agent/model-catalog.ts",
@@ -1357,7 +1393,7 @@
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Worker lifetime Pi RPC submission identities, shared in-flight waits and receipt-only queries"
+      "role": "Compatibility export of the shared Worker receipt ledger"
     },
     {
       "path": "src/core/input-ledger.ts",
@@ -2663,6 +2699,117 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Build, upload and deploy the static website to GitHub Pages from main"
+    },
+    {
+      "path": "scripts/setup",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Clean-checkout local setup launcher and Node.js version gate"
+    },
+    {
+      "path": "scripts/setup-bootstrap.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Host preflight, serialized locked dependency installation and cached checkout build"
+    },
+    {
+      "path": "scripts/murm.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Host CLI dispatch, current-project interactive entry, signal handling and exit status"
+    },
+    {
+      "path": "scripts/murm-arguments.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Shared host command syntax and setup wrapper arguments"
+    },
+    {
+      "path": "scripts/local-environment.ts",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Shared host configuration, same-host diagnostic checks and ownership of the pinned OpenSandbox deployment"
+    },
+    {
+      "path": "scripts/local-setup.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Shared setup and doctor orchestration, staged timing and cleanup receipts"
+    },
+    {
+      "path": "scripts/local-setup-worker.ts",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Worker image selection, identity and compatibility checks, local build and pull"
+    },
+    {
+      "path": "scripts/local-setup-smoke.ts",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Real temporary Runtime probe, artifact verification and cleanup"
+    },
+    {
+      "path": "scripts/local-setup-upstream.ts",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Loopback controlled Responses server and fixed probe tool sequence"
+    },
+    {
+      "path": "scripts/local-setup-template.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Independent Subagents project initialization, archive installation and preservation of existing files"
+    },
+    {
+      "path": "services/local-setup/config.js",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Editable generated Subagents configuration"
+    },
+    {
+      "path": "services/local-setup/environment.js",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Generated project environment loader"
+    },
+    {
+      "path": "services/opensandbox-local/config.toml",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Pinned local OpenSandbox Docker deployment recipe"
     }
   ]
 }

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { transport } from './fixtures/core-agent-service-backend.js';
 const hooks = registerHooks({ resolve(specifier, context, next) {
-  if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/peermesh-team-backend.js', import.meta.url).href, shortCircuit: true };
+  if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/peermesh-team-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
 const { runForegroundHarness } = await import('../src/harnesses/shared/foreground-host.js');

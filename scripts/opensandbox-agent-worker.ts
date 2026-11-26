@@ -9,7 +9,8 @@ import { SandboxProject, AGENT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-p
 import { CoreWorkDir } from './core-work-dir.js';
 import { collectCoreWorkDir, MAX_COLLECTION_ENTRIES } from './core-collection.js';
 import { once } from 'node:events';
-import { createPiRpcSubmissions } from './pi-rpc-submissions.js';
+import { createRpcSubmissions } from './rpc-submissions.js';
+import { createCodexAppServerDriver } from './codex-app-server-driver.js';
 import { snapshotSessionFork, sessionForkText } from './core-session-fork.js';
 
 const argv = process.argv.slice(2);
@@ -34,7 +35,9 @@ let initialized = !quotaRequired;
 if (initialized) await project.initialize();
 let everStarted = false;
 let stopping: Promise<unknown> | null = null;
-let piLaunched = false;
+let executorLaunched = false;
+let executorKind: 'pi' | 'codex' = 'pi';
+let codexDriver: ReturnType<typeof createCodexAppServerDriver> | undefined;
 let writerGate: Promise<unknown> = Promise.resolve();
 let child: any = null;
 let sessionPrivateValues: unknown[] = [];
@@ -52,10 +55,14 @@ interface InterruptOperation {
 }
 const interruptions = new Map<string, InterruptOperation>();
 let interrupting = false;
-const rpcSubmissions = createPiRpcSubmissions({ write({ steeringMode, executionEpoch: _executionEpoch, onlyWhileActive, ...message }: Record<string, unknown>) {
+const rpcSubmissions = createRpcSubmissions({ write({ steeringMode, executionEpoch: _executionEpoch, onlyWhileActive, ...message }: Record<string, unknown>) {
   if (!child?.stdin?.writable) throw Object.assign(new Error('worker Agent is not running'), { code: 'NOT_ALLOWED' });
   if (onlyWhileActive && !nativeExecuting) {
     publish({ type: 'response', id: message.id, command: message.type, success: false, code: 'NO_ACTIVE_EXECUTION' });
+    return;
+  }
+  if (codexDriver) {
+    codexDriver.write({ ...message, steeringMode, onlyWhileActive } as Parameters<typeof codexDriver.write>[0]);
     return;
   }
   if (steeringMode !== undefined) {
@@ -120,7 +127,11 @@ function processStdout(chunk: any) {
     const line = stdoutBuffer.slice(0, newline).replace(/\r$/, '');
     stdoutBuffer = stdoutBuffer.slice(newline + 1);
     if (!line) continue;
-    try { publish(JSON.parse(line)); } catch { publish({ type: 'worker_stdout', text: line }); }
+    try {
+      const record = JSON.parse(line);
+      if (codexDriver) codexDriver.observe(record);
+      else publish(record);
+    } catch { publish({ type: 'worker_stdout', text: line }); }
   }
 }
 
@@ -149,6 +160,19 @@ async function startAgent(input: any) {
   if (typeof input.command !== 'string' || !input.command) throw new Error('worker command is required');
   const cwd = input.cwd ?? PROJECT_DIR;
   if (cwd !== PROJECT_DIR) throw new Error('worker project cwd must be /workspace/project');
+  if (!['pi', 'codex'].includes(input.command)) throw startupContractError('Core startup requires a supported executor');
+  if (input.command === 'codex') {
+    if (input.args.length || input.fork_session !== undefined || input.model_catalog_resource !== undefined ||
+        typeof input.codex?.model !== 'string' || !input.codex.model || typeof input.codex?.baseUrl !== 'string' ||
+        typeof input.secret_env?.OPENAI_API_KEY !== 'string' || !input.secret_env.OPENAI_API_KEY) {
+      throw startupContractError('Codex requires its model gateway, credential, and a fresh native thread');
+    }
+    const gateway = new URL(input.codex.baseUrl);
+    if (gateway.protocol !== 'http:' || gateway.username || gateway.password || gateway.search || gateway.hash || gateway.pathname !== '/v1') {
+      throw startupContractError('Codex requires an explicit host Responses gateway');
+    }
+  }
+  executorKind = input.command;
   everStarted = true;
   let projectQuota: { bytes: number; inodes: number } | null = null;
   const sharedWorkspace = input.shared_workspace;
@@ -184,11 +208,11 @@ async function startAgent(input: any) {
     projectQuota = { bytes, inodes };
     collectionMaxEntries = Math.min(inodes, MAX_COLLECTION_ENTRIES);
   } else if (input.project_quota) throw startupContractError('Worker must start in quota enforcement mode');
-  if (input.contract_version !== 'murm-core-v1' || input.command !== 'pi' || typeof input.system_prompt !== 'string' || input.system_prompt_path !== `${RUNTIME_DIR}/profile-prompt.txt` || !Array.isArray(input.resources) || input.resources.length !== 0) {
-    throw startupContractError('Core startup requires direct Pi, an explicit role prompt and an empty resource set');
+  if (input.contract_version !== 'murm-core-v1' || !['pi', 'codex'].includes(input.command) || typeof input.system_prompt !== 'string' || input.system_prompt_path !== `${RUNTIME_DIR}/profile-prompt.txt` || !Array.isArray(input.resources) || input.resources.length !== 0) {
+    throw startupContractError('Core startup requires a supported executor, an explicit role prompt and an empty resource set');
   }
   if (project.closing) throw new Error('Agent stopped during resource validation');
-  for (const path of ['home', 'tmp', 'pi-agent', 'pi-session']) {
+  for (const path of ['home', 'tmp', ...(executorKind === 'pi' ? ['pi-agent', 'pi-session'] : ['codex-home', 'codex-home/sessions'])]) {
     await mkdir(join(RUNTIME_DIR, path), { recursive: true });
     await chown(join(RUNTIME_DIR, path), AGENT_UID, AGENT_UID);
   }
@@ -209,38 +233,62 @@ async function startAgent(input: any) {
   }
   delete suppliedEnv.MURM_WORKER_TOKEN;
   const agentEnvironment = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', ...suppliedEnv,
-    HOME: join(RUNTIME_DIR, 'home'), TMPDIR: join(RUNTIME_DIR, 'tmp'), PI_CODING_AGENT_DIR: join(RUNTIME_DIR, 'pi-agent') };
-  const catalog = await readPinnedStartupPath(readFile, catalogPath);
+    HOME: join(RUNTIME_DIR, 'home'), TMPDIR: join(RUNTIME_DIR, 'tmp'), PI_CODING_AGENT_DIR: join(RUNTIME_DIR, 'pi-agent'),
+    ...(executorKind === 'codex' ? { CODEX_HOME: join(RUNTIME_DIR, 'codex-home') } : {}) };
   let modelCatalogResource: any = null;
-  if (input.model_catalog_resource) {
-    const sha256 = createHash('sha256').update(catalog).digest('hex');
-    if (input.model_catalog_resource.path !== catalogPath || input.model_catalog_resource.sha256 !== sha256) throw startupContractError('Pi model catalog does not match the host selection gate');
-    modelCatalogResource = { path: catalogPath, sha256 };
+  let executorVersion: string | undefined;
+  if (executorKind === 'pi') {
+    const catalog = await readPinnedStartupPath(readFile, catalogPath);
+    if (input.model_catalog_resource) {
+      const sha256 = createHash('sha256').update(catalog).digest('hex');
+      if (input.model_catalog_resource.path !== catalogPath || input.model_catalog_resource.sha256 !== sha256) throw startupContractError('Pi model catalog does not match the host selection gate');
+      modelCatalogResource = { path: catalogPath, sha256 };
+    }
+    await writeFile(join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json'), catalog, { mode: 0o600 });
+    await expandPiModelCatalog(agentEnvironment);
+    await chown(join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json'), AGENT_UID, AGENT_UID);
+  } else {
+    const version = spawnSync('setpriv', [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : []), 'codex', '--version'],
+      { cwd, env: agentEnvironment, timeout: 5_000, encoding: 'utf8' });
+    if (version.status !== 0 || version.stdout.trim() !== 'codex-cli 0.172.0') throw startupContractError('Codex CLI version must be 0.172.0');
+    executorVersion = '0.172.0';
+    const configuration = [
+      `model = ${JSON.stringify(input.codex.model)}`, 'model_provider = "murm"', 'approval_policy = "never"',
+      'sandbox_mode = "danger-full-access"', 'web_search = "disabled"', 'check_for_update_on_startup = false',
+      '[agents]', 'enabled = false', '[features]', 'multi_agent = false', 'multi_agent_v2 = false',
+      'apps = false', 'plugins = false', 'remote_plugin = false', 'goals = false',
+      'enable_request_compression = false', 'api_key_model_discovery = false',
+      '[model_providers.murm]', 'name = "murm"', `base_url = ${JSON.stringify(input.codex.baseUrl)}`,
+      'wire_api = "responses"', 'env_key = "OPENAI_API_KEY"', 'requires_openai_auth = false', 'supports_websockets = false',
+    ].join('\n');
+    await writeFile(join(agentEnvironment.CODEX_HOME!, 'config.toml'), `${configuration}\n`, { mode: 0o600 });
+    await chown(join(agentEnvironment.CODEX_HOME!, 'config.toml'), AGENT_UID, AGENT_UID);
   }
-  await writeFile(join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json'), catalog, { mode: 0o600 });
-  await expandPiModelCatalog(agentEnvironment);
-  await chown(join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json'), AGENT_UID, AGENT_UID);
   if (project.closing) throw new Error('Agent stopped during startup');
-  child = spawn('setpriv', [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : []), input.command, ...input.args],
+  child = spawn('setpriv', [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : []), input.command, ...(executorKind === 'codex' ? ['app-server'] : input.args)],
     { cwd, env: agentEnvironment, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
-  piLaunched = child.pid !== undefined;
+  executorLaunched = child.pid !== undefined;
+  if (executorKind === 'codex') codexDriver = createCodexAppServerDriver({ model: input.codex.model, cwd,
+    systemPrompt: input.system_prompt, isInputFenced: () => interrupting, write: message => child.stdin.write(`${JSON.stringify(message)}\n`), publish });
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', processStdout);
   // Drain the private stderr pipe so a noisy process cannot block on it.
   child.stderr.resume();
-  child.on('error', (error: any) => publish({ type: 'worker_error', message: error.message }));
+  child.on('error', (error: any) => { codexDriver?.close(error); publish({ type: 'worker_error', message: error.message }); });
   child.on('close', (code: any, signal: any) => {
+    codexDriver?.close();
     publish({ type: 'worker_exit', code, signal });
     child = null;
   });
-  return { pid: child.pid, contract: { version: input.contract_version, resources: input.resources },
+  const nativeSession = await codexDriver?.ready;
+  return { pid: child?.pid, ...(nativeSession ? { backend: { kind: 'codex', version: executorVersion, authMode: 'api-key', threadId: nativeSession.threadId } } : {}), contract: { version: input.contract_version, resources: input.resources },
     ...(projectQuota ? { project_quota: projectQuota } : {}),
     ...(projectFiles ? { project_files: projectFiles } : {}),
     ...(sharedWorkspace ? { shared_workspace: sharedWorkspace } : {}),
     ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}) };
 }
 
-async function interruptPi({ id, executionEpoch: nextEpoch }: { id: string; executionEpoch: number }, timeoutMs: number) {
+async function interruptExecutor({ id, executionEpoch: nextEpoch }: { id: string; executionEpoch: number }, timeoutMs: number) {
   if (typeof id !== 'string' || !id || !Number.isSafeInteger(nextEpoch)) {
     throw Object.assign(new Error('Invalid interrupt identity'), { code: 'INVALID_CONTRACT' });
   }
@@ -248,7 +296,7 @@ async function interruptPi({ id, executionEpoch: nextEpoch }: { id: string; exec
   if (entry && entry.epoch !== nextEpoch) throw Object.assign(new Error('Interrupt identity conflict'), { code: 'CONFLICT' });
   if (!entry) {
     if (interrupting || nextEpoch !== executionEpoch + 1 || project.closing) {
-      throw Object.assign(new Error('Pi cannot interrupt this execution generation'), { code: 'NOT_ALLOWED' });
+      throw Object.assign(new Error('Executor cannot interrupt this execution generation'), { code: 'NOT_ALLOWED' });
     }
     interrupting = true;
     executionEpoch = nextEpoch;
@@ -261,7 +309,7 @@ async function interruptPi({ id, executionEpoch: nextEpoch }: { id: string; exec
       await rpcSubmissions.submit({ type, id: commandId }, 10_000);
       await rpcSubmissions.completion(commandId);
       const { response } = rpcSubmissions.query(commandId);
-      if (response.command !== type || !response.success) throw new Error('Pi did not confirm execution control');
+      if (response.command !== type || !response.success) throw new Error('Executor did not confirm execution control');
       return response.data;
     };
     const discardedInputHashes: string[] = [];
@@ -322,13 +370,13 @@ async function rpc(input: any): Promise<{ records: any[]; response?: any; state?
   }
   const timeoutMs = Number(input.timeout_ms ?? 600_000);
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600_000) {
-    throw Object.assign(new Error('Invalid Pi RPC wait limit'), { code: 'INVALID_CONTRACT' });
+    throw Object.assign(new Error('Invalid Worker RPC wait limit'), { code: 'INVALID_CONTRACT' });
   }
   let result;
-  if (message.type === 'core_interrupt') result = await interruptPi(message, timeoutMs);
+  if (message.type === 'core_interrupt') result = await interruptExecutor(message, timeoutMs);
   else if (isInput && (interrupting || (message.executionEpoch ?? 0) !== executionEpoch)) {
     result = { state: 'complete', response: { id: message.id, command: message.type, success: false,
-      code: 'NOT_ALLOWED', error: 'Prompt is fenced by the current Pi execution generation' } };
+      code: 'NOT_ALLOWED', error: 'Prompt is fenced by the current executor generation' } };
   } else {
     const pending = rpcSubmissions.submit(message, timeoutMs);
     if (isInput) {
@@ -467,11 +515,11 @@ const server = createServer(async (request: any, response: any) => {
       response.on('close', disconnected);
       response.writeHead(200, { 'content-type': 'application/x-ndjson' });
       try {
-        if (sessionArchive && !piLaunched) {
+        if (sessionArchive && !executorLaunched) {
           response.write(`${JSON.stringify({ type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 })}\n`);
           return;
         }
-        for await (const record of collectCoreWorkDir(sessionArchive ? join(RUNTIME_DIR, 'pi-session') : PROJECT_DIR, input, { signal: controller.signal, maxEntries: collectionMaxEntries, timeoutMs: sessionArchive ? 600_000 : 20_000 })) {
+        for await (const record of collectCoreWorkDir(sessionArchive ? join(RUNTIME_DIR, ...(executorKind === 'pi' ? ['pi-session'] : ['codex-home', 'sessions'])) : PROJECT_DIR, input, { signal: controller.signal, maxEntries: collectionMaxEntries, timeoutMs: sessionArchive ? 600_000 : 20_000 })) {
           if (!response.write(`${JSON.stringify(record)}\n`)) await once(response, 'drain', { signal: controller.signal });
         }
       } catch (error: any) {
@@ -530,6 +578,7 @@ const server = createServer(async (request: any, response: any) => {
     if (request.method === 'POST' && url.pathname === '/project/install-confirm') { const input = await body(request); send(response, 200, { ok: true, result: await withAgentPaused(() => project.confirmInstall(input)) }); return; }
     if (request.method === 'POST' && url.pathname === '/core/session/snapshot') {
       requireOpenWorkDir();
+      if (executorKind !== 'pi') throw Object.assign(new Error('Executor does not support cross-Sandbox Context Fork'), { code: 'NOT_ALLOWED' });
       if (!child || executionStopped) throw Object.assign(new Error('Context Fork source is unavailable'), { code: 'NOT_ALLOWED' });
       const result = await rpc({ message: { type: 'get_entries', id: `fork-${randomUUID()}` }, timeout_ms: 10_000 });
       requireOpenWorkDir();

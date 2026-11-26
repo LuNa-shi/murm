@@ -238,17 +238,19 @@ await runtime.close({ timeoutMs: 30_000 });
 
 ## 串起来看一个完整最小 Harness
 
-把上面的模块拼在一起，就是一个完整可运行的多智能体 Harness（节选自 [examples/notes/main.ts](https://github.com/LuNa-shi/murm/blob/main/examples/notes/main.ts)）：
+把上面的模块拼在一起，就是一个完整可运行的多智能体 Harness（节选自 [examples/notes/main.ts](https://github.com/LuNa-shi/murm/blob/main/examples/notes/main.ts)）。
+
+从源码构建时，可用 `config.backend.executor` 选择 `pi` 或 `codex`，省略时默认使用 Pi。
 
 ```ts
 import { createRuntime } from '@murm/core';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
 import { runInput } from './run-input.js';
 
 const { services } = createNotesService();
 
 const runtime = await createRuntime({
-  backend: createPiOpenSandboxBackend(config.backend),
+  backend: createOpenSandboxBackend(config.backend),
   services,
   profiles,
   maxAgents: 2,

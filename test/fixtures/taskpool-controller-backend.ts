@@ -1,9 +1,9 @@
 // Simulate external provider/Worker failures while retaining the real Runtime.
 import { decodeFileSeed } from '../../scripts/core-file-seed.js';
-import { openPiOpenSandboxBackend as openBase } from './core-input-backend.js';
-export { claimPiOpenSandboxBackend, transport } from './core-input-backend.js';
+import { openOpenSandboxBackend as openBase } from './core-input-backend.js';
+export { claimOpenSandboxBackend, transport } from './core-input-backend.js';
 export const controls={stopError:null,destroyError:null,credentials:new Map(),preparedFiles:new Map(),onPrepare:null};
-export async function openPiOpenSandboxBackend(config,ports) {
+export async function openOpenSandboxBackend(config,ports) {
   const backend=await openBase();
   return {...backend,
     async spawn(input) {controls.credentials.set(input.agentId,ports.bridge.credentialsForAgent(input.agentId));return backend.spawn(input);},

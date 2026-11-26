@@ -23,7 +23,7 @@ npm run dev
 
 ```bash
 BASE_PATH=/murm SITE_URL=https://luna-shi.github.io npm run build
-npm run preview
+BASE_PATH=/murm npm run preview
 ```
 
 ## 2. 发布到 GitHub Pages

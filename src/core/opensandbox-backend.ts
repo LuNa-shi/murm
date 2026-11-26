@@ -84,8 +84,8 @@ interface SandboxManager {
   coreSessionSnapshot(agentId: string): Promise<SessionFork>;
   collectCoreSession(agentId: string): AsyncIterable<import('./artifact-collection.js').ArtifactRecord>;
   ensureExecution(options: Record<string, unknown>): Promise<{ sandbox_id: string }>;
-  agentVersions(options: { executionId: string }): Promise<{ piVersion?: string; [key: string]: unknown }>;
-  startAgent(options: Record<string, unknown>): Promise<unknown>;
+  agentVersions(options: { executionId: string; executor?: 'pi' | 'codex' }): Promise<{ piVersion?: string; [key: string]: unknown }>;
+  startAgent(options: Record<string, unknown>): Promise<{ backend?: { kind: 'codex'; version: string; authMode: 'api-key'; threadId: string } } | undefined>;
   stopAgent(agentId: string, signal: string, options: { preserveWorker: boolean }): Promise<boolean>;
   collectCoreFiles(agentId: string, specification: NonNullable<Profile['collect']>): AsyncIterable<import('./artifact-collection.js').ArtifactRecord>;
   coreResource(agentId: string): {
@@ -98,7 +98,7 @@ interface SandboxManager {
 }
 
 interface SandboxManagerConstructor {
-  new (options: PiOpenSandboxBackendConfig['sandbox'] & { image: string }): SandboxManager;
+  new (options: OpenSandboxBackendConfig['sandbox'] & { image: string }): SandboxManager;
 }
 
 interface AgentNetwork {
@@ -138,7 +138,8 @@ interface BackendSpawnOptions {
 }
 
 import type { Backend } from './types.js';
-import type { PiOpenSandboxBackendConfig } from './backend-config.js';
+import type { OpenSandboxBackendConfig } from './backend-config.js';
+import { selectExecutorDriver, type ExecutorDriver } from './executor-driver.js';
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -146,7 +147,9 @@ import { OpenSandboxManager } from '../runtime/opensandbox-manager.js';
 import { DockerAgentNetwork } from '../runtime/docker-agent-network.js';
 import { DockerAgentDisk } from '../runtime/docker-agent-disk.js';
 
-const handles = new WeakMap<Backend, { config: PiOpenSandboxBackendConfig; claimed: boolean }>();
+export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'> & { readonly driver: Readonly<ExecutorDriver> };
+
+const handles = new WeakMap<Backend, { config: ResolvedOpenSandboxBackendConfig; claimed: boolean }>();
 
 function invalid(message: string) {
   return Object.assign(new Error(message), { code: 'INVALID_CONTRACT' });
@@ -173,15 +176,17 @@ function sandboxExpiry(value: unknown) {
   return new Date(instant).toISOString();
 }
 
-export function createPiOpenSandboxBackend(config: PiOpenSandboxBackendConfig): Backend {
-  if (config?.isolation?.network !== 'local-docker') throw invalid('Pi/OpenSandbox requires local-docker isolation');
+export function createOpenSandboxBackend(config: OpenSandboxBackendConfig): Backend {
+  const driver = selectExecutorDriver(config?.executor);
+  if (config?.isolation?.network !== 'local-docker') throw invalid('OpenSandbox requires local-docker isolation');
   httpUrl(config.sandbox?.lifecycleBaseUrl, 'sandbox.lifecycleBaseUrl');
   const timeoutSeconds = config.sandbox.timeoutSeconds === undefined ? 3600 : config.sandbox.timeoutSeconds;
   if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 60) throw invalid('sandbox.timeoutSeconds must be a safe integer of at least 60');
   if (typeof config.bridge?.host !== 'string' || !config.bridge.publicUrl?.includes('{port}')) throw invalid('Bridge host and publicUrl with {port} are required');
   httpUrl(config.bridge.publicUrl.replaceAll('{port}', '12345'), 'bridge.publicUrl');
   if (typeof config.modelGateway?.host !== 'string' || typeof config.modelGateway.advertiseHost !== 'string') throw invalid('Model gateway host and advertiseHost are required');
-  const outputPolicy = config.modelGateway.maxOutputTokens;
+  const outputPolicy = config.modelGateway.maxOutputTokens === undefined
+    ? driver.defaultMaxOutputTokens : config.modelGateway.maxOutputTokens;
   if (outputPolicy !== undefined && outputPolicy !== null && (!Number.isSafeInteger(outputPolicy) || outputPolicy < 16)) {
     throw invalid('modelGateway.maxOutputTokens must be null or a safe integer of at least 16');
   }
@@ -204,18 +209,27 @@ export function createPiOpenSandboxBackend(config: PiOpenSandboxBackendConfig): 
     if (!model.upstream.headers || typeof model.upstream.headers !== 'object') throw invalid('Model upstream headers are required');
   }
   const handle = Object.freeze({}) as Backend;
-  handles.set(handle, { config: freeze(structuredClone(config)), claimed: false });
+  const { executor, ...settings } = config;
+  const snapshot = freeze(structuredClone({ ...settings, modelGateway: { ...settings.modelGateway, maxOutputTokens: outputPolicy } }));
+  handles.set(handle, { config: Object.freeze({ ...snapshot, driver }), claimed: false });
   return handle;
 }
 
-export function claimPiOpenSandboxBackend(handle: Backend) {
+export function getOpenSandboxBackendCapabilities(handle: Backend) {
   const entry = handles.get(handle);
-  if (!entry || entry.claimed) throw invalid('A fresh Pi/OpenSandbox backend handle is required');
+  if (!entry) throw invalid('An OpenSandbox backend handle is required');
+  return entry.config.driver.capabilities;
+}
+
+export function claimOpenSandboxBackend(handle: Backend) {
+  const entry = handles.get(handle);
+  if (!entry || entry.claimed) throw invalid('A fresh OpenSandbox backend handle is required');
   entry.claimed = true;
   return entry.config;
 }
 
-export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfig, { runtimeId, bridge, modelAccess, registerPrivateValues = () => {} }: BackendOptions) {
+export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, { runtimeId, bridge, modelAccess, registerPrivateValues = () => {} }: BackendOptions) {
+  const { driver } = config;
   const agents = new Map<string, BackendAgent>();
   const workspaces = new Map<string, WorkspaceOwners>();
   let closing = false;
@@ -253,7 +267,7 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
       }
       if (record.type === 'worker_exit') {
         agent.exited = true;
-        agent.onEvent({ type: 'exit', reason: `Pi exited (${record.code ?? record.signal ?? 'unknown'})`, expected: agent.stopping });
+        agent.onEvent({ type: 'exit', reason: `${driver.name} exited (${record.code ?? record.signal ?? 'unknown'})`, expected: agent.stopping });
       }
       if (record.type === 'worker_error') agent.onEvent({ type: 'error', error: { code: 'PROCESS_EXITED', message: record.message, retryable: false }, fatal: true });
     }
@@ -286,6 +300,7 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
   return {
     async spawn({ agentId, profile, options = {} as SpawnOptions, signal, onEvent, onExecutionStart, recordAllocation }: BackendSpawnOptions) {
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
+      if (options.forkFrom !== undefined && !driver.capabilities.contextFork) throw Object.assign(new Error('Backend does not support Context Fork'), { code: 'NOT_ALLOWED' });
       let forkSession;
       if (options.forkFrom !== undefined) {
         const source = agents.get(options.forkFrom);
@@ -329,16 +344,13 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
       const quota = await disk.isolate({ sandboxId: sandbox.sandbox_id, agent: identity });
       if (workspace) await disk.sharedWorkspace('attach', { runtimeId, workspaceId: workspace.id, mode: workspace.mode,
         sandboxId: sandbox.sandbox_id, agent: identity });
-      const versions = await manager.agentVersions({ executionId: agentId });
-      if (versions.piVersion !== '1.3.0') throw invalid('Backend requires Pi 1.3.0');
+      const versions = await manager.agentVersions({ executionId: agentId, executor: driver.kind });
+      if (versions[`${driver.kind}Version`] !== driver.version) throw invalid(`Backend requires ${driver.kind} ${driver.version}`);
       assertOpen();
       const model = config.models[profile.model];
-      await manager.startAgent({ executionId: agentId, command: 'pi',
-        args: ['--mode', 'rpc', '--session-dir', '/workspace/runtime/pi-session',
-          ...(forkSession ? ['--session', '/workspace/runtime/pi-session/fork.jsonl'] : ['--session-id', randomUUID()]),
-          '--tools', 'read,write,edit,bash', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files',
-          '--system-prompt', '/workspace/runtime/profile-prompt.txt', '--provider', model.provider, '--model', model.model],
-        systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt),
+      const startup = await manager.startAgent({ executionId: agentId,
+        ...driver.start({ model, baseUrl: credentials.baseUrl, forkSession: Boolean(forkSession) }),
+        systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt, driver.kind),
         systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
         writable: options.writable ?? profile.writable,
         files: options.files, forkSession, workspace,
@@ -346,12 +358,12 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
         secretEnvironment: { ...(options.secretEnv ?? {}), ...bridgeCredentials.secretEnvironment, ...credentials.secretEnvironment },
         projectQuota: quota, modelCatalogResource: credentials.catalogResource, beforeAgentStart: assertOpen });
       agent.started = true;
-      const ready = await manager.agentRpc(agentId, { type: 'get_state', id: `ready-${randomUUID()}` }, { timeoutMs: 10000 });
-      if (ready.response?.success !== true || ready.response.command !== 'get_state') throw invalid('Pi readiness response was not confirmed');
+      const ready = await manager.agentRpc(agentId, { type: 'get_state', id: `ready-${randomUUID()}` }, { timeoutMs: 10_000, since: 0 });
+      if (ready.response?.success !== true || ready.response.command !== 'get_state') throw invalid('Executor readiness response was not confirmed');
       consume(agent, ready.records ?? []);
       assertOpen();
       agent.polling = poll(agent);
-      return { sandboxId: sandbox.sandbox_id, versions };
+      return { sandboxId: sandbox.sandbox_id, versions, ...(startup?.backend ? { backend: startup.backend } : {}) };
     },
     async snapshotFiles(agentId: string, input: SnapshotOptions) {
       const agent = agents.get(agentId);
@@ -409,7 +421,7 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
           let result;
           try {
             // A prior attempt, including a failed socket, can only be queried.
-            // Never transparently resubmit an uncertain prompt to Pi.
+            // Never transparently resubmit an uncertain prompt to the executor.
             result = await agent.manager.agentRpc(agentId, dispatch
               ? { type: command, id: inputId, message: input,
                 ...(wakeIfIdle ? { streamingBehavior: mode } : { onlyWhileActive: true }),
@@ -418,7 +430,7 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
               : { type: 'get_rpc_result', id: inputId, since: agent.cursor }, { timeoutMs: 30000, since: agent.cursor });
           } catch {
             // Transport status codes also cover Worker-side failures after
-            // writing stdin. Only a correlated Pi response proves rejection.
+            // writing stdin. Only a correlated executor response proves rejection.
             return { status: 'unknown', reason: 'worker-transport' };
           }
           consume(agent, result.records ?? []);
@@ -430,7 +442,7 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
             return submission!.receipt;
           }
           if (result.response?.success !== true) {
-            if (result.response?.success === false) throw Object.assign(new Error(result.response.error ?? 'Pi rejected input'), {
+            if (result.response?.success === false) throw Object.assign(new Error(result.response.error ?? 'Executor rejected input'), {
               code: result.response.code === 'NOT_ALLOWED' ? 'NOT_ALLOWED' : 'INVALID_CONTRACT', inputRejected: true,
             });
             return { status: 'unknown', reason: 'worker-prompt-status-missing' };
@@ -467,7 +479,7 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
       await agent.polling;
       if (stopped && agent.started && !agent.exited) {
         agent.exited = true;
-        agent.onEvent({ type: 'exit', reason: 'Worker confirmed Pi stopped', expected: true });
+        agent.onEvent({ type: 'exit', reason: 'Worker confirmed executor stopped', expected: true });
       }
       return { collectable: stopped };
     },
