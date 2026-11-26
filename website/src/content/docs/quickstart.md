@@ -1,105 +1,63 @@
 ---
 title: Quick Start
-description: Prepare the local sandbox environment, launch your first multi-agent harness, and inspect the recorded run directory.
+description: Prepare the host, initialize an editable Subagents project, and open an interactive session.
 section: GETTING STARTED
 order: 1
 ---
 
-## What you need before starting
+## 1. Prepare the host
 
-In `murm`, every **Agent** runs inside an isolated Docker container (**Sandbox**) so concurrent edits and shell commands never interfere with each other or the host machine. Before running a harness, prepare two things:
-
-1. **Sandbox runtime**: A local OpenSandbox instance (Docker provider) and a single **standard sandbox image** bundling `Pi 1.3.0`, the `swarm` CLI, and the lightweight Worker supervisor. Build it once; every Harness reuses the same image.
-2. **Model endpoint**: Any `/v1/responses`-compatible model endpoint (built-in example configs use `kimi_proxy/k3`). API keys stay strictly on the host and never enter a container.
-
-## 1. Clone and build
-
-Make sure **Node.js `>= 22.19.0`** and Docker are installed, then build the repository:
+Use Node.js 22.19 or newer and npm on the same Linux host as rootful Docker Engine. The host needs Landlock ABI 5 or newer and noninteractive permission for the namespace, nftables and workspace mount operations. The setup command checks these capabilities before packaging or building. [Host requirements and diagnosis](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/07-run-configuration.md#local-setup-and-doctor)
 
 ```bash
 git clone https://github.com/LuNa-shi/murm.git
 cd murm
-npm ci
-npm run build
+./scripts/setup
 ```
 
-Build the standard sandbox image once:
+Setup installs locked checkout dependencies, reuses a compatible Worker image or builds one, and reuses or starts the local OpenSandbox service. It verifies a real Sandbox, an Agent Service call, a controlled local Responses round trip, file write and read, artifact export and Sandbox deletion. The first run may need to download images and dependencies. If you already have the installed binary on your PATH, run `murm setup`. Use `murm doctor` to recheck the host.
+
+## 2. Initialize a project
 
 ```bash
-docker build -f services/opensandbox-agent/Dockerfile -t murm-worker:local .
+node dist/scripts/murm.js init --template subagents --dir ../my-murm
+cd ../my-murm
 ```
 
-Start a local OpenSandbox daemon with the repository’s project-limit support (default endpoint `http://127.0.0.1:8080/v1`). Follow the [OpenSandbox host setup](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/docs/architecture/16-pi-opensandbox-backend.md).
+With `murm` on your PATH, use `murm init --template subagents --dir ./my-murm`. The `--dir` argument selects where to create the project. Each project has editable `main.js`, `config.js` and `.env` files and its own installed Core package. Repeating init preserves project edits.
 
-## 2. Run your first multi-agent harness: interactive Subagents
+## 3. Configure a model and open the session
 
-Start with **[Subagents](../harnesses/subagents/)**. You give a high-level goal to `/root`, and `/root` breaks the task down, spawns named child agents in parallel, exchanges messages, and integrates the results.
+In the generated `.env`, set `MURM_SUBAGENTS_MODEL_URL` to a streaming `/v1/responses` endpoint that accepts `k3` and supports tool calls. Set `MURM_SUBAGENTS_MODEL_TOKEN` if the endpoint requires a bearer token. The token stays on the host.
 
 ```bash
-worker_image=$(docker image inspect murm-worker:local --format '{{.Id}}')
-export MURM_SUBAGENTS_IMAGE="$worker_image"
-export MURM_SUBAGENTS_MODEL_URL='https://your-model-endpoint/v1/responses'
-export MURM_SUBAGENTS_MODEL_TOKEN='your-bearer-token'
-
-# One-shot task
-node dist/examples/subagents/main.js \
-  dist/examples/subagents/config.js \
-  'Inspect this workspace, split into two independent research subtasks, and synthesize a concrete plan.'
-
-# Interactive session (add follow-ups anytime, /status to inspect team, /exit to close)
-node dist/examples/subagents/main.js \
-  dist/examples/subagents/config.js --interactive
+murm
 ```
 
-If containers reach your host bridge at an IPv4 address other than `172.17.0.1`, set `MURM_SUBAGENTS_ADVERTISE_HOST` to that address.
-
-## 3. Inspect the recorded Run directory
-
-When a run completes, the Runtime persists a private archive under `./subagents-runs/<runtimeId>/`:
-
-- `runtime.json` — effective configuration, stop receipts, and cleanup verification;
-- `evidence.jsonl` — ordered lifecycle, input delivery, and event timeline;
-- `service-calls.jsonl` — every validated Service call with caller identity, inputs, outputs, and latency;
-- `model-trace/<attemptId>/` — raw model requests, streaming responses, and outcomes;
-- `<agentId>/session/` — full native Pi session JSONL archives;
-- `<agentId>/artifacts/files/` — exported files declared by `collect`.
-
-Core redacts registered credentials in traces. Run records can still contain prompt, project, and Session data. Keep the archive private.
-
-## 4. Minimal custom-Service example: Notes
-
-If you want the smallest possible reference before authoring your own Harness (2 agents, 1 in-process Service, zero external servers), run **Notes**:
+If you used the checkout commands, `npm start` resolves the installed project-local binary. Enter a task for Root. Root can start child Agents, assign work, and combine their results. Use `/status` to inspect the team or `/exit` to close the Run. To run a single task, pass it after the config path.
 
 ```bash
-export MURM_NOTES_IMAGE="$worker_image"
-export MURM_NOTES_MODEL_URL='https://your-model-endpoint/v1/responses'
-export MURM_NOTES_MODEL_TOKEN='your-bearer-token'
-
-node dist/examples/notes/main.js \
-  dist/examples/notes/config.js > notes-result.json
+node main.js config.js 'Split this task into two independent subtasks and combine the results.'
 ```
 
-`writer` publishes a finding through the `notes` Service, `reader` fetches and verifies it across two turns in the same persistent session, and the host exports and checks the resulting file. See [examples/notes/main.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/notes/main.ts).
+Run `npm run doctor` from the project to check its configuration. Add `-- --smoke` to repeat the temporary end-to-end infrastructure probe. Project diagnosis reports infrastructure, model configuration and real-model verification separately. The probe uses the local controlled endpoint. [Subagents configuration and controls](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md)
 
-## 5. Use `@murm/core` in your own project
+## 4. Inspect the Run
 
-To import the runtime package outside this repository:
+The generated project writes private records under `subagents-runs/<runtimeId>/`.
 
-```bash
-repo=/absolute/path/to/murm
-mkdir my-murm-harness && cd my-murm-harness
-npm pack "$repo" --pack-destination .
-npm init -y && npm pkg set type=module
-npm install --omit=dev --ignore-scripts ./murm-core-0.2.0.tgz
-```
+- `harness-report.json` records the task result and cleanup receipts.
+- `runtime.json` and `evidence.jsonl` record Runtime state and ordered events.
+- `service-calls.jsonl` and `model-trace/` record Service calls and model requests.
+- Agent directories contain archived Sessions and any files requested for export.
 
-Three public entrypoints are available: `@murm/core`, `@murm/core/services`, and `@murm/core/backends/pi-opensandbox`.
+Run records can include prompts, project contents and Session data. Keep the directory private.
 
 ## Where to go next
 
 | Goal | Read next |
 | --- | --- |
-| Build a crisp mental model of the six core abstractions | [Core Concepts](../concepts/) |
-| Trace how the host, containers, Bridge, and Model Gateway connect | [System Architecture](../architecture/) |
-| Compare five built-in multi-agent harnesses | [Five Topologies Overview](../harnesses/) |
-| Build your own Service and Harness from scratch | [Build Your Own Harness](../build-your-harness/) |
+| Understand what a Harness composes | [Core Concepts](../concepts/) |
+| Trace the Host, Worker, Bridge and Model Gateway | [System Architecture](../architecture/) |
+| Compare Agent coordination patterns | [Five Topologies](../harnesses/) |
+| Implement a custom Service and Harness | [Build Your Own Harness](../build-your-harness/) |

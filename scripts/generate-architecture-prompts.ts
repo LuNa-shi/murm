@@ -7,6 +7,8 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { SETUP_PROFILE_PROMPT, SETUP_FOLLOW_UP } from './local-setup-smoke.js';
+import { SETUP_BASH, SETUP_READ, SETUP_RESULT } from './local-setup-upstream.js';
 import { rootPrompt, childPrompt } from '../examples/subagents/prompts.js';
 import { parentPromptFor, initialGoalFor } from '../test-support/subagents/communication-fixture-prompts.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
@@ -32,6 +34,7 @@ const sourcePaths = [
   'src/agent/services-bridge.ts',
   'src/cli/swarm-cli.ts', 'src/cli/service-command.ts',
   'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
+  'scripts/local-setup-smoke.ts', 'scripts/local-setup-upstream.ts',
   'examples/notes/main.ts', 'src/harnesses/shared/run-input.ts', 'src/harnesses/substrate/index.ts', 'src/harnesses/substrate/substrate.ts',
   'src/harnesses/taskpool/controller.ts', 'src/harnesses/taskpool/harness.ts',
   'examples/substrate/fate-run.ts', 'examples/substrate/fate-service.ts', 'src/harnesses/substrate/paper-substrate.ts',
@@ -147,6 +150,14 @@ for (const path of await listSourceFiles('src')) {
   }
 }
 output('06-tool-return-guidance.md', guidanceDoc);
+output('10-local-setup-probe.md', header('Complete local setup probe texts',
+  'Setup and explicit doctor smoke use one temporary Runtime and the controlled Responses gateway. The probe input follows admitted Worker startup. The two tool calls and final result come from the fixed loopback upstream sequence.')
+  + block('Probe Profile instruction', SETUP_PROFILE_PROMPT)
+  + block('Host follow-up', SETUP_FOLLOW_UP)
+  + block('Controlled Bash arguments', JSON.stringify({ command: SETUP_BASH, timeout: 10 }, null, 2))
+  + block('Controlled read arguments', JSON.stringify({ path: SETUP_READ }, null, 2))
+  + block('Controlled final text', SETUP_RESULT));
+
 const notesPath = 'examples/notes/main.ts';
 const notesKey = between(notesPath, "const key = '", "';\n");
 const notesInput = evaluate(between(notesPath, 'const inputText = Object.freeze(', ');\n'), { key: notesKey });

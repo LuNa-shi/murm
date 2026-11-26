@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+if ! command -v node >/dev/null 2>&1 || ! node -e '
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  process.exit(major > 22 || (major === 22 && minor >= 19) ? 0 : 1);
+'; then
+  printf '%s\n' '{"command":"setup","ok":false,"checks":[{"id":"node","ok":false,"detail":"Node.js 22.19.0 or newer is required.","remedy":"Install a supported Node.js version and rerun setup."}]}' >&2
+  exit 1
+fi
+
+exec node --disable-warning=ExperimentalWarning "$root/scripts/setup-bootstrap.ts" "$@"

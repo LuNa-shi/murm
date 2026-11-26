@@ -3,25 +3,8 @@ import { once } from 'node:events';
 
 export const SMOKE_MARKER = 'CORE_TOOL_EFFECT_CONFIRMED';
 
-function event(type, fields) {
-  return `event: ${type}\ndata: ${JSON.stringify({ type, ...fields })}\n\n`;
-}
-
-export function streamResponse(model, number, item) {
-  const response = { id: `resp_core_${number}`, object: 'response', status: 'completed', model,
-    output: [item], usage: { input_tokens: 20, output_tokens: 20, total_tokens: 40 } };
-  let result = event('response.created', { response: { ...response, status: 'in_progress', output: [] } });
-  result += event('response.output_item.added', { output_index: 0, item: item.type === 'function_call' ? { ...item, arguments: '' } : { ...item, content: [] } });
-  if (item.type === 'function_call') {
-    result += event('response.function_call_arguments.delta', { item_id: item.id, output_index: 0, delta: item.arguments });
-    result += event('response.function_call_arguments.done', { item_id: item.id, output_index: 0, arguments: item.arguments });
-  } else {
-    result += event('response.output_text.delta', { item_id: item.id, output_index: 0, content_index: 0, delta: item.content[0].text });
-  }
-  result += event('response.output_item.done', { output_index: 0, item });
-  result += event('response.completed', { response });
-  return result;
-}
+import { streamResponse } from '../../scripts/local-setup-upstream.js';
+export { streamResponse } from '../../scripts/local-setup-upstream.js';
 
 export async function createControlledUpstream({ model = 'k3', listServices = false } = {}) {
   const requests = [];
