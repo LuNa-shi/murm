@@ -122,8 +122,10 @@ export function deployDynamicContainer(image: string, { verify }: {
       await rm(directory, { recursive: true, force: true });
     } });
     try {
+      const entry = join(directory, 'service.mjs');
+      await writeFile(entry, source, { flag: 'wx', mode: 0o600 });
+      await chmod(entry, 0o444);
       await chmod(directory, 0o755);
-      await writeFile(join(directory, 'service.mjs'), source, { mode: 0o444 });
       await sandbox.create(['service.mjs'], signal);
       await requireDocker(['container', 'start', sandbox.name], { signal });
       const fetchImpl: typeof fetch = async (input, init) => {

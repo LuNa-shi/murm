@@ -39,7 +39,7 @@ config.dynamic = {
 };
 ```
 
-Dynamic mode uses one Lead, two original Workers and a runtime-created checker in the same Board and Git project. The Lead can deploy its own checking program, register the checker Profile, admit the member, and grant or revoke the checking operation on an existing Worker. The final program is evaluated from the Lead's pinned Git commit in fresh containers. The installed package includes the dynamic entry point, task, starter and independent oracle.
+Dynamic mode uses one Lead, two original Workers and a runtime-created checker in the same Board and Git project. The Lead can deploy its own checking program, register the checker Profile, admit the member, and grant or revoke the checking operation on an existing Worker. Assigned Workers can read `spec.md` and `sample.jsonl` from the initial Git project. The final program is evaluated from the Lead's pinned Git commit in fresh containers. The installed package includes the dynamic entry point, task, starter and independent oracle.
 
 After a successful Run, execute the offline verifier from that package using its saved report and candidate bundle.
 

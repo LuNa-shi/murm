@@ -61,28 +61,35 @@ export async function withOrdersCandidate<T>(files: Candidate, image: string, ru
   if (!Object.hasOwn(files, 'orders.mjs') || Object.keys(files).length > 64) throw new Error('Invalid frozen candidate');
   const directory = await mkdtemp(join(tmpdir(), 'murm-candidate-'));
   try {
-    await chmod(directory, 0o755);
     const work = join(directory, 'project');
-    await mkdir(work, { mode: 0o755 });
+    await mkdir(work, { mode: 0o700 });
+    const directories = new Set([work]);
     for (const [path, encoded] of Object.entries(files)) {
       if (!safePath(path) || path.length > 160 || typeof encoded !== 'string') throw new Error('Invalid frozen candidate path');
       const target = join(work, path);
       const bytes = Buffer.from(encoded, 'base64');
       projectBytes += bytes.length;
       if (projectBytes > 1024 ** 2 || bytes.toString('base64') !== encoded) throw new Error('Invalid frozen candidate bytes');
-      await mkdir(dirname(target), { recursive: true, mode: 0o755 });
-      await writeFile(target, bytes, { flag: 'wx', mode: 0o444 });
+      await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+      await writeFile(target, bytes, { flag: 'wx', mode: 0o600 });
+      await chmod(target, 0o444);
+      for (let parent = dirname(target); !directories.has(parent); parent = dirname(parent)) directories.add(parent);
     }
+    for (const path of directories) await chmod(path, 0o755);
+    await chmod(directory, 0o755);
     const testInput = join(directory, 'case.jsonl');
     let cleanupFailure: unknown;
     const verdict = await run(async ({ stdin, file, args = [] }) => {
       signal?.throwIfAborted();
       if (cleanupFailure) throw cleanupFailure;
       const fileArgs = file === undefined ? args.map(value => `/tmp/${value}`) : ['/case.jsonl'];
-      if (file !== undefined) await writeFile(testInput, file, { flag: 'wx', mode: 0o444 });
       const container = isolatedContainer(image, work, file === undefined ? undefined : testInput);
       resources?.own({ kind: 'orders-verification-container', id: container.name, close: container.close });
       try {
+        if (file !== undefined) {
+          await writeFile(testInput, file, { flag: 'wx', mode: 0o600 });
+          await chmod(testInput, 0o444);
+        }
         await container.create(['orders.mjs', ...fileArgs], signal);
         return await docker(['container', 'start', '-a', '-i', container.name], {
           signal, input: stdin, outputLimit: 512 * 1024,
@@ -118,7 +125,7 @@ export async function dynamicOrders({ variant, serviceImage, candidatePath }: {
     readFile(new URL('spec.md', fixtures), 'utf8'), readFile(new URL('initial-project/orders.mjs', fixtures), 'utf8'),
   ]);
   return {
-    initialFiles: { 'orders.mjs': stub },
+    initialFiles: { 'orders.mjs': stub, 'spec.md': spec, 'sample.jsonl': publicInputs[variant] },
     goal: `${spec}\nPublic sample ${variant}. Use its exact data during the Run.\n\`\`\`jsonl\n${publicInputs[variant]}\n\`\`\``,
     deploy: deployDynamicContainer(serviceImage, {
       async verify(invoke) {

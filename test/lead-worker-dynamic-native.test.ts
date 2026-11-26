@@ -18,7 +18,9 @@ const execute = promisify(execFile);
 test('dynamic Lead-Worker runs via the installed package with native Pi, Gitea and an isolated checking Service', {
   skip: process.env.MURM_LEAD_WORKER_DYNAMIC_NATIVE_TEST !== '1',
   timeout: 650_000,
-}, async () => {
+}, async t => {
+  const previousUmask = process.umask(0o077);
+  t.after(() => { process.umask(previousUmask); });
   const image = process.env.MURM_CORE_TEST_IMAGE;
   const serviceImage = process.env.MURM_LEAD_WORKER_SERVICE_IMAGE;
   assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);

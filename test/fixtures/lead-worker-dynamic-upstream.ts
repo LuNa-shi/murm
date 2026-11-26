@@ -54,6 +54,7 @@ def accept(row):
  git('cherry-pick',row['delivery']['commit'])
 if not (root/'.git').exists():
  git('init','.');git('remote','add','origin',os.environ['RUN_REPOSITORY']);git('fetch','origin','main');git('checkout','-b',branch,'origin/main')
+ assert (root/'spec.md').stat().st_size>0 and (root/'sample.jsonl').stat().st_size>0
 state=board('read')
 agent=state['team'][role]
 valid='{"id":"a","currency":"USD","amount_cents":100}\\n'
@@ -97,7 +98,7 @@ elif role=='lead':
  feedback=next((row for row in state['notes'] if row['actor']==state['team'].get('checker')),None)
  if feedback and not any(row['id']=='adopt' for row in state['subtasks']):
   board('announce',{'text':'Fix the indexing bug demonstrated by the checker feedback.','feedback_ids':[feedback['seq']]})
-  add_task('adopt','line-index.mjs',state['team']['helper1'],'Keep original indexes including blank lines')
+  add_task('adopt','lib/line-index.mjs',state['team']['helper1'],'Keep original indexes including blank lines')
  elif feedback and completed(['adopt']):
   state=board('read')
   if all(row['state']=='complete' for row in state['subtasks']):
@@ -141,11 +142,12 @@ else:
   feedback='Preserve original line positions across blank lines. The candidate reports 2/3, and the checker reports 3/4.'
   def transcript(execution,requestId):
    return {'requestId':requestId,'status':execution.returncode,'stdout':execution.stdout,'stderr':execution.stderr}
-  (root/path).write_text(json.dumps({'candidateCommit':commit,'feedback':feedback,'recommendedPath':'line-index.mjs',
+  (root/path).write_text(json.dumps({'candidateCommit':commit,'feedback':feedback,'recommendedPath':'lib/line-index.mjs',
     'valid':transcript(good_execution,'review-valid'),'invalid':transcript(execution,'review-invalid')})+'\\n')
   board('note',{'subtask_id':id,'text':'Candidate '+commit+' '+feedback})
  elif id=='adopt':
-  (root/'orders-lib.mjs').write_text("import { lineIndex } from './line-index.mjs';\\n"+files['corrected'].replace('(index, valid, errors) => index + 1','lineIndex'))
+  (root/'orders-lib.mjs').write_text("import { lineIndex } from './lib/line-index.mjs';\\n"+files['corrected'].replace('(index, valid, errors) => index + 1','lineIndex'))
+  (root/path).parent.mkdir(exist_ok=True)
   (root/path).write_text('export const lineIndex = index => index + 1;\\n')
   git('add','orders-lib.mjs')
  publish([path],id)

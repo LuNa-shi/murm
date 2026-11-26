@@ -155,7 +155,7 @@
     },
     {
       "path": "src/harnesses/lead-worker/prompts.ts",
-      "sha256": "7824600610c5da8fdde086e29de272217f950feb6b7959669905e0ba9453efd3"
+      "sha256": "33ce6b72c69aa173d00d230ad2766ea78d968bed615ce782ee37c1d090a211a3"
     },
     {
       "path": "src/harnesses/lead-worker/index.ts",
@@ -171,7 +171,7 @@
     },
     {
       "path": "examples/lead-worker/dynamic-orders.ts",
-      "sha256": "a56c8750544bf340ca3f252e16d69163be5add5535715146db1971d0ee29bcde"
+      "sha256": "7ac538fa430b128f3daf3ac7952576b5ebf12c7ae582b3012a73b8c5e9b1e9cd"
     },
     {
       "path": "src/runtime/runtime.ts",
@@ -481,13 +481,13 @@
       "path": "src/harnesses/lead-worker/prompts.ts",
       "anchor": "export const dynamicLeadPrompt = `",
       "line": 8,
-      "sha256": "16d0ee56ed941436acf42cdccc7bdc646b7cf59ab7ced0f2113c302ca9ef163c"
+      "sha256": "15829c253a221559209ac08008a856300b9f67cf46227ebed8d4a21d17a2d414"
     },
     {
       "path": "src/harnesses/lead-worker/prompts.ts",
       "anchor": "export const dynamicWorkerPrompt = `",
       "line": 16,
-      "sha256": "49be3fe912fa68ffb7983d1dae793237ec6a5506344047f6f0efb36d055b2435"
+      "sha256": "af2a04ea3134fbff632e90aa316dad0f056758e47bc7e9d608ddcd0ccdbc0e95"
     },
     {
       "path": "src/harnesses/lead-worker/index.ts",
@@ -687,7 +687,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-lead-worker-harness.md",
-      "sha256": "1dbfa2c42c77a432d32602ad6262b149f8afefbc6fd985ea95f156f2ae7db625"
+      "sha256": "fce1a4fe84b4cd81c19afe930a829f4b061eaee1237a7cfecf7c2cceeb13298d"
     },
     {
       "path": "docs/architecture/prompts/08-taskpool-harness.md",
