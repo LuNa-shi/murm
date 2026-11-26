@@ -88,3 +88,5 @@ Every corrective input uses the original absolute cutoff and shared abort signal
 ## Dynamic mode acceptance fixture
 
 The [Phase 0005 extension](../phases/0005-core-harness/06-lead-worker-dynamic.md) specifies the target dynamic mode. Its [host-side oracle](../../examples/lead-worker/fixtures/oracle.mjs) has two frozen public inputs and nine transcript checks. A caller supplies an execution callback that receives stdin, file contents, or explicit arguments for each case. The oracle checks the exit status and parses the captured streams against independently specified objects. It reports each case and returns failure for a mismatch or execution error. The callback owns commit selection, execution isolation, resource limits, and stream capture. Dynamic runtime wiring and its verification are tracked in #235.
+
+The [initial orders project](../../examples/lead-worker/fixtures/initial-project/orders.mjs) provides the CLI entry point and exits with status 1. The no-key oracle regression runs that initial file and a candidate with an incorrect total in a temporary project, then checks that the oracle rejects both.
