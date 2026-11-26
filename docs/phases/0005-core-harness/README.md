@@ -63,6 +63,10 @@ TaskPool 现有宿主注入 `snapshotProject` 和已支持的公共 Workspace、
 
 [#225](https://github.com/LuNa-shi/SwarmEnv/issues/225) 沿用首版的 Runtime、Service、Sandbox 和验收合同，扩展同一 OpenSandbox 组合中的内层执行者。一次 Runtime 通过 `createOpenSandboxBackend` 的 `executor` 配置选用 Pi 或 Codex。现有 Pi 工厂保留为兼容入口。Harness 在 Runtime 装配前可从同一 Backend 句柄读取能力。Codex 范围包括持久 thread、输入与中断、受控模型网关、原生 Session 导出，以及 Notes 和一个现有 Harness 的安装后验证。跨 Sandbox Context Fork、Claude Code 与混用执行者留待后续。Q1 记录首版 Pi-only 范围。扩展的实施细节和证据分别维护在 [Architecture](../../architecture/16-pi-opensandbox-backend.md) 与 #225 的 PR。
 
+## 后续扩展 · 公共 SDK
+
+[#237](https://github.com/LuNa-shi/murm/issues/237) 补齐同一个 `@murm/core` 包的公共开发路径。开发者用公开入口定义 Service 和 Harness、运行和观察 Agent、验证产物并处理收尾。[外部应用的合同和验收](03-delivery-and-validation.md#公共-sdk-的外部应用验收)规定本轮的交付范围。串行等待仍是 Harness 内部工具，部署接入沿用 [#236](https://github.com/LuNa-shi/murm/issues/236) 的单一实现。
+
 ## 文档迁移与版本来源
 
 | 来源 | 源修订时间 | 入库处理 |
