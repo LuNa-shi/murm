@@ -118,3 +118,37 @@ test('installed CLI serves read-only Run evidence and resumes a live stream', { 
   assert.ok(resumedPage.events.every((event) => event.id !== live.events[0].id));
   await resumedBody.cancel();
 });
+
+test('command helpers support positional root, SSH forwarding hint, validation and rebuilt assets', async (t) => {
+  const { formatSshHint, runTraceCommand } = await import('./command.mjs');
+  assert.equal(formatSshHint(8787, {}), null);
+  const hint = formatSshHint(9090, {
+    SSH_CONNECTION: '10.0.0.2 51234 192.168.1.50 22',
+    USER: 'alice',
+  });
+  assert.match(hint, /ssh -N -L 9090:127\.0\.0\.1:9090 alice@192\.168\.1\.50/);
+
+  const root = fileURLToPath(new URL('../test/fixtures/trace-viewer/runs', import.meta.url));
+  const viewer = await runTraceCommand([root, '--port', '0']);
+  t.after(() => viewer.close());
+  assert.match(viewer.url, /^http:\/\/127\.0\.0\.1:\d+$/);
+
+  const port = new URL(viewer.url).port;
+  await assert.rejects(
+    runTraceCommand([root, '--port', port]),
+    /already in use on 127\.0\.0\.1/,
+  );
+
+  const [html, js, css] = await Promise.all([
+    fetch(viewer.url + '/'),
+    fetch(viewer.url + '/app.js'),
+    fetch(viewer.url + '/style.css'),
+  ]);
+  assert.equal(html.status, 200);
+  assert.equal(js.status, 200);
+  assert.equal(css.status, 200);
+  assert.match(html.headers.get('content-security-policy'), /default-src 'none'/);
+  const markup = await html.text();
+  assert.match(markup, /minimap-wrap/);
+  assert.match(markup, /ins-mode-struct/);
+});
