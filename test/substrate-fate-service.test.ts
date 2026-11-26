@@ -53,13 +53,21 @@ test('verified completion requires that the submitting peer passed Lean on the e
   const directory = await mkdtemp(join(tmpdir(), 'fate-verified-completion-'));
   const services = new ServiceRegistry(), finished = [];
   const passing = 'by simp';
+  let releaseCheck!: () => void;
+  let noteCheckStarted!: () => void;
+  const checkStarted = new Promise<void>(resolve => { noteCheckStarted = resolve; });
+  const allowCheck = new Promise<void>(resolve => { releaseCheck = resolve; });
   const task = createFateTaskService({
     path: join(directory, 'submissions.sqlite'), services, verifiedCompletion: true,
     authorize() {}, countOperation() {}, remainingMs: () => 20_000,
     signal: new AbortController().signal, problemAddress: 'fate:1', search: async () => [],
-    check: async proof => ({
-      status: proof === passing ? 'passed' : 'rejected', code: 'CONTROLLED', elapsedMs: 0,
-    }),
+    check: async proof => {
+      if (proof === passing) {
+        noteCheckStarted();
+        await allowCheck;
+      }
+      return { status: proof === passing ? 'passed' : 'rejected', code: 'CONTROLLED', elapsedMs: 0 };
+    },
     validateReferences() {},
     onFinish: id => finished.push(id),
   });
@@ -75,7 +83,16 @@ test('verified completion requires that the submitting peer passed Lean on the e
   await assert.rejects(finish('a', draft.proof, 'failed-finish'), denied);
   assert.deepEqual(finished, []);
   assert.equal(task.snapshot().candidates[0].finish, false);
-  assert.equal((await call('a', 'check_lean', { proof: passing }, 'passed-check')).status, 'passed');
+  const checking = call('a', 'check_lean', { proof: passing }, 'passed-check');
+  await checkStarted;
+  assert.deepEqual(task.completionStatus('a'), { remainingChecks: 8, hasPassingProof: false, checkPending: true });
+  assert.deepEqual(task.completionStatus('b'), { remainingChecks: 10, hasPassingProof: false, checkPending: false });
+  const replay = call('a', 'check_lean', { proof: passing }, 'passed-check');
+  releaseCheck();
+  await task.settleChecks('a');
+  assert.equal((await checking).status, 'passed');
+  assert.deepEqual(await replay, await checking);
+  assert.deepEqual(task.completionStatus('a'), { remainingChecks: 8, hasPassingProof: true, checkPending: false });
   await assert.rejects(finish('a', `${passing}\n`, 'changed-proof'), denied);
   await assert.rejects(finish('b', passing, 'another-peer'), denied);
   const receipt = await finish('a', passing, 'verified-finish');

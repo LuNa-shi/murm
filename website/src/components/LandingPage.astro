@@ -1,0 +1,207 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import MurmLogo from './MurmLogo.astro';
+import MurmurationCanvas from './MurmurationCanvas.astro';
+import PillarSchematics from './PillarSchematics.astro';
+import NoRebuildGrid from './NoRebuildGrid.astro';
+import CoreModelBlueprint from './CoreModelBlueprint.astro';
+import HarnessShowcase from './HarnessShowcase.astro';
+import DomainStrip from './DomainStrip.astro';
+import { UI, alternateHref, docHref, type Lang } from '../lib/i18n';
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = 'en' } = Astro.props;
+const isZh = lang === 'zh';
+const t = UI[lang];
+const otherLang: Lang = isZh ? 'en' : 'zh';
+const switchHref = alternateHref(lang);
+
+const copy = isZh
+  ? {
+      pageTitle: 'murm · 构建你自己的多智能体 Harness',
+      pageDesc: '一个用于构建多智能体 Harness 的精简 Runtime，提供隔离沙箱、可定制共享 Services 与完整运行追踪。',
+      docsLink: '文档',
+      flockAria: '切换鸟群动画',
+      flockTitle: '暂停 / 恢复鸟群动画',
+      heroPrefix: '构建你自己的 ',
+      heroCircled: '多智能体 Harness',
+      ctaPrimary: '快速开始 →',
+      ctaDocs: '阅读文档',
+      handNote: '一个 Runtime，自由切换任意协作拓扑！',
+      scrollCue: '向下探索',
+      m2Eyebrow: '02 · 心智模型',
+      m2Title: '一个集群如何在 murm 上运行',
+      m2DescPre: '你只需编写 ',
+      m2DescHighlight: 'Harness',
+      m2DescPost: '（控制循环与规则），由它调度 Runtime 沙盘中的多个隔离沙箱；Agent 通过外部 Gateway 访问共享 Services，同时所有运行轨迹实时流入 Trace 显示器。',
+      m2Link: '深入阅读心智模型 →',
+      m3Eyebrow: '03 · 一个 RUNTIME，五种 HARNESS',
+      m3Title: '同一底座，驱动五种协作拓扑',
+      m3DescPre: '点击任意卡片切换实时执行泳道，或点击图例 ',
+      m3DescHighlight: '放大查看',
+      m3DescPost: '。五种拓扑共用同一套 Runtime，零引擎修改。',
+      m3Link: '对比全部五种拓扑 →',
+      footerQuickstart: '快速上手',
+      footerBuild: '构建 Harness',
+      footerApi: 'API 参考',
+    }
+  : {
+      pageTitle: 'murm · Build your own multi-agent harness',
+      pageDesc: 'A minimal runtime for building multi-agent harnesses with composable coordination services.',
+      docsLink: 'Docs',
+      flockAria: 'Toggle flock animation',
+      flockTitle: 'Pause flock',
+      heroPrefix: 'Build your own ',
+      heroCircled: 'multi-agent harness',
+      ctaPrimary: 'Get Started →',
+      ctaDocs: 'Read the Docs',
+      handNote: 'one runtime, swap any coordination topology!',
+      scrollCue: 'SCROLL',
+      m2Eyebrow: '02 · MENTAL MODEL',
+      m2Title: 'How a swarm runs on murm',
+      m2DescPre: 'You write a ',
+      m2DescHighlight: 'Harness',
+      m2DescPost: ' (control loop & rules). It steers a Runtime arena of isolated Sandboxes, where Agents share Services through an external Gateway while every Run streams to a Trace monitor.',
+      m2Link: 'Read concepts →',
+      m3Eyebrow: '03 · ONE RUNTIME, FIVE HARNESSES',
+      m3Title: 'Five coordination topologies on one core',
+      m3DescPre: 'Select any card to switch the live execution flow, or click the diagram to ',
+      m3DescHighlight: 'zoom in',
+      m3DescPost: '. Zero Runtime edits across all five.',
+      m3Link: 'Compare all five →',
+      footerQuickstart: 'Quickstart',
+      footerBuild: 'Build a Harness',
+      footerApi: 'API Reference',
+    };
+---
+
+<BaseLayout
+  title={copy.pageTitle}
+  description={copy.pageDesc}
+  showTopNav={false}
+  paperGrid={true}
+  lang={lang}
+>
+  <MurmurationCanvas />
+
+  <main class="landing-shell">
+    <div class="landing-corner" aria-label="Quick links">
+      <a class="corner-link" href={docHref(lang, 'overview')}>{copy.docsLink}</a>
+      <span class="corner-sep" aria-hidden="true">/</span>
+      <a class="corner-link" href="https://github.com/LuNa-shi/murm" target="_blank" rel="noreferrer">GitHub</a>
+      <a
+        class="corner-lang-btn"
+        href={switchHref}
+        data-lang-switch={otherLang}
+        aria-label={t.switchAria}
+        title={t.switchAria}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+        </svg>
+        <span>{t.switchLabel}</span>
+      </a>
+      <button type="button" class="corner-icon-btn" data-murm-toggle aria-label={copy.flockAria} title={copy.flockTitle}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 14c3-4 6-4 9 0 3-4 6-4 9 0" />
+          <path d="M6 9c2-2.5 4-2.5 6 0 2-2.5 4-2.5 6 0" opacity="0.6" />
+        </svg>
+      </button>
+      <button type="button" class="corner-icon-btn" data-theme-toggle aria-label={t.themeAria} title={t.themeTitle}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Chapter 0: Full-Viewport Hero Stage -->
+    <section class="hero hero-stage">
+      <div class="hero-core">
+        <div class="hero-mark">
+          <MurmLogo variant="hero" />
+        </div>
+        <p class="hero-brand">murm</p>
+        <h1 class="hero-title">
+          {copy.heroPrefix}<span class="circled-word">{copy.heroCircled}<svg viewBox="0 0 420 112" preserveAspectRatio="none" aria-hidden="true"><path d="M 402 25 C 338 4, 80 4, 18 34 C 1 54, 18 96, 152 104 C 296 111, 408 92, 414 56 C 418 32, 366 14, 290 13" /></svg></span>
+        </h1>
+
+        <div class="hero-cta-wrap">
+          <div class="hero-cta">
+            <a class="btn btn-tactile" href={docHref(lang, 'quickstart')}>{copy.ctaPrimary}</a>
+            <a class="btn btn-outline" href={docHref(lang, 'overview')}>{copy.ctaDocs}</a>
+            <a class="btn btn-outline" href="https://github.com/LuNa-shi/murm" target="_blank" rel="noreferrer">GitHub</a>
+          </div>
+          <span class="hero-hand-note" aria-hidden="true">{copy.handNote}</span>
+        </div>
+
+        <PillarSchematics lang={lang} />
+      </div>
+
+      <a class="scroll-cue" href="#why-murm" aria-label={copy.scrollCue}>
+        <span>{copy.scrollCue}</span>
+        <span class="scroll-cue-arrow" aria-hidden="true">↓</span>
+      </a>
+    </section>
+
+    <!-- Chapter 1: 01 · WHY MURM -->
+    <div id="why-murm">
+      <NoRebuildGrid lang={lang} />
+    </div>
+
+    <!-- Chapter 2: 02 · MENTAL MODEL (Tactical Sandtable) -->
+    <section class="chapter landing-section">
+      <div class="chapter-rule" data-reveal-line aria-hidden="true"></div>
+      <div class="section-header" data-reveal style="--reveal-delay: 40ms">
+        <div>
+          <p class="section-eyebrow">{copy.m2Eyebrow}</p>
+          <h2 class="section-title">{copy.m2Title}</h2>
+          <p class="section-desc">
+            {copy.m2DescPre}<span class="marker-highlight">{copy.m2DescHighlight}</span>{copy.m2DescPost}
+          </p>
+        </div>
+        <a class="section-link" href={docHref(lang, 'concepts')}>{copy.m2Link}</a>
+      </div>
+
+      <div data-reveal style="--reveal-delay: 140ms">
+        <CoreModelBlueprint lang={lang} />
+      </div>
+    </section>
+
+    <!-- Chapter 3: 03 · ONE RUNTIME, FIVE HARNESSES -->
+    <section class="chapter landing-section">
+      <div class="chapter-rule" data-reveal-line aria-hidden="true"></div>
+      <div class="section-header" data-reveal style="--reveal-delay: 40ms">
+        <div>
+          <p class="section-eyebrow">{copy.m3Eyebrow}</p>
+          <h2 class="section-title">{copy.m3Title}</h2>
+          <p class="section-desc">
+            {copy.m3DescPre}<span class="marker-highlight">{copy.m3DescHighlight}</span>{copy.m3DescPost}
+          </p>
+        </div>
+        <a class="section-link" href={docHref(lang, 'harnesses')}>{copy.m3Link}</a>
+      </div>
+
+      <div data-reveal style="--reveal-delay: 140ms">
+        <HarnessShowcase lang={lang} />
+      </div>
+    </section>
+
+    <!-- Chapter 4: 04 · ONE UNIFORM PLATFORM -->
+    <DomainStrip lang={lang} />
+
+    <footer class="landing-footer" data-reveal>
+      <span class="footer-brand">MURM · <code>@murm/core</code> 0.2.0 (<code>f98eb71d</code>)</span>
+      <div class="footer-links">
+        <a href={docHref(lang, 'quickstart')}>{copy.footerQuickstart}</a>
+        <a href={docHref(lang, 'build-your-harness')}>{copy.footerBuild}</a>
+        <a href={docHref(lang, 'reference/api')}>{copy.footerApi}</a>
+        <a href="https://github.com/LuNa-shi/murm" target="_blank" rel="noreferrer">GitHub</a>
+      </div>
+    </footer>
+  </main>
+</BaseLayout>

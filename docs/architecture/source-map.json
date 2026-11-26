@@ -381,6 +381,23 @@
       "role": "Sandbox-resident Pi worker and authenticated RPC, file collection and lifecycle HTTP surface"
     },
     {
+      "path": "scripts/codex-app-server-driver.ts",
+      "category": "guest execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Codex App Server thread, turn, event, steering and interruption protocol"
+    },
+    {
+      "path": "scripts/rpc-submissions.ts",
+      "category": "guest execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Authenticated Worker command replay and receipt ledger"
+    },
+    {
       "path": "scripts/project-install.ts",
       "category": "runtime and execution",
       "chapters": [
@@ -1266,12 +1283,30 @@
       "role": "Runtime-scoped model gateway lifecycle, credentials and policy"
     },
     {
-      "path": "src/core/pi-opensandbox-backend.ts",
-      "category": "programmable Core",
+      "path": "src/core/opensandbox-backend.ts",
+      "category": "Core runtime",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Shared OpenSandbox lifecycle, session control, input polling and cleanup"
+    },
+    {
+      "path": "src/core/worker-event-poll.ts",
+      "category": "Core runtime",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Core backend lifecycle, Worker transport and confirmed cleanup"
+      "role": "Interruptible bounded polling schedule for a single Worker"
+    },
+    {
+      "path": "src/core/executor-driver.ts",
+      "category": "Core runtime",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Executor startup, version, configuration checks and capability contract"
     },
     {
       "path": "src/core/backends/pi-opensandbox.ts",
@@ -1280,6 +1315,15 @@
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Public opaque Pi/OpenSandbox backend factory export"
+    },
+    {
+      "path": "src/core/backends/opensandbox.ts",
+      "category": "Core API",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Public configuration-based selection of the OpenSandbox execution driver"
     },
     {
       "path": "src/agent/model-catalog.ts",
@@ -1295,7 +1339,7 @@
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Worker lifetime Pi RPC submission identities, shared in-flight waits and receipt-only queries"
+      "role": "Compatibility export of the shared Worker receipt ledger"
     },
     {
       "path": "src/core/input-ledger.ts",
@@ -2123,6 +2167,46 @@
       "role": "Public site icon"
     },
     {
+      "path": "website/public/licenses/caveat.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
+      "path": "website/public/licenses/departure-mono.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
+      "path": "website/public/licenses/inter.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
+      "path": "website/public/licenses/jetbrains-mono.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
+      "path": "website/public/licenses/space-grotesk.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
       "path": "website/src/assets/fonts/DepartureMono-Regular.woff2",
       "category": "public documentation website",
       "chapters": [
@@ -2131,44 +2215,12 @@
       "role": "Locally bundled Departure Mono font asset"
     },
     {
-      "path": "website/src/assets/images/agent-lifecycle.jpg",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Source illustration for the public architecture and Harness guides"
-    },
-    {
-      "path": "website/src/assets/images/architecture-overview.jpg",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Source illustration for the public architecture and Harness guides"
-    },
-    {
-      "path": "website/src/assets/images/five-programs-compare.jpg",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Source illustration for the public architecture and Harness guides"
-    },
-    {
-      "path": "website/src/assets/images/service-bridge-flow.jpg",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Source illustration for the public architecture and Harness guides"
-    },
-    {
       "path": "website/src/components/CoreModelBlueprint.astro",
       "category": "public documentation website",
       "chapters": [
         "docs/architecture/22-website.md"
       ],
-      "role": "Interactive diagram of the six Core concepts"
+      "role": "Interactive Tactical Sandtable mental model diagram"
     },
     {
       "path": "website/src/components/DomainStrip.astro",
@@ -2185,6 +2237,14 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Interactive selection and diagrams for the five Harnesses"
+    },
+    {
+      "path": "website/src/components/LandingPage.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Shared bilingual landing page component"
     },
     {
       "path": "website/src/components/MurmLogo.astro",
@@ -2249,6 +2309,126 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Documentation loader and frontmatter schema"
+    },
+    {
+      "path": "website/src/content/docs-zh/architecture.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for architecture"
+    },
+    {
+      "path": "website/src/content/docs-zh/build-your-harness.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for build-your-harness"
+    },
+    {
+      "path": "website/src/content/docs-zh/concepts.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for concepts"
+    },
+    {
+      "path": "website/src/content/docs-zh/harnesses/index.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for harnesses/index"
+    },
+    {
+      "path": "website/src/content/docs-zh/harnesses/lead-worker.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for harnesses/lead-worker"
+    },
+    {
+      "path": "website/src/content/docs-zh/harnesses/peermesh.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for harnesses/peermesh"
+    },
+    {
+      "path": "website/src/content/docs-zh/harnesses/subagents.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for harnesses/subagents"
+    },
+    {
+      "path": "website/src/content/docs-zh/harnesses/substrate.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for harnesses/substrate"
+    },
+    {
+      "path": "website/src/content/docs-zh/harnesses/taskpool.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for harnesses/taskpool"
+    },
+    {
+      "path": "website/src/content/docs-zh/overview.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for overview"
+    },
+    {
+      "path": "website/src/content/docs-zh/quickstart.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for quickstart"
+    },
+    {
+      "path": "website/src/content/docs-zh/reference/api.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for reference/api"
+    },
+    {
+      "path": "website/src/content/docs-zh/reference/deploy.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for reference/deploy"
+    },
+    {
+      "path": "website/src/content/docs-zh/reference/types.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for reference/types"
+    },
+    {
+      "path": "website/src/content/docs-zh/run-lifecycle.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for run-lifecycle"
     },
     {
       "path": "website/src/content/docs/architecture.md",
@@ -2323,6 +2503,14 @@
       "role": "Published documentation content for TaskPool"
     },
     {
+      "path": "website/src/content/docs/overview.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation landing overview page"
+    },
+    {
       "path": "website/src/content/docs/quickstart.md",
       "category": "public documentation website",
       "chapters": [
@@ -2379,6 +2567,14 @@
       "role": "Documentation shell, section sidebar and page headings"
     },
     {
+      "path": "website/src/lib/i18n.ts",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Bilingual English/Chinese route helpers and UI strings"
+    },
+    {
       "path": "website/src/lib/nav.ts",
       "category": "public documentation website",
       "chapters": [
@@ -2411,6 +2607,22 @@
       "role": "Public landing page assembly"
     },
     {
+      "path": "website/src/pages/zh/docs/[...slug].astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation dynamic route (/zh/docs/*)"
+    },
+    {
+      "path": "website/src/pages/zh/index.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese landing page route (/zh/)"
+    },
+    {
       "path": "website/src/styles/global.css",
       "category": "public documentation website",
       "chapters": [
@@ -2425,46 +2637,6 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Astro TypeScript source configuration"
-    },
-    {
-      "path": "website/public/licenses/caveat.txt",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Distributed font copyright and license notice"
-    },
-    {
-      "path": "website/public/licenses/departure-mono.txt",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Distributed font copyright and license notice"
-    },
-    {
-      "path": "website/public/licenses/inter.txt",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Distributed font copyright and license notice"
-    },
-    {
-      "path": "website/public/licenses/jetbrains-mono.txt",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Distributed font copyright and license notice"
-    },
-    {
-      "path": "website/public/licenses/space-grotesk.txt",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Distributed font copyright and license notice"
     },
     {
       "path": ".github/workflows/deploy-website.yml",
@@ -2617,6 +2789,117 @@
         "docs/architecture/06-observability-experiments.md"
       ],
       "role": "MIT terms bundled with the standalone package"
+    },
+    {
+      "path": "scripts/setup",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Clean-checkout local setup launcher and Node.js version gate"
+    },
+    {
+      "path": "scripts/setup-bootstrap.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Host preflight, serialized locked dependency installation and cached checkout build"
+    },
+    {
+      "path": "scripts/murm.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Host CLI dispatch, current-project interactive entry, signal handling and exit status"
+    },
+    {
+      "path": "scripts/murm-arguments.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Shared host command syntax and setup wrapper arguments"
+    },
+    {
+      "path": "scripts/local-environment.ts",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Shared host configuration, same-host diagnostic checks and ownership of the pinned OpenSandbox deployment"
+    },
+    {
+      "path": "scripts/local-setup.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Shared setup and doctor orchestration, staged timing and cleanup receipts"
+    },
+    {
+      "path": "scripts/local-setup-worker.ts",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Worker image selection, identity and compatibility checks, local build and pull"
+    },
+    {
+      "path": "scripts/local-setup-smoke.ts",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Real temporary Runtime probe, artifact verification and cleanup"
+    },
+    {
+      "path": "scripts/local-setup-upstream.ts",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Loopback controlled Responses server and fixed probe tool sequence"
+    },
+    {
+      "path": "scripts/local-setup-template.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Independent Subagents project initialization, archive installation and preservation of existing files"
+    },
+    {
+      "path": "services/local-setup/config.js",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Editable generated Subagents configuration"
+    },
+    {
+      "path": "services/local-setup/environment.js",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Generated project environment loader"
+    },
+    {
+      "path": "services/opensandbox-local/config.toml",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Pinned local OpenSandbox Docker deployment recipe"
     }
   ]
 }

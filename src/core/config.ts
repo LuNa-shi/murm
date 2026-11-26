@@ -1,5 +1,5 @@
 import type { CollectionSpec, FileSeed, Profile, SpawnOptions } from './types.js';
-import type { PiOpenSandboxBackendConfig } from './backend-config.js';
+import type { OpenSandboxBackendConfig } from './backend-config.js';
 import type { ServiceRegistration } from './services.js';
 
 import { isIPv4 } from 'node:net';
@@ -42,7 +42,7 @@ function snapshotCollection(value: CollectionSpec | undefined) {
   return snapshotCollectionSpec(value);
 }
 
-export function snapshotProfiles(profiles: Readonly<Record<string, Profile>>, models: PiOpenSandboxBackendConfig['models'], registrations: ReadonlyMap<string, ServiceRegistration>): Map<string, Profile> {
+export function snapshotProfiles(profiles: Readonly<Record<string, Profile>>, models: OpenSandboxBackendConfig['models'], registrations: ReadonlyMap<string, ServiceRegistration>): Map<string, Profile> {
   if (!record(profiles) || Object.keys(profiles).length === 0) throw new TypeError('At least one Profile is required');
   const snapshots = new Map<string, Profile>();
   for (const [name, input] of Object.entries(profiles)) {

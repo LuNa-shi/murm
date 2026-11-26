@@ -609,7 +609,7 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ writable = false, files, forkSession, workspace, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null }: any = {}) {
+  async startAgent({ writable = false, files, forkSession, workspace, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, codex, beforeAgentStart = null }: any = {}) {
     const contract = { protocolVersion: 'murm-core-v1', resources: [] };
     const record: any = this.#record(executionId);
     const signature = (values: any) => Array.isArray(values) && values.every((item: any) => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
@@ -637,9 +637,10 @@ export class OpenSandboxManager {
       method: 'POST',
       extraHeaders: workerHeaders,
       body: {
-        command: required(agentCommand, 'agent_command'),
+        command: codex ? 'codex' : required(agentCommand, 'agent_command'),
+        ...(codex ? { codex: { model: codex.model, baseUrl: codex.baseUrl } } : {}),
         ...(forkSession === undefined ? {} : { fork_session: forkSession }),
-        args,
+        args: codex ? [] : args,
         cwd,
         env: envs(env, { allowSecrets: true }),
         // Explicitly supplied secret values travel only over the authenticated
@@ -661,6 +662,11 @@ export class OpenSandboxManager {
     if (receipt?.version !== contract.protocolVersion || !Array.isArray(receipt.resources) || signature(receipt.resources) !== signature(resources)) {
       throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest the pinned Agent contract resources');
     }
+    const backend = startup.body?.result?.backend;
+    if (codex && (backend?.kind !== 'codex' || backend.version !== codex.version ||
+      backend.authMode !== 'api-key' || typeof backend.threadId !== 'string' || !backend.threadId)) {
+      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest the pinned Codex executor, authentication and Session');
+    }
     const quotaReceipt = startup.body?.result?.project_quota;
     const catalogReceipt = startup.body?.result?.model_catalog_resource;
     if (projectQuota && (quotaReceipt?.bytes !== projectQuota.bytes || quotaReceipt?.inodes !== projectQuota.inodes)) {
@@ -674,21 +680,26 @@ export class OpenSandboxManager {
     if (!workspace && (fileReceipt?.version !== expectedVersion || fileReceipt.writable !== writable || fileReceipt.digest !== expectedDigest)) {
       throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest initial Core files and workDir permissions');
     }
-    record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), contract: receipt };
+    record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), contract: receipt,
+      ...(codex ? { backend: { kind: backend.kind, version: backend.version, authMode: backend.authMode, threadId: backend.threadId } } : {}),
+    };
     this.logger?.({ event: 'sandbox.agent_started', provider: 'opensandbox', execution_id: executionId, sandbox_id: record.sandboxId, worker_port: this.workerPort });
     return { ...record.agent };
   }
 
   /**
    * Resolve executable versions in the provider guest. The controller may not
-   * have Pi or the image's Node installation, so manifest evidence
+   * have the selected executor or the image's Node installation, so manifest evidence
    * must never silently describe the host process.
    */
-  async agentVersions({ executionId, piCommand = 'pi', nodeCommand = 'node', timeoutMs = 15_000 }: any = {}) {
+  async agentVersions({ executionId, executor = 'pi', piCommand = 'pi', nodeCommand = 'node', timeoutMs = 15_000 }: any = {}) {
     this.#record(executionId);
     const versions: Record<string, any> = {};
+    if (executor !== 'pi' && executor !== 'codex') {
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'unknown Agent executor');
+    }
     const commands = [
-      ['piVersion', 'pi', piCommand],
+      executor === 'codex' ? ['codexVersion', 'codex', 'codex'] : ['piVersion', 'pi', piCommand],
       ['nodeVersion', 'node', nodeCommand],
     ];
     for (const [field, commandName, command] of commands) {
@@ -797,10 +808,10 @@ export class OpenSandboxManager {
   confirmAgentProjectInstall({ executionId, request_id, content_hash }: any) { return this.#projectCall(executionId, 'install-confirm', undefined, { request_id, content_hash }); }
 
   /** Pull guest files back before Runtime checkpoints or deletes the sandbox. */
-  async agentRpc(executionId: any, message: any, { timeoutMs = 600_000, since }: any = {}) {
+  async agentRpc(executionId: any, message: any, { timeoutMs = 600_000, since, transportTimeoutMs = timeoutMs + 10_000, signal }: any = {}) {
     const record: any = this.#record(executionId);
     if (!record.agent) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent worker is not started', { execution_id: executionId });
-    const response = await this.#request(`${record.agent.endpoint}/rpc`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { message, timeout_ms: timeoutMs, ...(since === undefined ? {} : { since }) }, timeoutMs: timeoutMs + 10_000 });
+    const response = await this.#request(`${record.agent.endpoint}/rpc`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { message, timeout_ms: timeoutMs, ...(since === undefined ? {} : { since }) }, timeoutMs: transportTimeoutMs, signal });
     return responseValue(response.body);
   }
 
@@ -994,17 +1005,18 @@ export class OpenSandboxManager {
 
   async #execd(record: any, path: any, options: any) { return this.#request(`${record.execdUrl}${path}`, { ...options, absolute: true, extraHeaders: record.execdHeaders }); }
 
-  async #request(path: any, { method = 'GET', body = undefined, timeoutMs = this.commandTimeoutMs, absolute = false, extraHeaders = {}, allowStatuses = [], workerStart = false }: any = {}) {
+  async #request(path: any, { method = 'GET', body = undefined, timeoutMs = this.commandTimeoutMs, absolute = false, extraHeaders = {}, allowStatuses = [], workerStart = false, signal }: any = {}) {
     const url = absolute ? path : `${this.lifecycleBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('sandbox provider request timed out')), timeoutMs);
+    const requestSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
     const headers = { accept: 'application/json', ...extraHeaders };
     if (body !== undefined) headers['content-type'] = 'application/json';
     if (absolute) {
       if (this.execdToken && !Object.keys(headers).some((name: any) => name.toLowerCase() === 'x-execd-access-token')) headers['X-EXECD-ACCESS-TOKEN'] = this.execdToken;
     } else if (this.apiKey) headers['OPEN-SANDBOX-API-KEY'] = this.apiKey;
     try {
-      const response = await this.fetch(url, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: controller.signal });
+      const response = await this.fetch(url, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: requestSignal });
       const text = await response.text();
       const parsed = response.headers?.get?.('content-type')?.includes('text/event-stream') ? null : (text ? jsonData(text) : {});
       if (workerStart && response.status === 400 && parsed?.ok === false && parsed.code === ERROR_CODES.AGENT_STARTUP_CONTRACT) {

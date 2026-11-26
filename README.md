@@ -1,10 +1,23 @@
 # murm
 
-murm is a TypeScript toolkit for building multi-agent Harnesses. A Harness composes Agent Profiles, shared Services and its coordination policy. The Runtime runs each Agent in an isolated Sandbox and records the execution as a Run. The Core library exposes the Runtime, Service framework and Pi/OpenSandbox backend. [Website](https://luna-shi.github.io/murm/) · [Core concepts](GLOSSARY.md)
+murm is a TypeScript toolkit for building multi-agent Harnesses. A Harness composes Agent Profiles, shared Services and its coordination policy. The Runtime runs each Agent in an isolated Sandbox and records the execution as a Run. The Core library exposes the Runtime, Service framework and OpenSandbox backend with configurable Pi and Codex executors. [Website](https://luna-shi.github.io/murm/) · [Core concepts](GLOSSARY.md)
 
-## Run the Notes example
+## Quick Start
 
-Start with two Agents that pass a supplied fact through a custom Notes Service. The host verifies the writer's publication, the reader's lookup and both files written by the same reader across two turns. The instructions build and install the Core tarball in a standalone directory, then show how to read the saved result. The example requires Node.js 22.19 or newer, local Docker OpenSandbox, a compatible Pi 1.3.0 Worker image and a Kimi K3 Responses endpoint. [Notes installation and run instructions](examples/notes/README.md)
+Run Subagents directly from the checkout. On a Linux host with Node.js 22.19 or newer, a local OpenSandbox provider and a compatible Worker image, build the checkout with `npm ci && npm run build`. If the host still needs OpenSandbox or the Worker, run `./scripts/setup` from the checkout root to build the checkout and prepare both. [Host requirements](docs/architecture/07-run-configuration.md#host-checks-and-checkout-preparation)
+
+Create `examples/subagents/.env` with your Worker image and model endpoint, as shown in the [Subagents example](examples/subagents/README.md#run-from-the-checkout). Then run a task from the example directory.
+
+```sh
+cd examples/subagents
+node --env-file=.env ../../dist/examples/subagents/main.js \
+  ../../dist/examples/subagents/config.js \
+  'Suggest two checks to make before merging a pull request.'
+```
+
+The example prints the report path and closes its Sandboxes after the task. Edit `examples/subagents/config.ts` to change the configuration and rebuild from the checkout root. [Quick Start](https://luna-shi.github.io/murm/docs/quickstart/)
+
+The two-Agent Notes handoff shows how to implement a custom Service and verify exported files across turns. [Notes example](examples/notes/README.md)
 
 The installable candidate provides `@murm/core`, `@murm/core/services` and `@murm/core/backends/pi-opensandbox`. Use the foreground CLI to start, inspect, direct input to or stop a configured TaskPool or PeerMesh Harness. The saved-result command reads the persisted Runtime and Harness reports by their Runtime ID. TaskPool supports reading public Workspace results and publishing Materials. Saving live Agent files to a Workspace revision requires a trusted capture binding supplied by the host. [Foreground and saved-result commands](docs/architecture/17-harness-reporting.md#foreground-harness-control)
 
@@ -43,7 +56,7 @@ For the Core / Harness stage, the [Phase 0005 design on main](docs/phases/0005-c
 
 ## Implementation map
 
-- `src/core/` — programmable Runtime, Agent lifecycle, Service Bridge and Pi/OpenSandbox backend
+- `src/core/` — programmable Runtime, Agent lifecycle, Service Bridge and configured OpenSandbox backend
 - `src/harnesses/` — TaskPool, PeerMesh, Substrate and Lead-Worker collaboration policies
 - `src/agent/` — capability profiles, Worker launch contracts, model catalog, Responses gateway and Services Bridge
 - `src/task/`, `src/context/`, `src/judge/` — authoritative domain state

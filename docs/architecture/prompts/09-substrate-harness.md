@@ -208,21 +208,21 @@ Solve the original problem in problem.lean and problem.txt. The question resourc
 
 The host supplies the configured workTimeoutMs. The displayed duration uses whole minutes when divisible by 60,000, otherwise seconds. The initial task is sent after all peers are ready.
 
-Body SHA-256: `cd1534260397a4ecfa9f41f5eb18085016bf43d6e2b0de793445eb784171e24f`
+Body SHA-256: `df021bdfd9d025c304df325529d7d16ea0ee875f0d6b0a324f0e63ca5b661670`
 
 ````text
 Solve the original problem in problem.lean and problem.txt. The question resource address appears in problem.txt. Submit a Lean proof term using the fate Service.
 You have a 30-minute work window from the time all peers are ready.
-Keep working until you submit a proof that passes Lean or the work window ends. If a proof fails, read the diagnostic, work on the missing subgoal or try a different approach, and continue.
+Keep working while you can still get a proof checked and submit it within your allowances and work window. If a proof fails, read the diagnostic, work on the missing subgoal or try a different approach, and continue.
 Before ending, run swarm fate check_lean on your exact proof and wait for status passed. Then submit the same proof with swarm fate submit and finish=true.
 Use finish=false to save an unfinished candidate and keep working. Reserve enough Service operations for your final check and submission.
 ````
 ## FATE continuation before verified completion
 
-A verified-completion peer receives this followUp through runInput in the same Session after a known natural settlement without a verified finish, while the work window remains open. It uses a fresh continuation request ID. The final scorer sends no prompt.
+A verified-completion peer receives this followUp through runInput in the same Session after a known natural settlement without a verified finish, while the work window remains open and the peer can still check and submit, or can submit an already passing proof. Eligibility is checked again before dispatch. The input uses a fresh continuation request ID. The final scorer sends no prompt.
 
-Body SHA-256: `257fc7f3681b95d17e8ff185d87f43673676078bc6cd3d22fa9a45398f3fb4c0`
+Body SHA-256: `db03bab44a1c8aaa2328876e538bd772728a75af070f3e8c804687e6e0875708`
 
 ````text
-Continue in this Session. No Lean-verified proof has been submitted. Work on an unresolved subgoal or try another approach. Get status passed from swarm fate check_lean for the exact proof before submitting it with finish=true.
+Continue in this Session. If swarm fate check_lean already returned passed for your exact proof, submit those same bytes with finish=true. Otherwise, work on an unresolved subgoal or try another approach. Reserve an operation to submit after your proof passes.
 ````

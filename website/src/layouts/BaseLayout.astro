@@ -7,6 +7,7 @@ import '../styles/global.css';
 import TopNav from '../components/TopNav.astro';
 import SearchModal from '../components/SearchModal.astro';
 import { withBase } from '../lib/url';
+import { UI, alternateHref, type Lang } from '../lib/i18n';
 
 interface Props {
   title: string;
@@ -14,6 +15,8 @@ interface Props {
   showTopNav?: boolean;
   showMobileMenu?: boolean;
   paperGrid?: boolean;
+  lang?: Lang;
+  currentSlug?: string;
 }
 
 const {
@@ -22,11 +25,16 @@ const {
   showTopNav = true,
   showMobileMenu = false,
   paperGrid = false,
+  lang = 'en',
+  currentSlug,
 } = Astro.props;
+
+const t = UI[lang];
+const switchHref = alternateHref(lang, currentSlug);
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang={t.htmlLang}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -46,11 +54,16 @@ const {
       })();
     </script>
   </head>
-  <body class:list={[{ 'paper-grid-bg': paperGrid }]}>
+  <body
+    class:list={[{ 'paper-grid-bg': paperGrid }]}
+    data-copy-label={t.copyCode}
+    data-copied-label={t.copiedCode}
+    data-copy-error-label={t.copyError}
+  >
     {!showTopNav && <div class="scroll-progress" data-scroll-progress aria-hidden="true"></div>}
-    {showTopNav && <TopNav showMobileMenu={showMobileMenu} />}
+    {showTopNav && <TopNav showMobileMenu={showMobileMenu} lang={lang} switchHref={switchHref} />}
     <slot />
-    <SearchModal />
+    <SearchModal lang={lang} />
 
     <script is:inline>
       (function () {
@@ -62,23 +75,36 @@ const {
           });
         });
 
+        document.querySelectorAll('[data-lang-switch]').forEach((link) => {
+          link.addEventListener('click', () => {
+            const target = link.getAttribute('data-lang-switch');
+            if (target === 'en' || target === 'zh') {
+              localStorage.setItem('murm:lang', target);
+            }
+          });
+        });
+
         const menuBtn = document.getElementById('mobile-menu-toggle');
         const sidebar = document.getElementById('docs-sidebar');
         menuBtn?.addEventListener('click', () => sidebar?.classList.toggle('open'));
+
+        const copyLabel = document.body.dataset.copyLabel || 'Copy';
+        const copiedLabel = document.body.dataset.copiedLabel || 'Copied';
+        const errorLabel = document.body.dataset.copyErrorLabel || 'Error';
 
         document.querySelectorAll('.prose pre').forEach((pre) => {
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'copy-btn';
-          btn.textContent = 'Copy';
+          btn.textContent = copyLabel;
           btn.addEventListener('click', async () => {
             const code = pre.querySelector('code')?.textContent || pre.textContent || '';
             try {
               await navigator.clipboard.writeText(code);
-              btn.textContent = 'Copied';
-              setTimeout(() => (btn.textContent = 'Copy'), 1400);
+              btn.textContent = copiedLabel;
+              setTimeout(() => (btn.textContent = copyLabel), 1400);
             } catch {
-              btn.textContent = 'Error';
+              btn.textContent = errorLabel;
             }
           });
           pre.appendChild(btn);

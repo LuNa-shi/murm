@@ -94,3 +94,24 @@ test('abort or timeout after dispatch releases the host wait and prevents re-sub
     assert.equal(listening(), false);
   }
 });
+
+test('a host guard can withdraw a turn after the idle snapshot and before Core registers an input', async () => {
+  const { runtime, calls, listening } = fixture(async publish => { publish(); return started; });
+  const get = runtime.get;
+  let eligible = true;
+  runtime.get = async () => {
+    const snapshot = await get();
+    eligible = false;
+    return snapshot;
+  };
+  const withdrawn = new Error('The peer can no longer complete the task');
+  await assert.rejects(runInput(runtime, agentId, 'continuation', {
+    ...options,
+    beforeSend() {
+      if (!eligible) throw withdrawn;
+    },
+  }), error => error === withdrawn);
+  assert.deepEqual(calls, []);
+  assert.equal(listening(), false);
+  assert.equal((await runInput(runtime, agentId, 'other work', { ...options, requestId: 'two' })).receipt, started);
+});

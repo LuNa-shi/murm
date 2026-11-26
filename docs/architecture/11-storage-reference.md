@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 
 ### Core Runtime model attempts
 
-Source: [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts); source SHA-256: `dc0ad90beb3e6569505ae7b9a1236ecb7d9a25b9e3415546b2e544e5b999de2d`.
+Source: [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts); source SHA-256: `32cbedaa66c5c92d762d7b02af402b72f5bbd2fba1526531cd398dd8e40fd338`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS runtime_model_policies (

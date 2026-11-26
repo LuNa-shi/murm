@@ -1,3 +1,5 @@
+import { selectExecutorDriver } from '../../src/core/executor-driver.js';
+
 export const configuration = {
   sandbox: {},
   isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
@@ -10,8 +12,8 @@ export const transport = {
   reset() { this.submissions.clear(); this.listeners.clear(); this.interruptCalls = []; this.onInterrupt = undefined; this.next = undefined; },
   confirm(id, disposition) { this.submissions.get(id).receipt = { status: 'accepted', disposition }; },
 };
-export const claimPiOpenSandboxBackend = () => configuration;
-export async function openPiOpenSandboxBackend() {
+export const claimOpenSandboxBackend = () => ({ ...configuration, driver: selectExecutorDriver() });
+export async function openOpenSandboxBackend() {
   return {
     async spawn({ agentId, onEvent }) {
       transport.listeners.set(agentId, onEvent);

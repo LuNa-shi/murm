@@ -25,7 +25,7 @@ test('explicit null time policy preserves natural provider output parameters wit
   }
 });
 
-async function fixture(t, fn, { timeBounds = { requestTimeoutMs: 2000, maxOutputTokens: 20 } } = {}) {
+async function fixture(t, fn, { timeBounds = { requestTimeoutMs: 2000, maxOutputTokens: 20 }, executor = 'pi' } = {}) {
   const requests = [];
   const upstream = createServer(async (req, res) => {
     const chunks = [];
@@ -41,7 +41,7 @@ async function fixture(t, fn, { timeBounds = { requestTimeoutMs: 2000, maxOutput
     url: `http://127.0.0.1:${upstream.address().port}/v1/responses`, model,
     headers: { authorization: 'Bearer host-secret', 'x-openai-actor-authorization': 'host-actor' },
   };
-  const options = { db, upstream: upstreamOptions, timeBounds,
+  const options = { db, upstream: upstreamOptions, timeBounds, executor,
     validateAgent: () => ({ phase: 'work', deadline: Date.now() + timeBounds.requestTimeoutMs }) };
   const gateway = new ResponsesBudgetGateway(options);
   const { baseUrl } = await gateway.start();
@@ -121,6 +121,29 @@ test('validates actual Pi Responses item shapes, forwards only configured creden
     pending_requests: 0, observed_input_tokens: 4, observed_output_tokens: 3 });
   assert.equal(gateway.revokeToken(token), true);
   assert.equal((await call(token, 'one', body)).status, 401);
+});
+
+test('accepts pinned Codex client metadata without forwarding it upstream', async t => {
+  const { gateway, call, requests } = await fixture(t, undefined, { executor: 'codex' });
+  const token = gateway.issueToken({ runtimeId: 'r', agentId: 'codex' });
+  const input = { model, input: 'codex', client_metadata: {
+    thread_id: 'thread', root_turn_id: 'turn', turn_id: 'turn', session_id: 'session',
+    'x-codex-window-id': 'window', 'x-codex-installation-id': 'install', 'x-codex-turn-metadata': '{}',
+  } };
+  const admitted = await call(token, 'codex-turn', input);
+  assert.equal(admitted.status, 200);
+  await admitted.text();
+  assert.equal(Object.hasOwn(requests[0].body, 'client_metadata'), false);
+  assert.equal(requests[0].headers.authorization, 'Bearer host-secret');
+  assert.equal((await call(token, 'codex-turn', { ...input, client_metadata: { ...input.client_metadata, turn_id: 'other' } })).status, 409);
+  for (const client_metadata of [{ arbitrary: 'forward' }, { session_id: { nested: 'payload' } }]) {
+    assert.equal((await call(token, 'unsupported', { ...input, client_metadata })).status, 400);
+  }
+  assert.equal(requests.length, 1);
+  const pi = await fixture(t);
+  const piToken = pi.gateway.issueToken({ runtimeId: 'r', agentId: 'pi' });
+  assert.equal((await pi.call(piToken, 'pi-turn', input)).status, 400);
+  assert.equal(pi.requests.length, 0);
 });
 
 test('rejects alternate routes, tools, remote inputs, tier and stateful Responses modes', async t => {

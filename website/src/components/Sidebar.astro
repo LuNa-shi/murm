@@ -1,17 +1,20 @@
 ---
-import { DOC_NAV, normalizeSlug } from '../lib/nav';
-import { withBase } from '../lib/url';
+import { getDocNav, normalizeSlug } from '../lib/nav';
+import { UI, docHref, type Lang } from '../lib/i18n';
 
 interface Props {
   currentSlug: string;
+  lang?: Lang;
 }
 
-const { currentSlug } = Astro.props;
+const { currentSlug, lang = 'en' } = Astro.props;
 const active = normalizeSlug(currentSlug);
+const groups = getDocNav(lang);
+const t = UI[lang];
 ---
 
-<aside class="docs-sidebar" id="docs-sidebar" aria-label="Documentation navigation">
-  {DOC_NAV.map((group) => (
+<aside class="docs-sidebar" id="docs-sidebar" aria-label={t.sidebarAria}>
+  {groups.map((group) => (
     <div class="sidebar-group">
       <div class="sidebar-label">{group.label}</div>
       <ul class="sidebar-list">
@@ -21,7 +24,7 @@ const active = normalizeSlug(currentSlug);
             <li>
               <a
                 class:list={['sidebar-link', { active: isCurrent }]}
-                href={withBase(`/docs/${item.slug}/`)}
+                href={docHref(lang, item.slug)}
                 aria-current={isCurrent ? 'page' : undefined}
               >
                 <span>{item.title}</span>

@@ -2,9 +2,9 @@
 
 Repository TypeScript sources compile with `npm run build` into `dist/`. `npm pack` builds the distributable JavaScript and declarations before archiving.
 
-Two independent Pi Agents hand off one supplied source fact through a custom Notes Service. The writer publishes the exact seeded text using `swarm notes put --input note-request.json --request-id notes-put`. The host seeds this request with a string `text` field containing `review-input.json`; passing that JSON text through `--text` would coerce it to an object and fail schema validation. The reader checks it and saves `review.md`, then copies that file to `followup.md` in a second turn. The host checks the Service author and read record and opens both files from the archive after stopping the reader.
+Two independent Agents hand off one supplied source fact through a custom Notes Service. The writer publishes the exact seeded text using `swarm notes put --input note-request.json --request-id notes-put`. The host seeds this request with a string `text` field containing `review-input.json`; passing that JSON text through `--text` would coerce it to an object and fail schema validation. The reader checks it and saves `review.md`, then copies that file to `followup.md` in a second turn. The host checks the Service author and read record and opens both files from the archive after stopping the reader.
 
-This example requires Node.js 22.19 or newer, a running local Docker OpenSandbox provider with the Core project limits enabled, and a compatible worker image containing Pi 1.3.0. Use an absolute path to the checkout of the tested implementation to build the tarball. The rest of the example runs in an independent directory from that tarball.
+This example requires Node.js 22.19 or newer, a running local Docker OpenSandbox provider with the Core project limits enabled, and a compatible worker image containing the selected executor. The repository Worker image ships Pi 1.3.0 and Codex CLI 0.172.0. Use an absolute path to the checkout of the tested implementation to build the tarball. The rest of the example runs in an independent directory from that tarball.
 
 ```sh
 repo=/absolute/path/to/murm
@@ -21,14 +21,16 @@ tar -xOf murm-core-0.2.0.tgz package/dist/src/harnesses/shared/run-report.js > r
 tar -xOf murm-core-0.2.0.tgz package/dist/src/harnesses/shared/read-result.js > read-result.js
 ```
 
-Set `MURM_NOTES_IMAGE` to your compatible worker image ID and `MURM_NOTES_MODEL_URL` to the Kimi K3 Responses endpoint, including the exact `/v1/responses` path. Set `MURM_NOTES_MODEL_TOKEN` if the endpoint requires a bearer token. Configure `MURM_NOTES_ADVERTISE_HOST` to the host's guest-reachable IPv4 address if it differs from `172.17.0.1`. The sample `config.js` also reads optional lifecycle host, endpoint host and token variables. Model and lifecycle secrets stay on the host.
+Set `MURM_NOTES_IMAGE` to your compatible worker image ID and `MURM_NOTES_MODEL_URL` to the trusted Responses endpoint, including the exact `/v1/responses` path. Set `MURM_NOTES_MODEL_TOKEN` if the endpoint requires a bearer token. Configure `MURM_NOTES_ADVERTISE_HOST` to the host's guest-reachable IPv4 address if it differs from `172.17.0.1`. The sample `config.js` also reads optional lifecycle host, endpoint host and token variables. Model and lifecycle secrets stay on the host.
+
+The sample uses Pi with Kimi K3 by default. To run Codex, set `MURM_NOTES_EXECUTOR=codex` and `MURM_NOTES_MODEL_ID` to the model served by your endpoint. `MURM_NOTES_MODEL_PROVIDER` labels the model and defaults to `openai` for Codex. For a custom configuration module, set `backend.executor` and its `models` mapping. The same Reader thread handles both reader inputs. See the [backend guide](../../docs/architecture/16-pi-opensandbox-backend.md#codex-app-server) for the credential and trace contract.
 
 ```sh
 node main.js --help
 node main.js config.js > notes-result.json
 ```
 
-`main.js` imports Runtime, Service Registry and the Pi/OpenSandbox backend from the three public package exports. `run-input.js`, `run-report.js` and `read-result.js` are editable host modules. The Harness owns the turn order, the Notes manifest and adapter, the role grants and verification. It uses `followUp` on an idle Agent after subscribing, with one input source and a fresh ID. An unknown or queued submission remains explicit and sends no replacement.
+`main.js` imports Runtime, Service Registry and the configurable OpenSandbox backend from the public package exports. `run-input.js`, `run-report.js` and `read-result.js` are editable host modules. The Harness owns the turn order, the Notes manifest and adapter, the role grants and verification. It uses `followUp` on an idle Agent after subscribing, with one input source and a fresh ID. An unknown or queued submission remains explicit and sends no replacement.
 
 The example runs one fixed writer turn and two reader turns, then closes. The seeded `fact` is its project input. The host exclusively owns these inputs and their request IDs. To change a later reader turn, edit its input in `main.js` before starting a new run. The example accepts no interactive directed input while the handoff is in progress. Ctrl+C or SIGTERM ends the current business wait and then enters the configured bounded cleanup. Check the returned per-Agent execution and cleanup receipts after either signal.
 

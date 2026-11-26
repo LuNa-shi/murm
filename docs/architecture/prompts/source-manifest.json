@@ -23,7 +23,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "6e6ef598d8f41bbec723ba91edd84203245e3a11992615e43e0b851bc301775b"
+      "sha256": "0b63a750902e565932027a182e942b9adc3edcdb3b8718a09faeb82ccdceedf2"
     },
     {
       "path": "src/core/bridge.ts",
@@ -31,23 +31,35 @@
     },
     {
       "path": "src/core/startup-prompt.ts",
-      "sha256": "6d8cdea9ed793d3eb22637d5811b450c65f68ef83e055bc389588be34d799151"
+      "sha256": "a0a07d64d49ec8effab76dddb84e7be77c340a173bc6370374b27c743fada761"
     },
     {
-      "path": "src/core/pi-opensandbox-backend.ts",
-      "sha256": "34546c69ce5e7f9184d50efdde56043b9a0449ff5e703a8525219787605d5c73"
+      "path": "src/core/opensandbox-backend.ts",
+      "sha256": "b33540f4fbd04be267193efc79d432b9b125df45837d0cfce39eff788789b1a0"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "4d671a3f2068ad3bdb9cb3756e6117d0e17cec3efda911f3cb8720891bf65eda"
+      "sha256": "81c5a670e9099ef85f57a92b437ca7a0ba80aecab668c528959aeff29bbe1a60"
+    },
+    {
+      "path": "scripts/codex-app-server-driver.ts",
+      "sha256": "98558cb0602dc484429981ea0daa21c98c6e2dad298dc736af7340a0c3e0b272"
+    },
+    {
+      "path": "scripts/local-setup-smoke.ts",
+      "sha256": "cedceb0812320a478b46bd815498afa68342fb719b76301d9ded6bfddc282126"
+    },
+    {
+      "path": "scripts/local-setup-upstream.ts",
+      "sha256": "01483bed8622e6b646a4641370661e89c01afbdb58cf49aa5362945b7f40f06e"
     },
     {
       "path": "examples/notes/main.ts",
-      "sha256": "a472cca057e6a079d48cdb1db10ea4bfdbca9df8bfbfd40540349c82379597c8"
+      "sha256": "6a4b03ed1dd659b35d21083dfc04799ed08df81cd599a5b8fff7fa71b5ae722f"
     },
     {
       "path": "src/harnesses/shared/run-input.ts",
-      "sha256": "252f2fd6ec60f0300898081708299760df748803e415600329b6e56f81e9cee3"
+      "sha256": "e6fbda5260ae12d8e2e402923de45a4987748ba5512f0b2c84b3d3ec4b8a7643"
     },
     {
       "path": "src/harnesses/substrate/index.ts",
@@ -67,11 +79,11 @@
     },
     {
       "path": "examples/substrate/fate-run.ts",
-      "sha256": "b9ecbfc3bd5a8fcf9099039952fd0d8f12d7767fb2c1cdd0796da1eec68d538e"
+      "sha256": "83daa6f91fdfdbd01b3ebdf9b4fb42b4b1babdb183f1f5a04d33b121d06e8f6d"
     },
     {
       "path": "examples/substrate/fate-service.ts",
-      "sha256": "8e4ec0d61c0e2d4ebe5c7bacc6caef1ce3de571476e1fbb53ec3f7f4bcadae45"
+      "sha256": "3ddda9a04622cf612c3528677f9eae8da0f1d7e1d94b58a08194c5095265154f"
     },
     {
       "path": "src/harnesses/substrate/paper-substrate.ts",
@@ -87,7 +99,7 @@
     },
     {
       "path": "examples/subagents/main.ts",
-      "sha256": "81b8894ae5748fc1a031e6f0111257c133fd8aa480fd8ee18e3c3d6ab876114e"
+      "sha256": "0c721b66f8c1a8f25a98e6688fe26762221f8502fbcdda60efae5f465af1cf9e"
     },
     {
       "path": "examples/subagents/controller.ts",
@@ -99,7 +111,7 @@
     },
     {
       "path": "examples/subagents/collaboration-service.ts",
-      "sha256": "cbc1aeec07e52f9d916fc91ce7806a4a3c0f37fa271e6ae07a5525b8e354618b"
+      "sha256": "d8fba63bf48fa426f24f83c76b6a92ed8a07f593ce6c15e0b17ffd9669c2f281"
     },
     {
       "path": "test-support/subagents/communication-fixture.ts",
@@ -582,6 +594,10 @@
       "sha256": "0dd9780f082c954cdf7cfa5514190b3770539f0f56f7d904d71ca19c6a3df180"
     },
     {
+      "path": "docs/architecture/prompts/10-local-setup-probe.md",
+      "sha256": "ea8346b1e23788b07fd64198d0daef0acebded749d83379de6774b455e2f055f"
+    },
+    {
       "path": "docs/architecture/prompts/07-notes-harness.md",
       "sha256": "f6b6e047322ecdd0941bd41d70840773203020e270332d605442187a4f5a3ecd"
     },
@@ -591,11 +607,11 @@
     },
     {
       "path": "docs/architecture/prompts/01-core-startup.md",
-      "sha256": "bcdb9d7a038449fecfac0891ac2a3b996e1cf71442a35d34ed1e77c95fa191eb"
+      "sha256": "04cb91f1d4933d146043fb8939cd99e4fc79e14ef039cdcb7507806e85b1632d"
     },
     {
       "path": "docs/architecture/prompts/09-substrate-harness.md",
-      "sha256": "dab1c4e58d20ccd5d77451907161c12141553d2b23b4dc0331a97d4a7b9629c1"
+      "sha256": "1418c07a2dea827d8280d1dcf208e18cd6bc56d64bf7a8be0dc0aa65bbe16620"
     },
     {
       "path": "docs/architecture/prompts/08-peermesh-harness.md",

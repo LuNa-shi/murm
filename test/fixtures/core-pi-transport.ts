@@ -5,7 +5,7 @@ export const provider = {
 };
 export class OpenSandboxManager {
   async ensureExecution() { return { sandbox_id: 'controlled' }; }
-  async agentVersions() { return { piVersion: '1.3.0' }; }
+  async agentVersions({ executor } = {}) { return executor === 'codex' ? { codexVersion: '0.172.0' } : { piVersion: '1.3.0' }; }
   async startAgent(input) { provider.starts.set(input.executionId, input); }
   async agentRpc(_id, message, options = {}) {
     provider.messages.push(message);

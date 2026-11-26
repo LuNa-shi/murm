@@ -1,5 +1,5 @@
 import type { Profile, ModelAccessPolicy, ErrorInfo } from './types.js';
-import type { PiOpenSandboxBackendConfig } from './backend-config.js';
+import type { ResolvedOpenSandboxBackendConfig } from './opensandbox-backend.js';
 import type { ServiceRegistration } from './services.js';
 
 import { createHash } from 'node:crypto';
@@ -122,20 +122,21 @@ export function createRedactor(values: readonly unknown[] = []) {
 }
 
 export function runtimeConfiguration({ config, profiles, registrations, maxAgents, modelAccessPolicy, defaultTimeoutMs }: {
-  config: PiOpenSandboxBackendConfig;
+  config: ResolvedOpenSandboxBackendConfig;
   profiles: ReadonlyMap<string, Profile>;
   registrations: ReadonlyMap<string, ServiceRegistration>;
   maxAgents: number;
   modelAccessPolicy?: ModelAccessPolicy;
   defaultTimeoutMs: number;
 }, redact: (value: string) => string) {
-  const { sandbox, isolation, models, modelGateway } = config;
+  const { sandbox, isolation, models, modelGateway, driver } = config;
   return {
     schemaVersion: 1,
     coreVersion: packageInfo.version,
     maxAgents,
     backend: {
-      type: 'pi-opensandbox', piVersion: '1.3.0', network: isolation.network, disk: isolation.disk,
+      type: `${driver.kind}-opensandbox`, [`${driver.kind}Version`]: driver.version,
+      authMode: 'api-key', capabilities: driver.capabilities, network: isolation.network, disk: isolation.disk,
       cpu: redact(sandbox.resourceLimits?.cpu ?? '2'), memory: redact(sandbox.resourceLimits?.memory ?? '2Gi'),
     },
     waiting: {
@@ -153,7 +154,7 @@ export function runtimeConfiguration({ config, profiles, registrations, maxAgent
       model: profile.model, image: redact(profile.image), writable: profile.writable, services: profile.services,
       environmentKeys: Object.keys(profile.env ?? {}).sort(), network: profile.network, collect: profile.collect,
       spawnProfiles: profile.spawnProfiles, promptSha256: createHash('sha256').update(profile.prompt ?? '').digest('hex'),
-      stagedSystemPromptSha256: createHash('sha256').update(renderStartupPrompt(permittedServiceManifests(registrations, profile.services), profile.prompt)).digest('hex'),
+      stagedSystemPromptSha256: createHash('sha256').update(renderStartupPrompt(permittedServiceManifests(registrations, profile.services), profile.prompt, driver.kind)).digest('hex'),
     }])),
     services: [...registrations.values()].map(({ manifest, adapter }) => ({
       id: manifest.id, transport: manifest.endpoint.transport, ...getAdapterMetadata(adapter),

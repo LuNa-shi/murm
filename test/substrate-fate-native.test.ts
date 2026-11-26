@@ -165,10 +165,17 @@ test('verified FATE completion continues a prematurely settled Session until its
   const runId = `fate-verified-native-${Date.now()}`;
   const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.match(image, /^sha256:[a-f0-9]{64}$/);
-  const command = bash + `proof='by simp [Fintype.card_pi]'
+  const check = bash + `proof='by simp [Fintype.card_pi]'
+for index in range(89):
+    cli('fate','search_mathlib',{'query':'mathlib:absent'},f'verified-budget-{index}')
+for index in range(9):
+    rejected=cli('fate','check_lean',{'proof':'by sorry'},f'verified-rejected-{index}')
+    assert rejected['status']=='rejected', rejected
 checked=cli('fate','check_lean',{'proof':proof},'verified-native-check')
 assert checked['status']=='passed', checked
-result=cli('fate','submit',{'proof':proof,'rationale':'Finite product cardinality','refs':[],'finish':True},'verified-native-finish')
+print(json.dumps(checked))
+FATE_HANDOFF`;
+  const submit = bash + `result=cli('fate','submit',{'proof':'by simp [Fintype.card_pi]','rationale':'Finite product cardinality','refs':[],'finish':True},'verified-native-finish')
 print(json.dumps(result))
 FATE_HANDOFF`;
   let failure: unknown;
@@ -188,13 +195,22 @@ FATE_HANDOFF`;
       } else if (step === 2) {
         assert.match(JSON.stringify(body.input), /UNSOLVED_BEFORE_VERIFICATION/);
         assert.match(JSON.stringify(body.input.findLast(row => row.role === 'user')), /Continue in this Session/);
+      } else if (step === 3) {
+        const receipt = body.input.find(row => row.type === 'function_call_output' && row.call_id === 'call_verified_check');
+        assert.equal(JSON.parse(receipt.output.trim()).status, 'passed');
+        text = 'CHECKED_BUT_NOT_SUBMITTED';
+      } else if (step === 4) {
+        assert.match(JSON.stringify(body.input), /CHECKED_BUT_NOT_SUBMITTED/);
+        assert.match(JSON.stringify(body.input.findLast(row => row.role === 'user')), /submit those same bytes/);
       } else {
-        assert.equal(step, 3);
-        const receipt = body.input.find(row => row.type === 'function_call_output' && row.call_id === 'call_verified');
+        assert.equal(step, 5);
+        const receipt = body.input.find(row => row.type === 'function_call_output' && row.call_id === 'call_verified_submit');
         assert.equal(JSON.parse(receipt.output.trim()).finish, true);
       }
-      const item = step === 2
-        ? { type: 'function_call', id: 'fc_verified', call_id: 'call_verified', name: 'bash', arguments: JSON.stringify({ command, timeout: 90 }) }
+      const operation = step === 2 ? { name: 'check', command: check } : step === 4 ? { name: 'submit', command: submit } : undefined;
+      const item = operation
+        ? { type: 'function_call', id: `fc_verified_${operation.name}`, call_id: `call_verified_${operation.name}`, name: 'bash',
+          arguments: JSON.stringify({ command: operation.command, timeout: 90 }) }
         : { type: 'message', id: `msg_verified_${step}`, role: 'assistant', status: 'completed',
           content: [{ type: 'output_text', text, annotations: [] }] };
       response.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -220,11 +236,82 @@ FATE_HANDOFF`;
   const main = join(installed.directory, 'node_modules/@murm/core/dist/examples/substrate/main.js');
   await execute(process.execPath, [main, configuration], { cwd: installed.directory, env: installed.env, timeout: 170_000 });
   assert.ifError(failure);
-  assert.equal(requests, 3);
+  assert.equal(requests, 5);
   const result = JSON.parse(await readFile(join(outputDir, runId, 'fate-result.json'), 'utf8'));
   assert.equal(result.policy.verifiedCompletion, true);
-  assert.equal(result.peers[0].continuations, 1);
+  assert.equal(result.peers[0].continuations, 2);
+  assert.deepEqual(result.peers[0].completionBudget, { remainingOperations: 0, remainingChecks: 0, hasPassingProof: true });
   assert.equal(result.peers[0].endReason, 'submitted');
   assert.equal(result.scoring.teamSuccess, true);
   assert.equal(result.cleanup.cleanup, 'complete');
 });
+
+for (const { operations, checks, reason } of [
+  { operations: 99, checks: 0, reason: 'operation_limit' },
+  { operations: 100, checks: 0, reason: 'operation_limit' },
+  { operations: 11, checks: 10, reason: 'check_limit' },
+]) {
+  test(`verified FATE stops after ${operations} operations and ${checks} checks leave no path to a checked submission`, { skip: !optIn, timeout: 180_000 }, async t => {
+    const installed = await installNotesExample();
+    t.after(() => installed.close());
+    const outputDir = process.env.MURM_FATE_NATIVE_OUTPUT ?? join(process.cwd(), 'experiments');
+    const runId = `fate-operation-budget-${operations}-${Date.now()}`;
+    const command = bash + `draft=cli('fate','submit',{'proof':'by exact True.intro','rationale':'A retained draft','refs':[],'finish':False},'retained-draft')
+for index in range(${checks}):
+    rejected=cli('fate','check_lean',{'proof':'by sorry'},f'budget-check-{index}')
+    assert rejected['status']=='rejected', rejected
+for index in range(${operations - checks - 1}):
+    cli('fate','search_mathlib',{'query':'mathlib:absent'},f'budget-{index}')
+print(json.dumps(draft))
+FATE_HANDOFF`;
+    let requests = 0;
+    let failure: unknown;
+    const server = createServer(async (request, response) => {
+      const step = ++requests;
+      try {
+        assert.ok(step <= 2, 'Host sent an input after the peer could no longer finish');
+        const body = JSON.parse(await Array.fromAsync(request, value => value.toString()).then(chunks => chunks.join('')));
+        if (step === 2) {
+          const receipt = body.input.find(row => row.type === 'function_call_output' && row.call_id === 'call_budget');
+          assert.equal(JSON.parse(receipt.output.trim()).finish, false);
+        }
+        const item = step === 1
+          ? { type: 'function_call', id: 'fc_budget', call_id: 'call_budget', name: 'bash', arguments: JSON.stringify({ command, timeout: 60 }) }
+          : { type: 'message', id: 'msg_budget', role: 'assistant', status: 'completed',
+            content: [{ type: 'output_text', text: 'Draft retained.', annotations: [] }] };
+        response.writeHead(200, { 'content-type': 'text/event-stream' });
+        response.end(streamResponse('k3', step, item));
+      } catch (error) {
+        failure ??= error;
+        response.writeHead(400);
+        response.end();
+      }
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+    const backend = substrateBackendConfiguration({ upstreamUrl: `http://127.0.0.1:${server.address().port}/v1/responses`,
+      host: process.env.MURM_CORE_TEST_ADVERTISE_HOST, lifecycleUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL,
+      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST, apiKey: process.env.MURM_CORE_TEST_API_KEY });
+    const configuration = join(installed.directory, 'fate-budget-native.mjs');
+    await writeFile(configuration, `export default ${JSON.stringify({ backend, runId, outputDir,
+      image: process.env.MURM_CORE_TEST_IMAGE, poolSize: 1, workTimeoutMs: 90_000, closeTimeoutMs: 30_000,
+      fate: { mode: 'none', projectRoot: process.env.MURM_FATE_TEST_PROJECT, leanRoot: process.env.MURM_FATE_TEST_LEAN, verifiedCompletion: true },
+    })}\n`, { mode: 0o600 });
+    const main = join(installed.directory, 'node_modules/@murm/core/dist/examples/substrate/main.js');
+    const execution = await execute(process.execPath, [main, configuration], { cwd: installed.directory, env: installed.env, timeout: 160_000 })
+      .then(() => null, error => error);
+    assert.ifError(failure);
+    assert.ifError(execution);
+    assert.equal(requests, 2);
+    const result = JSON.parse(await readFile(join(outputDir, runId, 'fate-result.json'), 'utf8'));
+    assert.equal(result.peers[0].semanticOperations, operations);
+    assert.equal(result.peers[0].continuations, 0);
+    assert.equal(result.peers[0].endReason, reason);
+    assert.deepEqual(result.peers[0].completionBudget, {
+      remainingOperations: 100 - operations, remainingChecks: 10 - checks, hasPassingProof: false,
+    });
+    assert.equal(result.scoring.candidates[0].status, 'rejected');
+    assert.equal(result.cleanup.cleanup, 'complete');
+  });
+}

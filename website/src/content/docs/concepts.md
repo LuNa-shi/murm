@@ -1,176 +1,300 @@
 ---
-title: Core Concepts
-description: Six orthogonal abstractions — Agent, Service, Harness, Runtime, Sandbox, and Run — separating execution infrastructure from coordination logic.
-section: GETTING STARTED
+title: How murm Works
+description: The mental model behind murm — how a Harness steers a Runtime arena of isolated Sandboxes, customizable Shared Services, an external Host Gateway, and durable Run traces.
+section: GET STARTED
 order: 2
 ---
 
-Multi-agent systems get tangled when **infrastructure** (containers, sessions, credentials, logging, cleanup) is mixed with **coordination policy** (who decomposes tasks, who sees what, when to stop).
+Multi-agent systems become hard to reason about when **coordination logic** (who picks up work, how agents share context, when to interrupt, when a run succeeds) is tangled with **infrastructure** (containers, sessions, API keys, network rules, trace collection, cleanup).
 
-`murm` splits those two concerns across six orthogonal concepts:
+`murm` draws a clean line between the two: **you write the coordination; `murm` runs the infrastructure.**
 
-- **Authoring side (what you write)**: author a **`Harness`** by composing **`Agent`** profiles and shared **`Service`** definitions.
-- **Execution side (what `murm` manages)**: the **`Runtime`** runs each agent inside an isolated **`Sandbox`** and records every execution as a self-contained **`Run`**.
+## The mental model
 
-Each concept below is introduced with a short focused snippet before combining all six at the end.
+Picture a swarm running on `murm` as five cooperating layers:
+
+<div class="doc-diagram" role="region" aria-label="Five cooperating layers of murm">
+  <div class="dd-row-2-arrow">
+    <div class="dd-box dd-yellow">
+      <div class="dd-box-title">HARNESS</div>
+      <ul class="dd-list">
+        <li>Your control loop &amp; rules</li>
+        <li>Role Profiles &amp; stop policy</li>
+      </ul>
+    </div>
+    <div class="dd-arrow-h" aria-hidden="true">◄── spawn · send · onEvent ──►</div>
+    <div class="dd-box dd-indigo">
+      <div class="dd-box-title">RUNTIME (the arena)</div>
+      <div class="dd-sandbox-stack">
+        <div class="dd-sandbox-pill"><strong>SANDBOX A</strong> · Agent (Pi + workspace)</div>
+        <div class="dd-sandbox-pill"><strong>SANDBOX B</strong> · Agent (Pi + workspace)</div>
+        <div class="dd-sandbox-pill"><strong>SANDBOX C</strong> · Agent (Pi + workspace)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dd-pipes">
+    <div class="dd-pipe">
+      <span class="dd-pipe-line" aria-hidden="true">│<br/>▼</span>
+      <span class="dd-pipe-meta"><strong>registers</strong><span>v2 manifests &amp; adapters</span></span>
+    </div>
+    <div class="dd-pipe">
+      <span class="dd-pipe-line" aria-hidden="true">│<br/>▼</span>
+      <span class="dd-pipe-meta"><strong>swarm CLI · /v1/responses</strong><span>authenticated over host bridge</span></span>
+    </div>
+  </div>
+
+  <div class="dd-row-3">
+    <div class="dd-box dd-service">
+      <div class="dd-box-title">SHARED SERVICES</div>
+      <ul class="dd-list">
+        <li>Customizable domain state</li>
+        <li>Boards, pools, Git &amp; verifiers</li>
+      </ul>
+    </div>
+    <div class="dd-arrow-h" aria-hidden="true">◄──</div>
+    <div class="dd-box dd-teal">
+      <div class="dd-box-title">HOST GATEWAY</div>
+      <ul class="dd-list">
+        <li>Service Bridge (auth + schema)</li>
+        <li>Model Gateway (host API keys)</li>
+      </ul>
+    </div>
+    <div class="dd-arrow-h" aria-hidden="true">──►</div>
+    <div class="dd-box dd-amber">
+      <div class="dd-box-title">RUN TRACES</div>
+      <ul class="dd-list">
+        <li>outputDir/&lt;runtimeId&gt;/</li>
+        <li>Sessions, calls &amp; artifacts</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+1. **You write the Harness**: a plain TypeScript program on the host that defines agent roles (**Profiles**), registers shared **Services**, and runs the control loop (`spawn`, `send`, `interrupt`, `onEvent`, `stop`, `close`).
+2. **Runtime is the arena**: it allocates isolated **Sandboxes** up to `maxAgents`, keeps each **Agent** alive across turns, and enforces permissions and capacity limits.
+3. **Every Agent runs inside a Sandbox**: one Docker container with a persistent **Pi** session, its own working directory (or an explicit shared mount), and just four local tools (`read`, `write`, `edit`, `bash`).
+4. **Coordination flows through customized Services**: agents never talk directly across containers. They call your host-registered Services through the uniform `swarm` CLI over the **Host Gateway** (Service Bridge + Model Gateway), while upstream API keys never leave the host.
+5. **Every Run streams full traces**: lifecycle events, Service calls, raw model requests/responses, native Pi sessions, and exported artifacts land in a self-contained directory under `outputDir/<runtimeId>/`.
 
 ---
 
-## 1. Agent — an independent execution unit with persistent state
+## 1. Harness — your control loop and rules
 
-An **Agent** is a single reasoning and coding actor. Each agent runs a native Pi session with just four local tools: `read`, `write`, `edit`, and `bash`.
+The **Runtime is intentionally passive**. When an agent finishes a turn and emits a `settled` event, it sits in `idle` with its session and files intact. The Runtime never decides to forward a result to another agent, trigger a follow-up, or end the mission.
 
-You configure an agent's role, model, container image, and service permissions through a static **Profile**:
+Your **Harness** owns all active policy:
+- Which agent roles exist and which Service operations each role may call.
+- When to spawn agents, when to fork a parent's conversation, and when to mount a shared workspace.
+- How to react to `settled` events, chat messages, or task claims — and when to `interrupt` or `stop` an agent.
+- What constitutes business success (a verified Git commit, a passed Lean check, a written artifact, or a root synthesis).
+
+In the repository, the five built-in topologies live as ordinary Harnesses under `src/harnesses/` and `examples/`.
+
+---
+
+## 2. Agent & Profile — persistent actors with hard boundaries
+
+Each **Agent** is a persistent Pi `1.3.0` coding session running inside a container. Two properties shape how you design roles:
+
+1. **Sessions survive across turns**: finishing a turn transitions the agent from `running` back to `idle` without destroying the container or conversation history. Your Harness can send follow-up instructions into the same session and working directory.
+2. **Prompts guide; Profiles enforce**: `Profile.prompt` tells the model how to collaborate, while `Profile.services`, `Profile.writable`, `Profile.network`, and `Profile.spawnProfiles` are hard-enforced by the Runtime and Bridge.
 
 ```ts
-const readerProfile = {
-  prompt: 'Verify facts from shared notes and write your summary to review.md.',
-  model: 'default',
-  image: 'murm-worker:local',
-  writable: true,
-  services: { notes: ['get'] }, // read-only access to notes
+import type { Profile } from '@murm/core';
+
+const profiles: Record<string, Profile> = {
+  writer: {
+    prompt: 'Inspect review-input.json and publish the finding with `swarm notes put`.',
+    model: 'default',
+    image: config.image,
+    writable: true,
+    services: { notes: ['put'] },
+  },
+  reader: {
+    prompt: 'Read the published note via `swarm notes get` and write review.md.',
+    model: 'default',
+    image: config.image,
+    writable: true,
+    services: { notes: ['get'] },
+    collect: {
+      paths: ['review.md', 'followup.md'],
+      includeGit: false,
+      maxBytes: 64 * 1024,
+      required: true,
+    },
+  },
 };
 ```
 
-Two properties define how agents behave:
-1. **Persistent across turns**: finishing a turn transitions the agent back to `idle` without destroying it. Its conversation session and working directory stay intact for follow-up instructions.
-2. **Prompts guide behavior; permissions enforce boundaries**: `prompt` describes how the agent should collaborate, while `services` and `writable` are hard-enforced by the Runtime and Bridge.
+At `createRuntime()` time, Profiles are deep-copied and frozen. Unknown model aliases or unregistered Service operations fail immediately before any sandbox is created.
 
 ---
 
-## 2. Service — composable shared coordination capabilities
+## 3. Customized Services — how agents coordinate
 
-Because every agent sits in an isolated sandbox with only four local tools, all cross-agent coordination happens through **Services** registered on the host.
+Because containers only expose four local tools (`read`, `write`, `edit`, `bash`), **every cross-agent interaction goes through a Service** that your Harness designs and registers.
 
-A Service consists of two parts:
-- A **`manifest`** declaring service ID, operations, descriptions, and JSON Schema contracts;
-- An **implementation**, either a local host function (`createInProcessAdapter`) or an external HTTP endpoint (`createHttpJsonAdapter`).
+Want a shared key-value store? A hierarchical mailbox? A transactional SQLite task board? A Lean proof verifier? A Git pull-request gate? You define a v2 `ServiceManifest` (operations + strict JSON Schema draft-07 contracts) and attach either:
+- **`createInProcessAdapter`**: a TypeScript handler running directly in your host Harness process; or
+- **`createHttpJsonAdapter`**: a host-authenticated HTTP JSON proxy to an external server.
 
 ```ts
+import { ServiceRegistry, createInProcessAdapter } from '@murm/core/services';
+
+const records = new Map<string, { key: string; text: string; author: string }>();
+const services = new ServiceRegistry();
+
 services.registerService({
-  manifest: notesManifest, // declares put / get operations + JSON Schemas
+  manifest: notesManifest, // declares put & get operations + JSON Schemas
   adapter: createInProcessAdapter({
-    invoke({ capability, input, caller }) {
-      if (capability.operation === 'get') return records.get(input.key) ?? null;
-      // caller.agentId is injected by the Runtime after token auth — unforgeable
-      const entry = { key: input.key, text: input.text, author: caller.agentId };
-      records.set(input.key, entry);
+    invoke({ capability, input, caller, assertAuthorized }) {
+      const req = input as { key: string; text?: string };
+      const existing = records.get(req.key);
+      if (capability.operation === 'get') return existing ?? null;
+
+      if (existing) {
+        if (existing.author === caller.agentId && existing.text === req.text) return existing;
+        throw Object.assign(new Error('Key already exists with different content'), { code: 'CONFLICT' });
+      }
+
+      // Confirm caller authority right before mutating shared state
+      assertAuthorized();
+      const entry = { key: req.key, text: req.text!, author: caller.agentId };
+      records.set(req.key, entry);
       return entry;
     },
   }),
 });
 ```
 
-Inside the sandbox, agents discover and invoke every permitted Service through a single uniform `swarm` CLI:
+Inside the sandbox, agents discover and call permitted Services through the single uniform `swarm` CLI — no custom Pi extensions or per-harness tool definitions needed:
 
 ```bash
 swarm service list
+swarm service view notes
 swarm notes put --input note-request.json --request-id notes-put
 swarm notes get --key core-service-boundary --request-id notes-get
 ```
 
-Because the interface is uniform, task pools (TaskPool), team mailboxes (Subagents), shared boards (PeerMesh), and immutable citation stores (Substrate) all plug into the exact same agent runtime without adding bespoke tools.
+Crucially, `caller` (`{ runtimeId, agentId, profile, binding? }`) is reconstructed by the host Service Bridge from the agent's container-scoped bearer token. An agent cannot spoof another agent's identity.
 
 ---
 
-## 3. Harness — your multi-agent coordination logic
+## 4. Runtime & Sandbox — the isolated execution arena
 
-If **Runtime** is the engine that runs agents reliably, **Harness** (stored under `src/harnesses/*` in the repository) is the outer coordination system you build on top of it — such as `Subagents`, `TaskPool`, `PeerMesh`, `Substrate`, or `Lead-Worker`.
-
-The boundary is strict:
-- **Runtime is passive**: when an agent finishes a turn and emits `settled`, it rests in `idle`. The Runtime never decides to forward results to another agent or start another round.
-- **Harness is active**: it registers Services, spawns roles, reacts to `onEvent` or external chat/Git streams, decides who receives the next `send`, and determines when the mission is complete.
-
----
-
-## 4. Runtime — the unified control plane
-
-The **Runtime** is the host-side engine that executes lifecycle and delivery commands against sandboxes and Pi processes. Its control surface comes down to four operations:
+The **Runtime** manages container allocation, slot capacity (`maxAgents`), input delivery, event streaming, file controls, and teardown. Its core control surface is compact:
 
 ```ts
-// 1. Spawn and inspect agents
-const agent = await runtime.spawn({ requestId: 'a1', profile: 'reader', files: seedFiles });
+// 1. Spawn an agent (starts idle — no model call fires automatically)
+const reader = await runtime.spawn({
+  requestId: 'spawn-reader',
+  profile: 'reader',
+  files: { 'review-input.json': { encoding: 'utf8', data: serializedFact } },
+});
 
-// 2. Deliver input (prefer unified send with explicit mode & wakeIfIdle)
-await runtime.send(agent.id, 'Read the shared note and write review.md.', {
-  requestId: 'turn-1',
+// 2. Subscribe to live lifecycle events (output, settled, error, exit)
+const unsubscribe = runtime.onEvent((event) => {
+  if (event.type === 'settled') {
+    console.log(event.agentId, event.outcome, event.output);
+  }
+});
+
+// 3. Deliver work or mid-flight notices with unified send()
+await runtime.send(reader.id, 'Fetch the shared note and write review.md.', {
+  requestId: 'reader-turn-1',
   mode: 'followUp',
 });
 
-// 3. Subscribe to live lifecycle events (output, settled, error, exit)
-const off = runtime.onEvent((event) => {
-  if (event.type === 'settled') console.log(event.agentId, event.outcome);
-});
+// 4. Stop an agent (archives session & collect files before deleting sandbox)
+const stopReceipt = await runtime.stop(reader.id, { timeoutMs: 30_000 });
 
-// 4. Stop an agent or close the entire run
-await runtime.stop(agent.id);
-await runtime.close();
+// 5. Close the entire run and flush all traces
+unsubscribe();
+await runtime.close({ timeoutMs: 30_000 });
 ```
 
-> **About `send`, `start`, and `steer`**: in `@murm/core`, `runtime.start` and `runtime.steer` are thin aliases over `runtime.send` (`mode: 'followUp'` and `mode: 'steer'`, respectively). Only `send` exposes the full option set, including conditional non-waking delivery (`wakeIfIdle: false`). Prefer `runtime.send` in new Harnesses.
+> **Note on `send`, `start`, and `steer`**: `runtime.start()` and `runtime.steer()` are convenience aliases over `runtime.send()` (`mode: 'followUp'` and `mode: 'steer'`, respectively, both with `wakeIfIdle: true`). Prefer `runtime.send()` in new Harnesses — it is the only form that exposes conditional non-waking delivery (`wakeIfIdle: false`).
+
+Every Sandbox enforces three defaults out of the box:
+- **Private filesystems with explicit sharing**: each agent gets its own bounded disk quota (`bytes` and `inodes`). Mount a shared workspace only when you explicitly pass `workspace: { id, mode: 'read-write' | 'read-only' }`.
+- **Default-deny network**: containers can reach only the host Service Bridge, host Model Gateway, and explicit IPv4 origins listed in `Profile.network.allow`.
+- **Archive-before-delete cleanup**: `stop()` halts Pi first, exports the native session and any `collect` files, and removes the container only after required exports succeed.
 
 ---
 
-## 5. Sandbox — isolated execution space
+## 5. Run — durable records for debugging and evaluation
 
-Every agent runs inside its own **Sandbox** (currently an OpenSandbox-managed Docker container), giving you three guarantees:
+Every `createRuntime()` call generates a fresh `runtime.id` and creates `outputDir/<runtimeId>/`.
 
-- **Filesystem isolation with opt-in sharing**: by default each agent owns a private directory and can edit files concurrently without conflicts. When a group needs to edit the same repository together, `spawn` can mount a shared runtime workspace (`workspace: { id, mode: 'read-write' }`).
-- **Network and secret isolation**: containers can only reach the host's Service Bridge, Model Gateway, and explicit IPv4 allowlists in `Profile.network`. Upstream model API keys never leave the host.
-- **Export-before-delete teardown**: stopping an agent halts Pi first, archives its native session and `collect` files to the host, and deletes the container only after exports succeed.
-
----
-
-## 6. Run — one concrete execution and its durable archive
-
-Every Runtime instance corresponds to one **Run** identified by a unique `runId` (`runtime.id`).
-
-A Run has a private directory under `outputDir/<runtimeId>/` containing the effective config snapshot, ordered event log (`evidence.jsonl`), full Service call log (`service-calls.jsonl`), raw model request/response traces (`model-trace/`), native per-agent session JSONL files, and exported deliverables.
+Without adding any logging code to your Harness, a Run records:
+- `runtime.json` — effective configuration, prompt digests, stop receipts, and cleanup status.
+- `evidence.jsonl` — ordered host timeline of spawns, inputs, receipts, events, and errors.
+- `service-calls.jsonl` — every authenticated Service call with full inputs, outputs, and errors.
+- `model-trace/<attemptId>/` — received/forwarded JSON payloads, raw upstream SSE stream, and usage/status metadata.
+- `<agentId>/session/` and `<agentId>/artifacts/` — native Pi JSONL conversation logs and exported deliverables.
 
 ---
 
-## Putting all six together
+## Putting it all together
 
-Combining the fragments above produces a complete multi-agent Harness skeleton:
+Combine the pieces above into a complete minimal Harness (adapted directly from [examples/notes/main.ts](https://github.com/LuNa-shi/murm/blob/main/examples/notes/main.ts)):
+
+For source builds with executor selection, `config.backend.executor` selects `pi` or `codex`. Omitting it selects Pi.
 
 ```ts
 import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core/services';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
+import { runInput } from './run-input.js';
 
-// 1. Register shared Services
-const services = new ServiceRegistry();
-services.registerService({ manifest: notesManifest, adapter: createNotesAdapter() });
+const { services, records } = createNotesService();
 
-// 2. Start a Runtime (begins a Run)
 const runtime = await createRuntime({
-  backend: createPiOpenSandboxBackend(config.backend),
+  backend: createOpenSandboxBackend(config.backend),
   services,
-  profiles: { writer: writerProfile, reader: readerProfile },
+  profiles,
   maxAgents: 2,
-  outputDir: './runs',
+  outputDir: './notes-runs',
 });
 
-// 3. Orchestrate collaboration in your Harness
-const writer = await runtime.spawn({ requestId: 'spawn-w', profile: 'writer', files: seedFiles });
-await runInput(runtime, writer.id, 'Publish your finding with swarm notes put', { requestId: 't1', timeoutMs: 30_000 });
+try {
+  const writer = await runtime.spawn({
+    requestId: 'writer',
+    profile: 'writer',
+    files: seedFiles,
+  });
+  await runInput(runtime, writer.id, 'Publish the seeded note with swarm notes put.', {
+    requestId: 'writer-turn-1',
+    timeoutMs: 30_000,
+  });
 
-const reader = await runtime.spawn({ requestId: 'spawn-r', profile: 'reader', files: seedFiles });
-await runInput(runtime, reader.id, 'Verify via swarm notes get and write review.md', { requestId: 't2', timeoutMs: 30_000 });
-
-// 4. Close and archive sessions, traces, and deliverables
-await runtime.close();
+  const reader = await runtime.spawn({
+    requestId: 'reader',
+    profile: 'reader',
+    files: readerSeedFiles,
+  });
+  await runInput(runtime, reader.id, 'Read the note via swarm notes get and write review.md.', {
+    requestId: 'reader-turn-1',
+    timeoutMs: 30_000,
+  });
+  await runInput(runtime, reader.id, 'Copy review.md unchanged to followup.md.', {
+    requestId: 'reader-turn-2',
+    timeoutMs: 30_000,
+  });
+} finally {
+  await runtime.close({ timeoutMs: 30_000 });
+}
 ```
 
-## Symbol mapping to `@murm/core`
+## Concept-to-code map
 
-| `murm` concept | `@murm/core` symbol / path | Responsibility |
+| Concept | `@murm/core` symbol / location | Responsibility |
 | --- | --- | --- |
-| `Agent` | `AgentInfo`, `AgentEvent` | Independent execution unit inside a sandbox |
-| `Harness` | `src/harnesses/` and `examples/` | Host-side coordination logic and policies |
-| `Runtime` | `Runtime` (`createRuntime`) | Control plane and lifecycle engine |
-| `Run` | `runtime.id` + `outputDir/<runtimeId>/` | Concrete execution and durable trace archive |
-| `Sandbox` | OpenSandbox container + `Worker` | Filesystem, network, and process boundary |
-| `Service` | `Service` (`ServiceRegistry`) | Composable shared operations and state |
+| **Harness** | Your code (`src/harnesses/`, `examples/`) | Control loop, role Profiles, Service definitions, acceptance checks |
+| **Runtime** | `createRuntime`, `Runtime` | Host control plane for lifecycle, delivery, file controls, and teardown |
+| **Agent** | `AgentInfo`, `AgentStatus`, `AgentEvent` | Persistent Pi session inside a container with a bounded working directory |
+| **Sandbox** | `createPiOpenSandboxBackend` + Worker | Docker container boundary for filesystem, network, and process isolation |
+| **Service** | `ServiceRegistry`, `ServiceManifest`, `ServiceAdapter` | Schema-validated shared operations invoked through `swarm` CLI |
+| **Run** | `runtime.id` + `outputDir/<runtimeId>/` | Concrete execution and complete trace/artifact archive |
 
-Continue to [System Architecture](../architecture/) to follow the exact trust boundaries and request flows between host and sandboxes.
+Continue to [System Architecture](../architecture/) to follow the exact trust boundaries and request flows between the host and sandboxes.

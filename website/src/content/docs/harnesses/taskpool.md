@@ -1,118 +1,129 @@
 ---
 title: TaskPool
-description: Shared task pool, read-only discovery to host-granted writes, Model Access Policy lease guards, and versioned main merges for long-running projects.
+description: Shared task pool with exclusive leased claims, read-only discovery to host-granted writes, Model Access Policy lease guards, and versioned Workspace merges.
 section: BUILT-IN HARNESSES
-order: 7
+order: 8
 ---
 
-**TaskPool** *(repository module: `src/harnesses/taskpool`)* is built for long-running projects where individual workers may time out or rotate. There is no permanent manager: identical participants discover work from a shared **Task** pool, publish immutable **Materials**, and merge verified changes into a versioned **Workspace `main`**. Source code: [src/harnesses/taskpool](https://github.com/LuNa-shi/SwarmEnv/tree/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool).
+**TaskPool** (`src/harnesses/taskpool/`) is designed for long-running projects where individual agents time out, finish bounded work, or rotate cleanly without losing progress. There is no permanent manager: identical `researcher` agents discover open **Tasks**, publish immutable **Materials**, save verified revisions to a public **Workspace**, and hand off through durable shared state.
 
 ## 1. Registered Services
 
-| Service | Core Operations | Domain Guarantees |
+| Service | Core CLI operations | Domain guarantees |
 | --- | --- | --- |
-| **`task`** | `task_list`, `task_view`, `task_take`, `task_link_material`, `task_finish`, `task_revise`, `task_cancel` | Dependency DAG + exclusive claims creating leased Executions with `fencing_version` |
-| **`material`** | `read_materials`, `context_get_material`, `context_publish_material`, `consume_materials`, `material_dispute`, `material_supersede` | Immutable findings, failed attempts, and cross-task citation lineage |
-| **`workspace`** | `workspace_public_view/files/read/diff`, `workspace_save`, `workspace_merge` | Versioned public `main` + private commits; saves snapshot cleanly and merges require verification |
-| **`judge`** *(optional)* | `workspace_check`, `get_check_result` | Trusted build/verification checks against saved public versions |
+| **`task`** | `list`, `view`, `create`, `take`, `link`, `finish`, `revise`, `cancel`, `dependency-replace`, `feedback` | Dependency DAG + exclusive claims creating leased **Executions** with monotonic `fencing_version` |
+| **`material`** | `list`, `view`, `search`, `publish`, `consume`, `dispute`, `supersede`, `unsupersede` | Immutable findings and provenance links across Tasks and Executions |
+| **`workspace`** | `view`, `history`, `status`, `diff`, `public-diff`, `files`, `read`, `search`, `save`, `apply`, `merge` | Versioned public `main` plus unmerged saved revisions; `merge` can gate advances behind a host verifier |
+| **`judge`** *(optional)* | `check`, `result` | Runs trusted host checks against fixed saved Workspace revisions |
+| **`mission`** *(optional)* | `view`, `submit`, `submission view` | Reads the shared Mission goal and submits pinned `main` + Material selection for final acceptance |
 
-## 2. Runtime primitives used
+A typical worker cycle inside Bash uses the uniform `swarm` CLI:
 
-TaskPool combines three Runtime mechanisms to enforce strict task ownership:
+```bash
+# 1. Read-only discovery while UNBOUND
+swarm task list --state ready
+swarm task view T1
+swarm task take T1 --request-id take-t1
 
-### 1. Read-only discovery followed by `files.prepare` + `files.grant`
+# 2. After host grants write access: edit, save, check, publish, and finish
+swarm workspace save --request-id save-t1
+swarm judge check --revision 0.2 --request-id check-t1
+swarm material publish --content '{"revision":"0.2","summary":"Fixed parser edge case"}' --request-id pub-m1
+swarm task link --task-id T1 --material-id M1 --role experience --request-id link-m1
+swarm task finish --outcome done --workspace-revision 0.2 --material-ids '["M1"]' --request-id finish-t1
+```
 
-Every `researcher` starts with **`writable: false`**. Until it successfully claims a task via `swarm task take T1`, it cannot write to its workspace. Once claimed, [task-handoff.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/task-handoff.ts) runs a four-step handoff on the host:
+## 2. Three Runtime primitives working together
+
+### Read-only discovery → `files.prepare()` + `files.grant()`
+
+Every `researcher` spawns with **`writable: false`**. While unbound, it can inspect Tasks, Materials, and public Workspace files through Services, but cannot modify `/workspace/project`.
+
+When the agent wins `swarm task take`, [task-handoff.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/task-handoff.ts) heartbeats the reservation while running a four-step host handoff:
 
 ```ts
-// 1. Assemble input files from the pinned public workspace version and cited materials
-const inputs = await prepareTaskPoolInputs({ execution, missionWorkspace, contextService });
+// 1. Assemble pinned public workspace revision + linked Material inputs
+const inputs = await prepareTaskPoolInputs({
+  execution: taken.execution,
+  taskService,
+  missionWorkspace,
+  workspaceId,
+  workspaceManager,
+  contextService,
+});
 
-// 2. Stage files into the empty read-only directory and obtain a trusted PreparedFiles handle
+// 2. Stage files into the empty read-only directory; returns a frozen PreparedFiles handle
 const prepared = await runtime.files.prepare(agentId, {
-  requestId: `${handoffId}:prepare`,
+  requestId: `${id}:prepare`,
   files: inputs.files,
 });
 
-// 3. Activate the Execution with execution & handoff deadlines
-taskService.dispatch('start_execution', { execution_deadline, handoff_deadline }, envelope);
+// 3. Activate the Execution in TaskService with finite execution & handoff deadlines
+execution = taskService.dispatch(
+  'start_execution',
+  { core_id: agent.core_id, started_at, execution_deadline, handoff_deadline },
+  executionEnvelope(execution, `${id}:start`),
+).execution;
 
-// 4. Pass the original PreparedFiles object back to unlock writes in the live session
-await runtime.files.grant({ requestId: `${handoffId}:grant`, prepared });
+// 4. Pass the exact PreparedFiles object back to unlock write access in the live container
+await runtime.files.grant({ requestId: `${id}:grant`, prepared });
 ```
 
-### 2. Lease-gated model inference via `modelAccessPolicy`
+### Lease-gated model inference via `modelAccessPolicy`
 
-Consider a classic lease-expiry race:
-
-> Agent A holds a five-minute lease on Task 1 and stalls. When the lease expires, its container may still be running while cleanup proceeds. The Model Gateway denies inference under the stale lease. The controller can refill the slot after it confirms cleanup.
-
-`modelAccessPolicy` attaches a synchronous gate right in front of the host **Model Gateway** ([model-access-policy.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/model-access-policy.ts)):
+If an agent stalls and its lease expires while container teardown is still running, [model-access-policy.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/model-access-policy.ts) stops stale inference right inside the host Model Gateway:
 
 ```ts
-const modelAccessPolicy: ModelAccessPolicy = {
-  authorize(caller) {
-    const agent = taskService.getAgent(caller.agentId);
-    if (!agent || isStopping()) return null; // deny immediately
-
-    if (agent.state === 'UNBOUND') {
-      return { phase: 'selection', deadlineAt: Date.parse(agent.selection_deadline) };
-    }
-    const exec = taskService.getExecution(agent.execution_id);
-    if (agent.state !== 'ACTIVE' || exec?.state !== 'RUNNING') return null;
-
-    return {
-      phase: 'work',
-      deadlineAt: Math.min(missionDeadline, Date.parse(exec.execution_deadline)),
-      lease: {
-        key: exec.execution_id,
-        version: exec.fencing_version,
-        expiresAt: Date.parse(exec.lease_expires_at),
-      },
-    };
-  },
-  withCommit: (commit) => taskService.withServiceLifecycleWrite(commit),
-};
-```
-
-If the lease expires or its `fencing_version` advances, the Gateway immediately aborts in-flight streaming responses and blocks subsequent turns.
-
-### 3. Auto-continuation and slot replacement
-
-TaskPool separates turn completion (`settled`) from task completion (`task finish`): if a worker pauses before calling `task finish`, the controller follows up automatically; if a lease expires or stalls, the controller calls `runtime.stop()` and spawns a fresh replacement into the freed slot.
-
-## 3. Host control loop
-
-[controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/controller.ts) runs a dual **event + heartbeat reconciliation loop**:
-
-```ts
-// Track 1: Event-driven continuation & finish handling
-runtime.onEvent((event) => {
-  if (event.type !== 'settled') return;
-  const { owner, execution } = readDomainState(event.agentId);
-
-  if (owner?.state === 'CLOSING' || execution?.state === 'CLOSING') {
-    void stopAndRefill(event.agentId, 'task-finish');
-  } else if (owner?.state === 'ACTIVE' && execution?.state === 'RUNNING') {
-    void runtime.send(event.agentId, buildContinuationMessage(execution), {
-      requestId: `continue:${event.agentId}:${event.seq}`,
-      mode: 'followUp',
-    });
-  } else if (owner?.state === 'UNBOUND') {
-    void runtime.send(event.agentId, AGENT_DISCOVERY_MESSAGE, {
-      requestId: `discovery:${event.agentId}:${event.seq}`,
-      mode: 'followUp',
-    });
+export function authorizeTaskPoolAgent({ taskService, missionId, agentId, deadline, isStopping }): ModelPermit | null {
+  const at = Date.now();
+  const agent = taskService.getAgent(agentId);
+  if (isStopping() || agent?.mission_id !== missionId || at >= Math.min(deadline(), Date.parse(agent.hard_deadline))) {
+    return null;
   }
-});
+  if (agent.state === 'UNBOUND') {
+    const selectionDeadline = Date.parse(agent.selection_deadline);
+    return !agent.execution_id && at < selectionDeadline
+      ? { phase: 'selection', deadlineAt: Math.min(deadline(), Date.parse(agent.hard_deadline), selectionDeadline) }
+      : null;
+  }
+  const execution = taskService.getExecution(agent.execution_id);
+  const leaseDeadline = Date.parse(execution?.lease_expires_at);
+  if (agent.state !== 'ACTIVE' || execution?.state !== 'RUNNING' || at >= leaseDeadline) return null;
 
-// Track 2: Periodic reconciliation — lease heartbeats, dependency unlocks, stale cleanup, refills
-setInterval(() => void reconcileAndRefill(), heartbeatMs);
+  const phase = isSoftCloseout(execution, at) ? 'closeout' : 'work';
+  return {
+    phase,
+    deadlineAt: Math.min(deadline(), Date.parse(agent.hard_deadline), Date.parse(execution.execution_deadline)),
+    lease: { key: agent.execution_id, version: execution.fencing_version, expiresAt: leaseDeadline },
+  };
+}
+```
+
+Whenever a lease expires or its `fencing_version` changes, the Model Gateway immediately aborts in-flight streaming responses and blocks new model requests. Combined with `modelGateway.selectionReasoningEffort: 'low'`, unbound discovery turns can also use lighter reasoning effort while active work turns keep full reasoning.
+
+### Dual event + heartbeat reconciliation loop
+
+[controller.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/controller.ts) separates turn settlement (`settled`) from task completion (`swarm task finish`):
+- **Event track (`runtime.onEvent`)**: if an agent settles while its Execution is still `RUNNING`, the controller sends a `followUp` continuation turn; if it is `UNBOUND`, it sends discovery guidance; if `CLOSING` (after `task finish`), it calls `runtime.stop()`, finalizes domain state, and spawns a fresh replacement into the freed Slot.
+- **Heartbeat track (`setInterval`)**: renews active leases, detects stalled or expired agents, stops them cleanly, and refills open Slots up to `capacity` until all Tasks are terminal (or the Mission is accepted under `completionPolicy: 'mission'`).
+
+## 3. Running with the foreground CLI
+
+TaskPool can be launched through the repository's foreground host CLI (`scripts/run-harness.ts`), which accepts JSON-line commands on `stdin` (`status`, `input`, `stop`) and writes a final summary with `runtimeId` and `reportPath`:
+
+```bash
+node dist/scripts/run-harness.js --config ./my-taskpool-config.mjs
+
+# Inspect saved reports after completion:
+node dist/scripts/read-harness-result.js \
+  --run-directory "./runs/$runtime_id" \
+  --runtime-id "$runtime_id"
 ```
 
 ## Source files
 
-- Entrypoint: [src/harnesses/taskpool/harness.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/harness.ts)
-- Reconciliation controller: [src/harnesses/taskpool/controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/controller.ts)
-- File handoff: [src/harnesses/taskpool/task-handoff.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/task-handoff.ts)
-- Model lease gate: [src/harnesses/taskpool/model-access-policy.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/model-access-policy.ts)
+- Harness assembly & closeout: [src/harnesses/taskpool/harness.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/harness.ts)
+- Reconciliation controller: [src/harnesses/taskpool/controller.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/controller.ts)
+- File handoff (`prepare` / `grant`): [src/harnesses/taskpool/task-handoff.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/task-handoff.ts)
+- Lease gate (`ModelAccessPolicy`): [src/harnesses/taskpool/model-access-policy.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/model-access-policy.ts)
+- Publication & workspace capture: [src/harnesses/taskpool/publication-services.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/publication-services.ts)

@@ -7,6 +7,8 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { SETUP_PROFILE_PROMPT, SETUP_FOLLOW_UP } from './local-setup-smoke.js';
+import { SETUP_BASH, SETUP_READ, SETUP_RESULT } from './local-setup-upstream.js';
 import { rootPrompt, childPrompt } from '../examples/subagents/prompts.js';
 import { parentPromptFor, initialGoalFor } from '../test-support/subagents/communication-fixture-prompts.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
@@ -31,7 +33,8 @@ const sourcePaths = [
   'src/agent/capability-profile.ts',
   'src/agent/services-bridge.ts',
   'src/cli/swarm-cli.ts', 'src/cli/service-command.ts',
-  'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
+  'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts', 'scripts/codex-app-server-driver.ts',
+  'scripts/local-setup-smoke.ts', 'scripts/local-setup-upstream.ts',
   'examples/notes/main.ts', 'src/harnesses/shared/run-input.ts', 'src/harnesses/substrate/index.ts', 'src/harnesses/substrate/substrate.ts',
   'src/harnesses/taskpool/controller.ts', 'src/harnesses/taskpool/harness.ts',
   'examples/substrate/fate-run.ts', 'examples/substrate/fate-service.ts', 'src/harnesses/substrate/paper-substrate.ts',
@@ -147,6 +150,14 @@ for (const path of await listSourceFiles('src')) {
   }
 }
 output('06-tool-return-guidance.md', guidanceDoc);
+output('10-local-setup-probe.md', header('Complete local setup probe texts',
+  'Setup and explicit doctor smoke use one temporary Runtime and the controlled Responses gateway. The probe input follows admitted Worker startup. The two tool calls and final result come from the fixed loopback upstream sequence.')
+  + block('Probe Profile instruction', SETUP_PROFILE_PROMPT)
+  + block('Host follow-up', SETUP_FOLLOW_UP)
+  + block('Controlled Bash arguments', JSON.stringify({ command: SETUP_BASH, timeout: 10 }, null, 2))
+  + block('Controlled read arguments', JSON.stringify({ path: SETUP_READ }, null, 2))
+  + block('Controlled final text', SETUP_RESULT));
+
 const notesPath = 'examples/notes/main.ts';
 const notesKey = between(notesPath, "const key = '", "';\n");
 const notesInput = evaluate(between(notesPath, 'const inputText = Object.freeze(', ');\n'), { key: notesKey });
@@ -176,8 +187,9 @@ const substrateIndexPath = 'src/harnesses/substrate/index.ts';
 const substratePath = 'src/harnesses/substrate/substrate.ts';
 const fatePath = 'examples/substrate/fate-run.ts';
 output('01-core-startup.md', header('Core startup system prompt',
-  'The backend passes this file through Pi --system-prompt. The current working directory is appended by Pi. Services are rendered from the registered manifest purpose and operation descriptions after Bridge permission filtering. An optional nonblank Profile.prompt is included verbatim inside added_system_prompt.')
-  + block('Profile with no allowed Service operations and no Added System Prompt', renderStartupPrompt([])));
+  'The backend stages this file. Pi receives it through --system-prompt and can append its working directory. Codex receives it as thread/start baseInstructions and can add its own context. Services are rendered from the registered manifest purpose and operation descriptions after Bridge permission filtering. An optional nonblank Profile.prompt is included verbatim inside added_system_prompt.')
+  + block('Profile with no allowed Service operations and no Added System Prompt', renderStartupPrompt([]))
+  + block('Codex Profile with no allowed Service operations or Added System Prompt', renderStartupPrompt([], undefined, 'codex')));
 const fateManifest = fateServiceManifest();
 const fateSharing = evaluate(between(fatePath, 'export const fateSharingPrompt = ', ';\n'));
 const fatePrivate = evaluate(between(fatePath, 'export const fatePrivatePrompt = ', ';\n'));
@@ -200,7 +212,7 @@ output('09-substrate-harness.md', header('Substrate peer prompts',
   + block('FATE initial input with verified completion and a 30-minute work window', fateVerifiedInput(1_800_000),
     'The host supplies the configured workTimeoutMs. The displayed duration uses whole minutes when divisible by 60,000, otherwise seconds. The initial task is sent after all peers are ready.')
   + block('FATE continuation before verified completion', fateVerificationContinuation,
-    'A verified-completion peer receives this followUp through runInput in the same Session after a known natural settlement without a verified finish, while the work window remains open. It uses a fresh continuation request ID. The final scorer sends no prompt.'));
+    'A verified-completion peer receives this followUp through runInput in the same Session after a known natural settlement without a verified finish, while the work window remains open and the peer can still check and submit, or can submit an already passing proof. Eligibility is checked again before dispatch. The input uses a fresh continuation request ID. The final scorer sends no prompt.'));
 output('08-peermesh-harness.md', header('PeerMesh peer, batch and notice prompts',
   'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper. The project path uses Core start for ordinary batches and Core steer for eligible peer notices during an active batch. The compatibility paths use explicit followUp.')
   + block('Compatibility peer Profile prompt', between('src/harnesses/peermesh/index.ts', 'export const peerPrompt = `', '`;'))

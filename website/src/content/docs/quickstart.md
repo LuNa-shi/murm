@@ -1,20 +1,13 @@
 ---
-title: Quick Start
-description: Prepare the local sandbox environment, launch your first multi-agent harness, and inspect the recorded run directory.
-section: GETTING STARTED
+title: Quickstart
+description: Run the Subagents example from a source checkout.
+section: GET STARTED
 order: 1
 ---
 
-## What you need before starting
-
-In `murm`, every **Agent** runs inside an isolated Docker container (**Sandbox**) so concurrent edits and shell commands never interfere with each other or the host machine. Before running a harness, prepare two things:
-
-1. **Sandbox runtime**: A local OpenSandbox instance (Docker provider) and a single **standard sandbox image** bundling `Pi 1.3.0`, the `swarm` CLI, and the lightweight Worker supervisor. Build it once; every Harness reuses the same image.
-2. **Model endpoint**: Any `/v1/responses`-compatible model endpoint (built-in example configs use `kimi_proxy/k3`). API keys stay strictly on the host and never enter a container.
-
 ## 1. Clone and build
 
-Make sure **Node.js `>= 22.19.0`** and Docker are installed, then build the repository:
+Use Node.js 22.19 or newer and npm on the same Linux host as rootful Docker Engine. The example needs a local OpenSandbox provider and a compatible Worker image. [Host requirements](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/07-run-configuration.md#host-checks-and-checkout-preparation)
 
 ```bash
 git clone https://github.com/LuNa-shi/murm.git
@@ -23,83 +16,61 @@ npm ci
 npm run build
 ```
 
-Build the standard sandbox image once:
+If the host still needs OpenSandbox or the Worker, run `./scripts/setup` from the checkout root in place of the install and build commands. It builds the checkout, prepares the infrastructure, and verifies a real Sandbox with a local model endpoint. Use `worker.id` from the setup output for the image below.
+
+## 2. Configure the example
+
+Create `examples/subagents/.env` with your Worker image ID and a streaming `/v1/responses` endpoint that accepts `k3` and supports tool calls. Fill in the token if your endpoint requires bearer authentication.
 
 ```bash
-docker build -f services/opensandbox-agent/Dockerfile -t murm-worker:local .
+MURM_SUBAGENTS_IMAGE="sha256:<your-worker-image-id>"
+MURM_SUBAGENTS_MODEL_URL="https://your-gateway.example/v1/responses"
+MURM_SUBAGENTS_MODEL_TOKEN=""
 ```
 
-Start a local OpenSandbox daemon with the repository’s project-limit support (default endpoint `http://127.0.0.1:8080/v1`). Follow the [OpenSandbox host setup](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/docs/architecture/16-pi-opensandbox-backend.md).
+The example defaults to a local OpenSandbox lifecycle URL of `http://127.0.0.1:8080/v1`. The example README lists the overrides for a different port or lifecycle token. [Subagents configuration](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md#run-from-the-checkout)
 
-## 2. Run your first multi-agent harness: interactive Subagents
-
-Start with **[Subagents](../harnesses/subagents/)**. You give a high-level goal to `/root`, and `/root` breaks the task down, spawns named child agents in parallel, exchanges messages, and integrates the results.
+## 3. Run a task
 
 ```bash
-worker_image=$(docker image inspect murm-worker:local --format '{{.Id}}')
-export MURM_SUBAGENTS_IMAGE="$worker_image"
-export MURM_SUBAGENTS_MODEL_URL='https://your-model-endpoint/v1/responses'
-export MURM_SUBAGENTS_MODEL_TOKEN='your-bearer-token'
-
-# One-shot task
-node dist/examples/subagents/main.js \
-  dist/examples/subagents/config.js \
-  'Inspect this workspace, split into two independent research subtasks, and synthesize a concrete plan.'
-
-# Interactive session (add follow-ups anytime, /status to inspect team, /exit to close)
-node dist/examples/subagents/main.js \
-  dist/examples/subagents/config.js --interactive
+cd examples/subagents
+node --env-file=.env ../../dist/examples/subagents/main.js \
+  ../../dist/examples/subagents/config.js \
+  'Suggest two checks to make before merging a pull request.'
 ```
 
-If containers reach your host bridge at an IPv4 address other than `172.17.0.1`, set `MURM_SUBAGENTS_ADVERTISE_HOST` to that address.
+The example waits for Root's reply, closes the team, and reports the path to `subagents-runs/<runtimeId>/harness-report.json`. The report contains the result and Sandbox cleanup receipts. Edit `main.ts` or `config.ts` here, then rebuild from the checkout root to try your changes.
 
-## 3. Inspect the recorded Run directory
+Keep the Run directory private. It can contain model requests, Service calls, and archived Sessions.
 
-When a run completes, the Runtime persists a private archive under `./subagents-runs/<runtimeId>/`:
+## 4. Try a custom Service or install Core in another project
 
-- `runtime.json` — effective configuration, stop receipts, and cleanup verification;
-- `evidence.jsonl` — ordered lifecycle, input delivery, and event timeline;
-- `service-calls.jsonl` — every validated Service call with caller identity, inputs, outputs, and latency;
-- `model-trace/<attemptId>/` — raw model requests, streaming responses, and outcomes;
-- `<agentId>/session/` — full native Pi session JSONL archives;
-- `<agentId>/artifacts/files/` — exported files declared by `collect`.
+The [Notes example](https://github.com/LuNa-shi/murm/tree/main/examples/notes) shows how two Agents use a custom Service to hand off a fact and verify the files saved by the reader. Its README walks through running the example from a packaged Core install and inspecting a saved Run offline.
 
-Core redacts registered credentials in traces. Run records can still contain prompt, project, and Session data. Keep the archive private.
-
-## 4. Minimal custom-Service example: Notes
-
-If you want the smallest possible reference before authoring your own Harness (2 agents, 1 in-process Service, zero external servers), run **Notes**:
-
-```bash
-export MURM_NOTES_IMAGE="$worker_image"
-export MURM_NOTES_MODEL_URL='https://your-model-endpoint/v1/responses'
-export MURM_NOTES_MODEL_TOKEN='your-bearer-token'
-
-node dist/examples/notes/main.js \
-  dist/examples/notes/config.js > notes-result.json
-```
-
-`writer` publishes a finding through the `notes` Service, `reader` fetches and verifies it across two turns in the same persistent session, and the host exports and checks the resulting file. See [examples/notes/main.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/notes/main.ts).
-
-## 5. Use `@murm/core` in your own project
-
-To import the runtime package outside this repository:
+To install the same package in your own project, set `repo` to your absolute checkout path:
 
 ```bash
 repo=/absolute/path/to/murm
-mkdir my-murm-harness && cd my-murm-harness
+mkdir my-harness
+cd my-harness
 npm pack "$repo" --pack-destination .
-npm init -y && npm pkg set type=module
+npm init -y
+npm pkg set type=module
 npm install --omit=dev --ignore-scripts ./murm-core-0.2.0.tgz
 ```
 
-Three public entrypoints are available: `@murm/core`, `@murm/core/services`, and `@murm/core/backends/pi-opensandbox`.
+```ts
+import { createRuntime } from '@murm/core';
+import { ServiceRegistry } from '@murm/core/services';
+import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
+```
 
 ## Where to go next
 
 | Goal | Read next |
 | --- | --- |
-| Build a crisp mental model of the six core abstractions | [Core Concepts](../concepts/) |
-| Trace how the host, containers, Bridge, and Model Gateway connect | [System Architecture](../architecture/) |
-| Compare five built-in multi-agent harnesses | [Five Topologies Overview](../harnesses/) |
-| Build your own Service and Harness from scratch | [Build Your Own Harness](../build-your-harness/) |
+| Understand what a Harness composes | [Core Concepts](../concepts/) |
+| Trace the Host, Worker, Bridge and Model Gateway | [System Architecture](../architecture/) |
+| Read the lifecycle from spawn to teardown | [Anatomy of a Run](../run-lifecycle/) |
+| Compare Agent coordination patterns | [Five Topologies](../harnesses/) |
+| Implement a custom Service and Harness | [Build Your Own Harness](../build-your-harness/) |
