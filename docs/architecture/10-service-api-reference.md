@@ -40,10 +40,10 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `28570d9b5cfadc3ceaa8136860bb8df2238ce951a144b996e5b2d9d5f2924111` |
 | [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `3ecc1f614c9dc48087f5154cf097f2dce7e4ba3974b82a385b113797453eee3b` |
-| [src/core/types.ts](../../src/core/types.ts) | `89abb462c062ea457140c797d65f1f3ee8ec410080821fe567845ff9ddf4cddd` |
+| [src/core/index.ts](../../src/core/index.ts) | `041da6b00cede1c0003513bf14c2bf4e495bb2407a1e18b8441d429dd977653b` |
+| [src/core/types.ts](../../src/core/types.ts) | `afcc2b7ed6e953900934929ddb580b2ad35b8c0cdedaaceb46995788a75578e0` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `f8cea3ce6983ecd15f81ffe7a5c483f476b728a1421b40961e49073d815d7664` |
-| [src/core/services.ts](../../src/core/services.ts) | `8c1d64489bd31ab3cec3b3b295a36ebaa2e8a9982f0a4aa059a05c405f41b6d1` |
+| [src/core/services.ts](../../src/core/services.ts) | `150ef68d1c88e89a1680ec604387177bfdca47f9af9b2426733af3ca00f29720` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
 | [src/core/backends/opensandbox.ts](../../src/core/backends/opensandbox.ts) | `5a0508b36fa7b6e556c9fcce87cda56cbfcf876563874a2a30818069e2ee24ca` |
 | [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | `f6b1d4d2bb9b30253195adfecda5abb24f17e0971c710c0007d6baac23d84734` |
@@ -3100,8 +3100,8 @@ export declare function createRuntime(options: CreateRuntimeOptions): Promise<Ru
 #### dist/src/core/types.d.ts
 
 ```ts
-import type { ServiceRegistry } from './services.js';
-import type { JsonValue } from './service-types.js';
+import type { ServiceRegistration, ServiceRegistry } from './services.js';
+import type { JsonValue, ServiceManifest } from './service-types.js';
 export {};
 declare const backendBrand: unique symbol;
 export interface Backend {
@@ -3148,6 +3148,7 @@ export interface CreateRuntimeOptions {
     maxAgents: number;
     outputDir: string;
     modelAccessPolicy?: ModelAccessPolicy;
+    agentAccessPolicy?: AgentAccessPolicy;
 }
 export interface FileEntry {
     encoding: 'utf8' | 'base64';
@@ -3293,9 +3294,9 @@ export type AgentEvent = {
     expected: boolean;
 });
 export interface PendingCleanup {
-    kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report';
+    kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report' | 'service';
     id: string;
-    action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+    action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save' | 'retire-service';
     error?: ErrorInfo;
     resourceKey?: string;
     providerId?: string;
@@ -3417,12 +3418,94 @@ export interface AgentObservation {
         readonly sandboxId?: string;
     };
 }
+export interface ProfileRegistration {
+    readonly id: string;
+    readonly requestId: string;
+    readonly profile: Profile;
+}
+export interface ProfileDefinition {
+    readonly id: string;
+    readonly digest: string;
+    readonly sequence: number;
+    readonly profile: Profile;
+}
+export interface RuntimeServiceRegistration {
+    readonly requestId: string;
+    readonly registration: ServiceRegistration;
+    readonly deploymentRef: string;
+    readonly implementationId: string;
+    readonly ownership: 'run' | 'external';
+}
+export interface ServiceRetirement {
+    readonly serviceId: string;
+    readonly requestId: string;
+    readonly timeoutMs?: number;
+}
+export interface RuntimeServiceDefinition {
+    readonly id: string;
+    readonly manifest: ServiceManifest;
+    readonly sequence: number;
+    readonly state: 'ready' | 'retiring' | 'retired';
+    readonly deploymentRef?: string;
+    readonly implementationId?: string;
+    readonly ownership?: RuntimeServiceRegistration['ownership'];
+    readonly error?: ErrorInfo;
+}
+export type AgentAccessRequest = {
+    readonly runtimeId: string;
+    readonly callerId: string;
+    readonly agentId: string;
+} & ({
+    readonly operation: 'access_get';
+} | {
+    readonly operation: 'grant' | 'revoke';
+    readonly serviceId: string;
+    readonly operations: readonly string[];
+});
+export type AgentAccessPolicy = (request: AgentAccessRequest) => boolean;
+export interface AgentAccess {
+    readonly agentId: string;
+    readonly version: number;
+    readonly services: Readonly<Record<string, readonly string[]>>;
+}
+export interface AgentAccessMutation {
+    readonly agentId: string;
+    readonly serviceId: string;
+    readonly operations: readonly string[];
+    readonly requestId: string;
+}
+export type AgentAccessGrant = AgentAccessMutation & {
+    readonly binding?: string;
+};
+export interface RuntimeManagementSnapshot {
+    readonly sequence: number;
+    readonly profiles: readonly ProfileDefinition[];
+    readonly services: readonly RuntimeServiceDefinition[];
+    readonly access: readonly AgentAccess[];
+}
+export type RuntimeManagementChange = {
+    readonly sequence: number;
+    readonly caller: string;
+    readonly requestId: string;
+} & ({
+    readonly operation: 'profile.register';
+    readonly definition: ProfileDefinition;
+} | {
+    readonly operation: 'service.register' | 'service.retire';
+    readonly definition: RuntimeServiceDefinition;
+} | {
+    readonly operation: 'access.grant' | 'access.revoke';
+    readonly access: AgentAccess;
+    readonly serviceId: string;
+    readonly operations: readonly string[];
+});
 export interface RuntimeObservationSnapshot {
     readonly schemaVersion: 1;
     readonly cursor: RuntimeObservationCursor;
     readonly runtimeState: 'open' | 'closing' | 'closed';
     readonly cleanup?: CloseReceipt['cleanup'];
     readonly agents: readonly AgentObservation[];
+    readonly management: RuntimeManagementSnapshot;
     readonly evidence: RuntimeEvidenceProgress;
 }
 export type RuntimeObservationChange = {
@@ -3470,6 +3553,9 @@ export type RuntimeObservationChange = {
 } | {
     type: 'persistence';
     evidence: RuntimeEvidenceProgress;
+} | {
+    type: 'management';
+    change: RuntimeManagementChange;
 };
 export type RuntimeObservationUpdate = (RuntimeObservationChange & {
     readonly schemaVersion: 1;
@@ -3510,6 +3596,22 @@ export interface Runtime {
     send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
     onEvent(handler: (event: AgentEvent) => void): () => void;
     observe(options?: RuntimeObservationOptions): RuntimeObservation;
+    readonly profiles: {
+        register(input: ProfileRegistration): Promise<ProfileDefinition>;
+        get(id: string): ProfileDefinition | null;
+        list(): readonly ProfileDefinition[];
+    };
+    readonly access: {
+        get(agentId: string): AgentAccess | null;
+        grant(input: AgentAccessGrant): Promise<AgentAccess>;
+        revoke(input: AgentAccessMutation): Promise<AgentAccess>;
+    };
+    readonly services: {
+        register(input: RuntimeServiceRegistration): Promise<RuntimeServiceDefinition>;
+        get(id: string): RuntimeServiceDefinition | null;
+        list(): readonly RuntimeServiceDefinition[];
+        retire(input: ServiceRetirement): Promise<RuntimeServiceDefinition>;
+    };
     stop(agentId: string, options?: {
         timeoutMs?: number;
     }): Promise<StopReceipt>;
@@ -3577,10 +3679,12 @@ export interface ServiceInvocation {
     signal?: AbortSignal;
     recordService?: (record: ServiceInvocationRecord) => void;
     assertAuthorized?: () => void;
+    trackCompletion?: (completion: Promise<void>) => void;
 }
 export interface ServiceInvocationRecord {
     /** One Bridge HTTP attempt, independent of the logical operation identity. */
     attemptId?: string;
+    accessVersion?: number;
     runtimeId: string;
     agentId: string;
     profile: string;
@@ -3605,8 +3709,9 @@ export declare class ServiceRegistry {
 }
 export declare function builtinAgentRegistration(manifest: ServiceManifest, adapter: ServiceAdapter): Readonly<ServiceRegistration>;
 export declare function createInProcessAdapter(implementation: ServiceAdapter): ServiceAdapter;
+export declare function snapshotServiceRegistration(registration: ServiceRegistration): Readonly<ServiceRegistration>;
 export declare function snapshotServiceRegistry(services: ServiceRegistry): Map<string, Readonly<ServiceRegistration>>;
-export declare function invokeService(registration: ServiceRegistration, { operation, input, envelope, caller, signal, recordService, assertAuthorized }: ServiceInvocation, timeoutMs?: number): Promise<JsonValue>;
+export declare function invokeService(registration: ServiceRegistration, { operation, input, envelope, caller, signal, recordService, assertAuthorized, trackCompletion }: ServiceInvocation, timeoutMs?: number): Promise<JsonValue>;
 /** Host-configured HTTP adapter. Its credential never enters Agent environments. */
 export declare function createHttpJsonAdapter({ token, timeoutMs, fetchImpl }?: {
     token?: string;

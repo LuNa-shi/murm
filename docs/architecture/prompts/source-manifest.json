@@ -15,19 +15,19 @@
     },
     {
       "path": "src/cli/swarm-cli.ts",
-      "sha256": "0dbf151c53f43d98ccd87a10e4be9cddabd49b28a05bfb559f61d5ceda16cf7a"
+      "sha256": "49f36777848ed576ee314f93eb609e7125e08ca83e2a8b2e092862f8d9cf1c5c"
     },
     {
       "path": "src/cli/service-command.ts",
-      "sha256": "bd669d56c16c6aaedbb562ada531be3f78de4ebc5b0954ea9d5b6115afe49089"
+      "sha256": "1954ef06963181523cb4caed8becd4d1611eccf348b8407bbc609e46518f341b"
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "3ecc1f614c9dc48087f5154cf097f2dce7e4ba3974b82a385b113797453eee3b"
+      "sha256": "041da6b00cede1c0003513bf14c2bf4e495bb2407a1e18b8441d429dd977653b"
     },
     {
       "path": "src/core/bridge.ts",
-      "sha256": "ba92a8c29e06d5bbe59670d1be49d580bda17bd54b2807d204138d5689f661ef"
+      "sha256": "0cd62b45d155c8e222cdd2c9702b580732c064ee829ec56f43ec4531600f1d0b"
     },
     {
       "path": "src/core/startup-prompt.ts",

@@ -142,6 +142,7 @@ for (const path of await listSourceFiles('src')) {
     const value = evaluate(match[2]);
     assert.equal(typeof value, 'string', `non-static instruction field requires explicit documentation: ${path}`);
     if (key === 'action' && nonInstructionActions.has(value)) continue;
+    if (key === 'action' && path === 'src/core/runtime-management.ts' && value === 'retire-service') continue;
     if (key === 'action' && ['src/core/index.ts', 'src/core/model-access.ts', 'src/harnesses/lead-worker/index.ts'].includes(path) && cleanupActions.has(value)) continue;
     if (key === 'action') assert.ok(instructionActions.has(value), `review new literal action field for prompt delivery: ${path}: ${value}`);
     assert.ok(sourcePaths.includes(path), `new instruction-field source requires documented ownership: ${path}`);
