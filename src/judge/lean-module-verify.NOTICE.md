@@ -11,7 +11,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Kim Morrison, Sebastian Ullrich
 ```
 
-Modified in SwarmEnv: the driver accepts explicit object-file, module-name and
+Modified in murm: the driver accepts explicit object-file, module-name and
 completion-binding arguments instead of the upstream module-discovery CLI. It
 loads the available object-file parts, checks the added frontend completion
 binding, replays the collected declarations and returns a JSON verification
@@ -30,4 +30,4 @@ The inspected upstream repository root has no `NOTICE` file. This local
 provenance attachment is not presented as an upstream NOTICE.
 
 These third-party terms apply to the identified adapted material. This attachment
-does not select a license for the SwarmEnv project or grant publication approval.
+does not select a license for the murm project or grant publication approval.

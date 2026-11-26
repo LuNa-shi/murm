@@ -10,10 +10,10 @@ test('revocation before scheduled adapter entry prevents a late write and retain
   fixture = await setup(t, { invoke({ signal, input, caller }) {
     entrySignal = signal;
     writes++;
-    return { ...input, author: caller.botId };
+    return { ...input, author: caller.agentId };
   } }, { bridge: { recordService(row) {
     rows.push(row);
-    if (row.state === 'invocation') queueMicrotask(() => fixture.bridge.revokeBot('bot-one', { abortActive: true }));
+    if (row.state === 'invocation') queueMicrotask(() => fixture.bridge.revokeAgent('agent-one', { abortActive: true }));
   } } });
   const failure = await fixture.call('put', { key: 'one', text: 'fixed' });
   assert.equal(failure.error.code, 'SERVICE_UNAVAILABLE');
@@ -30,9 +30,9 @@ test('ordinary credential revocation lets an already authorized Service finish w
   fixture = await setup(t, { invoke({ signal, input, caller }) {
     assert.equal(signal.aborted, false);
     writes++;
-    return { ...input, author: caller.botId };
+    return { ...input, author: caller.agentId };
   } }, { bridge: { recordService(row) {
-    if (row.state === 'invocation') queueMicrotask(() => fixture.bridge.revokeBot('bot-one'));
+    if (row.state === 'invocation') queueMicrotask(() => fixture.bridge.revokeAgent('agent-one'));
   } } });
   assert.equal((await fixture.call('put', { key: 'one', text: 'fixed' })).ok, true);
   assert.equal((await fixture.call('put', { key: 'one', text: 'fixed' })).error.code, 'NOT_ALLOWED');
@@ -40,16 +40,16 @@ test('ordinary credential revocation lets an already authorized Service finish w
 });
 
 function identity(row) {
-  const { runtimeId, botId, profile, serviceId, operation, operationId } = row;
-  return { runtimeId, botId, profile, serviceId, operation, operationId };
+  const { runtimeId, agentId, profile, serviceId, operation, operationId } = row;
+  return { runtimeId, agentId, profile, serviceId, operation, operationId };
 }
 
 test('Service evidence indexes actual validation and invocation with trusted identity and no raw body or binding', async t => {
   const records = [];
-  const { call } = await setup(t, { invoke({ input, caller }) { return { ...input, author: caller.botId }; } }, { bridge: { recordService: row => records.push(row) } });
-  assert.equal((await call('put', { key: 'one', text: 'private-marker' }, { caller: { botId: 'forged' } })).ok, true);
+  const { call } = await setup(t, { invoke({ input, caller }) { return { ...input, author: caller.agentId }; } }, { bridge: { recordService: row => records.push(row) } });
+  assert.equal((await call('put', { key: 'one', text: 'private-marker' }, { caller: { agentId: 'forged' } })).ok, true);
   assert.deepEqual(records.map(row => [row.state, row.outcome]), [['validation', 'pending'], ['validation', 'passed'], ['invocation', 'pending'], ['settled', 'succeeded']]);
-  for (const row of records) assert.deepEqual(identity(row), { runtimeId: 'run-one', botId: 'bot-one', profile: 'writer', serviceId: 'notes', operation: 'put', operationId: 'fixed-request' });
+  for (const row of records) assert.deepEqual(identity(row), { runtimeId: 'run-one', agentId: 'agent-one', profile: 'writer', serviceId: 'notes', operation: 'put', operationId: 'fixed-request' });
   assert.equal(JSON.stringify(records).includes('private-marker'), false);
   assert.equal(JSON.stringify(records).includes('notes-account'), false);
   assert.equal(JSON.stringify(records).includes('forged'), false);
@@ -57,10 +57,10 @@ test('Service evidence indexes actual validation and invocation with trusted ide
 
 test('input rejection and Profile denial produce no invocation row or business effect', async t => {
   const rows = []; let calls = 0;
-  const { call, bot } = await setup(t, { invoke() { calls++; return null; } }, { bridge: { recordService: row => rows.push(row) } });
+  const { call, agent } = await setup(t, { invoke() { calls++; return null; } }, { bridge: { recordService: row => rows.push(row) } });
   assert.equal((await call('put', {})).error.code, 'SERVICE_INPUT_INVALID');
   assert.deepEqual(rows.map(row => [row.state, row.outcome]), [['validation', 'pending'], ['validation', 'not_executed']]);
-  rows.length = 0; bot.services.notes = ['get'];
+  rows.length = 0; agent.services.notes = ['get'];
   assert.equal((await call('put', { key: 'one', text: 'fixed' })).error.code, 'NOT_ALLOWED');
   assert.equal(rows.length, 1); assert.equal(rows[0].outcome, 'not_executed'); assert.equal(rows[0].error.code, 'NOT_ALLOWED');
   assert.equal(calls, 0);
@@ -71,7 +71,7 @@ test('write output violation and lost reply retain unknown operation identity an
   const { call } = await setup(t, { invoke() { writes++; return { invalid: 'private-secret' }; } }, { bridge: { recordService: row => rows.push(row) } });
   assert.equal((await call('put', { key: 'one', text: 'fixed' })).error.code, 'SERVICE_OUTPUT_INVALID');
   assert.equal(writes, 1);
-  assert.deepEqual(rows.at(-1), { runtimeId: 'run-one', botId: 'bot-one', profile: 'writer', serviceId: 'notes', operation: 'put', operationId: 'fixed-request', state: 'settled', outcome: 'unknown', error: { code: 'SERVICE_OUTPUT_INVALID', retryable: false } });
+  assert.deepEqual(rows.at(-1), { runtimeId: 'run-one', agentId: 'agent-one', profile: 'writer', serviceId: 'notes', operation: 'put', operationId: 'fixed-request', state: 'settled', outcome: 'unknown', error: { code: 'SERVICE_OUTPUT_INVALID', retryable: false } });
   assert.equal(JSON.stringify(rows).includes('private-secret'), false);
   const lost = [];
   const held = await setup(t, { invoke() { writes++; return new Promise(() => {}); } }, { bridge: { serviceTimeoutMs: 10, recordService: row => lost.push(row) } });
@@ -87,9 +87,9 @@ test('lost HTTP receipt cancels invocation and preserves unknown operation ident
   let unknownRecorded, settledRecorded;
   const unknown = new Promise(resolve => { unknownRecorded = resolve; });
   const complete = new Promise(resolve => { settledRecorded = resolve; });
-  const { bridge, credentials } = await setup(t, { async invoke({ input, caller }) { writes++; began(); await held; return { ...input, author: caller.botId }; } }, { bridge: { recordService: row => { rows.push(row); if (row.state === 'response') unknownRecorded(); if (row.state === 'settled') settledRecorded(); } } });
+  const { bridge, credentials } = await setup(t, { async invoke({ input, caller }) { writes++; began(); await held; return { ...input, author: caller.agentId }; } }, { bridge: { recordService: row => { rows.push(row); if (row.state === 'response') unknownRecorded(); if (row.state === 'settled') settledRecorded(); } } });
   const abort = new AbortController();
-  const response = fetch(bridge.publicUrl + '/call', { method: 'POST', signal: abort.signal, headers: { authorization: `Bearer ${credentials.secretEnvironment.SWARMENV_BRIDGE_TOKEN}` },
+  const response = fetch(bridge.publicUrl + '/call', { method: 'POST', signal: abort.signal, headers: { authorization: `Bearer ${credentials.secretEnvironment.MURM_BRIDGE_TOKEN}` },
     body: JSON.stringify({ service_id: 'notes', operation: 'put', operation_id: 'lost-receipt', payload: { key: 'one', text: 'fixed' } }) });
   await started; abort.abort(); await assert.rejects(response);
   await unknown;

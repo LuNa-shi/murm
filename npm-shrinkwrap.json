@@ -1,15 +1,16 @@
 {
-  "name": "@swarmenv/core",
+  "name": "@murm/core",
   "version": "0.2.0",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
-      "name": "@swarmenv/core",
+      "name": "@murm/core",
       "version": "0.2.0",
       "dependencies": {
         "@earendil-works/pi-coding-agent": "1.3.0",
-        "ajv": "8.20.0"
+        "ajv": "8.20.0",
+        "js-tiktoken": "1.0.21"
       },
       "bin": {
         "swarm": "dist/scripts/swarm.js"
@@ -1441,6 +1442,15 @@
       "license": "MIT",
       "bin": {
         "jiti": "lib/jiti-cli.mjs"
+      }
+    },
+    "node_modules/js-tiktoken": {
+      "version": "1.0.21",
+      "resolved": "https://registry.npmjs.org/js-tiktoken/-/js-tiktoken-1.0.21.tgz",
+      "integrity": "sha512-biOj/6M5qdgx5TKjDnFT1ymSpM5tbd3ylwDtrQvFQSu0Z7bBYko2dF+W/aUkXUPuk6IVpRxk/3Q2sHOzGlS36g==",
+      "license": "MIT",
+      "dependencies": {
+        "base64-js": "^1.5.1"
       }
     },
     "node_modules/json-bigint": {

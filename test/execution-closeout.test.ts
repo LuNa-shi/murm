@@ -7,8 +7,8 @@ import { makeEnvelope } from '../src/protocol/envelope.js';
 function fixture(t, { preflight = async () => {}, database = ':memory:', judgeDb = null } = {}) {
   const tasks = new TaskService(database); t.after(() => tasks.close());
   tasks.createMission({ mission_id: 'closeout', goal: 'Investigate bounded work' }, makeEnvelope({ actorRef: 'operator:test' }));
-  tasks.registerBot({ botId: 'bounded', coreId: 'core-1', missionId: 'closeout', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
-  tasks.recordBotSandbox('bounded', { provider: 'controlled', sandboxId: 'bounded' }); tasks.markBotReady('bounded');
+  tasks.registerAgent({ agentId: 'bounded', coreId: 'core-1', missionId: 'closeout', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+  tasks.recordAgentSandbox('bounded', { provider: 'controlled', sandboxId: 'bounded' }); tasks.markAgentReady('bounded');
   const proposal = { mission_id: 'closeout', gap: 'The bounded research objective needs an independently checked conclusion', priority: 'medium', summary: 'Inspect one independent research question', expected_output: 'Readable conclusion', acceptance_conditions: ['Evidence and limitations'] };
   const task = tasks.createTask(proposal, makeEnvelope({ actorRef: 'bounded' })).task;
   const taken = tasks.takeTask(task.task_id, { owner_ref: 'bounded', core_id: 'core-1', take_key: 'bounded-take' });

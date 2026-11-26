@@ -22,15 +22,15 @@ async function startService(serviceId, port, root, endpoints = {}) {
     cwd: process.cwd(),
     env: {
       ...process.env,
-      SWARMENV_SERVICE_ID: serviceId,
-      SWARMENV_SERVICE_ISOLATED: 'true',
-      SWARMENV_SERVICE_HOST: '127.0.0.1',
-      SWARMENV_SERVICE_PORT: String(port),
-      SWARMENV_SERVICE_PUBLIC_URL: endpoint,
-      SWARMENV_SERVICE_DATABASE: join(root, `${serviceId}.sqlite`),
-      SWARMENV_SERVICE_TOKEN: 'deprecated-shared-token',
-      SWARMENV_SERVICE_PRINCIPALS: JSON.stringify([{ token: 'isolated-probe-token', actor_ref: 'operator:isolated-probe', role: 'bound' }]),
-      ...Object.fromEntries(Object.entries(endpoints).map(([id, url]) => [`SWARMENV_${id.toUpperCase()}_SERVICE_URL`, url])),
+      MURM_SERVICE_ID: serviceId,
+      MURM_SERVICE_ISOLATED: 'true',
+      MURM_SERVICE_HOST: '127.0.0.1',
+      MURM_SERVICE_PORT: String(port),
+      MURM_SERVICE_PUBLIC_URL: endpoint,
+      MURM_SERVICE_DATABASE: join(root, `${serviceId}.sqlite`),
+      MURM_SERVICE_TOKEN: 'deprecated-shared-token',
+      MURM_SERVICE_PRINCIPALS: JSON.stringify([{ token: 'isolated-probe-token', actor_ref: 'operator:isolated-probe', role: 'bound' }]),
+      ...Object.fromEntries(Object.entries(endpoints).map(([id, url]) => [`MURM_${id.toUpperCase()}_SERVICE_URL`, url])),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -79,29 +79,29 @@ test('built-in service image includes the checker git dependency and prebuild en
   const compose = await readFile(new URL('../services/builtin/compose.yaml', import.meta.url), 'utf8');
   assert.match(dockerfile, /apt-get install[\s\S]*ca-certificates git/);
   assert.match(dockerfile, /ENTRYPOINT \["\.\/scripts\/service-host-entrypoint\.sh"\]/);
-  assert.match(entrypoint, /SWARMENV_JUDGE_PREBUILD/);
-  assert.match(entrypoint, /SWARMENV_JUDGE_PREBUILD_KEY/);
-  assert.match(compose, /SWARMENV_CONTEXT_SERVICE_TOKEN: \$\{SWARMENV_CONTEXT_SERVICE_TOKEN:-\}/);
-  assert.match(compose, /SWARMENV_TASK_SERVICE_TOKEN: \$\{SWARMENV_TASK_SERVICE_TOKEN:-\}/);
-  assert.match(compose, /SWARMENV_JUDGE_SERVICE_TOKEN: \$\{SWARMENV_JUDGE_SERVICE_TOKEN:-\}/);
+  assert.match(entrypoint, /MURM_JUDGE_PREBUILD/);
+  assert.match(entrypoint, /MURM_JUDGE_PREBUILD_KEY/);
+  assert.match(compose, /MURM_CONTEXT_SERVICE_TOKEN: \$\{MURM_CONTEXT_SERVICE_TOKEN:-\}/);
+  assert.match(compose, /MURM_TASK_SERVICE_TOKEN: \$\{MURM_TASK_SERVICE_TOKEN:-\}/);
+  assert.match(compose, /MURM_JUDGE_SERVICE_TOKEN: \$\{MURM_JUDGE_SERVICE_TOKEN:-\}/);
   for (const id of ['TASK', 'CONTEXT', 'JUDGE', 'CATALOG']) {
-    assert.ok(compose.includes('SWARMENV_SERVICE_PRINCIPALS: ${SWARMENV_' + id + '_SERVICE_PRINCIPALS:-[]}'));
+    assert.ok(compose.includes('MURM_SERVICE_PRINCIPALS: ${MURM_' + id + '_SERVICE_PRINCIPALS:-[]}'));
   }
 });
 
 test('service-host isolated mode owns one service database and HTTP manifest', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-isolated-service-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-isolated-service-'));
   const port = await freePort();
   const child = spawn(process.execPath, ['dist/scripts/service-host.js'], {
     cwd: process.cwd(),
     env: {
       ...process.env,
-      SWARMENV_SERVICE_ID: 'context',
-      SWARMENV_SERVICE_ISOLATED: 'true',
-      SWARMENV_SERVICE_HOST: '127.0.0.1',
-      SWARMENV_SERVICE_PORT: String(port),
-      SWARMENV_SERVICE_PUBLIC_URL: `http://127.0.0.1:${port}`,
-      SWARMENV_SERVICE_DATABASE: join(root, 'context.sqlite'),
+      MURM_SERVICE_ID: 'context',
+      MURM_SERVICE_ISOLATED: 'true',
+      MURM_SERVICE_HOST: '127.0.0.1',
+      MURM_SERVICE_PORT: String(port),
+      MURM_SERVICE_PUBLIC_URL: `http://127.0.0.1:${port}`,
+      MURM_SERVICE_DATABASE: join(root, 'context.sqlite'),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -126,15 +126,15 @@ test('service-host isolated mode owns one service database and HTTP manifest', a
 });
 
 test('isolated hosts remain discoverable while Context fails closed without Mission authority, including after restart', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-isolated-services-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-isolated-services-'));
   const ports = { task: await freePort(), context: await freePort(), judge: await freePort(), catalog: await freePort() };
   const urls = Object.fromEntries(Object.entries(ports).map(([id, port]) => [id, `http://127.0.0.1:${port}`]));
   const services = [];
   const cliEnv = {
     ...process.env,
-    SWARMENV_SERVICE_ENDPOINTS: JSON.stringify(Object.fromEntries(Object.entries(urls).map(([id, url]) => [id, { url, token: 'isolated-probe-token' }]))),
-    SWARMENV_CONTEXT_SERVICE_URL: urls.context,
-    SWARMENV_CONTEXT_SERVICE_TOKEN: 'isolated-probe-token',
+    MURM_SERVICE_ENDPOINTS: JSON.stringify(Object.fromEntries(Object.entries(urls).map(([id, url]) => [id, { url, token: 'isolated-probe-token' }]))),
+    MURM_CONTEXT_SERVICE_URL: urls.context,
+    MURM_CONTEXT_SERVICE_TOKEN: 'isolated-probe-token',
   };
   try {
     services.push(await startService('context', ports.context, root));
@@ -156,9 +156,9 @@ test('isolated hosts remain discoverable while Context fails closed without Miss
         input: { task_id: 'other-task', owner_ref: owner } }),
     });
     assert.equal((await request('deprecated-shared-token', 'operator:isolated-probe', 'bound')).status, 401);
-    assert.equal((await request('isolated-probe-token', 'bot:forged', 'bound')).status, 403);
+    assert.equal((await request('isolated-probe-token', 'agent:forged', 'bound')).status, 403);
     assert.equal((await request('isolated-probe-token', 'operator:isolated-probe', 'recovery')).status, 403);
-    assert.equal((await request('isolated-probe-token', 'operator:isolated-probe', 'bound', 'bot:forged')).status, 403);
+    assert.equal((await request('isolated-probe-token', 'operator:isolated-probe', 'bound', 'agent:forged')).status, 403);
 
 
     const inputPath = join(root, 'material.json');

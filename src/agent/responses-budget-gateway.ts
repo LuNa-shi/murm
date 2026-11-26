@@ -9,14 +9,14 @@ export const CORE_MODEL_SCHEMA_SQL = `
         runtime_id TEXT PRIMARY KEY, policy_digest TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS runtime_model_attempts (
-        runtime_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        runtime_id TEXT NOT NULL, agent_id TEXT NOT NULL, request_id TEXT NOT NULL,
         phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER,
         output_tokens INTEGER, cost INTEGER CHECK(cost IS NULL), settled INTEGER NOT NULL DEFAULT 0,
         state TEXT NOT NULL, reason TEXT, receipt BLOB,
         started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
         upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
         upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
-        PRIMARY KEY (runtime_id, bot_id, request_id)
+        PRIMARY KEY (runtime_id, agent_id, request_id)
       );
     `;
 
@@ -155,11 +155,15 @@ function upstreamPolicy(upstream: any) {
 export const defaultTimedResponsesLimits = Object.freeze({ maxOutputTokens: 32_768, requestTimeoutMs: 120_000 });
 
 function timedPolicy(upstream: any, { maxOutputTokens = defaultTimedResponsesLimits.maxOutputTokens,
-  requestTimeoutMs = defaultTimedResponsesLimits.requestTimeoutMs }: any) {
+  requestTimeoutMs = defaultTimedResponsesLimits.requestTimeoutMs, selectionReasoningEffort }: any) {
   if ((maxOutputTokens !== null && !integer(maxOutputTokens, 16)) || !integer(requestTimeoutMs, 1) || requestTimeoutMs > 2_147_483_647) {
     throw new TypeError('Timed Responses gateway requires a finite request timeout and a valid output-token policy');
   }
-  return { ...upstreamPolicy(upstream), mode: 'time_bounded', maxOutputTokens, requestTimeoutMs };
+  if (selectionReasoningEffort !== undefined && selectionReasoningEffort !== 'low') {
+    throw new TypeError('Selection reasoning effort must be low when configured');
+  }
+  return { ...upstreamPolicy(upstream), mode: 'time_bounded', maxOutputTokens, requestTimeoutMs,
+    ...(selectionReasoningEffort === undefined ? {} : { selectionReasoningEffort }) };
 }
 
 function terminalMeter(model: any, onUsage: any) {
@@ -218,7 +222,7 @@ class GatewayError extends Error {
 
 export class ResponsesBudgetGateway {
   declare db: any;
-  declare validateBot: any;
+  declare validateAgent: any;
   declare withLifecycleWrite: any;
   declare fetch: any;
   declare policy: any;
@@ -233,15 +237,15 @@ export class ResponsesBudgetGateway {
   #working: any = new Set();
   #controllers: any = new Map<any, any>();
   #stopPromise: any;
-  constructor({ db, upstream, timeBounds, validateBot, withLifecycleWrite = (commit: any) => commit(), fetchImpl = globalThis.fetch, transformPayload = (payload: unknown) => payload, beginTrace }: any = {}) {
-    if (!db?.prepare || typeof validateBot !== 'function' || typeof fetchImpl !== 'function') {
-      throw new TypeError('Database, synchronous Bot authority, and fetch are required');
+  constructor({ db, upstream, timeBounds, validateAgent, withLifecycleWrite = (commit: any) => commit(), fetchImpl = globalThis.fetch, transformPayload = (payload: unknown) => payload, beginTrace }: any = {}) {
+    if (!db?.prepare || typeof validateAgent !== 'function' || typeof fetchImpl !== 'function') {
+      throw new TypeError('Database, synchronous Agent authority, and fetch are required');
     }
     if (!object(timeBounds)) throw new TypeError('Runtime Responses access requires time bounds');
     if (upstream?.contract !== undefined) throw new TypeError('Runtime Responses access does not accept an upstream contract');
     this.db = db;
     if (typeof withLifecycleWrite !== 'function') throw new TypeError('Lifecycle write boundary must be synchronous');
-    this.validateBot = validateBot;
+    this.validateAgent = validateAgent;
     this.withLifecycleWrite = withLifecycleWrite;
     this.fetch = fetchImpl;
     this.transformPayload = transformPayload;
@@ -291,12 +295,12 @@ export class ResponsesBudgetGateway {
     return { port: address.port, baseUrl: `http://${hostname}:${address.port}/v1` };
   }
 
-  issueToken({ runtimeId, botId }: any = {}) {
-    if (this.#closing || typeof runtimeId !== 'string' || !runtimeId || typeof botId !== 'string' || !botId) {
-      throw new Error('A live gateway and a trusted Runtime/Bot binding are required');
+  issueToken({ runtimeId, agentId }: any = {}) {
+    if (this.#closing || typeof runtimeId !== 'string' || !runtimeId || typeof agentId !== 'string' || !agentId) {
+      throw new Error('A live gateway and a trusted Runtime/Agent binding are required');
     }
     const token = randomBytes(32).toString('base64url');
-    this.#tokens.set(token, { runtimeId, botId });
+    this.#tokens.set(token, { runtimeId, agentId });
     return token;
   }
 
@@ -336,20 +340,20 @@ export class ResponsesBudgetGateway {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const binding = !this.#closing && this.#tokens.get(token);
-      if (!binding) throw new GatewayError(401, 'invalid_bot_credential');
-      const { runtimeId, botId } = binding;
+      if (!binding) throw new GatewayError(401, 'invalid_agent_credential');
+      const { runtimeId, agentId } = binding;
       let authority;
-      try { authority = this.validateBot(binding); }
-      catch { throw new GatewayError(403, 'bot_not_admitted'); }
+      try { authority = this.validateAgent(binding); }
+      catch { throw new GatewayError(403, 'agent_not_admitted'); }
       const phase = authority?.phase;
       const authorityDeadline = authority?.deadline ?? Date.now() + this.policy.requestTimeoutMs;
-      if (!Number.isFinite(authorityDeadline) || authorityDeadline <= Date.now()) throw new GatewayError(403, 'bot_deadline_elapsed');
-      if (!phases.includes(phase)) throw new GatewayError(403, 'bot_not_admitted');
+      if (!Number.isFinite(authorityDeadline) || authorityDeadline <= Date.now()) throw new GatewayError(403, 'agent_deadline_elapsed');
+      if (!phases.includes(phase)) throw new GatewayError(403, 'agent_not_admitted');
       this.db.prepare('INSERT OR IGNORE INTO runtime_model_policies VALUES (?, ?)').run(runtimeId, this.pin);
       if (this.db.prepare('SELECT policy_digest FROM runtime_model_policies WHERE runtime_id = ?')
         .get(runtimeId).policy_digest !== this.pin) throw new GatewayError(409, 'budget_policy_changed');
       const prior = this.db.prepare(`SELECT fingerprint, state, receipt, deadline_ms FROM runtime_model_attempts
-        WHERE runtime_id = ? AND bot_id = ? AND request_id = ?`).get(runtimeId, botId, requestId);
+        WHERE runtime_id = ? AND agent_id = ? AND request_id = ?`).get(runtimeId, agentId, requestId);
       if (prior) {
         if (prior.fingerprint !== fingerprint) throw new GatewayError(409, 'request_payload_conflict');
         if (!prior.receipt) {
@@ -362,9 +366,9 @@ export class ResponsesBudgetGateway {
       const startedAt = Date.now();
       const deadline = Math.min(authorityDeadline, startedAt + this.policy.requestTimeoutMs);
       this.db.prepare(`INSERT INTO runtime_model_attempts
-        (runtime_id, bot_id, request_id, phase, fingerprint, state, started_at_ms, deadline_ms)
+        (runtime_id, agent_id, request_id, phase, fingerprint, state, started_at_ms, deadline_ms)
         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`)
-        .run(runtimeId, botId, requestId, phase, fingerprint, startedAt, deadline);
+        .run(runtimeId, agentId, requestId, phase, fingerprint, startedAt, deadline);
       this.db.exec('COMMIT');
       return { ...binding, deadline, authority };
     } catch (error: any) {
@@ -386,7 +390,7 @@ export class ResponsesBudgetGateway {
       try {
         const binding = this.#tokens.get(token);
         if (Date.now() < hardDeadline && binding) {
-          const current = this.validateBot(binding);
+          const current = this.validateAgent(binding);
           const lease = current?.lease;
           const at = Date.now();
           const sameLease = originalLease
@@ -414,11 +418,11 @@ export class ResponsesBudgetGateway {
       throw new GatewayError(404, 'route_not_found');
     }
     const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request.headers.authorization ?? '')?.[1];
-    if (!this.#tokens.has(token)) throw new GatewayError(401, 'invalid_bot_credential');
+    if (!this.#tokens.has(token)) throw new GatewayError(401, 'invalid_agent_credential');
     if (!/^application\/json(?:;|$)/i.test(request.headers['content-type'] ?? '')) {
       throw new GatewayError(415, 'json_required');
     }
-    const stableId = request.headers['x-swarmenv-request-id'];
+    const stableId = request.headers['x-murm-request-id'];
     const requestId = stableId ?? randomUUID();
     if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId)) throw new GatewayError(400, 'invalid_request_id');
     const chunks: any[] = [];
@@ -438,13 +442,13 @@ export class ResponsesBudgetGateway {
     if (response.destroyed || request.aborted) return;
     const maxOutputTokens = this.policy.maxOutputTokens === null ? body.max_output_tokens
       : Math.min(body.max_output_tokens ?? this.policy.maxOutputTokens, this.policy.maxOutputTokens);
-    const payload = this.transformPayload({
+    const normalizedPayload = this.transformPayload({
       ...body, model: this.policy.model, stream: true, store: false,
       ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
       ...(this.policy.serviceTier === null ? {} : { service_tier: this.policy.serviceTier }),
     });
     const fingerprint = createHash('sha256').update(JSON.stringify(canonicalPayload(body))).digest('hex');
-    let runtimeId: any, botId: any, receipt: any, cancelWatch: any, upstreamWork: any;
+    let runtimeId: any, agentId: any, receipt: any, cancelWatch: any, upstreamWork: any;
     let trace: ReturnType<ReturnType<typeof createModelTrace>['begin']> | undefined;
     let upstreamStatus: number | undefined, terminalStatus: string | undefined;
     let usage: { inputTokens: number; outputTokens: number } | undefined;
@@ -460,12 +464,16 @@ export class ResponsesBudgetGateway {
       // Release that lock before waiting on the upstream.
       this.withLifecycleWrite(() => {
         const admission = this.#admit(token, requestId, fingerprint);
-        ({ runtimeId, botId, receipt } = admission);
+        ({ runtimeId, agentId, receipt } = admission);
         if (receipt) return;
+        const { selectionReasoningEffort } = this.policy;
+        const payload = selectionReasoningEffort && admission.authority.phase === 'selection'
+          ? { ...normalizedPayload, reasoning: { ...normalizedPayload.reasoning, effort: selectionReasoningEffort } }
+          : normalizedPayload;
         this.#controllers.set(controller, token);
         cancelWatch = this.#watchAuthority({ ...admission, token, controller });
         response.once('close', disconnect);
-        trace = this.beginTrace?.({ runtimeId, botId, requestId, startedAt: new Date().toISOString(),
+        trace = this.beginTrace?.({ runtimeId, agentId, requestId, startedAt: new Date().toISOString(),
           before: body, after: payload });
         upstreamWork = this.fetch(this.policy.url, {
           method: 'POST', headers: this.headers, redirect: 'error', signal: controller.signal,
@@ -484,7 +492,7 @@ export class ResponsesBudgetGateway {
       const upstreamId = upstream.headers.get('x-request-id');
       if (upstreamId && /^[A-Za-z0-9_.:-]{1,256}$/.test(upstreamId)) {
         this.db.prepare(`UPDATE runtime_model_attempts SET upstream_request_id = ?
-          WHERE runtime_id = ? AND bot_id = ? AND request_id = ?`).run(upstreamId, runtimeId, botId, requestId);
+          WHERE runtime_id = ? AND agent_id = ? AND request_id = ?`).run(upstreamId, runtimeId, agentId, requestId);
       }
       const contentTypeValid = /^text\/event-stream(?:;|$)/i.test(upstream.headers.get('content-type') ?? '');
       const rejectionKind = !upstream.ok ? 'non_2xx' : !upstream.body ? 'missing_body'
@@ -494,9 +502,9 @@ export class ResponsesBudgetGateway {
       const retryAfterSeconds = /^\d{1,5}$/.test(retryAfter) && Number(retryAfter) <= 86400 ? Number(retryAfter) : null;
       this.db.prepare(`UPDATE runtime_model_attempts SET upstream_status = ?, upstream_content_type_valid = ?,
         upstream_body_present = ?, upstream_rejection_kind = ?, upstream_retry_after_seconds = ?
-        WHERE runtime_id = ? AND bot_id = ? AND request_id = ?`)
+        WHERE runtime_id = ? AND agent_id = ? AND request_id = ?`)
         .run(upstream.status, Number(contentTypeValid), Number(Boolean(upstream.body)), rejectionKind,
-          retryAfterSeconds, runtimeId, botId, requestId);
+          retryAfterSeconds, runtimeId, agentId, requestId);
       if (rejectionKind) {
         reason = 'upstream_http_error';
         if (trace && upstream.body) {
@@ -507,8 +515,8 @@ export class ResponsesBudgetGateway {
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
       const meter = terminalMeter(this.policy.model, (inputTokens: number, outputTokens: number, status: string) => {
         this.db.prepare(`UPDATE runtime_model_attempts SET input_tokens = ?, output_tokens = ?, settled = 1
-          WHERE runtime_id = ? AND bot_id = ? AND request_id = ? AND settled = 0`)
-          .run(inputTokens, outputTokens, runtimeId, botId, requestId);
+          WHERE runtime_id = ? AND agent_id = ? AND request_id = ? AND settled = 0`)
+          .run(inputTokens, outputTokens, runtimeId, agentId, requestId);
         usageRecorded = true;
         terminalStatus = status;
         usage = { inputTokens, outputTokens };
@@ -526,8 +534,8 @@ export class ResponsesBudgetGateway {
       reason = usageRecorded ? (stableId ? 'receipt_too_large' : null) : 'no_trusted_terminal_usage';
       if (usageRecorded && receiptChunks.length) {
         this.db.prepare(`UPDATE runtime_model_attempts SET state = 'completed', receipt = ?
-          WHERE runtime_id = ? AND bot_id = ? AND request_id = ?`)
-          .run(Buffer.concat(receiptChunks), runtimeId, botId, requestId);
+          WHERE runtime_id = ? AND agent_id = ? AND request_id = ?`)
+          .run(Buffer.concat(receiptChunks), runtimeId, agentId, requestId);
       }
     } catch (error: any) {
       failure = { name: error.name, code: error.code, message: error.message };
@@ -542,8 +550,8 @@ export class ResponsesBudgetGateway {
         if (started?.body && !started.bodyUsed) await started.body.cancel().catch(() => undefined);
       }
       if (runtimeId && !receipt) this.db.prepare(`UPDATE runtime_model_attempts SET state = ?, reason = ?
-        WHERE runtime_id = ? AND bot_id = ? AND request_id = ? AND state = 'pending'`)
-        .run(usageRecorded ? 'completed' : 'unknown', reason, runtimeId, botId, requestId);
+        WHERE runtime_id = ? AND agent_id = ? AND request_id = ? AND state = 'pending'`)
+        .run(usageRecorded ? 'completed' : 'unknown', reason, runtimeId, agentId, requestId);
       await (trace as ReturnType<ReturnType<typeof createModelTrace>['begin']> | undefined)?.finish({ endedAt: new Date().toISOString(), upstreamStatus, usage, reason, terminalStatus,
         state: failure || terminalStatus === 'failed' ? 'failed' : terminalStatus ?? 'unknown', error: failure });
     }

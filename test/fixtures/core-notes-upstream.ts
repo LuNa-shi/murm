@@ -3,11 +3,11 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { streamResponse } from './core-controlled-upstream.js';
 
-export function notesCommand(botId, timeoutMs = 10_000) {
+export function notesCommand(agentId, timeoutMs = 10_000) {
   return `node --input-type=module <<'NOTES_CHECK'\nimport assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 const cli=(...args)=>JSON.parse(execFileSync('swarm',args,{encoding:'utf8',timeout:${timeoutMs}}));
-const expected={key:'fixed',text:'handoff',author:${JSON.stringify(botId)}};
+const expected={key:'fixed',text:'handoff',author:${JSON.stringify(agentId)}};
 for(const service of ['notes','remote-notes']) {
  const metadata=cli('service','view',service);
  assert.deepEqual(metadata.capabilities.map(item=>item.operation),['put','get']);

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, realpath } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { createServiceManifest } from './service-manifest.js';
 
 export const SERVICE_BUNDLE_MANIFEST = 'service.json';
@@ -11,7 +11,7 @@ const MAX_DOCUMENT_BYTES = 256 * 1024;
 const MAX_REFERENCE_COUNT = 32;
 
 function invalid(message: any, details: any = undefined) {
-  return new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, message, details);
+  return new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, message, details);
 }
 
 function isRecord(value: any) {
@@ -199,7 +199,7 @@ export function resolveBundleDocument(bundle: any, ref: any) {
     if (typeof text === 'string' && text.trim().length > 0) {
       return { service_id: bundle.service_id, resource, path: null, text, sha256: sha256(text), manifest_hash: bundle.manifest.manifest_hash };
     }
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_FOUND, `unknown service documentation resource: ${value}`, { service_id: bundle.service_id, resource });
+    throw new MurmError(ERROR_CODES.SERVICE_CAPABILITY_NOT_FOUND, `unknown service documentation resource: ${value}`, { service_id: bundle.service_id, resource });
   }
   return {
     service_id: bundle.service_id,

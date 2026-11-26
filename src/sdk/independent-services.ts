@@ -37,7 +37,7 @@ async function startPeer(command: any, args: any, env: any, logPath: any) {
   const log = createWriteStream(logPath, { flags: 'a', mode: 0o600 });
   const inherited = Object.fromEntries(['PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'TMPDIR', 'XDG_RUNTIME_DIR']
     .filter((key: any) => process.env[key] !== undefined).map((key: any) => [key, process.env[key]]));
-  const child = spawn(command, args, { cwd: repository, env: { ...inherited, SWARMENV_COORDINATOR_PID: String(process.pid), ...env },
+  const child = spawn(command, args, { cwd: repository, env: { ...inherited, MURM_COORDINATOR_PID: String(process.pid), ...env },
     detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stderr.pipe(log, { end: false });
   let stopped;
@@ -92,7 +92,7 @@ export async function startIndependentServices({ taskService, projectDir, logRoo
   const ownerFile = join(projectDir, 'judge-checker-resources.ndjson');
   const cleanupJudge = () => exec('flock', ['--nonblock', '--no-fork', join(projectDir, 'judge.sqlite.instance-lock'),
     process.execPath, 'scripts/judge-service-peer.js', '--cleanup'], { cwd: repository, timeout: 35_000,
-    env: { PATH: process.env.PATH, SWARMENV_JUDGE_PEER_LOCKED: 'true', SWARMENV_CHECKER_OWNER_FILE: ownerFile } });
+    env: { PATH: process.env.PATH, MURM_JUDGE_PEER_LOCKED: 'true', MURM_CHECKER_OWNER_FILE: ownerFile } });
   const stopOwned = async () => {
     const results = await Promise.allSettled(peers.map((peer: any) => peer.stop()));
     try { await cleanupJudge(); } catch (error: any) { results.push({ status: 'rejected', reason: error }); }
@@ -102,8 +102,8 @@ export async function startIndependentServices({ taskService, projectDir, logRoo
   await mkdir(join(logRoot, 'services'), { recursive: true });
   try {
     const contextPeer = await startPeer('flock', ['--nonblock', '--no-fork', join(projectDir, 'context.sqlite.instance-lock'), process.execPath, 'scripts/context-service-peer.js'], {
-      SWARMENV_SERVICE_DATABASE: join(projectDir, 'context.sqlite'), SWARMENV_COORDINATOR_TOKEN: token,
-      SWARMENV_SERVICE_HOST: '127.0.0.1', SWARMENV_SERVICE_PORT: '0', SWARMENV_SERVICE_PUBLIC_URL: '',
+      MURM_SERVICE_DATABASE: join(projectDir, 'context.sqlite'), MURM_COORDINATOR_TOKEN: token,
+      MURM_SERVICE_HOST: '127.0.0.1', MURM_SERVICE_PORT: '0', MURM_SERVICE_PUBLIC_URL: '',
     }, join(logRoot, 'services/context-peer.stderr.log'));
     peers.push(contextPeer);
     const context = new RemoteContextService({ taskService, token, url: contextPeer.endpoint.url, logger: contextLogger });
@@ -118,8 +118,8 @@ export async function startIndependentServices({ taskService, projectDir, logRoo
         workRoot: join(projectDir, 'judge-work') } }), { mode: 0o600 });
     const judgePeer = await startPeer('flock', ['--nonblock', '--no-fork', join(projectDir, 'judge.sqlite.instance-lock'),
       process.execPath, 'scripts/judge-service-peer.js'], {
-      SWARMENV_SERVICE_DATABASE: join(projectDir, 'judge.sqlite'), SWARMENV_COORDINATOR_TOKEN: token,
-      SWARMENV_JUDGE_PEER_CONFIG: configPath, SWARMENV_CHECKER_OWNER_FILE: ownerFile, SWARMENV_JUDGE_PEER_LOCKED: 'true', SWARMENV_SERVICE_PORT: '0',
+      MURM_SERVICE_DATABASE: join(projectDir, 'judge.sqlite'), MURM_COORDINATOR_TOKEN: token,
+      MURM_JUDGE_PEER_CONFIG: configPath, MURM_CHECKER_OWNER_FILE: ownerFile, MURM_JUDGE_PEER_LOCKED: 'true', MURM_SERVICE_PORT: '0',
     }, join(logRoot, 'services/judge-peer.stderr.log'));
     peers.push(judgePeer);
     judge.connect(judgePeer.endpoint.url);

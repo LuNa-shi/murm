@@ -2,11 +2,11 @@
 
 > Type: Project-specific workflow · Status: Active · Updated: 2026-11-12
 
-The default engineering procedure is defined by the [installed Matt Pocock engineering skills](https://github.com/mattpocock/skills/tree/main/skills/engineering). This file adds only SwarmEnv-specific context and verification boundaries. [AGENTS.md](../../AGENTS.md) defines human/Agent autonomy and permissions.
+The default engineering procedure is defined by the [installed Matt Pocock engineering skills](https://github.com/mattpocock/skills/tree/main/skills/engineering). This file adds only murm-specific context and verification boundaries. [AGENTS.md](../../AGENTS.md) defines human/Agent autonomy and permissions.
 
 ## Phase 0005: design first, Issues track execution
 
-For the Core / Environment stage, the owner’s 2026-11-23 instruction makes the [complete design on main](../phases/0005-core-environment/README.md) the sole authority for target requirements, scope, decisions and acceptance. First merge the documentation through a reviewed PR, then derive the spec Issue and independently verifiable tickets from that exact version. Issues track dependencies, implementation and evidence. If a ticket summary differs from the design, reconcile the ticket; requirement changes go through the authoritative design PR and then update affected tickets. Notion is source material for the migration. This exception does not alter resource/research/publication permissions or declare the proposed API implemented.
+For the Core / Harness stage, the owner’s 2026-11-23 instruction makes the [complete design on main](../phases/0005-core-harness/README.md) the sole authority for target requirements, scope, decisions and acceptance. First merge the documentation through a reviewed PR, then derive the spec Issue and independently verifiable tickets from that exact version. Issues track dependencies, implementation and evidence. If a ticket summary differs from the design, reconcile the ticket; requirement changes go through the authoritative design PR and then update affected tickets. Notion is source material for the migration. This exception does not alter resource/research/publication permissions or declare the proposed API implemented.
 
 ## Issue-first development for other stages
 
@@ -35,7 +35,7 @@ For Phase 0005, apply the design-first authority and sequence above. For other s
 
 During design review, keep current Architecture accurate to current code and link the target design. After implementation begins, each runtime PR updates the affected manual and references. Keep pending choices and evidence in the Issue/PR; do not maintain a duplicate local progress ledger. A change to a reviewed requirement must be made visible in the Issue and the document revision together.
 
-## SwarmEnv verification and synchronization
+## murm verification and synchronization
 
 - Keep exact commit, environment, provider/model, checker and input identities for substantive evidence. Do not silently change the approved Issue, fixtures, acceptance thresholds or experiment budget.
 - Use Kimi K3 (`PI_PROVIDER=kimi_proxy`, `PI_MODEL=k3`) by default for real Agent tests during development. When a formal experiment or acceptance run pins a different model, use the approved configuration for that run.

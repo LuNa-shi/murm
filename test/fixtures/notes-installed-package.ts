@@ -10,8 +10,8 @@ const repository = resolve(import.meta.dirname, '../../..');
 
 // Select and snapshot the actual package before audits or installation consume it.
 export async function preparePackageArchive(directory, { archive: frozenArchive, expectedSha256 } = {
-  archive: process.env.SWARMENV_TEST_PACKAGE_ARCHIVE,
-  expectedSha256: process.env.SWARMENV_TEST_PACKAGE_SHA256,
+  archive: process.env.MURM_TEST_PACKAGE_ARCHIVE,
+  expectedSha256: process.env.MURM_TEST_PACKAGE_SHA256,
 }, { requireCleanCheckout = false } = {}) {
   const frozen = frozenArchive !== undefined || expectedSha256 !== undefined;
   if (frozen && (typeof frozenArchive !== 'string' || !frozenArchive || typeof expectedSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(expectedSha256))) {
@@ -85,20 +85,20 @@ export async function installNotesExample(selection, { requireCleanCheckout = fa
     if (!parent) throw Object.assign(new Error('No external installation parent is available'), { code: 'INSTALL_PARENT_IN_CHECKOUT' });
   }
   if (process.env.HOME && !await outsideCheckout(process.env.HOME)) throw Object.assign(new Error('Installation HOME must be outside source checkouts'), { code: 'INSTALL_HOME_IN_CHECKOUT' });
-  const directory = await mkdtemp(join(parent, 'swarmenv-notes-installed-'));
+  const directory = await mkdtemp(join(parent, 'murm-notes-installed-'));
   try {
     const { archive, sourceCommit, sourceDirty } = await preparePackageArchive(directory, selection, { requireCleanCheckout });
     await writeFile(join(directory, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
     await execute('npm', ['install', '--offline', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', archive],
       { cwd: directory, timeout: 120_000, maxBuffer: 4 * 1024 ** 2 });
-    const installed = join(directory, 'node_modules', '@swarmenv', 'core');
+    const installed = join(directory, 'node_modules', '@murm', 'core');
     const metadata = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8'));
     const compiled = metadata.exports?.['.']?.default?.startsWith('./dist/');
     const executableRoot = compiled ? join(installed, 'dist') : installed;
     const extension = compiled ? 'js' : 'mjs';
-    await copyFile(join(executableRoot, `examples/notes-environment/main.${extension}`), join(directory, 'main.mjs'));
+    await copyFile(join(executableRoot, `examples/notes/main.${extension}`), join(directory, 'main.mjs'));
     for (const name of ['run-input', 'run-report', 'read-result']) {
-      await copyFile(join(executableRoot, `src/environments/shared/${name}.js`), join(directory, `${name}.${extension}`));
+      await copyFile(join(executableRoot, `src/harnesses/shared/${name}.js`), join(directory, `${name}.${extension}`));
     }
     const env = { ...process.env }; delete env.NODE_PATH; delete env.NODE_OPTIONS;
     return { directory, env, metadata: { name: metadata.name, version: metadata.version,

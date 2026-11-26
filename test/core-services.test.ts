@@ -24,10 +24,10 @@ test('Environment can register a v2 custom Service and rejects duplicate identit
   assert.throws(() => services.registerService(registration()), { code: 'CONFLICT' });
 });
 
-test('reserved Bot Service identity and incomplete manifests fail before registration', () => {
+test('reserved Agent Service identity and incomplete manifests fail before registration', () => {
   const services = new ServiceRegistry();
   const entry = registration();
-  entry.manifest.id = 'bot';
+  entry.manifest.id = 'agent';
   assert.throws(() => services.registerService(entry), { code: 'INVALID_CONTRACT' });
   entry.manifest.id = 'notes';
   entry.manifest.contract_version = '1';

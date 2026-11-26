@@ -10,7 +10,7 @@ import { preparePackageArchive } from './fixtures/notes-installed-package.js';
 const execute = promisify(execFile);
 
 test('shipped image contexts contain every COPY input and install their locked dependencies offline', { timeout: 60_000 }, async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-image-build-inputs-'));
+  const directory = await mkdtemp(join(tmpdir(), 'murm-image-build-inputs-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const { archive } = await preparePackageArchive(directory);
   const listing = await execute('tar', ['-tzf', archive], { timeout: 5000, maxBuffer: 4 * 1024 ** 2 });

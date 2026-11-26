@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, lstat, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative as pathRelative, resolve } from 'node:path';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
 import { WorkspaceRepository } from './workspace-repository.js';
 import {
@@ -22,18 +22,18 @@ function textHash(value: any) {
 }
 
 function requireString(value: any, field: any) {
-  if (typeof value !== 'string' || value.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
+  if (typeof value !== 'string' || value.length === 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
   return value;
 }
 
 function safePath(relativePath: any) {
   requireString(relativePath, 'workspace file path');
-  if (isAbsolute(relativePath) || relativePath.includes('\0')) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace file path must be relative');
+  if (isAbsolute(relativePath) || relativePath.includes('\0')) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspace file path must be relative');
   const portablePath = relativePath.replaceAll('\\', '/');
-  if (portablePath.split('/').includes('..')) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace files cannot address parent directories');
+  if (portablePath.split('/').includes('..')) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'workspace files cannot address parent directories');
   const normalized = resolve('/', portablePath).slice(1);
   if (!normalized || normalized === META_DIR || normalized.startsWith(`${META_DIR}/`)) {
-    throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace files cannot address Runtime metadata or parent directories');
+    throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'workspace files cannot address Runtime metadata or parent directories');
   }
   return normalized;
 }
@@ -65,12 +65,12 @@ export class WorkspaceManager {
 
   workspacePath(executionId: any) {
     const id = requireString(executionId, 'execution_id');
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'execution_id is not a safe workspace path segment');
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'execution_id is not a safe workspace path segment');
     return join(this.rootDir, id);
   }
 
   async createWorkspace(options: any) {
-    if (!options.publicSnapshot) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'publicSnapshot is required for Execution preparation');
+    if (!options.publicSnapshot) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'publicSnapshot is required for Execution preparation');
     const target = this.#assertWorkspacePath(options.workspaceRef ?? this.workspacePath(options.executionId));
     await mkdir(this.rootDir, { recursive: true });
     await this.#assertNoSymlinkAncestors(this.rootDir, target);
@@ -81,11 +81,11 @@ export class WorkspaceManager {
         const input = Object.fromEntries(Object.entries(options.publicSnapshot).filter(([key]: any) => key !== 'files'));
         if (existing.execution_id !== options.executionId || existing.fencing_version !== options.fencingVersion || existing.released_at ||
             stableStringify(existing.public_workspace_input) !== stableStringify(input)) {
-          throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Execution directory already records different input or lifecycle ownership');
+          throw new MurmError(ERROR_CODES.CONFLICT, 'Execution directory already records different input or lifecycle ownership');
         }
         return this.#publicMetadata(existing);
       }
-      if (await exists(target) && (await readdir(target)).length) throw new SwarmEnvError('WORKSPACE_BUSY', 'Execution input target is not empty');
+      if (await exists(target) && (await readdir(target)).length) throw new MurmError('WORKSPACE_BUSY', 'Execution input target is not empty');
       const stage = await mkdtemp(join(this.rootDir, '.swarm-prepare-'));
       try {
         const prepared = await this.#createWorkspace({ ...options, workspaceRef: stage, publishedWorkspaceRef: target });
@@ -105,12 +105,12 @@ export class WorkspaceManager {
     if (await exists(metadataPath)) {
       const existing = await this.#readMetadata(workspaceRef);
       if (existing.execution_id !== executionId || existing.fencing_version !== fencingVersion) {
-        throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace already belongs to another execution fence');
+        throw new MurmError(ERROR_CODES.FENCED, 'workspace already belongs to another execution fence');
       }
       return this.#publicMetadata(existing);
     }
     if (!task || typeof task !== 'object' || Array.isArray(task)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task is required to create a Workspace');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'task is required to create a Workspace');
     }
     const taskWorkspace = task.workspace && typeof task.workspace === 'object' ? task.workspace : {};
     const workspaceContract = normalizeWorkspaceContract(taskWorkspace);
@@ -127,7 +127,7 @@ export class WorkspaceManager {
     }
     validateRequiredWorkspaceInputs(fileManifest, workspaceContract);
     if (stableStringify(fileManifest) !== stableStringify(publicSnapshot.manifest)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Initial project bytes do not match the public revision manifest');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Initial project bytes do not match the public revision manifest');
     }
     const gitCommit = (await new WorkspaceRepository().createInitialTree(workspaceRef, files)).commit;
     const metadata = {
@@ -175,8 +175,8 @@ export class WorkspaceManager {
 
   async #readOwnedMetadata({ workspaceRef, executionId, fencingVersion = undefined }: any) {
     const metadata = await this.#readMetadata(workspaceRef);
-    if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
-    if (fencingVersion !== undefined && metadata.fencing_version !== fencingVersion) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace fence is stale');
+    if (metadata.execution_id !== executionId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
+    if (fencingVersion !== undefined && metadata.fencing_version !== fencingVersion) throw new MurmError(ERROR_CODES.FENCED, 'workspace fence is stale');
     return metadata;
   }
 
@@ -200,8 +200,8 @@ export class WorkspaceManager {
 
   async releaseWorkspace({ workspaceRef, executionId, fencingVersion }: any) {
     const metadata = await this.#readMetadata(workspaceRef);
-    if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
-    if (metadata.fencing_version !== fencingVersion) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace fence is stale');
+    if (metadata.execution_id !== executionId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
+    if (metadata.fencing_version !== fencingVersion) throw new MurmError(ERROR_CODES.FENCED, 'workspace fence is stale');
     // Retry both writes: the previous call may have persisted the primary
     // release before failing to update revision metadata.
     const next = metadata.released_at ? metadata : { ...metadata, released_at: new Date().toISOString(), updated_at: new Date().toISOString() };
@@ -212,9 +212,9 @@ export class WorkspaceManager {
 
   async fenceWorkspace({ workspaceRef, executionId, fencingVersion, newFencingVersion }: any) {
     const metadata = await this.#readMetadata(workspaceRef);
-    if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
-    if (metadata.fencing_version !== fencingVersion) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace fence is stale');
-    if (!Number.isInteger(newFencingVersion) || newFencingVersion <= fencingVersion) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'new fencing version must increase');
+    if (metadata.execution_id !== executionId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
+    if (metadata.fencing_version !== fencingVersion) throw new MurmError(ERROR_CODES.FENCED, 'workspace fence is stale');
+    if (!Number.isInteger(newFencingVersion) || newFencingVersion <= fencingVersion) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'new fencing version must increase');
     const next = { ...metadata, fencing_version: newFencingVersion, released_at: null, updated_at: new Date().toISOString() };
     await this.#writeMetadata(workspaceRef, next);
     await this.#writeRevisionMetadata(workspaceRef, next);
@@ -226,10 +226,10 @@ export class WorkspaceManager {
     try {
       info = await lstat(target);
     } catch (error: any) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `workspace file is unavailable: ${error.message}`, undefined, { cause: error });
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `workspace file is unavailable: ${error.message}`, undefined, { cause: error });
     }
-    if (info.isSymbolicLink()) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace symbolic links are not readable');
-    if (!info.isFile()) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace path is not a regular file');
+    if (info.isSymbolicLink()) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace symbolic links are not readable');
+    if (!info.isFile()) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace path is not a regular file');
   }
 
   async #assertNoSymlinkAncestors(root: any, target: any) {
@@ -239,10 +239,10 @@ export class WorkspaceManager {
       rootInfo = await lstat(current);
     } catch (error: any) {
       if (error?.code === 'ENOENT') return;
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `Workspace root cannot be inspected: ${error.message}`, undefined, { cause: error });
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `Workspace root cannot be inspected: ${error.message}`, undefined, { cause: error });
     }
-    if (rootInfo.isSymbolicLink()) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace root symbolic links are not accessible');
-    if (!rootInfo.isDirectory()) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace root is not a directory');
+    if (rootInfo.isSymbolicLink()) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace root symbolic links are not accessible');
+    if (!rootInfo.isDirectory()) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace root is not a directory');
     for (const part of pathRelative(root, target).split(/[\\/]/).filter(Boolean)) {
       current = join(current, part);
       let info;
@@ -250,22 +250,22 @@ export class WorkspaceManager {
         info = await lstat(current);
       } catch (error: any) {
         if (error?.code === 'ENOENT') return;
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `Workspace path cannot be inspected: ${error.message}`, undefined, { cause: error });
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `Workspace path cannot be inspected: ${error.message}`, undefined, { cause: error });
       }
-      if (info.isSymbolicLink()) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace symbolic links are not accessible');
-      if (current !== target && !info.isDirectory()) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace path parent is not a directory');
+      if (info.isSymbolicLink()) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace symbolic links are not accessible');
+      if (current !== target && !info.isDirectory()) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace path parent is not a directory');
     }
   }
 
   async #assertWritableFileTarget(target: any) {
     try {
       const info = await lstat(target);
-      if (info.isSymbolicLink()) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace symbolic links are not writable');
-      if (!info.isFile()) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace path is not a regular file');
+      if (info.isSymbolicLink()) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace symbolic links are not writable');
+      if (!info.isFile()) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace path is not a regular file');
     } catch (error: any) {
       if (error?.code === 'ENOENT') return;
-      if (error instanceof SwarmEnvError) throw error;
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `Workspace path cannot be written: ${error.message}`, undefined, { cause: error });
+      if (error instanceof MurmError) throw error;
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `Workspace path cannot be written: ${error.message}`, undefined, { cause: error });
     }
   }
 
@@ -294,7 +294,7 @@ export class WorkspaceManager {
     try {
       return JSON.parse(await readFile(join(resolvedWorkspace, META_DIR, META_FILE), 'utf8'));
     } catch (error: any) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `workspace metadata is unavailable: ${error.message}`, undefined, { cause: error });
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `workspace metadata is unavailable: ${error.message}`, undefined, { cause: error });
     }
   }
 
@@ -302,7 +302,7 @@ export class WorkspaceManager {
     requireString(workspaceRef, 'workspace_ref');
     const resolvedWorkspace = resolve(workspaceRef);
     if (resolvedWorkspace === this.rootDir || !resolvedWorkspace.startsWith(`${this.rootDir}/`)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace_ref is outside Runtime rootDir');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'workspace_ref is outside Runtime rootDir');
     }
     return resolvedWorkspace;
   }

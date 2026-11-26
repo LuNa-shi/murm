@@ -8,8 +8,8 @@ test('input identity separates Runtime, trusted caller and target while conflict
   const reserve = (caller, target = 'target', input = parameters) => ledger.reserve(caller, target, 'same-id', input, () => ({ token: Symbol() }));
   const host = reserve('host');
   assert.equal(reserve('host'), host);
-  assert.notEqual(reserve('bot:caller-one'), host);
-  assert.notEqual(reserve('bot:caller-two'), reserve('bot:caller-one'));
+  assert.notEqual(reserve('agent:caller-one'), host);
+  assert.notEqual(reserve('agent:caller-two'), reserve('agent:caller-one'));
   assert.notEqual(reserve('host', 'other-target'), host);
   const other = createInputLedger('runtime-two').reserve('host', 'target', 'same-id', parameters, () => ({}));
   assert.notEqual(other, host);

@@ -26,7 +26,7 @@
 |---|---|---|
 | 固定 main `1d9be9f8…` 的源码、schema 和现有测试 | 核对现在存在的入口、状态、依赖和兼容路径；原 `008ecdb9…` 仅作历史差异对照 | 测试文件存在不表示本次运行过，也不表示真实隔离成立 |
 | [Architecture](../../architecture/INDEX.md) 及 [source-map.json](../../architecture/source-map.json) | 实现手册、覆盖清单及后来落地的更新；清单的 runtime baseline 同步为 `1d9be9f8146a57ba50d769615045c21a03c215bd`，包含当前 101 项映射；PR #116 仍是原始手册的历史出处 | baseline 只固定本轮对照代码树；源文件指纹、受影响流程的语义复核和实际运行验收是不同证据，不能仅改字符串或重新生成就宣称全分支验证 |
-| 本阶段模块化设计文档与批准 Issue | 说明建议实现的完整目标及迁移合同；由 Issue 指明采纳的文档 revision | 文档审核通过不证明代码已实现、真实 Bot 已表现良好或预算已获准 |
+| 本阶段模块化设计文档与批准 Issue | 说明建议实现的完整目标及迁移合同；由 Issue 指明采纳的文档 revision | 文档审核通过不证明代码已实现、真实 Agent 已表现良好或预算已获准 |
 
 本次文档 PR 可以调整阶段目录规则、链接和相应文档检查；这与后续改变 Swarm 运行行为是不同工作。它不将未来 `swarm` 命令、Workspace 主线或新状态写成当前 API。
 
@@ -34,7 +34,7 @@
 
 ### 1.2 与已有工作的衔接
 
-**#119 已交付接入切片，完整生命周期仍按其批准合同验收。** 当前基线已有 OpenSandbox provider / worker、按 E 准备干净目录、文件同步、独立服务部署和 `swarm` CLI。最新 #119 的目标范围还包括每 Bot 新 sandbox/Pi、take 前只读、take 后准备独立 E 工作目录并授权、一个 Bot 最多一个 Task、finish/超时后停止全部进程并销毁环境；现有接入不能自动证明这些合同全部成立。阶段 02 定义 Task、Material、Workspace 与最终 Mission 提交的业务合同，#119 负责对应 Provider/Runtime/CLI 能力；新增业务策略不能作为其无关接入能力的隐藏门槛。零 Task 提案、动态依赖、版本保存/合入等完整协作在本阶段切片验收。
+**#119 已交付接入切片，完整生命周期仍按其批准合同验收。** 当前基线已有 OpenSandbox provider / worker、按 E 准备干净目录、文件同步、独立服务部署和 `swarm` CLI。最新 #119 的目标范围还包括每 Agent 新 sandbox/Pi、take 前只读、take 后准备独立 E 工作目录并授权、一个 Agent 最多一个 Task、finish/超时后停止全部进程并销毁环境；现有接入不能自动证明这些合同全部成立。阶段 02 定义 Task、Material、Workspace 与最终 Mission 提交的业务合同，#119 负责对应 Provider/Runtime/CLI 能力；新增业务策略不能作为其无关接入能力的隐藏门槛。零 Task 提案、动态依赖、版本保存/合入等完整协作在本阶段切片验收。
 
 **#117 的 direct Judge 路径已进入当前基线。** Bridge 从当前 Execution Workspace 读取文件并附来源证明，经 Registry 直接调用 Judge；Task Service 和 runner 已不是提交处理器，PASS 与 Task 完成分开。后续直接复用这一职责边界，补齐本阶段公开 revision、最终合成树与 Mission 提交快照的绑定，并验证实际部署；不再把删除 runner 回调列为未开始的实现工作。Judge 不因此成为所有 Task 的强制裁判，也不负责替 Workspace 决定研究价值。
 
@@ -47,15 +47,15 @@
 | 组件 | 目标权威事实与调用边界 | 对现有职责的迁移 |
 |---|---|---|
 | 启动器 / Mission 配置 | 目标、最终验收、允许服务、预算、停止条件、输入版本 | 从 benchmark 初始化第一条共享 Task，改为初始化 Mission 与 Workspace main 初始 commit / revision `0.1`；Task 可以为空 |
-| Task Service | Task 合同、依赖、当前 owner、E 生命周期、协调权限、贡献受理与撤权顺序 | 删除“第一条 Task 特殊共享”规则；一个 Task 只能有一个当前 E，一个 Bot 最多绑定一个 E |
+| Task Service | Task 合同、依赖、当前 owner、E 生命周期、协调权限、贡献受理与撤权顺序 | 删除“第一条 Task 特殊共享”规则；一个 Task 只能有一个当前 E，一个 Agent 最多绑定一个 E |
 | Workspace 逻辑模块 | Workspace 身份、main 指针、公开版本、E 输入绑定、合入幂等与条件更新 | v1 部署在 Task Service 的同一协调进程和事务域；这是独立逻辑职责，不要求新增微服务 |
 | Context Service | Material 正文/附件、不可变内容身份和来源、检索、使用及纠错关系 | 实际内容由 Context 持有；Workspace、Task、Judge 通过 API 读取，不能跨服务直接打开它的数据库 |
-| Runtime | Core 容量、新 Bot/Pi/sandbox、物化输入、目录权限、绑定、预算监督、停止与对账 | 从可反复换任务的宿主 Session 监督转为有限 Bot；跨 E 不恢复私有会话或工作副本 |
-| Judge / 领域服务 | 自己受理操作的输入、幂等记录、执行结果、费用与取消合同 | 承接已落地的 direct Judge 边界，绑定公开 revision / 最终检查快照；服务能在 Bot 退出后完成已接纳操作 |
+| Runtime | Core 容量、新 Agent/Pi/sandbox、物化输入、目录权限、绑定、预算监督、停止与对账 | 从可反复换任务的宿主 Session 监督转为有限 Agent；跨 E 不恢复私有会话或工作副本 |
+| Judge / 领域服务 | 自己受理操作的输入、幂等记录、执行结果、费用与取消合同 | 承接已落地的 direct Judge 边界，绑定公开 revision / 最终检查快照；服务能在 Agent 退出后完成已接纳操作 |
 | Pi 四基础工具与 `swarm` CLI | 文件操作、help、参数、传输、请求 ID、结果呈现 | 业务动作经 Bash CLI 调服务；授权由服务和 Runtime 执行，CLI 不是安全边界 |
 | Observation / UI / 分析 | 对权威记录的有版本投影、运行证据、解释清楚的成本与结果 | 不用投影反向授予权限、重写 main 或宣布 Mission 达成；保留未知和不完整证据 |
 
-一个服务操作已经同步完成，不代表旧 Bot 继续有效。普通 CLI/API 请求在服务处理时验证当前 Execution，直接执行并返回；Task finish 后旧 Execution 的新写请求被拒绝。若某项服务确实需要跨 sandbox 生命周期继续运行，由该服务单独定义异步接口。Workspace main 更新核对 E、确定的源 revision、最终检查和当前 main；不建立通用许可协议。未绑定 Bot 可进行已声明的 Mission 协调操作，包括正常退出和最终提交；这些例外不允许无 E 发布研究成果。
+一个服务操作已经同步完成，不代表旧 Agent 继续有效。普通 CLI/API 请求在服务处理时验证当前 Execution，直接执行并返回；Task finish 后旧 Execution 的新写请求被拒绝。若某项服务确实需要跨 sandbox 生命周期继续运行，由该服务单独定义异步接口。Workspace main 更新核对 E、确定的源 revision、最终检查和当前 main；不建立通用许可协议。未绑定 Agent 可进行已声明的 Mission 协调操作，包括正常退出和最终提交；这些例外不允许无 E 发布研究成果。
 
 ### 2.2 新增或重建的接口面
 
@@ -64,14 +64,14 @@
 | 接口面 | 必须可表达的操作和结果 | 必须同时具备的失败路径 |
 |---|---|---|
 | Mission / Workspace 初始化与提交 | 初始公开输入、Mission/Workspace、最终 submit 和提交结果查询；允许协调身份无 E 提交 | 初始化对账；固定 main/Material/checker/环境；单活跃提交；main 冻结、失败仅释放自身冻结、迟到结果拒绝 |
-| 协调与选工 | 跨状态相关 Task 查询、分页、提案、take/请求查询、无 E 的 bot exit | 同 Bot 双 take、认领竞争、选工预算结束、退避与事件等待；不提供通用 revise |
+| 协调与选工 | 跨状态相关 Task 查询、分页、提案、take/请求查询、无 E 的 agent exit | 同 Agent 双 take、认领竞争、选工预算结束、退避与事件等待；不提供通用 revise |
 | Task / E 收尾 | done/incomplete/blocked/cancelled；动态等待；无 owner Task 取消与失效依赖替换 | 依赖/finish 原子记录、环检查、取消不满足依赖、清理前不释放 owner、迟到写入拒绝 |
 | Material | 正文/附件发布、读取/检索、关联/实际使用、dispute、整份 supersede 与窄 unsupersede | 新版完整承接、旧版默认隐藏；关系 CAS/无环、错误关系撤销、内容/关联部分完成和幂等 |
 | Workspace | files/read/search、history/diff、稳定 save、显式 apply、三方 merge、请求结果查询 | 未合入 revision 可读；后台写/dirty 保护、parents、最终树检查、CAS、Git/索引恢复；无独立 Candidate ID/CLI |
 | Runtime / provider | 固定路径预留、受控输入物化、active 后授权、稳定保存/安装、全进程停止和重启对账 | 部分准备、迟到 grant、save/apply 与 finish 竞争、软收尾与硬停止、provider 不可达 |
 | 发送与观测 | 实际消息/工具输出/skill 读取、版本、成本和生命周期 | 未发送、结果未知、截断、缺记录、投影落后；不把显示状态当权威授权 |
 
-Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续是实现组件名。当前 [CLI](../../../src/cli/swarm-cli.ts) 已交付 `swarm context`，本阶段明确迁移为 `swarm material`，须同步初始 prompt、skills、help、示例、测试和 API 映射，并按第 7 节为现有入口提供显式退役策略。不能再把 `swarm context` 称为尚未交付的提案，也不能让两套名称在新 prompt 中混用。
+Agent 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续是实现组件名。当前 [CLI](../../../src/cli/swarm-cli.ts) 已交付 `swarm context`，本阶段明确迁移为 `swarm material`，须同步初始 prompt、skills、help、示例、测试和 API 映射，并按第 7 节为现有入口提供显式退役策略。不能再把 `swarm context` 称为尚未交付的提案，也不能让两套名称在新 prompt 中混用。
 
 ## 3. 现状到目标的关键差距
 
@@ -81,7 +81,7 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 |---|---|---|
 | runner 创建 Mission 后先创建共享 Task；Task Service 按 Mission 第一条记录判定共享身份，允许多个 E | Mission 不可 take；空 Task 列表是合法启动状态；排他规则适用于全部 Task，不能仅把 `parallel_quota` 改成 1 | [runner](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/src/benchmark/putnam-runner.js)、[Task Service](../../../src/task/task-service.ts)、[现有 03](../../architecture/03-mission-task.md) |
 | CLI / exported runner 已固定 flat Mission Task；移除的 Task 模型参数被拒绝。历史 schema、Runtime 和 fixtures 的保留范围仍须按入口辨认 | 不重复实施 legacy 默认切换；保留已完成清理，继续核对旧配置、SDK、fixtures 和报表的实际兼容用途，不能恢复父任务管理树 | [启动器](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/scripts/run-putnambench-benchmark.mjs)、[Task 类型](../../../src/task/task-types.ts)、[现有 07](../../architecture/07-run-configuration.md) |
-| Core / Session 与 E 仍是不同身份；当前手册保留 register-and-take、rotation/recovery 等路径，OpenSandbox 则按 E 创建环境 | 统一为新 Bot 可先阅读、成功 take 后只执行这一 E；Task finish/超时后新 Bot/Pi/sandbox 补位。Runtime 重启对账不等于给后继恢复研究上下文 | [Runtime](../../../src/runtime/runtime.ts)、[身份循环](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/src/runtime/identity-task-loop.js)、[现有 02](../../architecture/02-execution.md) |
+| Core / Session 与 E 仍是不同身份；当前手册保留 register-and-take、rotation/recovery 等路径，OpenSandbox 则按 E 创建环境 | 统一为新 Agent 可先阅读、成功 take 后只执行这一 E；Task finish/超时后新 Agent/Pi/sandbox 补位。Runtime 重启对账不等于给后继恢复研究上下文 | [Runtime](../../../src/runtime/runtime.ts)、[身份循环](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/src/runtime/identity-task-loop.js)、[现有 02](../../architecture/02-execution.md) |
 | OpenSandbox runner 对新 E 启用 clean preparation；通用 Workspace/Runtime 仍有私有 resume/clone/recovery 语义，同一 durable E 可使用其旧引用 | 所有新 E 只从公开 Workspace revision 物化文件、从 Material 读取研究内容；不能把 clean 路径存在等同于所有私有回退已退役 | [WorkspaceManager](../../../src/runtime/workspace-manager.ts)、[现有 02](../../architecture/02-execution.md)、[现有 05](../../architecture/05-workspace-continuity.md) |
 | 现有 Workspace 是执行目录、manifest、revision 与本地 Git；其本地 `main` 不是项目共享权威 | 增加跨 E 持续存在的 Workspace 身份和 main 版本；所有公开版本都能由 Workspace 本地 Git Repository 的 commit 物化，不以宿主目录或私有 commit 代替 | [Workspace contract](../../../src/runtime/workspace-contract.ts)、[05 设计](05-workspace.md) |
 | Context 的 Material 有全局 `role`；Task 的 `#linkMaterial` 要求它与每条关联 role 相同，并要求非空生产 Task/E | 同一 M 可是 T1 产物、T2 输入、T3 纠错依据；用途属于关联，生产来源不可改；受控初始输入允许无生产 Task/E | [Context](../../../src/context/context-service.ts)、[Context schema](../../../src/storage/context-schema.ts)、[Task schema](../../../src/storage/schema.ts) |
@@ -99,9 +99,9 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 
 | source-map 类别 / 当前项数 | 本阶段涉及的完整职责 | 实施 PR 必须核对的 Architecture 章节 |
 |---|---|---|
-| `launch and composition` / 16 | 入口、配置与依赖锁定；零 Task bootstrap；服务拓扑；Core/Bot 创建；预算与停止；SDK exports；脚本及 real-Agent/fixture 入口 | [00 全流程](../../architecture/00-overview.md)、[07 启动](../../architecture/07-run-configuration.md)，并联动 01、02、03、05、06 |
+| `launch and composition` / 16 | 入口、配置与依赖锁定；零 Task bootstrap；服务拓扑；Core/Agent 创建；预算与停止；SDK exports；脚本及 real-Agent/fixture 入口 | [00 全流程](../../architecture/00-overview.md)、[07 启动](../../architecture/07-run-configuration.md)，并联动 01、02、03、05、06 |
 | `Agent and prompts` / 6 | Pi 启动与路由；四工具；CLI/skills 可见性；身份绑定；初始消息和后续消息实际发送；版本 manifest；旧 Bridge/extension 退出 | [01 Agent](../../architecture/01-agent-core.md)、[08 Prompts](../../architecture/08-prompts.md)、[10 API](../../architecture/10-service-api-reference.md) |
-| `Execution and control` / 5 | Core 复用而 Bot 不跨 E 复用；preparing/active/closing/closed；排他预留、grant、撤权、全进程停止、对账、等待和计时；Controller/Scheduler 留存边界 | [02 执行](../../architecture/02-execution.md)、[05 Workspace](../../architecture/05-workspace-continuity.md)、08、10 |
+| `Execution and control` / 5 | Core 复用而 Agent 不跨 E 复用；preparing/active/closing/closed；排他预留、grant、撤权、全进程停止、对账、等待和计时；Controller/Scheduler 留存边界 | [02 执行](../../architecture/02-execution.md)、[05 Workspace](../../architecture/05-workspace-continuity.md)、08、10 |
 | `runtime and execution` / 2 | OpenSandbox provider 与 guest worker 的生命周期、RPC/事件流、断线与重试、准备/授权、写进程稳定化和全进程回收 | 01、02、05、07、08、09 |
 | `agent core and transport` / 1 | OpenSandbox Agent adapter 的启动、双向 Pi 通信、输入/输出同步、凭据边界和故障对账 | 01、02、05、07、08 |
 | `service and Agent integration` / 3 | CLI 解析/help/请求身份、HTTP 调用和错误；独立服务间代理的身份、幂等、超时与持久性边界 | [04 Services](../../architecture/04-services.md)、07、08、[10 API](../../architecture/10-service-api-reference.md) |
@@ -111,12 +111,12 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 | `durable storage` / 3 | 新版本 schema、Task/E 独占与请求记录、Workspace 本地 Git Repository/main branch/revision、Material 关联、各 Service 自己的同步返回值；确需长操作时的服务专属异步状态、历史兼容及迁移约束 | 11、03、04，增加 02、05、06 所需关系说明 |
 | `provider deployment and instructions` / 8 | 服务与 OpenSandbox Agent 镜像、启动参数、持久卷、网络/凭据；Mathlib 与其他服务完整说明；挂载/发送的技能和 help 版本 | 04、07、08、10；引入新镜像或技能时扩展清单 |
 | `observation and analysis` / 9 | 事件/投影/HTTP/SSE、离线导入与分析、Workspace 可见性、pre-E 成本、操作尾部费用、版本与未知值 | [06 观测](../../architecture/06-observability-experiments.md)、07，联动 08、11 |
-| `dashboard and build` / 14 | Mission/Task/Bot/E/Material/Workspace 页面、状态解释、分页/实时对账、错误/权限呈现、构建入口和维护源 | 06、07；UI 所依赖的新 API 同步 10 |
+| `dashboard and build` / 14 | Mission/Task/Agent/E/Material/Workspace 页面、状态解释、分页/实时对账、错误/权限呈现、构建入口和维护源 | 06、07；UI 所依赖的新 API 同步 10 |
 | `generated served asset` / 3 | 观察服务实际发送的构建产物与维护源一致；不能只改 React 源而发布旧 UI | 06、07；[12 Coverage](../../architecture/12-code-coverage.md) 记录生成边界 |
 | `controlled verification data` / 4 | 锁定 fixture 输入、有效/无效候选与 checker 身份；明确脚本验收和真实自主研究的区别 | 04、07、09；验证结果仍记录 Issue/PR 或版本绑定的实验报告 |
 | `documentation tooling` / 4 | prompt/API/storage 生成、source fingerprints、映射完整性、链接与漂移检查；新增运行时输入的扫描规则 | 08、10、11、12、[INDEX](../../architecture/INDEX.md) 的更新规则 |
 
-101 是当前清单大小，不是未来上限。新增 CLI、Workspace 协调模块、provider adapter、schema/migration、runtime skill 文件、启动配置或 UI 入口时，必须登记其实际路径和章责；删除文件时移除映射并说明旧行为如何终止。尤其不能因技能文件放在 `docs/` 或 `.codex/`，就沿用当前“开发文档默认不属于 runtime”的排除规则：**凡会被研究 Bot 挂载、读取或拼入消息的仓库文件都属于运行时输入，必须显式覆盖。**
+101 是当前清单大小，不是未来上限。新增 CLI、Workspace 协调模块、provider adapter、schema/migration、runtime skill 文件、启动配置或 UI 入口时，必须登记其实际路径和章责；删除文件时移除映射并说明旧行为如何终止。尤其不能因技能文件放在 `docs/` 或 `.codex/`，就沿用当前“开发文档默认不属于 runtime”的排除规则：**凡会被研究 Agent 挂载、读取或拼入消息的仓库文件都属于运行时输入，必须显式覆盖。**
 
 测试和 `test-support/` 继续作为验证入口；原始运行记录不进入 runtime inventory。它们的排除不允许把生产 fixture、运行配置、打包脚本或实际服务说明从清单漏掉。外部 Pi/provider 内部实现不在 101 项之内，应记录依赖版本和边界，不能声称仓库手册解释了不可观察的外部上下文。
 
@@ -126,9 +126,9 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 
 ### P0：复用并验收 #119 的运行基础
 
-**入口到出口：** 用真实固定版本 provider 启动一个完整 Bot，四基础工具操作同一私有工作面，CLI 调独立服务，持久发布内容；中断 CLI/重启服务/结束 sandbox 后查询已受理操作和材料，再以全新环境读取已发布输入。原私有目录不成为下一 E 的输入。
+**入口到出口：** 用真实固定版本 provider 启动一个完整 Agent，四基础工具操作同一私有工作面，CLI 调独立服务，持久发布内容；中断 CLI/重启服务/结束 sandbox 后查询已受理操作和材料，再以全新环境读取已发布输入。原私有目录不成为下一 E 的输入。
 
-**依赖与验收：** 复用已落地的 provider、worker、CLI 和独立服务部署，按 #119 最新批准范围核对独立服务、身份/网络/卷、幂等、take 前后目录授权、有限 Bot 生命周期、全进程停止及持久性。Task 选工策略与 main 合入仍在本阶段验收，不附加为无关接入能力的隐藏条件。源码和 mock 是准备证据；Docker 后端必须有真实运行证据。本次未运行真实 sandbox/provider，不把现有实现切片或文档检查算作 P0 验收。
+**依赖与验收：** 复用已落地的 provider、worker、CLI 和独立服务部署，按 #119 最新批准范围核对独立服务、身份/网络/卷、幂等、take 前后目录授权、有限 Agent 生命周期、全进程停止及持久性。Task 选工策略与 main 合入仍在本阶段验收，不附加为无关接入能力的隐藏条件。源码和 mock 是准备证据；Docker 后端必须有真实运行证据。本次未运行真实 sandbox/provider，不把现有实现切片或文档检查算作 P0 验收。
 
 **回退：** 保留版本固定的旧部署供旧数据只读检查；新基础不通过时不启用 #122 新模式，不以宿主 Agent 或私有 resume 作为本阶段最终验收兜底。
 
@@ -136,19 +136,19 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 
 **依赖：** P0；按 #122 已确认的 v1 生命周期、权限和数据版本边界实施。
 
-**闭环：** 创建 Mission、Workspace main 初始 commit/revision `0.1`；独立知识输入另存为 Material，Task 表为空；启动一个只读 Bot，展示并记录真实初始 prompt；Bot 经 Workspace API 读取文件并提出 Task；同一 Pi 经准备输入→E active→开放写权限→发布绑定完成 take，发布最小有效 Material，再按 done/incomplete/blocked/cancelled 调用 task finish。开放 Mission 无现成可领 Task 且尚有选工预算时由 Bot 发现缺口并提出责任；实际耗尽选工预算的未绑定 Bot 通过 bot exit 正常退出。清理完成后用新 Bot 读取该 Material。补充双 Bot 竞争同 Task 和同 Bot 双重 take 的故障安排。
+**闭环：** 创建 Mission、Workspace main 初始 commit/revision `0.1`；独立知识输入另存为 Material，Task 表为空；启动一个只读 Agent，展示并记录真实初始 prompt；Agent 经 Workspace API 读取文件并提出 Task；同一 Pi 经准备输入→E active→开放写权限→发布绑定完成 take，发布最小有效 Material，再按 done/incomplete/blocked/cancelled 调用 task finish。开放 Mission 无现成可领 Task 且尚有选工预算时由 Agent 发现缺口并提出责任；实际耗尽选工预算的未绑定 Agent 通过 agent exit 正常退出。清理完成后用新 Agent 读取该 Material。补充双 Agent 竞争同 Task 和同 Agent 双重 take 的故障安排。
 
-**必须一起交付：** 新 schema 的隔离运行边界、Task/E/Bot 排他、稳定 Task 合同和窄动态依赖、准备与关闭请求持久化、固定项目路径、初始 revision 的 files/read/search 与可信权限开放、普通 Service 写请求校验/撤权、无 E 成本、停止对账、实际 take 返回和最小 UI 事实。Material 单次发布自动绑定来源，只需足够完成此闭环，不提前宣称检索/纠错策略已完善。
+**必须一起交付：** 新 schema 的隔离运行边界、Task/E/Agent 排他、稳定 Task 合同和窄动态依赖、准备与关闭请求持久化、固定项目路径、初始 revision 的 files/read/search 与可信权限开放、普通 Service 写请求校验/撤权、无 E 成本、停止对账、实际 take 返回和最小 UI 事实。Material 单次发布自动绑定来源，只需足够完成此闭环，不提前宣称检索/纠错策略已完善。
 
 **验收出口：** [07](07-validation-and-research.md) 的 V01–V08、V09–V13 中相关发布/授权路径，以及 V18、V20、V23/V24 的机制部分；通过真实 E2 的目录、直接服务旁路、迟到 grant、响应丢失、CLI 被杀和清理后拒写验证。E1 通过但 E2 未完成时，记录实现与未验证边界，不将新模式设为正式默认。
 
-**回退：** 新 Mission 使用显式的新模式和独立版本状态；停止接受新 Bot，关闭/隔离已有 E，保留已受理服务操作、材料和费用。可以退回旧发布包处理旧模式数据，不能让旧二进制直接写新 schema。
+**回退：** 新 Mission 使用显式的新模式和独立版本状态；停止接受新 Agent，关闭/隔离已有 E，保留已受理服务操作、材料和费用。可以退回旧发布包处理旧模式数据，不能让旧二进制直接写新 schema。
 
-### S2：跨 Bot 的材料接续、复用与纠错
+### S2：跨 Agent 的材料接续、复用与纠错
 
 **依赖：** S1；初始输入例外、Material 不可变来源和 Task 关系用途的合同已审阅。
 
-**闭环：** B1 在 T1 发布部分成果后未完成退出；删除其研究可达环境。B2 从公开 Material 接续 T1，项目文件仍使用已具备的初始 main；未合入文件接续在 S3 随 save/apply 一起交付；另一 Task 将同一材料作为输入；后续 Bot 发布完整替代版，旧版在默认搜索中隐藏，关系错误可撤销。执行中发现新前置 Task 时 finish blocked，前置 done 才唤醒；取消前置不视为完成，显式修复等待关系。提案查询跨状态相关工作，有限检索而非穷尽历史。
+**闭环：** B1 在 T1 发布部分成果后未完成退出；删除其研究可达环境。B2 从公开 Material 接续 T1，项目文件仍使用已具备的初始 main；未合入文件接续在 S3 随 save/apply 一起交付；另一 Task 将同一材料作为输入；后续 Agent 发布完整替代版，旧版在默认搜索中隐藏，关系错误可撤销。执行中发现新前置 Task 时 finish blocked，前置 done 才唤醒；取消前置不视为完成，显式修复等待关系。提案查询跨状态相关工作，有限检索而非穷尽历史。
 
 **必须一起交付：** 去除 Material 全局 role 与关联 role 相等的限制；生产来源不变；有效分页/截断标记、实际内容读取、计划输入与实际消费区分、发布/关联中间态对账、修正及消费者可发现性。已有 completion/notification/help 对 role 的假设同步修改。
 
@@ -168,17 +168,17 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 
 **回退：** 停止新 main merge/submit，保留已保存版本与接受记录。修正通过后继版本表达，保留错误版本和证据；程序回退不撤销已发生外部副作用，不删除未合入历史。
 
-### S4：四个 Bot 的有限自主协作与受控评估
+### S4：四个 Agent 的有限自主协作与受控评估
 
 **依赖：** S1–S3；[06](06-prompts-and-skills.md) 全文、skills 内容和运行参数已固定；真实模型/provider/预算得到适用授权。
 
-**闭环：** 四个 Core 从同一 Mission 自主读、提案、选工、竞争、执行、发布、整合和退出，由新 Bot 补位；至少包含动态阻塞与取消前置修复、未合入文件接续、整份材料纠错、同 E 解决 main 冲突、全部任务暂不可领、阅读期和执行期预算结束，以及最终提交冻结。Bot 不被固定分配为四种角色。
+**闭环：** 四个 Core 从同一 Mission 自主读、提案、选工、竞争、执行、发布、整合和退出，由新 Agent 补位；至少包含动态阻塞与取消前置修复、未合入文件接续、整份材料纠错、同 E 解决 main 冲突、全部任务暂不可领、阅读期和执行期预算结束，以及最终提交冻结。Agent 不被固定分配为四种角色。
 
 **必须一起交付：** 完整按需 skills、空闲与事件唤醒、compaction 可观察信号及有限收尾额度、并发成本总账、所有实际发送路径、完整 UI/报告字段。前面切片已有的初始 prompt 和观测不得推迟到此才添加。
 
 **验收出口：** 07 的 C0–C7 轨迹、V19–V32 和相应 E3 行为证据；脚本可验证机制，但不能替代自主行为。E4 质量/效率研究按预先批准的对照、重复次数和总预算执行，失败与未知值也进入报告；单次演示不声明协作收益。
 
-**回退：** 可停止新 Bot、收窄到已验证的并发量或关闭某个未经验证策略，但改变正式研究条件必须在 Issue 留下批准和新版本。不能更改已发生实验的标签或省略 pre-E、整合和失败成本。
+**回退：** 可停止新 Agent、收窄到已验证的并发量或关闭某个未经验证策略，但改变正式研究条件必须在 Issue 留下批准和新版本。不能更改已发生实验的标签或省略 pre-E、整合和失败成本。
 
 ### S5：默认入口切换与旧路径退役
 
@@ -186,7 +186,7 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 
 **闭环：** 从批准的普通启动入口启动新 Mission，完整完成一次目标工作；再以旧配置、旧命令、旧数据库和旧报表进行显式兼容/拒绝检查。操作者能看懂迁移结果、缺项和回退边界，不会因默认参数不同进入另一个任务模型。
 
-**验收出口：** 不再创建共享 Mission Task；不再经隐式 fallback 私有恢复；新模式不暴露旧结构任务/同 Bot 换任务/named business tools；正常 CLI/help/SDK/镜像/配置/fixtures 使用一致合同。最终代码、Architecture、生成引用和证据共同复核；实施完成与研究收益结论分别记录。
+**验收出口：** 不再创建共享 Mission Task；不再经隐式 fallback 私有恢复；新模式不暴露旧结构任务/同 Agent 换任务/named business tools；正常 CLI/help/SDK/镜像/配置/fixtures 使用一致合同。最终代码、Architecture、生成引用和证据共同复核；实施完成与研究收益结论分别记录。
 
 **回退：** 发布前保留已验证的上一版本包、独立旧状态备份和版本化配置。回退先停止新写入并对账，不能把新格式状态交给旧 writer，也不默认丢弃已公开成果。若数据无法安全降级，只回退启动新任务的程序，历史新格式保持只读，按已批准的导出方案迁移。
 
@@ -198,12 +198,12 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 
 | 数据域 | 新合同最少需要记录 | 一致性与迁移约束 |
 |---|---|---|
-| Mission / Bot / Core | 预算/验收版本；Bot/Core/sandbox；零或一个 E；submit 输入、状态、冻结与 accepted revision | 无 E 费用不能遗漏；单活跃提交；失败仅释放自身冻结；关闭/超时提交的迟到结果不影响当前 Mission 或较新提交 |
-| Task / E | 稳定目标/交付/完成条件、依赖与变化历史、Task/状态版本、E/Bot、preparing/active/closing/closed、结束意图/证据 | finish blocked 与新依赖原子保存；无环；取消不满足依赖；清理前不释放 owner；无通用 revise |
-| 请求 / 授权 | request ID、操作/输入摘要、Mission/Bot/可空 E、生命周期版本、服务自身结果/未知状态 | 普通请求直接验证身份；操作专属幂等/恢复记录，无通用受理许可；同 ID 改载荷拒绝 |
+| Mission / Agent / Core | 预算/验收版本；Agent/Core/sandbox；零或一个 E；submit 输入、状态、冻结与 accepted revision | 无 E 费用不能遗漏；单活跃提交；失败仅释放自身冻结；关闭/超时提交的迟到结果不影响当前 Mission 或较新提交 |
+| Task / E | 稳定目标/交付/完成条件、依赖与变化历史、Task/状态版本、E/Agent、preparing/active/closing/closed、结束意图/证据 | finish blocked 与新依赖原子保存；无环；取消不满足依赖；清理前不释放 owner；无通用 revise |
+| 请求 / 授权 | request ID、操作/输入摘要、Mission/Agent/可空 E、生命周期版本、服务自身结果/未知状态 | 普通请求直接验证身份；操作专属幂等/恢复记录，无通用受理许可；同 ID 改载荷拒绝 |
 | Workspace / Git main branch | Workspace/Mission、全部公开 revision/commit/tree/parents、main 指针、来源、冲突状态、请求与检查 | 文件按 revision/path 定位，无 Candidate 实体；最终树检查+CAS；持久提交意图和恢复屏障，不暴露半更新版本 |
 | Material / 关系 | 内容、摘要、媒体/附件清单、不可变生产来源、Evidence 自述、实际使用、disputed、当前整份 supersede/撤销关系及其版本历史 | 正式替代一律隐藏旧版，新版自包含；关系 CAS/无环，撤销不删除历史；初始化输入可无生产 Task/E |
-| 服务操作 | 具体长操作确需异步时由对应 Service 定义的输入、执行状态、费用、结果与取消合同 | Bot 结束后仍可查询；没有“总事务”自动撤销所有服务副作用 |
+| 服务操作 | 具体长操作确需异步时由对应 Service 定义的输入、执行状态、费用、结果与取消合同 | Agent 结束后仍可查询；没有“总事务”自动撤销所有服务副作用 |
 | 观测 / 报告 | schema/事件版本；生命周期、内容版本、发送证据和成本投影 | 权威数据可重建投影；历史缺失保持 unknown，不补成零 |
 
 ### 6.2 默认迁移方案：旧运行只读，新 Mission 显式起点
@@ -214,10 +214,10 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 2. **建立一致备份。** 记录 Task/Context/Judge 各自 schema 版本、数据库备份、Material 内容清单/摘要、公开输入、运行 manifest 和仍未结束操作。跨服务备份要标明协调边界；不可只复制一个 SQLite 文件就宣布可恢复全部内容。
 3. **只读检查与分类。** 检查来源/附件缺失、重复活跃 owner、旧 role 依赖、无法解释的 Task 状态、指向私有目录的内容引用。迁移预览列出接受、拒绝、需要人工决定的记录及原因。
 4. **初始化新 Workspace。** 负责人明确选择可公开、可物化的项目输入或历史 Material；验证实际内容，建立明确的初始 Workspace revision。不能自动选择“最新 E 目录”或“最后一个 Git commit”，也不能把审计归档默认为共享资料。
-5. **按需导入责任。** 真正需要继续的局部 Task 以明确合同、依赖和输入进入新 Mission，保留原系统标识与导入来源。旧共享 Mission Task 的目标可以帮助建立 Mission，但不再作为可认领占位任务。历史 E 保留为历史，新的执行从新 Bot、新 E 开始。
+5. **按需导入责任。** 真正需要继续的局部 Task 以明确合同、依赖和输入进入新 Mission，保留原系统标识与导入来源。旧共享 Mission Task 的目标可以帮助建立 Mission，但不再作为可认领占位任务。历史 E 保留为历史，新的执行从新 Agent、新 E 开始。
 6. **启动兼容性检查并开放写入。** 新程序拒绝不支持的 schema/contract 版本；旧程序不得写入新状态。观察导入与 UI 先校验版本。核对新环境实际输入和可见性后才开放运行。
 
-导入不修饰历史。旧材料没有可取回附件时标为内容不完整；旧记录只有“读取/消费”时不能推断实际有效使用；缺 Bot ID、prompt 实际发送或费用时不凭邻近事件补造确定事实。
+导入不修饰历史。旧材料没有可取回附件时标为内容不完整；旧记录只有“读取/消费”时不能推断实际有效使用；缺 Agent ID、prompt 实际发送或费用时不凭邻近事件补造确定事实。
 
 ### 6.3 状态与 role 不是机械替换
 
@@ -242,14 +242,14 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 |---|---|---|
 | 第一条 Task 为共享 Mission Task；并行 claim 特例 | 移除创建顺序判型及共享 claim/block/completion 分支 | runner 初始化、任务列表/可领性、预算、Mission 完成、报表与测试 |
 | Root/Child、required children/branch groups、parent review 和结构等待的历史合同 | 保留当前 flat-only 入口清理；仅对仍存在的兼容入口/历史解释继续退役，需要的依赖改成明确 Task 依赖 | 通用 SDK、catalog、fixture、rework/wake、旧状态投影；不恢复已拒绝的旧 CLI 模式参数 |
-| `task_register(take:true)` 同 Session 换 Task | 提案与 take 分离；已经绑定的 Bot 不再 take 第二项 | Bridge 回调、Runtime detach、checkpoint、prompt 示例、并发请求 |
+| `task_register(take:true)` 同 Session 换 Task | 提案与 take 分离；已经绑定的 Agent 不再 take 第二项 | Bridge 回调、Runtime detach、checkpoint、prompt 示例、并发请求 |
 | `workspace_mode=resume`、source E/path/revision、waiting/rework 私有恢复 | 新模式拒绝 private resume；仅允许明确公开 Workspace revision/Material 输入 | claim 默认、clone/restore 分支、缺快照时 live-file fallback、旧 workspace 指针复用 |
-| rotation/recovery 自动继承私有上下文 | 新 Bot 只读公开资料；同一活跃 E 的 Runtime 重启仅做状态/进程对账 | Pi session 目录、工具历史、checkpoint 提示、recovery prompt、隐藏文件/卷及 Git objects |
+| rotation/recovery 自动继承私有上下文 | 新 Agent 只读公开资料；同一活跃 E 的 Runtime 重启仅做状态/进程对账 | Pi session 目录、工具历史、checkpoint 提示、recovery prompt、隐藏文件/卷及 Git objects |
 | `execution_progress` 的隐式 checkpoint/发布/handoff 组合 | 改为显式 Material 发布和 finish 合同；必要内部审计 checkpoint 不变成共享知识 | 完成门槛、自动提醒、进度统计、旧 tools/help/SDK；不新增 Progress 核心对象 |
-| named business tools、业务 Workspace/Sandbox tool 代理 | 承接 #119，Bot 使用四工具与 CLI；可信 Runtime/provider 控制面不暴露给 Bot | extension、profile、Bridge、registry、启动参数和旧别名入口 |
+| named business tools、业务 Workspace/Sandbox tool 代理 | 承接 #119，Agent 使用四工具与 CLI；可信 Runtime/provider 控制面不暴露给 Agent | extension、profile、Bridge、registry、启动参数和旧别名入口 |
 | 已交付的 `swarm context` 入口 | 新标准为 `swarm material`；需要兼容时设有版本/期限的同义转发，否则给出明确迁移错误 | 参数、结果、错误、request ID 语义必须相同；help 明示退役，不能在新 Prompt 混用两种名称 |
 | 已由 direct Judge 替代的 Task→runner→Judge 私有提交回调 | 保留现有直接路由，不重复实施或恢复旧接力；扩展为本阶段公开版本与最终检查合同 | 来源证明、fixture/环境绑定、检查返回和独立 Task 完成；现有直接调用不自动等于 Mission submit |
-| 旧 report `child_task_count` / `scheduler` 与 Task 概念混用 | 新格式明确 Task/Bot/E；历史 importer 按版本解释 | 分析脚本、UI、公开 exports、例子和既有实验报告；不改写历史结果 |
+| 旧 report `child_task_count` / `scheduler` 与 Task 概念混用 | 新格式明确 Task/Agent/E；历史 importer 按版本解释 | 分析脚本、UI、公开 exports、例子和既有实验报告；不改写历史结果 |
 
 本表同时标明已完成的前置替代与尚需处理的路径。“移除”只适用于最终代码树中仍存在的行为，不能预先声称对应文件已删除，也不重新实现已经完成的清理。某文件可能继续承担其他职责，例如 Registry 仍可提供服务发现，Runtime 仍需 fencing，WorkspaceManager 仍可物化公开快照；应删除不符合合同的行为和入口，而非为了目录整齐机械删整文件。
 
@@ -266,12 +266,12 @@ Bot 对外使用 **`swarm material`** 处理 Material；`Context Service` 继续
 | 视图 / 数据流 | 本阶段必须表达的内容 | 不允许的混淆 |
 |---|---|---|
 | Mission 首页 | 目标与验收、Workspace 本地 Git Repository/main branch/revision、全部 Task 状态、总体预算与停止原因 | 不用一条隐藏 Mission Task 充当项目；无可领工作不等于达成目标 |
-| Core / Bot / E 时间线 | Core 可复用；Bot 阅读期；E preparing/active/closing/closed；后继 Bot；实际停止/隔离证据 | 准备/清理期间的 Task 仍占有；收到 finish 不等于 sandbox 已停止 |
+| Core / Agent / E 时间线 | Core 可复用；Agent 阅读期；E preparing/active/closing/closed；后继 Agent；实际停止/隔离证据 | 准备/清理期间的 Task 仍占有；收到 finish 不等于 sandbox 已停止 |
 | Material | 实际内容、生产 Task/E 或输入来源、各 Task 的用途、读取/消费版本、质疑与更正 | 全局 role 不代表所有用途；发布数、读数、consume 自报不代表知识正确或有收益 |
 | Workspace | 全部 revision/普通文件/parents/来源/检查，main CAS，E 初始与 apply 输入，提交冻结 | 已保存 revision 不表示 main 前进；main 已接纳不证明全部主张 |
-| 服务请求 | pending、已受理、结果未知、成功/失败/取消，身份核验与撤权顺序，旧 E 尾部操作 | 请求超时不自动失败；Bot 结束不自动撤销已接纳工作或费用 |
+| 服务请求 | pending、已受理、结果未知、成功/失败/取消，身份核验与撤权顺序，旧 E 尾部操作 | 请求超时不自动失败；Agent 结束不自动撤销已接纳工作或费用 |
 | 成本 / 研究报告 | 阅读、提案、检索、skills、执行、整合、等待、重试、失败及外部操作总成本 | 不漏计无 E 费用；区分单 Core 与总资源；同一服务费用不能在请求和 Task 汇总重复相加 |
-| Prompt / skill 证据 | 具体发送事件、消息类型/顺序、内容身份、版本、输出截断与缺记录 | “已挂载”“已组合”“已发送”“已读取”是不同事实；任何一项都不证明 Bot 遵从 |
+| Prompt / skill 证据 | 具体发送事件、消息类型/顺序、内容身份、版本、输出截断与缺记录 | “已挂载”“已组合”“已发送”“已读取”是不同事实；任何一项都不证明 Agent 遵从 |
 
 Observation Store 和 UI 是投影。事件丢失或落后时，应能从权威服务重新读取并标注不完整，而不是从旧 UI 状态触发认领或合入。API、分页、SSE 重连和报告导入都要随版本迁移；不能只改标签。维护源和实际 served assets 一起构建并复核。
 
@@ -291,9 +291,9 @@ Observation Store 和 UI 是投影。事件丢失或落后时，应能从权威�
 
 ### 8.3 实际发送记录的最低合同
 
-每条仓库控制消息应能关联 run、Mission、Bot、Core、Session、可空 E、消息序号、类型、生成源、模板/skill 版本、动态输入版本、最终内容摘要和发送结果。实现应区分“组合完成”“尝试发送”“适配器确认接收/写出”“发送失败或结果未知”，并说明具体确认点；单个 `runtime.initial_prompt_composed` 事件不够。
+每条仓库控制消息应能关联 run、Mission、Agent、Core、Session、可空 E、消息序号、类型、生成源、模板/skill 版本、动态输入版本、最终内容摘要和发送结果。实现应区分“组合完成”“尝试发送”“适配器确认接收/写出”“发送失败或结果未知”，并说明具体确认点；单个 `runtime.initial_prompt_composed` 事件不够。
 
-tool result 也属于模型输入。必须记录 **实际返回边界** 的内容身份及截断信息，不能只保存服务原始响应的 hash。Bash/read 加载 skill 时，应关联实际读到的文件版本、范围和返回给 Pi 的输出；可用目录、文件打开事件和整篇 skill 已发送不可互相代替。无需为证明记录完整而强制每个 Bot 全量加载全部 skills。
+tool result 也属于模型输入。必须记录 **实际返回边界** 的内容身份及截断信息，不能只保存服务原始响应的 hash。Bash/read 加载 skill 时，应关联实际读到的文件版本、范围和返回给 Pi 的输出；可用目录、文件打开事件和整篇 skill 已发送不可互相代替。无需为证明记录完整而强制每个 Agent 全量加载全部 skills。
 
 原始消息、必要动态内容和工具输出留在受控、忽略提交的运行证据中；公开 Issue/PR/实验报告只含脱敏投影、版本、摘要和可审查的结论。不要把凭据放进 prompt，也不要把完整私有会话提交到架构文档。记录目标是可核对外部输入和输出，不要求公开私有思维过程。仅有 hash 而缺少可授权取回的原内容时，应诚实标为不能完整重建。
 
@@ -333,14 +333,14 @@ PR 需要完成以下工作，而不是留下“以后补架构”的任务：
 | 10–12、source-map、生成器 | 全部代码/API/storage/运行时资源是否纳入？生成产物、正文和文件指纹是否一致？ |
 | 数据与兼容 | 新/旧 writer 是否隔离？旧命令、私有 resume、legacy/SDK/fixture 默认实际还剩什么？迁移及恢复是否演练？ |
 | 安全与集成 | 真 Docker/provider 的目录/身份/服务拒写、全进程停止、管理面隔离、私有数据可见性是否有证据？ |
-| 行为与研究 | E1/E2/E3/E4 各自达到哪层？任务机制成立、Bot 遵循策略、质量/成本收益是否分开陈述？ |
+| 行为与研究 | E1/E2/E3/E4 各自达到哪层？任务机制成立、Agent 遵循策略、质量/成本收益是否分开陈述？ |
 | Issue 与授权 | 最终行为、接受的限制、实验条件和费用是否在已批准范围？关闭依据是否链接真实代码与证据？ |
 
 之后再在 Issue 记录阶段完成与剩余工作。文档里的目标不能因为阶段到期自动变成“已实现”；未达门槛的条目仍是缺口，不借新 ADR、状态文件或重新命名来消除。
 
 ## 10. 已确认合同与实施门槛
 
-本轮已确认 Task 稳定合同与动态等待、同 E 显式 apply/三方 merge、Material 整份隐藏、最终 mission submit、Bot 零或一 E 及软硬收尾。**整版 merge 粒度也已确认**：candidate 文件分别引用，关联文件作为完整 revision 的变更集合一起检查、原子合入。上述设计选择已完成确认；以下是后续实施与验收门槛。
+本轮已确认 Task 稳定合同与动态等待、同 E 显式 apply/三方 merge、Material 整份隐藏、最终 mission submit、Agent 零或一 E 及软硬收尾。**整版 merge 粒度也已确认**：candidate 文件分别引用，关联文件作为完整 revision 的变更集合一起检查、原子合入。上述设计选择已完成确认；以下是后续实施与验收门槛。
 
 | 实施门槛 | 需要固定或验证的内容 |
 |---|---|

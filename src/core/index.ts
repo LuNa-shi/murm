@@ -1,4 +1,4 @@
-import type { BotEvent, BotInfo, BotListFilter, CollectionSpec, ConditionalInputReceipt, CreateRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, Profile, Runtime, SendOptions } from './types.js';
+import type { AgentEvent, AgentInfo, AgentListFilter, CollectionSpec, ConditionalInputReceipt, CreateRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, Profile, Runtime, SendOptions } from './types.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -8,10 +8,10 @@ import { createCoreModelAccess } from './model-access.js';
 import { createModelTrace } from './model-trace.js';
 import { createInputLedger } from './input-ledger.js';
 import { createFileControls } from './file-controls.js';
-import { saveBotArtifacts } from './artifact-collection.js';
+import { saveAgentArtifacts } from './artifact-collection.js';
 import { createRedactor, createRunRecords, runtimeConfiguration } from './run-records.js';
 import { claimPiOpenSandboxBackend, openPiOpenSandboxBackend } from './pi-opensandbox-backend.js';
-import { createBotService } from './bot-service.js';
+import { createAgentService } from './agent-service.js';
 import { createServiceTrace, exportServiceStates } from './service-trace.js';
 import { registerServicePrivateValues, snapshotServiceRegistry } from './services.js';
 
@@ -32,11 +32,11 @@ interface InputRequest {
   result?: Promise<ConditionalInputReceipt>;
 }
 
-interface RuntimeBot {
+interface RuntimeAgent {
   executionEpoch: number;
   interruptRequests: Map<string, InterruptRequest>;
   interruption?: InterruptRequest;
-  info: BotInfo;
+  info: AgentInfo;
   profile: Profile;
   controller: AbortController;
   activityClaims: Set<unknown>;
@@ -45,13 +45,13 @@ interface RuntimeBot {
   fatal?: boolean;
   bindings?: Readonly<Record<string, string>>;
   collect?: CollectionSpec;
-  start?: Promise<BotInfo>;
+  start?: Promise<AgentInfo>;
 }
 
 const defaultTimeoutMs = 60_000;
 const timedOut = Symbol('timed out');
 const liveStates = new Set(['idle', 'running']);
-const botStates = new Set(['starting', ...liveStates, 'exited', 'closing', 'closed']);
+const agentStates = new Set(['starting', ...liveStates, 'exited', 'closing', 'closed']);
 const knownInputRejections = new Set(['INVALID_CONTRACT', 'NOT_ALLOWED', 'CONFLICT', 'NOT_FOUND']);
 
 function resourceError(code: any, message: any, context: any, { cleanup = 'complete', details = [] }: any = {}) {
@@ -83,13 +83,13 @@ async function writeRecord(path: any, value: any) {
 export async function createRuntime(options: CreateRuntimeOptions): Promise<Runtime> {
   const runtimeId = randomUUID();
   const context = { operation: 'createRuntime', runtimeId };
-  const redactor = createRedactor([process.env.OPEN_SANDBOX_API_KEY, process.env.SWARMENV_EXECD_ACCESS_TOKEN]);
+  const redactor = createRedactor([process.env.OPEN_SANDBOX_API_KEY, process.env.MURM_EXECD_ACCESS_TOKEN]);
   const errorInfo = redactor.error;
   let config: any, registrations: any, profiles: any, modelAccessPolicy, outputDir: any;
   try {
-    if (!Number.isSafeInteger(options?.maxBots) || options.maxBots < 1 ||
+    if (!Number.isSafeInteger(options?.maxAgents) || options.maxAgents < 1 ||
         typeof options.outputDir !== 'string' || !options.outputDir.trim()) {
-      throw new TypeError('A positive maxBots and outputDir are required');
+      throw new TypeError('A positive maxAgents and outputDir are required');
     }
     if (options.modelAccessPolicy !== undefined && (typeof options.modelAccessPolicy?.authorize !== 'function' ||
         typeof options.modelAccessPolicy?.withCommit !== 'function')) {
@@ -100,7 +100,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       ...Object.values(config.models).flatMap((model: any) => Object.values(model.upstream.headers))]);
     registrations = snapshotServiceRegistry(options.services);
     registerServicePrivateValues(registrations, redactor.add);
-    registrations.set('bot', createBotService({ runtimeId, getBot: id => getBot(id),
+    registrations.set('agent', createAgentService({ runtimeId, getAgent: id => getAgent(id),
       spawn: (input, caller) => spawn(input, caller), get, send, stop }));
     profiles = snapshotProfiles(options.profiles, config.models, registrations);
     modelAccessPolicy = options.modelAccessPolicy;
@@ -109,24 +109,24 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     throw resourceError('INVALID_CONTRACT', redactor.text(error.message), context, { details: [errorInfo(error, 'INVALID_CONTRACT')] });
   }
 
-  const maxBots = options.maxBots;
+  const maxAgents = options.maxAgents;
   const assemblyDeadline = performance.now() + defaultTimeoutMs;
-  const bots = new Map<any, any>();
+  const agents = new Map<any, any>();
   const reportPath = join(outputDir, 'runtime.json');
   const records = createRunRecords(outputDir, runtimeId);
   const modelTrace = createModelTrace(outputDir, redactor);
   const serviceTrace = createServiceTrace(outputDir, redactor.value);
-  const effectiveConfig = runtimeConfiguration({ config, profiles, registrations, maxBots, modelAccessPolicy, defaultTimeoutMs }, redactor.text);
+  const effectiveConfig = runtimeConfiguration({ config, profiles, registrations, maxAgents, modelAccessPolicy, defaultTimeoutMs }, redactor.text);
   const saveSummary = (status: any, data: any = {}) => writeRecord(reportPath, {
-    runtimeId, status, maxBots, config: effectiveConfig, evidence: records.snapshot(),
+    runtimeId, status, maxAgents, config: effectiveConfig, evidence: records.snapshot(),
     modelLedgers: modelAccess?.ledgerPaths?.() ?? [], modelTrace: modelTrace.snapshot(), ...data,
   });
-  const getBot = (botId: any) => {
-    const bot = bots.get(botId);
-    return bot && {
-      profile: bot.info.profile, model: bot.profile.model, status: bot.info.status,
-      unavailable: bot.fatal === true,
-      services: bot.profile.services, bindings: bot.bindings, parentId: bot.info.parentId, spawnProfiles: bot.profile.spawnProfiles, allowContextFork: bot.profile.allowContextFork,
+  const getAgent = (agentId: any) => {
+    const agent = agents.get(agentId);
+    return agent && {
+      profile: agent.info.profile, model: agent.profile.model, status: agent.info.status,
+      unavailable: agent.fatal === true,
+      services: agent.profile.services, bindings: agent.bindings, parentId: agent.info.parentId, spawnProfiles: agent.profile.spawnProfiles, allowContextFork: agent.profile.allowContextFork,
     };
   };
   let bridge: any, modelAccess: any, backend: any;
@@ -170,10 +170,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     await saveSummary('starting');
     reportSaved = true;
     assertAssembling();
-    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy, modelTrace,
+    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getAgent, modelAccessPolicy, modelTrace,
       onOwned: owner => { modelAccess = owner; } });
     assertAssembling();
-    bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getBot, registrations,
+    bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getAgent, registrations,
       traceService: entry => serviceTrace.record(entry),
       recordService: entry => records.record('service', { ...entry,
         serviceId: redactor.text(entry.serviceId), operation: redactor.text(entry.operation),
@@ -227,70 +227,70 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     });
   }
 
-  const handlers = new Set<(event: BotEvent) => void>();
+  const handlers = new Set<(event: AgentEvent) => void>();
   const spawnRequests = new Map<any, any>();
   const inputRequests = createInputLedger<InputRequest>(runtimeId);
-  const fileControls = createFileControls({ backend, findBot, problem, observe, timedOut,
-    isLive: (bot: any) => !closing && isLive(bot) });
+  const fileControls = createFileControls({ backend, findAgent, problem, observe, timedOut,
+    isLive: (agent: any) => !closing && isLive(agent) });
   const handlerErrors: any[] = [];
   let handlerErrorCount = 0;
   let closeWork: any;
   let finalClose: any;
 
-  function problem(code: any, message: any, operation: string, botId?: string, requestId?: string, cleanup: any = 'complete', details: any = []) {
+  function problem(code: any, message: any, operation: string, agentId?: string, requestId?: string, cleanup: any = 'complete', details: any = []) {
     const error = resourceError(redactor.text(code), redactor.text(message), {
-      operation, runtimeId, ...(botId === undefined ? {} : { botId }),
+      operation, runtimeId, ...(agentId === undefined ? {} : { agentId }),
       ...(typeof requestId === 'string' ? { requestId: redactor.text(requestId) } : {}), ...(reportSaved ? { reportPath } : {}),
     }, { cleanup, details });
-    records.record('resource-error', { operation, botId: redactor.text(botId), requestId: error.requestId,
+    records.record('resource-error', { operation, agentId: redactor.text(agentId), requestId: error.requestId,
       error: errorInfo(error), cleanup, details });
     return error;
   }
 
-  function findBot(botId: string, operation: string, requestId?: string) {
-    const bot = bots.get(botId);
-    if (!bot) throw problem('NOT_FOUND', 'Bot does not belong to this Runtime', operation, botId, requestId);
-    return bot;
+  function findAgent(agentId: string, operation: string, requestId?: string) {
+    const agent = agents.get(agentId);
+    if (!agent) throw problem('NOT_FOUND', 'Agent does not belong to this Runtime', operation, agentId, requestId);
+    return agent;
   }
 
-  function bound(options: { timeoutMs?: number } | undefined, operation: string, botId?: string) {
+  function bound(options: { timeoutMs?: number } | undefined, operation: string, agentId?: string) {
     const timeoutMs = options?.timeoutMs ?? defaultTimeoutMs;
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2147483647) {
-      throw problem('INVALID_CONTRACT', 'timeoutMs must be a positive supported timer duration', operation, botId);
+      throw problem('INVALID_CONTRACT', 'timeoutMs must be a positive supported timer duration', operation, agentId);
     }
     return timeoutMs;
   }
 
-  function revoke(botId: any, { abortServices = false }: any = {}) {
-    bridge.revokeBot(botId, { abortActive: abortServices });
-    modelAccess.revokeBot(botId);
+  function revoke(agentId: any, { abortServices = false }: any = {}) {
+    bridge.revokeAgent(agentId, { abortActive: abortServices });
+    modelAccess.revokeAgent(agentId);
   }
 
-  function isLive(bot: any) {
-    return !bot.fatal && liveStates.has(bot.info.status);
+  function isLive(agent: any) {
+    return !agent.fatal && liveStates.has(agent.info.status);
   }
 
-  function refreshActivity(bot: any) {
-    if (liveStates.has(bot.info.status)) {
-      bot.info.status = bot.nativeExecuting || bot.activityClaims.size ? 'running' : 'idle';
+  function refreshActivity(agent: any) {
+    if (liveStates.has(agent.info.status)) {
+      agent.info.status = agent.nativeExecuting || agent.activityClaims.size ? 'running' : 'idle';
     }
   }
 
-  function emit(bot: any, payload: any) {
-    const { info } = bot;
+  function emit(agent: any, payload: any) {
+    const { info } = agent;
     const { type, ...values } = payload;
-    const event = structuredClone({ ...values, type, botId: info.id, seq: ++info.cursor });
+    const event = structuredClone({ ...values, type, agentId: info.id, seq: ++info.cursor });
     if (event.text !== undefined) event.text = redactor.text(event.text);
     if (event.output !== undefined) event.output = redactor.text(event.output);
     if (event.reason !== undefined) event.reason = redactor.text(event.reason);
     if (event.error !== undefined) event.error = errorInfo(event.error);
     if (event.type === 'output') info.latestOutput = event.text;
     if (event.type === 'settled') {
-      bot.nativeExecuting = false;
+      agent.nativeExecuting = false;
       // This execution no longer owns running. Input receipts remain intact:
       // a settled event does not establish which queued inputs were consumed.
-      bot.activityClaims.clear();
-      refreshActivity(bot);
+      agent.activityClaims.clear();
+      refreshActivity(agent);
       info.latestOutput = event.output;
       info.lastError = event.error;
     }
@@ -299,8 +299,8 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       if (event.fatal) {
         // A fatal failure fences authority, but does not prove physical exit or
         // release any owned resource. Keep original receipt lookups available.
-        bot.fatal = true;
-        bot.controller.abort();
+        agent.fatal = true;
+        agent.controller.abort();
         revoke(info.id, { abortServices: true });
       }
     }
@@ -308,7 +308,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       info.status = 'exited';
       revoke(info.id);
     }
-    records.record('event', { botId: info.id, event });
+    records.record('event', { agentId: info.id, event });
     for (const handler of [...handlers]) {
       const recordFailure = (error: any) => {
         let name = 'Error';
@@ -316,7 +316,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           const candidate = error?.name;
           if (typeof candidate === 'string') name = redactor.text(candidate);
         } catch { /* Uninspectable subscriber rejection */ }
-        const entry = { botId: info.id, eventSeq: event.seq, name };
+        const entry = { agentId: info.id, eventSeq: event.seq, name };
         handlerErrorCount++;
         if (handlerErrors.length < 32) handlerErrors.push(entry);
         records.record('subscriber-error', entry);
@@ -326,74 +326,74 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     }
   }
 
-  function stopReceipt(bot: any, pendingError?: ErrorInfo) {
-    const botId = bot.info.id;
-    const error = pendingError ?? bot.cleanupError;
-    return { botId, execution: bot.executionStopped ? 'stopped' : 'unknown',
-      cleanup: bot.info.status === 'closed' ? 'complete' : 'pending',
-      ...(bot.sessionArchive ? { sessionArchive: bot.sessionArchive } : {}),
-      artifacts: bot.artifacts ?? [], errors: [bot.optionalCollectionError, bot.cleanupError, pendingError].filter(Boolean),
-      ...(bot.info.status === 'closed' ? {} : { pending: {
-        kind: 'bot', id: botId, action: bot.cleanupAction ?? 'stop-execution',
-        ...backend.resource(botId), ...(error ? { error } : {}),
+  function stopReceipt(agent: any, pendingError?: ErrorInfo) {
+    const agentId = agent.info.id;
+    const error = pendingError ?? agent.cleanupError;
+    return { agentId, execution: agent.executionStopped ? 'stopped' : 'unknown',
+      cleanup: agent.info.status === 'closed' ? 'complete' : 'pending',
+      ...(agent.sessionArchive ? { sessionArchive: agent.sessionArchive } : {}),
+      artifacts: agent.artifacts ?? [], errors: [agent.optionalCollectionError, agent.cleanupError, pendingError].filter(Boolean),
+      ...(agent.info.status === 'closed' ? {} : { pending: {
+        kind: 'agent', id: agentId, action: agent.cleanupAction ?? 'stop-execution',
+        ...backend.resource(agentId), ...(error ? { error } : {}),
       } }),
     };
   }
 
-  function currentStop(bot: any) {
-    return bot.stopWork ? stopReceipt(bot, {
-      code: 'OPERATION_UNKNOWN', message: `Waiting for ${bot.cleanupAction} confirmation`, retryable: true,
-    }) : bot.info.lastStop ?? stopReceipt(bot);
+  function currentStop(agent: any) {
+    return agent.stopWork ? stopReceipt(agent, {
+      code: 'OPERATION_UNKNOWN', message: `Waiting for ${agent.cleanupAction} confirmation`, retryable: true,
+    }) : agent.info.lastStop ?? stopReceipt(agent);
   }
 
-  function beginStop(bot: any) {
-    if (bot.info.status === 'closed') return Promise.resolve(bot.info.lastStop);
-    if (bot.stopWork) return bot.stopWork;
-    const { info } = bot;
+  function beginStop(agent: any) {
+    if (agent.info.status === 'closed') return Promise.resolve(agent.info.lastStop);
+    if (agent.stopWork) return agent.stopWork;
+    const { info } = agent;
     info.status = 'closing';
-    bot.controller.abort();
+    agent.controller.abort();
     revoke(info.id);
-    bot.cleanupAction = 'await-startup';
-    records.record('stop', { botId: info.id, state: 'started', collect: bot.collect });
-    bot.stopWork = (async () => {
-      await bot.start?.catch(() => {});
+    agent.cleanupAction = 'await-startup';
+    records.record('stop', { agentId: info.id, state: 'started', collect: agent.collect });
+    agent.stopWork = (async () => {
+      await agent.start?.catch(() => {});
       try {
-        if (!bot.executionStopped) {
-          bot.cleanupAction = 'stop-execution';
+        if (!agent.executionStopped) {
+          agent.cleanupAction = 'stop-execution';
           const { collectable } = await backend.stopExecution(info.id);
-          bot.executionStopped = true;
-          bot.collectable = collectable;
+          agent.executionStopped = true;
+          agent.collectable = collectable;
         }
-        if (bot.collectable && !bot.sessionArchive && backend.collectSession) {
-          bot.cleanupAction = 'archive-session';
+        if (agent.collectable && !agent.sessionArchive && backend.collectSession) {
+          agent.cleanupAction = 'archive-session';
           const collect = { paths: ['.'], includeGit: false, maxBytes: config.isolation.disk.bytes, required: true };
-          [bot.sessionArchive] = await saveBotArtifacts({ outputDir, botId: info.id, collect,
+          [agent.sessionArchive] = await saveAgentArtifacts({ outputDir, agentId: info.id, collect,
             bounds: config.isolation.disk, records: () => backend.collectSession(info.id),
             destination: 'session', redactStream: redactor.jsonl, privateFiles: true });
-          records.record('session-archive', { botId: info.id, manifestPath: bot.sessionArchive });
+          records.record('session-archive', { agentId: info.id, manifestPath: agent.sessionArchive });
         }
-        if (bot.collect && bot.collectable && !bot.artifacts && !bot.optionalCollectionError) {
-          bot.cleanupAction = 'collect-artifacts';
+        if (agent.collect && agent.collectable && !agent.artifacts && !agent.optionalCollectionError) {
+          agent.cleanupAction = 'collect-artifacts';
           try {
-            bot.artifacts = await saveBotArtifacts({ outputDir, botId: info.id, collect: bot.collect,
-              bounds: config.isolation.disk, records: () => backend.collect(info.id, bot.collect) });
+            agent.artifacts = await saveAgentArtifacts({ outputDir, agentId: info.id, collect: agent.collect,
+              bounds: config.isolation.disk, records: () => backend.collect(info.id, agent.collect) });
           } catch (error: any) {
-            if (bot.collect.required) throw error;
-            bot.optionalCollectionError = errorInfo(error);
+            if (agent.collect.required) throw error;
+            agent.optionalCollectionError = errorInfo(error);
           }
         }
-        bot.cleanupAction = 'delete-sandbox';
+        agent.cleanupAction = 'delete-sandbox';
         await backend.destroy(info.id);
-        bot.cleanupError = undefined;
+        agent.cleanupError = undefined;
         info.status = 'closed';
       } catch (error: any) {
-        bot.cleanupError = errorInfo(error);
+        agent.cleanupError = errorInfo(error);
       }
-      info.lastStop = stopReceipt(bot);
-      records.record('stop', { botId: info.id, state: 'observed', receipt: info.lastStop });
+      info.lastStop = stopReceipt(agent);
+      records.record('stop', { agentId: info.id, state: 'observed', receipt: info.lastStop });
       return info.lastStop;
-    })().finally(() => { bot.stopWork = undefined; });
-    return bot.stopWork;
+    })().finally(() => { agent.stopWork = undefined; });
+    return agent.stopWork;
   }
 
   async function spawn(input: any, caller: any = 'host') {
@@ -407,150 +407,150 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     let request: any = spawnRequests.get(requestKey);
     if (request) {
       if (request.fingerprint !== fingerprint) {
-        throw problem('CONFLICT', 'spawn requestId already has different parameters', 'spawn', request.bot.info.id, requestId);
+        throw problem('CONFLICT', 'spawn requestId already has different parameters', 'spawn', request.agent.info.id, requestId);
       }
     } else {
       if (closing) throw problem('NOT_ALLOWED', 'Runtime is closing', 'spawn', undefined, requestId);
-      if (parameters.parentId && !isLive(findBot(parameters.parentId, 'spawn', requestId))) {
-        throw problem('NOT_ALLOWED', 'Parent Bot is unavailable', 'spawn', parameters.parentId, requestId);
+      if (parameters.parentId && !isLive(findAgent(parameters.parentId, 'spawn', requestId))) {
+        throw problem('NOT_ALLOWED', 'Parent Agent is unavailable', 'spawn', parameters.parentId, requestId);
       }
-      if (parameters.forkFrom && !isLive(findBot(parameters.forkFrom, 'spawn', requestId))) {
-        throw problem('NOT_ALLOWED', 'Context fork source Bot is unavailable', 'spawn', parameters.forkFrom, requestId);
+      if (parameters.forkFrom && !isLive(findAgent(parameters.forkFrom, 'spawn', requestId))) {
+        throw problem('NOT_ALLOWED', 'Context fork source Agent is unavailable', 'spawn', parameters.forkFrom, requestId);
       }
-      if ([...bots.values()].filter(bot => bot.info.status !== 'closed').length >= maxBots) {
-        throw problem('CONFLICT', 'Runtime has no free Bot Slot', 'spawn', undefined, requestId);
+      if ([...agents.values()].filter(agent => agent.info.status !== 'closed').length >= maxAgents) {
+        throw problem('CONFLICT', 'Runtime has no free Agent Slot', 'spawn', undefined, requestId);
       }
-      const info: BotInfo = { id: randomUUID(), profile: parameters.profile, status: 'starting', cursor: 0,
+      const info: AgentInfo = { id: randomUUID(), profile: parameters.profile, status: 'starting', cursor: 0,
         ...(parameters.parentId ? { parentId: parameters.parentId } : {}) };
       redactor.add(Object.values(parameters.secretEnv ?? {}));
-      const bot: RuntimeBot = {
+      const agent: RuntimeAgent = {
         info, profile: profiles.get(parameters.profile), controller: new AbortController(),
         activityClaims: new Set(), nativeExecuting: false, executionStopped: false, bindings: parameters.bindings, collect: parameters.collect,
         executionEpoch: 0, interruptRequests: new Map(),
       };
-      fileControls.register(bot, { writable: parameters.writable ?? bot.profile.writable,
+      fileControls.register(agent, { writable: parameters.writable ?? agent.profile.writable,
         seeded: parameters.files !== undefined });
-      request = { fingerprint, bot };
-      bots.set(info.id, bot);
+      request = { fingerprint, agent };
+      agents.set(info.id, agent);
       spawnRequests.set(requestKey, request);
-      records.record('spawn', { state: 'registered', botId: info.id, parentId: info.parentId, profile: info.profile,
+      records.record('spawn', { state: 'registered', agentId: info.id, parentId: info.parentId, profile: info.profile,
         ...(parameters.forkFrom ? { forkFrom: parameters.forkFrom } : {}),
-        requestId: redactor.text(requestId), source: caller, collect: parameters.collect, writable: parameters.writable ?? bot.profile.writable });
-      bot.start = Promise.resolve().then(async () => {
-        bot.controller.signal.throwIfAborted();
-        const resource = await backend.spawn({ botId: info.id, profile: bot.profile, options: parameters,
-          signal: bot.controller.signal, onEvent: (event: any) => emit(bot, event),
-          recordAllocation: (allocation: any) => records.record('spawn', { ...allocation, botId: info.id,
+        requestId: redactor.text(requestId), source: caller, collect: parameters.collect, writable: parameters.writable ?? agent.profile.writable });
+      agent.start = Promise.resolve().then(async () => {
+        agent.controller.signal.throwIfAborted();
+        const resource = await backend.spawn({ agentId: info.id, profile: agent.profile, options: parameters,
+          signal: agent.controller.signal, onEvent: (event: any) => emit(agent, event),
+          recordAllocation: (allocation: any) => records.record('spawn', { ...allocation, agentId: info.id,
             requestId: redactor.text(requestId), sandboxId: redactor.text(allocation.sandboxId) }),
           onExecutionStart: () => {
-            bot.nativeExecuting = true;
-            refreshActivity(bot);
+            agent.nativeExecuting = true;
+            refreshActivity(agent);
           } });
-        if (bot.fatal || info.status !== 'starting') throw new Error('Bot stopped before becoming idle');
+        if (agent.fatal || info.status !== 'starting') throw new Error('Agent stopped before becoming idle');
         info.status = 'idle';
-        records.record('spawn', { state: 'ready', botId: info.id, requestId: redactor.text(requestId),
+        records.record('spawn', { state: 'ready', agentId: info.id, requestId: redactor.text(requestId),
           sandboxId: resource.sandboxId, versions: resource.versions });
         return structuredClone(info);
       });
-      request.result = bot.start.catch((error: any) => {
+      request.result = agent.start.catch((error: any) => {
         info.lastError = errorInfo(error, 'START_FAILED');
-        void beginStop(bot);
-        throw problem(error.code ?? 'START_FAILED', 'Bot startup failed', 'spawn', info.id, requestId,
+        void beginStop(agent);
+        throw problem(error.code ?? 'START_FAILED', 'Agent startup failed', 'spawn', info.id, requestId,
           'pending', [info.lastError]);
       });
     }
     const result = await observe(request.result);
     if (result === timedOut) {
-      throw problem('OPERATION_UNKNOWN', 'Bot startup receipt timed out', 'spawn', request.bot.info.id, requestId, 'pending');
+      throw problem('OPERATION_UNKNOWN', 'Agent startup receipt timed out', 'spawn', request.agent.info.id, requestId, 'pending');
     }
     return structuredClone(result);
   }
 
-  function botSnapshot(bot: RuntimeBot & { stopWork?: Promise<unknown> }) {
-    return structuredClone({ ...bot.info, ...(bot.stopWork ? { lastStop: currentStop(bot) } : {}) });
+  function agentSnapshot(agent: RuntimeAgent & { stopWork?: Promise<unknown> }) {
+    return structuredClone({ ...agent.info, ...(agent.stopWork ? { lastStop: currentStop(agent) } : {}) });
   }
 
-  async function get(botId: string) {
-    return botSnapshot(findBot(botId, 'get'));
+  async function get(agentId: string) {
+    return agentSnapshot(findAgent(agentId, 'get'));
   }
 
-  async function list(filter: BotListFilter = {}) {
+  async function list(filter: AgentListFilter = {}) {
     if (!filter || typeof filter !== 'object' || Array.isArray(filter)) {
-      throw problem('INVALID_CONTRACT', 'list expects a Bot filter', 'list');
+      throw problem('INVALID_CONTRACT', 'list expects a Agent filter', 'list');
     }
     const { parentId, status } = filter;
     const statuses: readonly unknown[] = Array.isArray(status) ? status : status === undefined ? [] : [status];
     if ((parentId != null && !validId(parentId)) ||
-        [...statuses].some(value => typeof value !== 'string' || !botStates.has(value))) {
-      throw problem('INVALID_CONTRACT', 'list expects a valid parentId and Bot status', 'list');
+        [...statuses].some(value => typeof value !== 'string' || !agentStates.has(value))) {
+      throw problem('INVALID_CONTRACT', 'list expects a valid parentId and Agent status', 'list');
     }
-    return [...bots.values()].filter(({ info }) =>
+    return [...agents.values()].filter(({ info }) =>
       (parentId === undefined || parentId === (info.parentId ?? null)) &&
-      (status === undefined || statuses.includes(info.status))).map(botSnapshot);
+      (status === undefined || statuses.includes(info.status))).map(agentSnapshot);
   }
 
-  function send(botId: string, input: string, options: SendOptions & { wakeIfIdle?: true }, caller?: string, operation?: string): Promise<InputReceipt>;
-  function send(botId: string, input: string, options: SendOptions, caller?: string, operation?: string): Promise<ConditionalInputReceipt>;
-  async function send(botId: string, input: string, options: SendOptions, caller = 'host', operation = 'send'): Promise<ConditionalInputReceipt> {
+  function send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }, caller?: string, operation?: string): Promise<InputReceipt>;
+  function send(agentId: string, input: string, options: SendOptions, caller?: string, operation?: string): Promise<ConditionalInputReceipt>;
+  async function send(agentId: string, input: string, options: SendOptions, caller = 'host', operation = 'send'): Promise<ConditionalInputReceipt> {
     const requestId = options?.requestId;
     const mode = options?.mode === undefined ? 'steer' : options.mode;
     const { source, steeringMode, wakeIfIdle = true } = options ?? {};
     if (!validId(requestId) || typeof input !== 'string' || !['steer', 'followUp'].includes(mode) || typeof wakeIfIdle !== 'boolean' ||
         (source !== undefined && (typeof source !== 'string' || !source.trim() || source.length > 256)) ||
         (steeringMode !== undefined && (mode !== 'steer' || !['all', 'one-at-a-time'].includes(steeringMode)))) {
-      throw problem('INVALID_CONTRACT', 'Input needs text, a requestId and valid delivery options', operation, botId, requestId);
+      throw problem('INVALID_CONTRACT', 'Input needs text, a requestId and valid delivery options', operation, agentId, requestId);
     }
-    const bot = findBot(botId, operation, requestId);
+    const agent = findAgent(agentId, operation, requestId);
     const parameters = { input, mode, source, steeringMode, wakeIfIdle };
     let request: InputRequest | undefined;
-    try { request = inputRequests.get(caller, botId, requestId, parameters); }
+    try { request = inputRequests.get(caller, agentId, requestId, parameters); }
     catch (caught) {
       const error = caught as Error & { code: string };
-      throw problem(error.code, error.message, operation, botId, requestId);
+      throw problem(error.code, error.message, operation, agentId, requestId);
     }
     if (!request) {
-      if (closing || !isLive(bot) || bot.interruption || !fileControls.canSend(bot)) {
-        throw problem('NOT_ALLOWED', 'Bot is not accepting input', operation, botId, requestId);
+      if (closing || !isLive(agent) || agent.interruption || !fileControls.canSend(agent)) {
+        throw problem('NOT_ALLOWED', 'Agent is not accepting input', operation, agentId, requestId);
       }
       const inputId = randomUUID();
-      const executionEpoch = bot.executionEpoch;
-      const identity = { botId, requestId: redactor.text(requestId), inputId, caller,
+      const executionEpoch = agent.executionEpoch;
+      const identity = { agentId, requestId: redactor.text(requestId), inputId, caller,
         source: redactor.text(source) ?? caller, mode, steeringMode, wakeIfIdle };
       records.record('input', { ...identity, state: 'registered' });
       const releaseActivity = () => {
-        bot.activityClaims.delete(request);
-        refreshActivity(bot);
+        agent.activityClaims.delete(request);
+        refreshActivity(agent);
       };
       const entry: InputRequest = { inputId, run: async () => {
-        if (entry.dispatched && bot.info.status === 'closed') return { inputId, status: 'unknown' };
-        if (!entry.dispatched && (closing || !isLive(bot) || executionEpoch !== bot.executionEpoch || !fileControls.canSend(bot))) {
+        if (entry.dispatched && agent.info.status === 'closed') return { inputId, status: 'unknown' };
+        if (!entry.dispatched && (closing || !isLive(agent) || executionEpoch !== agent.executionEpoch || !fileControls.canSend(agent))) {
           releaseActivity();
-          throw problem('NOT_ALLOWED', 'Bot stopped before input dispatch', operation, botId, requestId);
+          throw problem('NOT_ALLOWED', 'Agent stopped before input dispatch', operation, agentId, requestId);
         }
         const querying = entry.dispatched === true;
         try {
           entry.dispatched = true;
           records.record('input', { ...identity, state: querying ? 'receipt-query' : 'dispatched' });
-          const receipt = await backend.send(botId, input, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle });
+          const receipt = await backend.send(agentId, input, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle });
           if (wakeIfIdle && receipt.status === 'not-accepted') throw new Error('Backend declined an input with waking enabled');
           if (receipt.status === 'not-accepted' || (receipt.status === 'accepted' && receipt.disposition === 'handled')) releaseActivity();
           records.record('input', { ...identity, state: receipt.status,
-            ...(receipt.status === 'accepted' ? { disposition: receipt.disposition } : { reason: receipt.reason }), cursor: bot.info.cursor });
+            ...(receipt.status === 'accepted' ? { disposition: receipt.disposition } : { reason: receipt.reason }), cursor: agent.info.cursor });
           return receipt.status === 'unknown' ? { inputId, status: 'unknown' } : { inputId, ...receipt };
         } catch (error: any) {
           if (knownInputRejections.has(error.code) && (!querying || error.inputRejected)) {
             releaseActivity();
             records.record('input', { ...identity, state: 'rejected', error: errorInfo(error) });
-            throw problem(error.code, error.message, operation, botId, requestId);
+            throw problem(error.code, error.message, operation, agentId, requestId);
           }
           records.record('input', { ...identity, state: 'unknown', error: errorInfo(error) });
           return { inputId, status: 'unknown' };
         }
       } };
       request = entry;
-      if (wakeIfIdle) bot.activityClaims.add(request);
-      refreshActivity(bot);
-      inputRequests.reserve(caller, botId, requestId, parameters, () => entry);
+      if (wakeIfIdle) agent.activityClaims.add(request);
+      refreshActivity(agent);
+      inputRequests.reserve(caller, agentId, requestId, parameters, () => entry);
     }
     const entry = request;
     if (!entry.result) {
@@ -560,43 +560,43 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       });
     }
     const result = await observe(request.result);
-    if (result === timedOut) records.record('input', { botId, requestId: redactor.text(requestId), inputId: request.inputId,
+    if (result === timedOut) records.record('input', { agentId, requestId: redactor.text(requestId), inputId: request.inputId,
       caller, source: redactor.text(source) ?? caller, mode, steeringMode, wakeIfIdle, state: 'unknown', reason: 'host-wait-expired' });
     return result === timedOut ? { inputId: request.inputId, status: 'unknown' } : structuredClone(result);
   }
 
-  async function interrupt(botId: string, options: Parameters<Runtime['interrupt']>[1]): Promise<InterruptReceipt> {
+  async function interrupt(agentId: string, options: Parameters<Runtime['interrupt']>[1]): Promise<InterruptReceipt> {
     const requestId = options?.requestId;
-    const timeoutMs = bound(options, 'interrupt', botId);
-    if (!validId(requestId)) throw problem('INVALID_CONTRACT', 'interrupt requires a requestId', 'interrupt', botId, requestId);
-    const bot = findBot(botId, 'interrupt', requestId);
-    let request = bot.interruptRequests.get(requestId);
+    const timeoutMs = bound(options, 'interrupt', agentId);
+    if (!validId(requestId)) throw problem('INVALID_CONTRACT', 'interrupt requires a requestId', 'interrupt', agentId, requestId);
+    const agent = findAgent(agentId, 'interrupt', requestId);
+    let request = agent.interruptRequests.get(requestId);
     if (!request) {
-      if (closing || !isLive(bot)) throw problem('NOT_ALLOWED', 'Bot is not available to interrupt', 'interrupt', botId, requestId);
-      if (bot.interruption) throw problem('CONFLICT', 'A previous interrupt is unconfirmed', 'interrupt', botId, requestId);
-      request = { interruptId: randomUUID(), executionEpoch: ++bot.executionEpoch };
-      bot.interruptRequests.set(requestId, request);
-      bot.interruption = request;
-      bridge.cancelBotCalls(botId);
+      if (closing || !isLive(agent)) throw problem('NOT_ALLOWED', 'Agent is not available to interrupt', 'interrupt', agentId, requestId);
+      if (agent.interruption) throw problem('CONFLICT', 'A previous interrupt is unconfirmed', 'interrupt', agentId, requestId);
+      request = { interruptId: randomUUID(), executionEpoch: ++agent.executionEpoch };
+      agent.interruptRequests.set(requestId, request);
+      agent.interruption = request;
+      bridge.cancelAgentCalls(agentId);
     }
-    const identity = { botId, requestId: redactor.text(requestId), interruptId: request.interruptId, executionEpoch: request.executionEpoch };
+    const identity = { agentId, requestId: redactor.text(requestId), interruptId: request.interruptId, executionEpoch: request.executionEpoch };
     const receipt = (): InterruptReceipt => ({
       interruptId: request.interruptId, status: request.confirmed ? 'interrupted' : 'unknown',
       ...(request.discardedInputHashes ? { discardedInputHashes: [...request.discardedInputHashes] } : {}),
     });
     if (request.confirmed) return receipt();
-    if (!request.work && !closing && isLive(bot)) {
+    if (!request.work && !closing && isLive(agent)) {
       records.record('interrupt', { ...identity, state: 'dispatched' });
       request.work = Promise.resolve().then(async () => {
-        if (closing || !isLive(bot)) return;
-        const result = await backend.interrupt(botId, request);
-        if (result.status === 'interrupted' && isLive(bot)) {
+        if (closing || !isLive(agent)) return;
+        const result = await backend.interrupt(agentId, request);
+        if (result.status === 'interrupted' && isLive(agent)) {
           request.confirmed = true;
           request.discardedInputHashes = result.discardedInputHashes;
-          bot.interruption = undefined;
-          bot.nativeExecuting = false;
-          bot.activityClaims.clear();
-          refreshActivity(bot);
+          agent.interruption = undefined;
+          agent.nativeExecuting = false;
+          agent.activityClaims.clear();
+          refreshActivity(agent);
         }
         records.record('interrupt', { ...identity, state: request.confirmed ? 'interrupted' : 'unknown' });
       }).catch(error => {
@@ -609,24 +609,24 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     return receipt();
   }
 
-  function onEvent(handler: (event: BotEvent) => void) {
+  function onEvent(handler: (event: AgentEvent) => void) {
     if (typeof handler !== 'function') throw problem('INVALID_CONTRACT', 'Event handler must be a function', 'onEvent');
     handlers.add(handler);
     return () => { handlers.delete(handler); };
   }
 
-  async function stop(botId: string, options?: { timeoutMs?: number }) {
-    const timeoutMs = bound(options, 'stop', botId);
-    const bot = findBot(botId, 'stop');
-    const result = await observe(beginStop(bot), timeoutMs);
-    if (result === timedOut) records.record('stop', { botId, state: 'host-wait-expired', receipt: currentStop(bot) });
-    return structuredClone(result === timedOut ? currentStop(bot) : result);
+  async function stop(agentId: string, options?: { timeoutMs?: number }) {
+    const timeoutMs = bound(options, 'stop', agentId);
+    const agent = findAgent(agentId, 'stop');
+    const result = await observe(beginStop(agent), timeoutMs);
+    if (result === timedOut) records.record('stop', { agentId, state: 'host-wait-expired', receipt: currentStop(agent) });
+    return structuredClone(result === timedOut ? currentStop(agent) : result);
   }
 
   let savingClose = false;
   let serviceStates: Awaited<ReturnType<typeof exportServiceStates>> | undefined;
-  function closeReceipt(botReceipts: any[], errors: ErrorInfo[], reportError?: ErrorInfo) {
-    const pending = [...botReceipts.flatMap(bot => bot.pending ? [bot.pending] : []), ...pendingEndpoints()];
+  function closeReceipt(agentReceipts: any[], errors: ErrorInfo[], reportError?: ErrorInfo) {
+    const pending = [...agentReceipts.flatMap(agent => agent.pending ? [agent.pending] : []), ...pendingEndpoints()];
     if (reportError || savingClose) pending.push({ kind: 'report', id: runtimeId, action: 'save', ...(reportError ? { error: reportError } : {}) });
     const evidence = records.snapshot();
     if (evidence.lost) pending.push({ kind: 'report', id: runtimeId, action: 'save',
@@ -634,7 +634,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     const model = modelTrace.snapshot();
     if (model.lost || model.pending) pending.push({ kind: 'report', id: runtimeId, action: 'save',
       error: { code: 'MODEL_TRACE_INCOMPLETE', message: 'Some model traces have not been saved', retryable: !model.lost } });
-    return { bots: botReceipts, cleanup: errors.length || pending.length ? 'pending' : 'complete',
+    return { agents: agentReceipts, cleanup: errors.length || pending.length ? 'pending' : 'complete',
       errors, pending, outputDir, evidence, ...(reportSaved ? { reportPath } : {}) };
   }
 
@@ -645,11 +645,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     if (!closeWork) {
       closeWork = (async () => {
         records.record('runtime', { state: 'closing', timeoutMs });
-        const stopping = Promise.all([...bots.values()].map(beginStop));
+        const stopping = Promise.all([...agents.values()].map(beginStop));
         await closeEndpoints();
         if (endpointCleanup.bridge.done) serviceStates ??= await exportServiceStates(registrations, outputDir, redactor.value);
-        const botReceipts = await stopping;
-        if (botReceipts.every((bot: any) => bot.cleanup === 'complete')) {
+        const agentReceipts = await stopping;
+        if (agentReceipts.every((agent: any) => agent.cleanup === 'complete')) {
           await closeEndpoint('backend', backend);
         }
         const errors = pendingEndpoints().flatMap((subject: any) => subject.error ? [subject.error] : []);
@@ -662,7 +662,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           errors.push(serviceTraceError);
         }
         savingClose = false;
-        let receipt = closeReceipt(botReceipts, errors, serviceTraceError);
+        let receipt = closeReceipt(agentReceipts, errors, serviceTraceError);
         savingClose = true;
         try {
           receipt.reportPath = reportPath;
@@ -674,14 +674,14 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           const failure = { ...errorInfo(error), code: 'REPORT_WRITE_FAILED' };
           errors.push(failure);
           reportSaved = false;
-          receipt = closeReceipt(botReceipts, errors, failure);
+          receipt = closeReceipt(agentReceipts, errors, failure);
         } finally { savingClose = false; }
         if (receipt.cleanup === 'complete') finalClose = receipt;
         return receipt;
       })().finally(() => { closeWork = undefined; });
     }
     const result = await observe(closeWork, timeoutMs);
-    return result === timedOut ? closeReceipt([...bots.values()].map(currentStop), [{
+    return result === timedOut ? closeReceipt([...agents.values()].map(currentStop), [{
       code: 'OPERATION_UNKNOWN', message: 'Runtime close is still pending', retryable: true,
     }]) : structuredClone(result);
   }

@@ -35,7 +35,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       let rootEnvironment;
       try { fs.readFileSync('/proc/1/environ'); rootEnvironment = 'readable'; } catch (error) { rootEnvironment = error.code; }
       data = { uid: process.getuid(), cwd: process.cwd(), home: process.env.HOME, pi: process.env.PI_CODING_AGENT_DIR,
-        workerToken: process.env.SWARMENV_WORKER_TOKEN ?? null, rootSecret: process.env.ROOT_ONLY_TEST_SECRET ?? null,
+        workerToken: process.env.MURM_WORKER_TOKEN ?? null, rootSecret: process.env.ROOT_ONLY_TEST_SECRET ?? null,
         rootEnvironment, status: fs.readFileSync('/proc/self/status', 'utf8') };
     } else if (message.type === 'write') { fs.writeFileSync(message.path, message.base64 ? Buffer.from(message.base64, 'base64') : message.content); data = { written: true }; }
     else if (message.type === 'remove') { fs.unlinkSync(message.path); data = { removed: true }; }
@@ -59,18 +59,18 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
 const rpc = async (message: any) => (await accepted('/rpc', { message: { ...message, id: randomUUID() }, timeout_ms: 3000 })).response.data;
 try {
   await docker(['run', '--detach', '--name', name, '--network', 'none', '--cpus', '1', '--memory', '256m', '--pids-limit', '128',
-    '--env', `SWARMENV_WORKER_TOKEN=${token}`, '--env', 'ROOT_ONLY_TEST_SECRET=must-not-reach-agent',
+    '--env', `MURM_WORKER_TOKEN=${token}`, '--env', 'ROOT_ONLY_TEST_SECRET=must-not-reach-agent',
     '--tmpfs', '/workspace:rw,nosuid,nodev,size=64m',
     ...['opensandbox-agent-worker.js', 'sandbox-project.js', 'project-install.js', 'project-processes.js',
       'core-work-dir.js', 'core-file-seed.js', 'core-collection.js', 'pi-rpc-submissions.js'].flatMap(file => [
-      '--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/' + file, import.meta.url))},target=/opt/swarmenv/${file},readonly`,
+      '--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/' + file, import.meta.url))},target=/opt/murm/${file},readonly`,
     ]),
-    '--entrypoint', 'node', 'swarmenv/agent:issue122', '/opt/swarmenv/opensandbox-agent-worker.js']);
+    '--entrypoint', 'node', 'murm/agent:issue122', '/opt/murm/opensandbox-agent-worker.js']);
   await docker(['exec', name, 'node', '-e', `
     const fs = require('node:fs');
-    fs.mkdirSync('/opt/swarmenv/probe-bin', { recursive: true });
-    fs.writeFileSync('/opt/swarmenv/probe-bin/probe.mjs', process.argv[1], { mode: 0o444 });
-    fs.writeFileSync('/opt/swarmenv/probe-bin/pi', '#!/bin/sh\\nexec node /opt/swarmenv/probe-bin/probe.mjs\\n', { mode: 0o555 });
+    fs.mkdirSync('/opt/murm/probe-bin', { recursive: true });
+    fs.writeFileSync('/opt/murm/probe-bin/probe.mjs', process.argv[1], { mode: 0o444 });
+    fs.writeFileSync('/opt/murm/probe-bin/pi', '#!/bin/sh\\nexec node /opt/murm/probe-bin/probe.mjs\\n', { mode: 0o555 });
   `, agentCode]);
   let health: any;
   for (let i = 0; i < 20; i += 1) {
@@ -79,9 +79,9 @@ try {
   }
   assert.equal(health?.status, 200);
   assert.equal((await call('/project/grant', { execution_id: 'e', binding_version: 1 }, false)).status, 401);
-  await accepted('/start', { contract_version: 'swarmenv-core-v1', resources: [], command: 'pi', args: [], cwd: '/workspace/project',
+  await accepted('/start', { contract_version: 'murm-core-v1', resources: [], command: 'pi', args: [], cwd: '/workspace/project',
     system_prompt: 'Controlled project lifecycle probe', system_prompt_path: '/workspace/runtime/profile-prompt.txt',
-    env: { PATH: '/opt/swarmenv/probe-bin:/usr/local/bin:/usr/bin:/bin' }, secret_env: {} });
+    env: { PATH: '/opt/murm/probe-bin:/usr/local/bin:/usr/bin:/bin' }, secret_env: {} });
   const identity = await rpc({ type: 'identity' });
   assert.equal(identity.uid, 10001);
   assert.equal(identity.cwd, '/workspace/project');
@@ -110,7 +110,7 @@ try {
     assert.equal((await call('/project/grant', { execution_id: 'e', binding_version: 1 })).status, 400);
     const directory = JSON.parse((await docker(['exec', name, 'node', '-e', "const s=require('fs').statSync('/workspace/project'); console.log(JSON.stringify({uid:s.uid, mode:s.mode & 511}));"])).stdout);
     assert.deepEqual(directory, { uid: 0, mode: 365 });
-    console.log('PASS: partial grant failure closes and stops the Bot and revokes directory access');
+    console.log('PASS: partial grant failure closes and stops the Agent and revokes directory access');
   } else {
     await rpc({ type: 'watch' });
     await new Promise<any>((resolve: any) => setTimeout(resolve, 100));
@@ -162,10 +162,10 @@ try {
     const confirmed = await accepted('/project/install-confirm', install);
     assert.equal(confirmed.phase, 'committed');
     assert.equal((await rpc({ type: 'identity' })).cwd, '/workspace/project');
-    await rpc({ type: 'write', path: '/workspace/project/2', content: 'newer Bot edit after install' });
+    await rpc({ type: 'write', path: '/workspace/project/2', content: 'newer Agent edit after install' });
     assert.equal((await accepted('/project/install', install)).phase, 'committed');
     const afterReplay = await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 });
-    assert.equal(Buffer.from(afterReplay.files['2'], 'base64').toString(), 'newer Bot edit after install');
+    assert.equal(Buffer.from(afterReplay.files['2'], 'base64').toString(), 'newer Agent edit after install');
     const unsafeFiles: any = { ...afterReplay.files, 'input.txt': Buffer.from('must not replace an open FD').toString('base64') };
     const unsafe = await call('/project/install', { ...install, request_id: 'open-fd', expected_content_hash: afterReplay.content_hash, content_hash: treeHash(unsafeFiles), files: unsafeFiles });
     assert.equal(unsafe.body.code, 'WORKSPACE_BUSY');

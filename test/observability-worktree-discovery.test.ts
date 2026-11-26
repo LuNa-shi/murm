@@ -36,7 +36,7 @@ async function startServer(root) {
 }
 
 test('persistent observability discovers repository .worktrees and .worktree experiment stores', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-worktree-discovery-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-worktree-discovery-'));
   const primaryDatabase = join(root, 'experiments', '.observability', 'observability.sqlite');
   const pluralDatabase = join(root, '.worktrees', 'feature-plural', 'experiments', 'run-plural', '.observability', 'observability.sqlite');
   const deepDatabase = join(root, '.worktrees', 'feature-plural', 'experiments', 'group', 'run-deep', '.observability', 'observability.sqlite');
@@ -119,10 +119,10 @@ test('persistent observability discovers repository .worktrees and .worktree exp
 });
 
 test('standalone Observer fails before side effects when remote auth is omitted', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-observer-auth-cli-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-observer-auth-cli-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const env = { ...process.env };
-  delete env.SWARMENV_OBSERVABILITY_OPERATOR_PASSWORD;
+  delete env.MURM_OBSERVABILITY_OPERATOR_PASSWORD;
   const rejected = spawnSync(process.execPath, [
     'dist/scripts/serve-observability.js', '--root', join(root, 'experiments'), '--host', '0.0.0.0', '--port', '0',
   ], { cwd: process.cwd(), env, encoding: 'utf8', timeout: 5000 });
@@ -132,7 +132,7 @@ test('standalone Observer fails before side effects when remote auth is omitted'
 
 
 test('standalone Observer rejects retired report import options before creating state', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-observer-retired-options-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-observer-retired-options-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const option of ['--report=missing.json', '--experiment-dir=missing', '--no-raw-logs']) {
     const runRoot = join(root, option.split('=')[0].slice(2));

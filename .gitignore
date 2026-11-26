@@ -4,6 +4,11 @@ node_modules/
 # Private experiment evidence and reports remain local. Historical runs are on research.
 /experiments/
 /reports/
+/examples/notes/notes-runs/
+/examples/subagents/subagents-runs/
+/examples/lead-worker/lead-worker-runs/
+/examples/peermesh/peermesh-runs/
+/examples/substrate/substrate-runs/
 
 # Linked development checkouts live inside the primary repository.
 /.worktree/

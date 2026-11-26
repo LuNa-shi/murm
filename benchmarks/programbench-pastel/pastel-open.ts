@@ -2,15 +2,15 @@ import { mkdir, copyFile, readFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { createRunWindow } from './run-window.ts';
+import { createRunWindow } from '../shared/run-window.ts';
 import { instance, runDirectory, sha256, task } from './case.ts';
 import { localBackend, saveReceipt } from './local-integration.ts';
 import { ownedContainers } from '../../dist/test/fixtures/core-runtime-containers.js';
 import { runOpenSubagents } from './pastel-open-subagents.ts';
-import { runOpenFlat } from './pastel-open-flat.ts';
-import { runOpenAgensh } from './pastel-open-agensh.ts';
+import { runOpenTaskPool } from './pastel-open-taskpool.ts';
+import { runOpenPeerMesh } from './pastel-open-peermesh.ts';
 
-const drivers = { subagents: runOpenSubagents, flat: runOpenFlat, agensh: runOpenAgensh };
+const drivers = { subagents: runOpenSubagents, taskpool: runOpenTaskPool, peermesh: runOpenPeerMesh };
 
 interface PastelRunOptions {
   mode: string;
@@ -21,7 +21,7 @@ interface PastelRunOptions {
   maxConcurrent?: number;
   maxOutputTokens?: number | null;
   upstreamKind: 'scripted_loopback' | 'hosted_k3';
-  agenshImages?: Awaited<ReturnType<typeof import('./pastel-open-agensh.ts').resolveAgenshImages>>;
+  peerMeshImages?: Awaited<ReturnType<typeof import('./pastel-open-peermesh.ts').resolvePeerMeshImages>>;
   onStart?: (event: { startedAt: string; runtimeId?: string }) => void | Promise<void>;
 }
 
@@ -38,11 +38,11 @@ async function modelUsage(directory, runtimeId) {
   return report.modelLedgers.map(({ alias, path }) => {
     const db = new DatabaseSync(path, { readOnly: true });
     try {
-      return { alias, bots: db.prepare(`SELECT bot_id AS botId, COUNT(*) AS attempts,
+      return { alias, agents: db.prepare(`SELECT agent_id AS agentId, COUNT(*) AS attempts,
         COUNT(output_tokens) AS metered, COUNT(*) FILTER (WHERE state='unknown') AS unknown,
         COUNT(*) FILTER (WHERE state='pending') AS pending, SUM(input_tokens) AS inputTokens,
         SUM(output_tokens) AS outputTokens, MAX(output_tokens) AS maxObservedOutputTokens
-        FROM runtime_model_attempts WHERE runtime_id=? GROUP BY bot_id`).all(runtimeId) };
+        FROM runtime_model_attempts WHERE runtime_id=? GROUP BY agent_id`).all(runtimeId) };
     } finally {
       db.close();
     }
@@ -51,8 +51,8 @@ async function modelUsage(directory, runtimeId) {
 
 /** Private orchestration. Its caller owns upstream selection and formal authorization. */
 export async function runPastel({ mode, image, upstream, durationMs = 1_800_000,
-  maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, upstreamKind, agenshImages, onStart }: PastelRunOptions) {
-  if (!Object.hasOwn(drivers, mode) || !/^sha256:[a-f0-9]{64}$/.test(image ?? '') ||
+  maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, upstreamKind, peerMeshImages, onStart }: PastelRunOptions) {
+  if (durationMs > 1_800_000 || maxConcurrent > 3 || !Object.hasOwn(drivers, mode) || !/^sha256:[a-f0-9]{64}$/.test(image ?? '') ||
       !['scripted_loopback', 'hosted_k3'].includes(upstreamKind)) throw new Error('Invalid Pastel run input');
   const target = new URL(upstream.url);
   if (upstreamKind === 'scripted_loopback' && (target.protocol !== 'http:' || target.hostname !== '127.0.0.1')) {
@@ -79,7 +79,7 @@ export async function runPastel({ mode, image, upstream, durationMs = 1_800_000,
     const backend = localBackend(window.upstream, 128, { timeoutSeconds: Math.ceil(durationMs / 1000) + 180,
       maxOutputTokens, requestTimeoutMs: durationMs, ...(upstreamKind === 'hosted_k3' ? { resourceLimits: null } : {}) });
     await drivers[mode]({ state, task, window, start, deadline, image, backend, outputDir, durationMs,
-      capacity: Math.min(3, maxConcurrent), agenshImages });
+      capacity: Math.min(3, maxConcurrent), peerMeshImages });
   } catch (error) {
     const expectedDeadline = window.signal.reason?.code === 'deadline' &&
       ['deadline', 'ROUTER_WAIT_ABORTED', 'ROUTER_WAIT_TIMEOUT'].includes(error.code);

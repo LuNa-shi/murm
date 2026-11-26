@@ -1,4 +1,4 @@
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 
 function errorCodeForStatus(status: any) {
   if (status === 401 || status === 403) return ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED;
@@ -20,7 +20,7 @@ async function responseJson(response: any) {
   const text = await response.text();
   if (!text) return {};
   try { return JSON.parse(text); } catch (error: any) {
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'service returned invalid JSON', { status: response.status }, { cause: error, retryable: response.status >= 500 });
+    throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'service returned invalid JSON', { status: response.status }, { cause: error, retryable: response.status >= 500 });
   }
 }
 
@@ -42,8 +42,8 @@ export class HttpJsonServiceAdapter {
   }
 
   async invoke({ manifest, capability, input = {}, envelope, role = null, signal = null }: any = {}) {
-    if (!manifest?.endpoint?.url) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'HTTP adapter requires a manifest endpoint URL');
-    if (!capability?.path) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'HTTP adapter requires a capability route');
+    if (!manifest?.endpoint?.url) throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'HTTP adapter requires a manifest endpoint URL');
+    if (!capability?.path) throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'HTTP adapter requires a capability route');
     const url = joinUrl(manifest.endpoint.url, capability.path);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('service request timed out')), this.timeoutMs);
@@ -69,7 +69,7 @@ export class HttpJsonServiceAdapter {
       const body = await responseJson(response);
       if (!response.ok || body.ok === false) {
         const error = body.error ?? {};
-        throw new SwarmEnvError(
+        throw new MurmError(
           error.code ?? errorCodeForStatus(response.status),
           error.message ?? `service request failed with HTTP ${response.status}`,
           error.details,
@@ -79,15 +79,15 @@ export class HttpJsonServiceAdapter {
       this.logger?.({ event: 'service.http.complete', service_id: manifest.service_id, capability: capability.name, status: response.status, ok: true });
       return body.result === undefined ? body : body.result;
     } catch (error: any) {
-      if (error instanceof SwarmEnvError) {
+      if (error instanceof MurmError) {
         this.logger?.({ event: 'service.http.complete', service_id: manifest.service_id, capability: capability.name, ok: false, code: error.code });
         throw error;
       }
       if (controller.signal.aborted) {
         const timedOut = !signal?.aborted;
-        throw new SwarmEnvError(timedOut ? ERROR_CODES.SERVICE_TIMEOUT : ERROR_CODES.SERVICE_UNAVAILABLE, timedOut ? `service request timed out after ${this.timeoutMs}ms` : 'service request aborted', { service_id: manifest.service_id, capability: capability.name }, { cause: error, retryable: timedOut });
+        throw new MurmError(timedOut ? ERROR_CODES.SERVICE_TIMEOUT : ERROR_CODES.SERVICE_UNAVAILABLE, timedOut ? `service request timed out after ${this.timeoutMs}ms` : 'service request aborted', { service_id: manifest.service_id, capability: capability.name }, { cause: error, retryable: timedOut });
       }
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, error?.message ?? 'service request failed', { service_id: manifest.service_id, capability: capability.name }, { cause: error, retryable: true });
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, error?.message ?? 'service request failed', { service_id: manifest.service_id, capability: capability.name }, { cause: error, retryable: true });
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
@@ -107,7 +107,7 @@ export class HttpJsonServiceAdapter {
   }
 
   async #get(manifest: any, path: any, signal: any) {
-    if (!manifest?.endpoint?.url) throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'HTTP adapter requires a manifest endpoint URL');
+    if (!manifest?.endpoint?.url) throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'HTTP adapter requires a manifest endpoint URL');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('service probe timed out')), this.timeoutMs);
     const onAbort = () => controller.abort(signal.reason ?? new Error('service probe aborted'));
@@ -122,13 +122,13 @@ export class HttpJsonServiceAdapter {
       const body = await responseJson(response);
       if (!response.ok || body.ok === false) {
         const error = body.error ?? {};
-        throw new SwarmEnvError(error.code ?? errorCodeForStatus(response.status), error.message ?? `service probe failed with HTTP ${response.status}`, error.details, { retryable: error.retryable ?? retryableForStatus(response.status) });
+        throw new MurmError(error.code ?? errorCodeForStatus(response.status), error.message ?? `service probe failed with HTTP ${response.status}`, error.details, { retryable: error.retryable ?? retryableForStatus(response.status) });
       }
       return body.result === undefined ? body : body.result;
     } catch (error: any) {
-      if (error instanceof SwarmEnvError) throw error;
-      if (controller.signal.aborted) throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, `service probe timed out after ${this.timeoutMs}ms`, { service_id: manifest.service_id }, { cause: error, retryable: true });
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, error?.message ?? 'service probe failed', { service_id: manifest.service_id }, { cause: error, retryable: true });
+      if (error instanceof MurmError) throw error;
+      if (controller.signal.aborted) throw new MurmError(ERROR_CODES.SERVICE_TIMEOUT, `service probe timed out after ${this.timeoutMs}ms`, { service_id: manifest.service_id }, { cause: error, retryable: true });
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, error?.message ?? 'service probe failed', { service_id: manifest.service_id }, { cause: error, retryable: true });
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);

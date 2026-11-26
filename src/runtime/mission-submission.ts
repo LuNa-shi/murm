@@ -1,7 +1,7 @@
 import { assertServiceCommitSettled } from '../sdk/service-commit-gate.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
 
 import { createManualMissionChecker, MANUAL_CHECKER_REF } from './manual-mission-review.js';
@@ -16,12 +16,12 @@ const hash = (value: any) => createHash('sha256').update(stableStringify(value))
 const iso = (time: any) => new Date(time).toISOString();
 
 function required(value: any, name: any) {
-  if (typeof value !== 'string' || !value) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${name} is required`);
+  if (typeof value !== 'string' || !value) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `${name} is required`);
   return value;
 }
 
 function timedOut() {
-  return new SwarmEnvError('SERVICE_TIMEOUT', 'Mission submission deadline elapsed');
+  return new MurmError('SERVICE_TIMEOUT', 'Mission submission deadline elapsed');
 }
 
 /** Mission-owned submission receipts. Workspace locking serializes freeze with
@@ -54,18 +54,19 @@ export class MissionSubmissionStore {
   constructor({ database = null, file = null, workspace = null, authorize = null, snapshotMaterials = null,
     validateMaterials = null, validateCompletion = null, checker = null, manualReview = null, timeoutMs = 120_000, maxInfrastructureRetries = 0, maxFinalChecks = 4, maxConcurrentFinalChecks = 1, onAccepted = null }: any = {}) {
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Mission submission timeout must be a timer-safe positive integer');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Mission submission timeout must be a timer-safe positive integer');
     }
     if (!Number.isSafeInteger(maxInfrastructureRetries) || maxInfrastructureRetries < 0) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Mission infrastructure retry limit must be a nonnegative integer');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Mission infrastructure retry limit must be a nonnegative integer');
     }
     if ((manualReview && checker) || checker?.identity?.checker_ref === MANUAL_CHECKER_REF) {
       throw new TypeError('Select either the configured machine checker or explicit manual Mission review');
     }
     if (manualReview && !database) throw new TypeError('Manual review requires a trusted shared owner-private database');
-    if (!Number.isSafeInteger(maxFinalChecks) || maxFinalChecks < 1 || maxFinalChecks > 10_000 ||
-        !Number.isSafeInteger(maxConcurrentFinalChecks) || maxConcurrentFinalChecks < 1 || maxConcurrentFinalChecks > maxFinalChecks) {
-      throw new TypeError('Mission final checker budget requires finite positive request and concurrent limits');
+    if ((maxFinalChecks !== null && (!Number.isSafeInteger(maxFinalChecks) || maxFinalChecks < 1 || maxFinalChecks > 10_000)) ||
+        !Number.isSafeInteger(maxConcurrentFinalChecks) || maxConcurrentFinalChecks < 1 ||
+        maxConcurrentFinalChecks > 10_000 || (maxFinalChecks !== null && maxConcurrentFinalChecks > maxFinalChecks)) {
+      throw new TypeError('Mission final checker budget requires a positive request limit or explicit null and a finite positive concurrent limit');
     }
     this.maxFinalChecks = maxFinalChecks;
     this.maxConcurrentFinalChecks = maxConcurrentFinalChecks;
@@ -89,6 +90,17 @@ export class MissionSubmissionStore {
     this.shuttingDown = false;
     this.shutdownPromise = null;
     this.db.exec(MISSION_SUBMISSION_SCHEMA_SQL);
+    // Existing databases fixed max_checks as NOT NULL. Rebuild only that policy
+    // table, preserving every Mission's original integer limit and admissions.
+    const columns = this.db.prepare('PRAGMA table_info(mission_final_check_policies)').all();
+    if (columns.some((column: any) => column.name === 'max_checks' && column.notnull)) {
+      this.#transaction(() => {
+        this.db.exec('ALTER TABLE mission_final_check_policies RENAME TO mission_final_check_policies_previous');
+        this.db.exec(MISSION_SUBMISSION_SCHEMA_SQL);
+        this.db.exec(`INSERT INTO mission_final_check_policies SELECT * FROM mission_final_check_policies_previous;
+          DROP TABLE mission_final_check_policies_previous;`);
+      });
+    }
   }
 
   #transaction(action: any) {
@@ -134,15 +146,15 @@ export class MissionSubmissionStore {
     const usage = this.db.prepare(`SELECT COUNT(*) AS admitted_checks,
       COUNT(*) FILTER (WHERE settled_at IS NULL) AS active_checks
       FROM mission_final_check_admissions WHERE mission_id = ?`).get(missionId);
-    return { max_checks: policy?.max_checks ?? this.maxFinalChecks, max_concurrent: policy?.max_concurrent ?? this.maxConcurrentFinalChecks, ...usage };
+    return { max_checks: policy ? policy.max_checks : this.maxFinalChecks, max_concurrent: policy?.max_concurrent ?? this.maxConcurrentFinalChecks, ...usage };
   }
 
   #assertFinalCheckAvailable(missionId: any) {
     if (this.manualReview) return;
     const budget = this.getFinalCheckBudget(missionId);
-    if (budget.max_checks !== this.maxFinalChecks || budget.max_concurrent !== this.maxConcurrentFinalChecks) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission final checker budget differs from the fixed policy');
-    if (budget.admitted_checks >= budget.max_checks) throw new SwarmEnvError('CHECKER_BUDGET_EXHAUSTED', 'Mission final checker budget is exhausted', budget);
-    if (budget.active_checks >= budget.max_concurrent) throw new SwarmEnvError('CHECKER_BUSY', 'Previous final checker has not confirmed resource cleanup', budget, { retryable: true });
+    if (budget.max_checks !== this.maxFinalChecks || budget.max_concurrent !== this.maxConcurrentFinalChecks) throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Mission final checker budget differs from the fixed policy');
+    if (budget.max_checks !== null && budget.admitted_checks >= budget.max_checks) throw new MurmError('CHECKER_BUDGET_EXHAUSTED', 'Mission final checker budget is exhausted', budget);
+    if (budget.active_checks >= budget.max_concurrent) throw new MurmError('CHECKER_BUSY', 'Previous final checker has not confirmed resource cleanup', budget, { retryable: true });
   }
 
   #reserveFinalCheck(submission: any) {
@@ -178,46 +190,46 @@ export class MissionSubmissionStore {
 
   #assertRunning(missionId: any) {
     if (this.shuttingDown || this.stops.has(missionId)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission submission service is stopping');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Mission submission service is stopping');
     }
   }
 
   #exact(input: any, fingerprint: any) {
     const existing = this.#read(input.missionId, input.requestId);
     if (existing && existing.request_fingerprint !== fingerprint) {
-      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Mission submission request ID was reused with different input');
+      throw new MurmError(ERROR_CODES.CONFLICT, 'Mission submission request ID was reused with different input');
     }
     return existing;
   }
 
   #ready(input: any) {
     if (!this.workspace || typeof this.authorize !== 'function' || typeof this.checker?.check !== 'function') {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission submission requires trusted authorization and a configured checker');
+      throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Mission submission requires trusted authorization and a configured checker');
     }
     const policy = this.authorize(input);
     if (!policy?.acceptance || typeof policy.acceptance !== 'object') {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission submission requires the current Mission coordination identity');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Mission submission requires the current Mission coordination identity');
     }
     const identity = Object.fromEntries(checkerFields.map((field: any) => [field, required(this.checker.identity?.[field], field)]));
     const requirement = policy.acceptance.required_check;
     if (!requirement || checkerFields.some((field: any) => requirement[field] !== identity[field]) ||
         Object.entries(requirement).some(([field, value]: any) => identity[field] !== value)) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Trusted checker does not match fixed Mission acceptance');
+      throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Trusted checker does not match fixed Mission acceptance');
     }
     return { acceptance: policy.acceptance, identity, deadline: policy.deadline ?? Infinity };
   }
 
   async #materials(input: any, signal: any) {
     if (!input.materialIds.length) return [];
-    if (typeof this.snapshotMaterials !== 'function') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission Material snapshots are unavailable');
+    if (typeof this.snapshotMaterials !== 'function') throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Mission Material snapshots are unavailable');
     const materials = await this.snapshotMaterials({ ...input, signal });
     if (!Array.isArray(materials) || materials.length !== input.materialIds.length) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Requested Material snapshot is incomplete');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Requested Material snapshot is incomplete');
     }
     return input.materialIds.map((id: any) => {
       const material = materials.find((item: any) => item?.material_id === id);
       if (!material || !/^[a-f0-9]{64}$/.test(material.content_hash) || !material.version) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Material snapshot must fix ID, immutable version and SHA-256');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Material snapshot must fix ID, immutable version and SHA-256');
       }
       return structuredClone(material);
     });
@@ -229,7 +241,7 @@ export class MissionSubmissionStore {
     required(actorRef, 'actor_ref');
     required(requestId, 'request_id');
     if (!Array.isArray(materialIds) || materialIds.some((id: any) => typeof id !== 'string' || !id)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must be an array of IDs');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must be an array of IDs');
     }
     const input = { missionId, workspaceId, materialIds: [...new Set(materialIds)].sort(), actorRef, taskId, executionId, fencingVersion, requestId };
     const fingerprint = hash(input);
@@ -245,7 +257,7 @@ export class MissionSubmissionStore {
       this.#assertRunning(missionId);
       this.#ready(input);
       const busy = this.#rows(missionId).find((row: any) => active.includes(row.state) || row.release_pending);
-      if (busy) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Mission already has a submission or a pending freeze release', { submission_id: busy.submission_id });
+      if (busy) throw new MurmError(ERROR_CODES.CONFLICT, 'Mission already has a submission or a pending freeze release', { submission_id: busy.submission_id });
       const document = { mission_id: missionId, submission_id: requestId, workspace_id: workspaceId,
         actor_ref: actorRef, task_id: taskId, execution_id: executionId, fencing_version: fencingVersion, material_ids: input.materialIds,
         request_fingerprint: fingerprint, snapshot_fingerprint: '', state: 'preparing', result: null,
@@ -311,7 +323,7 @@ export class MissionSubmissionStore {
     checkDeadline();
     for (const result of snapshots) if (result.status === 'rejected') throw result.reason;
     const [workspace, materials] = snapshots.map((result: any) => result.value);
-    if (workspace.mission_id !== missionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace does not belong to the Mission');
+    if (workspace.mission_id !== missionId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace does not belong to the Mission');
     const freezeId = initial.freeze_id;
     let newlyAdmitted = false;
     const submission = await this.workspace.freeze({ workspaceId, submissionId: freezeId, expectedMainRevision: workspace.revision,
@@ -322,7 +334,7 @@ export class MissionSubmissionStore {
         const livePolicy = this.#ready(input);
         if (Date.now() >= livePolicy.deadline) throw timedOut();
         if (hash(initial.acceptance) !== hash(livePolicy.acceptance) || hash(initial.checker) !== hash(livePolicy.identity)) {
-          throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Mission acceptance changed during preparation');
+          throw new MurmError(ERROR_CODES.CONFLICT, 'Mission acceptance changed during preparation');
         }
         const snapshot = { workspace_id: workspaceId, main_revision: workspace.revision, main_commit: workspace.git_commit,
           git_tree: workspace.git_tree, content_hash: workspace.content_hash, materials, checker: livePolicy.identity, acceptance: livePolicy.acceptance };
@@ -332,9 +344,9 @@ export class MissionSubmissionStore {
         const busy = rows.find((row: any) => row.submission_id !== initial.submission_id &&
           (active.includes(row.state) || row.state === accepted || row.release_pending));
         if (busy && (busy.release_pending || busy.submission_id !== cached?.submission_id)) {
-          throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Mission already has a submission or a pending freeze release', { submission_id: busy.submission_id });
+          throw new MurmError(ERROR_CODES.CONFLICT, 'Mission already has a submission or a pending freeze release', { submission_id: busy.submission_id });
         }
-        if (frozen.main_commit !== workspace.git_commit) throw new SwarmEnvError('MAIN_MOVED', 'Mission main commit changed before submission');
+        if (frozen.main_commit !== workspace.git_commit) throw new MurmError('MAIN_MOVED', 'Mission main commit changed before submission');
         const attempts = rows.filter((row: any) => row.snapshot_fingerprint === snapshotFingerprint && row.attempt_number > 0);
         const lastAttempt = attempts.at(-1);
         const base = { ...initial, ...snapshot, snapshot_fingerprint: snapshotFingerprint,
@@ -353,7 +365,7 @@ export class MissionSubmissionStore {
           return limited;
         }
         if (previous.frozen_submission_id && previous.frozen_submission_id !== freezeId) {
-          throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace is frozen by another Mission submission');
+          throw new MurmError(ERROR_CODES.CONFLICT, 'Workspace is frozen by another Mission submission');
         }
         this.#assertFinalCheckAvailable(missionId);
         // Record the intended owner and generation before filesystem publication.
@@ -366,12 +378,12 @@ export class MissionSubmissionStore {
           const currentPolicy = this.#ready(input);
           if (hash(currentPolicy.acceptance) !== hash(livePolicy.acceptance) ||
               hash(currentPolicy.identity) !== hash(livePolicy.identity)) {
-            throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Mission acceptance changed during admission');
+            throw new MurmError(ERROR_CODES.CONFLICT, 'Mission acceptance changed during admission');
           }
           if (Date.now() >= currentPolicy.deadline) throw timedOut();
           if (this.validateMaterials) {
             const validation = this.validateMaterials({ missionId, materials });
-            if (validation?.then || validation === false) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material observations failed admission validation');
+            if (validation?.then || validation === false) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material observations failed admission validation');
           }
           checkDeadline();
           this.#reserveFinalCheck(intent);
@@ -574,7 +586,7 @@ export class MissionSubmissionStore {
       }));
     } catch (failure: any) { error = failure; }
     finally {
-      const reason = new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission submission service stopped');
+      const reason = new MurmError(ERROR_CODES.NOT_ALLOWED, 'Mission submission service stopped');
       for (const admission of this.admissions) if (admission.missionId === missionId) admission.controller.abort(reason);
       for (const work of this.work.values()) if (work.missionId === missionId) {
         clearTimeout(work.timer);
@@ -616,7 +628,7 @@ export class MissionSubmissionStore {
   }
 
   async finish() {
-    throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission verdict must come from the configured checker');
+    throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Mission verdict must come from the configured checker');
   }
 
   async describe({ missionId, submissionId, workspaceId, isStopped = () => false }: any) {

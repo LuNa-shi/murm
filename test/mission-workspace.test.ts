@@ -7,7 +7,7 @@ import { MissionWorkspace, candidateFileRef } from '../src/runtime/mission-works
 import { dispatchMissionWorkspaceRead } from '../src/sdk/builtin-registry.js';
 
 test('MissionWorkspace keeps public immutable revisions separate from main and merges whole trees', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-mission-workspace-'));
   const store = new MissionWorkspace({ rootDir: root });
   const created = await store.create({ missionId: 'mission:1', workspaceId: 'workspace:1'.replace(':', '-'), initialFiles: { 'README.md': 'start\n' } });
   assert.equal(created.main_revision, '0.1');
@@ -23,7 +23,7 @@ test('MissionWorkspace keeps public immutable revisions separate from main and m
 });
 
 test('whole-revision merge removes files deleted from the source tree', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-mission-workspace-'));
   const store = new MissionWorkspace({ rootDir: root });
   const created = await store.create({ missionId: 'mission:delete', workspaceId: 'workspace-delete', initialFiles: { 'keep.md': 'yes', 'remove.md': 'old' } });
   const saved = await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'keep.md': 'yes' } });
@@ -32,7 +32,7 @@ test('whole-revision merge removes files deleted from the source tree', async ()
 });
 
 test('three-way merge reports concurrent edits instead of overwriting main', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-mission-workspace-'));
   const store = new MissionWorkspace({ rootDir: root });
   const created = await store.create({ missionId: 'mission:conflict', workspaceId: 'workspace-conflict', initialFiles: { 'notes.md': 'base' } });
   const source = await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'notes.md': 'source' } });
@@ -43,7 +43,7 @@ test('three-way merge reports concurrent edits instead of overwriting main', asy
 });
 
 test('MissionWorkspace rejects stale main updates and protects metadata paths', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-mission-workspace-'));
   const store = new MissionWorkspace({ rootDir: root });
   const created = await store.create({ missionId: 'mission:2', workspaceId: 'workspace-2' });
   await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'notes.md': 'one' } });
@@ -52,11 +52,11 @@ test('MissionWorkspace rejects stale main updates and protects metadata paths', 
 });
 
 test('MissionWorkspace apply materializes a public revision and freezes main during submission', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-mission-workspace-'));
   const store = new MissionWorkspace({ rootDir: root });
   const created = await store.create({ missionId: 'mission:freeze', workspaceId: 'workspace-freeze', initialFiles: { 'notes.md': 'base' } });
   const saved = await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'notes.md': 'candidate' } });
-  const target = await mkdtemp(join(tmpdir(), 'swarmenv-apply-'));
+  const target = await mkdtemp(join(tmpdir(), 'murm-apply-'));
   const applied = await store.apply({ workspaceId: created.workspace_id, revision: saved.revision, targetDir: target });
   assert.equal(applied.revision, saved.revision);
   assert.equal((await store.read({ workspaceId: created.workspace_id, revision: saved.revision, path: 'notes.md' })).content, 'candidate');
@@ -67,7 +67,7 @@ test('MissionWorkspace apply materializes a public revision and freezes main dur
 });
 
 test('public workspace pages pin revisions and reject a cursor for a different query', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-mission-workspace-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const store = new MissionWorkspace({ rootDir: root });
   const workspaceId = 'W-public';
@@ -103,7 +103,7 @@ test('public workspace pages pin revisions and reject a cursor for a different q
 });
 
 test('concurrent creation across workspace stores allows one repository per Mission', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-mission-workspace-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const stores = [new MissionWorkspace({ rootDir: root }), new MissionWorkspace({ rootDir: root })];
   const results = await Promise.allSettled(stores.map((store, index) => store.create({ missionId: 'M-single', workspaceId: `W-${index}` })));
@@ -113,17 +113,36 @@ test('concurrent creation across workspace stores allows one repository per Miss
   assert.equal((await stores[0].create({ missionId: 'M-other', workspaceId: 'W-other' })).mission_id, 'M-other');
 });
 
-test('Workspace registry keeps public diff inside the registered Bot Mission', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
+test('Workspace registry keeps public diff inside the registered Agent Mission', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'murm-mission-workspace-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const missionWorkspace = new MissionWorkspace({ rootDir: root });
   await missionWorkspace.create({ missionId: 'own', workspaceId: 'W-own', initialFiles: { 'local.txt': 'local' } });
   await missionWorkspace.create({ missionId: 'foreign', workspaceId: 'W-foreign', initialFiles: { 'foreign.txt': 'foreign' } });
-  const taskService = { getBot: actor => actor === 'B-own' ? { mission_id: 'own' } : null };
+  const taskService = { getAgent: actor => actor === 'B-own' ? { mission_id: 'own' } : null };
   const envelope = { actor_ref: 'B-own' };
   {
     const payload = { workspace_id: 'W-own', from: 'main', to: 'main' };
     assert.equal((await dispatchMissionWorkspaceRead({ taskService, missionWorkspace }, 'workspace_public_diff', payload, envelope)).from.revision, '0.1');
     await assert.rejects(dispatchMissionWorkspaceRead({ taskService, missionWorkspace }, 'workspace_public_diff', { ...payload, workspace_id: 'W-foreign' }, envelope), { code: 'NOT_ALLOWED' });
   }
+});
+
+test('live apply plans preserve both versions and explicit conflict alternatives', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'murm-live-apply-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const store = new MissionWorkspace({ rootDir: root });
+  const created = await store.create({ missionId: 'mission:live-apply', workspaceId: 'live-apply', initialFiles: { 'proof.lean': 'base\n' } });
+  const current = await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'proof.lean': 'current\n', 'own.lean': 'own\n' } });
+  const incoming = await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'proof.lean': 'incoming\n', 'peer.lean': 'peer\n' } });
+  const plan = await store.planApply({ workspaceId: created.workspace_id, baseRevision: current.revision, fromRevision: incoming.revision, requestId: 'conflict' });
+  assert.deepEqual(plan.parents, [current.revision, incoming.revision]);
+  assert.equal(plan.files['own.lean'], 'own\n'); assert.equal(plan.files['peer.lean'], 'peer\n');
+  assert.equal(plan.conflicts.length, 1);
+  const conflict = plan.conflicts[0];
+  assert.deepEqual(conflict.paths, ['proof.lean']);
+  assert.equal(Buffer.from(plan.files[`${conflict.artifact_root}/base/proof.lean`]).toString(), 'base\n');
+  assert.equal(Buffer.from(plan.files[`${conflict.artifact_root}/current/proof.lean`]).toString(), 'current\n');
+  assert.equal(Buffer.from(plan.files[`${conflict.artifact_root}/incoming/proof.lean`]).toString(), 'incoming\n');
+  assert.equal((await store.get({ workspaceId: created.workspace_id })).main_revision, '0.1');
 });

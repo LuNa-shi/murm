@@ -16,6 +16,8 @@ export interface PiOpenSandboxBackendConfig {
     requestTimeoutMs?: number;
     /** null preserves provider/Pi output parameters without a host token clamp. */
     maxOutputTokens?: number | null;
+    /** Sets upstream reasoning effort for requests admitted in the selection phase. */
+    selectionReasoningEffort?: 'low';
   };
   models: Readonly<Record<string, {
     provider: string;

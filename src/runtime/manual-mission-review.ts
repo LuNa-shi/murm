@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { userInfo } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
 
 export const MANUAL_CHECKER_REF = 'manual-operator';
@@ -19,7 +19,7 @@ export const MANUAL_MISSION_REVIEW_SCHEMA_SQL = `
   WHERE json_extract(document, '$.timely') = 1;
 `;
 
-const fail = (code: any, message: any) => new SwarmEnvError(code, message);
+const fail = (code: any, message: any) => new MurmError(code, message);
 const value = (input: any, max: any = 256) => typeof input === 'string' && input.trim() && input.length <= max && !input.includes('\0');
 
 export function readManualMissionReview(db: any, missionId: any, submissionId: any) {

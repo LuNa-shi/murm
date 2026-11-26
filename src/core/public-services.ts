@@ -1,6 +1,6 @@
 export {
   ServiceRegistry,
-  builtinBotRegistration,
+  builtinAgentRegistration,
   createHttpJsonAdapter,
   createInProcessAdapter,
   getAdapterMetadata,

@@ -1,76 +1,76 @@
-name: swarmenv-services
+name: murm-services
 
 x-builtin-build: &builtin-build
   context: ../..
   dockerfile: services/builtin/Dockerfile
 
 x-builtin-environment: &builtin-environment
-  SWARMENV_SERVICE_ISOLATED: "true"
-  SWARMENV_SERVICE_HOST: 0.0.0.0
-  SWARMENV_SERVICE_PORT: 8787
+  MURM_SERVICE_ISOLATED: "true"
+  MURM_SERVICE_HOST: 0.0.0.0
+  MURM_SERVICE_PORT: 8787
 
 services:
   task:
     build: *builtin-build
     environment:
       <<: *builtin-environment
-      SWARMENV_SERVICE_ID: task
-      SWARMENV_SERVICE_PRINCIPALS: ${SWARMENV_TASK_SERVICE_PRINCIPALS:-[]}
-      SWARMENV_SERVICE_PUBLIC_URL: http://task:8787
-      SWARMENV_SERVICE_DATABASE: /var/lib/swarmenv/task.sqlite
+      MURM_SERVICE_ID: task
+      MURM_SERVICE_PRINCIPALS: ${MURM_TASK_SERVICE_PRINCIPALS:-[]}
+      MURM_SERVICE_PUBLIC_URL: http://task:8787
+      MURM_SERVICE_DATABASE: /var/lib/murm/task.sqlite
     ports:
-      - "${SWARMENV_TASK_PORT:-8781}:8787"
+      - "${MURM_TASK_PORT:-8781}:8787"
     volumes:
-      - task-data:/var/lib/swarmenv
+      - task-data:/var/lib/murm
 
   context:
     build: *builtin-build
     environment:
       <<: *builtin-environment
-      SWARMENV_SERVICE_ID: context
-      SWARMENV_SERVICE_PRINCIPALS: ${SWARMENV_CONTEXT_SERVICE_PRINCIPALS:-[]}
-      SWARMENV_SERVICE_PUBLIC_URL: http://context:8787
-      SWARMENV_SERVICE_DATABASE: /var/lib/swarmenv/context.sqlite
+      MURM_SERVICE_ID: context
+      MURM_SERVICE_PRINCIPALS: ${MURM_CONTEXT_SERVICE_PRINCIPALS:-[]}
+      MURM_SERVICE_PUBLIC_URL: http://context:8787
+      MURM_SERVICE_DATABASE: /var/lib/murm/context.sqlite
     ports:
-      - "${SWARMENV_CONTEXT_PORT:-8782}:8787"
+      - "${MURM_CONTEXT_PORT:-8782}:8787"
     volumes:
-      - context-data:/var/lib/swarmenv
+      - context-data:/var/lib/murm
 
   judge:
     build: *builtin-build
     environment:
       <<: *builtin-environment
-      SWARMENV_SERVICE_ID: judge
-      SWARMENV_SERVICE_PRINCIPALS: ${SWARMENV_JUDGE_SERVICE_PRINCIPALS:-[]}
-      SWARMENV_SERVICE_PUBLIC_URL: http://judge:8787
-      SWARMENV_SERVICE_DATABASE: /var/lib/swarmenv/judge.sqlite
+      MURM_SERVICE_ID: judge
+      MURM_SERVICE_PRINCIPALS: ${MURM_JUDGE_SERVICE_PRINCIPALS:-[]}
+      MURM_SERVICE_PUBLIC_URL: http://judge:8787
+      MURM_SERVICE_DATABASE: /var/lib/murm/judge.sqlite
       # Configure a mounted, pinned checker project before enabling candidate
       # checks; the service remains healthy and reports unavailable until the
       # fixture binding is provided.
-      SWARMENV_JUDGE_FIXTURE_MANIFEST: ${SWARMENV_JUDGE_FIXTURE_MANIFEST:-}
-      SWARMENV_JUDGE_PREBUILD: ${SWARMENV_JUDGE_PREBUILD:-false}
-      SWARMENV_JUDGE_PROJECT_ROOT: ${SWARMENV_JUDGE_PROJECT_ROOT:-/checker}
-      SWARMENV_JUDGE_PREBUILD_KEY: ${SWARMENV_JUDGE_PREBUILD_KEY:-}
+      MURM_JUDGE_FIXTURE_MANIFEST: ${MURM_JUDGE_FIXTURE_MANIFEST:-}
+      MURM_JUDGE_PREBUILD: ${MURM_JUDGE_PREBUILD:-false}
+      MURM_JUDGE_PROJECT_ROOT: ${MURM_JUDGE_PROJECT_ROOT:-/checker}
+      MURM_JUDGE_PREBUILD_KEY: ${MURM_JUDGE_PREBUILD_KEY:-}
     ports:
-      - "${SWARMENV_JUDGE_PORT:-8783}:8787"
+      - "${MURM_JUDGE_PORT:-8783}:8787"
     volumes:
-      - judge-data:/var/lib/swarmenv
+      - judge-data:/var/lib/murm
 
   catalog:
     build: *builtin-build
     environment:
       <<: *builtin-environment
-      SWARMENV_SERVICE_ID: catalog
-      SWARMENV_SERVICE_PRINCIPALS: ${SWARMENV_CATALOG_SERVICE_PRINCIPALS:-[]}
-      SWARMENV_SERVICE_PUBLIC_URL: http://catalog:8787
-      SWARMENV_TASK_SERVICE_URL: http://task:8787
-      SWARMENV_TASK_SERVICE_TOKEN: ${SWARMENV_TASK_SERVICE_TOKEN:-}
-      SWARMENV_CONTEXT_SERVICE_URL: http://context:8787
-      SWARMENV_CONTEXT_SERVICE_TOKEN: ${SWARMENV_CONTEXT_SERVICE_TOKEN:-}
-      SWARMENV_JUDGE_SERVICE_URL: http://judge:8787
-      SWARMENV_JUDGE_SERVICE_TOKEN: ${SWARMENV_JUDGE_SERVICE_TOKEN:-}
+      MURM_SERVICE_ID: catalog
+      MURM_SERVICE_PRINCIPALS: ${MURM_CATALOG_SERVICE_PRINCIPALS:-[]}
+      MURM_SERVICE_PUBLIC_URL: http://catalog:8787
+      MURM_TASK_SERVICE_URL: http://task:8787
+      MURM_TASK_SERVICE_TOKEN: ${MURM_TASK_SERVICE_TOKEN:-}
+      MURM_CONTEXT_SERVICE_URL: http://context:8787
+      MURM_CONTEXT_SERVICE_TOKEN: ${MURM_CONTEXT_SERVICE_TOKEN:-}
+      MURM_JUDGE_SERVICE_URL: http://judge:8787
+      MURM_JUDGE_SERVICE_TOKEN: ${MURM_JUDGE_SERVICE_TOKEN:-}
     ports:
-      - "${SWARMENV_CATALOG_PORT:-8784}:8787"
+      - "${MURM_CATALOG_PORT:-8784}:8787"
 
 volumes:
   task-data:

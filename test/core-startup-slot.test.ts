@@ -16,9 +16,9 @@ test('Core close stops a ready sibling while a late allocation keeps its origina
     async onCreate(id) { if (id === 'fixture-2') { entered(); await gate; } },
     onStart(body) { starts.push(body); },
   });
-  const { createRuntime } = await import('@swarmenv/core');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+  const { createRuntime } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@murm/core/services');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
   const outputDir = await mkdtemp(join(tmpdir(), 'core-startup-slots-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
@@ -27,7 +27,7 @@ test('Core close stops a ready sibling while a late allocation keeps its origina
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
   }), profiles: { worker: { image: 'fixture-image', model: 'default', prompt: 'Controlled startup', writable: false, services: {} } },
-  services: new ServiceRegistry(), maxBots: 2, outputDir });
+  services: new ServiceRegistry(), maxAgents: 2, outputDir });
   t.after(async () => { release(); provider.allowDeletion(); await runtime.close(); });
   const ready = await runtime.spawn({ requestId: 'ready-sibling', profile: 'worker' });
   const spawning = runtime.spawn({ requestId: 'held-allocation', profile: 'worker' }).catch(error => error);
@@ -37,29 +37,29 @@ test('Core close stops a ready sibling while a late allocation keeps its origina
   await assert.rejects(runtime.spawn({ requestId: 'third', profile: 'worker' }), { code: 'CONFLICT' });
   const closing = await runtime.close({ timeoutMs: 20 });
   assert.equal(closing.cleanup, 'pending');
-  const pending = closing.bots.find(row => row.botId !== ready.id);
+  const pending = closing.agents.find(row => row.agentId !== ready.id);
   assert.ok(pending);
-  assert.equal((await runtime.get(pending.botId)).status, 'closing');
+  assert.equal((await runtime.get(pending.agentId)).status, 'closing');
   await assert.rejects(runtime.spawn({ requestId: 'after-close', profile: 'worker' }), { code: 'NOT_ALLOWED' });
   assert.equal(provider.allocations(), 2);
   provider.allowDeletion();
   const sibling = await runtime.stop(ready.id);
   assert.equal(sibling.execution, 'stopped');
   assert.equal(sibling.cleanup, 'complete');
-  assert.equal((await runtime.get(pending.botId)).status, 'closing');
+  assert.equal((await runtime.get(pending.agentId)).status, 'closing');
   release();
   const failure = await spawning;
-  assert.equal(failure.botId, pending.botId);
+  assert.equal(failure.agentId, pending.agentId);
   assert.equal(failure.operation, 'spawn');
   const replay = await runtime.spawn({ requestId: 'held-allocation', profile: 'worker' }).catch(error => error);
-  assert.equal(replay.botId, pending.botId);
+  assert.equal(replay.agentId, pending.agentId);
   const closed = await runtime.close();
   assert.equal(closed.cleanup, 'complete');
-  assert.equal(closed.bots.length, 2);
-  assert.ok(closed.bots.every(row => row.execution === 'stopped' && row.cleanup === 'complete'));
+  assert.equal(closed.agents.length, 2);
+  assert.ok(closed.agents.every(row => row.execution === 'stopped' && row.cleanup === 'complete'));
   assert.equal(starts.length, 1, 'late allocation cannot start a Worker after closure');
   assert.equal(provider.allocations(), 2, 'same request never creates a successor');
   const saved = JSON.parse(await readFile(closed.reportPath, 'utf8'));
   assert.equal(saved.status, 'closed');
-  assert.deepEqual(saved.bots, closed.bots);
+  assert.deepEqual(saved.agents, closed.agents);
 });

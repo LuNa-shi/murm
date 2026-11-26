@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { installServiceHistory } from '../replay/service-history.js';
 import { DatabaseSync } from 'node:sqlite';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
 import { CONTEXT_SCHEMA_SQL } from '../storage/context-schema.js';
 
@@ -25,33 +25,33 @@ function sha256(value: any) {
 }
 
 function normalizeAttachments(input: any = [], readExisting: any) {
-  if (!Array.isArray(input) || input.length > 16) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'attachments must contain at most 16 entries');
+  if (!Array.isArray(input) || input.length > 16) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'attachments must contain at most 16 entries');
   let total = 0;
   const names = new Set();
   return input.map((item: any) => {
     const { name, content_base64: encoded, content_hash: expected, media_type: suppliedType, source } = item ?? {};
     if (typeof name !== 'string' || !name.trim() || name.length > 128 || /[\/\\\x00-\x1f]/.test(name) || ['.', '..'].includes(name) || names.has(name)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'attachments require distinct names without path components');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'attachments require distinct names without path components');
     }
     names.add(name);
     if (source !== undefined && (encoded !== undefined || !readExisting || typeof source?.material_id !== 'string' ||
         typeof source?.attachment_name !== 'string' || typeof expected !== 'string')) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Reference attachments require a source Material ID, attachment name and content_hash');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Reference attachments require a source Material ID, attachment name and content_hash');
     }
     const prior = source === undefined ? null : readExisting(source);
     const mediaType = suppliedType ?? prior?.media_type ?? 'application/octet-stream';
     if ((!prior && (typeof encoded !== 'string' || encoded.length > 350_000)) || typeof mediaType !== 'string' ||
         !/^[\w.+-]+\/[\w.+-]+$/.test(mediaType) || mediaType.length > 100) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'attachment must include bounded base64 bytes and a valid media_type');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'attachment must include bounded base64 bytes and a valid media_type');
     }
     const bytes = prior ? Buffer.from(prior.bytes) : Buffer.from(encoded, 'base64');
     total += bytes.length;
     if ((!prior && bytes.toString('base64') !== encoded) || total > 256 * 1024) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'attachments must use canonical base64 totaling at most 256 KiB');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'attachments must use canonical base64 totaling at most 256 KiB');
     }
     const contentHash = createHash('sha256').update(bytes).digest('hex');
     if ((expected !== undefined && expected !== contentHash) || (prior && prior.content_hash !== contentHash)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'attachment content_hash does not match bytes');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'attachment content_hash does not match bytes');
     }
     return { name, media_type: mediaType, content_hash: contentHash, bytes };
   }).sort((a: any, b: any) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
@@ -60,14 +60,14 @@ function normalizeAttachments(input: any = [], readExisting: any) {
 function boundedText(value: any, fallback: any, max: any, field: any) {
   if (value === undefined) return fallback;
   if (typeof value !== 'string' || !value.trim() || value.length > max) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} must be a non-empty string of at most ${max} characters`);
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `${field} must be a non-empty string of at most ${max} characters`);
   }
   return value.trim();
 }
 
 function requireString(value: any, field: any) {
   if (typeof value !== 'string' || value.length === 0) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
   }
   return value;
 }
@@ -89,7 +89,7 @@ function rejectSecrets(value: any, path: any = 'payload') {
   if (!value || typeof value !== 'object') return;
   for (const [key, child] of Object.entries(value)) {
     if (SECRET_KEY.test(key)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `secret-bearing field ${path}.${key} cannot enter Context Service`);
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `secret-bearing field ${path}.${key} cannot enter Context Service`);
     }
     rejectSecrets(child, `${path}.${key}`);
   }
@@ -118,31 +118,31 @@ export class ContextService {
   dispatch(operation: any, payload: any = {}, envelope: any) {
     this.logger?.append({ event: 'dispatch.start', service: 'context', operation, envelope });
     try {
-      if (typeof this.taskService?.materialScope !== 'function') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Material requests require Task-owned Mission authority');
+      if (typeof this.taskService?.materialScope !== 'function') throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Material requests require Task-owned Mission authority');
       const executionWrite = ['context_publish_material', 'consume_materials', 'material_dispute', 'material_supersede', 'material_unsupersede'].includes(operation) && envelope?.execution_id !== null;
       validateEnvelope(envelope, { executionWrite });
-      const registeredBot = Boolean(this.taskService.getBot?.(envelope.actor_ref));
+      const registeredAgent = Boolean(this.taskService.getAgent?.(envelope.actor_ref));
       const read = ['read_materials', 'context_search_materials', 'list_material_relations', 'context_get_material', 'list_material_consumptions'].includes(operation);
       if (['read_materials', 'context_search_materials'].includes(operation) && ['kind', 'scope', 'role', 'evidence_state'].some((field: any) => Object.hasOwn(payload, field))) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Material queries use content, producer and correction filters');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Material queries use content, producer and correction filters');
       }
       let replayed = false;
       const result = read ? this.#readSnapshot(() => {
         const scopedPayload = this.#scopeRead(payload, envelope);
         if (operation === 'read_materials' || operation === 'context_search_materials') {
-          return registeredBot ? this.#readMaterialPage(scopedPayload) : this.#readMaterials(scopedPayload);
+          return registeredAgent ? this.#readMaterialPage(scopedPayload) : this.#readMaterials(scopedPayload);
         }
         if (operation === 'list_material_relations') return this.listMaterialRelations(scopedPayload);
         if (operation === 'context_get_material') {
           const view = this.#materialView(scopedPayload);
-          return registeredBot && view.material ? { ...view, material: this.#publicMaterial(view.material),
+          return registeredAgent && view.material ? { ...view, material: this.#publicMaterial(view.material),
             usage: this.#materialUsagePage(view.material, scopedPayload) } : view;
         }
         return this.listMaterialConsumptions(scopedPayload);
       }) : this.#lifecycleTransaction(() => {
         const originalFingerprint = operationPayload(operation, payload, envelope);
         const fingerprint = operationPayload(operation, payload,
-          this.taskService?.getBot?.(envelope.actor_ref) ? { ...envelope, state_version: null } : envelope);
+          this.taskService?.getAgent?.(envelope.actor_ref) ? { ...envelope, state_version: null } : envelope);
         const replay = this.#replay(envelope.operation_id, fingerprint, originalFingerprint);
         if (replay) {
           replayed = true;
@@ -154,12 +154,12 @@ export class ContextService {
         else if (operation === 'material_dispute') value = this.#disputeMaterial(payload, envelope);
         else if (operation === 'material_supersede') value = this.#supersedeMaterial(payload, envelope);
         else if (operation === 'material_unsupersede') value = this.#unsupersedeMaterial(payload, envelope);
-        else throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Context Service operation: ${operation}`);
-        if (registeredBot && value.relation) {
+        else throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unsupported Context Service operation: ${operation}`);
+        if (registeredAgent && value.relation) {
           value = { ...value, material: this.#publicMaterial(value.material),
             ...(value.replacement ? { replacement: this.#publicMaterial(value.replacement) } : {}) };
         }
-        if (registeredBot) {
+        if (registeredAgent) {
           if (operation === 'material_unsupersede' && !envelope.execution_id) this.#assertCorrectionCoordinator(envelope);
           else this.#assertExecutionFence(envelope);
         }
@@ -234,12 +234,12 @@ export class ContextService {
   readTakeMaterialInputs({ missionId, materialIds }: any) {
     if (!Array.isArray(materialIds) || materialIds.length > 100 ||
         new Set(materialIds).size !== materialIds.length || materialIds.some((id: any) => typeof id !== 'string' || !id)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task input Materials must contain at most 100 distinct IDs');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Task input Materials must contain at most 100 distinct IDs');
     }
     return this.#readSnapshot(() => materialIds.map((materialId: any) => {
       const material = this.getMaterial(materialId);
       if (!this.#materialInScope(material, { mission_id: missionId })) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task input Material is not readable in this Mission');
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task input Material is not readable in this Mission');
       }
       this.#assertReadableContent(material);
       return { material_id: materialId, version: material.version, content_hash: material.content_hash };
@@ -256,7 +256,7 @@ export class ContextService {
       const material = this.getMaterial(materialId);
       const use = this.#materialInScope(material, { mission_id: missionId }) && find.get(taskId, executionId, materialId);
       if (!use || use.material_version !== material.version || use.content_hash !== material.content_hash) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace Material must have a recorded use in this Execution');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace Material must have a recorded use in this Execution');
       }
       return { material_id: use.material_id, version: use.material_version, content_hash: use.content_hash,
         operation_id: use.operation_id, impact: use.impact };
@@ -278,18 +278,18 @@ export class ContextService {
   }
 
   #publicMaterial(material: any, { summaryOnly = false }: any = {}) {
-    const { material_id, mission_id, producer_task_id, producer_execution_id, producer_bot_id, content_hash,
+    const { material_id, mission_id, producer_task_id, producer_execution_id, producer_agent_id, content_hash,
       version, relation_version, created_at } = material;
     const preview = typeof material.content === 'string' ? material.content : stableStringify(material.content);
     const selected = {
-      material_id, mission_id, producer_task_id, producer_execution_id, producer_bot_id,
+      material_id, mission_id, producer_task_id, producer_execution_id, producer_agent_id,
       content_hash, version, relation_version, created_at, title: material.title ?? preview?.trim().slice(0, 120) ?? material_id,
       summary: material.summary ?? preview?.trim().slice(0, 500) ?? '',
       media_type: material.media_type ?? (typeof material.content === 'string' ? 'text/markdown' : 'application/json'),
       attachments: this.db.prepare('SELECT name, media_type, content_hash, length(bytes) AS size_bytes FROM material_attachments WHERE material_id = ? ORDER BY name').all(material_id).map((row: any) => ({ ...row })),
     };
     return summaryOnly ? selected : { ...selected, content: material.content, provenance: {
-      mission_id, task_id: producer_task_id, execution_id: producer_execution_id, bot_id: producer_bot_id,
+      mission_id, task_id: producer_task_id, execution_id: producer_execution_id, agent_id: producer_agent_id,
       actor_ref: material.provenance?.actor_ref ?? null, used_materials: material.provenance?.used_materials ?? [],
     } };
   }
@@ -308,7 +308,7 @@ export class ContextService {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
         (relationKind !== null && !['supersede', 'dispute'].includes(relationKind)) ||
         [materialId, taskId, sourceTask, sourceExecution, query, relatedId].some((value: any) => value !== null && (typeof value !== 'string' || !value || value.length > 1000))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Invalid Material page filters');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Invalid Material page filters');
     }
     const scope = { mission_id: missionId, material_id: materialId, task_id: taskId,
       producer_task_id: sourceTask, producer_execution_id: sourceExecution, query, include_history: history,
@@ -325,13 +325,13 @@ export class ContextService {
             !Number.isSafeInteger(cursor.offset) || cursor.offset < 0 || cursor.offset > 499 ||
             cursor.after < 0 || cursor.ceiling < cursor.after || cursor.ceiling > ceiling) throw new Error();
         ({ after, ceiling, offset } = cursor);
-      } catch { throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Material cursor does not match this query'); }
+      } catch { throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Material cursor does not match this query'); }
     }
     const rows = this.db.prepare(`WITH window AS MATERIALIZED (
-      SELECT rowid AS sequence, material_id, mission_id, producer_task_id, producer_execution_id, producer_bot_id,
+      SELECT rowid AS sequence, material_id, mission_id, producer_task_id, producer_execution_id, producer_agent_id,
         title, summary, media_type, content_hash, version, created_at, content_json
       FROM materials WHERE mission_id = ? AND rowid > ? AND rowid <= ? ORDER BY rowid LIMIT 501
-    ) SELECT sequence, material_id, mission_id, producer_task_id, producer_execution_id, producer_bot_id, title, summary,
+    ) SELECT sequence, material_id, mission_id, producer_task_id, producer_execution_id, producer_agent_id, title, summary,
       media_type, content_hash, version, created_at, substr(content_json, 1, 502) AS preview,
       CASE WHEN ? IS NULL THEN 1 WHEN instr(lower(title), lower(?)) > 0 THEN 3 WHEN instr(lower(summary), lower(?)) > 0 THEN 2
         WHEN instr(lower(content_json), lower(?)) > 0 THEN 1 ELSE 0 END AS relevance
@@ -398,7 +398,7 @@ export class ContextService {
     const fingerprint = sha256(scope);
     let after = 0;
     let ceiling = this.db.prepare('SELECT COALESCE(MAX(rowid), 0) AS ceiling FROM material_consumptions WHERE material_id = ?').get(material.material_id).ceiling;
-    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Invalid Material usage limit');
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Invalid Material usage limit');
     if (filters.usage_cursor !== undefined) {
       try {
         if (typeof filters.usage_cursor !== 'string' || filters.usage_cursor.length > 2048) throw new Error();
@@ -406,7 +406,7 @@ export class ContextService {
         if (cursor.fingerprint !== fingerprint || !Number.isSafeInteger(cursor.after) || !Number.isSafeInteger(cursor.ceiling) ||
             cursor.after < 0 || cursor.ceiling > ceiling || cursor.after > cursor.ceiling) throw new Error();
         ({ after, ceiling } = cursor);
-      } catch { throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Material usage cursor does not match this query'); }
+      } catch { throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Material usage cursor does not match this query'); }
     }
     const rows = this.db.prepare(`SELECT rowid AS sequence, operation_id, material_id, reader_task, reader_execution,
       action, substr(action_ref, 1, 2000) AS action_ref, material_version, content_hash, substr(impact, 1, 2000) AS impact, created_at
@@ -439,7 +439,7 @@ export class ContextService {
     const sourceExecution = filters.producer_execution_id ?? null;
     const query = filters.query ?? null;
     if (query !== null && (typeof query !== 'string' || query.length === 0)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'query must be a non-empty string or null');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'query must be a non-empty string or null');
     }
     const missionId = filters.mission_id ?? null;
     const includeHistory = filters.include_history === true;
@@ -480,31 +480,31 @@ export class ContextService {
   #consumeMaterials(payload: any, envelope: any) {
     const scope = this.#assertExecutionFence(envelope);
     if (!envelope.task_id || !envelope.execution_id) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'consume_materials requires a bound Task and Execution');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'consume_materials requires a bound Task and Execution');
     }
     const materialIds = payload.material_ids;
     if (!Array.isArray(materialIds) || materialIds.length === 0 || materialIds.length > 100 || materialIds.some((id: any) => typeof id !== 'string' || id.length === 0)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must contain between 1 and 100 Material IDs');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must contain between 1 and 100 Material IDs');
     }
     const uniqueMaterialIds = [...new Set(materialIds)];
     if (uniqueMaterialIds.length !== materialIds.length) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must not contain duplicates');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must not contain duplicates');
     }
     const action = payload.action;
     if (!CONSUMPTION_ACTIONS.has(action)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'action must be route, task, workspace, or integration');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'action must be route, task, workspace, or integration');
     }
     if (payload.action_ref !== undefined && payload.action_ref !== null && (typeof payload.action_ref !== 'string' || payload.action_ref.length === 0)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'action_ref must be a non-empty string or null');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'action_ref must be a non-empty string or null');
     }
-    const impact = payload.impact ?? (scope.bot_id ? null : payload.action_ref ?? null);
-    if ((scope.bot_id || impact !== null) && (typeof impact !== 'string' || !impact.trim() || impact.length > 2_000)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Material consumption requires a concrete impact of at most 2000 characters');
+    const impact = payload.impact ?? (scope.agent_id ? null : payload.action_ref ?? null);
+    if ((scope.agent_id || impact !== null) && (typeof impact !== 'string' || !impact.trim() || impact.length > 2_000)) {
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Material consumption requires a concrete impact of at most 2000 characters');
     }
     const materials = uniqueMaterialIds.map((id: any) => this.getMaterial(id));
     const missing = uniqueMaterialIds.filter((id: any, index: any) => !materials[index]);
     if (missing.length > 0) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Material IDs: ${missing.join(',')}`);
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown Material IDs: ${missing.join(',')}`);
     }
     for (const material of materials) this.#assertMaterialScope(material, scope);
     const createdAt = now();
@@ -528,15 +528,15 @@ export class ContextService {
     const caller = this.#assertExecutionFence(envelope);
     rejectSecrets(payload);
     for (const field of ['kind', 'scope', 'role', 'evidence_state', 'evidence', 'content_ref']) {
-      if (Object.hasOwn(payload, field)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `Unsupported Material publication field: ${field}`);
+      if (Object.hasOwn(payload, field)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `Unsupported Material publication field: ${field}`);
     }
-    if (payload.content === undefined) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material content is required');
+    if (payload.content === undefined) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'material content is required');
     const provenance: any = { actor_ref: envelope.actor_ref, mission_id: caller.mission_id, task_id: caller.task_id,
-      execution_id: caller.execution_id, bot_id: caller.bot_id };
+      execution_id: caller.execution_id, agent_id: caller.agent_id };
     {
       const used = payload.used_material_ids ?? [];
       if (!Array.isArray(used) || used.length > 100 || new Set(used).size !== used.length || used.some((id: any) => typeof id !== 'string' || !id)) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'used_material_ids must contain at most 100 distinct Material IDs');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'used_material_ids must contain at most 100 distinct Material IDs');
       }
       const exactUse = this.db.prepare(`SELECT material_id, material_version, content_hash FROM material_consumptions
         WHERE reader_execution = ? AND material_id = ? AND material_version IS NOT NULL AND impact IS NOT NULL
@@ -546,7 +546,7 @@ export class ContextService {
         const material = this.getMaterial(id);
         this.#assertMaterialScope(material, caller);
         if (!use || !material || use.material_version !== material.version || use.content_hash !== material.content_hash) {
-          throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Used Material requires an exact consumption record from this Execution');
+          throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Used Material requires an exact consumption record from this Execution');
         }
         return { ...use };
       });
@@ -556,7 +556,7 @@ export class ContextService {
       : null);
     const requestedMissionId = payload.mission_id ?? null;
     if (boundMissionId && requestedMissionId && requestedMissionId !== boundMissionId) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material mission_id must match the current Task Mission', {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material mission_id must match the current Task Mission', {
         current_mission_id: boundMissionId,
         requested_mission_id: requestedMissionId,
       });
@@ -567,41 +567,41 @@ export class ContextService {
       provenance.mission_id ??= missionId;
     }
     if (payload.producer_task_id !== undefined && payload.producer_task_id !== envelope.task_id) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'producer_task_id must match the operation envelope');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'producer_task_id must match the operation envelope');
     }
     if (payload.producer_execution_id !== undefined && payload.producer_execution_id !== envelope.execution_id) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'producer_execution_id must match the operation envelope');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'producer_execution_id must match the operation envelope');
     }
     const attachments = normalizeAttachments(payload.attachments, (source: any) => {
       const material = this.getMaterial(source.material_id);
       this.#assertMaterialScope(material, caller);
       const attachment = material && this.db.prepare('SELECT * FROM material_attachments WHERE material_id = ? AND name = ?')
         .get(source.material_id, source.attachment_name);
-      if (!attachment) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Referenced Material attachment is unavailable');
+      if (!attachment) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Referenced Material attachment is unavailable');
       return attachment;
     });
     const contentText = typeof payload.content === 'string' ? payload.content : stableStringify(payload.content);
-    if (typeof contentText !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Material content must be JSON data or text');
+    if (typeof contentText !== 'string') throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Material content must be JSON data or text');
     const title = boundedText(payload.title, contentText.trim().split('\n')[0].trim().slice(0, 120) || 'Material', 120, 'title');
     const summary = boundedText(payload.summary, contentText.trim().slice(0, 500) || title, 500, 'summary');
     const mediaType = payload.media_type ?? (typeof payload.content === 'string' ? 'text/markdown' : 'application/json');
     if (typeof mediaType !== 'string' || mediaType.length > 100 || !/^[\w.+-]+\/[\w.+-]+$/.test(mediaType)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Invalid Material media_type');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Invalid Material media_type');
     }
     if ((Buffer.byteLength(contentText) > 256 * 1024 || (!contentText.trim() && !attachments.length))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Material requires bounded content or an attachment');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Material requires bounded content or an attachment');
     }
     const manifest = attachments.map(({ bytes, ...attachment }: any) => ({ ...attachment, size_bytes: bytes.length }));
     const contentHash = attachments.length ? sha256({ content: payload.content, attachments: manifest }) : sha256(payload.content);
     if (payload.content_hash && payload.content_hash !== contentHash) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'content_hash does not match content');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'content_hash does not match content');
     }
     const materialId = payload.material_id ?? randomUUID();
     const supersedes = payload.supersedes ?? null;
     let version = 1;
     if (supersedes) {
       const previous = this.getMaterial(supersedes);
-      if (!previous) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `superseded material does not exist: ${supersedes}`);
+      if (!previous) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `superseded material does not exist: ${supersedes}`);
       this.#assertMaterialScope(previous, caller);
       version = previous.version + 1;
     }
@@ -613,30 +613,30 @@ export class ContextService {
       version,
       producer_task_id: envelope.task_id,
       producer_execution_id: envelope.execution_id,
-      producer_bot_id: caller?.bot_id ?? null,
+      producer_agent_id: caller?.agent_id ?? null,
       provenance,
       supersedes,
       created_at: now(),
     };
     const existing = this.getMaterial(materialId);
     if (existing) {
-      if (supersedes) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'A new combined publish/supersede request requires a new Material ID; replay the original request ID instead');
+      if (supersedes) throw new MurmError(ERROR_CODES.CONFLICT, 'A new combined publish/supersede request requires a new Material ID; replay the original request ID instead');
       if (existing.content_hash !== contentHash || existing.mission_id !== material.mission_id || existing.supersedes !== material.supersedes ||
-          existing.producer_task_id !== material.producer_task_id || existing.producer_execution_id !== material.producer_execution_id || (existing.producer_bot_id ?? null) !== material.producer_bot_id) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'material_id already contains a different immutable record');
+          existing.producer_task_id !== material.producer_task_id || existing.producer_execution_id !== material.producer_execution_id || (existing.producer_agent_id ?? null) !== material.producer_agent_id) {
+        throw new MurmError(ERROR_CODES.CONFLICT, 'material_id already contains a different immutable record');
       }
       if ((existing.title !== title || existing.summary !== summary || existing.media_type !== mediaType ||
           stableStringify(existing.provenance?.used_materials ?? []) !== stableStringify(provenance.used_materials))) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'material_id already contains different immutable metadata');
+        throw new MurmError(ERROR_CODES.CONFLICT, 'material_id already contains different immutable metadata');
       }
       return { material: this.#publicMaterial(existing) };
     }
     this.db.prepare(`INSERT INTO materials (
       material_id, mission_id, content_hash, content_json, version,
-      producer_task_id, producer_execution_id, producer_bot_id, provenance_json, supersedes, created_at, title, summary, media_type
+      producer_task_id, producer_execution_id, producer_agent_id, provenance_json, supersedes, created_at, title, summary, media_type
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(material.material_id, material.mission_id, material.content_hash, json(material.content), material.version,
-        material.producer_task_id, material.producer_execution_id, material.producer_bot_id, json(material.provenance), material.supersedes,
+        material.producer_task_id, material.producer_execution_id, material.producer_agent_id, json(material.provenance), material.supersedes,
         material.created_at, title, summary, mediaType);
     const insertAttachment = this.db.prepare('INSERT INTO material_attachments (material_id, name, media_type, content_hash, bytes) VALUES (?, ?, ?, ?, ?)');
     for (const attachment of attachments) insertAttachment.run(materialId, attachment.name, attachment.media_type, attachment.content_hash, attachment.bytes);
@@ -654,11 +654,11 @@ export class ContextService {
 
   #advanceRelation(materialId: any, expectedVersion: any) {
     if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'expected_version must be the observed non-negative relation_version');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'expected_version must be the observed non-negative relation_version');
     }
     this.db.prepare('INSERT OR IGNORE INTO material_relation_heads (material_id, version) VALUES (?, 0)').run(materialId);
     const result = this.db.prepare('UPDATE material_relation_heads SET version = version + 1 WHERE material_id = ? AND version = ?').run(materialId, expectedVersion);
-    if (result.changes !== 1) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'Material correction relation changed; reread the Material', {
+    if (result.changes !== 1) throw new MurmError(ERROR_CODES.STALE_VERSION, 'Material correction relation changed; reread the Material', {
       received: expectedVersion, current: this.#relationVersion(materialId),
     });
     return expectedVersion + 1;
@@ -677,10 +677,10 @@ export class ContextService {
     if (filters.attachment_name !== undefined) {
       const name = requireString(filters.attachment_name, 'attachment_name');
       const attachment = this.db.prepare('SELECT * FROM material_attachments WHERE material_id = ? AND name = ?').get(material.material_id, name);
-      if (!attachment) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Material attachment was not found');
+      if (!attachment) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Material attachment was not found');
       const bytes = Buffer.from(attachment.bytes);
       if (createHash('sha256').update(bytes).digest('hex') !== attachment.content_hash) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Stored Material attachment integrity check failed');
+        throw new MurmError(ERROR_CODES.CONFLICT, 'Stored Material attachment integrity check failed');
       }
       return { attachment: { name, media_type: attachment.media_type, content_hash: attachment.content_hash,
         size_bytes: bytes.length, content_base64: bytes.toString('base64') }, material_id: material.material_id };
@@ -700,12 +700,12 @@ export class ContextService {
       .all(material.material_id);
     const attachments = rows.map(({ bytes, ...item }: any) => {
       if (createHash('sha256').update(bytes).digest('hex') !== item.content_hash) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Stored Material attachment integrity check failed');
+        throw new MurmError(ERROR_CODES.CONFLICT, 'Stored Material attachment integrity check failed');
       }
       return { ...item, size_bytes: bytes.length };
     });
     const actual = attachments.length ? sha256({ content: material.content, attachments }) : sha256(material.content);
-    if (actual !== material.content_hash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Stored Material content or attachment manifest is incomplete');
+    if (actual !== material.content_hash) throw new MurmError(ERROR_CODES.CONFLICT, 'Stored Material content or attachment manifest is incomplete');
   }
 
   #insertRelation({ materialId, replacementMaterialId = null, relationKind, envelope, reason, claim = null, version = null }: any) {
@@ -752,7 +752,7 @@ export class ContextService {
     const scope = this.#assertExecutionFence(envelope);
     const materialId = requireString(payload.material_id, 'material_id');
     const material = this.getMaterial(materialId);
-    if (!material) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Material: ${materialId}`);
+    if (!material) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown Material: ${materialId}`);
     this.#assertMaterialScope(material, scope);
     const relation = this.#insertRelation({
       materialId,
@@ -768,10 +768,10 @@ export class ContextService {
     const scope = this.#assertExecutionFence(envelope);
     const materialId = requireString(payload.material_id, 'material_id');
     const replacementMaterialId = requireString(payload.replacement_material_id, 'replacement_material_id');
-    if (materialId === replacementMaterialId) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'a Material cannot supersede itself');
+    if (materialId === replacementMaterialId) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'a Material cannot supersede itself');
     const origin = this.getMaterial(materialId);
     const replacement = this.getMaterial(replacementMaterialId);
-    if (!origin || !replacement) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'supersede relation requires both Materials');
+    if (!origin || !replacement) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'supersede relation requires both Materials');
     this.#assertMaterialScope(origin, scope);
     this.#assertMaterialScope(replacement, scope);
     this.#assertReadableContent(origin);
@@ -782,14 +782,14 @@ export class ContextService {
       JOIN materials origin ON origin.material_id = relation.material_id
       WHERE origin.mission_id = ? AND relation.relation_kind = 'supersede' AND relation.active = 1`).all(scope.mission_id)
       .filter((row: any) => this.#relationInScope(row, scope));
-    if (edges.some((row: any) => row.material_id === materialId)) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Material already has an active successor; explicitly revoke the matching relation first');
+    if (edges.some((row: any) => row.material_id === materialId)) throw new MurmError(ERROR_CODES.CONFLICT, 'Material already has an active successor; explicitly revoke the matching relation first');
     const successors = new Map<any, any>();
     for (const edge of edges) successors.set(edge.material_id, [...(successors.get(edge.material_id) ?? []), edge.replacement_material_id]);
     const pending = [replacementMaterialId];
     const visited = new Set();
     while (pending.length) {
       const id = pending.pop();
-      if (id === materialId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Material supersession would create a directed cycle');
+      if (id === materialId) throw new MurmError(ERROR_CODES.CONFLICT, 'Material supersession would create a directed cycle');
       if (visited.has(id)) continue;
       visited.add(id); pending.push(...(successors.get(id) ?? []));
     }
@@ -806,27 +806,27 @@ export class ContextService {
     const current = this.db.prepare(`SELECT * FROM material_relations
       WHERE material_id = ? AND replacement_material_id = ? AND relation_kind = 'supersede' AND active = 1
       ORDER BY version DESC`).all(materialId, replacementMaterialId).find((row: any) => this.#relationInScope(row, scope));
-    if (!current) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'matching active supersede relation was not found');
+    if (!current) throw new MurmError(ERROR_CODES.CONFLICT, 'matching active supersede relation was not found');
     const reason = requireString(payload.reason, 'reason');
     // Any currently authorized Execution in this Mission may correct an old
     // relation. Actor-name prefixes and relation ownership confer no privilege.
     const version = this.#advanceRelation(materialId, payload.expected_version);
     const result = this.db.prepare(`UPDATE material_relations SET active = 0
       WHERE relation_id = ? AND active = 1`).run(current.relation_id);
-    if (result.changes !== 1) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'supersede relation changed concurrently');
+    if (result.changes !== 1) throw new MurmError(ERROR_CODES.CONFLICT, 'supersede relation changed concurrently');
     this.#recordRelationEvent(current, 'revoked', envelope, reason, version);
     return { material: this.getMaterial(materialId), replacement: this.getMaterial(replacementMaterialId), relation: this.#relationView({ ...current, active: 0 }), relation_version: version };
   }
 
   #assertCorrectionCoordinator(envelope: any) {
     if (typeof this.taskService?.assertMissionCoordination !== 'function') {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Material correction requires trusted Task-owned coordination authority at the commit boundary');
+      throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Material correction requires trusted Task-owned coordination authority at the commit boundary');
     }
     return this.taskService.assertMissionCoordination(envelope, 'unsupersede');
   }
 
   #assertExecutionFence(envelope: any) {
-    if (typeof this.taskService?.materialScope !== 'function') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Material writes require Task-owned Mission authority');
+    if (typeof this.taskService?.materialScope !== 'function') throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Material writes require Task-owned Mission authority');
     return this.taskService.materialScope(envelope, { write: true });
   }
 
@@ -837,19 +837,19 @@ export class ContextService {
   }
 
   #assertMaterialScope(material: any, scope: any) {
-    if (material && scope && !this.#materialInScope(material, scope)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material or its recorded producer belongs to another Mission');
+    if (material && scope && !this.#materialInScope(material, scope)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material or its recorded producer belongs to another Mission');
   }
 
   #materialInScope(material: any, scope: any) {
     if (!material || material.mission_id !== scope.mission_id) return false;
     if (!material.producer_task_id && !material.producer_execution_id) return true;
-    return this.taskService?.materialOriginMission?.(material.producer_task_id, material.producer_execution_id, material.producer_bot_id) === scope.mission_id;
+    return this.taskService?.materialOriginMission?.(material.producer_task_id, material.producer_execution_id, material.producer_agent_id) === scope.mission_id;
   }
 
   #scopeRead(payload: any, envelope: any) {
     const scope = this.taskService.materialScope(envelope);
     const requested = payload.mission_id;
-    if (requested && requested !== scope.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material query belongs to another Mission');
+    if (requested && requested !== scope.mission_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material query belongs to another Mission');
     const materialId = payload.material_id;
     if (materialId) this.#assertMaterialScope(this.getMaterial(materialId), scope);
     return { ...payload, mission_id: scope.mission_id };
@@ -858,7 +858,7 @@ export class ContextService {
   #replay(operationId: any, fingerprint: any, originalFingerprint: any = null) {
     const row = this.db.prepare('SELECT fingerprint, result_json FROM operations WHERE operation_id = ?').get(operationId);
     if (!row) return null;
-    if (row.fingerprint !== fingerprint && row.fingerprint !== originalFingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'operation_id was reused with another payload');
+    if (row.fingerprint !== fingerprint && row.fingerprint !== originalFingerprint) throw new MurmError(ERROR_CODES.CONFLICT, 'operation_id was reused with another payload');
     return parse(row.result_json);
   }
 
@@ -892,7 +892,7 @@ export class ContextService {
   #lifecycleTransaction(callback: any) {
     if (this.taskService.db === this.db) return this.#transaction(callback);
     if (typeof this.taskService.withServiceLifecycleWrite !== 'function') {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Material writes require the local Task lifecycle commit boundary');
+      throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Material writes require the local Task lifecycle commit boundary');
     }
     return this.taskService.withServiceLifecycleWrite(() => this.#transaction(callback));
   }

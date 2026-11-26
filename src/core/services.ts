@@ -1,7 +1,7 @@
 import { Ajv, type ValidateFunction } from 'ajv';
 import type { JsonValue, ServiceManifest, ServiceCapability, ServiceCaller, ServiceRequest, ServiceAdapter } from './service-types.js';
 export type * from './service-types.js';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 
 const IDENTIFIER = /^[a-z][a-z0-9_-]*$/;
 export interface ServiceRegistration {
@@ -26,7 +26,7 @@ export interface ServiceInvocation {
 
 export interface ServiceInvocationRecord {
   runtimeId: string;
-  botId: string;
+  agentId: string;
   profile: string;
   serviceId: string;
   operation: string;
@@ -76,7 +76,7 @@ function compile(manifest: ServiceManifest) {
 }
 
 function invalid(message: string): never {
-  throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, message);
+  throw new MurmError(ERROR_CODES.INVALID_CONTRACT, message);
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -96,8 +96,8 @@ function freeze<T>(value: T): T {
 }
 
 function validateManifest(input: unknown, builtin = false): ServiceManifest {
-  if (!record(input) || !isJson(input) || typeof input.id !== 'string' || !IDENTIFIER.test(input.id) || (input.id === 'bot' && !builtin)) {
-    invalid('Service id must be a valid identifier and bot is reserved');
+  if (!record(input) || !isJson(input) || typeof input.id !== 'string' || !IDENTIFIER.test(input.id) || (input.id === 'agent' && !builtin)) {
+    invalid('Service id must be a valid identifier and agent is reserved');
   }
   if (![input.title, input.purpose, input.provider_version].every(nonempty) || input.contract_version !== '2') {
     invalid('Service requires title, purpose, provider_version and contract_version 2');
@@ -149,16 +149,16 @@ export class ServiceRegistry {
     try { validators.set(snapshot, compile(snapshot)); } catch { invalid('Service schemas must compile as strict synchronous JSON Schema draft-07 without remote resolution'); }
     if (!adapter || typeof adapter.invoke !== 'function') invalid('Service adapter requires invoke(request)');
     if (registryEntries.get(this)!.has(snapshot.id)) {
-      throw new SwarmEnvError(ERROR_CODES.CONFLICT, `Service is already registered: ${snapshot.id}`);
+      throw new MurmError(ERROR_CODES.CONFLICT, `Service is already registered: ${snapshot.id}`);
     }
     registryEntries.get(this)!.set(snapshot.id, Object.freeze({ manifest: snapshot, adapter }));
   }
 
 }
 
-// Internal Core assembly only; the public registry continues to reject bot.
-export function builtinBotRegistration(manifest: ServiceManifest, adapter: ServiceAdapter): Readonly<ServiceRegistration> {
-  if (manifest.id !== 'bot') invalid('Built-in registration must be bot');
+// Internal Core assembly only; the public registry continues to reject agent.
+export function builtinAgentRegistration(manifest: ServiceManifest, adapter: ServiceAdapter): Readonly<ServiceRegistration> {
+  if (manifest.id !== 'agent') invalid('Built-in registration must be agent');
   const snapshot = validateManifest(manifest, true);
   validators.set(snapshot, compile(snapshot));
   return Object.freeze({ manifest: snapshot, adapter: Object.freeze(adapter) });
@@ -192,17 +192,17 @@ export async function invokeService(registration: ServiceRegistration, { operati
   const { manifest, adapter } = registration;
   const capability = manifest.capabilities.find(item => item.operation === operation);
   const identity = { service_id: manifest.id, operation, operation_id: envelope.operation_id };
-  const record = (state: string, outcome: string, error?: { code: string; retryable: boolean }) => recordService?.({ runtimeId: caller.runtimeId, botId: caller.botId, profile: caller.profile,
+  const record = (state: string, outcome: string, error?: { code: string; retryable: boolean }) => recordService?.({ runtimeId: caller.runtimeId, agentId: caller.agentId, profile: caller.profile,
     serviceId: manifest.id, operation, operationId: envelope.operation_id, state, outcome, ...(error ? { error } : {}) });
   record('validation', 'pending');
   if (!capability) {
     record('validation', 'not_executed', { code: 'NOT_FOUND', retryable: false });
-    throw new SwarmEnvError('NOT_FOUND', 'Service operation is not registered', identity);
+    throw new MurmError('NOT_FOUND', 'Service operation is not registered', identity);
   }
   const rules = validators.get(manifest)!.get(operation)!;
   if (!isJson(input) || !rules.input(input)) {
     record('validation', 'not_executed', { code: 'SERVICE_INPUT_INVALID', retryable: false });
-    throw new SwarmEnvError('SERVICE_INPUT_INVALID', 'Service input violates its schema', { ...identity, request_outcome: 'not_executed' });
+    throw new MurmError('SERVICE_INPUT_INVALID', 'Service input violates its schema', { ...identity, request_outcome: 'not_executed' });
   }
   record('validation', 'passed');
   const controller = new AbortController();
@@ -211,19 +211,19 @@ export async function invokeService(registration: ServiceRegistration, { operati
   let timer: ReturnType<typeof setTimeout> | undefined;
   let invoked = false;
   try {
-    if (controller.signal.aborted) throw new SwarmEnvError('NOT_ALLOWED', 'Service caller has closed', identity);
+    if (controller.signal.aborted) throw new MurmError('NOT_ALLOWED', 'Service caller has closed', identity);
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => { reject(new SwarmEnvError('SERVICE_TIMEOUT', 'Service invocation timed out', { ...identity, request_outcome: 'unknown' })); controller.abort(); }, capability.timeout_ms ?? timeoutMs);
-      controller.signal.addEventListener('abort', () => reject(new SwarmEnvError('SERVICE_UNAVAILABLE', 'Service invocation was aborted', { ...identity, request_outcome: 'unknown' })), { once: true });
+      timer = setTimeout(() => { reject(new MurmError('SERVICE_TIMEOUT', 'Service invocation timed out', { ...identity, request_outcome: 'unknown' })); controller.abort(); }, capability.timeout_ms ?? timeoutMs);
+      controller.signal.addEventListener('abort', () => reject(new MurmError('SERVICE_UNAVAILABLE', 'Service invocation was aborted', { ...identity, request_outcome: 'unknown' })), { once: true });
     });
     invoked = true;
     record('invocation', 'pending');
     const result = await Promise.race([Promise.resolve().then(() => {
       controller.signal.throwIfAborted();
       return adapter.invoke({ manifest, capability, input: structuredClone(input), envelope: Object.freeze({ operation_id: envelope.operation_id }), caller: Object.freeze({ ...caller }), signal: controller.signal,
-        assertAuthorized: () => { if(controller.signal.aborted) throw new SwarmEnvError('NOT_ALLOWED','Service caller authority was revoked'); assertAuthorized?.(); } });
+        assertAuthorized: () => { if(controller.signal.aborted) throw new MurmError('NOT_ALLOWED','Service caller authority was revoked'); assertAuthorized?.(); } });
     }), timeout]);
-    if (!isJson(result) || !rules.output(result)) throw new SwarmEnvError('SERVICE_OUTPUT_INVALID', 'Service output violates its schema', { ...identity, request_outcome: capability.side_effect === 'write' ? 'unknown' : 'invalid_output' });
+    if (!isJson(result) || !rules.output(result)) throw new MurmError('SERVICE_OUTPUT_INVALID', 'Service output violates its schema', { ...identity, request_outcome: capability.side_effect === 'write' ? 'unknown' : 'invalid_output' });
     record('settled', 'succeeded');
     return result;
   } catch (caught) {
@@ -232,14 +232,14 @@ export async function invokeService(registration: ServiceRegistration, { operati
       || capability.errors.some(item => item.code === error?.code);
     record('settled', !invoked ? 'not_executed' : error?.details?.request_outcome === 'invalid_output' ? 'invalid_output' : 'unknown',
       { code: knownCode ? error.code! : 'SERVICE_UNAVAILABLE', retryable: capability.errors.find(item => item.code === error?.code)?.retryable ?? false });
-    if (error instanceof SwarmEnvError) { error.details = { ...(error.details as Record<string, unknown>), ...identity }; throw error; }
+    if (error instanceof MurmError) { error.details = { ...(error.details as Record<string, unknown>), ...identity }; throw error; }
     const declared = capability.errors.find(item => item.code === error?.code);
-    if (declared) throw new SwarmEnvError(declared.code, error.message ?? 'Service operation failed', identity, { retryable: declared.retryable });
-    throw new SwarmEnvError('SERVICE_UNAVAILABLE', 'Service invocation failed', { ...identity, request_outcome: 'unknown' });
+    if (declared) throw new MurmError(declared.code, error.message ?? 'Service operation failed', identity, { retryable: declared.retryable });
+    throw new MurmError('SERVICE_UNAVAILABLE', 'Service invocation failed', { ...identity, request_outcome: 'unknown' });
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
 }
 
-/** Host-configured HTTP adapter. Its credential never enters Bot environments. */
+/** Host-configured HTTP adapter. Its credential never enters Agent environments. */
 export function createHttpJsonAdapter({ token, timeoutMs = 30_000, fetchImpl = globalThis.fetch }: { token?: string; timeoutMs?: number; fetchImpl?: typeof fetch } = {}) {
   if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 86_400_000 ||
       (token !== undefined && (typeof token !== 'string' || !token))) invalid('HTTP adapter requires a bounded timeout, fetch and optional host token');
@@ -265,17 +265,17 @@ export function createHttpJsonAdapter({ token, timeoutMs = 30_000, fetchImpl = g
         chunks.push(chunk);
       }
       let body;
-      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new SwarmEnvError('SERVICE_UNAVAILABLE', 'HTTP Service returned invalid JSON'); }
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new MurmError('SERVICE_UNAVAILABLE', 'HTTP Service returned invalid JSON'); }
       if (!response.ok || body?.ok !== true) {
         const code = response.status === 401 || response.status === 403 ? 'NOT_ALLOWED' : response.status === 504 ? 'SERVICE_TIMEOUT' : 'SERVICE_UNAVAILABLE';
-        throw new SwarmEnvError(body?.error?.code ?? code, body?.error?.message ?? 'HTTP Service invocation failed', { request_outcome: 'unknown' });
+        throw new MurmError(body?.error?.code ?? code, body?.error?.message ?? 'HTTP Service invocation failed', { request_outcome: 'unknown' });
       }
       return body.result;
     } catch (error) {
-      if (signal?.aborted) throw new SwarmEnvError('SERVICE_UNAVAILABLE', 'HTTP Service invocation was cancelled', { request_outcome: 'unknown' });
-      if (controller.signal.aborted) throw new SwarmEnvError('SERVICE_TIMEOUT', 'HTTP Service invocation timed out', { request_outcome: 'unknown' });
-      if (error instanceof SwarmEnvError) throw error;
-      throw new SwarmEnvError('SERVICE_UNAVAILABLE', 'HTTP Service is unavailable', { request_outcome: 'unknown' });
+      if (signal?.aborted) throw new MurmError('SERVICE_UNAVAILABLE', 'HTTP Service invocation was cancelled', { request_outcome: 'unknown' });
+      if (controller.signal.aborted) throw new MurmError('SERVICE_TIMEOUT', 'HTTP Service invocation timed out', { request_outcome: 'unknown' });
+      if (error instanceof MurmError) throw error;
+      throw new MurmError('SERVICE_UNAVAILABLE', 'HTTP Service is unavailable', { request_outcome: 'unknown' });
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   } });
   adapterMetadata.set(adapter, Object.freeze({ transport: 'http-json', timeoutMs }));

@@ -15,14 +15,16 @@
     ".env.example",
     ".gitignore",
     ".gitmodules",
-    "examples/notes-environment/.npmignore",
-    "examples/subagents-environment/.npmignore",
-    "examples/lead-helper-environment/.npmignore",
-    "examples/scalemas-environment/.npmignore",
-    "examples/agensh-environment/.npmignore",
+    "examples/notes/.npmignore",
+    "examples/subagents/.npmignore",
+    "examples/lead-worker/.npmignore",
+    "examples/substrate/.npmignore",
+    "examples/peermesh/.npmignore",
     "tsconfig.json",
     "tsconfig.tests.json",
-    ".dockerignore"
+    ".dockerignore",
+    "examples/substrate/FateProofGuard.lean",
+    "examples/substrate/VerifyFateProof.lean"
   ],
   "excluded": [
     {
@@ -43,7 +45,7 @@
     },
     {
       "path": "third_party/agensh",
-      "reason": "Pinned external Agensh source. The public-Core Environment documents the native board protocol and schema provenance at its local integration boundary."
+      "reason": "Pinned external PeerMesh source. The public-Core Harness documents the native board protocol and schema provenance at its local integration boundary."
     },
     {
       "path": "dist/",
@@ -55,7 +57,7 @@
       "path": "benchmarks/programbench-pastel/tsconfig.json",
       "category": "development benchmarks",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Opt-in typechecking for the source-checkout Pastel drivers and tests"
     },
@@ -64,7 +66,7 @@
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/08-prompts.md",
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Shared real Pastel prompt, case identity, archive checksums and private run directories"
     },
@@ -72,7 +74,7 @@
       "path": "benchmarks/programbench-pastel/Dockerfile",
       "category": "development benchmarks",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Development-only Worker overlay for the pinned Pastel reference and public documentation"
     },
@@ -80,7 +82,7 @@
       "path": "benchmarks/programbench-pastel/local-integration.ts",
       "category": "development benchmarks",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Loopback Responses fixture, Docker OpenSandbox settings and private receipt persistence"
     },
@@ -88,7 +90,7 @@
       "path": "benchmarks/programbench-pastel/pack-submission.py",
       "category": "development benchmarks",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Bounded deterministic source-only ProgramBench archive builder"
     },
@@ -96,25 +98,25 @@
       "path": "benchmarks/programbench-pastel/pastel-matrix.ts",
       "category": "development benchmarks",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Hosted matrix admission, fixture fingerprints, candidate and adoption audit, and official evaluation"
     },
     {
-      "path": "benchmarks/programbench-pastel/pastel-open-agensh.ts",
+      "path": "benchmarks/programbench-pastel/pastel-open-peermesh.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/08-prompts.md",
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Pastel Board and pinned Git contribution handoff between three peer Bots"
+      "role": "Pastel Board and pinned Git contribution handoff between three peer Agents"
     },
     {
-      "path": "benchmarks/programbench-pastel/pastel-open-flat.ts",
+      "path": "benchmarks/programbench-pastel/pastel-open-taskpool.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/08-prompts.md",
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Pastel Task and Execution setup with Material attachment publication and integration evidence"
     },
@@ -122,16 +124,16 @@
       "path": "benchmarks/programbench-pastel/pastel-open-local.ts",
       "category": "development benchmarks",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Opt-in same-case controlled verification with actual Bots, Services, and source-adoption assertions"
+      "role": "Opt-in same-case controlled verification with actual Agents, Services, and source-adoption assertions"
     },
     {
       "path": "benchmarks/programbench-pastel/pastel-open-subagents.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/08-prompts.md",
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Pastel parent and child dispatch, result routing, and authenticated source checkpoint publication"
     },
@@ -139,7 +141,7 @@
       "path": "benchmarks/programbench-pastel/pastel-open.ts",
       "category": "development benchmarks",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Shared Pastel trial lifecycle, window start, Core model accounting, and private closeout receipt"
     },
@@ -147,24 +149,78 @@
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
       "category": "Execution and control",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/17-harness-reporting.md",
         "docs/architecture/08-prompts.md"
       ],
       "role": "Pastel slice through the ordinary Subagents entry, in-flight user input and independent offline checker"
     },
     {
-      "path": "benchmarks/programbench-pastel/run-window.ts",
+      "path": "benchmarks/putnambench-taskpool/case.ts",
       "category": "development benchmarks",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "Locked PutnamBench case identity and exact upstream input validation"
+    },
+    {
+      "path": "benchmarks/putnambench-taskpool/case.test.ts",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "Original PutnamBench statement replacement rejection regression"
+    },
+    {
+      "path": "benchmarks/putnambench-taskpool/lean.ts",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "Locked three-layer Putnam Lean deployment and matching Mathlib search"
+    },
+    {
+      "path": "benchmarks/putnambench-taskpool/main.ts",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "Opt-in PutnamBench preflight and registered hosted entry"
+    },
+    {
+      "path": "benchmarks/putnambench-taskpool/run.ts",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "Putnam TaskPool stores, input window, candidate and receipt composition"
+    },
+    {
+      "path": "benchmarks/putnambench-taskpool/tsconfig.json",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "Opt-in TypeScript check for the Putnam benchmark driver"
+    },
+    {
+      "path": "benchmarks/shared/run-window.ts",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Monotonic Responses admission, active stream cancellation, and deadline-bound checkpoint persistence"
     },
     {
-      "path": "benchmarks/programbench-pastel/run-window.test.ts",
+      "path": "benchmarks/shared/run-window.test.ts",
       "category": "development benchmarks",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Deterministic Core gateway and run-window admission, cancellation, and persistence regressions"
     },
@@ -172,7 +228,7 @@
       "path": "benchmarks/programbench-pastel/source-checkpoint.ts",
       "category": "development benchmarks",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Validate and stage source files before packaging and recording a timed checkpoint"
     },
@@ -215,7 +271,7 @@
       "role": "Node support, dependency requirements and executable package scripts"
     },
     {
-      "path": "scripts/bot-filesystem-policy.c",
+      "path": "scripts/agent-filesystem-policy.c",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -298,7 +354,7 @@
       "role": "Mathlib HTTP provider process and environment settings"
     },
     {
-      "path": "scripts/mount-bot-workspace.py",
+      "path": "scripts/mount-agent-workspace.py",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -492,7 +548,7 @@
         "docs/architecture/01-agent-core.md",
         "docs/architecture/07-run-configuration.md",
         "docs/architecture/16-pi-opensandbox-backend.md",
-        "docs/architecture/18-agensh-environment.md"
+        "docs/architecture/18-peermesh-harness.md"
       ],
       "role": "OpenSandbox agent image recipe containing the worker, Pi package and native shell tools"
     },
@@ -506,14 +562,14 @@
       "role": "Native Pi compatible-provider catalog with runtime environment interpolation"
     },
     {
-      "path": "src/agent/bot-contract.ts",
+      "path": "src/agent/agent-contract.ts",
       "category": "Agent and prompts",
       "chapters": [
         "docs/architecture/01-agent-core.md",
         "docs/architecture/08-prompts.md",
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Flat continuation and notification messages with Service directory projection"
+      "role": "TaskPool continuation and notification messages with Service directory projection"
     },
     {
       "path": "src/agent/capability-profile.ts",
@@ -545,6 +601,15 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Authenticated per-Core tool endpoint, binding and lifecycle orchestration"
+    },
+    {
+      "path": "src/cli/service-command.ts",
+      "category": "service and Agent integration",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Shared mapping between registered Service operations and model-visible CLI commands"
     },
     {
       "path": "src/cli/swarm-cli.ts",
@@ -783,24 +848,24 @@
       "role": "Automatic transaction-aware private SQLite before/after row history and committed write boundaries"
     },
     {
-      "path": "src/runtime/docker-bot-disk.ts",
+      "path": "src/runtime/docker-agent-disk.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
         "docs/architecture/07-run-configuration.md",
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Docker Bot identity validation and bounded filesystem preparation"
+      "role": "Docker Agent identity validation and bounded filesystem preparation"
     },
     {
-      "path": "src/runtime/docker-bot-network.ts",
+      "path": "src/runtime/docker-agent-network.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
         "docs/architecture/07-run-configuration.md",
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Pinned local Docker namespace egress enforcement with frozen per-Bot Profile origins"
+      "role": "Pinned local Docker namespace egress enforcement with frozen per-Agent Profile origins"
     },
     {
       "path": "src/runtime/execution-workspace.ts",
@@ -822,7 +887,16 @@
       "role": "Explicit bounded manual Mission checker and immutable operator decision ledger"
     },
     {
-      "path": "src/environments/flat/mission-service.ts",
+      "path": "src/harnesses/taskpool/mathlib-service.ts",
+      "category": "runtime implementation",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "Core-authorized same-version Mathlib search for the current TaskPool Execution"
+    },
+    {
+      "path": "src/harnesses/taskpool/mission-service.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -831,13 +905,13 @@
       "role": "Optional Core Bridge Mission reads and explicit-grant submission to caller-owned coordination"
     },
     {
-      "path": "src/environments/flat/mission-coordination.ts",
+      "path": "src/harnesses/taskpool/mission-coordination.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/03-mission-task.md",
         "docs/architecture/04-services.md"
       ],
-      "role": "Flat-owned Task/Context/Mission acceptance assembly and host-bound Bridge submission projection"
+      "role": "TaskPool-owned Task/Context/Mission acceptance assembly and host-bound Bridge submission projection"
     },
     {
       "path": "src/runtime/mission-submission.ts",
@@ -879,7 +953,7 @@
         "docs/architecture/02-execution.md",
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Provider-compatible Mission, Bot and Execution identity labels"
+      "role": "Provider-compatible Mission, Agent and Execution identity labels"
     },
     {
       "path": "src/runtime/runtime.ts",
@@ -890,7 +964,7 @@
         "docs/architecture/08-prompts.md",
         "docs/architecture/10-service-api-reference.md"
       ],
-      "role": "Registered Bot binding, physical resource ownership, process failure cleanup and fencing"
+      "role": "Registered Agent binding, physical resource ownership, process failure cleanup and fencing"
     },
     {
       "path": "src/runtime/workspace-contract.ts",
@@ -1155,7 +1229,7 @@
         "docs/architecture/03-mission-task.md",
         "docs/architecture/08-prompts.md"
       ],
-      "role": "Shared durable soft-closeout boundary for Task, Workspace and actual Bot continuation dispatch"
+      "role": "Shared durable soft-closeout boundary for Task, Workspace and actual Agent continuation dispatch"
     },
     {
       "path": "src/task/task-service.ts",
@@ -1180,20 +1254,20 @@
     },
     {
       "path": ".gitmodules",
-      "category": "Agensh Environment",
+      "category": "PeerMesh Harness",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md"
+        "docs/architecture/18-peermesh-harness.md"
       ],
-      "role": "Pinned external Agensh source location and board schema attribution"
+      "role": "Pinned external PeerMesh source location and board schema attribution"
     },
     {
-      "path": "src/core/bot-service.ts",
+      "path": "src/core/agent-service.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
         "docs/architecture/08-prompts.md"
       ],
-      "role": "Built-in Bot Service v2 schema, trusted direct-child authorization and convenience-spawn receipt ledger"
+      "role": "Built-in Agent Service v2 schema, trusted direct-child authorization and convenience-spawn receipt ledger"
     },
     {
       "path": "src/core/index.ts",
@@ -1201,7 +1275,7 @@
       "chapters": [
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Runtime assembly, Bot admission, input and bounded lifecycle"
+      "role": "Runtime assembly, Agent admission, input and bounded lifecycle"
     },
     {
       "path": "src/core/config.ts",
@@ -1216,16 +1290,26 @@
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter"
+    },
+    {
+      "path": "src/core/startup-prompt.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Core sandbox startup system prompt, authorized Service directory and optional Added System Prompt"
     },
     {
       "path": "src/core/bridge.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch"
     },
@@ -1283,7 +1367,7 @@
       "chapters": [
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Bot file-operation identity, preparation receipts, write authority and pending grant fences"
+      "role": "Agent file-operation identity, preparation receipts, write authority and pending grant fences"
     },
     {
       "path": "scripts/core-file-seed.ts",
@@ -1321,84 +1405,84 @@
       "role": "Host artifact stream validation, private staging and manifest publication"
     },
     {
-      "path": "src/environments/shared/run-input.ts",
+      "path": "src/harnesses/shared/run-input.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Environment-owned exclusive idle Bot input wait and uncertain submission guard"
+      "role": "Harness-owned exclusive idle Agent input wait and uncertain submission guard"
     },
     {
-      "path": "src/environments/flat/model-access-policy.ts",
+      "path": "src/harnesses/taskpool/model-access-policy.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Flat Task/Mission model authority and Core synchronous policy adapter"
+      "role": "TaskPool Task/Mission model authority and Core synchronous policy adapter"
     },
     {
-      "path": "src/environments/flat/bot-coordinator.ts",
+      "path": "src/harnesses/taskpool/agent-coordinator.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Trusted Core-returned flat Bot identity registration and readiness"
+      "role": "Trusted Core-returned flat Agent identity registration and readiness"
     },
     {
       "path": "src/core/run-records.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Private Runtime summary configuration, ordered evidence writing and credential redaction"
     },
     {
-      "path": "examples/notes-environment/main.ts",
+      "path": "examples/notes/main.ts",
       "category": "Execution and control",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Installed-package Notes Environment Service, role prompts, input order, archive verification and saved-report CLI"
+      "role": "Installed-package Notes Harness Service, role prompts, input order, archive verification and saved-report CLI"
     },
     {
-      "path": "examples/notes-environment/config.ts",
+      "path": "examples/notes/config.ts",
       "category": "Execution and control",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Sample host lifecycle, provider, model, output and resource configuration"
     },
     {
-      "path": "src/environments/shared/run-report.ts",
+      "path": "src/harnesses/shared/run-report.ts",
       "category": "Execution and control",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Environment host reporting with independent business, cleanup and save failures"
+      "role": "Harness host reporting with independent business, cleanup and save failures"
     },
     {
-      "path": "src/environments/flat/coordination-permissions.ts",
-      "category": "Execution and control",
-      "chapters": [
-        "docs/architecture/02-execution.md",
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Flat host-only validation and immutable copy of existing Task dependency, Material revocation and Mission submission grants"
-    },
-    {
-      "path": "src/environments/flat/task-service.ts",
+      "path": "src/harnesses/taskpool/coordination-permissions.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Flat trusted Service-v2 discovery and idempotent Task handoff entry"
+      "role": "TaskPool host-only validation and immutable copy of existing Task dependency, Material revocation and Mission submission grants"
     },
     {
-      "path": "src/environments/flat/task-handoff.ts",
+      "path": "src/harnesses/taskpool/task-service.ts",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "TaskPool trusted Service-v2 discovery and idempotent Task handoff entry"
+    },
+    {
+      "path": "src/harnesses/taskpool/task-handoff.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1407,7 +1491,7 @@
       "role": "Preparation heartbeat, Core file handoff and stop-confirmed domain compensation"
     },
     {
-      "path": "src/environments/flat/prepare-inputs.ts",
+      "path": "src/harnesses/taskpool/prepare-inputs.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1416,93 +1500,93 @@
       "role": "Fixed Workspace and Material input provenance and canonical FileSeed preparation"
     },
     {
-      "path": "scripts/git-credential-agensh.ts",
-      "category": "Environment integration",
+      "path": "scripts/git-credential-peermesh.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md"
+        "docs/architecture/18-peermesh-harness.md"
       ],
-      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+      "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/agensh/board-process.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/peermesh/board-process.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md"
+        "docs/architecture/18-peermesh-harness.md"
       ],
-      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+      "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/agensh/http.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/peermesh/http.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md"
+        "docs/architecture/18-peermesh-harness.md"
       ],
-      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+      "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/agensh/index.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/peermesh/index.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md",
+        "docs/architecture/18-peermesh-harness.md",
         "docs/architecture/08-prompts.md"
       ],
-      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+      "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/agensh/provision.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/peermesh/provision.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md"
+        "docs/architecture/18-peermesh-harness.md"
       ],
-      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+      "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/agensh/resources.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/peermesh/resources.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md"
+        "docs/architecture/18-peermesh-harness.md"
       ],
-      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+      "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/agensh/services.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/peermesh/services.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md"
+        "docs/architecture/18-peermesh-harness.md"
       ],
-      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+      "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/scalemas/index.ts",
-      "category": "Environment composition",
+      "path": "src/harnesses/substrate/index.ts",
+      "category": "Harness composition",
       "chapters": [
-        "docs/architecture/19-scalemas-environment.md",
+        "docs/architecture/19-substrate-harness.md",
         "docs/architecture/08-prompts.md"
       ],
-      "role": "Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting"
+      "role": "Fixed three-peer Harness drivers, serial exclusive inputs, independent stop and persistent content reporting"
     },
     {
-      "path": "src/environments/scalemas/substrate.ts",
-      "category": "Environment composition",
+      "path": "src/harnesses/substrate/substrate.ts",
+      "category": "Harness composition",
       "chapters": [
-        "docs/architecture/19-scalemas-environment.md",
+        "docs/architecture/19-substrate-harness.md",
         "docs/architecture/08-prompts.md"
       ],
       "role": "Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking"
     },
     {
-      "path": "src/environments/scalemas/collaboration-evidence.ts",
-      "category": "Environment composition",
+      "path": "src/harnesses/substrate/collaboration-evidence.ts",
+      "category": "Harness composition",
       "chapters": [
-        "docs/architecture/19-scalemas-environment.md"
+        "docs/architecture/19-substrate-harness.md"
       ],
       "role": "Host-only verification of ordered immutable collaboration checkpoints and separate publisher stop evidence"
     },
     {
-      "path": "examples/subagents-environment/collaboration-service.ts",
+      "path": "examples/subagents/collaboration-service.ts",
       "category": "Execution and control",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/17-harness-reporting.md",
         "docs/architecture/08-prompts.md"
       ],
       "role": "Six authorized Bash operations and Service state export"
@@ -1511,7 +1595,7 @@
       "path": "test-support/subagents/communication-fixture.ts",
       "category": "Execution and control",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/17-harness-reporting.md",
         "docs/architecture/08-prompts.md"
       ],
       "role": "Fixed communication fixture with text adoption and whole-tree reporting"
@@ -1520,7 +1604,7 @@
       "path": "test-support/subagents/communication-fixture-controller.ts",
       "category": "Execution and control",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/17-harness-reporting.md",
         "docs/architecture/08-prompts.md"
       ],
       "role": "Fixed fixture multi-source input, immutable round snapshots and failure coalescing"
@@ -1529,25 +1613,25 @@
       "path": "test-support/subagents/communication-fixture-prompts.ts",
       "category": "Execution and control",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/17-harness-reporting.md",
         "docs/architecture/08-prompts.md"
       ],
       "role": "Fixed fixture parent and child instructions and enumerated initial goals"
     },
     {
-      "path": "examples/subagents-environment/main.ts",
+      "path": "examples/subagents/main.ts",
       "category": "Execution and control",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/17-harness-reporting.md",
         "docs/architecture/08-prompts.md"
       ],
       "role": "Subagents host Profiles, live user input, one-shot or interactive execution and whole-tree reporting"
     },
     {
-      "path": "examples/subagents-environment/controller.ts",
+      "path": "examples/subagents/controller.ts",
       "category": "Execution and control",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/17-harness-reporting.md",
         "docs/architecture/08-prompts.md"
       ],
       "role": "Tree directory, trusted authorization, message routing, waits, continuation and result snapshots"
@@ -1556,218 +1640,218 @@
       "path": "test-support/subagents/stages.ts",
       "category": "Execution and control",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Optional four-group original-child identity and cumulative text adoption gate over actual controller admissions"
     },
     {
-      "path": "examples/subagents-environment/prompts.ts",
+      "path": "examples/subagents/prompts.ts",
       "category": "Execution and control",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/17-harness-reporting.md",
         "docs/architecture/08-prompts.md"
       ],
       "role": "Production Root and Child instructions for the discovered collaboration Service"
     },
     {
-      "path": "examples/subagents-environment/config.ts",
+      "path": "examples/subagents/config.ts",
       "category": "Execution and control",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Local subagents host model, resource and deadline configuration"
     },
     {
-      "path": "src/environments/agensh/router.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/peermesh/router.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md",
+        "docs/architecture/18-peermesh-harness.md",
         "docs/architecture/08-prompts.md"
       ],
       "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
     },
     {
-      "path": "src/environments/agensh/routed.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/peermesh/routed.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md",
+        "docs/architecture/18-peermesh-harness.md",
         "docs/architecture/08-prompts.md"
       ],
       "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
     },
     {
-      "path": "src/environments/agensh/event-source.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/peermesh/event-source.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md"
+        "docs/architecture/18-peermesh-harness.md"
       ],
       "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
     },
     {
-      "path": "src/environments/lead-helper/board.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/lead-worker/board.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/20-lead-helper-environment.md"
+        "docs/architecture/20-lead-worker-harness.md"
       ],
       "role": "Transactional durable Board, trusted caller ownership and proof acceptance"
     },
     {
-      "path": "src/environments/lead-helper/git.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/lead-worker/git.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/20-lead-helper-environment.md"
+        "docs/architecture/20-lead-worker-harness.md"
       ],
       "role": "Run-scoped fixed-team Git provisioning, PR authorization, head and pinned byte verification"
     },
     {
-      "path": "src/environments/lead-helper/index.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/lead-worker/index.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/20-lead-helper-environment.md"
+        "docs/architecture/20-lead-worker-harness.md"
       ],
-      "role": "Public Core fixed-team Environment, exclusive short or four-stage workflow and pending cleanup ownership"
+      "role": "Public Core fixed-team Harness, exclusive short or four-stage workflow and pending cleanup ownership"
     },
     {
-      "path": "src/environments/lead-helper/prompts.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/lead-worker/prompts.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/20-lead-helper-environment.md",
+        "docs/architecture/20-lead-worker-harness.md",
         "docs/architecture/08-prompts.md"
       ],
       "role": "Lead/helper role and finite continuation instructions"
     },
     {
-      "path": "src/environments/lead-helper/team.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/lead-worker/team.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/20-lead-helper-environment.md"
+        "docs/architecture/20-lead-worker-harness.md"
       ],
-      "role": "Validates fixed lead-helper configuration and exact trusted team identity"
+      "role": "Validates fixed Lead-Worker configuration and exact trusted team identity"
     },
     {
-      "path": "examples/lead-helper-environment/main.ts",
-      "category": "Environment integration",
+      "path": "examples/lead-worker/main.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/20-lead-helper-environment.md"
+        "docs/architecture/20-lead-worker-harness.md"
       ],
-      "role": "Editable lead-helper CLI with public backend assembly and report output"
+      "role": "Editable Lead-Worker CLI with public backend assembly and report output"
     },
     {
-      "path": "examples/lead-helper-environment/config.ts",
-      "category": "Environment integration",
+      "path": "examples/lead-worker/config.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/20-lead-helper-environment.md"
+        "docs/architecture/20-lead-worker-harness.md"
       ],
       "role": "Kimi K3 fixed-team sample configuration and finite resource bounds"
     },
     {
-      "path": "src/environments/agensh/team.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/peermesh/team.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md",
+        "docs/architecture/18-peermesh-harness.md",
         "docs/architecture/08-prompts.md",
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "One Runtime with independently bound peers, exclusive routers and shared cleanup"
     },
     {
-      "path": "src/environments/agensh/delivery.ts",
-      "category": "Environment integration",
+      "path": "src/harnesses/peermesh/delivery.ts",
+      "category": "Harness integration",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md"
+        "docs/architecture/18-peermesh-harness.md"
       ],
       "role": "Trusted scoped fixed-head merge receipts and immutable main-file verification"
     },
     {
-      "path": "src/environments/flat/public-workspace-reads.ts",
+      "path": "src/harnesses/taskpool/public-workspace-reads.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md"
       ],
-      "role": "Flat-owned public Workspace read argument mapping shared by v1 Registry and Core Flat adapters"
+      "role": "TaskPool-owned public Workspace read argument mapping shared by v1 Registry and Core TaskPool adapters"
     },
     {
-      "path": "src/environments/flat/publication-services.ts",
+      "path": "src/harnesses/taskpool/publication-services.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
         "docs/architecture/15-core-runtime.md",
-        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/17-harness-reporting.md",
         "docs/architecture/04-services.md"
       ],
-      "role": "Flat trusted publication, notification handling, optional fixed-revision Judge and checked merge with actual Core/Task authority"
+      "role": "TaskPool trusted publication, notification handling, optional fixed-revision Judge and checked merge with actual Core/Task authority"
     },
     {
-      "path": "src/environments/flat/workspace-check-source.ts",
+      "path": "src/harnesses/taskpool/workspace-check-source.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/04-services.md",
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Shared fixed-public-revision Judge source preparation with caller-owned before/after authority guards"
     },
     {
-      "path": "src/environments/flat/controller.ts",
+      "path": "src/harnesses/taskpool/controller.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
         "docs/architecture/15-core-runtime.md",
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Flat serial discovery, continuation, directed feedback and stop-confirmed replacement policy"
+      "role": "TaskPool serial discovery, continuation, directed feedback and stop-confirmed replacement policy"
     },
     {
-      "path": "src/environments/flat/environment.ts",
+      "path": "src/harnesses/taskpool/harness.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
         "docs/architecture/15-core-runtime.md",
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Flat host composition, optional trusted Workspace capture binding, and independent business/resource reporting"
+      "role": "TaskPool host composition, optional trusted Workspace capture binding, and independent business/resource reporting"
     },
     {
-      "path": "scripts/read-environment-result.ts",
+      "path": "scripts/read-harness-result.ts",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Host CLI for saved result inspection using the shared reader"
     },
     {
-      "path": "src/environments/shared/read-result.ts",
+      "path": "src/harnesses/shared/read-result.ts",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Read saved Environment and Core receipts with expected identity and bounded normal-output projection"
+      "role": "Read saved Harness and Core receipts with expected identity and bounded normal-output projection"
     },
     {
-      "path": "scripts/run-environment.ts",
+      "path": "scripts/run-harness.ts",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Foreground host CLI for explicit local Environment configuration and bounded control"
+      "role": "Foreground host CLI for explicit local Harness configuration and bounded control"
     },
     {
-      "path": "src/environments/shared/foreground-host.ts",
+      "path": "src/harnesses/shared/foreground-host.ts",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Shared foreground Environment driver using existing mode controllers and lifecycle reports"
+      "role": "Shared foreground Harness driver using existing mode controllers and lifecycle reports"
     },
     {
-      "path": "src/environments/shared/foreground-commands.ts",
+      "path": "src/harnesses/shared/foreground-commands.ts",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Serial JSON-line host commands and bounded status/input receipt projection"
     },
     {
-      "path": "examples/notes-environment/.npmignore",
+      "path": "examples/notes/.npmignore",
       "category": "Configuration and build",
       "chapters": [
         "docs/architecture/07-run-configuration.md"
@@ -1775,7 +1859,7 @@
       "role": "Exclude the example default private run-output directory from npm distribution"
     },
     {
-      "path": "examples/subagents-environment/.npmignore",
+      "path": "examples/subagents/.npmignore",
       "category": "Configuration and build",
       "chapters": [
         "docs/architecture/07-run-configuration.md"
@@ -1783,7 +1867,7 @@
       "role": "Exclude the example default private run-output directory from npm distribution"
     },
     {
-      "path": "examples/lead-helper-environment/.npmignore",
+      "path": "examples/lead-worker/.npmignore",
       "category": "Configuration and build",
       "chapters": [
         "docs/architecture/07-run-configuration.md"
@@ -1809,63 +1893,63 @@
       "role": "Pinned third-party license or provenance attachment distributed with identified Lean material"
     },
     {
-      "path": "examples/scalemas-environment/main.ts",
+      "path": "examples/substrate/main.ts",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/19-scalemas-environment.md"
+        "docs/architecture/19-substrate-harness.md"
       ],
-      "role": "Editable installed scaleMAS host, public backend assembly and saved result CLI"
+      "role": "Editable installed Substrate host, public backend assembly and saved result CLI"
     },
     {
-      "path": "examples/scalemas-environment/config.ts",
+      "path": "examples/substrate/config.ts",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/19-scalemas-environment.md"
+        "docs/architecture/19-substrate-harness.md"
       ],
-      "role": "Host-only Kimi K3 scaleMAS configuration and finite resource defaults"
+      "role": "Host-only Kimi K3 Substrate configuration and finite resource defaults"
     },
     {
-      "path": "examples/scalemas-environment/.npmignore",
+      "path": "examples/substrate/.npmignore",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/19-scalemas-environment.md"
+        "docs/architecture/19-substrate-harness.md"
       ],
-      "role": "Exclude default scaleMAS run evidence from packaged examples"
+      "role": "Exclude default Substrate run evidence from packaged examples"
     },
     {
-      "path": "examples/agensh-environment/config.ts",
+      "path": "examples/peermesh/config.ts",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md",
-        "docs/architecture/18-agensh-environment.md"
+        "docs/architecture/17-harness-reporting.md",
+        "docs/architecture/18-peermesh-harness.md"
       ],
-      "role": "Installed foreground Agensh configuration with host-owned prerequisites and finite defaults"
+      "role": "Installed foreground PeerMesh configuration with host-owned prerequisites and finite defaults"
     },
     {
-      "path": "examples/agensh-environment/.npmignore",
+      "path": "examples/peermesh/.npmignore",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md"
+        "docs/architecture/18-peermesh-harness.md"
       ],
-      "role": "Exclude default Agensh run evidence from packaged examples"
+      "role": "Exclude default PeerMesh run evidence from packaged examples"
     },
     {
-      "path": "src/environments/flat/workspace-merge.ts",
+      "path": "src/harnesses/taskpool/workspace-merge.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
         "docs/architecture/04-services.md",
         "docs/architecture/07-run-configuration.md",
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Flat-owned trusted Workspace merge policy, final-tree checker ownership and bounded shutdown"
+      "role": "TaskPool-owned trusted Workspace merge policy, final-tree checker ownership and bounded shutdown"
     },
     {
-      "path": "src/environments/shared/input-admission.ts",
-      "category": "Environment execution",
+      "path": "src/harnesses/shared/input-admission.ts",
+      "category": "Harness execution",
       "chapters": [
-        "docs/architecture/18-agensh-environment.md",
-        "docs/architecture/19-scalemas-environment.md"
+        "docs/architecture/18-peermesh-harness.md",
+        "docs/architecture/19-substrate-harness.md"
       ],
       "role": "Optional bounded FIFO actual-input admission shared across peer routers; cancellation and unknown-outcome queue fence"
     },
@@ -1903,7 +1987,7 @@
     },
     {
       "path": "src/core/types.ts",
-      "role": "Published Core Runtime, Bot, event and receipt contracts",
+      "role": "Published Core Runtime, Agent, event and receipt contracts",
       "category": "Core public runtime",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1926,35 +2010,35 @@
       ]
     },
     {
-      "path": "examples/notes-environment/read-result.ts",
+      "path": "examples/notes/read-result.ts",
       "category": "Example entry points",
       "role": "In-place compiled example import of the shared read-result implementation",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ]
     },
     {
-      "path": "examples/notes-environment/run-input.ts",
+      "path": "examples/notes/run-input.ts",
       "category": "Example entry points",
       "role": "In-place compiled example import of the shared run-input implementation",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ]
     },
     {
-      "path": "examples/notes-environment/run-report.ts",
+      "path": "examples/notes/run-report.ts",
       "category": "Example entry points",
       "role": "In-place compiled example import of the shared run-report implementation",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ]
     },
     {
-      "path": "examples/subagents-environment/run-report.ts",
+      "path": "examples/subagents/run-report.ts",
       "category": "Example entry points",
       "role": "In-place compiled example import of the shared run-report implementation",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ]
     },
     {
@@ -1969,7 +2053,7 @@
       "path": "src/core/service-trace.ts",
       "category": "observability and evidence",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Full Bridge operation trace and optional Service state snapshots"
     },
@@ -1985,7 +2069,7 @@
       "path": "src/core/model-trace.ts",
       "category": "observability and evidence",
       "chapters": [
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Full private model request and response trace writer"
     },
@@ -1996,6 +2080,63 @@
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Native Pi Session prefix, tool pairing and credential removal"
+    },
+    {
+      "path": "examples/substrate/fate-checker.ts",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md"
+      ],
+      "role": "Frozen dependency checks and isolated Lean compilation and replay"
+    },
+    {
+      "path": "examples/substrate/fate-config.ts",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md"
+      ],
+      "role": "Frozen FATE host settings, benchmark selection and model authorization inputs"
+    },
+    {
+      "path": "examples/substrate/fate-run.ts",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Autonomous FATE startup, time fencing, observed progress, candidate freezing and grading"
+    },
+    {
+      "path": "examples/substrate/fate-service.ts",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md"
+      ],
+      "role": "Task search, working Lean budget, stable request scope and durable proof submission"
+    },
+    {
+      "path": "src/harnesses/substrate/paper-substrate.ts",
+      "category": "Environment composition",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md"
+      ],
+      "role": "Paper-style immutable publications, anonymous scoped retrieval, transactional replay and decaying citation ranking"
+    },
+    {
+      "path": "examples/substrate/FateProofGuard.lean",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md"
+      ],
+      "role": "Single proof term parsing inside the trusted declaration"
+    },
+    {
+      "path": "examples/substrate/VerifyFateProof.lean",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md"
+      ],
+      "role": "Original target comparison, kernel replay and axiom auditing"
     }
   ]
 }

@@ -4,8 +4,8 @@ import { createSubagentsController } from '../../dist/test-support/subagents/com
 import { sha256 } from './case.ts';
 import { checkpointSource } from './source-checkpoint.ts';
 
-const parentInstructions = `Spawn two child Bots with complementary Pastel work using swarm bot spawn.
-Ask each child for a useful source file and a reference observation. Child results are delivered as JSON with childId, eventSeq, outcome and output.
+const parentInstructions = `Spawn two child Agents with complementary Pastel work using swarm agent spawn.
+Include the relevant task requirements in each child input. Ask each child for a useful source file and a reference observation. Child results are delivered as JSON with childId, eventSeq, outcome and output.
 Use the actual child results to write a source tree, test it with compile.sh and publish checkpoints using swarm candidate publish --stdin.
 The payload is {"files":{"relative-path":"UTF-8 source text"},"used_children":[{"child_id":"actual UUID","event_seq":1,"file":"relative-path"}]}.
 For each included child, preserve at least one whole source file it supplied, or explain your changes in your output. Keep extending the candidate within the available window.`;
@@ -46,7 +46,7 @@ export async function runOpenSubagents({ state, task, window, start, deadline, i
   const operations = new Map();
   let runtime, parent, controller;
   services.registerService(publishService(({ caller, envelope, input, assertAuthorized }) => {
-    if (caller.botId !== parent.id) throw new Error('Candidate publication requires the parent Bot');
+    if (caller.agentId !== parent.id) throw new Error('Candidate publication requires the parent Agent');
     // The Bridge checks this shape against the publish schema before calling the adapter.
     const submission = input as {
       files: Record<string, string>;
@@ -67,7 +67,7 @@ export async function runOpenSubagents({ state, task, window, start, deadline, i
         const content = decodeChild(source?.result.output)?.files;
         if (!content || !Object.hasOwn(content, child.file) || typeof content[child.file] !== 'string' ||
             !Object.hasOwn(submission.files, child.file) || submission.files[child.file] !== content[child.file]) continue;
-        adopted.set(child.child_id, { botId: child.child_id, eventSeq: child.event_seq,
+        adopted.set(child.child_id, { agentId: child.child_id, eventSeq: child.event_seq,
           parentInputId: source.receipt.inputId, file: child.file, sha256: sha256(content[child.file]) });
       }
       const checkpoint = await checkpointSource({ window, outputDir, files: submission.files, assertAuthorized,
@@ -82,9 +82,9 @@ export async function runOpenSubagents({ state, task, window, start, deadline, i
   try {
     state.stage = 'subagents-startup';
     const common = { image, writable: true, model: 'default' };
-    runtime = await createRuntime({ backend, outputDir, maxBots: capacity, services, profiles: {
-      parent: { ...common, prompt: parentInstructions, services: { bot: ['spawn', 'get', 'send', 'stop'], candidate: ['publish'] }, spawnProfiles: ['child'] },
-      child: { ...common, prompt: `${task}\n\n${childInstructions}`, services: {} },
+    runtime = await createRuntime({ backend, outputDir, maxAgents: capacity, services, profiles: {
+      parent: { ...common, services: { agent: ['spawn', 'get', 'send', 'stop'], candidate: ['publish'] }, spawnProfiles: ['child'] },
+      child: { ...common, prompt: childInstructions, services: {} },
     } });
     state.runtimeId = runtime.id;
     parent = await runtime.spawn({ profile: 'parent', requestId: 'pastel-parent' });

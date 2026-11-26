@@ -1,4 +1,4 @@
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
 
 const capture = (action: any) => {
@@ -8,7 +8,7 @@ const capture = (action: any) => {
 
 /** Built only in the Task coordinator; never accepted from an Agent payload. */
 export function captureServiceAuthority(tasks: any, envelope: any = null, { missionId = null, taskIds = [], provenance = true, workspace = false }: any = {}) {
-  const bot = envelope ? tasks.getBot(envelope.actor_ref) : null;
+  const agent = envelope ? tasks.getAgent(envelope.actor_ref) : null;
   const scope = envelope ? capture(() => tasks.materialScope(envelope)) : null;
   missionId = scope?.value?.mission_id ?? missionId;
   const selectedTasks = [...new Set([envelope?.task_id, ...taskIds].filter(Boolean))];
@@ -32,7 +32,7 @@ export function captureServiceAuthority(tasks: any, envelope: any = null, { miss
     SELECT e.execution_id, e.task_id, e.owner_ref FROM executions e
     JOIN task_records m ON m.task_id = e.task_id WHERE m.mission_id = ?`)
     .all(missionId).map((row: any) => [row.execution_id, { task_id: row.task_id, owner_ref: row.owner_ref, mission_id: missionId }])) : {};
-  return { envelope, bot, tasks: taskMap, executions, origins,
+  return { envelope, agent, tasks: taskMap, executions, origins,
     links: Object.fromEntries(selectedTasks.map((id: any) => [id, tasks.listTaskMaterialIds(id)])), scope,
     write_scope: envelope ? capture(() => tasks.materialScope(envelope, { write: true })) : null,
     mission_open: envelope ? capture(() => { const value = tasks.materialScope(envelope); tasks.assertMissionResearchOpen(value.mission_id); return value.mission_id; }) : null,
@@ -44,7 +44,7 @@ export class ServiceAuthoritySnapshot {
   declare snapshot: any;
 
   constructor(snapshot: any) { this.snapshot = snapshot; }
-  getBot(id: any) { return this.snapshot.bot?.bot_id === id ? this.snapshot.bot : null; }
+  getAgent(id: any) { return this.snapshot.agent?.agent_id === id ? this.snapshot.agent : null; }
   getTask(id: any) { return this.snapshot.tasks[id] ?? null; }
   getExecution(id: any) { return this.snapshot.executions[id] ?? null; }
   listTaskMaterialIds(id: any) { return this.snapshot.links[id] ?? []; }
@@ -55,28 +55,28 @@ export class ServiceAuthoritySnapshot {
   }
   #scope(envelope: any, key: any) {
     if (stableStringify(envelope) !== stableStringify(this.snapshot.envelope)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service authority is bound to one exact request envelope');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Service authority is bound to one exact request envelope');
     }
     const result = this.snapshot[key];
-    if (!result || result.error) throw new SwarmEnvError(result?.error?.code ?? ERROR_CODES.NOT_ALLOWED,
+    if (!result || result.error) throw new MurmError(result?.error?.code ?? ERROR_CODES.NOT_ALLOWED,
       result?.error?.message ?? 'Service authority does not authorize this request');
-    const bot = this.snapshot.bot;
+    const agent = this.snapshot.agent;
     const execution = this.getExecution(envelope.execution_id);
-    const deadlines = bot ? [bot.hard_deadline, bot.state === 'UNBOUND' ? bot.selection_deadline : null,
+    const deadlines = agent ? [agent.hard_deadline, agent.state === 'UNBOUND' ? agent.selection_deadline : null,
       execution?.execution_deadline, execution?.lease_expires_at].filter(Boolean) : [];
     if (deadlines.some((value: any) => !Number.isFinite(Date.parse(value)) || Date.parse(value) <= Date.now())) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service authority deadline elapsed before commit');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Service authority deadline elapsed before commit');
     }
     return result.value;
   }
   materialScope(envelope: any, { write = false }: any = {}) { return this.#scope(envelope, write ? 'write_scope' : 'scope'); }
   assertMissionCoordination(envelope: any, operation: any) {
-    if (operation !== 'unsupersede') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Unsupported service coordination grant');
+    if (operation !== 'unsupersede') throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Unsupported service coordination grant');
     return this.#scope(envelope, 'correction_scope');
   }
   assertMissionResearchOpen(missionId: any) {
     const open = this.snapshot.mission_open;
-    if (!open || open.error || open.value !== missionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, open?.error?.message ?? 'Mission no longer admits research');
+    if (!open || open.error || open.value !== missionId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, open?.error?.message ?? 'Mission no longer admits research');
   }
   withServiceLifecycleWrite(commit: any) { return commit(); }
   // Dependency notifications are derived from the durable command receipt by

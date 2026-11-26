@@ -14,7 +14,7 @@ function completion(model = 'k3') {
     response: { status: 'completed', model, usage: { input_tokens: 3, output_tokens: 2 } } })}\n\n`;
 }
 
-async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, maxOutputTokens = 64, models, provider = 'kimi_proxy', model = 'k3' } = {}) {
+async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, maxOutputTokens = 64, selectionReasoningEffort, models, provider = 'kimi_proxy', model = 'k3' } = {}) {
   const outputDir = await mkdtemp(join(tmpdir(), 'core-model-'));
   const requests = [];
   const upstream = createServer(async (request, response) => {
@@ -29,7 +29,7 @@ async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, m
   upstream.listen(0, '127.0.0.1');
   await once(upstream, 'listening');
   const upstreamUrl = `http://127.0.0.1:${upstream.address().port}/v1/responses`;
-  const bots = new Map([['bot-a', { profile: 'writer', model: 'default', status: 'idle' }]]);
+  const agents = new Map([['agent-a', { profile: 'writer', model: 'default', status: 'idle' }]]);
   let access;
   t.after(async () => {
     await access?.close();
@@ -38,24 +38,24 @@ async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, m
     await rm(outputDir, { recursive: true, force: true });
   });
   const config = {
-    modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs, maxOutputTokens },
+    modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs, maxOutputTokens, selectionReasoningEffort },
     models: models ?? { default: { provider, model,
       upstream: { url: upstreamUrl, headers: { authorization: 'Bearer upstream-private' } } } },
   };
   access = await createCoreModelAccess({ runtimeId: 'runtime-a', outputDir, config,
-    getBot: botId => bots.get(botId) ?? null, modelAccessPolicy });
-  const credentials = access.credentialsForBot('bot-a', 'default');
+    getAgent: agentId => agents.get(agentId) ?? null, modelAccessPolicy });
+  const credentials = access.credentialsForAgent('agent-a', 'default');
   const call = async (requestId = 'request-a', body = { model, input: 'Return a small result.' }) => {
     const response = await fetch(`${credentials.baseUrl}/responses`, {
       method: 'POST', headers: { authorization: `Bearer ${Object.values(credentials.secretEnvironment)[0]}`,
-        'content-type': 'application/json', 'x-swarmenv-request-id': requestId }, body: JSON.stringify(body),
+        'content-type': 'application/json', 'x-murm-request-id': requestId }, body: JSON.stringify(body),
     });
     return { status: response.status, body: await response.text() };
   };
-  return { access, bots, requests, credentials, call, outputDir, config };
+  return { access, agents, requests, credentials, call, outputDir, config };
 }
 
-test('Runtime model access propagates explicit natural output policy while retaining Bot credentials and usage evidence', async t => {
+test('Runtime model access propagates explicit natural output policy while retaining Agent credentials and usage evidence', async t => {
   const { call, requests, access } = await fixture(t, { maxOutputTokens: null });
   const response = await call('natural-runtime', { model: 'k3', input: 'controlled natural work', max_output_tokens: 128000 });
   assert.equal(response.status, 200); assert.equal(requests[0].body.max_output_tokens, 128000);
@@ -63,7 +63,27 @@ test('Runtime model access propagates explicit natural output policy while retai
   assert.ok(access);
 });
 
-test('a generic Runtime Bot calls the shipped model with private upstream credentials and a work receipt', async t => {
+test('configured low reasoning reaches upstream only for newly admitted selection requests', async t => {
+  let phase = 'selection';
+  const f = await fixture(t, {
+    selectionReasoningEffort: 'low', maxOutputTokens: null,
+    modelAccessPolicy: { authorize: () => ({ phase, deadlineAt: Date.now() + 2000 }), withCommit: commit => commit() },
+  });
+  const body = { model: 'k3', input: 'Use the current phase to select or advance work.',
+    reasoning: { effort: 'medium', summary: 'auto' }, max_output_tokens: 128000 };
+  assert.equal((await f.call('select', body)).status, 200);
+  phase = 'work';
+  assert.equal((await f.call('select', body)).status, 200);
+  assert.equal((await f.call('work', body)).status, 200);
+  phase = 'closeout';
+  assert.equal((await f.call('closeout', body)).status, 200);
+  assert.deepEqual(f.requests.map(row => row.body.reasoning), [
+    { effort: 'low', summary: 'auto' }, body.reasoning, body.reasoning,
+  ]);
+  assert.ok(f.requests.every(row => row.body.model === 'k3' && row.body.max_output_tokens === 128000));
+});
+
+test('a generic Runtime Agent calls the shipped model with private upstream credentials and a work receipt', async t => {
   const f = await fixture(t);
   assert.equal(f.requests.length, 0);
   assert.equal((await f.call()).body, completion());
@@ -72,15 +92,15 @@ test('a generic Runtime Bot calls the shipped model with private upstream creden
   assert.deepEqual(f.credentials.environment, { PI_KIMI_PROXY_BASE_URL: f.credentials.baseUrl });
   assert.notEqual(f.credentials.secretEnvironment.PI_KIMI_PROXY_API_KEY, 'upstream-private');
   assert.deepEqual(Object.keys(f.credentials.secretEnvironment), ['PI_KIMI_PROXY_API_KEY']);
-  assert.equal(f.credentials.catalogResource.path, '/opt/swarmenv/pi-agent/models.json');
+  assert.equal(f.credentials.catalogResource.path, '/opt/murm/pi-agent/models.json');
   assert.match(f.credentials.catalogResource.sha256, /^[a-f0-9]{64}$/);
   assert.equal((await f.call()).body, completion());
   assert.equal(f.requests.length, 1);
   const [filename] = await readdir(join(f.outputDir, 'model-access'));
   const ledger = new DatabaseSync(join(f.outputDir, 'model-access', filename), { readOnly: true });
   t.after(() => ledger.close());
-  assert.deepEqual({ ...ledger.prepare('SELECT runtime_id, bot_id, request_id, phase, state, input_tokens, output_tokens FROM runtime_model_attempts').get() },
-    { runtime_id: 'runtime-a', bot_id: 'bot-a', request_id: 'request-a', phase: 'work', state: 'completed', input_tokens: 3, output_tokens: 2 });
+  assert.deepEqual({ ...ledger.prepare('SELECT runtime_id, agent_id, request_id, phase, state, input_tokens, output_tokens FROM runtime_model_attempts').get() },
+    { runtime_id: 'runtime-a', agent_id: 'agent-a', request_id: 'request-a', phase: 'work', state: 'completed', input_tokens: 3, output_tokens: 2 });
   assert.equal(ledger.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE name LIKE '%mission%' OR name LIKE '%task%' OR name LIKE '%execution%'").get().count, 0);
 });
 
@@ -148,23 +168,23 @@ test('K3 tool continuation omits only the exact empty completed Pi message and p
 
 test('model credentials reject unknown identities and requests fail before effects after identity or profile changes', async t => {
   const f = await fixture(t);
-  assert.throws(() => f.access.credentialsForBot('foreign-bot', 'default'), { code: 'NOT_ALLOWED' });
-  assert.throws(() => f.access.credentialsForBot('bot-a', 'unknown'), { code: 'NOT_ALLOWED' });
+  assert.throws(() => f.access.credentialsForAgent('foreign-agent', 'default'), { code: 'NOT_ALLOWED' });
+  assert.throws(() => f.access.credentialsForAgent('agent-a', 'unknown'), { code: 'NOT_ALLOWED' });
   assert.equal((await f.call('conflict')).status, 200);
   assert.equal((await f.call('conflict', { model: 'k3', input: 'Changed input.' })).status, 409);
   assert.equal((await f.call('invalid-model', { model: 'other', input: 'Try another model.' })).status, 400);
-  const bot = f.bots.get('bot-a');
-  bot.status = 'starting';
+  const agent = f.agents.get('agent-a');
+  agent.status = 'starting';
   assert.equal((await f.call('not-ready')).status, 403);
-  bot.status = 'idle';
-  bot.model = 'another';
+  agent.status = 'idle';
+  agent.model = 'another';
   assert.equal((await f.call('foreign-model')).status, 403);
-  bot.model = 'default';
+  agent.model = 'default';
   for (const status of ['closing', 'exited', 'closed']) {
-    bot.status = status;
+    agent.status = status;
     assert.equal((await f.call(status)).status, 403);
   }
-  f.bots.delete('bot-a');
+  f.agents.delete('agent-a');
   assert.equal((await f.call('missing')).status, 403);
   assert.equal(f.requests.length, 1);
 });
@@ -189,7 +209,7 @@ test('optional model policy receives trusted generic identity within one synchro
   } });
   assert.equal((await f.call()).status, 200);
   assert.equal(commitCount, 1);
-  assert.deepEqual(callers, [{ runtimeId: 'runtime-a', botId: 'bot-a', profile: 'writer', model: 'default' }]);
+  assert.deepEqual(callers, [{ runtimeId: 'runtime-a', agentId: 'agent-a', profile: 'writer', model: 'default' }]);
 });
 
 test('invalid model permits deny requests before upstream effects', async t => {
@@ -207,7 +227,7 @@ test('invalid model permits deny requests before upstream effects', async t => {
   assert.equal(f.requests.length, 0);
 });
 
-test('revoking a live Bot aborts its model stream and prevents replacement credentials', async t => {
+test('revoking a live Agent aborts its model stream and prevents replacement credentials', async t => {
   const dispatched = Promise.withResolvers();
   const upstreamClosed = Promise.withResolvers();
   const f = await fixture(t, { reply: (_request, response) => {
@@ -216,11 +236,11 @@ test('revoking a live Bot aborts its model stream and prevents replacement crede
   } });
   const call = f.call().catch(() => ({ status: 502 }));
   await dispatched.promise;
-  f.access.revokeBot('bot-a');
+  f.access.revokeAgent('agent-a');
   assert.equal((await call).status, 502);
   await upstreamClosed.promise;
   assert.equal((await f.call('revoked')).status, 401);
-  assert.throws(() => f.access.credentialsForBot('bot-a', 'default'), { code: 'NOT_ALLOWED' });
+  assert.throws(() => f.access.credentialsForAgent('agent-a', 'default'), { code: 'NOT_ALLOWED' });
   assert.equal(f.requests.length, 1);
 });
 
@@ -268,7 +288,7 @@ test('stream authority follows renewal of the same generic lease and aborts chan
   }
 });
 
-test('unsupported catalog entries, malformed endpoints and nonfinite limits fail before Bot allocation', async t => {
+test('unsupported catalog entries, malformed endpoints and nonfinite limits fail before Agent allocation', async t => {
   const cases = [
     { models: { default: { provider: 'openai', model: 'k3', upstream: { url: 'http://127.0.0.1/v1/responses' } } } },
     { models: { default: { provider: 'kimi_proxy', model: 'unsupported', upstream: { url: 'http://127.0.0.1/v1/responses' } } } },
@@ -291,7 +311,7 @@ test('close aborts live model requests, revokes credentials and is idempotent', 
   assert.equal(f.access.close(), closing);
   await closing;
   await call;
-  assert.throws(() => f.access.credentialsForBot('bot-a', 'default'), { code: 'NOT_ALLOWED' });
+  assert.throws(() => f.access.credentialsForAgent('agent-a', 'default'), { code: 'NOT_ALLOWED' });
 });
 
 test('a deferred model commit cannot dispatch after its synchronous admission window closes', async t => {

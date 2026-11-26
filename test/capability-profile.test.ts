@@ -47,7 +47,7 @@ test('capability profiles are role-scoped, deterministic, and hashable', () => {
 });
 
 test('every role profile excludes legacy Agent surfaces', () => {
-  const legacy = /execution_wait|request_wait|wake(?:_execution)?|parent_review|request_rework|create_rework_task|swarmenv_call/i;
+  const legacy = /execution_wait|request_wait|wake(?:_execution)?|parent_review|request_rework|create_rework_task|murm_call/i;
   for (const role of Object.values(AGENT_ROLES)) {
     const profile = buildCapabilityProfile({ role, registry: createBuiltinServiceRegistry() });
     assert.ok(profile.capabilities.length > 0, `${role} profile should have capabilities`);

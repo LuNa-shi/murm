@@ -10,7 +10,7 @@ import { collectCoreWorkDir } from '../scripts/core-collection.js';
 const execute = promisify(execFile);
 const spec = { paths: ['.'], includeGit: true, maxBytes: 1024 * 1024, required: true };
 
-test('stopped Bot collection preserves empty directories, binary work and unpushed Git history', async t => {
+test('stopped Agent collection preserves empty directories, binary work and unpushed Git history', async t => {
   const root = await mkdtemp(join(tmpdir(), 'core-collection-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, 'empty'));
@@ -88,4 +88,19 @@ test('collection streams bounded chunks and accepts a policy larger than 64 MiB 
   await assert.rejects(inventory(root, { ...spec, includeGit: false, paths: ['../outside'] }), /relative paths/);
   const controller = new AbortController(); controller.abort();
   await assert.rejects(async () => { for await (const record of collectCoreWorkDir(root, { ...spec, includeGit: false }, { signal: controller.signal })) void record; }, { name: 'AbortError' });
+});
+
+test('optional Git collection preserves private files before clone and Git history after clone', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'core-collection-checkout-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, 'private-work'), 'draft');
+  const policy = { ...spec, allowMissingGit: true };
+  const before = await inventory(root, policy);
+  assert.deepEqual(before.directories, []);
+  assert.equal(before.files[0].path, 'private-work');
+  await assert.rejects(inventory(root, spec), /missing path/);
+  await execute('git', ['init', '-q', root]);
+  const after = await inventory(root, policy);
+  assert.ok(after.directories.includes('.git'));
+  assert.ok(after.files.some(file => file.path === '.git/HEAD'));
 });

@@ -21,17 +21,17 @@ for (const contractVersion of [undefined, '2']) for (const timeoutMs of [undefin
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => server.close());
-  const restore = ['SWARMENV_BRIDGE_URL', 'SWARMENV_BRIDGE_TOKEN', 'SWARMENV_BRIDGE_CONTRACT_VERSION'].map(key => [key, process.env[key]]);
+  const restore = ['MURM_BRIDGE_URL', 'MURM_BRIDGE_TOKEN', 'MURM_BRIDGE_CONTRACT_VERSION'].map(key => [key, process.env[key]]);
   t.after(() => {
     for (const [key, value] of restore) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
   });
-  process.env.SWARMENV_BRIDGE_URL = `http://127.0.0.1:${server.address().port}`;
-  process.env.SWARMENV_BRIDGE_TOKEN = 'local-test-credential';
-  if (contractVersion) process.env.SWARMENV_BRIDGE_CONTRACT_VERSION = contractVersion;
-  else delete process.env.SWARMENV_BRIDGE_CONTRACT_VERSION;
+  process.env.MURM_BRIDGE_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.MURM_BRIDGE_TOKEN = 'local-test-credential';
+  if (contractVersion) process.env.MURM_BRIDGE_CONTRACT_VERSION = contractVersion;
+  else delete process.env.MURM_BRIDGE_CONTRACT_VERSION;
   const args = ['task', 'take', 'task-1', ...(timeoutMs ? ['--timeout-ms', String(timeoutMs)] : [])];
   await assert.rejects(runSwarmCli(args), error => {
     assert.equal(invocation.operation, 'task_take');
@@ -51,7 +51,16 @@ test('swarm CLI exposes offline help at every level', async () => {
   let output = '';
   const stdout = { write: (value) => { output += value; } };
   assert.equal(await runSwarmCli(['--help'], { stdout }), 0);
-  assert.match(output, /SWARMENV_<SERVICE>_SERVICE_URL/);
+  assert.match(output, /MURM_<SERVICE>_SERVICE_URL/);
+  assert.match(output, /task create\|list\|view/);
+  output = '';
+  await runSwarmCli(['task', '--help'], { stdout });
+  assert.match(output, /create\|list\|view/);
+  output = '';
+  await runSwarmCli(['task', 'create', '--help'], { stdout });
+  assert.match(output, /high, medium, or low/);
+  assert.match(output, /--acceptance-conditions '\["[^"]+"\]'/);
+  assert.match(output, /task\.task_id/);
   output = '';
   await runSwarmCli(['task', 'view', '--help'], { stdout });
   assert.match(output, /Required: <task-id>/);
@@ -85,8 +94,8 @@ test('swarm task command discovers a manifest and sends a typed JSON request', a
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const endpoint = `http://127.0.0.1:${server.address().port}`;
-  const previous = process.env.SWARMENV_TASK_SERVICE_URL;
-  process.env.SWARMENV_TASK_SERVICE_URL = endpoint;
+  const previous = process.env.MURM_TASK_SERVICE_URL;
+  process.env.MURM_TASK_SERVICE_URL = endpoint;
   try {
     let output = '';
     await runSwarmCli(['task', 'view', '--task-id', 'task-1', '--json'], { stdout: { write: (value) => { output += value; } } });
@@ -97,8 +106,8 @@ test('swarm task command discovers a manifest and sends a typed JSON request', a
     await assert.rejects(runSwarmCli(['task', 'propose', '--base-revision', '0.2']), /unknown task command/);
     assert.ok(!requests.some(request => request.url === '/v1/task_create'));
   } finally {
-    if (previous === undefined) delete process.env.SWARMENV_TASK_SERVICE_URL;
-    else process.env.SWARMENV_TASK_SERVICE_URL = previous;
+    if (previous === undefined) delete process.env.MURM_TASK_SERVICE_URL;
+    else process.env.MURM_TASK_SERVICE_URL = previous;
     server.close();
   }
 });
@@ -114,8 +123,8 @@ test('swarm CLI gives a checker business FAIL its distinct exit code', async () 
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
-  const previous = process.env.SWARMENV_JUDGE_SERVICE_URL;
-  process.env.SWARMENV_JUDGE_SERVICE_URL = `http://127.0.0.1:${server.address().port}`;
+  const previous = process.env.MURM_JUDGE_SERVICE_URL;
+  process.env.MURM_JUDGE_SERVICE_URL = `http://127.0.0.1:${server.address().port}`;
   const output = [];
   try {
     const result = await runSwarmCli(['judge', 'result', '--check-result-id', 'check-1'], {
@@ -124,8 +133,8 @@ test('swarm CLI gives a checker business FAIL its distinct exit code', async () 
     assert.equal(result, 3);
     assert.match(output.join(''), /source_failure/);
   } finally {
-    if (previous === undefined) delete process.env.SWARMENV_JUDGE_SERVICE_URL;
-    else process.env.SWARMENV_JUDGE_SERVICE_URL = previous;
+    if (previous === undefined) delete process.env.MURM_JUDGE_SERVICE_URL;
+    else process.env.MURM_JUDGE_SERVICE_URL = previous;
     server.close();
   }
 });
@@ -143,8 +152,8 @@ test('swarm CLI retains resource-limit diagnosis, location and nonretryable guid
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
-  const previous = process.env.SWARMENV_JUDGE_SERVICE_URL;
-  process.env.SWARMENV_JUDGE_SERVICE_URL = `http://127.0.0.1:${server.address().port}`;
+  const previous = process.env.MURM_JUDGE_SERVICE_URL;
+  process.env.MURM_JUDGE_SERVICE_URL = `http://127.0.0.1:${server.address().port}`;
   const output = [];
   try {
     const exitCode = await runSwarmCli(['judge', 'result', '--check-result-id', 'check-resource'], {
@@ -153,8 +162,8 @@ test('swarm CLI retains resource-limit diagnosis, location and nonretryable guid
     assert.notEqual(exitCode, 3);
     assert.deepEqual(JSON.parse(output.join('')), feedback);
   } finally {
-    if (previous === undefined) delete process.env.SWARMENV_JUDGE_SERVICE_URL;
-    else process.env.SWARMENV_JUDGE_SERVICE_URL = previous;
+    if (previous === undefined) delete process.env.MURM_JUDGE_SERVICE_URL;
+    else process.env.MURM_JUDGE_SERVICE_URL = previous;
     server.close();
   }
 });
@@ -171,10 +180,10 @@ test('Mission CLI submits an explicit empty Material selection', async t => {
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => server.close());
-  const keys = ['SWARMENV_BRIDGE_URL', 'SWARMENV_BRIDGE_TOKEN'];
+  const keys = ['MURM_BRIDGE_URL', 'MURM_BRIDGE_TOKEN'];
   const before = keys.map(key => [key, process.env[key]]);
   t.after(() => { for (const [key, value] of before) if (value === undefined) delete process.env[key]; else process.env[key] = value; });
-  Object.assign(process.env, { SWARMENV_BRIDGE_URL: `http://127.0.0.1:${server.address().port}`, SWARMENV_BRIDGE_TOKEN: 'local-test' });
+  Object.assign(process.env, { MURM_BRIDGE_URL: `http://127.0.0.1:${server.address().port}`, MURM_BRIDGE_TOKEN: 'local-test' });
   await assert.rejects(runSwarmCli(['mission', 'submit', '--request-id', 'implicit-materials'], { stdout: { write() {} } }), /explicit/);
   assert.equal(invocations.length, 0);
   await runSwarmCli(['mission', 'submit', '--materials', '[]', '--request-id', 'stable-final'], { stdout: { write() {} } });
@@ -189,7 +198,7 @@ test('Mission CLI submits an explicit empty Material selection', async t => {
 });
 
 test('deployment check HTTP allowance is scoped and explicit timeout still wins', async t => {
-  const keys = ['SWARMENV_BRIDGE_URL', 'SWARMENV_BRIDGE_TOKEN', 'SWARMENV_CLI_CHECK_REQUEST_TIMEOUT_MS'];
+  const keys = ['MURM_BRIDGE_URL', 'MURM_BRIDGE_TOKEN', 'MURM_CLI_CHECK_REQUEST_TIMEOUT_MS'];
   const restore = keys.map(key => [key, process.env[key]]);
   t.after(() => { for (const [key, value] of restore) {
     if (value === undefined) delete process.env[key]; else process.env[key] = value;
@@ -200,9 +209,9 @@ test('deployment check HTTP allowance is scoped and explicit timeout still wins'
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => { server.closeAllConnections(); server.close(); });
-  process.env.SWARMENV_BRIDGE_URL = `http://127.0.0.1:${server.address().port}`;
-  process.env.SWARMENV_BRIDGE_TOKEN = 'local-test';
-  process.env.SWARMENV_CLI_CHECK_REQUEST_TIMEOUT_MS = '10';
+  process.env.MURM_BRIDGE_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.MURM_BRIDGE_TOKEN = 'local-test';
+  process.env.MURM_CLI_CHECK_REQUEST_TIMEOUT_MS = '10';
   let help = '';
   await runSwarmCli(['judge', 'check', '--help'], { stdout: { write(value) { help += value; } } });
   assert.match(help, /HTTP request \(default 10\)/);
@@ -213,6 +222,6 @@ test('deployment check HTTP allowance is scoped and explicit timeout still wins'
   await assert.rejects(runSwarmCli(['judge', 'check'], { stdout }), { code: 'SERVICE_TIMEOUT' });
   assert.equal(await runSwarmCli(['task', 'view', 'task-1'], { stdout }), 0);
   assert.equal(await runSwarmCli(['judge', 'check', '--timeout-ms', '1000'], { stdout }), 0);
-  process.env.SWARMENV_CLI_CHECK_REQUEST_TIMEOUT_MS = 'invalid';
+  process.env.MURM_CLI_CHECK_REQUEST_TIMEOUT_MS = 'invalid';
   await assert.rejects(runSwarmCli(['judge', 'check'], { stdout }), /timeout-ms must be between/);
 });

@@ -3,7 +3,7 @@ import { MANUAL_MISSION_REVIEW_SCHEMA_SQL } from '../runtime/manual-mission-revi
 import { installServiceHistory } from '../replay/service-history.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { storedCheckerProcessStatus, storedResultClass } from '../judge/check-result.js';
 import { makeEnvelope, operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
 import { MISSION_SUBMISSION_SCHEMA_SQL, SCHEMA_SQL } from '../storage/schema.js';
@@ -19,7 +19,7 @@ const COORDINATION_PERMISSIONS = new Set(['unsupersede', 'task_cancel', 'task_de
 const TASK_PUBLIC_MUTATING_OPERATIONS = new Set(['mission_create', 'task_create', 'task_link_material', 'task_finish', 'task_feedback', 'task_revise', 'task_cancel', 'task_dependency_replace']);
 const TASK_PUBLIC_READ_OPERATIONS = new Set(['mission_get', 'task_list', 'task_view', 'task_materials']);
 const TASK_MUTATING_OPERATIONS = new Set([
-  'bot_exit',
+  'agent_exit',
   'reconcile_task', 'start_execution', 'stop_execution', 'fence_execution', 'save_workspace_revision',
   'task_link_material', 'task_finish',
   ...TASK_PUBLIC_MUTATING_OPERATIONS,
@@ -68,7 +68,7 @@ function hash(value: any) {
 function contractPriority(value: any) {
   const encoded = typeof value === 'string' ? { low: 0, medium: 1, high: 2 }[value] : value;
   if (!Number.isInteger(encoded) || encoded < 0 || encoded > 2) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'priority must explicitly select low, medium, or high (0, 1, or 2)');
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'priority must explicitly select low, medium, or high (0, 1, or 2)');
   }
   return encoded;
 }
@@ -147,7 +147,7 @@ function rowToNotification(row: any) {
 
 function requireString(value: any, field: any) {
   if (typeof value !== 'string' || value.length === 0) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
   }
   return value;
 }
@@ -237,17 +237,17 @@ export class TaskService {
     requireString(missionId, 'mission_id');
     requireString(recipientTaskId, 'recipient_task_id');
     if (!['handoff_warning', 'material_available', 'task_reopened'].includes(type)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'notification type is unsupported');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'notification type is unsupported');
     }
     if (recipientExecutionId !== null) requireString(recipientExecutionId, 'recipient_execution_id');
     if (materialId !== null) requireString(materialId, 'material_id');
     if (sourceTaskId !== null) requireString(sourceTaskId, 'source_task_id');
     if (sourceExecutionId !== null) requireString(sourceExecutionId, 'source_execution_id');
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'notification payload must be an object');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'notification payload must be an object');
     }
-    if (!this.#getMission(missionId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown mission: ${missionId}`);
-    if (!this.getTask(recipientTaskId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown recipient Task: ${recipientTaskId}`);
+    if (!this.#getMission(missionId)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown mission: ${missionId}`);
+    if (!this.getTask(recipientTaskId)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown recipient Task: ${recipientTaskId}`);
     const createdAt = now();
     const notificationId = randomUUID();
     this.db.prepare(`INSERT OR IGNORE INTO task_notifications
@@ -347,11 +347,11 @@ export class TaskService {
     requireString(notificationId, 'notification_id');
     requireString(executionId, 'execution_id');
     const existing = this.db.prepare('SELECT * FROM task_notifications WHERE notification_id = ?').get(notificationId);
-    if (!existing) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown notification: ${notificationId}`);
+    if (!existing) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown notification: ${notificationId}`);
     if (existing.recipient_execution_id && existing.recipient_execution_id !== executionId) {
       const addressed = this.getExecution(existing.recipient_execution_id);
       if (addressed && ['CREATED', 'RUNNING'].includes(addressed.state)) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `notification is addressed to another active Execution: ${existing.recipient_execution_id}`);
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, `notification is addressed to another active Execution: ${existing.recipient_execution_id}`);
       }
     }
     const updatedAt = now();
@@ -384,14 +384,14 @@ export class TaskService {
     requireString(decision, 'handling_decision');
     requireString(action, 'handling_action');
     if (!details || typeof details !== 'object' || Array.isArray(details)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handling details must be an object');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'handling details must be an object');
     }
     const existing = this.db.prepare('SELECT * FROM task_notifications WHERE notification_id = ?').get(notificationId);
-    if (!existing) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown notification: ${notificationId}`);
+    if (!existing) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown notification: ${notificationId}`);
     if (existing.recipient_execution_id && existing.recipient_execution_id !== executionId) {
       const addressed = this.getExecution(existing.recipient_execution_id);
       if (addressed && ['CREATED', 'RUNNING'].includes(addressed.state)) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `notification is addressed to another active Execution: ${existing.recipient_execution_id}`);
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, `notification is addressed to another active Execution: ${existing.recipient_execution_id}`);
       }
     }
     const handledAt = now();
@@ -462,7 +462,7 @@ export class TaskService {
         result = this.#read(normalizedOperation, payload, envelope);
       } else {
         if (!TASK_MUTATING_OPERATIONS.has(normalizedOperation) && !EXECUTION_WRITE_OPERATIONS.has(normalizedOperation)) {
-          throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Task Service operation: ${operation}`);
+          throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unsupported Task Service operation: ${operation}`);
         }
         result = this.#transaction(() => {
           // A finish receipt outlives the Execution versions that it closes.
@@ -470,7 +470,7 @@ export class TaskService {
           // after a lost response; a new request still checks current fences.
           const fingerprintEnvelope = normalizedOperation === 'task_finish'
             ? { ...envelope, state_version: null, fencing_version: null }
-            : (normalizedOperation === 'task_create' || ['task_revise', 'task_cancel', 'task_dependency_replace'].includes(normalizedOperation)) && this.getBot(envelope.actor_ref)
+            : (normalizedOperation === 'task_create' || ['task_revise', 'task_cancel', 'task_dependency_replace'].includes(normalizedOperation)) && this.getAgent(envelope.actor_ref)
               ? { ...envelope, state_version: null } : envelope;
           const fingerprint = operationPayload(normalizedOperation, payload, fingerprintEnvelope);
           const replay = this.#replay(envelope.operation_id, fingerprint);
@@ -478,7 +478,7 @@ export class TaskService {
             replayed = true;
             return replay;
           }
-          if (normalizedOperation !== 'bot_exit') this.assertBotDeadline(envelope.actor_ref);
+          if (normalizedOperation !== 'agent_exit') this.assertAgentDeadline(envelope.actor_ref);
           const value = this.#mutate(normalizedOperation, payload, envelope);
           this.#saveOperation(envelope.operation_id, normalizedOperation, fingerprint, value);
           return value;
@@ -487,8 +487,8 @@ export class TaskService {
       if (normalizedOperation === 'task_finish' && !replayed) {
         this.#emitExecutionState({ kind: 'execution_finish_accepted', execution_id: result.execution.execution_id });
       }
-      if (normalizedOperation === 'bot_exit' && !replayed) {
-        this.#emitExecutionState({ kind: 'bot_exit_accepted', bot_id: result.bot.bot_id });
+      if (normalizedOperation === 'agent_exit' && !replayed) {
+        this.#emitExecutionState({ kind: 'agent_exit_accepted', agent_id: result.agent.agent_id });
       }
       if (TASK_EVENT_OPERATIONS.has(normalizedOperation) && !replayed && (normalizedOperation !== 'reconcile_task' || result?.changed === true)) {
         this.#emitTaskEvent({
@@ -501,7 +501,7 @@ export class TaskService {
           timestamp: now(),
         });
       }
-      if (this.getBot(envelope.actor_ref)) {
+      if (this.getAgent(envelope.actor_ref)) {
         if (result?.task?.mission_id) {
           result = {
             ...result,
@@ -530,19 +530,19 @@ export class TaskService {
     return this.#getMission(requireString(missionId, 'mission_id'));
   }
 
-  getBot(botId: any) {
-    const row = this.db.prepare('SELECT * FROM bots WHERE bot_id = ?').get(requireString(botId, 'bot_id'));
+  getAgent(agentId: any) {
+    const row = this.db.prepare('SELECT * FROM agents WHERE agent_id = ?').get(requireString(agentId, 'agent_id'));
     if (!row) return null;
     const { coordination_permissions_json: permissions, ...binding } = row;
     return { ...binding, coordination_permissions: parse(permissions) ?? [] };
   }
 
-  listRecoverableBots(missionId: any = null) {
+  listRecoverableAgents(missionId: any = null) {
     if (missionId !== null) requireString(missionId, 'mission_id');
     const rows = missionId === null
-      ? this.db.prepare("SELECT bot_id FROM bots WHERE state <> 'CLOSED' ORDER BY mission_id, bot_id").all()
-      : this.db.prepare("SELECT bot_id FROM bots WHERE mission_id = ? AND state <> 'CLOSED' ORDER BY bot_id").all(missionId);
-    return rows.map((row: any) => this.getBot(row.bot_id));
+      ? this.db.prepare("SELECT agent_id FROM agents WHERE state <> 'CLOSED' ORDER BY mission_id, agent_id").all()
+      : this.db.prepare("SELECT agent_id FROM agents WHERE mission_id = ? AND state <> 'CLOSED' ORDER BY agent_id").all(missionId);
+    return rows.map((row: any) => this.getAgent(row.agent_id));
   }
 
   /** Install a trusted synchronous gate at the Mission lifecycle boundary. */
@@ -562,6 +562,11 @@ export class TaskService {
     return this.#transaction(commit);
   }
 
+  getAcceptedSubmission(missionId: any) {
+    const row = this.db.prepare("SELECT document FROM mission_submissions WHERE mission_id = ? AND state = 'accepted' ORDER BY rowid DESC LIMIT 1").get(requireString(missionId, 'mission_id'));
+    return row ? parse(row.document) : null;
+  }
+
   isMissionStopped(missionId: any) {
     return Boolean(this.db.prepare("SELECT 1 FROM mission_submissions WHERE mission_id = ? AND state = 'accepted' LIMIT 1").get(missionId)
       || this.missionStopReader?.(missionId));
@@ -569,48 +574,48 @@ export class TaskService {
 
   #assertMissionOpen(missionId: any) {
     if (this.isMissionStopped(missionId)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission no longer admits new work');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Mission no longer admits new work');
     }
   }
 
-  /** Task-owned authorization for a registered Bot with an explicit narrow grant. */
+  /** Task-owned authorization for a registered Agent with an explicit narrow grant. */
   assertMissionCoordination(envelope: any, operation: any) {
     validateEnvelope(envelope);
-    const bot = this.getBot(envelope.actor_ref);
-    if (!COORDINATION_PERMISSIONS.has(operation) || !bot?.coordination_permissions.includes(operation)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot lacks the required Mission coordination grant');
+    const agent = this.getAgent(envelope.actor_ref);
+    if (!COORDINATION_PERMISSIONS.has(operation) || !agent?.coordination_permissions.includes(operation)) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent lacks the required Mission coordination grant');
     }
-    this.#assertMissionOpen(bot.mission_id);
-    return this.materialScope(envelope, { write: bot.state === 'ACTIVE' });
+    this.#assertMissionOpen(agent.mission_id);
+    return this.materialScope(envelope, { write: agent.state === 'ACTIVE' });
   }
 
   /** Synchronous Context authority seam; reads only Task-owned rows. */
   materialScope(envelope: any, { write = false }: any = {}) {
     validateEnvelope(envelope);
-    const bot = this.getBot(envelope.actor_ref);
-    this.assertBotDeadline(envelope.actor_ref);
-    if (bot) {
-      if (!['UNBOUND', 'ACTIVE'].includes(bot.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot cannot access Materials in its current state');
-      if (bot.state === 'UNBOUND') {
-        if (write || envelope.execution_id || envelope.task_id || bot.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material contributions require a bound active Bot');
-        if (Date.parse(bot.selection_deadline) <= Date.now()) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot discovery deadline elapsed');
-        return { mission_id: bot.mission_id, bot_id: bot.bot_id, task_id: null, execution_id: null };
+    const agent = this.getAgent(envelope.actor_ref);
+    this.assertAgentDeadline(envelope.actor_ref);
+    if (agent) {
+      if (!['UNBOUND', 'ACTIVE'].includes(agent.state)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent cannot access Materials in its current state');
+      if (agent.state === 'UNBOUND') {
+        if (write || envelope.execution_id || envelope.task_id || agent.execution_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material contributions require a bound active Agent');
+        if (Date.parse(agent.selection_deadline) <= Date.now()) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent discovery deadline elapsed');
+        return { mission_id: agent.mission_id, agent_id: agent.agent_id, task_id: null, execution_id: null };
       }
-      if (!envelope.execution_id || bot.execution_id !== envelope.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material request does not match the Bot binding');
+      if (!envelope.execution_id || agent.execution_id !== envelope.execution_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material request does not match the Agent binding');
     }
     if (write) validateEnvelope(envelope, { executionWrite: true });
     const execution = write ? this.#executionForWrite(envelope) : this.getExecution(envelope.execution_id);
-    if (!execution || execution.owner_ref !== envelope.actor_ref || execution.task_id !== envelope.task_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material request requires its actual Execution owner');
-    if (write && !['CREATED', 'RUNNING'].includes(execution.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material contributions require an active Execution');
-    if (bot && execution.state !== 'RUNNING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material contributions require a running Execution');
-    if (bot && execution.lease_expires_at && Date.parse(execution.lease_expires_at) <= Date.now()) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material Execution lease has expired');
-    if (bot) {
+    if (!execution || execution.owner_ref !== envelope.actor_ref || execution.task_id !== envelope.task_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material request requires its actual Execution owner');
+    if (write && !['CREATED', 'RUNNING'].includes(execution.state)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material contributions require an active Execution');
+    if (agent && execution.state !== 'RUNNING') throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material contributions require a running Execution');
+    if (agent && execution.lease_expires_at && Date.parse(execution.lease_expires_at) <= Date.now()) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material Execution lease has expired');
+    if (agent) {
       const task = this.db.prepare('SELECT state, spec_version FROM tasks WHERE task_id = ?').get(execution.task_id);
-      if (!task || task.state !== 'RUNNING' || task.spec_version !== execution.spec_version) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material Execution no longer matches its current Task');
+      if (!task || task.state !== 'RUNNING' || task.spec_version !== execution.spec_version) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material Execution no longer matches its current Task');
     }
     const missionId = this.#taskMissionId(execution.task_id);
-    if (!missionId || (bot && bot.mission_id !== missionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material binding has no matching Mission');
-    return { mission_id: missionId, bot_id: bot?.bot_id ?? null, task_id: execution.task_id, execution_id: execution.execution_id };
+    if (!missionId || (agent && agent.mission_id !== missionId)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material binding has no matching Mission');
+    return { mission_id: missionId, agent_id: agent?.agent_id ?? null, task_id: execution.task_id, execution_id: execution.execution_id };
   }
 
   /** Historical provenance lookup; terminal E records remain readable. */
@@ -621,175 +626,175 @@ export class TaskService {
 
   // Read the durable clock boundary on the synchronous write path. A delayed
   // timer still owns cleanup, but cannot extend authorization for new work.
-  assertBotDeadline(actorRef: any) {
-    const bot = this.getBot(actorRef);
-    if (!bot) return;
-    const hard = Date.parse(bot.hard_deadline);
-    const execution = bot.execution_id ? this.getExecution(bot.execution_id) : null;
+  assertAgentDeadline(actorRef: any) {
+    const agent = this.getAgent(actorRef);
+    if (!agent) return;
+    const hard = Date.parse(agent.hard_deadline);
+    const execution = agent.execution_id ? this.getExecution(agent.execution_id) : null;
     const executionDeadline = execution?.execution_deadline ? Date.parse(execution.execution_deadline) : Infinity;
     if (!Number.isFinite(hard) || hard <= Date.now() || executionDeadline <= Date.now()) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot or Execution hard deadline elapsed');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent or Execution hard deadline elapsed');
     }
   }
 
-  /** Runtime-only registration; no model capability may invent a Bot identity. */
-  registerBot({ botId = `bot:${randomUUID()}`, missionId, coreId, legacySlotId = coreId, selectionDeadline, hardDeadline = selectionDeadline, coordinationPermissions = [] }: any) {
-    requireString(botId, 'bot_id');
+  /** Runtime-only registration; no model capability may invent a Agent identity. */
+  registerAgent({ agentId = `agent:${randomUUID()}`, missionId, coreId, legacySlotId = coreId, selectionDeadline, hardDeadline = selectionDeadline, coordinationPermissions = [] }: any) {
+    requireString(agentId, 'agent_id');
     requireString(missionId, 'mission_id');
     requireString(legacySlotId, 'legacySlotId');
-    if (coreId !== undefined && coreId !== legacySlotId) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Conflicting legacy capacity identities');
+    if (coreId !== undefined && coreId !== legacySlotId) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Conflicting legacy capacity identities');
     coreId = legacySlotId;
     if (!Array.isArray(coordinationPermissions) || [...coordinationPermissions].some((permission: any) => !COORDINATION_PERMISSIONS.has(permission))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Unknown Mission coordination grant');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Unknown Mission coordination grant');
     }
     if (typeof selectionDeadline !== 'string' || !Number.isFinite(Date.parse(selectionDeadline)) || Date.parse(selectionDeadline) <= Date.now()) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'selection_deadline must be a finite future timestamp');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'selection_deadline must be a finite future timestamp');
     }
     if (typeof hardDeadline !== 'string' || !Number.isFinite(Date.parse(hardDeadline)) || Date.parse(hardDeadline) <= Date.now() || Date.parse(selectionDeadline) > Date.parse(hardDeadline)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot hard deadline must be finite and no earlier than its selection deadline');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Agent hard deadline must be finite and no earlier than its selection deadline');
     }
     return this.#transaction(() => {
-      if (!this.getMission(missionId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unknown Mission');
+      if (!this.getMission(missionId)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'unknown Mission');
       this.#assertMissionOpen(missionId);
-      if (this.getBot(botId)) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot identity already exists');
-      const occupant = this.db.prepare("SELECT bot_id FROM bots WHERE mission_id = ? AND core_id = ? AND state <> 'CLOSED'").get(missionId, coreId);
-      if (occupant) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core still owns a Bot', { bot_id: occupant.bot_id });
+      if (this.getAgent(agentId)) throw new MurmError(ERROR_CODES.CONFLICT, 'Agent identity already exists');
+      const occupant = this.db.prepare("SELECT agent_id FROM agents WHERE mission_id = ? AND core_id = ? AND state <> 'CLOSED'").get(missionId, coreId);
+      if (occupant) throw new MurmError(ERROR_CODES.CONFLICT, 'Core still owns a Agent', { agent_id: occupant.agent_id });
       const startedAt = now();
-      this.db.prepare(`INSERT INTO bots (bot_id, mission_id, core_id, state, selection_deadline, hard_deadline, resource_key, started_at, updated_at, coordination_permissions_json, sandbox_create_state)
-        VALUES (?, ?, ?, 'STARTING', ?, ?, ?, ?, ?, ?, 'NOT_DISPATCHED')`).run(botId, missionId, coreId, selectionDeadline, hardDeadline, botId, startedAt, startedAt,
+      this.db.prepare(`INSERT INTO agents (agent_id, mission_id, core_id, state, selection_deadline, hard_deadline, resource_key, started_at, updated_at, coordination_permissions_json, sandbox_create_state)
+        VALUES (?, ?, ?, 'STARTING', ?, ?, ?, ?, ?, ?, 'NOT_DISPATCHED')`).run(agentId, missionId, coreId, selectionDeadline, hardDeadline, agentId, startedAt, startedAt,
           json([...new Set(coordinationPermissions)]));
-      return this.getBot(botId);
+      return this.getAgent(agentId);
     });
   }
 
   /** Runtime-only admission at the asynchronous provider startup boundaries. */
-  assertBotStartupAllowed(botId: any) {
-    const bot = this.getBot(botId);
+  assertAgentStartupAllowed(agentId: any) {
+    const agent = this.getAgent(agentId);
     const nowMs = Date.now();
-    if (!bot || bot.state !== 'STARTING' ||
-        Date.parse(bot.selection_deadline) <= nowMs || Date.parse(bot.hard_deadline) <= nowMs) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup is not eligible to proceed');
+    if (!agent || agent.state !== 'STARTING' ||
+        Date.parse(agent.selection_deadline) <= nowMs || Date.parse(agent.hard_deadline) <= nowMs) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent startup is not eligible to proceed');
     }
-    this.#assertMissionOpen(bot.mission_id);
-    return bot;
+    this.#assertMissionOpen(agent.mission_id);
+    return agent;
   }
 
-  recordBotSandboxDispatch(botId: any, { provider, timeoutSeconds }: any) {
+  recordAgentSandboxDispatch(agentId: any, { provider, timeoutSeconds }: any) {
     requireString(provider, 'provider');
-    if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Sandbox create requires a finite lifetime');
+    if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 1) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Sandbox create requires a finite lifetime');
     return this.#transaction(() => {
-      this.assertBotStartupAllowed(botId);
-      const result = this.db.prepare(`UPDATE bots SET provider = ?, sandbox_create_state = 'UNKNOWN',
-        sandbox_timeout_seconds = ?, updated_at = ? WHERE bot_id = ? AND state = 'STARTING' AND sandbox_create_state = 'NOT_DISPATCHED'`)
-        .run(provider, timeoutSeconds, now(), botId);
-      if (!result.changes) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot cannot dispatch sandbox creation');
+      this.assertAgentStartupAllowed(agentId);
+      const result = this.db.prepare(`UPDATE agents SET provider = ?, sandbox_create_state = 'UNKNOWN',
+        sandbox_timeout_seconds = ?, updated_at = ? WHERE agent_id = ? AND state = 'STARTING' AND sandbox_create_state = 'NOT_DISPATCHED'`)
+        .run(provider, timeoutSeconds, now(), agentId);
+      if (!result.changes) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent cannot dispatch sandbox creation');
     });
   }
 
-  recordBotSandboxRejection(botId: any) {
+  recordAgentSandboxRejection(agentId: any) {
     return this.#transaction(() => {
-      const result = this.db.prepare(`UPDATE bots SET sandbox_create_state = 'REJECTED', updated_at = ?
-        WHERE bot_id = ? AND state <> 'CLOSED' AND sandbox_create_state = 'UNKNOWN' AND sandbox_id IS NULL`).run(now(), botId);
-      if (!result.changes) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot sandbox creation has no pending rejection');
+      const result = this.db.prepare(`UPDATE agents SET sandbox_create_state = 'REJECTED', updated_at = ?
+        WHERE agent_id = ? AND state <> 'CLOSED' AND sandbox_create_state = 'UNKNOWN' AND sandbox_id IS NULL`).run(now(), agentId);
+      if (!result.changes) throw new MurmError(ERROR_CODES.CONFLICT, 'Agent sandbox creation has no pending rejection');
     });
   }
 
-  recordBotSandbox(botId: any, { provider, sandboxId, expiresAt = null }: any) {
+  recordAgentSandbox(agentId: any, { provider, sandboxId, expiresAt = null }: any) {
     requireString(provider, 'provider');
     requireString(sandboxId, 'sandbox_id');
     return this.#transaction(() => {
-      const bot = this.getBot(botId);
-      if (!bot || bot.state === 'CLOSED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot is not awaiting a resource');
-      if (bot.sandbox_id && (bot.sandbox_id !== sandboxId || bot.provider !== provider)) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot already owns another sandbox');
+      const agent = this.getAgent(agentId);
+      if (!agent || agent.state === 'CLOSED') throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent is not awaiting a resource');
+      if (agent.sandbox_id && (agent.sandbox_id !== sandboxId || agent.provider !== provider)) {
+        throw new MurmError(ERROR_CODES.CONFLICT, 'Agent already owns another sandbox');
       }
       const expiry = typeof expiresAt === 'string' && Number.isFinite(Date.parse(expiresAt)) ? new Date(expiresAt).toISOString() : null;
-      this.db.prepare(`UPDATE bots SET provider = ?, sandbox_id = ?, sandbox_create_state = 'CREATED',
-        sandbox_expires_at = COALESCE(?, sandbox_expires_at), updated_at = ? WHERE bot_id = ?`).run(provider, sandboxId, expiry, now(), botId);
-      return this.getBot(botId);
+      this.db.prepare(`UPDATE agents SET provider = ?, sandbox_id = ?, sandbox_create_state = 'CREATED',
+        sandbox_expires_at = COALESCE(?, sandbox_expires_at), updated_at = ? WHERE agent_id = ?`).run(provider, sandboxId, expiry, now(), agentId);
+      return this.getAgent(agentId);
     });
   }
 
-  markBotReady(botId: any) {
+  markAgentReady(agentId: any) {
     return this.#transaction(() => {
-      const current = this.getBot(botId);
+      const current = this.getAgent(agentId);
       if (current?.state === 'UNBOUND') return current;
-      const bot = this.assertBotStartupAllowed(botId);
-      if (!bot.sandbox_id) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup is not eligible to become ready');
+      const agent = this.assertAgentStartupAllowed(agentId);
+      if (!agent.sandbox_id) {
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent startup is not eligible to become ready');
       }
       const readyAt = now();
-      this.db.prepare("UPDATE bots SET state = 'UNBOUND', ready_at = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
-        .run(readyAt, readyAt, botId);
-      return this.getBot(botId);
+      this.db.prepare("UPDATE agents SET state = 'UNBOUND', ready_at = ?, state_version = state_version + 1, updated_at = ? WHERE agent_id = ?")
+        .run(readyAt, readyAt, agentId);
+      return this.getAgent(agentId);
     });
   }
 
-  /** Trusted flat host confirms Core spawn readiness. Provider resources remain Core-owned. */
-  markCoreBotReady(botId: any) {
+  /** Trusted TaskPool host confirms Core spawn readiness. Provider resources remain Core-owned. */
+  markCoreAgentReady(agentId: any) {
     return this.#transaction(() => {
-      const current = this.getBot(botId);
+      const current = this.getAgent(agentId);
       if (current?.state === 'UNBOUND' && !current.sandbox_id) return current;
-      const bot = this.assertBotStartupAllowed(botId);
-      if (bot.sandbox_id || bot.sandbox_create_state !== 'NOT_DISPATCHED') {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core readiness cannot adopt legacy sandbox resources');
+      const agent = this.assertAgentStartupAllowed(agentId);
+      if (agent.sandbox_id || agent.sandbox_create_state !== 'NOT_DISPATCHED') {
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Core readiness cannot adopt legacy sandbox resources');
       }
       const readyAt = now();
-      this.db.prepare("UPDATE bots SET state = 'UNBOUND', ready_at = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
-        .run(readyAt, readyAt, botId);
-      return this.getBot(botId);
+      this.db.prepare("UPDATE agents SET state = 'UNBOUND', ready_at = ?, state_version = state_version + 1, updated_at = ? WHERE agent_id = ?")
+        .run(readyAt, readyAt, agentId);
+      return this.getAgent(agentId);
     });
   }
 
   /** Runtime-only stop; a taken Task must already have reached a terminal state. */
-  requestBotStop(botId: any, reason: any, { terminalState = null, leaseExpiredAt = null }: any = {}) {
+  requestAgentStop(agentId: any, reason: any, { terminalState = null, leaseExpiredAt = null }: any = {}) {
     requireString(reason, 'reason');
-    if (terminalState !== null && !TERMINAL_EXECUTION_STATES.includes(terminalState)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot stop requires a terminal Execution state');
-    if (leaseExpiredAt !== null && (terminalState !== 'EXPIRED' || !Number.isFinite(Date.parse(leaseExpiredAt)))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Lease expiry requires an EXPIRED stop and a valid cutoff');
+    if (terminalState !== null && !TERMINAL_EXECUTION_STATES.includes(terminalState)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Agent stop requires a terminal Execution state');
+    if (leaseExpiredAt !== null && (terminalState !== 'EXPIRED' || !Number.isFinite(Date.parse(leaseExpiredAt)))) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Lease expiry requires an EXPIRED stop and a valid cutoff');
     return this.#transaction(() => {
-      const bot = this.getBot(botId);
-      if (!bot || (bot.execution_id && !terminalState && !TERMINAL_EXECUTION_STATES.includes(this.getExecution(bot.execution_id)?.state))) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'bound Bot must close through its Execution');
+      const agent = this.getAgent(agentId);
+      if (!agent || (agent.execution_id && !terminalState && !TERMINAL_EXECUTION_STATES.includes(this.getExecution(agent.execution_id)?.state))) {
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'bound Agent must close through its Execution');
       }
-      if (['CLOSING', 'CLOSED'].includes(bot.state)) return bot;
+      if (['CLOSING', 'CLOSED'].includes(agent.state)) return agent;
       if (leaseExpiredAt !== null) {
-        const execution = this.getExecution(bot.execution_id);
+        const execution = this.getExecution(agent.execution_id);
         if (!execution || !['CREATED', 'RUNNING'].includes(execution.state) || Date.parse(execution.lease_expires_at) > Date.parse(leaseExpiredAt)) return null;
       }
-      this.db.prepare("UPDATE bots SET state = 'CLOSING', exit_request_id = ?, exit_reason = ?, stop_terminal_state = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
-        .run(`runtime:${randomUUID()}`, reason, terminalState, now(), botId);
-      return this.getBot(botId);
+      this.db.prepare("UPDATE agents SET state = 'CLOSING', exit_request_id = ?, exit_reason = ?, stop_terminal_state = ?, state_version = state_version + 1, updated_at = ? WHERE agent_id = ?")
+        .run(`runtime:${randomUUID()}`, reason, terminalState, now(), agentId);
+      return this.getAgent(agentId);
     });
   }
 
-  /** Trusted Runtime confirms all resources have stopped before freeing a Bot/Core. */
-  finalizeBotClose(botId: any) {
+  /** Trusted Runtime confirms all resources have stopped before freeing a Agent/Core. */
+  finalizeAgentClose(agentId: any) {
     return this.#transaction(() => {
-      const bot = this.getBot(botId);
-      if (bot?.state === 'CLOSED') return bot;
-      if (!bot || bot.state !== 'CLOSING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot has no accepted close');
-      if (bot.execution_id && !TERMINAL_EXECUTION_STATES.includes(this.getExecution(bot.execution_id)?.state)) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot Execution has not safely closed');
+      const agent = this.getAgent(agentId);
+      if (agent?.state === 'CLOSED') return agent;
+      if (!agent || agent.state !== 'CLOSING') throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent has no accepted close');
+      if (agent.execution_id && !TERMINAL_EXECUTION_STATES.includes(this.getExecution(agent.execution_id)?.state)) {
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent Execution has not safely closed');
       }
       const closedAt = now();
-      this.db.prepare("UPDATE bots SET state = 'CLOSED', closed_at = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
-        .run(closedAt, closedAt, botId);
-      return this.getBot(botId);
+      this.db.prepare("UPDATE agents SET state = 'CLOSED', closed_at = ?, state_version = state_version + 1, updated_at = ? WHERE agent_id = ?")
+        .run(closedAt, closedAt, agentId);
+      return this.getAgent(agentId);
     });
   }
 
-  #exitBot(payload: any, envelope: any) {
-    if (envelope.execution_id || envelope.task_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'bound Bot must finish its Task');
-    const bot = this.getBot(envelope.actor_ref);
-    if (!bot || bot.state !== 'UNBOUND' || bot.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'bot exit requires an unbound Bot with no pending take');
-    if (!['no-work', 'selection-budget'].includes(payload.reason)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bot exit reason must be no-work or selection-budget');
+  #exitAgent(payload: any, envelope: any) {
+    if (envelope.execution_id || envelope.task_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'bound Agent must finish its Task');
+    const agent = this.getAgent(envelope.actor_ref);
+    if (!agent || agent.state !== 'UNBOUND' || agent.execution_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'agent exit requires an unbound Agent with no pending take');
+    if (!['no-work', 'selection-budget'].includes(payload.reason)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'agent exit reason must be no-work or selection-budget');
     const at = Date.now();
-    if (!this.isMissionStopped(bot.mission_id) && at < Date.parse(bot.selection_deadline) && at < Date.parse(bot.hard_deadline)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission is still open and the Bot has selection time remaining', { phase: 'discovery_required' });
+    if (!this.isMissionStopped(agent.mission_id) && at < Date.parse(agent.selection_deadline) && at < Date.parse(agent.hard_deadline)) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Mission is still open and the Agent has selection time remaining', { phase: 'discovery_required' });
     }
-    this.db.prepare("UPDATE bots SET state = 'CLOSING', exit_request_id = ?, exit_reason = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
-      .run(envelope.operation_id, payload.reason, now(), bot.bot_id);
-    return { bot: this.getBot(bot.bot_id), disposition: 'closing' };
+    this.db.prepare("UPDATE agents SET state = 'CLOSING', exit_request_id = ?, exit_reason = ?, state_version = state_version + 1, updated_at = ? WHERE agent_id = ?")
+      .run(envelope.operation_id, payload.reason, now(), agent.agent_id);
+    return { agent: this.getAgent(agent.agent_id), disposition: 'closing' };
   }
 
   createMission(input: any, envelope: any = makeEnvelope({ actorRef: input?.created_by ?? 'unknown' })) {
@@ -801,7 +806,7 @@ export class TaskService {
   }
 
   listMissionTasks(filters: any = {}, envelope: any = makeEnvelope({ actorRef: 'unknown' })) {
-    // Controller/report helper retains full records. Bots use paged dispatch.
+    // Controller/report helper retains full records. Agents use paged dispatch.
     validateEnvelope(envelope);
     return this.#listTaskRecords(filters);
   }
@@ -835,7 +840,7 @@ export class TaskService {
   takeTask(taskId: any, payload: any = {}, envelope: any = null) {
     const id = requireString(taskId, 'task_id');
     const task = this.getTask(id);
-    if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${id}`);
+    if (!task) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${id}`);
     const takeEnvelope = envelope ?? makeEnvelope({
       actorRef: payload.owner_ref ?? 'daemon',
       taskId: id,
@@ -861,18 +866,18 @@ export class TaskService {
     return { ...finish, payload: parse(payload_json) };
   }
 
-  /** Trusted Runtime seam, called only after the owning Bot and sandbox have stopped. */
+  /** Trusted Runtime seam, called only after the owning Agent and sandbox have stopped. */
   finalizeExecutionFinish(executionId: any, { fencingVersion }: any) {
     const result = this.#transaction(() => {
       const execution = this.getExecution(executionId);
       const finish = execution?.finish;
-      if (!finish) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution has no accepted finish');
+      if (!finish) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Execution has no accepted finish');
       if (finish.closed_at) return { execution, task: this.getTask(execution.task_id), changed: false };
       const otherOwner = this.db.prepare(`SELECT execution_id FROM executions WHERE task_id = ? AND execution_id <> ?
         AND state IN ('CREATED', 'RUNNING', 'CLOSING') LIMIT 1`).get(execution.task_id, executionId);
       const task = this.getTask(execution.task_id);
       if (execution.state !== 'CLOSING' || execution.fencing_version !== fencingVersion || task.state !== 'RUNNING' || otherOwner) {
-        throw new SwarmEnvError(ERROR_CODES.FENCED, 'finish no longer owns the Task');
+        throw new MurmError(ERROR_CODES.FENCED, 'finish no longer owns the Task');
       }
       const closedAt = now();
       this.db.prepare(`UPDATE executions SET state = ?, terminal_reason = ?, fencing_version = fencing_version + 1,
@@ -918,13 +923,13 @@ export class TaskService {
 
   listTasks({ missionId = null, states = ['OPEN', 'RUNNING'], limit = 10, availableOnly = true, scanAll = false }: any = {}) {
     if (missionId !== null && (typeof missionId !== 'string' || missionId.length === 0)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mission_id must be a non-empty string or null');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'mission_id must be a non-empty string or null');
     }
     if (!Array.isArray(states) || states.length === 0 || states.some((state: any) => typeof state !== 'string' || state.length === 0)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'states must contain at least one task state');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'states must contain at least one task state');
     }
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'limit must be an integer between 1 and 100');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'limit must be an integer between 1 and 100');
     }
     const statePlaceholders = states.map(() => '?').join(', ');
     const conditions = [`t.state IN (${statePlaceholders})`];
@@ -961,9 +966,9 @@ export class TaskService {
    */
   listEligibleTasks({ missionId = null, limit = 10, nowMs = Date.now() }: any = {}) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'limit must be an integer between 1 and 100');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'limit must be an integer between 1 and 100');
     }
-    if (!Number.isFinite(nowMs)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'now_ms must be finite');
+    if (!Number.isFinite(nowMs)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'now_ms must be finite');
     const tasks = this.listTasks({ missionId, states: ['OPEN', 'RUNNING'], limit: 100, availableOnly: false, scanAll: true })
       .filter((task: any) => {
         if (this.#gatingDependencyBlockers(task).length > 0) return false;
@@ -1066,7 +1071,7 @@ export class TaskService {
     const material = this.contextService?.getMaterial(row.material_id);
     if (!material || material.mission_id !== missionId || this.#taskMissionId(row.task_id) !== missionId ||
         this.#taskMissionId(row.producer_task_id) !== missionId ||
-        this.materialOriginMission(row.producer_task_id, row.producer_execution_id, material.producer_bot_id) !== missionId ||
+        this.materialOriginMission(row.producer_task_id, row.producer_execution_id, material.producer_agent_id) !== missionId ||
         this.materialOriginMission(row.created_by_task_id, row.created_by_execution_id) !== missionId ||
         material.producer_task_id !== row.producer_task_id || material.producer_execution_id !== row.producer_execution_id) return null;
     return rowToMaterialLink(row, material);
@@ -1123,22 +1128,22 @@ export class TaskService {
 
   #createMission(payload: any, envelope: any) {
     if (envelope.task_id !== null || envelope.execution_id !== null) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission creation cannot target a Task or Execution');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Mission creation cannot target a Task or Execution');
     }
     const missionId = payload.mission_id ?? randomUUID();
     requireString(missionId, 'mission_id');
     requireString(payload.goal, 'goal');
     if (payload.acceptance_conditions !== undefined && (typeof payload.acceptance_conditions !== 'object' || payload.acceptance_conditions === null)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'acceptance_conditions must be an object or array');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'acceptance_conditions must be an object or array');
     }
     const mergeCheck = payload.merge_required_check ?? null;
     if (mergeCheck !== null && (typeof mergeCheck !== 'object' || Array.isArray(mergeCheck) ||
         !['checker_ref', 'checker_version', 'environment_ref'].every((field: any) => typeof mergeCheck[field] === 'string' && mergeCheck[field]))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'merge_required_check must identify the checker, version and environment');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'merge_required_check must identify the checker, version and environment');
     }
     const createdAt = now();
     const existing = this.#getMission(missionId);
-    if (existing) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'mission_id already exists', { mission_id: missionId });
+    if (existing) throw new MurmError(ERROR_CODES.CONFLICT, 'mission_id already exists', { mission_id: missionId });
     this.db.prepare(`INSERT INTO missions
       (mission_id, goal, acceptance_conditions_json, merge_required_check_json, created_by, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
@@ -1157,30 +1162,30 @@ export class TaskService {
     requireString(payload.mission_id, 'mission_id');
     requireString(payload.summary, 'summary');
     requireString(payload.expected_output, 'expected_output');
-    if (!payload.summary.trim() || payload.summary.length > 240) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'summary must be a nonblank short title of at most 240 characters');
-    if (!payload.expected_output.trim() || payload.expected_output.length > 4000) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'expected_output must be nonblank and at most 4000 characters');
+    if (!payload.summary.trim() || payload.summary.length > 240) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'summary must be a nonblank short title of at most 240 characters');
+    if (!payload.expected_output.trim() || payload.expected_output.length > 4000) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'expected_output must be nonblank and at most 4000 characters');
     if (payload.acceptance_conditions === undefined || payload.acceptance_conditions === null ||
       (typeof payload.acceptance_conditions !== 'object' && !Array.isArray(payload.acceptance_conditions))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'acceptance_conditions must be an object or array');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'acceptance_conditions must be an object or array');
     }
     if ((Array.isArray(payload.acceptance_conditions) && payload.acceptance_conditions.length === 0) ||
       (!Array.isArray(payload.acceptance_conditions) && Object.keys(payload.acceptance_conditions).length === 0)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'acceptance_conditions must contain at least one condition');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'acceptance_conditions must contain at least one condition');
     }
     const timebox = payload.timebox_ms ?? 60 * 60 * 1000;
-    if (!Number.isInteger(timebox) || timebox <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timebox_ms must be a positive integer');
+    if (!Number.isInteger(timebox) || timebox <= 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'timebox_ms must be a positive integer');
     const responsibilityKey = payload.responsibility_key ?? null;
     if (responsibilityKey !== null && (typeof responsibilityKey !== 'string' || responsibilityKey.length === 0 || responsibilityKey.length > 256)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key must be a non-empty string of at most 256 characters');
+      throw new MurmError(ERROR_CODES.INVALID_TASK_CONTRACT, 'responsibility_key must be a non-empty string of at most 256 characters');
     }
     return { timebox_ms: timebox };
   }
 
   #assertDependencyCycle(taskId: any, prerequisiteTaskId: any) {
-    if (taskId === prerequisiteTaskId) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'depends_on cannot point to the same Task');
+    if (taskId === prerequisiteTaskId) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'depends_on cannot point to the same Task');
     const seen = new Set();
     const visit = (candidate: any) => {
-      if (candidate === taskId) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'depends_on would create a cycle');
+      if (candidate === taskId) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'depends_on would create a cycle');
       if (seen.has(candidate)) return;
       seen.add(candidate);
       const rows = this.db.prepare(`SELECT related_task_id FROM task_relations
@@ -1212,35 +1217,35 @@ export class TaskService {
     payload = normalizeTaskContractText(payload);
     const removedFields = ['task_type', 'task_type_version', 'parallel_quota', 'max_attempts', 'retry_policy', 'capability_requirements', 'capabilityRequirements'];
     const unsupported = removedFields.filter((field: any) => Object.hasOwn(payload, field));
-    if (unsupported.length) throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'Task proposal contains unsupported fields', { unsupported_fields: unsupported });
-    const callerBot = this.getBot(envelope.actor_ref);
-    if (payload.mission_id === undefined && callerBot) payload = { ...payload, mission_id: callerBot.mission_id };
+    if (unsupported.length) throw new MurmError(ERROR_CODES.INVALID_TASK_CONTRACT, 'Task proposal contains unsupported fields', { unsupported_fields: unsupported });
+    const callerAgent = this.getAgent(envelope.actor_ref);
+    if (payload.mission_id === undefined && callerAgent) payload = { ...payload, mission_id: callerAgent.mission_id };
     const { timebox_ms: timeboxMs } = this.#assertTaskRecordInput(payload);
     const missionId = payload.mission_id;
     const mission = this.#getMission(missionId);
-    if (!mission) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown mission: ${missionId}`);
+    if (!mission) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown mission: ${missionId}`);
     this.#assertMissionOpen(missionId);
-    const bot = this.getBot(envelope.actor_ref);
-    const gap = payload.gap ?? (bot ? null : payload.summary);
-    if (bot && payload.gap === undefined) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'gap is required');
+    const agent = this.getAgent(envelope.actor_ref);
+    const gap = payload.gap ?? (agent ? null : payload.summary);
+    if (agent && payload.gap === undefined) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'gap is required');
     requireString(gap, 'gap');
-    if (!gap.trim() || gap.length > 4000) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'gap must describe a concrete Mission contribution in at most 4000 characters');
-    if (bot && payload.priority === undefined) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'priority is required');
+    if (!gap.trim() || gap.length > 4000) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'gap must describe a concrete Mission contribution in at most 4000 characters');
+    if (agent && payload.priority === undefined) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'priority is required');
     const validatedPriority = contractPriority(payload.priority ?? 'medium');
-    if (bot) {
-      if (!['UNBOUND', 'ACTIVE'].includes(bot.state) || bot.mission_id !== missionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task proposal requires a live Bot in its own Mission');
-      if (bot.state === 'ACTIVE' && (!envelope.execution_id || bot.execution_id !== envelope.execution_id)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bound Task proposal must include the current Bot Execution');
-      if (bot.state === 'UNBOUND' && (envelope.execution_id || envelope.task_id || bot.execution_id || Date.parse(bot.selection_deadline) <= Date.now())) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Unbound Task proposal requires valid selection authority');
+    if (agent) {
+      if (!['UNBOUND', 'ACTIVE'].includes(agent.state) || agent.mission_id !== missionId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task proposal requires a live Agent in its own Mission');
+      if (agent.state === 'ACTIVE' && (!envelope.execution_id || agent.execution_id !== envelope.execution_id)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bound Task proposal must include the current Agent Execution');
+      if (agent.state === 'UNBOUND' && (envelope.execution_id || envelope.task_id || agent.execution_id || Date.parse(agent.selection_deadline) <= Date.now())) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Unbound Task proposal requires valid selection authority');
     }
     let currentExecution: any = null;
     if (envelope.execution_id !== null && envelope.execution_id !== undefined) {
       currentExecution = this.#executionForWrite(envelope);
-      if (bot && (currentExecution.state !== 'RUNNING' || currentExecution.owner_ref !== bot.bot_id || Date.parse(currentExecution.lease_expires_at) <= Date.now())) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task proposal requires the current active Execution');
+      if (agent && (currentExecution.state !== 'RUNNING' || currentExecution.owner_ref !== agent.agent_id || Date.parse(currentExecution.lease_expires_at) <= Date.now())) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task proposal requires the current active Execution');
       assertNewExecutionWork(currentExecution);
-      if (currentExecution.task_id !== envelope.task_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'bound Task creation must use the current Task Execution');
-      if (!['CREATED', 'RUNNING'].includes(currentExecution.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only an active Execution may create a Task');
+      if (currentExecution.task_id !== envelope.task_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'bound Task creation must use the current Task Execution');
+      if (!['CREATED', 'RUNNING'].includes(currentExecution.state)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'only an active Execution may create a Task');
       if (this.#taskMissionId(envelope.task_id) !== missionId) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'a bound Agent may create Tasks only in its current Mission', {
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'a bound Agent may create Tasks only in its current Mission', {
           current_mission_id: this.#taskMissionId(envelope.task_id),
           requested_mission_id: missionId,
         });
@@ -1248,39 +1253,39 @@ export class TaskService {
     }
     const taskId = payload.task_id ?? randomUUID();
     requireString(taskId, 'task_id');
-    if (this.getTask(taskId)) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'task_id already exists', { task_id: taskId });
+    if (this.getTask(taskId)) throw new MurmError(ERROR_CODES.CONFLICT, 'task_id already exists', { task_id: taskId });
     if (payload.workspace != null && (typeof payload.workspace !== 'object' || Array.isArray(payload.workspace))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace must be an object');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspace must be an object');
     }
     const workspace = { ...payload.workspace };
     if (payload.base_revision !== undefined) {
       if (typeof payload.base_revision !== 'string' || !/^\d+\.\d+$/.test(payload.base_revision)) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'base_revision must name a fixed public Workspace revision in major.minor form');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'base_revision must name a fixed public Workspace revision in major.minor form');
       }
       if (workspace.revision !== undefined && workspace.revision !== payload.base_revision) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'base_revision conflicts with workspace.revision');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'base_revision conflicts with workspace.revision');
       }
       workspace.revision = payload.base_revision;
     }
     const inputMaterialRefs = payload.input_material_refs ?? [];
     if (!Array.isArray(inputMaterialRefs) || inputMaterialRefs.length > 100 ||
         inputMaterialRefs.some((id: any) => typeof id !== 'string' || !id)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task input Materials must contain at most 100 IDs');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Task input Materials must contain at most 100 IDs');
     }
     const taskInstructions = payload.task_instructions ?? '';
     const responsibilityKey = payload.responsibility_key ?? null;
     const dependsOn = payload.depends_on ?? [];
     if (!Array.isArray(dependsOn) || dependsOn.some((id: any) => typeof id !== 'string' || id.length === 0)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'depends_on must contain Task IDs');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'depends_on must contain Task IDs');
     }
     const uniqueDependsOn = [...new Set(dependsOn)];
     for (const prerequisiteId of uniqueDependsOn) {
       const prerequisite = this.getTask(prerequisiteId);
       if (!prerequisite || this.#taskMissionId(prerequisiteId) !== missionId) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'depends_on must identify Tasks in the same Mission');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'depends_on must identify Tasks in the same Mission');
       }
       if (['CANCELED'].includes(prerequisite.state)) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'depends_on cannot identify a cancelled Task', { prerequisite_task_id: prerequisiteId });
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'depends_on cannot identify a cancelled Task', { prerequisite_task_id: prerequisiteId });
       }
       this.#assertDependencyCycle(taskId, prerequisiteId);
     }
@@ -1288,10 +1293,10 @@ export class TaskService {
     const ownerRef = payload.owner_ref ?? envelope.actor_ref;
     requireString(ownerRef, 'owner_ref');
     const priority = validatedPriority;
-    if (!Number.isInteger(priority) || priority < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'priority must be a non-negative integer');
+    if (!Number.isInteger(priority) || priority < 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'priority must be a non-negative integer');
     const completionContract = { ...(payload.completion_contract ?? {}) };
     if (!completionContract || typeof completionContract !== 'object' || Array.isArray(completionContract)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'completion_contract must be an object');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'completion_contract must be an object');
     }
     if (completionContract.workspace_delivery !== undefined) this.#assertWorkspaceDelivery(completionContract.workspace_delivery);
     if (completionContract.required_materials !== undefined && (!Array.isArray(completionContract.required_materials) ||
@@ -1299,13 +1304,13 @@ export class TaskService {
           Object.keys(requirement).some((field: any) => !['role', 'min_count', 'requires_consumption', 'action', 'cross_task'].includes(field)) ||
           (requirement.role !== undefined && !['input', 'response', 'handoff', 'experience'].includes(requirement.role)) ||
           (requirement.min_count !== undefined && (!Number.isInteger(requirement.min_count) || requirement.min_count < 1))))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'required_materials accepts Task link role, min_count, requires_consumption, action and cross_task');
+      throw new MurmError(ERROR_CODES.INVALID_TASK_CONTRACT, 'required_materials accepts Task link role, min_count, requires_consumption, action and cross_task');
     }
 
     const requiredCapabilities = payload.required_capabilities;
     if (requiredCapabilities !== undefined) {
       if (!Array.isArray(requiredCapabilities) || requiredCapabilities.some((value: any) => typeof value !== 'string' || value.length === 0)) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'required_capabilities must contain non-empty capability IDs');
+        throw new MurmError(ERROR_CODES.INVALID_TASK_CONTRACT, 'required_capabilities must contain non-empty capability IDs');
       }
       completionContract.required_capabilities = [...new Set(requiredCapabilities)];
     }
@@ -1329,7 +1334,7 @@ export class TaskService {
         ORDER BY t.created_at, t.task_id LIMIT 1`).get(missionId, responsibilityKey);
       if (existing) {
         if (existing.registration_hash !== registrationHash) {
-          throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'responsibility_key already identifies different Task content', {
+          throw new MurmError(ERROR_CODES.CONFLICT, 'responsibility_key already identifies different Task content', {
             mission_id: missionId,
             responsibility_key: responsibilityKey,
             existing_task_id: existing.task_id,
@@ -1376,12 +1381,12 @@ export class TaskService {
     if (missionId !== null) requireString(missionId, 'mission_id');
     const states = payload.states ?? (payload.state ? [payload.state] : ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CANCELED']);
     if (!Array.isArray(states) || states.length === 0 || states.some((state: any) => typeof state !== 'string' || state.length === 0)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'states must contain at least one Task state');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'states must contain at least one Task state');
     }
     const limit = payload.limit ?? 100;
-    if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'limit must be between 1 and 500');
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'limit must be between 1 and 500');
     const search = payload.search ?? null;
-    if (search !== null && (typeof search !== 'string' || search.length === 0)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'search must be a non-empty string or null');
+    if (search !== null && (typeof search !== 'string' || search.length === 0)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'search must be a non-empty string or null');
     const placeholders = states.map(() => '?').join(', ');
     const where = [`t.state IN (${placeholders})`];
     const params = [...states];
@@ -1403,26 +1408,26 @@ export class TaskService {
   }
 
   #listTaskPage(payload: any, envelope: any) {
-    const bot = this.getBot(envelope.actor_ref);
-    if (bot) {
-      this.assertBotDeadline(bot.bot_id);
-      if (!['UNBOUND', 'ACTIVE'].includes(bot.state) || (bot.state === 'UNBOUND' && Date.parse(bot.selection_deadline) <= Date.now())) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot is not available for Task discovery');
+    const agent = this.getAgent(envelope.actor_ref);
+    if (agent) {
+      this.assertAgentDeadline(agent.agent_id);
+      if (!['UNBOUND', 'ACTIVE'].includes(agent.state) || (agent.state === 'UNBOUND' && Date.parse(agent.selection_deadline) <= Date.now())) {
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent is not available for Task discovery');
       }
-      if (payload.mission_id && payload.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task discovery must stay within the Bot Mission');
+      if (payload.mission_id && payload.mission_id !== agent.mission_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task discovery must stay within the Agent Mission');
     }
-    const missionId = bot?.mission_id ?? payload.mission_id ?? null;
+    const missionId = agent?.mission_id ?? payload.mission_id ?? null;
     if (missionId !== null) requireString(missionId, 'mission_id');
     const aliases = { ready: 'OPEN', running: 'RUNNING', blocked: 'BLOCKED', done: 'DONE', canceled: 'CANCELED' };
     const requestedStates = payload.states ?? (payload.state ? [payload.state] : ['OPEN', 'RUNNING', 'BLOCKED', 'DONE', 'CANCELED']);
-    if (!Array.isArray(requestedStates) || !requestedStates.length || requestedStates.length > 16 || requestedStates.some((value: any) => typeof value !== 'string' || !value)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task states must be a bounded nonempty list');
+    if (!Array.isArray(requestedStates) || !requestedStates.length || requestedStates.length > 16 || requestedStates.some((value: any) => typeof value !== 'string' || !value)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Task states must be a bounded nonempty list');
     const states = [...new Set(requestedStates.map((value: any) => (aliases as Record<string, any>)[value.toLowerCase()] ?? value.toUpperCase()))].sort();
     const query = payload.query ?? null;
-    if (query !== null && (typeof query !== 'string' || !query || query.length > 4000)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task query must contain 1 to 4000 characters');
+    if (query !== null && (typeof query !== 'string' || !query || query.length > 4000)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Task query must contain 1 to 4000 characters');
     const limit = payload.limit ?? 20;
-    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task page limit must be between 1 and 100');
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Task page limit must be between 1 and 100');
     const availableOnly = payload.available_only ?? false;
-    if (typeof availableOnly !== 'boolean') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'available_only must be boolean');
+    if (typeof availableOnly !== 'boolean') throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'available_only must be boolean');
     const scope = { mission_id: missionId, states, query, available_only: availableOnly };
     const fingerprint = hash(scope);
     let continuation: any = null;
@@ -1433,7 +1438,7 @@ export class TaskService {
         if (continuation.version !== 1 || continuation.query_hash !== fingerprint ||
             !Number.isSafeInteger(continuation.ceiling) || !Number.isSafeInteger(continuation.after) ||
             continuation.after < 0 || continuation.after > continuation.ceiling || !Number.isFinite(Date.parse(continuation.started_at))) throw new Error('cursor mismatch');
-      } catch { throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task cursor is invalid or belongs to another query scope'); }
+      } catch { throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Task cursor is invalid or belongs to another query scope'); }
     }
     const ceiling = continuation?.ceiling ?? Number((missionId === null
       ? this.db.prepare('SELECT COALESCE(MAX(rowid), 0) AS ceiling FROM task_records').get()
@@ -1481,7 +1486,7 @@ export class TaskService {
         priority_level: ['low', 'medium', 'high'][row.priority] ?? null,
         expected_output: row.expected_output, truncated_fields: truncated, state: row.state,
         spec_version: row.spec_version, state_version: row.state_version, priority: row.priority, timebox_ms: row.timebox_ms,
-        created_at: row.created_at, updated_at: row.updated_at, available: ready, current_execution: owner,
+        created_at: row.created_at, updated_at: row.updated_at, available: ready, current_execution: owner ? { ...owner } : null,
         dependencies: { present: Boolean(dependency.present), satisfied: !unsatisfied },
         block_reason: row.block_reason, cancellation_reason: cancelled?.reason ?? null });
       if (tasks.length === limit) break;
@@ -1495,9 +1500,9 @@ export class TaskService {
 
   #viewTaskRecord(taskId: any, envelope: any, payload: any = {}) {
     const task = this.#decorateTaskRecord(rowToTask(this.db.prepare('SELECT * FROM tasks WHERE task_id = ?').get(taskId)));
-    if (!task?.mission_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Task: ${taskId}`);
-    const bot = this.getBot(envelope.actor_ref);
-    if (bot && bot.mission_id !== task.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task detail is limited to the Bot Mission');
+    if (!task?.mission_id) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown Task: ${taskId}`);
+    const agent = this.getAgent(envelope.actor_ref);
+    if (agent && agent.mission_id !== task.mission_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task detail is limited to the Agent Mission');
     const history = this.listExecutions(taskId).map((execution: any) => {
       const { execution_id, owner_ref, core_id, attempt_no, state, terminal_reason, workspace_input,
         created_at, updated_at, spec_version, spec_hash } = execution;
@@ -1506,10 +1511,10 @@ export class TaskService {
     });
     const finishes = history.map((execution: any) => execution.finish).filter(Boolean);
     const cancellation = this.db.prepare('SELECT * FROM task_cancellations WHERE task_id = ?').get(taskId) ?? null;
-    const relations = this.getBot(envelope.actor_ref) ? this.#publicTaskRelations(task.relations) : task.relations;
+    const relations = this.getAgent(envelope.actor_ref) ? this.#publicTaskRelations(task.relations) : task.relations;
     const after = payload.contract_history_after_version ?? 0;
     const limit = payload.contract_history_limit ?? 50;
-    if (!Number.isSafeInteger(after) || after < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Contract history requires a nonnegative after version and limit 1..100');
+    if (!Number.isSafeInteger(after) || after < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Contract history requires a nonnegative after version and limit 1..100');
     const versions = this.db.prepare('SELECT * FROM task_contract_revisions WHERE task_id = ? AND spec_version > ? ORDER BY spec_version LIMIT ?').all(taskId, after, limit + 1);
     const historyPage = versions.slice(0, limit).map(({ contract_json, ...row }: any) => ({ ...row, contract: parse(contract_json) }));
     return { task, mission: this.#getMission(task.mission_id), relations, blockers: task.blockers,
@@ -1521,13 +1526,13 @@ export class TaskService {
   #linkMaterial(payload: any, envelope: any) {
     const caller = this.materialScope(envelope, { write: true });
     const materialId = requireString(payload.material_id, 'material_id');
-    if (!this.contextService) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Context Service is required for Task Material links');
+    if (!this.contextService) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Context Service is required for Task Material links');
     const material = this.contextService.getMaterial(materialId);
-    if (!material) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Material: ${materialId}`);
-    if (material.mission_id !== caller.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material belongs to another Mission');
+    if (!material) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown Material: ${materialId}`);
+    if (material.mission_id !== caller.mission_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material belongs to another Mission');
     const role = payload.role ?? 'experience';
     if (!['input', 'response', 'handoff', 'experience'].includes(role)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'role must be input, response, handoff, or experience');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'role must be input, response, handoff, or experience');
     }
     // Purpose belongs to this Task link, not to the immutable Material.
     const producerTaskId = requireString(material.producer_task_id, 'material producer_task_id');
@@ -1536,23 +1541,23 @@ export class TaskService {
     const producerIsCurrent = currentTaskId === producerTaskId;
     const producerExecution = producerIsCurrent ? this.#executionForWrite(envelope) : null;
     if (producerExecution && (producerExecution.task_id !== producerTaskId || producerExecution.execution_id !== producerExecutionId)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material provenance does not match the current Execution');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material provenance does not match the current Execution');
     }
     // A producer creates directed Response/Handoff links. Any bound Task may
     // attach already-published Experience or input Material to its own local
     // Materials area; the immutable producer provenance remains unchanged.
     if (!producerIsCurrent && !['input', 'experience'].includes(role)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the producing Task Execution may create a Response or Handoff link');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'only the producing Task Execution may create a Response or Handoff link');
     }
     const targetTaskId = payload.task_id ?? payload.receiving_task_id ??
       (role === 'handoff' ? producerTaskId : ['input', 'experience'].includes(role) ? currentTaskId : null);
     const targetTask = this.getTask(requireString(targetTaskId, 'task_id'));
-    if (!targetTask) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown receiving Task: ${targetTaskId}`);
+    if (!targetTask) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown receiving Task: ${targetTaskId}`);
     if (caller.mission_id !== this.#taskMissionId(targetTaskId) || caller.mission_id !== this.#taskMissionId(producerTaskId)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material links must stay within the caller Mission');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material links must stay within the caller Mission');
     }
     if (this.#taskMissionId(targetTaskId) !== this.#taskMissionId(producerTaskId)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'linked Tasks must belong to the same Mission');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'linked Tasks must belong to the same Mission');
     }
     const receivingTaskId = role === 'response'
       ? requireString(payload.receiving_task_id ?? payload.task_id, 'receiving_task_id')
@@ -1560,16 +1565,16 @@ export class TaskService {
         ? requireString(payload.receiving_task_id, 'receiving_task_id')
         : null;
     if (role === 'response' && receivingTaskId === producerTaskId) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Response Material must target a receiving Task');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Response Material must target a receiving Task');
     }
     if (role === 'input' && targetTaskId !== currentTaskId) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'input Material links must target the current Task');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'input Material links must target the current Task');
     }
     if (role === 'experience' && targetTaskId !== currentTaskId && !payload.receiving_task_id) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'cross-Task Experience links require receiving_task_id');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'cross-Task Experience links require receiving_task_id');
     }
     if (receivingTaskId && receivingTaskId !== targetTaskId) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'receiving_task_id must match task_id');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'receiving_task_id must match task_id');
     }
     const existing = this.db.prepare(`SELECT * FROM task_material_links
       WHERE task_id = ? AND material_id = ? AND role = ?
@@ -1619,15 +1624,15 @@ export class TaskService {
   #validateTaskCompletion(payload: any, envelope: any) {
     const execution = this.#executionForWrite(envelope);
     if (execution.owner_ref !== envelope.actor_ref) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the current Task Execution owner may complete the Task');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'only the current Task Execution owner may complete the Task');
     }
     if (!['CREATED', 'RUNNING'].includes(execution.state)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot complete Execution in ${execution.state}`);
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, `cannot complete Execution in ${execution.state}`);
     }
     const task = this.getTask(execution.task_id);
     const requestedMaterialIds = payload.material_ids ?? [];
     if (!Array.isArray(requestedMaterialIds) || requestedMaterialIds.some((id: any) => typeof id !== 'string' || id.length === 0)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must be an array of Material IDs');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'material_ids must be an array of Material IDs');
     }
     const linked = this.#taskMaterialLinks(task.task_id);
     const producedResponseLinks = this.db.prepare(`SELECT * FROM task_material_links
@@ -1639,14 +1644,14 @@ export class TaskService {
     const linkedIds = new Set(completionLinks.map((link: any) => link.material_id));
     const unlinked = [...new Set(requestedMaterialIds)].filter((id: any) => !linkedIds.has(id));
     if (unlinked.length > 0) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task finish can reference only linked Materials. Use swarm task link before citing them.', { unlinked_material_ids: unlinked });
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'task finish can reference only linked Materials. Use swarm task link before citing them.', { unlinked_material_ids: unlinked });
     }
     const requestedCheckResultId = payload.check_result_id ?? null;
     if (requestedCheckResultId) {
       const requestedCheck = this.getCheckResult(requestedCheckResultId);
-      if (!requestedCheck) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown CheckResult: ${requestedCheckResultId}`);
+      if (!requestedCheck) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown CheckResult: ${requestedCheckResultId}`);
       if (requestedCheck.execution_id !== execution.execution_id || requestedCheck.target_task_id !== task.task_id) {
-        throw new SwarmEnvError(ERROR_CODES.FENCED, 'CheckResult does not belong to the current Task Execution');
+        throw new MurmError(ERROR_CODES.FENCED, 'CheckResult does not belong to the current Task Execution');
       }
       if (requestedCheck.status === 'RECEIVED' && (!task.completion_contract.workspace_delivery?.check || task.completion_contract.required_check)) {
         this.db.prepare("UPDATE check_results SET status = 'APPLIED', applied_task_state_version = ?, applied_at = ?, updated_at = ? WHERE check_result_id = ?")
@@ -1656,18 +1661,18 @@ export class TaskService {
     const delivery = this.#validateWorkspaceDelivery(task, execution, payload, requestedCheckResultId);
     const completion = this.#completion(task, execution, requestedCheckResultId);
     if (!completion.satisfied) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'completion_contract is not satisfied', { missing: completion.missing });
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'completion_contract is not satisfied', { missing: completion.missing });
     }
     return { materials: completionLinks, delivery };
   }
 
   #assertHandoffMaterial(execution: any, payload: any) {
     const materialId = requireString(payload.handoff_material_id, 'handoff_material_id');
-    if (!this.contextService) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Context Service is required for Task handoff');
+    if (!this.contextService) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Context Service is required for Task handoff');
     const material = this.contextService.getMaterial(materialId);
-    if (!material) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Handoff Material: ${materialId}`);
+    if (!material) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown Handoff Material: ${materialId}`);
     if (material.producer_task_id !== execution.task_id || material.producer_execution_id !== execution.execution_id) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Handoff Material provenance does not match the current Execution');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Handoff Material provenance does not match the current Execution');
     }
     let link = this.db.prepare(`SELECT * FROM task_material_links
       WHERE task_id = ? AND material_id = ? AND role = 'handoff'
@@ -1704,12 +1709,12 @@ export class TaskService {
   #taskStatus(payload: any, envelope: any) {
     const missionId = requireString(payload.mission_id, 'mission_id');
     const mission = this.#getMission(missionId);
-    if (!mission) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown mission: ${missionId}`);
+    if (!mission) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown mission: ${missionId}`);
     const states = payload.states ?? ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CANCELED'];
     const limit = payload.limit ?? 100;
-    const isBot = Boolean(this.getBot(envelope.actor_ref));
-    const taskPage = isBot ? this.#listTaskPage({ mission_id: missionId, states, limit }, envelope) : null;
-    const eligiblePage: any = isBot ? this.#listTaskPage({ mission_id: missionId, states: ['OPEN'], limit, available_only: true }, envelope) : null;
+    const isAgent = Boolean(this.getAgent(envelope.actor_ref));
+    const taskPage = isAgent ? this.#listTaskPage({ mission_id: missionId, states, limit }, envelope) : null;
+    const eligiblePage: any = isAgent ? this.#listTaskPage({ mission_id: missionId, states: ['OPEN'], limit, available_only: true }, envelope) : null;
     const tasks = taskPage?.tasks ?? this.#listTaskRecords({ mission_id: missionId, states, limit, available_only: false });
     const eligible = eligiblePage?.tasks ?? this.#listTaskRecords({
       mission_id: missionId,
@@ -1718,7 +1723,7 @@ export class TaskService {
       available_only: true,
     });
     const statePlaceholders = states.map(() => '?').join(', ');
-    const pageTotal: any = isBot ? null : Number(this.db.prepare(`SELECT COUNT(*) AS count FROM tasks t
+    const pageTotal: any = isAgent ? null : Number(this.db.prepare(`SELECT COUNT(*) AS count FROM tasks t
       JOIN task_records m ON m.task_id = t.task_id
       WHERE m.mission_id = ? AND t.state IN (${statePlaceholders})`).get(missionId, ...states).count ?? 0);
     const counts = this.db.prepare(`SELECT
@@ -1757,7 +1762,7 @@ export class TaskService {
       },
       page: { limit, returned: tasks.length, total: pageTotal,
         complete: taskPage ? !taskPage.truncated : tasks.length >= pageTotal },
-      ...(isBot ? { eligible_page: { limit, returned: eligible.length, complete: !eligiblePage.truncated },
+      ...(isAgent ? { eligible_page: { limit, returned: eligible.length, complete: !eligiblePage.truncated },
         guidance: 'Use task list for continued discovery. Status summarizes the first bounded window.' } : {}),
       observed_at: now(),
     };
@@ -1766,7 +1771,7 @@ export class TaskService {
   #taskTake(payload: any, envelope: any) {
     const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');
     const task = this.getTask(taskId);
-    if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`);
+    if (!task) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`);
     const takeEnvelope = {
       ...envelope,
       task_id: taskId,
@@ -1803,15 +1808,15 @@ export class TaskService {
     if (operation === 'task_view') return this.#viewTaskRecord(requireString(payload.task_id ?? envelope.task_id, 'task_id'), envelope, payload);
     if (operation === 'task_materials') {
       const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');
-      if (!this.getTask(taskId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Task: ${taskId}`);
+      if (!this.getTask(taskId)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown Task: ${taskId}`);
       return { links: this.#taskMaterialLinks(taskId, { role: payload.role ?? null, materialId: payload.material_id ?? null }) };
     }
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Task Service read operation: ${operation}`);
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unsupported Task Service read operation: ${operation}`);
   }
 
   #mutate(operation: any, payload: any, envelope: any) {
     switch (operation) {
-      case 'bot_exit': return this.#exitBot(payload, envelope);
+      case 'agent_exit': return this.#exitAgent(payload, envelope);
       case 'mission_create': return this.#createMission(payload, envelope);
       case 'task_create': return this.#createTaskRecord(payload, envelope);
       case 'task_revise': return this.#reviseTask(payload, envelope);
@@ -1828,22 +1833,22 @@ export class TaskService {
       case 'start_execution': return this.#startExecution(payload, envelope);
       case 'save_workspace_revision': return this.#saveWorkspaceRevision(payload, envelope);
       case 'fence_execution': return this.#fenceExecution(payload, envelope);
-      default: throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Task Service operation: ${operation}`);
+      default: throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unsupported Task Service operation: ${operation}`);
     }
   }
 
   #acceptTaskFinish(payload: any, envelope: any, { outcome, terminalState, waitForTaskId = null, replacementTaskId = null }: any) {
-    const bot = this.getBot(envelope.actor_ref);
-    if (bot && (bot.state !== 'ACTIVE' || bot.execution_id !== envelope.execution_id)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Only an active Bot may request a new Task finish');
+    const agent = this.getAgent(envelope.actor_ref);
+    if (agent && (agent.state !== 'ACTIVE' || agent.execution_id !== envelope.execution_id)) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Only an active Agent may request a new Task finish');
     }
     const execution = this.#executionForWrite(envelope);
     if (execution.owner_ref !== envelope.actor_ref || !['CREATED', 'RUNNING'].includes(execution.state)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the current active owner may finish');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'only the current active owner may finish');
     }
     if (this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'execution_workspace_requests'").get() &&
         this.db.prepare("SELECT 1 FROM execution_workspace_requests WHERE execution_id = ? AND phase IN ('installing', 'installed') LIMIT 1").get(execution.execution_id)) {
-      throw new SwarmEnvError(ERROR_CODES.WORKSPACE_BUSY, 'Workspace apply must settle before Task finish can be accepted', undefined, { retryable: true });
+      throw new MurmError(ERROR_CODES.WORKSPACE_BUSY, 'Workspace apply must settle before Task finish can be accepted', undefined, { retryable: true });
     }
     const acceptedAt = now();
     this.db.prepare(`INSERT INTO execution_finish_intents
@@ -1852,7 +1857,7 @@ export class TaskService {
         terminalState, payload.reason ?? outcome, waitForTaskId, replacementTaskId, acceptedAt);
     this.db.prepare("UPDATE executions SET state = 'CLOSING', state_version = state_version + 1, updated_at = ? WHERE execution_id = ?")
       .run(acceptedAt, execution.execution_id);
-    this.db.prepare("UPDATE bots SET state = 'CLOSING', state_version = state_version + 1, updated_at = ? WHERE execution_id = ? AND state <> 'CLOSED'")
+    this.db.prepare("UPDATE agents SET state = 'CLOSING', state_version = state_version + 1, updated_at = ? WHERE execution_id = ? AND state <> 'CLOSED'")
       .run(acceptedAt, execution.execution_id);
     return { task: this.getTask(execution.task_id), execution: this.getExecution(execution.execution_id), disposition: 'closing' };
   }
@@ -1860,7 +1865,7 @@ export class TaskService {
   #finishTask(payload: any, envelope: any) {
     const outcome = String(payload.outcome ?? '').toLowerCase();
     if (!['done', 'incomplete', 'blocked', 'cancelled'].includes(outcome)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.finish outcome must be done, incomplete, blocked, or cancelled');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'task.finish outcome must be done, incomplete, blocked, or cancelled');
     }
     if (outcome === 'done') {
       const { materials, delivery } = this.#validateTaskCompletion(payload, envelope);
@@ -1872,7 +1877,7 @@ export class TaskService {
     }
     if (outcome === 'incomplete') {
       const execution = this.#executionForWrite(envelope);
-      if (execution.owner_ref !== envelope.actor_ref) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'only the current owner may finish');
+      if (execution.owner_ref !== envelope.actor_ref) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'only the current owner may finish');
       if (payload.handoff_material_id) this.#assertHandoffMaterial(execution, payload);
       return this.#acceptTaskFinish(payload, envelope, { outcome, terminalState: 'HANDED_OFF' });
     }
@@ -1881,18 +1886,18 @@ export class TaskService {
       const blocker = payload.blocker ?? payload.reason;
       const prerequisiteTaskId = payload.wait_for;
       if (!blocker || (typeof blocker !== 'object' && typeof blocker !== 'string')) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.finish blocked requires blocker');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'task.finish blocked requires blocker');
       }
       if (typeof prerequisiteTaskId !== 'string' || prerequisiteTaskId.length === 0 || prerequisiteTaskId === execution.task_id) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task.finish blocked requires a distinct prerequisite Task ID');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'task.finish blocked requires a distinct prerequisite Task ID');
       }
       const prerequisite = this.getTask(prerequisiteTaskId);
       if (!prerequisite || this.#taskMissionId(prerequisiteTaskId) !== this.#taskMissionId(execution.task_id)) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_for must identify a Task in the same Mission');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'wait_for must identify a Task in the same Mission');
       }
       this.#assertDependencyCycle(execution.task_id, prerequisiteTaskId);
       if (['CANCELED'].includes(prerequisite.state)) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'wait_for cannot identify a cancelled Task');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'wait_for cannot identify a cancelled Task');
       }
       const existing = this.db.prepare("SELECT relation_id FROM task_relations WHERE task_id = ? AND relation_kind = 'depends_on' AND related_task_id = ?")
         .get(execution.task_id, prerequisiteTaskId);
@@ -1912,16 +1917,16 @@ export class TaskService {
   #assertTaskReplacement(taskId: any, replacementTaskId: any) {
     if (replacementTaskId !== null) {
       if (typeof replacementTaskId !== 'string' || replacementTaskId.length === 0 || replacementTaskId === taskId) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'replacement_task_id must identify another Task');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'replacement_task_id must identify another Task');
       }
       const replacement = this.getTask(replacementTaskId);
       if (!replacement || this.#taskMissionId(replacementTaskId) !== this.#taskMissionId(taskId) || ['CANCELED'].includes(replacement.state)) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'replacement_task_id must identify a non-cancelled Task in the same Mission');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'replacement_task_id must identify a non-cancelled Task in the same Mission');
       }
       const seen = new Set([taskId]);
       let candidate = replacementTaskId;
       while (candidate) {
-        if (seen.has(candidate)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'replacement would create a cycle');
+        if (seen.has(candidate)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'replacement would create a cycle');
         seen.add(candidate);
         const cancelled = this.db.prepare('SELECT replacement_task_id FROM task_cancellations WHERE task_id = ?').get(candidate);
         candidate = cancelled ? cancelled.replacement_task_id : this.db.prepare(`SELECT f.replacement_task_id FROM execution_finish_intents f
@@ -1934,30 +1939,30 @@ export class TaskService {
   #coordinationTarget(payload: any, envelope: any, operation: any, allowedStates: any) {
     let scope;
     if (operation === 'task_revise' || operation === 'task_cancel') {
-      const bot = this.getBot(envelope.actor_ref);
-      if (bot?.state !== 'UNBOUND') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task revision and cancellation require an UNBOUND Bot');
-      this.#assertMissionOpen(bot.mission_id);
+      const agent = this.getAgent(envelope.actor_ref);
+      if (agent?.state !== 'UNBOUND') throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task revision and cancellation require an UNBOUND Agent');
+      this.#assertMissionOpen(agent.mission_id);
       scope = this.materialScope(envelope);
     } else scope = this.assertMissionCoordination(envelope, operation);
     const taskId = requireString(payload.task_id, 'task_id');
     const task = this.getTask(taskId);
     if (!task || task.mission_id !== scope.mission_id) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task coordination requires a target in the Bot Mission');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task coordination requires a target in the Agent Mission');
     }
     if (!Number.isSafeInteger(payload.expected_spec_version) || !Number.isSafeInteger(payload.expected_state_version)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Expected Task spec and state versions are required');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Expected Task spec and state versions are required');
     }
     if (task.spec_version !== payload.expected_spec_version || task.state_version !== payload.expected_state_version) {
-      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'Task changed; reread before coordination', {
+      throw new MurmError(ERROR_CODES.STALE_VERSION, 'Task changed; reread before coordination', {
         expected_spec_version: task.spec_version, expected_state_version: task.state_version,
       });
     }
     const owned = this.db.prepare("SELECT 1 FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING', 'CLOSING') LIMIT 1").get(taskId);
-    const cleaning = this.db.prepare(`SELECT 1 FROM executions e LEFT JOIN bots b ON b.execution_id = e.execution_id
+    const cleaning = this.db.prepare(`SELECT 1 FROM executions e LEFT JOIN agents b ON b.execution_id = e.execution_id
       LEFT JOIN execution_finish_intents f ON f.execution_id = e.execution_id
       WHERE e.task_id = ? AND (b.state IN ('ACTIVE', 'CLOSING') OR (f.execution_id IS NOT NULL AND f.closed_at IS NULL)) LIMIT 1`).get(taskId);
     if (owned || cleaning || !allowedStates.includes(task.state)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task coordination requires an unowned Task in an eligible state');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task coordination requires an unowned Task in an eligible state');
     }
     return { task, scope };
   }
@@ -1977,34 +1982,34 @@ export class TaskService {
   #reviseTask(payload: any, envelope: any) {
     const { task } = this.#coordinationTarget(payload, envelope, 'task_revise', ['OPEN', 'BLOCKED']);
     const reason = requireString(payload.reason, 'reason');
-    if (!reason.trim() || reason.length > 4000) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Revision reason must be nonblank and at most 4000 characters');
+    if (!reason.trim() || reason.length > 4000) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Revision reason must be nonblank and at most 4000 characters');
     const changes = payload.changes;
     const allowed = new Set(['summary', 'gap', 'expected_output', 'acceptance_conditions', 'priority', 'depends_on',
       'input_material_refs', 'workspace', 'base_revision', 'task_instructions']);
     if (!changes || typeof changes !== 'object' || Array.isArray(changes) || !Object.keys(changes).length || Object.keys(changes).some((key: any) => !allowed.has(key))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task changes must contain supported contract fields');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Task changes must contain supported contract fields');
     }
     const next = normalizeTaskContractText({ ...task, ...changes });
     this.#assertTaskRecordInput(next);
     requireString(next.gap, 'gap');
-    if (!next.gap.trim() || next.gap.length > 4000) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'gap must describe a concrete Mission contribution in at most 4000 characters');
+    if (!next.gap.trim() || next.gap.length > 4000) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'gap must describe a concrete Mission contribution in at most 4000 characters');
     const priority = contractPriority(next.priority);
-    if (!Array.isArray(next.input_material_refs) || next.input_material_refs.length > 100 || next.input_material_refs.some((id: any) => typeof id !== 'string' || !id)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task input Materials must contain at most 100 IDs');
-    if (typeof next.task_instructions !== 'string' || !next.workspace || typeof next.workspace !== 'object' || Array.isArray(next.workspace)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task instructions and Workspace inputs have invalid types');
+    if (!Array.isArray(next.input_material_refs) || next.input_material_refs.length > 100 || next.input_material_refs.some((id: any) => typeof id !== 'string' || !id)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Task input Materials must contain at most 100 IDs');
+    if (typeof next.task_instructions !== 'string' || !next.workspace || typeof next.workspace !== 'object' || Array.isArray(next.workspace)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Task instructions and Workspace inputs have invalid types');
     const workspace = { ...next.workspace };
     if (Object.hasOwn(changes, 'base_revision')) {
-      if (typeof changes.base_revision !== 'string' || !/^\d+\.\d+$/.test(changes.base_revision)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'base_revision must name a fixed public revision');
-      if (changes.workspace?.revision !== undefined && changes.workspace.revision !== changes.base_revision) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'base_revision conflicts with workspace.revision');
+      if (typeof changes.base_revision !== 'string' || !/^\d+\.\d+$/.test(changes.base_revision)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'base_revision must name a fixed public revision');
+      if (changes.workspace?.revision !== undefined && changes.workspace.revision !== changes.base_revision) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'base_revision conflicts with workspace.revision');
       workspace.revision = changes.base_revision;
     }
     const dependsOn = Object.hasOwn(changes, 'depends_on') ? changes.depends_on : task.relations.depends_on.map((row: any) => row.related_task_id);
     const existingPrerequisites = new Set(task.relations.depends_on.map((row: any) => row.related_task_id));
-    if (!Array.isArray(dependsOn) || dependsOn.length > 100 || dependsOn.some((id: any) => typeof id !== 'string' || !id)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'depends_on must contain at most 100 Task IDs');
+    if (!Array.isArray(dependsOn) || dependsOn.length > 100 || dependsOn.some((id: any) => typeof id !== 'string' || !id)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'depends_on must contain at most 100 Task IDs');
     for (const id of new Set(dependsOn)) {
       const prerequisite = this.getTask(id);
       if (!prerequisite || prerequisite.mission_id !== task.mission_id ||
           (['CANCELED'].includes(prerequisite.state) && !existingPrerequisites.has(id))) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'New prerequisites require non-cancelled Tasks in the same Mission');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'New prerequisites require non-cancelled Tasks in the same Mission');
       }
       this.#assertDependencyCycle(task.task_id, id);
     }
@@ -2042,7 +2047,7 @@ export class TaskService {
   #cancelUnownedTask(payload: any, envelope: any) {
     const { task } = this.#coordinationTarget(payload, envelope, 'task_cancel', ['OPEN', 'BLOCKED']);
     const reason = requireString(payload.reason, 'reason');
-    if (!reason.trim() || reason.length > 4000) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Cancellation reason must be nonblank and at most 4000 characters');
+    if (!reason.trim() || reason.length > 4000) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Cancellation reason must be nonblank and at most 4000 characters');
     const replacementTaskId = payload.replacement_task_id ?? null;
     this.#assertTaskReplacement(task.task_id, replacementTaskId);
     const at = now();
@@ -2067,11 +2072,11 @@ export class TaskService {
     const previous = this.db.prepare("SELECT * FROM task_relations WHERE task_id = ? AND relation_kind = 'depends_on' AND related_task_id = ?").get(task.task_id, from);
     const prerequisite = this.getTask(from);
     if (!previous || prerequisite?.mission_id !== scope.mission_id || prerequisite.state !== 'CANCELED') {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Replacement requires an existing cancelled prerequisite');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Replacement requires an existing cancelled prerequisite');
     }
     const successor = this.getTask(to);
     if (!successor || successor.mission_id !== scope.mission_id || successor.state === 'CANCELED') {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'New prerequisite must be a non-cancelled Task in the same Mission');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'New prerequisite must be a non-cancelled Task in the same Mission');
     }
     this.#assertDependencyCycle(task.task_id, to);
     const at = now();
@@ -2080,11 +2085,11 @@ export class TaskService {
       replacement = randomUUID();
       this.db.prepare(`INSERT INTO task_relations (relation_id, mission_id, task_id, relation_kind, related_task_id,
         created_by_task_id, created_by_execution_id, created_by, created_at) VALUES (?, ?, ?, 'depends_on', ?, ?, ?, ?, ?)`)
-        .run(replacement, scope.mission_id, task.task_id, to, scope.task_id, scope.execution_id, scope.bot_id, at);
+        .run(replacement, scope.mission_id, task.task_id, to, scope.task_id, scope.execution_id, scope.agent_id, at);
     }
     const original = previous;
     this.db.prepare(`INSERT INTO task_dependency_replacements (operation_id, task_id, original_relation_json, replacement_relation_id, actor_ref, execution_id, reason, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(envelope.operation_id, task.task_id, json(original), replacement, scope.bot_id, scope.execution_id, reason, at);
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(envelope.operation_id, task.task_id, json(original), replacement, scope.agent_id, scope.execution_id, reason, at);
     if (previous) this.db.prepare('DELETE FROM task_relations WHERE relation_id = ?').run(previous.relation_id);
         const reconciled = this.#reconcileTask({ task_id: task.task_id }, makeEnvelope({ actorRef: 'runtime:dependency-replacement' }));
     if (!reconciled.changed) {
@@ -2095,7 +2100,7 @@ export class TaskService {
 
   #taskRow(taskId: any) {
     const row = this.db.prepare('SELECT * FROM tasks WHERE task_id = ?').get(taskId);
-    if (!row) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Task: ${taskId}`);
+    if (!row) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown Task: ${taskId}`);
     return rowToTask(row);
   }
 
@@ -2106,9 +2111,9 @@ export class TaskService {
 
   #reconcileTask(payload: any, envelope: any) {
     const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');
-    if (envelope.execution_id !== null) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Controller reconciliation cannot target an Execution');
+    if (envelope.execution_id !== null) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Controller reconciliation cannot target an Execution');
     const task = this.getTask(taskId);
-    if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`);
+    if (!task) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown task: ${taskId}`);
     const blockers = this.#gatingDependencyBlockers(task);
     const active = this.db.prepare("SELECT COUNT(*) AS count FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING', 'CLOSING')").get(taskId).count;
     const updatedAt = now();
@@ -2145,41 +2150,41 @@ export class TaskService {
   }
 
   #takeTask(task: any, payload: any, envelope: any) {
-    if (TERMINAL_TASK_STATES.includes(task.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be taken');
+    if (TERMINAL_TASK_STATES.includes(task.state)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'terminal Task cannot be taken');
     const dependencyBlockers = this.#gatingDependencyBlockers(task);
     if (dependencyBlockers.length > 0) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task is blocked by an explicit execution dependency', { blockers: dependencyBlockers });
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task is blocked by an explicit execution dependency', { blockers: dependencyBlockers });
     }
     const takeKey = requireString(payload.take_key, 'take_key');
     const keyFingerprint = operationPayload('take', payload, envelope);
     const existingKey = this.db.prepare('SELECT * FROM take_keys WHERE request_key = ?').get(takeKey);
     if (existingKey) {
       if (existingKey.task_id !== task.task_id || existingKey.fingerprint !== keyFingerprint) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'take_key was reused with another payload');
+        throw new MurmError(ERROR_CODES.CONFLICT, 'take_key was reused with another payload');
       }
       return { task: this.getTask(task.task_id), execution: this.getExecution(existingKey.execution_id) };
     }
     this.#assertMissionOpen(this.#taskMissionId(task.task_id));
     if (envelope.spec_version !== task.spec_version || envelope.state_version !== task.state_version) {
-      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'Task take version is stale', { expected_state_version: task.state_version, expected_spec_version: task.spec_version });
+      throw new MurmError(ERROR_CODES.STALE_VERSION, 'Task take version is stale', { expected_state_version: task.state_version, expected_spec_version: task.spec_version });
     }
     const ownerRef = payload.owner_ref ?? envelope.actor_ref;
     const coreId = payload.core_id ?? null;
     if (coreId !== null) requireString(coreId, 'core_id');
-    const bot = this.getBot(ownerRef);
-    const occupiedBot = coreId === null ? null : this.db.prepare("SELECT bot_id FROM bots WHERE mission_id = ? AND core_id = ? AND state <> 'CLOSED'").get(this.#taskMissionId(task.task_id), coreId);
-    if (occupiedBot && occupiedBot.bot_id !== ownerRef) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns another Bot');
-    if (bot && (envelope.actor_ref !== ownerRef || bot.state !== 'UNBOUND' || bot.execution_id || bot.mission_id !== this.#taskMissionId(task.task_id) || bot.core_id !== coreId || (Date.parse(bot.selection_deadline) <= Date.now() || Date.parse(bot.hard_deadline) <= Date.now()))) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot cannot reserve another Execution or leave its Mission/Core');
+    const agent = this.getAgent(ownerRef);
+    const occupiedAgent = coreId === null ? null : this.db.prepare("SELECT agent_id FROM agents WHERE mission_id = ? AND core_id = ? AND state <> 'CLOSED'").get(this.#taskMissionId(task.task_id), coreId);
+    if (occupiedAgent && occupiedAgent.agent_id !== ownerRef) throw new MurmError(ERROR_CODES.CONFLICT, 'Core already owns another Agent');
+    if (agent && (envelope.actor_ref !== ownerRef || agent.state !== 'UNBOUND' || agent.execution_id || agent.mission_id !== this.#taskMissionId(task.task_id) || agent.core_id !== coreId || (Date.parse(agent.selection_deadline) <= Date.now() || Date.parse(agent.hard_deadline) <= Date.now()))) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent cannot reserve another Execution or leave its Mission/Core');
     }
 
-    // A Bot is represented by its authenticated owner reference for the
+    // A Agent is represented by its authenticated owner reference for the
     // coordination boundary. It may have zero or one active Execution. A
-    // successor Bot receives a fresh owner reference after the previous
+    // successor Agent receives a fresh owner reference after the previous
     // Execution is terminal and fenced.
     const ownerExecution = this.db.prepare("SELECT execution_id, task_id FROM executions WHERE owner_ref = ? AND state IN ('CREATED', 'RUNNING', 'CLOSING') LIMIT 1").get(ownerRef);
     if (ownerExecution) {
-      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot already owns an active Execution', {
+      throw new MurmError(ERROR_CODES.CONFLICT, 'Agent already owns an active Execution', {
         owner_ref: ownerRef,
         execution_id: ownerExecution.execution_id,
         task_id: ownerExecution.task_id,
@@ -2188,7 +2193,7 @@ export class TaskService {
     if (coreId !== null) {
       const occupied = this.getActiveExecutionForCore(coreId);
       if (occupied) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', {
+        throw new MurmError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', {
           core_id: coreId,
           execution_id: occupied.execution_id,
           task_id: occupied.task_id,
@@ -2196,21 +2201,21 @@ export class TaskService {
       }
     }
     const agentPrompt = payload.agent_prompt ?? task.task_instructions ?? '';
-    if (typeof agentPrompt !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'agent_prompt must be a string');
+    if (typeof agentPrompt !== 'string') throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'agent_prompt must be a string');
     let inputMaterialRefs = payload.input_material_refs ?? task.input_material_refs;
-    if (!Array.isArray(inputMaterialRefs)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'input_material_refs must be an array');
-    if (bot) {
+    if (!Array.isArray(inputMaterialRefs)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'input_material_refs must be an array');
+    if (agent) {
       inputMaterialRefs = [...new Set([...(task.input_material_refs ?? []), ...inputMaterialRefs])];
       if (inputMaterialRefs.length > 100 || inputMaterialRefs.some((id: any) => typeof id !== 'string' || !id)) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task input Materials must contain at most 100 distinct IDs');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Task input Materials must contain at most 100 distinct IDs');
       }
     }
     const active = this.db.prepare("SELECT execution_id, state FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING', 'CLOSING') LIMIT 1").get(task.task_id);
     if (active) {
-      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Task already has an active Execution; choose another responsibility or wait for cleanup', { execution_id: active.execution_id, execution_state: active.state, condition: 'task_occupied' });
+      throw new MurmError(ERROR_CODES.CONFLICT, 'Task already has an active Execution; choose another responsibility or wait for cleanup', { execution_id: active.execution_id, execution_state: active.state, condition: 'task_occupied' });
     }
     if (task.state === 'BLOCKED') {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Task is blocked: ${task.block_reason ?? 'unknown'}`);
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, `Task is blocked: ${task.block_reason ?? 'unknown'}`);
     }
     const inputSnapshotHash = payload.input_snapshot_hash ?? hash({
       task_id: task.task_id,
@@ -2268,8 +2273,8 @@ export class TaskService {
     if (coreId !== null) {
       this.db.prepare('UPDATE executions SET core_id = ? WHERE execution_id = ?').run(coreId, executionId);
     }
-    if (bot) this.db.prepare("UPDATE bots SET execution_id = ?, state = 'PREPARING', state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
-      .run(executionId, createdAt, bot.bot_id);
+    if (agent) this.db.prepare("UPDATE agents SET execution_id = ?, state = 'PREPARING', state_version = state_version + 1, updated_at = ? WHERE agent_id = ?")
+      .run(executionId, createdAt, agent.agent_id);
     this.db.prepare('UPDATE tasks SET state = ?, state_version = state_version + 1, block_reason = NULL, eligible_at = CASE WHEN ? = \'OPEN\' THEN eligible_at ELSE NULL END, updated_at = ? WHERE task_id = ?')
       .run('RUNNING', 'RUNNING', createdAt, task.task_id);
     this.db.prepare('INSERT INTO take_keys (request_key, task_id, fingerprint, execution_id, created_at) VALUES (?, ?, ?, ?, ?)')
@@ -2280,21 +2285,21 @@ export class TaskService {
   #executionForWrite(envelope: any) {
     const executionId = requireString(envelope.execution_id, 'execution_id');
     const execution = this.getExecution(executionId);
-    if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${executionId}`);
-    if (envelope.task_id !== execution.task_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'task_id does not match execution');
-    if (envelope.spec_version !== execution.spec_version) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'execution spec_version is stale');
-    if (envelope.fencing_version !== execution.fencing_version) throw new SwarmEnvError(ERROR_CODES.FENCED, 'execution fencing_version is stale', { expected: execution.fencing_version });
-    if (envelope.state_version !== execution.state_version) throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'execution state_version is stale', { expected: execution.state_version });
-    if (execution.state === 'CLOSING') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'closing Execution cannot accept new contributions');
-    if (TERMINAL_EXECUTION_STATES.includes(execution.state)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'terminal Execution cannot be modified');
+    if (!execution) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${executionId}`);
+    if (envelope.task_id !== execution.task_id) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'task_id does not match execution');
+    if (envelope.spec_version !== execution.spec_version) throw new MurmError(ERROR_CODES.STALE_VERSION, 'execution spec_version is stale');
+    if (envelope.fencing_version !== execution.fencing_version) throw new MurmError(ERROR_CODES.FENCED, 'execution fencing_version is stale', { expected: execution.fencing_version });
+    if (envelope.state_version !== execution.state_version) throw new MurmError(ERROR_CODES.STALE_VERSION, 'execution state_version is stale', { expected: execution.state_version });
+    if (execution.state === 'CLOSING') throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'closing Execution cannot accept new contributions');
+    if (TERMINAL_EXECUTION_STATES.includes(execution.state)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'terminal Execution cannot be modified');
     return execution;
   }
 
   #heartbeat(payload: any, envelope: any) {
     const execution = this.#executionForWrite(envelope);
     const at = Date.now();
-    if (this.getBot(execution.owner_ref) && !(at < Date.parse(execution.lease_expires_at))) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution lease has expired');
+    if (this.getAgent(execution.owner_ref) && !(at < Date.parse(execution.lease_expires_at))) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Execution lease has expired');
     }
     const updatedAt = new Date(at).toISOString();
     const leaseExpiresAt = payload.lease_expires_at ?? new Date(at + 30_000).toISOString();
@@ -2309,7 +2314,7 @@ export class TaskService {
     if (execution.handoff_reminder_sent_at) return { execution };
     const remindedAt = payload.reminded_at ?? now();
     if (typeof remindedAt !== 'string' || Number.isNaN(Date.parse(remindedAt))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'reminded_at must be an ISO timestamp');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'reminded_at must be an ISO timestamp');
     }
     this.db.prepare(`UPDATE executions SET handoff_reminder_sent_at = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?`)
       .run(remindedAt, now(), execution.execution_id);
@@ -2318,20 +2323,20 @@ export class TaskService {
 
   #startExecution(payload: any, envelope: any) {
     const execution = this.#executionForWrite(envelope);
-    if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `cannot start Execution from ${execution.state}`);
-    const bot = this.getBot(execution.owner_ref);
-    if (bot) {
-      this.#assertMissionOpen(bot.mission_id);
-      this.assertBotDeadline(bot.bot_id);
-      if (bot.state !== 'PREPARING' || bot.execution_id !== execution.execution_id || bot.core_id !== execution.core_id) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Activation requires the preparing Bot and its reserved Execution');
+    if (execution.state !== 'CREATED') throw new MurmError(ERROR_CODES.NOT_ALLOWED, `cannot start Execution from ${execution.state}`);
+    const agent = this.getAgent(execution.owner_ref);
+    if (agent) {
+      this.#assertMissionOpen(agent.mission_id);
+      this.assertAgentDeadline(agent.agent_id);
+      if (agent.state !== 'PREPARING' || agent.execution_id !== execution.execution_id || agent.core_id !== execution.core_id) {
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Activation requires the preparing Agent and its reserved Execution');
       }
     }
     const coreId = payload.core_id ?? null;
     if (coreId !== null) {
       requireString(coreId, 'core_id');
       if (execution.core_id !== null && execution.core_id !== coreId) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Execution is permanently bound to another Core', {
+        throw new MurmError(ERROR_CODES.CONFLICT, 'Execution is permanently bound to another Core', {
           execution_id: execution.execution_id,
           expected_core_id: execution.core_id,
           received_core_id: coreId,
@@ -2339,7 +2344,7 @@ export class TaskService {
       }
       const occupied = this.getActiveExecutionForCore(coreId);
       if (occupied && occupied.execution_id !== execution.execution_id) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', {
+        throw new MurmError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', {
           core_id: coreId,
           execution_id: occupied.execution_id,
         });
@@ -2347,18 +2352,18 @@ export class TaskService {
     }
     const updatedAt = now();
     const startedAt = payload.started_at ?? updatedAt;
-    if (typeof startedAt !== 'string' || Number.isNaN(Date.parse(startedAt))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'started_at must be an ISO timestamp');
+    if (typeof startedAt !== 'string' || Number.isNaN(Date.parse(startedAt))) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'started_at must be an ISO timestamp');
     const handoffDeadline = payload.handoff_deadline ?? null;
-    const executionDeadline = payload.execution_deadline ?? bot?.hard_deadline ?? null;
+    const executionDeadline = payload.execution_deadline ?? agent?.hard_deadline ?? null;
     for (const [name, value] of [['handoff_deadline', handoffDeadline], ['execution_deadline', executionDeadline]]) {
-      if (value !== null && (typeof value !== 'string' || Number.isNaN(Date.parse(value)))) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${name} must be an ISO timestamp`);
+      if (value !== null && (typeof value !== 'string' || Number.isNaN(Date.parse(value)))) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `${name} must be an ISO timestamp`);
     }
-    if (bot && (Date.parse(executionDeadline) <= Date.now() || Date.parse(executionDeadline) > Date.parse(bot.hard_deadline))) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution activation deadline exceeds the remaining Bot budget');
+    if (agent && (Date.parse(executionDeadline) <= Date.now() || Date.parse(executionDeadline) > Date.parse(agent.hard_deadline))) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Execution activation deadline exceeds the remaining Agent budget');
     }
     this.db.prepare('UPDATE executions SET state = ?, core_id = COALESCE(?, core_id), started_at = ?, handoff_deadline = ?, execution_deadline = ?, handoff_reminder_sent_at = NULL, terminal_reason = NULL, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
       .run('RUNNING', coreId, startedAt, handoffDeadline, executionDeadline, updatedAt, execution.execution_id);
-    this.db.prepare("UPDATE bots SET state = 'ACTIVE', state_version = state_version + 1, updated_at = ? WHERE execution_id = ? AND state = 'PREPARING'")
+    this.db.prepare("UPDATE agents SET state = 'ACTIVE', state_version = state_version + 1, updated_at = ? WHERE execution_id = ? AND state = 'PREPARING'")
       .run(updatedAt, execution.execution_id);
     return { execution: this.getExecution(execution.execution_id) };
   }
@@ -2368,23 +2373,23 @@ export class TaskService {
     requireString(payload.workspace_ref, 'workspace_ref');
     requireString(payload.workspace_content_hash, 'workspace_content_hash');
     if (!Number.isInteger(payload.workspace_revision) || payload.workspace_revision < 1) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_revision must be a positive integer');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspace_revision must be a positive integer');
     }
     if (execution.workspace_ref && execution.workspace_ref !== payload.workspace_ref) {
-      throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace_ref does not match the Execution workspace');
+      throw new MurmError(ERROR_CODES.FENCED, 'workspace_ref does not match the Execution workspace');
     }
     const expectedRevision = execution.workspace_revision === null ? payload.workspace_revision : execution.workspace_revision + 1;
     if (payload.workspace_revision !== expectedRevision) {
-      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'workspace_revision is not the next revision', { expected: expectedRevision });
+      throw new MurmError(ERROR_CODES.STALE_VERSION, 'workspace_revision is not the next revision', { expected: expectedRevision });
     }
     const input = payload.workspace_input ?? execution.workspace_input;
     if (payload.workspace_input) {
       if (execution.workspace_input && stableStringify(execution.workspace_input) !== stableStringify(input)) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Initial public Workspace input is immutable');
+        throw new MurmError(ERROR_CODES.CONFLICT, 'Initial public Workspace input is immutable');
       }
-      if (!execution.workspace_input && execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Initial Workspace input must be recorded before activation');
+      if (!execution.workspace_input && execution.state !== 'CREATED') throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Initial Workspace input must be recorded before activation');
       for (const field of ['workspace_id', 'mission_id', 'revision', 'git_commit', 'content_hash']) requireString(input[field], `workspace_input.${field}`);
-      if (input.mission_id !== this.#taskMissionId(execution.task_id)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace input belongs to another Mission');
+      if (input.mission_id !== this.#taskMissionId(execution.task_id)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace input belongs to another Mission');
     }
     const fixedHash = !execution.workspace_input && Array.isArray(input?.material_inputs)
       ? fixedExecutionInputHash(this.getTask(execution.task_id), input) : execution.input_snapshot_hash;
@@ -2397,10 +2402,10 @@ export class TaskService {
   #stopExecution(payload: any, envelope: any) {
     const execution = this.#executionForWrite(envelope);
     const terminalState = payload.terminal_state ?? 'FAILED';
-    if (!TERMINAL_EXECUTION_STATES.includes(terminalState)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_state must be an Execution terminal state');
+    if (!TERMINAL_EXECUTION_STATES.includes(terminalState)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'terminal_state must be an Execution terminal state');
     const terminalReason = payload.terminal_reason ?? payload.reason ?? terminalState.toLowerCase();
     if (typeof terminalReason !== 'string' || terminalReason.length === 0) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_reason must be a non-empty string');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'terminal_reason must be a non-empty string');
     }
     const updatedAt = now();
     const handoffMetadata = payload.handoff_metadata && typeof payload.handoff_metadata === 'object' && !Array.isArray(payload.handoff_metadata)
@@ -2418,7 +2423,7 @@ export class TaskService {
     const updatedAt = now();
     const terminalReason = payload.terminal_reason ?? payload.reason ?? 'fenced';
     if (typeof terminalReason !== 'string' || terminalReason.length === 0) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'terminal_reason must be a non-empty string');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'terminal_reason must be a non-empty string');
     }
     this.db.prepare('UPDATE executions SET state = ?, fencing_version = fencing_version + 1, runtime_generation = COALESCE(?, runtime_generation), terminal_reason = ?, state_version = state_version + 1, updated_at = ? WHERE execution_id = ?')
       .run('FENCED', payload.runtime_generation ?? null, terminalReason, updatedAt, execution.execution_id);
@@ -2458,7 +2463,7 @@ export class TaskService {
           Object.keys(check).length !== identityFields.length ||
           identityFields.some((field: any) => typeof check[field] !== 'string' || !check[field] || check[field].length > 256))) ||
         (check && !contract.require_main && contract.paths.length !== 1)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT, 'Invalid explicit Workspace delivery contract');
+      throw new MurmError(ERROR_CODES.INVALID_TASK_CONTRACT, 'Invalid explicit Workspace delivery contract');
     }
   }
 
@@ -2468,20 +2473,20 @@ export class TaskService {
     this.#assertWorkspaceDelivery(delivery);
     const revision = payload.workspace_revision;
     if (typeof revision !== 'string' || !/^\d+\.\d+$/.test(revision)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task done requires a fixed Workspace revision');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Task done requires a fixed Workspace revision');
     }
     const workspaceId = execution.workspace_input?.workspace_id;
     if (!workspaceId || !this.workspaceDeliveryReader) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Trusted Workspace delivery evidence is unavailable');
+      throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Trusted Workspace delivery evidence is unavailable');
     }
     const metadata = this.workspaceDeliveryReader({ missionId: task.mission_id, workspaceId, revision });
     const source = metadata?.source;
     if (!source || source.mission_id !== task.mission_id || source.task_id !== task.task_id ||
-        source.execution_id !== execution.execution_id || source.bot_id !== execution.owner_ref ||
+        source.execution_id !== execution.execution_id || source.agent_id !== execution.owner_ref ||
         source.fencing_version !== execution.fencing_version || metadata.conflicts?.length ||
         (delivery.require_main === true && source.operation !== 'merge') ||
         delivery.paths.some((path: any) => !Object.hasOwn(metadata.files, path))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace revision does not satisfy the declared delivery');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace revision does not satisfy the declared delivery');
     }
     const files = delivery.paths.map((path: any) => ({ path, ...metadata.files[path] }));
     let check: any = null;
@@ -2490,12 +2495,12 @@ export class TaskService {
       const proof = metadata.check;
       if (proof?.check_mode === 'lean-module' || proof?.scope === 'module' || proof?.verdict !== 'PASS' || proof.checked_tree !== metadata.git_tree || !matches(proof.checker) ||
           proof.policy?.task?.spec_version !== task.spec_version) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Declared final-tree delivery check did not pass');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Declared final-tree delivery check did not pass');
       }
       if (proof.check_mode === 'lean-project') {
         const checkedPaths = new Set(Array.isArray(proof.checked_paths) ? proof.checked_paths : []);
         if (delivery.paths.some((path: any) => !checkedPaths.has(path))) {
-          throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Final-tree project check did not cover all declared Workspace delivery files');
+          throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Final-tree project check did not cover all declared Workspace delivery files');
         }
       }
       check = { ...delivery.check, check_result_id: proof.check_result_id, checked_tree: proof.checked_tree };
@@ -2509,7 +2514,7 @@ export class TaskService {
           !matches(result) || input?.workspace_id !== workspaceId || input.revision !== revision ||
           input.path !== file.path || input.content_hash !== file.content_hash ||
           input.git_commit !== metadata.git_commit || input.git_tree !== metadata.git_tree) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Declared Workspace file check did not pass for this delivery');
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Declared Workspace file check did not pass for this delivery');
       }
       check = { ...delivery.check, check_result_id: checkResultId, checked_tree: input.git_tree };
     }
@@ -2583,7 +2588,7 @@ export class TaskService {
   #replay(operationId: any, fingerprint: any) {
     const row = this.db.prepare('SELECT fingerprint, result_json FROM operations WHERE operation_id = ?').get(operationId);
     if (!row) return null;
-    if (row.fingerprint !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'operation_id was reused with another payload');
+    if (row.fingerprint !== fingerprint) throw new MurmError(ERROR_CODES.CONFLICT, 'operation_id was reused with another payload');
     return parse(row.result_json);
   }
 

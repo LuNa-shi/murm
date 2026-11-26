@@ -40,7 +40,7 @@ export function decodeFileSeed(files: unknown) {
     const parts = path.split('/');
     if (!path.isWellFormed() || /[\\\0]/.test(path) || /^[a-z]:\//i.test(path) ||
         parts.some(part => part === '' || part === '.' || part === '..')) {
-      throw invalid('FileSeed requires a normalized relative path inside the Bot workDir');
+      throw invalid('FileSeed requires a normalized relative path inside the Agent workDir');
     }
     for (let depth = 1; depth < parts.length; depth++) {
       if (Object.hasOwn(files, parts.slice(0, depth).join('/'))) throw invalid('FileSeed paths collide with a parent file');

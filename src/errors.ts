@@ -6,7 +6,7 @@ export const ERROR_CODES = Object.freeze({
   PROCESS_EXITED: 'PROCESS_EXITED',
   RPC_ERROR: 'RPC_ERROR',
   START_FAILED: 'START_FAILED',
-  BOT_STARTUP_CONTRACT: 'BOT_STARTUP_CONTRACT',
+  AGENT_STARTUP_CONTRACT: 'AGENT_STARTUP_CONTRACT',
   WORKSPACE_BUSY: 'WORKSPACE_BUSY',
   WORKSPACE_RECONCILIATION_REQUIRED: 'WORKSPACE_RECONCILIATION_REQUIRED',
   WORKSPACE_REQUEST_ABORTED: 'WORKSPACE_REQUEST_ABORTED',
@@ -37,27 +37,28 @@ export const ERROR_CODES = Object.freeze({
   SERVICE_TIMEOUT: 'SERVICE_TIMEOUT',
 });
 
-export class SwarmEnvError extends Error {
+export class MurmError extends Error {
   declare code: string;
   declare details: unknown;
   declare retryable: boolean;
 
   constructor(code: string, message: string, details: unknown = undefined, options: ErrorOptions & { retryable?: boolean } = {}) {
     super(message, options);
-    this.name = 'SwarmEnvError';
+    // Preserve the diagnostic name used by existing log consumers.
+    this.name = 'MurmError';
     this.code = code;
     this.details = details;
     this.retryable = options.retryable ?? false;
   }
 }
 
-export function asSwarmEnvError(error: any, fallbackCode: string = ERROR_CODES.INVALID_CONTRACT) {
-  if (error instanceof SwarmEnvError) return error;
-  return new SwarmEnvError(fallbackCode, error?.message ?? String(error), undefined, {
+export function asMurmError(error: any, fallbackCode: string = ERROR_CODES.INVALID_CONTRACT) {
+  if (error instanceof MurmError) return error;
+  return new MurmError(fallbackCode, error?.message ?? String(error), undefined, {
     cause: error,
   });
 }
 
 export function fail(code: string, message: string, details: unknown = undefined, options: ErrorOptions & { retryable?: boolean } = {}): never {
-  throw new SwarmEnvError(code, message, details, options);
+  throw new MurmError(code, message, details, options);
 }

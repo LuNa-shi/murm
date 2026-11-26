@@ -6,15 +6,15 @@ This chapter lists the exported SQLite schemas for this tree. A restarted proces
 
 | Owner | Durable records | What remains outside the database |
 |---|---|---|
-| Task Service | Mission, Bot/Core occupancy and provider identity, Task contract/state, Execution/fence/lease, Task relationships, admission counters, replay keys, Material links, notification and receipt state | Runtime Core occupancy, callback subscriptions and scheduling loop |
+| Task Service | Mission, Agent/Core occupancy and provider identity, Task contract/state, Execution/fence/lease, Task relationships, admission counters, replay keys, Material links, notification and receipt state | Runtime Core occupancy, callback subscriptions and scheduling loop |
 | Context Service | Immutable Material content/provenance/hash/version and explicit consumption edges | No semantic proof of whether the Agent used or understood the text |
 | Judge Service | Workspace artifact request/checker/input binding, CheckResult and result class, checker health/preflight attempts, applied-result bookkeeping | The currently executing checker subprocess and pending asynchronous call |
 | MissionWorkspace | Public Mission Git repository, immutable numeric revisions, main, merge/freeze receipts and index | Unsaved guest edits and live checker work |
 | Workspace Manager | File content plus `.swarm/workspace.json`, revision/checkpoint metadata; local Git commits/refs are separate filesystem history | Live process working memory and unsaved shell edits |
 | Observation Store | Experiment registry, ordered events, operator payload, redacted Agent payload and payload hash | SSE connections, event-emitter subscriptions, server caches and client projection |
-| Core model gateway | Runtime policy pin, Bot request attempts, observed usage, bounded HTTP diagnostics and eligible replay receipts | Bot credentials and live HTTP transport |
+| Core model gateway | Runtime policy pin, Agent request attempts, observed usage, bounded HTTP diagnostics and eligible replay receipts | Agent credentials and live HTTP transport |
 | Registry/Bridge | Manifest/profile hashes can be recorded in run metadata; source/bundle files define defaults | Registered adapters, readiness cache, Bridge token, current binding, deferred lifecycle callback |
-| Sandbox | Registered Bots publish files through explicit public save; compatibility paths retain checkpoint/progress | Container/process state, background job handles; cleanup and saving are separate steps |
+| Sandbox | Registered Agents publish files through explicit public save; compatibility paths retain checkpoint/progress | Container/process state, background job handles; cleanup and saving are separate steps |
 
 Production uses `project.sqlite` for Task/Mission/Workspace coordination, `context.sqlite` for Material state, and `judge.sqlite` for diagnostic checking. Core creates one owner-private SQLite ledger per configured model alias under the Runtime's `model-access` directory. The alias's SHA-256 determines its filename. Each service owns its connection and schema. Independent peers exchange explicit HTTP commands and receipts. The Task-owned durable gate orders revocation against Context commit and actual Judge spawn. Unknown outcomes remain fenced until exact reconciliation. Resource-unit ownership survives Judge crashes independently of the in-memory checker promise. Current service compositions use the configured local or independent service boundaries. See [Services](04-services.md#independent-contextjudge-deployment) for order, bounds and cleanup.
 
@@ -22,13 +22,13 @@ The Task-owned `service_commit_gate` holds one unresolved exact command and dige
 
 ## How to interpret the tables
 
-`task_records.gap` and `registration_hash` are required current Task fields. Registered Bot contracts require a real gap and explicit three-level priority. `task_contract_revisions` stores immutable per-Task spec-version snapshots, spec hash, actor, reason and timestamp. Initial proposals create their first snapshot; revision appends a new current contract. Both snapshots, changed Task fields/dependencies and the idempotency receipt commit in the same Task transaction. Existing Executions retain their original spec version/hash, so their checks and artifacts remain historical evidence for that contract. Task view exposes bounded version-ordered continuation rather than loading all revisions.
+`task_records.gap` and `registration_hash` are required current Task fields. Registered Agent contracts require a real gap and explicit three-level priority. `task_contract_revisions` stores immutable per-Task spec-version snapshots, spec hash, actor, reason and timestamp. Initial proposals create their first snapshot; revision appends a new current contract. Both snapshots, changed Task fields/dependencies and the idempotency receipt commit in the same Task transaction. Existing Executions retain their original spec version/hash, so their checks and artifacts remain historical evidence for that contract. Task view exposes bounded version-ordered continuation rather than loading all revisions.
 
 | Table(s) | Meaning and important fields |
 |---|---|
 | `missions` | Mission columns are `mission_id`, `goal`, `acceptance_conditions_json`, `merge_required_check_json`, `created_by`, `created_at`, `updated_at`. Initial Materials/resource budgets are not Mission columns. |
 | `tasks` + `task_records` | Durable Task row plus `task_records` Mission ID, short summary, timebox and registration hash. Responsibility keys live on `tasks`; feedback lives in notifications/receipts. The current record projection combines these facts. A Mission may begin with zero Tasks; each Task is explicitly created and taken, with no implicit shared-Mission Task. |
-| `bots` | One Bot run: Mission/Core, state/version, unique optional Execution, selection deadline, resource key, provider/Sandbox IDs, exit request/reason, optional Runtime stop terminal state, and lifecycle timestamps. A partial unique index reserves each Mission/Core until CLOSED. The trusted registration grant is stored in `coordination_permissions_json`; Pi/worker tokens are not stored here. |
+| `agents` | One Agent run: Mission/Core, state/version, unique optional Execution, selection deadline, resource key, provider/Sandbox IDs, exit request/reason, optional Runtime stop terminal state, and lifecycle timestamps. A partial unique index reserves each Mission/Core until CLOSED. The trusted registration grant is stored in `coordination_permissions_json`; Pi/worker tokens are not stored here. |
 | `executions` | One authorization interval: Task/spec/state/fence, owner/Core, lease/deadline, Workspace/checkpoint, Workspace source/check references, input snapshot/Materials, and terminal reason. Only the unregistered compatibility path can retain this Execution across a Session restart. |
 | `execution_finish_intents` | One accepted finish per Execution, unique request ID, immutable payload/outcome, optional wait/replacement references, and acceptance/closure timestamps. Stored atomically with CLOSING and dynamic wait edges; exposed through Task detail. |
 | `task_relations` | Current `depends_on` prerequisite edges and `depends_on` prerequisite edges. |
@@ -139,33 +139,33 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 
 ### Core Runtime model attempts
 
-Source: [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts); source SHA-256: `cf9e5eea98b694c712e7fb2189d63ea73a3101f91dc977d822cf096cd3fb3066`.
+Source: [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts); source SHA-256: `dc0ad90beb3e6569505ae7b9a1236ecb7d9a25b9e3415546b2e544e5b999de2d`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS runtime_model_policies (
         runtime_id TEXT PRIMARY KEY, policy_digest TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS runtime_model_attempts (
-        runtime_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        runtime_id TEXT NOT NULL, agent_id TEXT NOT NULL, request_id TEXT NOT NULL,
         phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER,
         output_tokens INTEGER, cost INTEGER CHECK(cost IS NULL), settled INTEGER NOT NULL DEFAULT 0,
         state TEXT NOT NULL, reason TEXT, receipt BLOB,
         started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
         upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
         upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
-        PRIMARY KEY (runtime_id, bot_id, request_id)
+        PRIMARY KEY (runtime_id, agent_id, request_id)
       );
 ```
 
 ### Mission submission coordinator
 
-Source: [src/runtime/mission-submission.ts](../../src/runtime/mission-submission.ts); source SHA-256: `cc106519bc1627edd25a71ebc0c7d16ead16264819dd4ce03448037f1591b2e0`.
+Source: [src/runtime/mission-submission.ts](../../src/runtime/mission-submission.ts); source SHA-256: `6e50760e9fc8aaf9983a0a3c4aebd3ff26a2dd1602f69807aede5b369151fc77`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_final_check_policies (
         mission_id TEXT PRIMARY KEY,
-        max_checks INTEGER NOT NULL CHECK(max_checks > 0),
-        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_checks)
+        max_checks INTEGER CHECK(max_checks IS NULL OR max_checks > 0),
+        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND (max_checks IS NULL OR max_concurrent <= max_checks))
       );
       CREATE TABLE IF NOT EXISTS mission_final_check_admissions (
         mission_id TEXT NOT NULL,
@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS mission_final_check_policies (
 
 ### Owner-local manual Mission review
 
-Source: [src/runtime/manual-mission-review.ts](../../src/runtime/manual-mission-review.ts); source SHA-256: `7a21ed804008b3496822dda2ee4195eba876c8ae7f558beb4acffe2df9a340eb`.
+Source: [src/runtime/manual-mission-review.ts](../../src/runtime/manual-mission-review.ts); source SHA-256: `006ac7eea3be8aaff08245790b29c37572b7ef7b39be4f2af04a866eef152b4d`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_manual_reviews (
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS mission_manual_reviews (
 
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `966f025a945f2f7875b6fce2f1cb4d3e0a9aef8e9e1af7c0e7c3180a590d3347`.
+Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `ee2174836a0b2d5ede579312f4a8b86eed7ce77fd50002fbb2c50fafcadb8b2f`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (
@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS execution_workspace_state (
 
 ### Task and Execution database
 
-Source: [src/storage/schema.ts](../../src/storage/schema.ts); source SHA-256: `1ff81dfccbefc01fa0e8d96bec0fb6b9cbd6bb334c584b1068120a5c0db53595`.
+Source: [src/storage/schema.ts](../../src/storage/schema.ts); source SHA-256: `2d631073a05f87667edad5fdbefbb2ce0c3bebd71d1ce385498b0513b26d1a72`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -464,10 +464,10 @@ CREATE TABLE IF NOT EXISTS execution_finish_intents (
   closed_at TEXT
 );
 
--- Runtime creates Bot identities before there is any Task take. The Task
+-- Runtime creates Agent identities before there is any Task take. The Task
 -- coordinator stores them here so take and lifecycle guards share a transaction.
-CREATE TABLE IF NOT EXISTS bots (
-  bot_id TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS agents (
+  agent_id TEXT PRIMARY KEY,
   mission_id TEXT NOT NULL REFERENCES missions(mission_id),
   core_id TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('STARTING', 'UNBOUND', 'PREPARING', 'ACTIVE', 'CLOSING', 'CLOSED')),
@@ -491,8 +491,8 @@ CREATE TABLE IF NOT EXISTS bots (
   updated_at TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS bots_occupied_core
-  ON bots(mission_id, core_id) WHERE state <> 'CLOSED';
+CREATE UNIQUE INDEX IF NOT EXISTS agents_occupied_core
+  ON agents(mission_id, core_id) WHERE state <> 'CLOSED';
 
 CREATE TABLE IF NOT EXISTS operations (
   operation_id TEXT PRIMARY KEY,
@@ -513,7 +513,7 @@ CREATE TABLE IF NOT EXISTS take_keys (
 
 ### Context database
 
-Source: [src/storage/context-schema.ts](../../src/storage/context-schema.ts); source SHA-256: `beb3d52d141f9d4e0b02aff35f578907b9997835fd3084580ef18bd29a985ae7`.
+Source: [src/storage/context-schema.ts](../../src/storage/context-schema.ts); source SHA-256: `60aad44fff8720a90b9188a79fb27b0d6280ee8006c382d657d79f52bde1ecfa`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -532,7 +532,7 @@ CREATE TABLE IF NOT EXISTS materials (
   version INTEGER NOT NULL,
   producer_task_id TEXT,
   producer_execution_id TEXT,
-  producer_bot_id TEXT,
+  producer_agent_id TEXT,
   provenance_json TEXT NOT NULL,
   supersedes TEXT REFERENCES materials(material_id),
   title TEXT,
@@ -765,7 +765,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `0842ce7bae7bd01b6dab03359682c50f7335321799dbc81f08e5d5229bd74df1`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `73d37d53b15d4a745ccfa0354b0f93d365de0c33af8de0139b7683291233614d`.
 
 #### mission_final_check_active
 
@@ -791,8 +791,8 @@ CREATE TABLE mission_final_check_admissions (
 ```sql
 CREATE TABLE mission_final_check_policies (
         mission_id TEXT PRIMARY KEY,
-        max_checks INTEGER NOT NULL CHECK(max_checks > 0),
-        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_checks)
+        max_checks INTEGER CHECK(max_checks IS NULL OR max_checks > 0),
+        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND (max_checks IS NULL OR max_concurrent <= max_checks))
       );
 ```
 
@@ -849,4 +849,4 @@ CREATE TABLE mission_submissions (
 
 ## Public Workspace Git/index commit journal
 
-New Mission Workspace repositories use `.swarm-workspace.json` for the published index, `.swarm-revisions/<revision>.json` for immutable commit/tree/parent/source metadata, `.swarm-requests/<hash>.json` for request fingerprints and results, and one `.swarm-journal.json` for a pending commit intent. Actual file bytes live in Git objects protected by `refs/swarm/revisions/<revision>`; `.swarm-staging/` only holds temporary import indexes and trees. `.swarm-writer.lock` and `.swarm-request-locks/<hash>.lock` are OS lock files, not persisted leases or Bot credentials. A checking request records its fixed main/source before external checking; abandoned request identity is never reused to charge another check. The recovery barrier and ref comparison rules are described in [05](05-workspace-continuity.md). No public API treats these coordination files as project content.
+New Mission Workspace repositories use `.swarm-workspace.json` for the published index, `.swarm-revisions/<revision>.json` for immutable commit/tree/parent/source metadata, `.swarm-requests/<hash>.json` for request fingerprints and results, and one `.swarm-journal.json` for a pending commit intent. Actual file bytes live in Git objects protected by `refs/swarm/revisions/<revision>`; `.swarm-staging/` only holds temporary import indexes and trees. `.swarm-writer.lock` and `.swarm-request-locks/<hash>.lock` are OS lock files, not persisted leases or Agent credentials. A checking request records its fixed main/source before external checking; abandoned request identity is never reused to charge another check. The recovery barrier and ref comparison rules are described in [05](05-workspace-continuity.md). No public API treats these coordination files as project content.

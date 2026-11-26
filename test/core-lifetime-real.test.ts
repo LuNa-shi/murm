@@ -8,12 +8,12 @@ import { admitLifetime } from './fixtures/lifetime-host-observation.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { createLifetimeProbeBudget, lifetimeProbePlan, runLifetimeProbe } from './fixtures/native-lifetime-probe.js';
 
-test('four idle native Core Bots attest actual provider lifetime and terminal deletion without model work', {
-  skip: process.env.SWARMENV_CORE_LIFETIME_REAL_TEST !== '1' && 'Set SWARMENV_CORE_LIFETIME_REAL_TEST=1 after exact artifact review',
+test('four idle native Core Agents attest actual provider lifetime and terminal deletion without model work', {
+  skip: process.env.MURM_CORE_LIFETIME_REAL_TEST !== '1' && 'Set MURM_CORE_LIFETIME_REAL_TEST=1 after exact artifact review',
   timeout: 180000,
 }, async () => {
   const budget = createLifetimeProbeBudget();
-  const image = process.env.SWARMENV_CORE_TEST_IMAGE;
+  const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
   // No hosted configuration is consumed, and even accidental local model work fails.
   let requests = 0;
@@ -22,24 +22,24 @@ test('four idle native Core Bots attest actual provider lifetime and terminal de
   const root = resolve('experiments'); await mkdir(root, { recursive: true, mode: 0o700 });
   assert.equal(await realpath(root), root, 'experiment parent must not traverse symlinks');
   const outputDir = await mkdtemp(join(root, 'core-lifetime-')); await chmod(outputDir, 0o700);
-  const lifecycle = process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1';
-  const apiKey = process.env.SWARMENV_CORE_TEST_API_KEY;
+  const lifecycle = process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1';
+  const apiKey = process.env.MURM_CORE_TEST_API_KEY;
   const headers = apiKey ? { 'OPEN-SANDBOX-API-KEY': apiKey } : {};
   let runtime, receiptSaved = false, probing = false;
   try {
-    const { createRuntime } = await import('@swarmenv/core');
-    const { ServiceRegistry } = await import('@swarmenv/core/services');
-    const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+    const { createRuntime } = await import('@murm/core');
+    const { ServiceRegistry } = await import('@murm/core/services');
+    const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
     const backend = createPiOpenSandboxBackend({
-      sandbox: { lifecycleBaseUrl: lifecycle, endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey,
+      sandbox: { lifecycleBaseUrl: lifecycle, endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey,
         timeoutSeconds: lifetimeProbePlan.timeoutSeconds, resourceLimits: lifetimeProbePlan.resourceLimits, commandTimeoutMs: 30000 },
-      bridge: { host: '0.0.0.0', publicUrl: process.env.SWARMENV_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
-      modelGateway: { host: '0.0.0.0', advertiseHost: process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', ...lifetimeProbePlan.modelGatewayLimits },
+      bridge: { host: '0.0.0.0', publicUrl: process.env.MURM_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
+      modelGateway: { host: '0.0.0.0', advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', ...lifetimeProbePlan.modelGatewayLimits },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `http://127.0.0.1:${upstream.address().port}/v1/responses`, headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 * 1024, inodes: 4096 } },
     });
     runtime = await budget.run(async () => {
-      const created = await createRuntime({ backend, outputDir, maxBots: lifetimeProbePlan.bots, services: new ServiceRegistry(),
+      const created = await createRuntime({ backend, outputDir, maxAgents: lifetimeProbePlan.agents, services: new ServiceRegistry(),
       profiles: { worker: { image, prompt: 'Wait for host input.', writable: false, model: 'default', services: {} } } });
       runtime = created;
       await writeFile(join(outputDir, 'lifetime-owner.json'), JSON.stringify({ runtimeId: created.id, plan: lifetimeProbePlan,
@@ -49,7 +49,7 @@ test('four idle native Core Bots attest actual provider lifetime and terminal de
     }, 100000);
     probing = true;
     const receipt = await runLifetimeProbe({ runtime, budget, upstreamRequests: () => requests,
-      admit: botIds => admitLifetime({ runtime, outputDir, botIds, workMs: lifetimeProbePlan.workMs, cleanupMs: lifetimeProbePlan.cleanupMs, recoveryMs: lifetimeProbePlan.recoveryMs, marginMs: lifetimeProbePlan.marginMs,
+      admit: agentIds => admitLifetime({ runtime, outputDir, agentIds, workMs: lifetimeProbePlan.workMs, cleanupMs: lifetimeProbePlan.cleanupMs, recoveryMs: lifetimeProbePlan.recoveryMs, marginMs: lifetimeProbePlan.marginMs,
         provider: { baseUrl: lifecycle, headers, uncertaintyMs: 1000 } }),
       verifyDeleted: async admission => {
         // Include allocations whose startup failed before admission; never infer deletion from close alone.
@@ -60,7 +60,7 @@ test('four idle native Core Bots attest actual provider lifetime and terminal de
           await response.body?.cancel(); return { sandboxId: id, status: response.status };
         }));
         const containers = await ownedContainers(runtime.id, { timeoutMs: 5000 });
-        return { complete: ids.length === lifetimeProbePlan.bots && statuses.every(row => row.status === 404) && containers.length === 0 &&
+        return { complete: ids.length === lifetimeProbePlan.agents && statuses.every(row => row.status === 404) && containers.length === 0 &&
           (!admission || admission.resources.every(row => ids.includes(row.sandboxId))), statuses, remainingOwnedContainers: containers.length };
       } });
     receipt.elapsedMs = budget.elapsedMs();

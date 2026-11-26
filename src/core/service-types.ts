@@ -27,7 +27,7 @@ export interface ServiceCapability {
 
 export interface ServiceCaller {
   runtimeId: string;
-  botId: string;
+  agentId: string;
   profile: string;
   binding?: string;
 }

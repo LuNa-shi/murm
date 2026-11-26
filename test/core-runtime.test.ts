@@ -7,9 +7,9 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createRuntime } from '@swarmenv/core';
-import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import { ServiceRegistry } from '@swarmenv/core/services';
+import { createRuntime } from '@murm/core';
+import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { ServiceRegistry } from '@murm/core/services';
 
 function options(outputDir, model = 'k3', sandbox = {}) {
   return {
@@ -33,19 +33,19 @@ function options(outputDir, model = 'k3', sandbox = {}) {
       writer: {
         prompt: 'Write a file when instructed.',
         model: 'missing-model',
-        image: 'swarmenv-agent:core-test',
+        image: 'murm-agent:core-test',
         writable: true,
         services: {},
       },
     },
     services: new ServiceRegistry(),
-    maxBots: 1,
+    maxAgents: 1,
     outputDir,
   };
 }
 
-test('Runtime rejects an unknown Profile model before creating a Bot', async t => {
-  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+test('Runtime rejects an unknown Profile model before creating a Agent', async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-test-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
 
   await assert.rejects(createRuntime(options(outputDir)), error => {
@@ -59,7 +59,7 @@ test('Runtime rejects an unknown Profile model before creating a Bot', async t =
 });
 
 test('Runtime rejects a configured model absent from the shipped Pi catalog', async t => {
-  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-test-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const config = options(outputDir, 'unknown-pi-model');
   config.profiles.writer.model = 'default';
@@ -70,7 +70,7 @@ test('Runtime rejects a configured model absent from the shipped Pi catalog', as
 });
 
 test('An empty Runtime opens and closes without contacting an unavailable sandbox lifecycle', async t => {
-  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-test-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const config = options(outputDir);
   config.profiles.writer.model = 'default';
@@ -82,7 +82,7 @@ test('An empty Runtime opens and closes without contacting an unavailable sandbo
     await assert.rejects(runtime.get('absent'), { code: 'NOT_FOUND', operation: 'get', runtimeId: runtime.id });
     const receipt = await runtime.close();
     assert.equal(receipt.cleanup, 'complete');
-    assert.deepEqual(receipt.bots, []);
+    assert.deepEqual(receipt.agents, []);
     assert.equal(receipt.reportPath, path);
     assert.equal(JSON.parse(await readFile(path, 'utf8')).status, 'closed');
     assert.deepEqual(await runtime.close(), receipt);
@@ -95,7 +95,7 @@ test('An empty Runtime opens and closes without contacting an unavailable sandbo
 });
 
 test('factory timeout retains its identity and reconciles a late model listener without opening the Bridge', { timeout: 5000 }, async t => {
-  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-late-listener-'));
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-late-listener-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const config = options(outputDir);
   config.profiles.writer.model = 'default';
@@ -139,7 +139,7 @@ test('factory timeout retains its identity and reconciles a late model listener 
 });
 
 test('close exposes a failed report save and later publishes the same closed Runtime', async t => {
-  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-report-retry-'));
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-report-retry-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const config = options(outputDir);
   config.profiles.writer.model = 'default';
@@ -164,7 +164,7 @@ test('close exposes a failed report save and later publishes the same closed Run
 
 
 test('Runtime accepts a Profile network origin without allocating a sandbox', async t => {
-  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-test-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const config = options(outputDir);
   config.profiles.writer.model = 'default';
@@ -177,9 +177,9 @@ test('Runtime accepts a Profile network origin without allocating a sandbox', as
 
 
 test('Runtime rejects reserved or unsupported ordinary environment values at assembly', async t => {
-  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-test-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
-  for (const env of [{ SWARMENV_WORKER_TOKEN: 'test-only' }, { PI_API_KEY: 'test-only' }, { lower_case: 'unsupported' }, { LABEL: 'x'.repeat(4097) }]) {
+  for (const env of [{ MURM_WORKER_TOKEN: 'test-only' }, { PI_API_KEY: 'test-only' }, { lower_case: 'unsupported' }, { LABEL: 'x'.repeat(4097) }]) {
     const config = options(outputDir);
     config.profiles.writer.model = 'default';
     config.profiles.writer.env = env;
@@ -210,8 +210,8 @@ async function lifecycleFixture(t) {
   } };
 }
 
-test('starting Bot reserves capacity before provider allocation and retains its identity on replay', { timeout: 5000 }, async t => {
-  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+test('starting Agent reserves capacity before provider allocation and retains its identity on replay', { timeout: 5000 }, async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-test-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const provider = await lifecycleFixture(t);
   const config = options(outputDir, 'k3', { lifecycleBaseUrl: provider.url });
@@ -226,13 +226,13 @@ test('starting Bot reserves capacity before provider allocation and retains its 
   provider.reject(response);
   const [failure, replayFailure] = await Promise.all([first, replay]);
   assert.equal(failure.operation, 'spawn');
-  assert.equal(replayFailure.botId, failure.botId);
-  assert.equal((await runtime.get(failure.botId)).id, failure.botId);
+  assert.equal(replayFailure.agentId, failure.agentId);
+  assert.equal((await runtime.get(failure.agentId)).id, failure.agentId);
   assert.equal((await runtime.close()).cleanup, 'complete');
 });
 
 test('Runtime snapshots Profiles and a backend belongs to exactly one Runtime', { timeout: 5000 }, async t => {
-  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-test-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const provider = await lifecycleFixture(t);
   const config = options(outputDir, 'k3', { lifecycleBaseUrl: provider.url });
@@ -246,7 +246,7 @@ test('Runtime snapshots Profiles and a backend belongs to exactly one Runtime', 
   await assert.rejects(runtime.spawn({ requestId: 'added-role', profile: 'added' }), { code: 'INVALID_CONTRACT' });
   const pending = runtime.spawn({ requestId: 'frozen-image', profile: 'writer' }).catch(error => error);
   const response = await provider.first;
-  assert.equal(provider.requests[0].image.uri, 'swarmenv-agent:core-test');
+  assert.equal(provider.requests[0].image.uri, 'murm-agent:core-test');
   provider.reject(response);
   const failure = await pending;
   assert.equal(failure.operation, 'spawn');
@@ -255,12 +255,12 @@ test('Runtime snapshots Profiles and a backend belongs to exactly one Runtime', 
   const other = await createRuntime(secondConfig);
   t.after(() => other.close());
   assert.notEqual(other.id, runtime.id);
-  await assert.rejects(other.get(failure.botId), { code: 'NOT_FOUND', runtimeId: other.id });
+  await assert.rejects(other.get(failure.agentId), { code: 'NOT_FOUND', runtimeId: other.id });
   assert.notEqual((await other.close()).outputDir, (await runtime.close()).outputDir);
 });
 
 test('Runtime rejects invalid capability and network configuration before resource creation', async t => {
-  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-test-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const invalidProfiles = [
     { services: { absent: ['read'] } }, { spawnProfiles: ['absent'] },
@@ -279,15 +279,15 @@ test('Runtime rejects invalid capability and network configuration before resour
 
 
 test('spawn rejects reserved credentials and host policy overrides before dispatch', async t => {
-  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-test-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const config = options(outputDir);
   config.profiles.writer.model = 'default';
   const runtime = await createRuntime(config);
   t.after(() => runtime.close());
-  for (const override of [{ secretEnv: { SWARMENV_WORKER_TOKEN: 'test-only' } },
+  for (const override of [{ secretEnv: { MURM_WORKER_TOKEN: 'test-only' } },
     { secretEnv: { PI_KIMI_PROXY_API_KEY: 'test-only' } }, { network: { allow: [] } },
-    { image: 'other-image' }, { model: 'other-model' }, { maxBots: 99 }, { services: {} }]) {
+    { image: 'other-image' }, { model: 'other-model' }, { maxAgents: 99 }, { services: {} }]) {
     await assert.rejects(runtime.spawn({ requestId: 'invalid-override', profile: 'writer', ...override }), {
       code: 'INVALID_CONTRACT', operation: 'spawn',
     });

@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
+import { ERROR_CODES, MurmError } from '../src/errors.js';
 import { JudgeService } from '../src/judge/judge-service.js';
 import { LeanChecker } from '../src/judge/lean-adapter.js';
 import { agentCheckResult } from '../src/judge/check-result.js';
@@ -115,7 +115,7 @@ test('Agent CheckResult feedback redacts credentials from checker diagnostics', 
 });
 
 test('fixture manifest binds original source bytes and validates locked checker identity', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-original-fixture-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-original-fixture-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const problemFile = join(root, 'input.lean');
   await writeFile(problemFile, fixtureSource);
@@ -139,7 +139,7 @@ test('fixture manifest binds original source bytes and validates locked checker 
 });
 
 test('Judge reopening reuses one fixture revision but checks a changed canonical revision', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-judge-fixture-revision-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-judge-fixture-revision-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const { putnambench_commit: originalCommit, ...manifest } = fixtureManifest;
   const checker = checkerWithPreflight({
@@ -243,7 +243,7 @@ test('Checker result contract distinguishes source failure from a checker that n
 });
 
 test('Lean checker preflight reports an unavailable executable before proof checking', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-checker-missing-executable-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-checker-missing-executable-'));
   const projectRoot = join(root, 'lean4');
   const problemPath = join(projectRoot, 'src', 'input.lean');
   const source = fixtureSource;
@@ -251,7 +251,7 @@ test('Lean checker preflight reports an unavailable executable before proof chec
     await mkdir(join(projectRoot, 'src'), { recursive: true });
     await writeFile(problemPath, source);
     const manifest = { ...fixtureManifest, project_root: projectRoot, problem_file_hash: createHash('sha256').update(source).digest('hex') };
-    const checker = new LeanChecker({ command: '/definitely-missing-swarmenv-checker' });
+    const checker = new LeanChecker({ command: '/definitely-missing-murm-checker' });
     const result = await checker.preflight({ fixtureManifest: manifest });
     assert.equal(result.status, 'unavailable');
     assert.equal(result.checker_process_status, 'not_started');
@@ -271,7 +271,7 @@ test('Lean checker preflight refuses an unbound fixture or an unknown toolchain 
   assert.equal(unbound.diagnostic_code, 'checker_input_binding_unverified');
   assert.equal(unbound.evidence.input_binding_verified, false);
 
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-checker-unknown-version-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-checker-unknown-version-'));
   const projectRoot = join(root, 'lean4');
   const problemPath = join(projectRoot, 'src', 'input.lean');
   const source = 'import Mathlib\ntheorem input : True := by trivial\n';
@@ -297,7 +297,7 @@ test('Lean checker preflight refuses an unbound fixture or an unknown toolchain 
 });
 
 test('Lean checker preflight binds the locked input, project cwd, and toolchain version', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-checker-preflight-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-checker-preflight-'));
   const projectRoot = join(root, 'lean4');
   const problemPath = join(projectRoot, 'src', 'input.lean');
   const source = 'import Mathlib\ntheorem input : True := by trivial\n';
@@ -556,7 +556,7 @@ test('JudgeService stores CheckResult truth, keeps Task untouched, and deduplica
   assert.equal(judge.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get(), undefined);
   await assert.rejects(
     () => judge.checkWorkspaceSource({ ...input, workspace_source_id: 'material-2', workspace_source: workspace_source('changed', 'material-2') }, makeEnvelope({ operationId: 'judge-op-3', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 })),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.CONFLICT,
+    (error) => error instanceof MurmError && error.code === ERROR_CODES.CONFLICT,
   );
   judge.close();
 });
@@ -621,11 +621,11 @@ test('Judge rejects results whose Task or Workspace binding has drifted', async 
   };
   await assert.rejects(
     () => judge.checkWorkspaceSource({ ...input, target_task: { ...targetTask, spec_version: 2 } }, makeEnvelope({ operationId: 'drifted-task', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 })),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
+    (error) => error instanceof MurmError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
   await assert.rejects(
     () => judge.checkWorkspaceSource({ ...input, workspace: { input_snapshot_hash: 'different-input' } }, makeEnvelope({ operationId: 'drifted-input', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 })),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
+    (error) => error instanceof MurmError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
   judge.close();
 });
@@ -645,11 +645,11 @@ test('Judge operation replay and mismatched fixture bindings are explicit', asyn
   assert.equal(first.verdict, 'FAIL');
   assert.throws(
     () => judge.dispatch('submit_check_result', { ...payload, workspace_source_id: 'material-2', workspace_source: workspace_source('changed', 'material-2') }, makeEnvelope({ operationId: 'submit-2', actorRef: 'judge:lean', taskId: 'task-proof', specVersion: 1 })),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.CONFLICT,
+    (error) => error instanceof MurmError && error.code === ERROR_CODES.CONFLICT,
   );
   await assert.rejects(
     () => judge.checkWorkspaceSource({ ...payload, request_key: 'bad-binding', checker_version: 'different' }),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
+    (error) => error instanceof MurmError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
   judge.close();
 });

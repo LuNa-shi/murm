@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
 
 export const FIXTURE_REQUIRED_FIELDS = Object.freeze([
@@ -13,13 +13,13 @@ function sha256(value: any) {
 }
 
 export function validateFixtureManifest(manifest: any) {
-  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'fixture_manifest is required');
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'fixture_manifest is required');
   for (const field of FIXTURE_REQUIRED_FIELDS) {
-    if (typeof manifest[field] !== 'string' || manifest[field].length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `fixture_manifest.${field} is required`);
+    if (typeof manifest[field] !== 'string' || manifest[field].length === 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `fixture_manifest.${field} is required`);
   }
   const commit = manifest.fixture_commit ?? manifest.putnambench_commit;
-  if (!/^[0-9a-f]{40}$/.test(commit)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'fixture_commit (or putnambench_commit) must be a full commit SHA');
-  if (!/^[0-9a-f]{64}$/.test(manifest.problem_file_hash)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'problem_file_hash must be SHA-256');
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'fixture_commit (or putnambench_commit) must be a full commit SHA');
+  if (!/^[0-9a-f]{64}$/.test(manifest.problem_file_hash)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'problem_file_hash must be SHA-256');
   return manifest;
 }
 

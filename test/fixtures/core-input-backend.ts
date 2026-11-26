@@ -13,20 +13,20 @@ export const transport = {
 export const claimPiOpenSandboxBackend = () => configuration;
 export async function openPiOpenSandboxBackend() {
   return {
-    async spawn({ botId, onEvent }) {
-      transport.listeners.set(botId, onEvent);
-      return { sandboxId: `fixture-${botId}`, versions: { piVersion: '1.3.0' } };
+    async spawn({ agentId, onEvent }) {
+      transport.listeners.set(agentId, onEvent);
+      return { sandboxId: `fixture-${agentId}`, versions: { piVersion: '1.3.0' } };
     },
-    async send(botId, input, { mode, inputId, steeringMode, wakeIfIdle }) {
+    async send(agentId, input, { mode, inputId, steeringMode, wakeIfIdle }) {
       if (!transport.submissions.has(inputId)) {
-        transport.submissions.set(inputId, { botId, input, mode, steeringMode, wakeIfIdle, receipt: { status: 'unknown' } });
+        transport.submissions.set(inputId, { agentId, input, mode, steeringMode, wakeIfIdle, receipt: { status: 'unknown' } });
         const next = transport.next; transport.next = undefined;
         await next?.(inputId);
       }
       return transport.submissions.get(inputId).receipt;
     },
-    async interrupt(botId, { interruptId, executionEpoch }) {
-      transport.interruptCalls.push({ botId, interruptId, executionEpoch });
+    async interrupt(agentId, { interruptId, executionEpoch }) {
+      transport.interruptCalls.push({ agentId, interruptId, executionEpoch });
       return transport.onInterrupt();
     },
     async stopExecution() { return { collectable: false }; },

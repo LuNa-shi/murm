@@ -1,0 +1,45 @@
+# EXP-20261125-17 · Upstream Agensh Pandoc comparison
+
+Registry ID `EXP-20261125-17` was assigned when integrating the parallel branches. The original run and its evidence use `EXP-20261125-06`.
+
+## Registration
+
+The owner authorized one comparison run for [Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) on 2026-11-25 UTC. Run the same ProgramBench Pandoc task in Microsoft Agensh with Kimi K3, four peers and a one-hour budget to compare the actual collaboration with [the SwarmEnv run](EXP-20261125-05-agensh-pandoc.md). Observe peer work selection, Git branches and PR roles, delivery into `main`, how peers receive and use messages or each other's work, and the archived state. The operator observes without assigning work, sending in-run input or merging. The native task pack retains its own scheduled reminders.
+
+| Setting | Frozen value |
+| --- | --- |
+| Upstream system | [microsoft/Agensh at `2dae4e14a653da48549fd9aa093f834841475d6c`](https://github.com/microsoft/Agensh/tree/2dae4e14a653da48549fd9aa093f834841475d6c) |
+| Task | `jgm__pandoc.5caad90`, official cleanroom image ID `sha256:02add2de637e9b5f42ecb3600944a15f7a6311107a872f2a95b31eb97c279681`; offline task pack |
+| Native images | Worker `sha256:f8f8ad00be2cd705d1629cddea518274a11b7e7fad78bd05d5afc83d7756910d`; Router `sha256:871cfb987930ca2bf1ac9f99b6dde1d2f96f8d7809ad7bbe08405cde6ba6ebf7`; Board `sha256:4dd0d15e6909eafdd79ce0762f4b56b5a7b9b5b7a0b9a72554ce282d638281ea`. |
+| Model | Same `kimi_proxy/k3` Responses route and medium reasoning effort as SwarmEnv; Pi 1.3.0; 256,000 effective input context. Native proxy generation and aggregate token caps disabled. |
+| Peer resources | Four peers, one CPU and 1 GiB per worker. The native Compose workspace uses its own storage and isolation. |
+| Window | One hour from the upstream driver's time anchor just before worker activation. Fixed-length profile. Native transport timeouts and retry behavior remain in effect. |
+| Prompts, task policy, tools | Upstream prompt set SHA-256 `68698b3f78c4900ff7d58e82c22fe3406c428f2489cfb1f770a6405481e088f8`, pack SHA-256 `3cff84b635781fbf08ca4ccef21a6bba1c6d70dab222c2b33baa49e51f05fd70`, tool policy SHA-256 `67b8ae54ce48d8ec58ee0388ec41441f8937b705f141be549c195e820c625d16`. |
+| Host adaptation | Compose overlay binds Gitea and Mattermost to local ports, SHA-256 `61fbd21413c284fe6beffc294b289facb16461cde9b9f67080d7376ca174e120`. Original preflight and chain run phase. Host lacks the optional reboot guard. Launcher SHA-256 `4c6656dc58a047727638ab38fcef85e7df1baa5f8d6d62e34ea9fbc6166fccc3`. |
+| Comparison | SwarmEnv `ce7b0d6`, EXP-20261125-16. Compare observed collaboration paths and result at cutoff. Native task instructions and lifecycle remain part of the comparison. |
+| Archive check | Pin the actual final `main` commit, inspect its Git history and candidate source, and check buildability independently where possible. ProgramBench tooling is pinned to `27f02157c785f8da3647aa6dbbe6b9137f99f10e`. No task-score threshold. Raw logs, sessions, source and facility data stay local. |
+
+## Results
+
+The upstream driver started its one-hour clock just before activating worker 1 at approximately 10:20:19 UTC on 2026-11-25. Staggered startup and task delivery took 112 seconds. The upstream driver reached the wall-clock deadline at approximately 11:20:19 UTC and stopped the team. The saved proxy log has 532 worker Responses with HTTP 200. The last live usage receipt at 11:19:46 shows all four peers used K3. The operator observed without sending in-run input, selecting work, or merging.
+
+All four peers published a `CLAIM` in their first turns. The last live Board snapshot had five claims and nine entries. Live Pi journals showed all four peers receiving Board entries from other workers inside their initial turns, attached to results of their own `board_write` calls. The earliest verified example was worker 1 receiving worker 3's `FACT` at 10:23:02 UTC. MySQL recorded four peer DM notices emitted by the same mechanism, two in each direction between workers 1 and 3. Two messages received by worker 1 also appear as appended text in its first-turn Pi journal. The interval between event ingestion and delivery was about five seconds for one DM and about 43 minutes for another. Delivery depends on when the receiving peer next uses an eligible MCP tool.
+
+Worker 1 created PR #2 from its self-created `core-skeleton` branch at 11:09:00 UTC and merged it using its own account at 11:09:16 UTC, about 49 minutes into the native window. The Gitea API and saved service logs confirm one successful PR creation and one merge. The last observed shared head and recorded merge SHA are both `630e627988b60b61a22ff30f828788a1534bb40c`. That revision includes a build entry point and 29 paths changed from the seed. The separate `html-writer` branch was pushed and updated but did not reach `main`. The evidence verifies one worker's delivery. There is no verified multi-worker source integration or review by a different peer in this run.
+
+The native exporter saved a 33-file candidate archive with SHA-256 `74ff3dfa60a174725a4e6fd0f15bbd549854fad2d2d1194a99526312d5f7992e`. From a fresh extraction in the official offline cleanroom, the ProgramBench executable-mode step followed by `compile.sh` produced an executable. It exited successfully for `--version`. A Markdown-to-plain input exited with code 99 because the Markdown reader was unimplemented. The full benchmark suite was outside this comparison.
+
+All four worker snapshots passed the native shutdown verification before stack removal. The later chain copy checked the source directory as the unprivileged caller and skipped it. It then removed the original profile data during cleanup. The submission archive, service logs, sampled Gitea and Board reads, and DM receipts remain. The private worker archives and full Session files were not retained. The launcher returned zero and the run's Compose project has no remaining containers or networks.
+
+## Analysis
+
+Both versions supported peer work selection, independent workspaces, publication to the Board, and Git branches. The open-source run exercised two mechanisms that differ in SwarmEnv.
+
+- **Opening and landing PRs from a peer-chosen branch.** In the SwarmEnv run four work branches were pushed and none reached shared `main`. Its Gitea Service denied a PR attempt from a branch outside the peer's configured branch. The native run shows the same kind of self-created branch entering the normal PR path and its author merging to protected `main`. Native Gitea gives its coder team permission to merge through PRs, while SwarmEnv verifies a peer-specific source branch and executes the merge through its trusted Service. [Native main protection](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/docker/bootstrap/bootstrap.sh#L281-L318), [native work cycle](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/tasks/programbench/prompts/work_cycle.txt)
+- **Receiving timely shared information during a long turn.** SwarmEnv queued notifications for turn boundaries. In its run a team post triggered later turns for A and D, while none of the nine direct messages reached a new model turn before cutoff. Native Agensh can append peer Board entries and DMs to an MCP tool result during the active turn. The recorded early Board deliveries and four DM receipts show the path working. The long wait for one DM also shows the limit of tool-triggered delivery. [Native notice shim](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/mini-router/mcp_notice_shim.cjs), [native worker prompt](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/prompts/agents.txt)
+
+The comparison holds task, model route, reasoning setting, peer count and configured time constant. The original starts the clock before its staggered wake-up and uses the native ProgramBench prompts, seed tree, reminders, model adapter and runtime. SwarmEnv starts its clock when all peers are ready and exposes the public manual separately from its README-only seed repository. With one run in each system, the recorded behaviors show which collaboration paths occurred. The difference in delivered code cannot be attributed to any single implementation choice.
+
+## Next steps
+
+The remaining fidelity work is to let a peer open a PR from its own branches within the run repository and to deliver urgent peer messages and fresh Board entries within an active turn. Keep protected `main` and verified merge heads. A follow-up behavior check can distinguish delivery of a notice from a peer acting on it, and can verify a later PR incorporating another peer's work. Retention of native private archives needs a copy step with the same access used by verification before cleanup.

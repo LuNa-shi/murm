@@ -22,22 +22,22 @@ isolation:{network:'local-docker',disk:{bytes:67108864,inodes:4096}}}};`);
   await assert.rejects(run('failed-config.mjs'), error => {
     assert.equal(error.code, 1); report = JSON.parse(error.stdout);
     assert.ok(report.businessFailure); assert.equal(report.cleanup.cleanup, 'complete');
-    assert.deepEqual(report.cleanup.bots, []); return true;
+    assert.deepEqual(report.cleanup.agents, []); return true;
   });
   const directory = join(outputDir, report.runtimeId);
   const inspected = JSON.parse((await run('--result', directory, '--runtime-id', report.runtimeId)).stdout);
-  assert.equal(inspected.environment.business, 'failed');
-  assert.equal(inspected.environment.acceptance, 'not-interpreted');
+  assert.equal(inspected.harness.business, 'failed');
+  assert.equal(inspected.harness.acceptance, 'not-interpreted');
   assert.equal(inspected.core.recordedStatus, 'closed');
   assert.equal(inspected.core.cleanup, 'complete');
-  assert.deepEqual(inspected.core.bots, []);
+  assert.deepEqual(inspected.core.agents, []);
   assert.equal(JSON.stringify(inspected).includes('PRIVATE_UNUSED_MODEL_KEY'), false);
-  assert.equal(inspected.environment.resultLocation.path, report.reportPath);
+  assert.equal(inspected.harness.resultLocation.path, report.reportPath);
   assert.deepEqual(JSON.parse(await readFile(report.reportPath, 'utf8')).businessFailure, report.businessFailure);
   await assert.rejects(run('--result', directory, '--runtime-id', 'other-runtime'), error => {
     assert.equal(error.code, 1); const value = JSON.parse(error.stdout);
-    assert.equal(value.environment.state, 'identity-mismatch'); assert.equal(value.core.state, 'identity-mismatch');
-    assert.equal(value.environment.business, 'unknown'); return true;
+    assert.equal(value.harness.state, 'identity-mismatch'); assert.equal(value.core.state, 'identity-mismatch');
+    assert.equal(value.harness.business, 'unknown'); return true;
   });
   for (const args of [[], ['failed-config.mjs','extra'], ['--result',directory], ['--result',directory,'--runtime-id','--help']]) {
     await assert.rejects(run(...args), error => { assert.equal(error.code, 2); assert.equal(JSON.parse(error.stderr).code,'NOTES_ARGUMENTS_INVALID'); return true; });

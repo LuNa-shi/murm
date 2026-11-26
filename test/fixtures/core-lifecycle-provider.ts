@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { syncBuiltinESMExports } from 'node:module';
 import { once } from 'node:events';
 import { promisify } from 'node:util';
-import { BOT_UID } from '../../scripts/sandbox-project.js';
+import { AGENT_UID } from '../../scripts/sandbox-project.js';
 import { decodeFileSeed } from '../../scripts/core-file-seed.js';
 
 let runCommand;
@@ -50,7 +50,7 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
       const resource = [...resources.values()].find(row => row.pid === pid);
       return { stdout: rest[0].endsWith('/cgroup') ? `0::/docker/${resource.container}` : '0 0 65536' };
     }
-    if (program.endsWith('/mktemp')) return { stdout: '/tmp/swarmenv-netns.ABCDEFG123' };
+    if (program.endsWith('/mktemp')) return { stdout: '/tmp/murm-netns.ABCDEFG123' };
     if (program.endsWith('/nsenter')) {
       const commands = rest.slice(3);
       const emit = rows => ({ stdout: JSON.stringify({ nftables: rows }) });
@@ -59,12 +59,12 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
       const declarations = commands[0].split('\n');
       const table = /^add table inet (swarmbot_[a-f0-9]+)$/.exec(declarations.shift())[1];
       declarations.shift();
-      const owner = { match: { op: '==', left: { meta: { key: 'skuid' } }, right: BOT_UID } };
+      const owner = { match: { op: '==', left: { meta: { key: 'skuid' } }, right: AGENT_UID } };
       const match = (protocol, field, right) => ({ match: { op: '==', left: { payload: { protocol, field } }, right } });
       tables.set(table, [{ table: { family: 'inet', name: table } },
         { chain: { family: 'inet', table, name: 'output', type: 'filter', hook: 'output', prio: -150, policy: 'accept' } },
         ...declarations.map(line => {
-          const rule = line.slice(`add rule inet ${table} output meta skuid ${BOT_UID} `.length);
+          const rule = line.slice(`add rule inet ${table} output meta skuid ${AGENT_UID} `.length);
           const [, address, port] = /^ip daddr ([\d.]+) tcp dport (\d+) accept$/.exec(rule) ?? [];
           return { rule: { family: 'inet', table, chain: 'output', expr: address
             ? [owner, match('ip', 'daddr', address), match('tcp', 'dport', Number(port)), { accept: null }]
@@ -104,7 +104,7 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
     }
     if (path === '/worker/start') {
       const version = body.writable || body.files !== undefined ? 1 : 0;
-      const result = { contract: { version: 'swarmenv-core-v1', resources: [] },
+      const result = { contract: { version: 'murm-core-v1', resources: [] },
         project_quota: body.project_quota, model_catalog_resource: body.model_catalog_resource,
         project_files: { writable: body.writable, version, ...(version ? { digest: decodeFileSeed(body.files ?? {}).digest } : {}) } };
       onStart?.(body, result);

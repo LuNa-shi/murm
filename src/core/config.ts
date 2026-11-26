@@ -21,7 +21,7 @@ function strings(value: unknown): value is string[] {
 export function validateEnvironment(value: unknown, name: string) {
   if (value === undefined) return;
   if (!record(value)) throw new TypeError(`${name} must be a map of environment variables`);
-  const reserved = /^(?:SWARMENV_|PI_|PATH$|HOME$|TMPDIR$|TMP$|TEMP$|USER$|LOGNAME$|SHELL$|PWD$|OLDPWD$|NODE_OPTIONS$|BASH_ENV$|ENV$|LD_|XDG_)/;
+  const reserved = /^(?:MURM_|PI_|PATH$|HOME$|TMPDIR$|TMP$|TEMP$|USER$|LOGNAME$|SHELL$|PWD$|OLDPWD$|NODE_OPTIONS$|BASH_ENV$|ENV$|LD_|XDG_)/;
   for (const [key, item] of Object.entries(value)) {
     if (!/^[A-Z_][A-Z0-9_]*$/.test(key) || reserved.test(key) ||
         typeof item !== 'string' || item.length > 4096 || item.includes('\0')) {
@@ -46,7 +46,7 @@ export function snapshotProfiles(profiles: Readonly<Record<string, Profile>>, mo
   if (!record(profiles) || Object.keys(profiles).length === 0) throw new TypeError('At least one Profile is required');
   const snapshots = new Map<string, Profile>();
   for (const [name, input] of Object.entries(profiles)) {
-    if (!validId(name) || !record(input) || typeof input.prompt !== 'string' ||
+    if (!validId(name) || !record(input) || (input.prompt !== undefined && typeof input.prompt !== 'string') ||
         typeof input.writable !== 'boolean' || typeof input.image !== 'string' || !input.image.trim() ||
         !record(input.services)) throw new TypeError(`Invalid Profile: ${name}`);
     if (typeof input.model !== 'string' || !Object.hasOwn(models, input.model)) {

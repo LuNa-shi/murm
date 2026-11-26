@@ -4,7 +4,7 @@ import { ServiceCommitGate } from './service-commit-gate.js';
 import { captureServiceAuthority } from './service-authority-snapshot.js';
 import { CONTEXT_READ_METHODS, CONTEXT_READ_OPERATIONS } from './context-service-peer.js';
 import { stableStringify } from '../protocol/envelope.js';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 
 export class RemoteContextService {
   [method: string]: any;
@@ -35,13 +35,13 @@ export class RemoteContextService {
   reconcile() {
     const pending = this.gate.pending();
     if (!pending) { this.gate.deliverEvents(); return; }
-    if (pending.command.service !== 'context') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Another service commit awaits reconciliation');
+    if (pending.command.service !== 'context') throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Another service commit awaits reconciliation');
     const receipt = this.command(pending);
     this.#settle(pending, receipt);
   }
   #settle(admission: any, receipt: any) {
     if (receipt?.gate_id !== admission.gate_id || receipt?.digest !== admission.digest) {
-      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Context returned a receipt for another commit');
+      throw new MurmError(ERROR_CODES.CONFLICT, 'Context returned a receipt for another commit');
     }
     this.gate.settle(admission, receipt);
     this.gate.deliverEvents();
@@ -55,7 +55,7 @@ export class RemoteContextService {
         taskIds: [(method === 'dispatch' ? args[1] : args[0])?.task_id, (method === 'dispatch' ? args[1] : args[0])?.taskId],
         provenance: method !== 'publicChangeToken',
       }) };
-      if (Buffer.byteLength(stableStringify(value)) > 1024 * 1024) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Context coordinator command exceeds its bounded peer payload');
+      if (Buffer.byteLength(stableStringify(value)) > 1024 * 1024) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Context coordinator command exceeds its bounded peer payload');
       return value;
     };
     const admission = write ? this.gate.acquire(command) : (() => {
@@ -64,7 +64,7 @@ export class RemoteContextService {
     })();
     const receipt = this.command(admission);
     if (write) this.#settle(admission, receipt);
-    if (receipt.error) throw new SwarmEnvError(receipt.error.code, receipt.error.message, receipt.error.details, { retryable: receipt.error.retryable });
+    if (receipt.error) throw new MurmError(receipt.error.code, receipt.error.message, receipt.error.details, { retryable: receipt.error.retryable });
     return receipt.result;
   }
 }

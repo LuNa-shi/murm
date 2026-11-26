@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { makeEnvelope } from '../src/protocol/envelope.js';
-import { SwarmEnvError, ERROR_CODES } from '../src/errors.js';
+import { MurmError, ERROR_CODES } from '../src/errors.js';
 import { TaskService } from '../src/task/task-service.js';
 
 function env() {
@@ -143,7 +143,7 @@ test('Mission Task creation carries a bounded dynamic contract and deduplicates 
     completion_contract: { required_materials: [{ role: 'experience', min_count: 1 }] },
     input_material_refs: ['material:feedback'],
     priority: 'high',
-    responsibility_key: 'flat:proof-feedback:check-1',
+    responsibility_key: 'taskpool:proof-feedback:check-1',
     timebox_ms: 30 * 60_000,
   });
   const duplicate = service.dispatch('task_create', {
@@ -158,10 +158,10 @@ test('Mission Task creation carries a bounded dynamic contract and deduplicates 
     input_material_refs: ['material:feedback'],
     priority: 'high',
     timebox_ms: 30 * 60_000,
-    responsibility_key: 'flat:proof-feedback:check-1',
+    responsibility_key: 'taskpool:proof-feedback:check-1',
   }, op('task:feedback-route:duplicate', 'agent:test'));
 
-  assert.equal(first.responsibility_key, 'flat:proof-feedback:check-1');
+  assert.equal(first.responsibility_key, 'taskpool:proof-feedback:check-1');
   assert.equal(first.timebox_ms, 30 * 60_000);
   assert.equal(duplicate.task.task_id, first.task_id);
   assert.equal(duplicate.deduplicated, true);
@@ -204,7 +204,7 @@ test('only depends_on gates the flat eligible view and cycles are rejected', () 
     task_id: 'task:cycle',
     summary: 'cycle', goal: 'cycle', expected_output: 'cycle', acceptance_conditions: [],
     depends_on: ['task:cycle'],
-  }, op('task:cycle', 'agent:test')), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
+  }, op('task:cycle', 'agent:test')), (error) => error instanceof MurmError && error.code === ERROR_CODES.INVALID_CONTRACT);
   service.close();
 });
 

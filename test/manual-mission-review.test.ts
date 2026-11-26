@@ -15,7 +15,7 @@ import { createManualMissionChecker } from '../src/runtime/manual-mission-review
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL('../scripts/review-mission.js', import.meta.url));
 const identity = { checker_ref: 'manual-operator', checker_version: 'review-policy-1', environment_ref: 'owner-review' };
-const input = { missionId: 'mission:first', workspaceId: 'workspace-first', actorRef: 'bot:first', materialIds: [], requestId: 'manual-1' };
+const input = { missionId: 'mission:first', workspaceId: 'workspace-first', actorRef: 'agent:first', materialIds: [], requestId: 'manual-1' };
 
 async function checkerFixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'manual-review-writer-'));

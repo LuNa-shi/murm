@@ -13,7 +13,7 @@ import { createHash } from 'node:crypto';
 import { JudgeService } from '../src/judge/judge-service.js';
 import { LeanChecker } from '../src/judge/lean-adapter.js';
 import { LeanFinalTreeVerifier } from '../src/judge/lean-final-tree-verifier.js';
-import { SwarmEnvError } from '../src/errors.js';
+import { MurmError } from '../src/errors.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
 const manifest = { fixture_id: 'module-admission', putnambench_commit: 'a'.repeat(40), problem_file: 'Target.lean',
@@ -22,12 +22,12 @@ const manifest = { fixture_id: 'module-admission', putnambench_commit: 'a'.repea
 const sources = { 'Target.lean': 'import Helper\ntheorem target : True := helper\n', 'Helper.lean': 'theorem helper : True := trivial\n' };
 function harness(t, { check, checker, fixtureManifest = manifest, files = sources } = {}) {
   const db = new DatabaseSync(':memory:');
-  const execution = { execution_id: 'e', task_id: 't', owner_ref: 'bot', state: 'RUNNING', state_version: 1, fencing_version: 1, lease_expires_at: new Date(Date.now() + 60000).toISOString(),
+  const execution = { execution_id: 'e', task_id: 't', owner_ref: 'agent', state: 'RUNNING', state_version: 1, fencing_version: 1, lease_expires_at: new Date(Date.now() + 60000).toISOString(),
     workspace_input: { workspace_id: 'w' }, handoff_deadline: new Date(Date.now() + 60000).toISOString() };
   let authorityChecks = 0;
   let lockDepth = 0;
-  const taskService = { db, getBot: () => true, getTask: () => ({ task_id: 't', mission_id: 'm' }), getExecution: () => execution,
-    materialScope(envelope) { authorityChecks++; if (envelope.fencing_version !== execution.fencing_version || Date.parse(execution.lease_expires_at) <= Date.now()) throw new SwarmEnvError('FENCED', 'Stale authority'); if (execution.state !== 'RUNNING') throw new SwarmEnvError('FENCED', 'Execution ended'); return { mission_id: 'm' }; },
+  const taskService = { db, getAgent: () => true, getTask: () => ({ task_id: 't', mission_id: 'm' }), getExecution: () => execution,
+    materialScope(envelope) { authorityChecks++; if (envelope.fencing_version !== execution.fencing_version || Date.parse(execution.lease_expires_at) <= Date.now()) throw new MurmError('FENCED', 'Stale authority'); if (execution.state !== 'RUNNING') throw new MurmError('FENCED', 'Execution ended'); return { mission_id: 'm' }; },
     assertMissionResearchOpen() {}, withServiceLifecycleWrite(fn) { lockDepth++; try { return fn(); } finally { lockDepth--; } } };
   const judge = new JudgeService(':memory:', { taskService, fixtureManifest,
     checker: checker ?? { timeoutMs: 30000, projectChecker: true,
@@ -35,7 +35,7 @@ function harness(t, { check, checker, fixtureManifest = manifest, files = source
       checkProject: check },
     readProjectRevision: async ({ revision }) => ({ mission_id: 'm', workspace_id: 'w', revision, git_commit: revision.padEnd(40, 'c'), git_tree: revision.padEnd(40, 'd'), content_hash: revision, files }) });
   const submit = (revision = '0.1', mode = 'lean-module') => judge.checkWorkspaceSource({ request_key: revision, source: { workspace_id: 'w', revision, path: 'Target.lean', check_mode: mode } },
-    makeEnvelope({ operationId: revision, actorRef: 'bot', executionId: 'e', taskId: 't', stateVersion: 1, specVersion: 1, fencingVersion: 1 }));
+    makeEnvelope({ operationId: revision, actorRef: 'agent', executionId: 'e', taskId: 't', stateVersion: 1, specVersion: 1, fencingVersion: 1 }));
   t.after(async () => { await judge.waitForIdle(); judge.close(); db.close(); });
   return { judge, submit, execution, authorityChecks: () => authorityChecks, locked: () => lockDepth === 1 };
 }
@@ -92,14 +92,14 @@ test('module launch rechecks soft closeout and the unchanged absolute source dea
   });
 });
 
-test('real Judge and locked Lean complete cold and warm module checks under source admission', { skip: !process.env.SWARMENV_TEST_LEAN_ROOT }, async t => {
+test('real Judge and locked Lean complete cold and warm module checks under source admission', { skip: !process.env.MURM_TEST_LEAN_ROOT }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'judge-module-real-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const fixture = 'theorem target : True := by sorry\n';
   await writeFile(join(directory, 'Target.lean'), fixture);
   await writeFile(join(directory, 'lean-toolchain'), 'leanprover/lean4:v4.33.1\n');
   const fixtureManifest = { ...manifest, project_root: directory, problem_file_hash: createHash('sha256').update(fixture).digest('hex') };
-  const leanRoot = process.env.SWARMENV_TEST_LEAN_ROOT;
+  const leanRoot = process.env.MURM_TEST_LEAN_ROOT;
   const verifier = new LeanFinalTreeVerifier({ identity: manifest, leanRoot, libraryRoots: [], comparatorLibraryRoots: ['/unused', '/unused'],
     exporterPath: '/unused/export', targetPath: 'Target.lean', declarationName: 'target', fixtureSource: fixture,
     fixtureSha256: fixtureManifest.problem_file_hash, projectChecks: true, allowUnboundedDiagnostics: true, timeoutMs: 30000 });
@@ -121,7 +121,7 @@ test('real Judge and locked Lean complete cold and warm module checks under sour
 });
 
 
-for (const cancelDuringParser of [false, true]) test(`independent Judge peer gates real module workers (cancel during parser: ${cancelDuringParser})`, { skip: !process.env.SWARMENV_TEST_LEAN_ROOT, timeout: 30000 }, async t => {
+for (const cancelDuringParser of [false, true]) test(`independent Judge peer gates real module workers (cancel during parser: ${cancelDuringParser})`, { skip: !process.env.MURM_TEST_LEAN_ROOT, timeout: 30000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'judge-module-peer-'));
   const tasks = new TaskService(join(root, 'task.sqlite'));
   const fixture = 'theorem target : True := by sorry\n';
@@ -135,7 +135,7 @@ for (const cancelDuringParser of [false, true]) test(`independent Judge peer gat
   const coordinator = await judge.startCoordinator();
   const child = spawn('flock', ['--nonblock', '--no-fork', join(root, 'judge.lock'), process.execPath, 'dist/test-support/judge-peer-fixture.js'], {
     env: { ...process.env, JUDGE_PEER_FIXTURE: JSON.stringify({ database: join(root, 'judge.sqlite'), token,
-      coordinator: { url: coordinator.url, token }, fixtureManifest, projectChecks: true, realLeanRoot: process.env.SWARMENV_TEST_LEAN_ROOT }) },
+      coordinator: { url: coordinator.url, token }, fixtureManifest, projectChecks: true, realLeanRoot: process.env.MURM_TEST_LEAN_ROOT }) },
     stdio: ['ignore', 'pipe', 'pipe'] });
   t.after(async () => { await judge.close(); if (child.exitCode === null && child.signalCode === null) { const done = once(child, 'exit'); child.kill(); await done; } tasks.close(); await rm(root, { recursive: true, force: true }); });
   let errors = '';
@@ -147,14 +147,14 @@ for (const cancelDuringParser of [false, true]) test(`independent Judge peer gat
   });
   judge.connect(endpoint.url);
   tasks.createMission({ mission_id: 'm', goal: 'Check fixed local scope' }, makeEnvelope({ actorRef: 'operator:test' }));
-  tasks.registerBot({ botId: 'bot', missionId: 'm', coreId: 'core', selectionDeadline: new Date(Date.now() + 60000).toISOString() });
-  tasks.recordBotSandbox('bot', { provider: 'controlled', sandboxId: 'sandbox' });
-  tasks.markBotReady('bot');
-  const task = tasks.createTask({ mission_id: 'm', gap: 'Establish helper', priority: 'medium', summary: 'Check helper', expected_output: 'Evidence', acceptance_conditions: ['Checked'] }, makeEnvelope({ actorRef: 'bot' })).task;
-  const taken = tasks.takeTask(task.task_id, { owner_ref: 'bot', core_id: 'core', take_key: 'take' });
+  tasks.registerAgent({ agentId: 'agent', missionId: 'm', coreId: 'core', selectionDeadline: new Date(Date.now() + 60000).toISOString() });
+  tasks.recordAgentSandbox('agent', { provider: 'controlled', sandboxId: 'sandbox' });
+  tasks.markAgentReady('agent');
+  const task = tasks.createTask({ mission_id: 'm', gap: 'Establish helper', priority: 'medium', summary: 'Check helper', expected_output: 'Evidence', acceptance_conditions: ['Checked'] }, makeEnvelope({ actorRef: 'agent' })).task;
+  const taken = tasks.takeTask(task.task_id, { owner_ref: 'agent', core_id: 'core', take_key: 'take' });
   tasks.db.prepare('UPDATE executions SET workspace_input_json = ? WHERE execution_id = ?').run(JSON.stringify({ workspace_id: 'w' }), taken.execution.execution_id);
   const envelope = operationId => { const e = tasks.getExecution(taken.execution.execution_id); return makeEnvelope({ operationId,
-    actorRef: 'bot', taskId: task.task_id, executionId: e.execution_id, specVersion: e.spec_version, stateVersion: e.state_version, fencingVersion: e.fencing_version }); };
+    actorRef: 'agent', taskId: task.task_id, executionId: e.execution_id, specVersion: e.spec_version, stateVersion: e.state_version, fencingVersion: e.fencing_version }); };
   tasks.dispatch('start_execution', {}, envelope('start'));
   if (cancelDuringParser) {
     const checking = judge.dispatch('workspace_check', { request_key: '0.1', source: { workspace_id: 'w', revision: '0.1', path: 'Target.lean', check_mode: 'lean-module' } }, envelope('0.1'));
@@ -179,14 +179,14 @@ for (const cancelDuringParser of [false, true]) test(`independent Judge peer gat
 });
 
 
-test('completed module artifact rejection preserves feedback and checker health through real Judge', { skip: !process.env.SWARMENV_TEST_LEAN_ROOT }, async t => {
+test('completed module artifact rejection preserves feedback and checker health through real Judge', { skip: !process.env.MURM_TEST_LEAN_ROOT }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'judge-module-rejection-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const fixture = 'theorem target : True := by sorry\n';
   await writeFile(join(directory, 'Target.lean'), fixture);
   await writeFile(join(directory, 'lean-toolchain'), 'leanprover/lean4:v4.33.1\n');
   const fixtureManifest = { ...manifest, project_root: directory, problem_file_hash: createHash('sha256').update(fixture).digest('hex') };
-  const leanRoot = process.env.SWARMENV_TEST_LEAN_ROOT;
+  const leanRoot = process.env.MURM_TEST_LEAN_ROOT;
   const verifier = new LeanFinalTreeVerifier({ identity: manifest, leanRoot, libraryRoots: [], comparatorLibraryRoots: ['/unused', '/unused'],
     exporterPath: '/unused/export', targetPath: 'Target.lean', declarationName: 'target', fixtureSource: fixture,
     fixtureSha256: fixtureManifest.problem_file_hash, projectChecks: true, allowUnboundedDiagnostics: true, timeoutMs: 30000 });

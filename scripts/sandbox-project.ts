@@ -3,7 +3,7 @@ import { chmod, chown, lstat, mkdir, opendir, readFile, readdir, rm, writeFile }
 import { dirname, join } from 'node:path';
 import { ProjectInstaller, decodeProjectFiles, canonical } from './project-install.js';
 
-export const BOT_UID = 10001;
+export const AGENT_UID = 10001;
 export const PROJECT_DIR = '/workspace/project';
 export const RUNTIME_DIR = '/workspace/runtime';
 const digest = (bytes: any) => createHash('sha256').update(bytes).digest('hex');
@@ -29,7 +29,7 @@ export class SandboxProject {
     this.binding = null;
     this.closing = false;
     this.pending = Promise.resolve();
-    this.installer = new ProjectInstaller({ projectDir: PROJECT_DIR, controlDir: '/workspace/.swarm-project-control', uid: BOT_UID,
+    this.installer = new ProjectInstaller({ projectDir: PROJECT_DIR, controlDir: '/workspace/.swarm-project-control', uid: AGENT_UID,
       snapshot: (input: any) => this.#capture(input), assertOpen: (input: any) => this.#active(input) });
   }
 
@@ -41,16 +41,16 @@ export class SandboxProject {
       const info = await lstat(directory);
       if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('worker directories cannot be symlinks');
     }
-    if (!shared && (await readdir(PROJECT_DIR)).length) throw new Error('new Bot project must be empty');
+    if (!shared && (await readdir(PROJECT_DIR)).length) throw new Error('new Agent project must be empty');
     await chown('/workspace', 0, 0);
     await chmod('/workspace', 0o755);
     if (!shared) { await chown(PROJECT_DIR, 0, 0); await chmod(PROJECT_DIR, 0o555); }
-    await chown(RUNTIME_DIR, BOT_UID, BOT_UID);
+    await chown(RUNTIME_DIR, AGENT_UID, AGENT_UID);
     await chmod(RUNTIME_DIR, 0o700);
     await this.installer.initialize();
   }
 
-  #open() { if (this.closing || this.state === 'CLOSED') throw new Error('Bot project is closing'); }
+  #open() { if (this.closing || this.state === 'CLOSED') throw new Error('Agent project is closing'); }
   #locked(operation: any) {
     const result = this.pending.then(operation);
     this.pending = result.catch(() => undefined);
@@ -81,7 +81,7 @@ export class SandboxProject {
         return { state: this.state, ...identity };
       }
       if (supplied) {
-        if ((await readdir(PROJECT_DIR)).length) throw new Error('new Bot project input must be empty');
+        if ((await readdir(PROJECT_DIR)).length) throw new Error('new Agent project input must be empty');
         try {
           for (const [path, content] of Object.entries(supplied.bytes)) {
             this.#open();
@@ -130,7 +130,7 @@ export class SandboxProject {
       if (this.state === 'ACTIVE') return { state: this.state, ...identity, granted_at: this.binding.granted_at };
       if (this.state !== 'PREPARED') throw new Error('project is not prepared');
       // Block pathname traversal while ownership changes. The worker also
-      // pauses every Bot process so pre-opened descriptors cannot bypass it.
+      // pauses every Agent process so pre-opened descriptors cannot bypass it.
       try {
         await chmod(PROJECT_DIR, 0o500);
         this.#open();
@@ -139,16 +139,16 @@ export class SandboxProject {
             this.#open();
             const target = join(directory, entry.name);
             if (entry.isDirectory()) await grantDirectory(target);
-            else if (entry.isFile()) { await chown(target, BOT_UID, BOT_UID); await chmod(target, 0o644); }
+            else if (entry.isFile()) { await chown(target, AGENT_UID, AGENT_UID); await chmod(target, 0o644); }
             else throw new Error('project grant encountered a symlink or special file');
           }
           this.#open();
-          if (directory !== PROJECT_DIR) { await chown(directory, BOT_UID, BOT_UID); await chmod(directory, 0o755); }
+          if (directory !== PROJECT_DIR) { await chown(directory, AGENT_UID, AGENT_UID); await chmod(directory, 0o755); }
         };
         await grantDirectory(PROJECT_DIR);
         this.#open();
         await chmod(PROJECT_DIR, 0o000);
-        await chown(PROJECT_DIR, BOT_UID, BOT_UID);
+        await chown(PROJECT_DIR, AGENT_UID, AGENT_UID);
         this.#open();
         await chmod(PROJECT_DIR, 0o755);
         this.#open();

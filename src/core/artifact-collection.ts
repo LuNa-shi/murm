@@ -36,18 +36,18 @@ function valid(condition: unknown, message: string): asserts condition {
   if (!condition) throw collectionError('ARTIFACT_INVALID', message);
 }
 
-export async function saveBotArtifacts({ outputDir, botId, collect, records, bounds, destination = 'artifacts', redactStream, privateFiles = false }: {
+export async function saveAgentArtifacts({ outputDir, agentId, collect, records, bounds, destination = 'artifacts', redactStream, privateFiles = false }: {
   outputDir: string;
-  botId: string;
-  collect: Required<CollectionSpec>;
+  agentId: string;
+  collect: CollectionSpec;
   records: () => AsyncIterable<ArtifactRecord>;
   bounds: { bytes: number; inodes: number };
   destination?: string;
   redactStream?: ReturnType<typeof createRedactor>['stream'];
   privateFiles?: boolean;
 }) {
-  const botDir = join(outputDir, botId);
-  const finalDir = join(botDir, destination);
+  const agentDir = join(outputDir, agentId);
+  const finalDir = join(agentDir, destination);
   let staging: string | undefined;
   let file: ArtifactFile | undefined;
   const files = [];
@@ -56,11 +56,11 @@ export async function saveBotArtifacts({ outputDir, botId, collect, records, bou
   let totalBytes = 0;
   let complete = false;
   try {
-    await mkdir(botDir, { mode: 0o700 }).catch(error => {
+    await mkdir(agentDir, { mode: 0o700 }).catch(error => {
       if (error.code !== 'EEXIST') throw error;
     });
-    if (!(await lstat(botDir)).isDirectory()) throw collectionError('ARTIFACT_WRITE_FAILED', 'Bot artifact parent is not a directory', true);
-    staging = await mkdtemp(join(botDir, '.collect-'));
+    if (!(await lstat(agentDir)).isDirectory()) throw collectionError('ARTIFACT_WRITE_FAILED', 'Agent artifact parent is not a directory', true);
+    staging = await mkdtemp(join(agentDir, '.collect-'));
     const tree = join(staging, 'files');
     await mkdir(tree, { mode: 0o700 });
     const includePath = (path: string) => (path === '.git' || path.startsWith('.git/'))
@@ -122,11 +122,11 @@ export async function saveBotArtifacts({ outputDir, botId, collect, records, bou
       }
     }
     valid(complete, 'Artifact stream ended without final confirmation');
-    valid(collect.paths.every(path => path === '.' || seen.has(path)) && (!collect.includeGit || directories.includes('.git')),
+    valid(collect.paths.every(path => path === '.' || seen.has(path)) && (!collect.includeGit || collect.allowMissingGit || directories.includes('.git')),
       'Artifact stream omitted a requested file or directory');
     files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
     directories.sort();
-    await writeFile(join(staging, 'manifest.json'), JSON.stringify({ version: 1, botId, collect, totalBytes, files, directories }, null, 2) + '\n',
+    await writeFile(join(staging, 'manifest.json'), JSON.stringify({ version: 1, agentId, collect, totalBytes, files, directories }, null, 2) + '\n',
       { flag: 'wx', mode: 0o600 });
     await rename(staging, finalDir);
     staging = undefined;
@@ -134,7 +134,7 @@ export async function saveBotArtifacts({ outputDir, botId, collect, records, bou
   } catch (caught) {
     const error = caught as Error & { code?: string };
     if (error.code?.startsWith('ARTIFACT_')) throw error;
-    throw collectionError('ARTIFACT_WRITE_FAILED', 'Host could not save the verified Bot artifact', true);
+    throw collectionError('ARTIFACT_WRITE_FAILED', 'Host could not save the verified Agent artifact', true);
   } finally {
     await file?.handle.close().catch(() => {});
     if (staging) await rm(staging, { recursive: true, force: true }).catch(() => {});

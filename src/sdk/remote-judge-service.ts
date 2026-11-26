@@ -4,7 +4,7 @@ import { captureServiceAuthority } from './service-authority-snapshot.js';
 import { createCoordinatorPeerHost } from './coordinator-peer-host.js';
 import { callCoordinatorPeer, createDomainCommandClient } from './coordinator-peer-client.js';
 import { JUDGE_READ_METHODS } from './judge-service-peer.js';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 
 export class RemoteJudgeService {
   [method: string]: any;
@@ -49,12 +49,12 @@ export class RemoteJudgeService {
     const receipt = status.receipt ?? (status.generation !== pending.command.generation ? {
       terminal: true, gate_id: pending.gate_id, digest: pending.digest, outcome: 'interrupted',
     } : null);
-    if (!receipt) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Judge phase is unresolved; do not release its lifecycle gate', undefined, { retryable: true });
+    if (!receipt) throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Judge phase is unresolved; do not release its lifecycle gate', undefined, { retryable: true });
     this.gate.settle(pending, receipt);
   }
   async #lifecycle(input: any) {
     const call = this.calls.get(input.call_id);
-    if (!call) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge stage does not belong to an admitted coordinator request');
+    if (!call) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Judge stage does not belong to an admitted coordinator request');
     call.assertAuthorized?.();
     if (input.action === 'queue_status' && input.generation === this.generation) {
       const execution = this.taskService.getExecution(call.envelope.execution_id);
@@ -63,10 +63,10 @@ export class RemoteJudgeService {
     }
     if (input.action !== 'execute' || input.generation !== this.generation ||
         !['admission', 'preflight', 'source'].includes(input.phase) || !Number.isSafeInteger(input.sequence) || input.sequence < 0) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Invalid Judge phase identity');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Invalid Judge phase identity');
     }
     const key = `${input.sequence}:${input.phase}`;
-    if (call.stages.has(key)) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Judge phase cannot be started twice');
+    if (call.stages.has(key)) throw new MurmError(ERROR_CODES.CONFLICT, 'Judge phase cannot be started twice');
     const admission = this.gate.acquire(() => {
       call.assertAuthorized?.();
       const execution = this.taskService.getExecution(call.envelope.execution_id);
@@ -80,7 +80,7 @@ export class RemoteJudgeService {
     // this callback; it never synchronously calls back into Task.
     const receipt = this.command({ method: 'execute_phase', admission });
     if (receipt?.gate_id !== admission.gate_id || receipt?.digest !== admission.digest) {
-      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Judge phase receipt does not match its command');
+      throw new MurmError(ERROR_CODES.CONFLICT, 'Judge phase receipt does not match its command');
     }
     this.gate.settle(admission, receipt);
     return { completed: true };
@@ -91,7 +91,7 @@ export class RemoteJudgeService {
     if (operation === 'get_check_result') return Promise.resolve(this.command({
       method: 'dispatch', args: [operation, input, envelope], call_id: randomUUID(), authority: captureServiceAuthority(this.taskService, envelope, { provenance: false, workspace: true }),
     }).result);
-    if (operation !== 'workspace_check') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Unsupported remote Judge operation');
+    if (operation !== 'workspace_check') throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Unsupported remote Judge operation');
     const work = this.#check(operation, input, envelope, assertAuthorized);
     this.activeChecks.add(work);
     void work.finally(() => this.activeChecks.delete(work)).catch(() => {});
@@ -102,7 +102,7 @@ export class RemoteJudgeService {
     this.logger?.append({ event: 'judge.start', service: 'judge', operation_id: envelope.operation_id, target_task_id: envelope.task_id, transport: 'http-json' });
     let project = null;
     if (['lean-project', 'lean-module'].includes(input.source?.check_mode)) {
-      if (!this.readProjectRevision) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Trusted Workspace export is unavailable');
+      if (!this.readProjectRevision) throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Trusted Workspace export is unavailable');
       const snapshot = await this.readProjectRevision({ workspaceId: input.source.workspace_id, revision: input.source.revision });
       project = { ...snapshot, files: Object.fromEntries(Object.entries(snapshot.files).map(([path, bytes]: any) => [path, Buffer.from(bytes).toString('base64')])) };
     }

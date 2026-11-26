@@ -7,6 +7,8 @@ import { appendFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { defaultTimedResponsesLimits } from '../agent/responses-budget-gateway.js';
+import { permittedServiceManifests } from './bridge.js';
+import { renderStartupPrompt } from './startup-prompt.js';
 import { getAdapterMetadata } from './services.js';
 import { readFileSync } from 'node:fs';
 import { findPackageJSON } from 'node:module';
@@ -119,11 +121,11 @@ export function createRedactor(values: readonly unknown[] = []) {
   return { add, text, value, stream, jsonl, error };
 }
 
-export function runtimeConfiguration({ config, profiles, registrations, maxBots, modelAccessPolicy, defaultTimeoutMs }: {
+export function runtimeConfiguration({ config, profiles, registrations, maxAgents, modelAccessPolicy, defaultTimeoutMs }: {
   config: PiOpenSandboxBackendConfig;
   profiles: ReadonlyMap<string, Profile>;
   registrations: ReadonlyMap<string, ServiceRegistration>;
-  maxBots: number;
+  maxAgents: number;
   modelAccessPolicy?: ModelAccessPolicy;
   defaultTimeoutMs: number;
 }, redact: (value: string) => string) {
@@ -131,7 +133,7 @@ export function runtimeConfiguration({ config, profiles, registrations, maxBots,
   return {
     schemaVersion: 1,
     coreVersion: packageInfo.version,
-    maxBots,
+    maxAgents,
     backend: {
       type: 'pi-opensandbox', piVersion: '1.3.0', network: isolation.network, disk: isolation.disk,
       cpu: redact(sandbox.resourceLimits?.cpu ?? '2'), memory: redact(sandbox.resourceLimits?.memory ?? '2Gi'),
@@ -150,7 +152,8 @@ export function runtimeConfiguration({ config, profiles, registrations, maxBots,
     profiles: Object.fromEntries([...profiles].map(([id, profile]) => [id, {
       model: profile.model, image: redact(profile.image), writable: profile.writable, services: profile.services,
       environmentKeys: Object.keys(profile.env ?? {}).sort(), network: profile.network, collect: profile.collect,
-      spawnProfiles: profile.spawnProfiles, promptSha256: createHash('sha256').update(profile.prompt).digest('hex'),
+      spawnProfiles: profile.spawnProfiles, promptSha256: createHash('sha256').update(profile.prompt ?? '').digest('hex'),
+      stagedSystemPromptSha256: createHash('sha256').update(renderStartupPrompt(permittedServiceManifests(registrations, profile.services), profile.prompt)).digest('hex'),
     }])),
     services: [...registrations.values()].map(({ manifest, adapter }) => ({
       id: manifest.id, transport: manifest.endpoint.transport, ...getAdapterMetadata(adapter),

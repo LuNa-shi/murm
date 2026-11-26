@@ -1,14 +1,14 @@
 import { createServiceManifest, manifestSnapshot, SERVICE_ROLES, stableHash } from './service-manifest.js';
 import { createHttpJsonAdapter } from './service-adapter.js';
 import { resolveBundleDocument } from './service-bundle.js';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 
 function clone(value: any) {
   return structuredClone(value);
 }
 
 function roleName(role: any) {
-  if (!SERVICE_ROLES.includes(role)) throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `unsupported Agent role: ${role}`, { role, supported: SERVICE_ROLES });
+  if (!SERVICE_ROLES.includes(role)) throw new MurmError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `unsupported Agent role: ${role}`, { role, supported: SERVICE_ROLES });
   return role;
 }
 
@@ -66,23 +66,23 @@ export class ServiceRegistry {
 
   registerService({ manifest, adapter = null, trusted = false, bundle = null }: any = {}) {
     const normalized = createServiceManifest(manifest, { allowOpenObjects: trusted === true });
-    if (this.services.has(normalized.service_id)) throw new SwarmEnvError(ERROR_CODES.SERVICE_ALREADY_REGISTERED, `service is already registered: ${normalized.service_id}`, { service_id: normalized.service_id });
+    if (this.services.has(normalized.service_id)) throw new MurmError(ERROR_CODES.SERVICE_ALREADY_REGISTERED, `service is already registered: ${normalized.service_id}`, { service_id: normalized.service_id });
     if (RESERVED_SERVICE_IDS.has(normalized.service_id) && trusted !== true) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `service id is reserved for a built-in provider: ${normalized.service_id}`, { service_id: normalized.service_id });
+      throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `service id is reserved for a built-in provider: ${normalized.service_id}`, { service_id: normalized.service_id });
     }
     if (this.requiredContractVersion && normalized.contract_version !== this.requiredContractVersion) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_VERSION_MISMATCH, `unsupported service contract version: ${normalized.contract_version}`, { service_id: normalized.service_id, expected: this.requiredContractVersion, actual: normalized.contract_version });
+      throw new MurmError(ERROR_CODES.SERVICE_VERSION_MISMATCH, `unsupported service contract version: ${normalized.contract_version}`, { service_id: normalized.service_id, expected: this.requiredContractVersion, actual: normalized.contract_version });
     }
     const resolvedAdapter = adapter ?? this.adapters.get(normalized.service_id) ?? (normalized.endpoint.transport === 'http-json' ? createHttpJsonAdapter() : null);
     if (!resolvedAdapter || typeof resolvedAdapter.invoke !== 'function') {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `service adapter is required: ${normalized.service_id}`, { service_id: normalized.service_id });
+      throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `service adapter is required: ${normalized.service_id}`, { service_id: normalized.service_id });
     }
     if (bundle) {
       if (bundle.service_id !== normalized.service_id) {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service bundle identity does not match its manifest', { bundle_service_id: bundle.service_id, manifest_service_id: normalized.service_id });
+        throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service bundle identity does not match its manifest', { bundle_service_id: bundle.service_id, manifest_service_id: normalized.service_id });
       }
       if (bundle.manifest?.manifest_hash !== normalized.manifest_hash) {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service bundle documentation manifest does not match the registered manifest', { expected: normalized.manifest_hash, observed: bundle.manifest?.manifest_hash ?? null });
+        throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service bundle documentation manifest does not match the registered manifest', { expected: normalized.manifest_hash, observed: bundle.manifest?.manifest_hash ?? null });
       }
       this.#validateDocumentation(normalized, bundle);
     }
@@ -102,12 +102,12 @@ export class ServiceRegistry {
     for (const capability of manifest.capabilities) {
       const ref = capability.help?.ref;
       if (typeof ref !== 'string' || !ref.startsWith('service://')) {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'bundled capability help.ref must be a service:// resource', { service_id: manifest.service_id, capability: capability.name, ref: ref ?? null });
+        throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'bundled capability help.ref must be a service:// resource', { service_id: manifest.service_id, capability: capability.name, ref: ref ?? null });
       }
       try {
         resolveBundleDocument(bundle, ref);
       } catch (error: any) {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `bundled capability documentation is not resolvable: ${capability.name}`, { service_id: manifest.service_id, capability: capability.name, ref }, { cause: error });
+        throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, `bundled capability documentation is not resolvable: ${capability.name}`, { service_id: manifest.service_id, capability: capability.name, ref }, { cause: error });
       }
     }
   }
@@ -117,7 +117,7 @@ export class ServiceRegistry {
   }
 
   unregisterService(serviceId: any) {
-    if (!this.services.delete(serviceId)) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_FOUND, `unknown service: ${serviceId}`, { service_id: serviceId });
+    if (!this.services.delete(serviceId)) throw new MurmError(ERROR_CODES.SERVICE_NOT_FOUND, `unknown service: ${serviceId}`, { service_id: serviceId });
     this.adapters.delete(serviceId);
     this.revision += 1;
   }
@@ -128,7 +128,7 @@ export class ServiceRegistry {
 
   getService(serviceId: any) {
     const entry = this.services.get(serviceId);
-    if (!entry) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_FOUND, `unknown service: ${serviceId}`, { service_id: serviceId });
+    if (!entry) throw new MurmError(ERROR_CODES.SERVICE_NOT_FOUND, `unknown service: ${serviceId}`, { service_id: serviceId });
     return entry;
   }
 
@@ -170,19 +170,19 @@ export class ServiceRegistry {
   getCapability(serviceId: any, capabilityName: any) {
     const { manifest, adapter } = this.getService(serviceId);
     const capability = manifest.capabilities.find((candidate: any) => candidate.name === capabilityName || candidate.operation === capabilityName);
-    if (!capability) throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_FOUND, `unknown capability: ${serviceId}.${capabilityName}`, { service_id: serviceId, capability: capabilityName });
+    if (!capability) throw new MurmError(ERROR_CODES.SERVICE_CAPABILITY_NOT_FOUND, `unknown capability: ${serviceId}.${capabilityName}`, { service_id: serviceId, capability: capabilityName });
     return { manifest, capability, adapter };
   }
 
   getCapabilityById(capabilityId: any) {
     if (typeof capabilityId !== 'string' || capabilityId.length === 0) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_FOUND, 'capability_id is required');
+      throw new MurmError(ERROR_CODES.SERVICE_CAPABILITY_NOT_FOUND, 'capability_id is required');
     }
     for (const { manifest, adapter } of this.services.values()) {
       const capability = manifest.capabilities.find((candidate: any) => `${manifest.service_id}.${candidate.name}` === capabilityId);
       if (capability) return { manifest, capability, adapter };
     }
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_FOUND, `unknown capability_id: ${capabilityId}`, { capability_id: capabilityId });
+    throw new MurmError(ERROR_CODES.SERVICE_CAPABILITY_NOT_FOUND, `unknown capability_id: ${capabilityId}`, { capability_id: capabilityId });
   }
 
   #documentedCapabilityView(entry: any, capability: any) {
@@ -307,11 +307,11 @@ export class ServiceRegistry {
    */
   resolveHelpRef(ref: any) {
     if (typeof ref !== 'string' || !ref.startsWith('service://')) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'help.ref must be a registry-owned service:// reference');
+      throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'help.ref must be a registry-owned service:// reference');
     }
     const match = /^service:\/\/([a-z][a-z0-9._-]*)\/(.+)$/.exec(ref);
     if (!match || match[2].startsWith('/') || match[2].split('/').includes('..')) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'help.ref has an invalid service resource path');
+      throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'help.ref has an invalid service resource path');
     }
     const entry = this.getService(match[1]);
     if (entry.bundle) {
@@ -356,20 +356,20 @@ export class ServiceRegistry {
       : this.getCapability(id, name);
     const actorRole = /^agent:(bound|recovery)$/.exec(envelope?.actor_ref ?? '')?.[1] ?? null;
     if (actorRole && role !== null && actorRole !== role) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, 'service role does not match the Agent envelope', { service_id: entry.manifest.service_id, capability: entry.capability.name, role, actor_role: actorRole });
+      throw new MurmError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, 'service role does not match the Agent envelope', { service_id: entry.manifest.service_id, capability: entry.capability.name, role, actor_role: actorRole });
     }
     const effectiveRole = role ?? actorRole;
     if (effectiveRole !== null && !entry.capability.audience.includes(roleName(effectiveRole))) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `capability ${id}.${name} is not available to role ${effectiveRole}`, { service_id: id, capability: name, role: effectiveRole });
+      throw new MurmError(ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED, `capability ${id}.${name} is not available to role ${effectiveRole}`, { service_id: id, capability: name, role: effectiveRole });
     }
-    if (!envelope || typeof envelope !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'service invocation envelope is required');
+    if (!envelope || typeof envelope !== 'object') throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'service invocation envelope is required');
     // Mandatory Execution binding is a server-side property of the
     // capability, not a Bridge-only convention. A caller reaching the
     // Registry directly (an old adapter, a stale token, or a replay) cannot
     // invoke binding-required research work without the authenticated
     // Task/Execution identity.
     if (entry.capability.requires_binding === true && (!envelope.task_id || !envelope.execution_id)) {
-      throw new SwarmEnvError(
+      throw new MurmError(
         ERROR_CODES.NOT_ALLOWED,
         `capability ${entry.manifest.service_id}.${entry.capability.name} requires a bound Task and Execution`,
         { service_id: entry.manifest.service_id, capability: entry.capability.name, requires: ['task', 'execution'] },
@@ -399,10 +399,10 @@ export class ServiceRegistry {
       if (!observed || typeof observed !== 'object' || Array.isArray(observed)) throw new Error('service manifest response must be an object');
       const normalized = createServiceManifest(observed, { allowOpenObjects: true });
       if (observed.manifest_hash && observed.manifest_hash !== normalized.manifest_hash) {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service advertised an invalid manifest hash', { service_id: serviceId, observed_manifest_hash: observed.manifest_hash, computed_manifest_hash: normalized.manifest_hash });
+        throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service advertised an invalid manifest hash', { service_id: serviceId, observed_manifest_hash: observed.manifest_hash, computed_manifest_hash: normalized.manifest_hash });
       }
       if (normalized.service_id !== entry.manifest.service_id || normalized.manifest_hash !== entry.manifest.manifest_hash) {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service manifest does not match the registered contract', {
+        throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service manifest does not match the registered contract', {
           service_id: serviceId,
           expected_service_id: entry.manifest.service_id,
           observed_service_id: normalized.service_id,
@@ -414,8 +414,8 @@ export class ServiceRegistry {
       return { ok: true, service_id: serviceId, manifest_hash: normalized.manifest_hash, verified: true };
     } catch (error: any) {
       entry.manifest_verified = false;
-      if (error instanceof SwarmEnvError) throw error;
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, error?.message ?? 'service manifest verification failed', { service_id: serviceId }, { cause: error, retryable: true });
+      if (error instanceof MurmError) throw error;
+      throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, error?.message ?? 'service manifest verification failed', { service_id: serviceId }, { cause: error, retryable: true });
     }
   }
 
@@ -429,7 +429,7 @@ export class ServiceRegistry {
     try {
       const result = await entry.adapter.health(entry.manifest, { signal });
       if (result?.service_id && result.service_id !== entry.manifest.service_id) {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service health response has the wrong service identity', { service_id: serviceId, observed_service_id: result.service_id });
+        throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service health response has the wrong service identity', { service_id: serviceId, observed_service_id: result.service_id });
       }
       entry.ready = true;
       return result;
@@ -449,7 +449,7 @@ export class ServiceRegistry {
     try {
       const result = await entry.adapter.readiness(entry.manifest, { signal });
       if (result?.service_id && result.service_id !== entry.manifest.service_id) {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service readiness response has the wrong service identity', { service_id: serviceId, observed_service_id: result.service_id });
+        throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'service readiness response has the wrong service identity', { service_id: serviceId, observed_service_id: result.service_id });
       }
       entry.ready = true;
       return result;

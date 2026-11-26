@@ -9,38 +9,38 @@ import { LeanChecker } from '../src/judge/lean-adapter.js';
 import { TaskService } from '../src/task/task-service.js';
 import { createServiceHost } from '../src/sdk/service-host.js';
 import { builtInServiceManifest, createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
-import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
+import { ERROR_CODES, MurmError } from '../src/errors.js';
 
 const SERVICE_IDS = new Set(['task', 'context', 'judge', 'catalog']);
-const serviceId = process.env.SWARMENV_SERVICE_ID ?? '';
-if (!SERVICE_IDS.has(serviceId)) throw new Error(`SWARMENV_SERVICE_ID must be one of ${[...SERVICE_IDS].join(', ')}`);
+const serviceId = process.env.MURM_SERVICE_ID ?? '';
+if (!SERVICE_IDS.has(serviceId)) throw new Error(`MURM_SERVICE_ID must be one of ${[...SERVICE_IDS].join(', ')}`);
 
-const host = process.env.SWARMENV_SERVICE_HOST ?? '0.0.0.0';
-const port = Number(process.env.SWARMENV_SERVICE_PORT ?? 8787);
-if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('SWARMENV_SERVICE_PORT must be an integer from 1 to 65535');
-const advertiseHost = process.env.SWARMENV_SERVICE_ADVERTISE_HOST
+const host = process.env.MURM_SERVICE_HOST ?? '0.0.0.0';
+const port = Number(process.env.MURM_SERVICE_PORT ?? 8787);
+if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('MURM_SERVICE_PORT must be an integer from 1 to 65535');
+const advertiseHost = process.env.MURM_SERVICE_ADVERTISE_HOST
   ?? (host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host);
-const endpointUrl = process.env.SWARMENV_SERVICE_PUBLIC_URL ?? `http://${advertiseHost}:${port}`;
+const endpointUrl = process.env.MURM_SERVICE_PUBLIC_URL ?? `http://${advertiseHost}:${port}`;
 const catalogEndpoints = Object.fromEntries(['task', 'context', 'judge', 'catalog']
-  .map((id: any) => [id, process.env[`SWARMENV_${id.toUpperCase()}_SERVICE_URL`]
-    ? { url: process.env[`SWARMENV_${id.toUpperCase()}_SERVICE_URL`], token: process.env[`SWARMENV_${id.toUpperCase()}_SERVICE_TOKEN`] ?? null }
+  .map((id: any) => [id, process.env[`MURM_${id.toUpperCase()}_SERVICE_URL`]
+    ? { url: process.env[`MURM_${id.toUpperCase()}_SERVICE_URL`], token: process.env[`MURM_${id.toUpperCase()}_SERVICE_TOKEN`] ?? null }
     : undefined])
   .filter(([, endpoint]: any) => endpoint));
 
-const isolated = process.env.SWARMENV_SERVICE_ISOLATED === 'true';
+const isolated = process.env.MURM_SERVICE_ISOLATED === 'true';
 // Invocation requires an actor-bound credential selected by the host operator.
-const principals = process.env.SWARMENV_SERVICE_PRINCIPALS ? JSON.parse(process.env.SWARMENV_SERVICE_PRINCIPALS) : [];
-if (!Array.isArray(principals)) throw new TypeError('SWARMENV_SERVICE_PRINCIPALS must be a JSON array');
+const principals = process.env.MURM_SERVICE_PRINCIPALS ? JSON.parse(process.env.MURM_SERVICE_PRINCIPALS) : [];
+if (!Array.isArray(principals)) throw new TypeError('MURM_SERVICE_PRINCIPALS must be a JSON array');
 const databasePath = isolated && serviceId === 'catalog'
   ? null
-  : resolve(process.env.SWARMENV_SERVICE_DATABASE ?? `./data/${serviceId}.sqlite`);
+  : resolve(process.env.MURM_SERVICE_DATABASE ?? `./data/${serviceId}.sqlite`);
 let database: any = null;
 if (databasePath) {
   await mkdir(dirname(databasePath), { recursive: true });
   database = new DatabaseSync(databasePath);
 }
 async function loadJudgeFixtureManifest() {
-  const configured = process.env.SWARMENV_JUDGE_FIXTURE_MANIFEST;
+  const configured = process.env.MURM_JUDGE_FIXTURE_MANIFEST;
   if (!configured) return null;
   const raw = configured.trim();
   if (raw.startsWith('{')) return JSON.parse(raw);
@@ -55,7 +55,7 @@ if (isolated) {
   if (serviceId === 'context') contextService = new ContextService(database);
   if (serviceId === 'judge') judgeService = new JudgeService(database, {
     fixtureManifest: judgeFixtureManifest,
-    checker: new LeanChecker({ workRoot: resolve(process.env.SWARMENV_JUDGE_WORK_ROOT ?? `./data/${serviceId}-judge-work`), command: process.env.SWARMENV_LEAN_COMMAND ?? 'lake' }),
+    checker: new LeanChecker({ workRoot: resolve(process.env.MURM_JUDGE_WORK_ROOT ?? `./data/${serviceId}-judge-work`), command: process.env.MURM_LEAN_COMMAND ?? 'lake' }),
   });
 } else {
   contextService = new ContextService(database);
@@ -64,15 +64,15 @@ if (isolated) {
   judgeService = new JudgeService(database, {
     fixtureManifest: judgeFixtureManifest,
     checker: new LeanChecker({
-      workRoot: resolve(process.env.SWARMENV_JUDGE_WORK_ROOT ?? `./data/${serviceId}-judge-work`),
-      command: process.env.SWARMENV_LEAN_COMMAND ?? 'lake',
+      workRoot: resolve(process.env.MURM_JUDGE_WORK_ROOT ?? `./data/${serviceId}-judge-work`),
+      command: process.env.MURM_LEAN_COMMAND ?? 'lake',
     }),
   });
 }
 const catalogRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, serviceEndpoints: catalogEndpoints });
-if (process.env.SWARMENV_CATALOG_MANIFESTS) {
-  const manifests = JSON.parse(process.env.SWARMENV_CATALOG_MANIFESTS);
-  if (!Array.isArray(manifests)) throw new Error('SWARMENV_CATALOG_MANIFESTS must be a JSON array');
+if (process.env.MURM_CATALOG_MANIFESTS) {
+  const manifests = JSON.parse(process.env.MURM_CATALOG_MANIFESTS);
+  if (!Array.isArray(manifests)) throw new Error('MURM_CATALOG_MANIFESTS must be a JSON array');
   for (const manifest of manifests) catalogRegistry.registerService({ manifest, adapter: { invoke: async () => ({}) } });
 }
 
@@ -92,32 +92,32 @@ function dispatch(capability: any, input: any, envelope: any, role: any = null) 
   }
   if (capability.operation === 'task_take' &&
       [input?.owner_ref, input?.ownerRef, input?.actor_ref].some((value: any) => value !== undefined && value !== envelope.actor_ref)) {
-    throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service credentials cannot assign another Task owner');
+    throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Service credentials cannot assign another Task owner');
   }
   if ((input?.actor_ref !== undefined && input.actor_ref !== envelope.actor_ref) ||
       (input?.actorRef !== undefined && input.actorRef !== envelope.actor_ref)) {
-    throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service credentials cannot delegate the authenticated actor');
+    throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Service credentials cannot delegate the authenticated actor');
   }
   const service = serviceId === 'task' ? taskService : serviceId === 'context' ? contextService : judgeService;
   if (!service) throw new Error(`isolated ${serviceId} Service is not available in this process`);
   if (serviceId === 'context' && typeof contextService.taskService?.materialScope !== 'function') {
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Context requires an authenticated Mission authority and lifecycle commit boundary');
+    throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Context requires an authenticated Mission authority and lifecycle commit boundary');
   }
   if (serviceId === 'judge' && !judgeService.taskService) {
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Judge requires local Task lifecycle authority and a trusted Workspace source');
+    throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Judge requires local Task lifecycle authority and a trusted Workspace source');
   }
   if (serviceId === 'task') {
-    const bot = taskService.getBot(envelope.actor_ref);
-    if (bot) {
+    const agent = taskService.getAgent(envelope.actor_ref);
+    if (agent) {
       const requestedMission = input.mission_id ?? input.missionId;
       const taskId = input.task_id ?? input.taskId ?? envelope.task_id;
-      if ((requestedMission !== undefined && requestedMission !== bot.mission_id) ||
-          (taskId && taskService.getTask(taskId)?.mission_id !== bot.mission_id)) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service request does not belong to the Bot Mission');
+      if ((requestedMission !== undefined && requestedMission !== agent.mission_id) ||
+          (taskId && taskService.getTask(taskId)?.mission_id !== agent.mission_id)) {
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Service request does not belong to the Agent Mission');
       }
-      if (['task_list', 'task_status', 'mission_get'].includes(capability.operation)) input = { ...input, mission_id: bot.mission_id };
-      if (envelope.execution_id && taskService.getExecution(envelope.execution_id)?.owner_ref !== bot.bot_id) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service request does not belong to the Bot Execution');
+      if (['task_list', 'task_status', 'mission_get'].includes(capability.operation)) input = { ...input, mission_id: agent.mission_id };
+      if (envelope.execution_id && taskService.getExecution(envelope.execution_id)?.owner_ref !== agent.agent_id) {
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Service request does not belong to the Agent Execution');
       }
     }
   }

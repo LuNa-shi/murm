@@ -8,7 +8,7 @@
 
 ## 1. Workspace、revision 与文件引用
 
-Mission ID 标识整体目标，Workspace ID 标识其唯一项目仓库，两者不能混用。main 是该仓库内的真实 Git branch。Workspace 位于 sandbox 外，跨 Bot、Task 和 Execution 保留；Mission 结束不删除文件版本。第一版不需要远程 GitHub Repository，不创建 Git tag，不自动 TTL 或 GC。
+Mission ID 标识整体目标，Workspace ID 标识其唯一项目仓库，两者不能混用。main 是该仓库内的真实 Git branch。Workspace 位于 sandbox 外，跨 Agent、Task 和 Execution 保留；Mission 结束不删除文件版本。第一版不需要远程 GitHub Repository，不创建 Git tag，不自动 TTL 或 GC。
 
 每个公开、不可变的文件树都取得 Workspace 范围内唯一的 revision，包括初始版本、尚未合入的保存版本，以及成功合入 main 的版本。revision 映射到完整 Git commit/tree；main 指向其中一个版本。编号可按分配顺序递增，但**编号大小不表示继承关系，也不表示已经进入 main**；父版本关系由 Git parents 表达。初始版本可显示为 `0.1`；本文 `R1`、`R12` 等是 revision 的可读代称，不是另一类 ID。
 
@@ -34,11 +34,11 @@ Workspace 是独立逻辑模块，v1 与 Task Service 位于同一协调进程�
 |---|---|
 | 仓库、revision、main 与请求结果 | Workspace 模块 |
 | 隔离工作树、稳定导出、物化输入与全部 Git 操作 | 可信 Runtime / Workspace 模块 |
-| 编辑文件、决定保存/接续/合入、解决内容冲突 | 当前有效 E 的 Bot |
+| 编辑文件、决定保存/接续/合入、解决内容冲突 | 当前有效 E 的 Agent |
 | 验证指定内容和环境、保留检查结果 | Mission/Task 配置的可信检查服务 |
 | 发布、检索和纠正研究内容 | Context / Material Service |
 
-revision 最小记录包括 Workspace、revision、commit/tree、parents、来源 Task/E/Bot 或受控初始化来源、初始输入与 apply 的版本、真实改动路径/摘要、可选 Material 引用、请求 ID。Runtime 从真实身份和内容产生字段；Bot 不能自报 Git author、Task/E 或 SHA 来获得权限。保存发生在未解决的 apply 冲突中时，还记录冲突状态和路径，区分“可以接续”和“可以合入”。
+revision 最小记录包括 Workspace、revision、commit/tree、parents、来源 Task/E/Agent 或受控初始化来源、初始输入与 apply 的版本、真实改动路径/摘要、可选 Material 引用、请求 ID。Runtime 从真实身份和内容产生字段；Agent 不能自报 Git author、Task/E 或 SHA 来获得权限。保存发生在未解决的 apply 冲突中时，还记录冲突状态和路径，区分“可以接续”和“可以合入”。
 
 main 合入另记旧 main、新版本、检查输入/环境和请求结果。检查沿用服务自己的记录，不新增核心对象。索引可加快查询，但不能成为脱离 revision 的候选事实来源。
 
@@ -48,7 +48,7 @@ main 合入另记旧 main、新版本、检查输入/环境和请求结果。检
 
 操作者提供 Mission 与初始项目文件。Runtime 建立仓库、初始 commit/revision 与 main；空项目也有明确版本。只有文件树已持久且可重新物化，才宣告就绪。独立研究输入可受控发布为 Material。
 
-Bot 启动时在 sandbox 中预留固定 `/workspace/project`；未 take 时为空且不可写，不假设存在完整本地只读 clone。Bot 经 Workspace 服务列目录、读文件、搜索内容和比较版本。Pi 会话、CLI 配置、skills、缓存及运行日志置于独立运行目录，不进入项目导出范围。
+Agent 启动时在 sandbox 中预留固定 `/workspace/project`；未 take 时为空且不可写，不假设存在完整本地只读 clone。Agent 经 Workspace 服务列目录、读文件、搜索内容和比较版本。Pi 会话、CLI 配置、skills、缓存及运行日志置于独立运行目录，不进入项目导出范围。
 
 只读接口允许 Mission 阅读身份在未绑定 E 时使用：
 
@@ -61,7 +61,7 @@ Bot 启动时在 sandbox 中预留固定 `/workspace/project`；未 take 时为�
 
 ### 3.2 take 的初始输入
 
-Task 可指定公开 Workspace revision；未指定时 take 解析当时 main。Runtime 固定实际初始 revision，从仓库导出完整树，通过已验证的 Provider 文件传输能力填充固定目录。顺序为：**准备并核对输入 → E active → 开放目录写权限 → 发布贡献绑定并返回 take 成功**。不假设 Provider 支持动态挂载，不向 Bot 暴露 `.git`、共享 refs 或管理凭据。
+Task 可指定公开 Workspace revision；未指定时 take 解析当时 main。Runtime 固定实际初始 revision，从仓库导出完整树，通过已验证的 Provider 文件传输能力填充固定目录。顺序为：**准备并核对输入 → E active → 开放目录写权限 → 发布贡献绑定并返回 take 成功**。不假设 Provider 支持动态挂载，不向 Agent 暴露 `.git`、共享 refs 或管理凭据。
 
 新 E 不读前任私有目录、会话、shell history 或未保存对象。接续来自公开 Task、Material 和 Workspace revision。默认 take 后可显式 `workspace apply --from R12` 接续未合入版本，无需 Candidate 下载或恢复接口。
 
@@ -69,7 +69,7 @@ Task 可指定公开 Workspace revision；未指定时 take 解析当时 main。
 
 初始 revision 是不可改写的审计事实；同一 Task、同一 E 内允许显式 apply 新 main 或其他公开 revision。`status` 分开说明 initial revision、last saved revision、applied revisions、未保存差异和冲突。apply 后未 save 的合成树不能被称为已持久 revision。
 
-main 前进不强制结束 Bot，不修改 Task 的 Goal、Deliverable 或 Completion condition。若 Task 明确要求复现固定历史环境，更新工作树后不能声称仍在原环境完成复现；保留原验证，或提出目标不同的新 Task。普通开发 Task 更新输入不等于改变工作责任。
+main 前进不强制结束 Agent，不修改 Task 的 Goal、Deliverable 或 Completion condition。若 Task 明确要求复现固定历史环境，更新工作树后不能声称仍在原环境完成复现；保留原验证，或提出目标不同的新 Task。普通开发 Task 更新输入不等于改变工作责任。
 
 ## 4. 保存一致文件树
 
@@ -85,7 +85,7 @@ main 前进不强制结束 Bot，不修改 Task 的 Goal、Deliverable 或 Compl
 
 v1 拒绝越出根目录的路径、符号链接、特殊文件、超限文件及 `.git`、会话、运行配置、日志和凭据。`.gitignore` 不是安全边界。仅有 patch、前任 sandbox 路径或自报 manifest，而没有完整可物化树，不算已保存。
 
-save 固定内容，不保证研究正确。可以保存未完成证明、失败实验和未解决冲突，但须如实显示。对于 apply 已报告的冲突，普通 save 保留进度；处理完成后 `save --resolved` 表达 Bot 已处理这些冲突，由 Runtime 核对树和冲突状态。未解决版本不能直接 merge；声明 resolved 也不代替指定检查。
+save 固定内容，不保证研究正确。可以保存未完成证明、失败实验和未解决冲突，但须如实显示。对于 apply 已报告的冲突，普通 save 保留进度；处理完成后 `save --resolved` 表达 Agent 已处理这些冲突，由 Runtime 核对树和冲突状态。未解决版本不能直接 merge；声明 resolved 也不代替指定检查。
 
 ## 5. Candidate 文件化对操作的影响
 
@@ -106,13 +106,13 @@ v1 不提供按文件选取合入。只需贡献部分成果时，先在工作�
 
 ## 6. 同一 Execution 内接续与冲突处理
 
-`workspace apply --from R` 将公开 revision 与当前工作状态做真实三方合并；`--from main` 先固定实际 main revision。它只更新本 E 工作树，不推进 main。Runtime 记录来源和 parents，Bot 不执行 Git。
+`workspace apply --from R` 将公开 revision 与当前工作状态做真实三方合并；`--from main` 先固定实际 main revision。它只更新本 E 工作树，不推进 main。Runtime 记录来源和 parents，Agent 不执行 Git。
 
 apply 前先 save 未保存改动；存在未完成写进程或不安全切换时返回 `WORKSPACE_BUSY`。使用与 save 相同的稳定窗口和 E 内互斥，防止后台写入与安装并发；不能靠一次 status 判断代替该保护，也不能静默覆盖目录。
 
-无冲突时返回实际输入与改动摘要，Bot 核对后 save。有冲突时在工作目录交付可编辑合成结果和完整冲突说明，包括删除/重命名冲突，保留双方 parents；Bot 用普通文件工具处理后 `save --resolved`，再 merge。接续含未解决冲突的 revision 也继承并显示冲突状态，不能因为换了 E 就清除待处理事实。
+无冲突时返回实际输入与改动摘要，Agent 核对后 save。有冲突时在工作目录交付可编辑合成结果和完整冲突说明，包括删除/重命名冲突，保留双方 parents；Agent 用普通文件工具处理后 `save --resolved`，再 merge。接续含未解决冲突的 revision 也继承并显示冲突状态，不能因为换了 E 就清除待处理事实。
 
-apply 响应未知先查原请求，不重复安装；失败不能留下对 Bot 宣称成功的半棵树。Runtime 完成安装或从本 E 已固定版本恢复，对账前暂停该工作面的新写入。finish 与安装互斥；finish 已接受后，迟到 apply 不能重新开放目录。
+apply 响应未知先查原请求，不重复安装；失败不能留下对 Agent 宣称成功的半棵树。Runtime 完成安装或从本 E 已固定版本恢复，对账前暂停该工作面的新写入。finish 与安装互斥；finish 已接受后，迟到 apply 不能重新开放目录。
 
 例如 B1 保存 `R12 / proofs/lemma.lean` 后退出；B2 take 后读取并 apply R12，补完证明、save R15、merge R15。全过程用公开版本和普通文件，不继承前任私有状态。
 
@@ -120,19 +120,19 @@ apply 响应未知先查原请求，不重复安装；失败不能留下对 Bot 
 
 ### Lean 项目检查的补充要求
 
-[Issue #127 的后续实施决定](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716)将 Lean 检查输入扩展为固定修订的完整 Workspace。多个 Bot 可以分别交付 Lean 文件，通过 `import` 接续；整合不要求复制辅助证明正文。具体研究依据见 [Workspace 项目检查调查](11-workspace-judge-research.md)。
+[Issue #127 的后续实施决定](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716)将 Lean 检查输入扩展为固定修订的完整 Workspace。多个 Agent 可以分别交付 Lean 文件，通过 `import` 接续；整合不要求复制辅助证明正文。具体研究依据见 [Workspace 项目检查调查](11-workspace-judge-research.md)。
 
 - Judge 取出同一不可变修订的文件树，由固定工具链和可信 Lake 配置确定所有应检查的 Lean 模块，交给 Lake 处理依赖顺序。不得把无法覆盖的 Lean 文件静默排除后声称整项目通过。
-- Bot 提交源码，不能通过改变检查配置、依赖、工具链或构建目标降低验收条件。项目编译在隔离、无网络且有资源与时间界限的环境中进行。
+- Agent 提交源码，不能通过改变检查配置、依赖、工具链或构建目标降低验收条件。项目编译在隔离、无网络且有资源与时间界限的环境中进行。
 - 项目检查结果记录实际文件覆盖、修订、Git 树和检查环境。指定文件的交付证据还须证明该文件确实参与了对应项目检查；仅存在于快照中不够。
 - 普通项目诊断可以帮助处理包含未完成证明的中间版本，必须如实记录警告与检查范围。项目编译成功不自动完成 Task 或 Mission；最终验收仍核对锁定原题声明、证明依赖和可信内核重放。
-- 合并检查依旧绑定最终合成树，并受原有权限、冻结、截止时间和 main CAS 规则约束；公开检查结果不赋予过期 Bot 新权限。
+- 合并检查依旧绑定最终合成树，并受原有权限、冻结、截止时间和 main CAS 规则约束；公开检查结果不赋予过期 Agent 新权限。
 
 以下合并顺序仍适用。
 
 ### 7.1 谁可以合入
 
-当前有效 E 可自主请求 merge，不要求原 Task 预先包含整合责任。复杂冲突、跨 Task 协调或大范围重构可另建普通整合 Task；不设永久整合 Bot，不为每次 main 变化创建新 E。
+当前有效 E 可自主请求 merge，不要求原 Task 预先包含整合责任。复杂冲突、跨 Task 协调或大范围重构可另建普通整合 Task；不设永久整合 Agent，不为每次 main 变化创建新 E。
 
 Task 只要求可复用文件时，save 并给出文件引用即可交付；要求研究内容时发布 Material；只有 Completion condition 要求 main 包含变更时才必须等 merge。Task done、save、merge、Mission accepted 分别记录，互不替代。并非所有保存版本都要入 main。
 
@@ -140,8 +140,8 @@ Task 只要求可复用文件时，save 并给出文件引用即可交付；要�
 
 1. 用 request ID 固定 `merge --from R`，确认有效 E、其当前操作权限允许 merge（未进入仅允许保存/发布/finish 的软收尾）、同一 Workspace、Mission 未停止/冻结；源 revision 完整可物化、来源可追溯且无未解决冲突。
 2. 固定当前 main 为 M，按实际 Git ancestry 三方合并 M 与 R。旧初始版本本身不是拒绝理由；不把 R 的旧快照直接覆盖 main。
-3. 有冲突时返回固定 M/R 和冲突说明，main、源 revision 和当前 E 保持不变。Bot 先核对当前工作树是否已包含源 R。若未包含，先 save 自己的进度并 apply R，处理/保存该次冲突，再 apply 固定或更新后的 main，修复、save 后重试。若已包含 R，可直接 save 当前进度后 apply main。不能只更新 main 却遗漏待合入的 R；复杂工作才交给后继。
-4. 无冲突时，在隔离目录检查**最终合成树**，运行 Mission/Task 指定检查并固定 checker、环境/工具链和政策版本。R 上的旧 PASS 不自动覆盖与新 main 合成的内容；可信 checker 不能由 Bot 修改。
+3. 有冲突时返回固定 M/R 和冲突说明，main、源 revision 和当前 E 保持不变。Agent 先核对当前工作树是否已包含源 R。若未包含，先 save 自己的进度并 apply R，处理/保存该次冲突，再 apply 固定或更新后的 main，修复、save 后重试。若已包含 R，可直接 save 当前进度后 apply main。不能只更新 main 却遗漏待合入的 R；复杂工作才交给后继。
+4. 无冲突时，在隔离目录检查**最终合成树**，运行 Mission/Task 指定检查并固定 checker、环境/工具链和政策版本。R 上的旧 PASS 不自动覆盖与新 main 合成的内容；可信 checker 不能由 Agent 修改。
 5. 检查通过后，在提交临界区再次确认 E 有效且仍允许 merge、Mission 未冻结/停止、main 仍是 M，以 CAS 条件更新 main，登记新 revision、parents、检查与请求结果。
 6. 返回新 main revision。merge 成功不静默改当前 E 工作树；需要同步时显式 apply main。
 
@@ -157,19 +157,19 @@ Git 三方合并依据共同祖先处理内容和重命名。[git merge-tree](ht
 | 两请求针对同一 M 检查 | 至多一个 CAS 成功，另一个 `MAIN_MOVED`；保留版本与 E |
 | 检查期间 main 再前进 | 本次 `MAIN_MOVED`；新尝试重新合并检查，不复用旧树 PASS |
 | 响应丢失、结果未知 | 原 request ID 查询/重试返回原结果；同 ID 改载荷拒绝 |
-| 已收到明确冲突后重试 | 新尝试 ID；CLI 管请求标识，Bot 不管理 SHA |
+| 已收到明确冲突后重试 | 新尝试 ID；CLI 管请求标识，Agent 不管理 SHA |
 | R 已包含在 main | 返回 already-included/no-op，不虚增版本和检查费用 |
 | 历史贡献被后续版本撤回 | 旧 merged 记录不证明当前有效；恢复须用新修正 revision |
 | Mission 正在最终验证 | `MISSION_SUBMITTING` 拒绝 merge；现有 E 按原权限/预算继续本地工作和 save/publish，验收快照不变，冻结本身不启动软收尾 |
 | E 进入软收尾、finish 已接受或失效 | 新 merge 拒绝；尚未提交的 merge 也在最终 guard 拒绝 main 更新，保存版本与既有检查记录保留 |
 
-v1 一请求只针对固定 M 尝试，不在服务内无限重试。竞争使用有限退避并计入预算；CAS 不保证每个 Bot 在有限时间内成功。保存、合并、等待、检查和失败成本均进入总成本。
+v1 一请求只针对固定 M 尝试，不在服务内无限重试。竞争使用有限退避并计入预算；CAS 不保证每个 Agent 在有限时间内成功。保存、合并、等待、检查和失败成本均进入总成本。
 
 ## 8. Git 与版本记录的故障一致性
 
 每次 save/main 更新都有 Workspace 自己的持久请求记录，不是通用作业系统。成功响应表示内容、revision、来源和结果可在重启后恢复。Git 与数据库并非天然原子事务，不能只写“可对账”而没有恢复判据。
 
-v1 使用本 Workspace 单写者和恢复屏障：先持久记录 request、旧 main、新 commit/revision、检查及提交意图，再 CAS 更新 ref，最后完成 revision/main 索引和请求结果。持久 revision 的 Git 对象由内部保留引用保护，不依赖悬空对象；这些引用不成为 Bot 操作的 branch/tag。
+v1 使用本 Workspace 单写者和恢复屏障：先持久记录 request、旧 main、新 commit/revision、检查及提交意图，再 CAS 更新 ref，最后完成 revision/main 索引和请求结果。持久 revision 的 Git 对象由内部保留引用保护，不依赖悬空对象；这些引用不成为 Agent 操作的 branch/tag。
 
 - ref 仍为意图的旧值：尚未成功推进，可恢复执行或明确失败。
 - ref 已为意图的新值：完成索引与原结果，不重复推进或登记版本。
@@ -200,6 +200,6 @@ finish、Mission freeze 和 merge 最终提交在同一协调域决定先后：f
 
 ## 10. 验收边界
 
-必须验证：未绑定 Bot 能读确定版本的真实文件；未合入 revision 在 sandbox 销毁后仍可接续；save/apply 保留 ancestry；稳定导出不混入后台写；安装失败不留假成功；main 持续变化不强制换 Bot；检查绑定最终树；CAS、结果未知、撤权/冻结竞态和 Git/索引崩溃窗口均有确定结果。
+必须验证：未绑定 Agent 能读确定版本的真实文件；未合入 revision 在 sandbox 销毁后仍可接续；save/apply 保留 ancestry；稳定导出不混入后台写；安装失败不留假成功；main 持续变化不强制换 Agent；检查绑定最终树；CAS、结果未知、撤权/冻结竞态和 Git/索引崩溃窗口均有确定结果。
 
 还须验证没有第二套 Candidate 身份：读写只经普通 Workspace 接口，删除当前文件不破坏历史引用；多文件成果按第 5 节已确认的整版粒度处理。组合场景见 [07](07-validation-and-research.md)，迁移见 [08](08-architecture-migration.md)。本次文档不证明这些运行路径已实现或通过真实 provider 测试。

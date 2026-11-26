@@ -16,11 +16,11 @@ test('Mission Judge reservations span independent connections, preflight, and un
   const taskDb = new DatabaseSync(join(dir, 'task.sqlite'));
   const judgePath = join(dir, 'judge.sqlite');
   taskDb.exec('CREATE TABLE execution_gate (permitted INTEGER); INSERT INTO execution_gate VALUES (1)');
-  const execution = { execution_id: 'execution:one', task_id: 'task:one', owner_ref: 'bot:one', state_version: 1, state: 'RUNNING',
+  const execution = { execution_id: 'execution:one', task_id: 'task:one', owner_ref: 'agent:one', state_version: 1, state: 'RUNNING',
     handoff_deadline: new Date(Date.now() + 60_000).toISOString(), execution_deadline: new Date(Date.now() + 120_000).toISOString() };
   const taskService = {
     db: taskDb,
-    getBot: () => true,
+    getAgent: () => true,
     getExecution: () => execution,
     materialScope: () => {
       assert.equal(taskDb.prepare('SELECT permitted FROM execution_gate').get().permitted, 1);
@@ -53,7 +53,7 @@ test('Mission Judge reservations span independent connections, preflight, and un
   const submit = (judge, request, revision) => judge.checkWorkspaceSource({ request_key: request, source: {
     workspace_id: 'workspace', revision: String(revision), path: 'result.lean', git_commit: String(revision).padStart(40, '0'),
     git_tree: String(revision).padStart(40, '0'), content: `theorem result${revision} : True := by trivial`,
-  } }, makeEnvelope({ operationId: request, actorRef: 'bot:one', executionId: execution.execution_id,
+  } }, makeEnvelope({ operationId: request, actorRef: 'agent:one', executionId: execution.execution_id,
     taskId: execution.task_id, stateVersion: 1, specVersion: 1, fencingVersion: 1 }));
   const running = submit(first, 'pending', 1);
   await inSource.promise;
@@ -76,9 +76,9 @@ for (const queueWaitMs of [120_000, 900_000]) test(`Judge preserves FIFO and aut
   if (queueWaitMs > 120_000) t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   const dir = await mkdtemp(join(tmpdir(), 'judge-queue-'));
   const taskDb = new DatabaseSync(':memory:');
-  const execution = { execution_id: 'execution:queue', task_id: 'task:queue', owner_ref: 'bot:queue', state_version: 1,
+  const execution = { execution_id: 'execution:queue', task_id: 'task:queue', owner_ref: 'agent:queue', state_version: 1,
     state: 'RUNNING', handoff_deadline: new Date(Date.now() + 1_200_000).toISOString(), execution_deadline: new Date(Date.now() + 1_500_000).toISOString() };
-  const taskService = { db: taskDb, getBot: () => true, getExecution: () => execution,
+  const taskService = { db: taskDb, getAgent: () => true, getExecution: () => execution,
     materialScope: () => ({ mission_id: 'mission:queue' }), assertMissionResearchOpen() {},
     withServiceLifecycleWrite: perform => perform() };
   const releases = []; const started = [];
@@ -97,7 +97,7 @@ for (const queueWaitMs of [120_000, 900_000]) test(`Judge preserves FIFO and aut
     await Promise.allSettled(pending); await judge.waitForIdle(); judge.close(); taskDb.close(); await rm(dir, { recursive: true });
   });
   const submit = n => judge.checkWorkspaceSource({ request_key: `queue-${n}`, source: { content: `theorem q${n} : True := by trivial` } },
-    makeEnvelope({ operationId: `queue-${n}`, actorRef: 'bot:queue', executionId: execution.execution_id, taskId: execution.task_id, specVersion: 1, stateVersion: 1 }));
+    makeEnvelope({ operationId: `queue-${n}`, actorRef: 'agent:queue', executionId: execution.execution_id, taskId: execution.task_id, specVersion: 1, stateVersion: 1 }));
   const waitUntil = async predicate => {
     for (let i = 0; i < 200 && !predicate(); i++) await new Promise(resolve => setTimeout(resolve, 5));
     assert.ok(predicate(), 'expected queue progress');

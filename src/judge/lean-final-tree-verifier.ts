@@ -233,10 +233,10 @@ function projectInput(files: any, sources: any, libraryCount: any, leanMemoryArg
     name, lakeDir: '.lake', fixedToolchain: true, packages });
   const packages = dependencies.map((name: any) => ({ type: 'path', scope: '', name,
     manifestFile: 'lake-manifest.json', inherited: false, dir: `dependencies/${name}`, configFile: 'lakefile.toml' }));
-  inputs['lake-manifest.json'] = manifest('swarmenv_project', packages);
+  inputs['lake-manifest.json'] = manifest('murm_project', packages);
   const roots = [...new Set(sources.map(({ module }: any) => module.split('.')[0]))];
   inputs['lakefile.toml'] = [
-    'name = "swarmenv_project"', 'fixedToolchain = true', 'defaultTargets = ["WorkspaceProof"]',
+    'name = "murm_project"', 'fixedToolchain = true', 'defaultTargets = ["WorkspaceProof"]',
     'srcDir = "source"', '[[lean_lib]]', 'name = "WorkspaceProof"',
     `roots = ${JSON.stringify(roots)}`, `globs = ${JSON.stringify(sources.map(({ module }: any) => module))}`,
     `moreLeanArgs = ${JSON.stringify(['-j1', leanMemoryArgument])}`,
@@ -351,7 +351,7 @@ export class LeanFinalTreeVerifier {
     this.bubblewrap = pinnedPath(bubblewrap);
     if (!Array.isArray(localModules) || localModules.length > 32 ||
         localModules.some((module: any) => !validModule(module?.name) || !validPath(module?.path) || !module.path.endsWith('.lean') ||
-          module.name === 'SwarmEnvCandidate' || module.path === targetPath) ||
+          module.name === 'murmCandidate' || module.path === targetPath) ||
         new Set(localModules.map((module: any) => module.name)).size !== localModules.length) {
       throw new TypeError('Invalid trusted local Lean module build order');
     }
@@ -419,7 +419,7 @@ export class LeanFinalTreeVerifier {
     args.push('/bin/sh', '-eu', '-c',
       'ulimit -c 0\n' +
       '/toolchain/bin/lake --no-cache --no-ansi --log-level=warning build >&2 || { status=$?; if [ "$status" = 1 ]; then exit 21; fi; exit 23; }\n' +
-      'if [ "$#" != 0 ]; then exec /bin/lean4export --ignore-missing "$@"; fi', 'swarmenv-project');
+      'if [ "$#" != 0 ]; then exec /bin/lean4export --ignore-missing "$@"; fi', 'murm-project');
     if (targetModule) args.push(targetModule, '--', this.declarationName, ...axioms, ...primitives);
     const diagnostics = collectProjectDiagnostics(sources);
     const built = await startProcess(() => execute(this.bubblewrap, args, { signal, deadline,
@@ -440,7 +440,7 @@ export class LeanFinalTreeVerifier {
       try { sources = await this.#projectSources(files); }
       catch (error: any) { if (error instanceof TypeError) return result('FAIL', error.message); throw error; }
       if (checkMode === 'lean-module') return await this.moduleChecker.check({ files, sources, path, missionId, tree, budget, startProcess });
-      directory = await mkdtemp(join(tmpdir(), 'swarmenv-project-check-'));
+      directory = await mkdtemp(join(tmpdir(), 'murm-project-check-'));
       await this.#materializeProject(directory, files, sources, budget);
       const built = await this.#buildProject(directory, { ...budget, sources, startProcess });
       const findings = built.diagnostics;
@@ -508,9 +508,9 @@ export class LeanFinalTreeVerifier {
 
   /** Verify that the pinned exporter can read an olean produced by this toolchain. */
   async verifyExportCompatibility() {
-    const directory = await mkdtemp(join(tmpdir(), 'swarmenv-export-preflight-'));
+    const directory = await mkdtemp(join(tmpdir(), 'murm-export-preflight-'));
     const path = 'Compatibility.lean';
-    const name = 'swarmenv_export_preflight';
+    const name = 'murm_export_preflight';
     const deadline = Date.now() + Math.min(this.timeoutMs, 30_000);
     try {
       await writeFile(join(directory, path), `theorem ${name} : True := True.intro\n`);
@@ -542,9 +542,9 @@ export class LeanFinalTreeVerifier {
       '  /bin/mkdir -p "${output%/*}" || exit 23\n' +
       '  compile "$output" "$source"\n' +
       'done\nshift\n' +
-      'compile /output/SwarmEnvCandidate.olean "$1"\n' +
-      `shift\nexec /bin/lean4export ${strict ? '' : '--ignore-missing '}SwarmEnvCandidate -- "$@"`,
-      'swarmenv-export', ...localModules.flatMap((module: any) => [
+      'compile /output/murmCandidate.olean "$1"\n' +
+      `shift\nexec /bin/lean4export ${strict ? '' : '--ignore-missing '}murmCandidate -- "$@"`,
+      'murm-export', ...localModules.flatMap((module: any) => [
         `/output/${module.name.replaceAll('.', '/')}.olean`, `/input/${module.path}`,
       ]), '--', `/input/${path}`, ...declarations);
     return execute(this.bubblewrap, args, { signal, deadline, maxOutput, stdoutPath, resourceLimits: this.resourceLimits, resources: this.resources });
@@ -570,7 +570,7 @@ export class LeanFinalTreeVerifier {
       const elapsed = new AbortController();
       timer = setTimeout(() => elapsed.abort(new Error('Final-tree checker deadline elapsed')), deadline - Date.now());
       budget = { signal: signal ? AbortSignal.any([signal, elapsed.signal]) : elapsed.signal, deadline };
-      directory = await mkdtemp(join(tmpdir(), 'swarmenv-tree-check-'));
+      directory = await mkdtemp(join(tmpdir(), 'murm-tree-check-'));
       const originalDirectory = join(directory, 'original');
       const candidateDirectory = join(directory, 'candidate');
       await materialize(originalDirectory, { [this.targetPath]: this.fixtureSource }, budget);
@@ -613,7 +613,7 @@ export class LeanFinalTreeVerifier {
         '/toolchain/bin/lean', '-j1', this.leanMemoryArgument, '--run', '/verifier/Verify.lean',
         this.declarationName, '/verifier/original.jsonl', '/verifier/candidate.jsonl');
       const validation = await execute(this.bubblewrap, args, { ...budget, maxOutput: diagnosticLimit, resourceLimits: this.resourceLimits, resources: this.resources });
-      if (validation.code === 0 && validation.output.toString().trim() === 'SWARMENV_FINAL_TREE_VERIFIED') {
+      if (validation.code === 0 && validation.output.toString().trim() === 'MURM_FINAL_TREE_VERIFIED') {
         return result('PASS', null);
       }
       if (validation.code === 42) return result('FAIL', 'Final-tree kernel replay, fixed theorem, or transitive axiom policy rejected the proof');

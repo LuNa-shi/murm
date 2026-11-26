@@ -14,8 +14,8 @@ function fixture(t, database = ':memory:') {
   t.after(() => tasks.close());
   tasks.createMission({ mission_id: 'corrections', goal: 'Check claims' }, makeEnvelope({ actorRef: 'operator:test' }));
   const actor = id => {
-    tasks.registerBot({ botId: id, missionId: 'corrections', coreId: id, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
-    tasks.recordBotSandbox(id, { provider: 'controlled', sandboxId: id }); tasks.markBotReady(id);
+    tasks.registerAgent({ agentId: id, missionId: 'corrections', coreId: id, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+    tasks.recordAgentSandbox(id, { provider: 'controlled', sandboxId: id }); tasks.markAgentReady(id);
     const task = tasks.createTask({ mission_id: 'corrections', summary: `Check a separate claim ${id}`, gap: `The Mission needs evidence for independent claim ${id}`, priority: 'medium', expected_output: 'A complete note', acceptance_conditions: ['Evidence explained'] }, makeEnvelope({ actorRef: id })).task;
     const { execution } = tasks.takeTask(task.task_id, { owner_ref: id, core_id: id, take_key: id });
     const envelope = operationId => {
@@ -146,8 +146,8 @@ test('only explicitly granted live unbound coordinator can revoke and cannot pub
   const { tasks, context, one, publish, replace } = fixture(t);
   publish('a'); publish('b'); replace('a', 'b', 0, 'replace');
   for (const [id, permissions] of [['coordinator', ['unsupersede']], ['ordinary', []]]) {
-    tasks.registerBot({ botId: id, missionId: 'corrections', coreId: id, coordinationPermissions: permissions, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
-    tasks.recordBotSandbox(id, { provider: 'controlled', sandboxId: id }); tasks.markBotReady(id);
+    tasks.registerAgent({ agentId: id, missionId: 'corrections', coreId: id, coordinationPermissions: permissions, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+    tasks.recordAgentSandbox(id, { provider: 'controlled', sandboxId: id }); tasks.markAgentReady(id);
   }
   const payload = { material_id: 'a', replacement_material_id: 'b', expected_version: 1, reason: 'Correct a mistaken replacement' };
   const env = (id, operationId) => makeEnvelope({ actorRef: id, operationId });
@@ -160,7 +160,7 @@ test('only explicitly granted live unbound coordinator can revoke and cannot pub
     ['material_dispute', { material_id: 'a', claim: 'The main claim', reason: 'Needs evidence' }],
     ['material_supersede', { ...payload, expected_version: 2 }],
   ]) assert.throws(() => context.dispatch(operation, input, env('coordinator', `denied-${operation}`)), { code: 'NOT_ALLOWED' });
-  tasks.requestBotStop('coordinator', 'test close', { terminalState: 'FAILED' });
+  tasks.requestAgentStop('coordinator', 'test close', { terminalState: 'FAILED' });
   assert.deepEqual(context.dispatch('material_unsupersede', payload, env('coordinator', 'granted-revoke')), reversed);
   assert.throws(() => context.dispatch('material_unsupersede', payload, env('coordinator', 'closed-revoke')), { code: 'NOT_ALLOWED' });
 });

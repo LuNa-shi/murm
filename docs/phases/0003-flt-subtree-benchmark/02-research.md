@@ -8,7 +8,7 @@ Research date: 2026-11-16. This document records primary-source findings and the
 
 The correct name is **Prove2Me**. Its paper separates immutable theorem statements from proof submissions. A statement carries a preamble and ends in `by sorry`; a submitted proof must inhabit the same type. Missions audit their goal and required definitions, while Agents introduce intermediate lemmas. Proof-sketches can depend on open child statements, and only become complete when those children are proved. The paper also describes curated milestones and a reusable theorem corpus. Consequently, the owner-requested variant that reveals only one root and its required definitions deliberately supplies fewer structural hints than an ordinary curated Prove2Me mission. [Paper, sections 3–4](https://arxiv.org/html/2608.28433v2)
 
-Prove2Me's public proof guide distinguishes `SKETCH_ACCEPTED` from `ACCEPTED`, rejects importing one's own target, and records dependencies on open children. It pins verification to the target's environment. This makes a useful distinction for SwarmEnv: compiling a revision that contains unresolved `sorry` is developmental feedback; it cannot establish Mission acceptance. [Proof guide at inspected revision](https://github.com/prove2me/prove2me_workspace/blob/79097e0d1fbab732ebf38ac23e7e5a700080c9c4/references/prove.md)
+Prove2Me's public proof guide distinguishes `SKETCH_ACCEPTED` from `ACCEPTED`, rejects importing one's own target, and records dependencies on open children. It pins verification to the target's environment. This makes a useful distinction for murm: compiling a revision that contains unresolved `sorry` is developmental feedback; it cannot establish Mission acceptance. [Proof guide at inspected revision](https://github.com/prove2me/prove2me_workspace/blob/79097e0d1fbab732ebf38ac23e7e5a700080c9c4/references/prove.md)
 
 The existing-project upload guide recommends extracting an elaborated declaration graph with separate `typeDeps` and `valueDeps`, then retaining source context by deleting unselected declaration spans. It explicitly warns against regex-based splitting. Constructors, generated companions, private declarations and instances require special handling. A theorem used inside a definition must retain its actual proof: replacing it with a theorem stub would introduce `sorryAx` into consumers. These are extraction techniques, not a requirement to reproduce Prove2Me's server or task-selection protocol. [Upload guide](https://github.com/prove2me/prove2me_workspace/blob/79097e0d1fbab732ebf38ac23e7e5a700080c9c4/references/upload_full_project.md)
 
@@ -22,9 +22,9 @@ The pinned FLT repository organizes definitions, theorem wrappers and proof impl
 
 ContextSwarm's pinned FLT10bench removes a target's transitive proof-import cone while publishing the complete statement-level framework and module dependency metadata. It preserves safe definition modules, keeps the imports/statement fixed, and asks for replacement of one proof placeholder. The requested root-only Workspace variant changes both information exposure and permitted submission structure. Its results need a distinct profile/version rather than being reported as unchanged upstream benchmark results. [Pinned benchmark contract](https://github.com/nustarai/ContextSwarm/blob/3e529ef2cd337a1b829fe280c7360cb3dd95b35c/benchmarks/FLT10bench/README.md), [provenance](https://github.com/nustarai/ContextSwarm/blob/3e529ef2cd337a1b829fe280c7360cb3dd95b35c/benchmarks/FLT10bench/PROVENANCE.md)
 
-## Recommended application to SwarmEnv
+## Recommended application to murm
 
-The following is engineering analysis for the owner's stated research goal. These recommendations are not claims that Prove2Me or current SwarmEnv already implements this variant.
+The following is engineering analysis for the owner's stated research goal. These recommendations are not claims that Prove2Me or current murm already implements this variant.
 
 ### Define the task by its root and trusted statement foundation
 
@@ -55,7 +55,7 @@ The same witness can establish logical solvability while being far beyond a one-
 
 Allow new Lean modules and imports among those modules. Partial revisions may contain explicit unresolved obligations for developmental checks, with their warnings visible. Final acceptance must rebuild a fixed source tree, reject unresolved assumptions, compare the root with its trusted challenge, and check its transitive proof. A helper that imports a `sorry` root cannot close that root: ordinary compile success is not sufficient, and any remaining `sorryAx` must reject.
 
-Keep this behavior in the benchmark preparation and checking interfaces. The existing Core, Bot, Task, Execution, Material and Workspace coordination loop need not be replaced by Prove2Me's DAG-resolution server. Record the input profile, public manifest, foundation identity, checker identity and private witness verdict separately for every checkpoint.
+Keep this behavior in the benchmark preparation and checking interfaces. The existing Core, Agent, Task, Execution, Material and Workspace coordination loop need not be replaced by Prove2Me's DAG-resolution server. Record the input profile, public manifest, foundation identity, checker identity and private witness verdict separately for every checkpoint.
 
 ## Source and evidence limits
 

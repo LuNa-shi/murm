@@ -11,11 +11,11 @@ async function wait(promise) {
   finally { clearTimeout(timer); }
 }
 
-test('running, unexpectedly exited and pending cleanup Bots retain capacity until confirmed closed', { timeout: 8000 }, async t => {
+test('running, unexpectedly exited and pending cleanup Agents retain capacity until confirmed closed', { timeout: 8000 }, async t => {
   const provider = await createLifecycleProvider(t);
-  const { createRuntime } = await import('@swarmenv/core');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+  const { createRuntime } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@murm/core/services');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
   const outputDir = await mkdtemp(join(tmpdir(), 'core-capacity-fixture-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
@@ -24,40 +24,40 @@ test('running, unexpectedly exited and pending cleanup Bots retain capacity unti
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
   }), profiles: { worker: { image: 'fixture-image', model: 'default', prompt: 'fixture', writable: true, services: {} } },
-  services: new ServiceRegistry(), maxBots: 1, outputDir });
+  services: new ServiceRegistry(), maxAgents: 1, outputDir });
   try {
-  const bot = await runtime.spawn({ requestId: 'first', profile: 'worker' });
+  const agent = await runtime.spawn({ requestId: 'first', profile: 'worker' });
   async function full(status) {
-    assert.equal((await runtime.get(bot.id)).status, status);
+    assert.equal((await runtime.get(agent.id)).status, status);
     await assert.rejects(runtime.spawn({ requestId: `capacity-${status}`, profile: 'worker' }), { code: 'CONFLICT' });
     assert.equal(provider.allocations(), 1);
   }
   await full('idle');
-  assert.equal((await runtime.send(bot.id, 'held work', { requestId: 'work' })).status, 'accepted');
+  assert.equal((await runtime.send(agent.id, 'held work', { requestId: 'work' })).status, 'accepted');
   await full('running');
   let resolveExit;
   const exited = new Promise(resolve => { resolveExit = resolve; });
-  const unsubscribe = runtime.onEvent(event => { if (event.botId === bot.id && event.type === 'exit') resolveExit(event); });
+  const unsubscribe = runtime.onEvent(event => { if (event.agentId === agent.id && event.type === 'exit') resolveExit(event); });
   t.after(unsubscribe);
   provider.unexpectedExit();
   assert.equal((await wait(exited)).expected, false);
   await full('exited');
-  const stopping = runtime.stop(bot.id, { timeoutMs: 10 });
+  const stopping = runtime.stop(agent.id, { timeoutMs: 10 });
   await wait(provider.deletionStarted);
   const pending = await stopping;
   assert.equal(pending.cleanup, 'pending');
   await full('closing');
   provider.releaseDeletion();
-  const failed = await runtime.stop(bot.id);
+  const failed = await runtime.stop(agent.id);
   assert.equal(failed.cleanup, 'pending');
   assert.equal(failed.execution, 'stopped');
   await full('closing');
   provider.allowDeletion();
-  assert.equal((await runtime.stop(bot.id)).cleanup, 'complete');
-  assert.equal((await runtime.get(bot.id)).status, 'closed');
+  assert.equal((await runtime.stop(agent.id)).cleanup, 'complete');
+  assert.equal((await runtime.get(agent.id)).status, 'closed');
   const replacement = await runtime.spawn({ requestId: 'replacement', profile: 'worker' });
   assert.equal(replacement.status, 'idle');
-  assert.notEqual(replacement.id, bot.id);
+  assert.notEqual(replacement.id, agent.id);
   assert.equal(provider.allocations(), 2);
   } finally { provider.allowDeletion(); await runtime.close(); }
 });

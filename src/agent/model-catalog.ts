@@ -11,5 +11,5 @@ export async function assertShippedModelPair({ provider, model }: { provider: un
       entry.apiKey !== `$${prefix}_API_KEY` || entry.authHeader !== true || !entry.models?.some((item: any) => item.id === model)) {
     throw new TypeError('Configured provider and model do not match the Responses catalog shipped in the Agent image');
   }
-  return { path: '/opt/swarmenv/pi-agent/models.json', sha256: createHash('sha256').update(catalogBytes).digest('hex') };
+  return { path: '/opt/murm/pi-agent/models.json', sha256: createHash('sha256').update(catalogBytes).digest('hex') };
 }
