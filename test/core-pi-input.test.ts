@@ -144,7 +144,8 @@ test('lost Worker history emits a fatal gap and never fabricates a later settled
   const events = [];
   runtime.onEvent(event => events.push(event));
   provider.records.push({ type: 'agent_settled', worker_sequence: 9 });
-  await delay(140);
+  const deadline = Date.now() + 2500;
+  while (!events.some(event => event.type === 'error' && event.fatal) && Date.now() < deadline) await delay(10);
   const gap = events.find(event => event.type === 'error');
   assert.equal(gap?.fatal, true);
   assert.match(gap.error.message, /gap/);

@@ -1355,6 +1355,14 @@
       "role": "Shared OpenSandbox lifecycle, session control, input polling and cleanup"
     },
     {
+      "path": "src/core/worker-event-poll.ts",
+      "category": "Core runtime",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Interruptible bounded polling schedule for a single Worker"
+    },
+    {
       "path": "src/core/executor-driver.ts",
       "category": "Core runtime",
       "chapters": [

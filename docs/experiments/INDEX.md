@@ -100,6 +100,8 @@ Use [TEMPLATE.md](TEMPLATE.md) for each new formal study. An approved Issue may 
 
 ## Retrospective diagnostics
 
+- [Issue #231 Core capacity baseline](issue231-core-capacity.md) measures startup, idle polling, resource use and recovery on real local OpenSandbox.
+
 - [OpenAI Math PartialPermutation one-hour diagnostic](openai-math-partial-permutation-1h-diagnostic.md) records the first natural-deadline single-project validation on PR #147. It is an engineering diagnostic and has no formal EXP ID.
 
 - [Issue #122 formal24 gap analysis](issue122-formal24-gap-analysis.md) records the one-hour run at `7c5836f`, reconstructs each Bot lifecycle, and compares observed behavior with Phase 02.

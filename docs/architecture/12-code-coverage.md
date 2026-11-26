@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **313 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **314 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -56,12 +56,13 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [src/core/service-types.ts](../../src/core/service-types.ts) | Published Core Service manifest, adapter and operation contracts | [04-services](04-services.md) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
 | [src/core/types.ts](../../src/core/types.ts) | Published Core Runtime, Agent, event and receipt contracts | [15-core-runtime](15-core-runtime.md) | `6be0d8ee5d874eea232c797e6cc32ad0cca9eb1b8f65a1b67fb8d3a1d0d2550e` |
 
-### Core runtime (2)
+### Core runtime (3)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | Executor startup, version, configuration checks and capability contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `7a3031d029faafbfe7b9f6226a2d5784dc1a52170c8d0ad34a6b5618596bb2a0` |
-| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | Shared OpenSandbox lifecycle, session control, input polling and cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `0fca7879aa7376c9e3cfeeeefabdb938f8e3bd3769d3438430753ea877b7b8f2` |
+| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | Shared OpenSandbox lifecycle, session control, input polling and cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `a1e5745fb96a4fa52633d43ec40d17bfe32d1f442fa93d69a6e135590d7be917` |
+| [src/core/worker-event-poll.ts](../../src/core/worker-event-poll.ts) | Interruptible bounded polling schedule for a single Worker | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `29fc386edca85dfdaa448de4b14313ab2bfc3b051d2e77a598debbbc4b96517f` |
 
 ### Delivery and configuration (4)
 
@@ -448,7 +449,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [scripts/sandbox-project.ts](../../scripts/sandbox-project.ts) | Trusted worker-owned project directory preparation, manifest validation, grant and revocation | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md) | `5de0b956006c59f2924a7d7fe35496ac065f99268cf45b40d19b59ce8d84cf78` |
 | [src/runtime/docker-agent-disk.ts](../../src/runtime/docker-agent-disk.ts) | Docker Agent identity validation and bounded filesystem preparation | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `6a0d93300c8faa312486ae0ceff0f771631aae6ae0a324a73ef7463e4148f979` |
 | [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts) | Authenticated guest snapshot, durable E save lineage, save reconciliation and recovery-only pre-retirement install acknowledgement | [05-workspace-continuity](05-workspace-continuity.md), [11-storage-reference](11-storage-reference.md) | `ee2174836a0b2d5ede579312f4a8b86eed7ce77fd50002fbb2c50fafcadb8b2f` |
-| [src/runtime/opensandbox-manager.ts](../../src/runtime/opensandbox-manager.ts) | OpenSandbox lifecycle and Execd provider boundary for one Execution | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `bdb25c0d0d83d8d66ad0b01f8a4d1569f43fcc22678402e3f946fb900ded7703` |
+| [src/runtime/opensandbox-manager.ts](../../src/runtime/opensandbox-manager.ts) | OpenSandbox lifecycle and Execd provider boundary for one Execution | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `43acadcd3ca486cba456b551246c610c1df210dc0ada1e208a152074c10b0e7a` |
 | [src/runtime/opensandbox-metadata.ts](../../src/runtime/opensandbox-metadata.ts) | Provider-compatible Mission, Agent and Execution identity labels | [02-execution](02-execution.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `17d362d1af7bbe0ec2c43e18f9345dda0ecf78ce3a9bbb7c66bf0c80f8c4037c` |
 | [src/runtime/workspace-publication.ts](../../src/runtime/workspace-publication.ts) | Synchronous lifecycle SQLite lock around Git publication and unknown-result classification | [05-workspace-continuity](05-workspace-continuity.md) | `3037ff98249beeb57ef5ab4ee4fbc21f0be7ed62835354ff3464ff445930fc5c` |
 
