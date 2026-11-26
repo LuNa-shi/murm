@@ -55,6 +55,8 @@ The archive includes the exact upstream Apache 2.0 license text beside the adapt
 
 From a checkout, run `./scripts/setup --template subagents --dir ../my-murm`. An installed package exposes `murm setup --template subagents --dir ./my-murm` through its host binary. The Agent continues to use `swarm` inside the Worker. `murm doctor --config ./my-murm/config.js` diagnoses the local deployment. Add `--smoke` to allocate a temporary Sandbox and run the complete check.
 
+The host binary dispatches local preparation independently of the optional Trace Viewer. The `trace` subcommand loads `@murm/trace-viewer/command` when that package is installed. The Core dependency tree does not include the Viewer.
+
 ### Host checks and checkout preparation
 
 The supported profile is Node.js 22.19 or newer with npm on the same Linux host as a rootful Docker Engine. Setup uses the system Docker Unix socket and verifies that the local daemon is visible in `/proc`. The host needs Python 3, util-linux, coreutils, iproute2, nftables, noninteractive sudo for the namespace and workspace mount commands, and Landlock ABI 5 or newer. The checks exercise privileged namespace creation and nftables read access and ask sudo to verify the installed mount helper command. Host and Worker still enforce the ordinary network and filesystem isolation on every actual spawn.
