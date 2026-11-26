@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
-import { SubstrateBackendConfiguration } from './fixtures/substrate-configuration.js';
+import { substrateBackendConfiguration } from './fixtures/substrate-configuration.js';
 import { execute, installNotesExample } from './fixtures/notes-installed-package.js';
 
 const artifact = 'FATE_HANDOFF: simplify the cardinality of the finite product with Fintype.card_pi.\n';
@@ -117,7 +117,7 @@ test('installed FATE-M peer adopts exact anonymous bytes after the producer is p
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
-  const backend = SubstrateBackendConfiguration({ upstreamUrl: `http://127.0.0.1:${server.address().port}/v1/responses`,
+  const backend = substrateBackendConfiguration({ upstreamUrl: `http://127.0.0.1:${server.address().port}/v1/responses`,
     host: process.env.MURM_CORE_TEST_ADVERTISE_HOST,
     lifecycleUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL, endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST,
     apiKey: process.env.MURM_CORE_TEST_API_KEY });
@@ -208,7 +208,7 @@ FATE_HANDOFF`;
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
-  const backend = SubstrateBackendConfiguration({ upstreamUrl: `http://127.0.0.1:${server.address().port}/v1/responses`,
+  const backend = substrateBackendConfiguration({ upstreamUrl: `http://127.0.0.1:${server.address().port}/v1/responses`,
     host: process.env.MURM_CORE_TEST_ADVERTISE_HOST,
     lifecycleUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL, endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST,
     apiKey: process.env.MURM_CORE_TEST_API_KEY });
