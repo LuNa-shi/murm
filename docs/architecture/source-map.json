@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "1c2d5d5825d3511aa47d0964c11f44d107d28da5",
-  "reviewed_date": "2026-11-16",
+  "runtime_baseline": "86dfce6a1497fd1355d9d426a09c7c274ed6e389",
+  "reviewed_date": "2026-11-25",
   "scope_roots": [
     "src",
     "scripts",
@@ -2609,6 +2609,14 @@
         "docs/architecture/06-observability-experiments.md"
       ],
       "role": "Optional host trace subcommand parsing and server launch"
+    },
+    {
+      "path": "trace-viewer/LICENSE",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "MIT terms bundled with the standalone package"
     }
   ]
 }

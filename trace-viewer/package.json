@@ -17,12 +17,21 @@
   "scripts": {
     "test": "node --test"
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": true,
   "os": [
     "linux"
   ],
   "exports": {
     "./command": "./command.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LuNa-shi/murm.git",
+    "directory": "trace-viewer"
+  },
+  "homepage": "https://luna-shi.github.io/murm/",
+  "bugs": {
+    "url": "https://github.com/LuNa-shi/murm/issues"
   }
 }
