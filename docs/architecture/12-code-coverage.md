@@ -4,7 +4,7 @@
 
 Runtime baseline: `86dfce6a1497fd1355d9d426a09c7c274ed6e389`; review date: 2026-11-25. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **328 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **331 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -54,14 +54,15 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 |---|---|---|---|
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | Published Pi/OpenSandbox Backend configuration contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `f193e6ccb9966ef40e3d8fdafaecab967ae8bbea96bf53e4a41f7d0cd7ffe797` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | Published Core Service manifest, adapter and operation contracts | [04-services](04-services.md) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
-| [src/core/types.ts](../../src/core/types.ts) | Published Core Runtime, Agent, event and receipt contracts | [15-core-runtime](15-core-runtime.md) | `2b40ec307f9e18651238ce6258997d6b7b069c01a120f89a2435c2b3f6471840` |
+| [src/core/types.ts](../../src/core/types.ts) | Published Core Runtime, Agent, event and receipt contracts | [15-core-runtime](15-core-runtime.md) | `89abb462c062ea457140c797d65f1f3ee8ec410080821fe567845ff9ddf4cddd` |
 
-### Core runtime (3)
+### Core runtime (4)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | Executor startup, version, configuration checks and capability contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `7a3031d029faafbfe7b9f6226a2d5784dc1a52170c8d0ad34a6b5618596bb2a0` |
-| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | Shared OpenSandbox lifecycle, session control, input polling and cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `5b6cd51b3314f9e23fa9a47d04b74335aa6a74aa18129f5ccf9e10ffada6f93d` |
+| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | Shared OpenSandbox lifecycle, session control, input polling and cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `936eb2eff7b94a9e5c970aa79cd19b01c7988bb91a10e085f01809f433b5b6f4` |
+| [src/core/opensandbox-provider.ts](../../src/core/opensandbox-provider.ts) | Internal OpenSandbox target, local connection, and trusted network and workspace preparation | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `ecaeb7559e8455bbfdc3ceefb90c60fd4284536cd9823f5c2c39f4391a706af3` |
 | [src/core/worker-event-poll.ts](../../src/core/worker-event-poll.ts) | Interruptible bounded polling schedule for a single Worker | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `29fc386edca85dfdaa448de4b14313ab2bfc3b051d2e77a598debbbc4b96517f` |
 
 ### Delivery and configuration (4)
@@ -99,11 +100,13 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [examples/notes/run-report.ts](../../examples/notes/run-report.ts) | In-place compiled example import of the shared run-report implementation | [17-harness-reporting](17-harness-reporting.md) | `4e3329ae59dffa0b24102df143b6a95a0858d38036f05f24fc84bb9ed68d5427` |
 | [examples/subagents/run-report.ts](../../examples/subagents/run-report.ts) | In-place compiled example import of the shared run-report implementation | [17-harness-reporting](17-harness-reporting.md) | `4e3329ae59dffa0b24102df143b6a95a0858d38036f05f24fc84bb9ed68d5427` |
 
-### Execution and control (28)
+### Execution and control (30)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [benchmarks/programbench-pastel/subagents-example.ts](../../benchmarks/programbench-pastel/subagents-example.ts) | Pastel slice through the ordinary Subagents entry, in-flight user input and independent offline checker | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `a307149976a1bab31067975e0c5d79f101cff04177d7a1aed8d89b8889e2e3c0` |
+| [examples/bridge-services/gh-issues.ts](../../examples/bridge-services/gh-issues.ts) | Read-only GitHub CLI Service backed by an application-owned subprocess and credential | [15-core-runtime](15-core-runtime.md) | `9011585505e6a66e709f6923285faabb2c9157d20957ca70eae7b2f0c7d7866c` |
+| [examples/bridge-services/messages.ts](../../examples/bridge-services/messages.ts) | Shared Messages manifest and in-process or already-running HTTP Service adapter selection | [15-core-runtime](15-core-runtime.md) | `9044bf09056803b4c433b130a99da98a9e303a4de205063c8a685630170cb512` |
 | [examples/notes/config.ts](../../examples/notes/config.ts) | Sample host lifecycle, provider, model, output and resource configuration | [17-harness-reporting](17-harness-reporting.md) | `375650c5b1d57dc5ded8f4c94932cbc9dfe9fa7338b4a413b5c162737fc4e176` |
 | [examples/notes/main.ts](../../examples/notes/main.ts) | Installed-package Notes Harness Service, role prompts, input order, archive verification and saved-report CLI | [17-harness-reporting](17-harness-reporting.md) | `6a4b03ed1dd659b35d21083dfc04799ed08df81cd599a5b8fff7fa71b5ae722f` |
 | [examples/subagents/collaboration-service.ts](../../examples/subagents/collaboration-service.ts) | Six authorized Bash operations and Service state export | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `d8fba63bf48fa426f24f83c76b6a92ed8a07f593ce6c15e0b17ffd9669c2f281` |
@@ -352,7 +355,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [src/core/bridge.ts](../../src/core/bridge.ts) | Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `ba92a8c29e06d5bbe59670d1be49d580bda17bd54b2807d204138d5689f661ef` |
 | [src/core/config.ts](../../src/core/config.ts) | Profile snapshot, spawn request and environment validation | [15-core-runtime](15-core-runtime.md) | `f7fe421a16593ebc34d323bcb11aa0b64525d2b3b87a0a7ac708178de8a585f7` |
 | [src/core/file-controls.ts](../../src/core/file-controls.ts) | Agent file-operation identity, preparation receipts, write authority and pending grant fences | [15-core-runtime](15-core-runtime.md) | `31ce77b2051152caadadaa3e98b26cd63f8492e1a8bb7cb5dc871bffb9b509f4` |
-| [src/core/index.ts](../../src/core/index.ts) | Runtime assembly, Agent admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `2d85bdf76e44f586f2ca4e1e73589870482a0ffc2039fe5cce193407df6a865b` |
+| [src/core/index.ts](../../src/core/index.ts) | Runtime assembly, Agent admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `582fd250e7a63c5e020dd1b2e6d160d7380a4ff4ffaa742fe9e687d23a3fdf19` |
 | [src/core/input-ledger.ts](../../src/core/input-ledger.ts) | Runtime/caller/operation/target/request input identity and parameter conflict ledger | [15-core-runtime](15-core-runtime.md) | `44e6dd8b015fb8ee2fcc2100aa22638e7e66e511ede570510dc0eb30bb85f626` |
 | [src/core/model-access.ts](../../src/core/model-access.ts) | Runtime-scoped model gateway lifecycle, credentials and policy | [15-core-runtime](15-core-runtime.md) | `2ab9f0b09166dadf3430b32d6a427c14ff94e543c2d82200ab36c45b42a1e259` |
 | [src/core/run-finalization.ts](../../src/core/run-finalization.ts) | Public Run finalization, bounded cleanup and late facility receipts | [17-harness-reporting](17-harness-reporting.md) | `1b955aa639ba71765c1684439ee38002d1e17f44f9a73239f8d712ef40667373` |
@@ -418,7 +421,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [website/src/content/docs-zh/harnesses/taskpool.md](../../website/src/content/docs-zh/harnesses/taskpool.md) | Chinese documentation content for harnesses/taskpool | [22-website](22-website.md) | `edd7d6e25b56d67feb2c3422cda44db1742466374faedd863647efbc1ee01f25` |
 | [website/src/content/docs-zh/overview.md](../../website/src/content/docs-zh/overview.md) | Chinese documentation content for overview | [22-website](22-website.md) | `409ae87d138ef5a7e290df4fbca5fa725723b7c3758e86c5b543a868f72b8508` |
 | [website/src/content/docs-zh/quickstart.md](../../website/src/content/docs-zh/quickstart.md) | Chinese documentation content for quickstart | [22-website](22-website.md) | `1f17e225aa59947c9f91f8165c6792f6c3adcdf8284eb8478ab099bcd6913464` |
-| [website/src/content/docs-zh/reference/api.md](../../website/src/content/docs-zh/reference/api.md) | Chinese documentation content for reference/api | [22-website](22-website.md) | `fb508a8e5dd684aa1ad5f64f09bf4ed0d85adebfb118c16d6ab84c9852d9e4ac` |
+| [website/src/content/docs-zh/reference/api.md](../../website/src/content/docs-zh/reference/api.md) | Chinese documentation content for reference/api | [22-website](22-website.md) | `13c1f6326fd050499e986b0f22cdba9c9230ea27f071212f915eb887d380cbcc` |
 | [website/src/content/docs-zh/reference/deploy.md](../../website/src/content/docs-zh/reference/deploy.md) | Chinese documentation content for reference/deploy | [22-website](22-website.md) | `345b4834ccab713ef08702070fc10fb0a3c8b781202fdc3db60d523b82388a47` |
 | [website/src/content/docs-zh/reference/types.md](../../website/src/content/docs-zh/reference/types.md) | Chinese documentation content for reference/types | [22-website](22-website.md) | `8b2403f2519d4d41274e95d52f28c6f9ae878f55543ebf2e5668cab7a5bec33a` |
 | [website/src/content/docs-zh/run-lifecycle.md](../../website/src/content/docs-zh/run-lifecycle.md) | Chinese documentation content for run-lifecycle | [22-website](22-website.md) | `300cd1d83808ae919104435b5198a71c763b0ce3587a2a7d379dc9d6c5c97e06` |
@@ -433,7 +436,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [website/src/content/docs/harnesses/taskpool.md](../../website/src/content/docs/harnesses/taskpool.md) | Published documentation content for TaskPool | [22-website](22-website.md) | `61f17d3d0d51113db475e62d819b1f92354eeba46d87fa15c61cb072bf36aa72` |
 | [website/src/content/docs/overview.md](../../website/src/content/docs/overview.md) | Published documentation landing overview page | [22-website](22-website.md) | `853c61281a3e00041b18f09e760811287ca04d5dac82005705dacdccfad2f4c1` |
 | [website/src/content/docs/quickstart.md](../../website/src/content/docs/quickstart.md) | Published documentation content for Quick Start | [22-website](22-website.md) | `853c7227419b4996bc52d9ea877285cc23a0bf9c2724c08ca0879309bff11dc9` |
-| [website/src/content/docs/reference/api.md](../../website/src/content/docs/reference/api.md) | Published documentation content for API & Configuration | [22-website](22-website.md) | `4cc362c6aca3baef4459abd4ad4d20dd1924089f936a2854a15312de7d30658e` |
+| [website/src/content/docs/reference/api.md](../../website/src/content/docs/reference/api.md) | Published documentation content for API & Configuration | [22-website](22-website.md) | `69724b7fcb2e93e82d939c63349e148facf78707906446838f51187423c16829` |
 | [website/src/content/docs/reference/deploy.md](../../website/src/content/docs/reference/deploy.md) | Published documentation content for Deployment | [22-website](22-website.md) | `f3b82ae4f0c74b6029b2214b06163f3cd799cc1de57a3391145c05e1ca6dd538` |
 | [website/src/content/docs/reference/types.md](../../website/src/content/docs/reference/types.md) | Published documentation content for Types & Mapping | [22-website](22-website.md) | `02ea1236584627d23f6c31afd3f06e959f26022cf42877c925ec1a623b2a5a9b` |
 | [website/src/content/docs/run-lifecycle.md](../../website/src/content/docs/run-lifecycle.md) | Published documentation content for Anatomy of a Run | [22-website](22-website.md) | `0357bfaf36fbd670ba94fea327d041adca4297022ada0381ddfd8190be8c55fd` |

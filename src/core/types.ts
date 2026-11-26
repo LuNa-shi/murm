@@ -192,6 +192,7 @@ export interface PendingCleanup {
   action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
   error?: ErrorInfo;
   resourceKey?: string;
+  providerId?: string;
   sandboxId?: string;
   creation?: 'created' | 'pending' | 'absent';
   executionStopped?: boolean;

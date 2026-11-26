@@ -77,6 +77,10 @@ Bridge 注入真实 caller，Registry 执行参数 schema 校验后再调用 ada
 
 新通用 manifest 采用 Core 文档定义的 v2 合同。旧 v1 的 Task audience/context 通过 TaskPool 兼容适配保留；不将旧领域检查静默删除。`registerService`、`createInProcessAdapter` 和 `invoke` 的装配形态沿用现有实现。[Registry](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/sdk/service-registry.js) · [adapter](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/sdk/service-adapter.js)
 
+[#236](https://github.com/LuNa-shi/murm/issues/236) 验证同一个 Harness 使用相同消息操作，分别接入进程内实现和已经运行的外部消息 Service。adapter 在应用侧映射服务的原生接口，Bridge 继续校验真实 caller、Profile 权限和 schema。外部写请求超时或响应丢失时保留原 operation ID 和未知结果。两种运行分别通过真实 Agent CLI 交接并验证最终文件，关闭后验证外部服务及数据继续可用。Harness 自建资源先核对归属，再按必需导出与实际依赖完成有界收尾。按 Run 启动 HTTP 服务、通用 v2 服务端和三种设施同场留待具体使用场景。
+
+另一接入示例使用真实 GitHub CLI `gh`。Agent 请求获准的只读操作，应用侧 adapter 按固定子命令和仓库范围执行 `gh`，校验参数并返回结构化结果。凭据留在应用侧，Agent 环境和可见记录只保留调用所需的业务字段。需要让 Agent 直接执行 `gh` 的 Harness 可以显式配置镜像、网络和单独的 Agent 凭据。#237 验证相同 Service 合同的仓库外消费。
+
 ### 3.2 接线示例：共享一条带固定源码位置的审查记录
 
 附录 A 给出一个完整、范围有限的接线示例：writer 读取已提供的固定 commit 审查事实，通过 Notes Service 发布；reader 读取后核对来源，写入自己的报告。它用于检查 Service 身份、权限、数据交接、输入等待和关闭流程，不用于评估模型代码审查能力。

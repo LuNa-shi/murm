@@ -1310,6 +1310,12 @@
       "role": "Shared OpenSandbox lifecycle, session control, input polling and cleanup"
     },
     {
+      "path": "src/core/opensandbox-provider.ts",
+      "category": "Core runtime",
+      "chapters": ["docs/architecture/16-pi-opensandbox-backend.md"],
+      "role": "Internal OpenSandbox target, local connection, and trusted network and workspace preparation"
+    },
+    {
       "path": "src/core/worker-event-poll.ts",
       "category": "Core runtime",
       "chapters": [
@@ -1451,6 +1457,18 @@
         "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Installed-package Notes Harness Service, role prompts, input order, archive verification and saved-report CLI"
+    },
+    {
+      "path": "examples/bridge-services/messages.ts",
+      "category": "Execution and control",
+      "chapters": ["docs/architecture/15-core-runtime.md"],
+      "role": "Shared Messages manifest and in-process or already-running HTTP Service adapter selection"
+    },
+    {
+      "path": "examples/bridge-services/gh-issues.ts",
+      "category": "Execution and control",
+      "chapters": ["docs/architecture/15-core-runtime.md"],
+      "role": "Read-only GitHub CLI Service backed by an application-owned subprocess and credential"
     },
     {
       "path": "examples/notes/config.ts",
