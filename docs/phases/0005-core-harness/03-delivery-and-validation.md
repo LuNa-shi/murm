@@ -94,3 +94,9 @@ TODO：
 需要借鉴时再看相近项目的安装入口、展示方式和发布过程，直接用于改进自己的材料。Pi 教程、PeerMesh 任务包等生态贡献按实际收益选择，不增加为本轮必须交付的另一套工程。
 
 **这一部分要留下的结果：**可用的发布版本、与实际功能一致的展示材料、明确的使用入口，以及发布后的真实反馈。
+
+## Run 复盘入口（#223）
+
+[#223](https://github.com/LuNa-shi/SwarmEnv/issues/223) 从已保存 Run 读取执行、模型、Service、Session 和收尾证据。目标入口是独立安装的 `murm trace --root <runs-dir> --port 8787`，浏览器通过本机只读 HTTP/SSE 查看，远程宿主通过 SSH 转发。Run、业务结果与资源清理沿用本阶段 Core/Harness 的独立状态。新增原生事件只补充实际执行观察，输入接纳和执行收束仍各自保留语义。首个专用协作解析覆盖 Subagents，所有 Service 保留通用调用视图。
+
+实现及验收以 [Trace Viewer Architecture](../../architecture/06-observability-experiments.md) 和 Issue/PR 记录为准。

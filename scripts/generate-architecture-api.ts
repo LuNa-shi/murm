@@ -10,7 +10,6 @@ import { buildCapabilityProfile } from '../src/agent/capability-profile.js';
 import { SCHEMA_SQL } from '../src/storage/schema.js';
 import { CONTEXT_SCHEMA_SQL } from '../src/storage/context-schema.js';
 import { JUDGE_SCHEMA_SQL } from '../src/storage/judge-schema.js';
-import { OBSERVATION_SCHEMA_SQL } from '../src/observability/observation-store.js';
 import { ERROR_CODES } from '../src/errors.js';
 import { DatabaseSync } from 'node:sqlite';
 import { EXECUTION_WORKSPACE_SCHEMA_SQL } from '../src/runtime/execution-workspace.js';
@@ -72,7 +71,6 @@ const schemas = [
   ['Task and Execution database', 'src/storage/schema.ts', SCHEMA_SQL],
   ['Context database', 'src/storage/context-schema.ts', CONTEXT_SCHEMA_SQL],
   ['Judge database', 'src/storage/judge-schema.ts', JUDGE_SCHEMA_SQL],
-  ['Observation database', 'src/observability/observation-store.ts', OBSERVATION_SCHEMA_SQL],
 ];
 let storage = '## Generated SQL schema reference\n\nThe SQL below is the complete exported create-schema text, including checks, keys and indexes. It is schema text, not an export of a user database. The `tasks` interpolation is expanded. Constructors initialize the current schema on new databases. Shared `operations` declarations intentionally appear in several owners because the services can share a SQLite connection.\n';
 for (const [label, path, sql] of schemas) {

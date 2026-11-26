@@ -65,7 +65,7 @@ The shipped `.env.example` lists host variables consumed by the Notes configurat
 | `dist/scripts/read-harness-result.js` | Saved report inspection with explicit directory and expected Runtime ID. [Saved results](17-harness-reporting.md) |
 | `dist/scripts/service-host.js` | Built-in Task, Context, Judge or Catalog HTTP provider with explicit role/binding authority. [Services](04-services.md) |
 | `dist/scripts/mathlib-search-service.js` | Optional HTTP search over configured upstream or mounted source. [Services](04-services.md#6-optional-mathlib-search) |
-| `dist/scripts/serve-observability.js` | Existing event-store discovery, authenticated HTTP/SSE queries without a browser UI. [Observability](06-observability-experiments.md) |
+| `murm trace --root <runs-dir> --port 8787` | Standalone browser viewer for saved and active Core Runs. [Trace Viewer](06-observability-experiments.md) |
 
 Public package exports resolve Core, Services and Pi/OpenSandbox backend. Repository domain code and regression tests import internal components from their owning modules. The legacy domain source barrel, benchmark runner, scheduling helpers, fixed configurations, mathematical datasets, Pass@K and historical report importer have been retired. Their version-bound implementations are preserved in [research](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9).
 
@@ -81,28 +81,13 @@ Core writes records under the configured output directory and Runtime ID. Eviden
 
 The root `/experiments/` and `/reports/` ignore rules cover private raw evidence and local reports. npm uses that boundary through its Git ignore packlist fallback, including unreadable local facility volumes. Historical tracked inputs and reports are preserved at the fixed research revision. Committed `docs/experiments/` contains version-bound summaries.
 
-## Optional services and Observer migration
+## Optional Services and Trace Viewer
 
-Built-in service launchers use HTTP manifests and role/binding enforcement. Built-in invocation requires actor-bound principals. Independent Context/Judge composition owns peer authentication, durable request/commit gates, checker reconciliation and bounded shutdown. Hosts supply the actual domain stores and deployment configuration. Mathlib Search needs a configured upstream or mounted source tree. [Services](04-services.md) describes each callable path.
+Built-in Service launchers use HTTP manifests and role/binding enforcement. Built-in invocation requires actor-bound principals. Independent Context/Judge composition owns peer authentication, durable request/commit gates, checker reconciliation and bounded shutdown. Hosts supply the actual domain stores and deployment configuration. Mathlib Search needs a configured upstream or mounted source tree. [Services](04-services.md) describes each callable path.
 
-The React dashboard has been retired after separating pure observation functions and verifying the terminal/saved-result handoff. Observer remains an authenticated read-only HTTP/SSE service over actual registered SQLite stores. It no longer serves HTML, JavaScript or CSS; authenticated non-API requests return JSON 404. Its event queries, cursor/limit behavior, registry discovery, redaction and exposure guards retain their existing implementation. [Observability](06-observability-experiments.md#4-bounds-sse-and-non-ui-consumers) gives direct JSON/SSE commands and their limits.
+The independent Trace Viewer package opens an output root containing saved or active Core Runs. Its loopback HTTP server serves a browser interface and resumable SSE. Current-run control still goes through the foreground Harness. The [Trace Viewer guide](../operations/trace-viewer.md) covers installation and SSH port forwarding.
 
-The bounded migration and removal mapping is:
-
-| Retired group / necessary behavior | Current owner or entry | Evidence and remaining limitation |
-|---|---|---|
-| `client/App.jsx`, hash navigation and page details | Existing Observer overview, timeline, execution, Task, Material, report and Service JSON routes | HTTP server tests preserve data queries, bounds and redaction; graphical navigation is retired |
-| `client/hooks/use-observation.js` browser fetching, refresh and event caching | Observer registry/event SSE and cursor APIs; a consumer owns reconnect and deduplication | HTTP tests verify actual SQLite changes across writer/reader connections and registry updates; the old browser debounce/cache policy is removed |
-| Pure queue/tool/trace derivation and formatting previously consumed by React | Retained `observation-projection.js` and `format.js` outside UI | Node projection tests still exercise these modules; no new Core public export |
-| UI components, `client/lib/utils.js`, HTML and CSS | Rendering-only code removed | Theme, layout, animations and graphical trace selection have no replacement UI; they never owned run state |
-| `public/` built assets, `vite.config.js`, `components.json`, `build:observability` and `dev:observability` | Current Core/Harness host and result scripts run directly with Node | Actual package installation and terminal stop/report tests require no old source, assets or frontend build |
-| React, Tailwind, Vite, shadcn and associated UI dependency declarations | Removed from package and lockfile | TypeScript remains a development dependency for the installed public declaration checks; Core and AJV runtime dependencies are retained |
-| Current-run status, directed input and stop | `runForegroundHarness` and `dist/scripts/run-harness.js`, through existing mode controllers and Core | Foreground tests exercise target identity, same-request semantics and cancellation; no second lifecycle |
-| Durable events, report saving and saved-result inspection | Core records, Harness `runWithReport`, `readHarnessResult` and `dist/scripts/read-harness-result.js` | Terminal tests compare actual saved reports, including unknown execution and required export pending; browser subscriptions are unnecessary |
-
-The [terminal receipt checks](17-harness-reporting.md#terminal-receipts-when-cleanup-is-incomplete) cover controlled execution and artifact failures after an actual production package installation. Observer query/stream tests cover its retained data surface separately. These checks do not assert that every old graphical workflow has a terminal equivalent or replace real-mode acceptance tracked by #181/#182. The last dashboard source remains available in [fixed Git history](https://github.com/LuNa-shi/SwarmEnv/tree/38b352ef799b7a693e1535b679e51dbff5ffd564/src/observability/client).
-
-`npm test` runs serial Node tests with only the offline `docs:check` pretest. `docs:generate` refreshes prompt/API/storage references and source fingerprints; explanatory chapters are reviewed alongside those generated files. There is no frontend build command or build prerequisite for the retained entries.
+`npm test` runs the Core suite with the offline `docs:check` pretest. `npm --prefix trace-viewer test` verifies the standalone package. `docs:generate` refreshes prompt/API/storage references and source fingerprints.
 
 ## Final-tree acceptance configuration
 
