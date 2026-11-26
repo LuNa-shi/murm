@@ -23,11 +23,11 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "24658498abfe7af71dcf97dd5263100283facc11f71bb0040bbd6f71a7ea3254"
+      "sha256": "6e6ef598d8f41bbec723ba91edd84203245e3a11992615e43e0b851bc301775b"
     },
     {
       "path": "src/core/bridge.ts",
-      "sha256": "a8c872112b7e059bb3a36758c4d5a1ce0ea80f694cd0ffff640357e9d4c1ac98"
+      "sha256": "ba92a8c29e06d5bbe59670d1be49d580bda17bd54b2807d204138d5689f661ef"
     },
     {
       "path": "src/core/startup-prompt.ts",
@@ -35,11 +35,11 @@
     },
     {
       "path": "src/core/pi-opensandbox-backend.ts",
-      "sha256": "691a2447cd4c10b17b59165f9a41e32518853b0bd176568a75eca7284d54273d"
+      "sha256": "34546c69ce5e7f9184d50efdde56043b9a0449ff5e703a8525219787605d5c73"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "a0bd275313438826134862912fd9a60774f11e0d2ade4a5de450a8ce07ce5052"
+      "sha256": "4d671a3f2068ad3bdb9cb3756e6117d0e17cec3efda911f3cb8720891bf65eda"
     },
     {
       "path": "examples/notes/main.ts",

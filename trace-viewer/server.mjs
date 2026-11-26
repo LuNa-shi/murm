@@ -1,3 +1,4 @@
+import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname } from 'node:path';
@@ -57,10 +58,11 @@ function pageOptions(query) {
 
 async function live(request, response, reader, runId, query) {
   let cursor = request.headers['last-event-id'] || query.get('cursor') || undefined;
-  const nextPage = () => reader.events(runId, { cursor, limit: 1000 });
+  const nextPage = () => reader.events(runId, { cursor, limit: 250 });
   const controller = new AbortController();
   response.on('close', () => controller.abort());
   let page = await nextPage();
+  if (controller.signal.aborted) return;
   if (!page) return json(response, 404, { error: 'Run not found' });
   response.writeHead(200, {
     ...headers,
@@ -69,22 +71,20 @@ async function live(request, response, reader, runId, query) {
     'X-Accel-Buffering': 'no',
   });
   response.write('retry: 1000\n\n');
-  let lastWrite = Date.now();
+  let lastRefresh = Date.now();
   while (!controller.signal.aborted) {
     cursor = page.cursor;
     if (page.events.length || page.reset) {
-      // Close a slow connection rather than queue unbounded data. EventSource can replay
-      // from its last fully received id.
-      if (!response.write('id: ' + cursor + '\nevent: trace\ndata: ' + JSON.stringify(page) + '\n\n')) {
-        if (response.writableLength > 2 ** 20) {
-          response.destroy();
-          return;
-        }
+      const payload = 'id: ' + cursor + '\nevent: trace\ndata: ' + JSON.stringify(page) + '\n\n';
+      if (!response.write(payload)) await once(response, 'drain', { signal: controller.signal });
+    }
+    // Atomically replaced reports and newly exported files can change without a ledger row.
+    // The refresh notification also keeps the connection alive while a Run is quiet.
+    if (Date.now() - lastRefresh >= 10000) {
+      if (!response.write('event: refresh\ndata: {}\n\n')) {
+        await once(response, 'drain', { signal: controller.signal });
       }
-      lastWrite = Date.now();
-    } else if (Date.now() - lastWrite >= 15000) {
-      response.write(': heartbeat\n\n');
-      lastWrite = Date.now();
+      lastRefresh = Date.now();
     }
     if (!page.hasMore) await delay(500, undefined, { signal: controller.signal });
     page = await nextPage();
@@ -151,12 +151,15 @@ function errorResponse(error, response) {
 
 export async function startTraceServer({ root, port = 8787 }) {
   const reader = await createTraceReader({ root });
-  const server = createServer((request, response) => {
+  const server = createServer({ maxHeaderSize: 256 * 1024 }, (request, response) => {
     route(request, response, reader).catch(error => errorResponse(error, response));
   });
   await new Promise((resolve, reject) => {
     server.once('error', reject);
-    server.listen(port, loopback, resolve);
+    server.listen(port, loopback, () => {
+      server.off('error', reject);
+      resolve();
+    });
   });
   return {
     url: 'http://' + loopback + ':' + server.address().port,

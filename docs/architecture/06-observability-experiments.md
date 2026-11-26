@@ -1,5 +1,36 @@
 # 06. Trace Viewer and Run evidence
 
+## Process and read boundary
+
+The standalone `@murm/trace-viewer` package provides the thin `murm` host command. Selecting `trace` loads the reader and HTTP server. `--root` is required and `--port` defaults to 8787. Port 0 asks the OS to select an available port. The server binds IPv4 loopback and prints its URL. A local browser can connect directly or through an SSH tunnel. Core's package and Sandbox's Agent-side `swarm` CLI install independently.
+
+Each browser request must use a loopback Host header. Browser cross-site requests and differing Origins are rejected. The viewer serves GET, with no cross-origin sharing or runtime mutation surface. Records are inserted into the DOM as text. The browser's content security policy restricts loaded assets and connections to the viewer origin. SIGINT and SIGTERM close the listener and active connections. The viewer can start after the Harness has exited, model access has ended, and its Sandboxes have been deleted.
+
+## Reader and API
+
+The reader discovers `runtime.json` and opens only the configured Run root. It reads the original files through a rebuildable metadata index. The Run identity and each indexed record retain the original relative file and available byte or line reference. See [Runtime evidence and Harness reports](17-harness-reporting.md) for producer details.
+
+All routes are relative to the viewer origin. Run and record IDs are URL-encoded path segments.
+
+| GET route | Data |
+| --- | --- |
+| `/api/runs` | Run summaries discovered below the root |
+| `/api/runs/:id` | Runtime identity, Agent lanes, intervals, collaboration, status, gaps and file references |
+| `/api/runs/:id/events` | Paged record metadata, optionally filtered by `agentId` or `type`, limited to 1,000 per page |
+| `/api/runs/:id/records/:recordId` | A selected source record, links to related raw files and available cross-record evidence |
+| `/api/runs/:id/files?path=…` | A bounded range of a known evidence file read as UTF-8 text |
+| `/api/runs/:id/live` | Resumable SSE batches plus periodic report and file refresh notifications |
+
+The event API cursor is opaque. Start with no cursor and pass the returned cursor to request the next page. For live subscriptions the server pulls up to 250 new records per batch, then waits 500 ms once it reaches the indexed tail. SSE includes an event ID suitable for `Last-Event-ID`. On reconnect that header takes precedence over the query cursor. Quiet streams get a `refresh` event every ten seconds so the browser can pick up report and archive changes. The listener waits for a slow client to drain its response before sending another batch. New complete JSONL lines are indexed incrementally and incomplete trailing lines wait for their newline. The index has no file writes in the source Run.
+
+## Timeline and evidence inspection
+
+The viewer shows execution, tool, model and Service activity against a common time scale. Agent filters and the paged events table keep individual records selectable. Clicking an interval or event opens its associated source records. Clicking a collaboration link opens its evidence. Files and report contents are retrieved only when selected. The Run status, business outcome and cleanup receipts are distinct views.
+
+The execution layer uses native `agent_start` and `agent_settled` observations for intervals. Each boundary retains its timestamp source. Agent input admission, readiness and settlement observations remain separately visible. A Run with no native start evidence can still show actual recorded model and Service activity. An accepted input does not establish execution or consumption. Unknown records, missing edges and ledger or Worker trace gaps remain explicit.
+
+Subagents links use authenticated caller and parent or destination identities, and matching request, input, operation or message IDs where the records supply them. A message receipt is independent of evidence that its payload entered the recipient's model context. A selected historical handoff may link to model requests whose saved input contains the message identity. Inspect the model request and final artifact or checker result separately to assess adoption. All other Service operations remain inspectable as generic calls.
+
 ## Historical research tooling
 
 The research tree at `dc011003fa0354a881b7a3ba9ba901fe36cbcac9` preserves benchmark report construction, parallelism accounting, offline research analysis, historical importer and their tests. Historical report fields and results retain the semantics of their recorded source revision.

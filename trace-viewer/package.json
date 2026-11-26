@@ -6,7 +6,7 @@
   "engines": { "node": ">=22.19.0" },
   "bin": { "murm": "./murm.mjs" },
   "files": ["*.mjs", "!*.test.mjs", "public/"],
-  "scripts": { "test": "node --test '*.test.mjs'" },
+  "scripts": { "test": "node --test" },
   "license": "UNLICENSED",
   "private": true
 }

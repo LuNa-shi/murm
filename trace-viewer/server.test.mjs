@@ -3,12 +3,24 @@ import { once } from 'node:events';
 import { mkdtemp, mkdir, writeFile, appendFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import { execFile, spawn } from 'node:child_process';
 import test from 'node:test';
+
+const exec = promisify(execFile);
 
 test('installed CLI serves read-only Run evidence and resumes a live stream', { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'murm-trace-http-'));
   t.after(() => rm(root, { recursive: true, force: true }));
+  const consumer = join(root, 'consumer');
+  const packagePath = fileURLToPath(new URL('.', import.meta.url));
+  await mkdir(consumer);
+  const pack = await exec('npm', ['pack', packagePath, '--json'], { cwd: consumer });
+  const [{ filename, files }] = JSON.parse(pack.stdout);
+  assert.ok(files.some(entry => entry.path === 'public/index.html'));
+  assert.ok(files.every(entry => !entry.path.endsWith('.test.mjs')));
+  await exec('npm', ['install', '--offline', '--no-audit', '--no-fund', './' + filename], { cwd: consumer });
   const run = join(root, 'fixture');
   await mkdir(run);
   await writeFile(join(run, 'runtime.json'), JSON.stringify({
@@ -21,9 +33,9 @@ test('installed CLI serves read-only Run evidence and resumes a live stream', { 
   await writeFile(ledger, row(1) + '\n');
 
   const launch = async () => {
-    const cli = spawn(process.execPath, [
-      new URL('./murm.mjs', import.meta.url).pathname, 'trace', '--root', root, '--port', '0',
-    ]);
+    const cli = spawn(join(consumer, 'node_modules/.bin/murm'), [
+      'trace', '--root', root, '--port', '0',
+    ], { cwd: consumer });
     const exited = once(cli, 'exit');
     const stop = async () => {
       if (cli.exitCode !== null || cli.signalCode !== null) return;
@@ -44,6 +56,9 @@ test('installed CLI serves read-only Run evidence and resumes a live stream', { 
   };
 
   const { url, stop } = await launch();
+  const homepage = await fetch(url);
+  assert.match(homepage.headers.get('content-type'), /^text\/html/);
+  assert.match(await homepage.text(), /Trace Viewer/i);
   const listing = await fetch(url + '/api/runs');
   assert.equal(listing.status, 200);
   const { runs } = await listing.json();
@@ -59,7 +74,7 @@ test('installed CLI serves read-only Run evidence and resumes a live stream', { 
 
   const controller = new AbortController();
   t.after(() => controller.abort());
-  const stream = await fetch(url + api + '/live?cursor=' + encodeURIComponent(page.cursor), { signal: controller.signal });
+  const stream = await fetch(url + api + '/live?cursor=' + encodeURIComponent(page.cursor), { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(4000)]) });
   await appendFile(ledger, row(2));
   assert.equal((await (await fetch(url + api + '/events')).json()).events.length, 1);
   await appendFile(ledger, '\n');
