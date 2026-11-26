@@ -4,6 +4,14 @@
   "private": true,
   "type": "module",
   "description": "A local-first runtime for durable, checkable agent swarm tasks.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LuNa-shi/murm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LuNa-shi/murm/issues"
+  },
+  "homepage": "https://luna-shi.github.io/murm/",
   "exports": {
     ".": {
       "types": "./dist/src/core/index.d.ts",
