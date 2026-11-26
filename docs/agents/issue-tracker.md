@@ -2,7 +2,7 @@
 
 > Configuration for Matt Pocock's engineering skills · Active
 
-**Issues and specs live in the murm GitHub repository:** [LuNa-shi/SwarmEnv](https://github.com/LuNa-shi/SwarmEnv). Use an authorized GitHub integration or `gh` CLI. Never publish a murm Issue into the upstream `mattpocock/skills` repository.
+**Issues and specs live in the murm GitHub repository:** [LuNa-shi/murm](https://github.com/LuNa-shi/murm). Use an authorized GitHub integration or `gh` CLI. Never publish a murm Issue into the upstream `mattpocock/skills` repository.
 
 ## Reading and writing
 
