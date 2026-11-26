@@ -13,6 +13,8 @@ Every Harness combines four pieces:
 3. **A host control loop** that decides when to `spawn`, `send`, `interrupt`, and stop;
 4. **Resilient closeout** that archives deliverables and keeps business, cleanup, and report errors separate.
 
+The [Messages handoff](https://github.com/LuNa-shi/murm/tree/main/examples/bridge-services#run-the-typescript-handoff) is a runnable TypeScript example you can copy into a fresh project. Install the package separately from the same-host Docker, OpenSandbox, Worker image, and model endpoint prerequisites. The example uses public imports and also runs with an existing HTTP Messages Service.
+
 ## 1. Decide your coordination shape
 
 Answer three questions before writing code:
@@ -20,7 +22,7 @@ Answer three questions before writing code:
 | Question | Common choices |
 | --- | --- |
 | **Where does shared state live?** | In-memory host `Map` (Notes, Subagents), local SQLite (Substrate, Lead-Worker), or external HTTP/Git/chat services (PeerMesh, TaskPool) |
-| **What drives the next agent turn?** | Fixed serial turns (`runInput`), reactive event + mailbox steering (`wakeIfIdle: false`), or a periodic lease/reconciliation loop |
+| **What drives the next agent turn?** | Fixed serial turns (`send` and `observe`), reactive event + mailbox steering (`wakeIfIdle: false`), or a periodic lease/reconciliation loop |
 | **What proves the run succeeded?** | A Service record reaching a target state, verified Git commits/PRs, a passed verifier check, or archived files checked on the host |
 
 ## 2. Define and register a shared Service
@@ -199,22 +201,9 @@ const runtime = await createRuntime({
 
 Pick the control-loop pattern that fits your topology:
 
-### Pattern A: Serial turns with `runInput()`
+### Pattern A: Serial turns with public input and observation
 
-Best for fixed pipelines, staged lead/worker rounds, or parallel independent peers where each agent has one exclusive input source at a time. Reuse [`runInput`](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/shared/run-input.ts):
-
-```ts
-import { runInput } from './run-input.js';
-
-const writer = await runtime.spawn({ requestId: 'spawn-writer', profile: 'writer', files: seedFiles });
-const { settled } = await runInput(
-  runtime,
-  writer.id,
-  'Read review-input.json and publish it with `swarm notes put`.',
-  { requestId: 'writer-turn-1', timeoutMs: 60_000 },
-);
-console.log('Writer settled:', settled.outcome);
-```
+For an Agent with one exclusive input source, establish `runtime.observe({ signal })` before calling `runtime.send`. Retain the original request ID and check the acceptance receipt. The [Messages handoff](https://github.com/LuNa-shi/murm/tree/main/examples/bridge-services#run-the-typescript-handoff) consumes updates concurrently, requires the expected Service operation and completed Agent execution, and checks the exported bytes during finalization. Its business evidence comes from the operation identity and the file check. See [Runtime control](../reference/api/#live-observation) for cursor gaps and uncertain input.
 
 ### Pattern B: Event + non-waking mailbox
 
@@ -254,46 +243,17 @@ Best for long-running task pools where workers may stall, time out, or finish an
 
 See [TaskPool](../harnesses/taskpool/) for the complete production implementation.
 
-## 5. Wrap closeout with `runWithReport()`
+## 5. Finalize the Run with `finalizeRun()`
 
-Never let a cleanup error overwrite your original business failure (or vice versa). Wrap your Harness in [`runWithReport`](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/shared/run-report.ts), which keeps `result`, `businessFailure`, `cleanup`, `cleanupFailure`, and `reportSaveFailure` as independent fields and atomically writes `outputDir/<runtimeId>/harness-report.json`:
-
-```ts
-import { runWithReport } from './run-report.js';
-
-const report = await runWithReport({
-  outputDir: './runs',
-  closeTimeoutMs: 30_000,
-  redact: (value) => scrubConfiguredSecrets(value),
-  createRuntime: () =>
-    createRuntime({
-      backend: createOpenSandboxBackend(config.backend),
-      services,
-      profiles,
-      maxAgents: 2,
-      outputDir: './runs',
-    }),
-  async run(runtime) {
-    // Spawn agents, run your control loop, and verify deliverables
-    const stopped = await runtime.stop(reader.id, { timeoutMs: 30_000 });
-    return { readerId: reader.id, artifacts: stopped.artifacts };
-  },
-  async afterClose(closeReceipt) {
-    // Only close external DBs or revoke external tokens after Core cleanup is complete
-    if (closeReceipt.cleanup === 'complete') {
-      await closeExternalResources();
-    }
-  },
-});
-```
+Pass a typed business outcome to `finalizeRun` from `@murm/core`. Set the cleanup deadline independently of the work deadline. Verify required exports through `verifyArtifacts` and supply `ownedFacilities` only for resources the application owns. The report records business, verification, Core close, facility cleanup, and save status in `outputDir/<runtimeId>/run-finalization.json`. Retain pending resource identities for follow-up.
 
 ## 6. Verify your first Run
 
-After your first run exits, inspect `outputDir/<runtimeId>/` to verify four invariants:
+After your first Run exits, inspect `outputDir/<runtimeId>/` for the evidence your application uses:
 
 1. **`runtime.json`**: `status === 'closed'` and `cleanup === 'complete'` with zero pending cleanup objects.
 2. **`evidence.jsonl`**: expected spawn order, input receipts, and `settled` events with zero `subscriber-error` rows.
 3. **`service-calls.jsonl`**: downstream agents actually invoked your Services with valid schemas and received upstream outputs.
-4. **`<agentId>/artifacts/files/` & `<agentId>/session/`**: declared deliverables match your acceptance checks and full Pi session transcripts are archived.
+4. **`<agentId>/artifacts/files/` & `<agentId>/session/`**: declared deliverables match your acceptance checks, and the selected executor’s native session is available for inspection.
 
 Next, explore how the five built-in topologies apply these exact patterns in [Five Topologies Overview](../harnesses/).

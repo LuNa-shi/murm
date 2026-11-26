@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { fork } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { once } from 'node:events';
-import { copyFile, lstat, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
@@ -11,20 +11,22 @@ import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { createNativeEvidenceDirectory, execute, preparePackageArchive } from './fixtures/notes-installed-package.js';
 
-const argvLimit = 6;
+const requestLimit = 6;
 const marker = 'SDK_HANDOFF_STAGE_OK';
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 const call = (op: string, payload: unknown, operationId: string) =>
   `printf '%s' ${quote(JSON.stringify(payload))} | swarm messages ${op} --stdin --request-id ${operationId}`;
 
-async function scriptedResponses(t, executor: 'pi' | 'codex', mode: 'in-process' | 'external' | 'without-handoff') {
+type Scenario = 'in-process' | 'external' | 'without-handoff' | 'cancelled';
+
+async function scriptedResponses(t, executor: 'pi' | 'codex', mode: Scenario) {
   const model = executor === 'pi' ? 'k3' : 'gpt-5.4';
   const observations = [];
   let failed: unknown;
   const server = createServer(async (request, response) => {
     try {
       assert.equal(request.url, '/v1/responses');
-      assert.ok(observations.length < argvLimit);
+      assert.ok(observations.length < requestLimit);
       const payload = await new Response(request).json();
       const user = payload.input.filter(item => item.role === 'user').at(-1);
       const input = typeof user.content === 'string' ? user.content : user.content.map(item => item.text).join('');
@@ -41,7 +43,8 @@ async function scriptedResponses(t, executor: 'pi' | 'codex', mode: 'in-process'
             `if ${call('put', { key: 'lost', text: 'write survived the lost reply' }, 'lost-response-write')} > lost.json 2>&1; then exit 74; fi`,
             "jq -e '.details.request_outcome == \"unknown\" and .details.operation_id == \"lost-response-write\"' lost.json >/dev/null",
           ] : []),
-          ...(mode === 'without-handoff' ? [] : [`swarm messages put --input handoff-input.json --request-id ${key}-put >/dev/null`]),
+          ...(mode === 'without-handoff' || mode === 'cancelled' ? []
+            : [`swarm messages put --input handoff-input.json --request-id ${key}-put >/dev/null`]),
         ]
         : [
           `if ${call('get', { key: 17 }, 'sdk-bad-parameter')} > bad.json 2>&1; then exit 75; fi`,
@@ -102,9 +105,12 @@ test('a clean external project typechecks and runs the same public handoff on Pi
     await copyFile(join(installed, 'examples/bridge-services', name), join(project, name));
   }
   await execute(process.execPath, ['node_modules/typescript/bin/tsc', '--project', 'tsconfig.handoff.json'], { cwd: project, env });
-  const pins = { sourceCommit: packed.sourceCommit, packageSha256, image, typeScriptVersion };
+  const pins = { sourceCommit: packed.sourceCommit, packageSha256, image, typeScriptVersion, nodeTypesVersion,
+    hostNodeVersion: process.version };
   const results = [];
-  for (const [executor, mode] of [['pi', 'in-process'], ['codex', 'in-process'], ['pi', 'external'], ['pi', 'without-handoff']] as const) {
+  for (const [executor, mode] of [
+    ['pi', 'in-process'], ['codex', 'in-process'], ['pi', 'external'], ['pi', 'without-handoff'], ['pi', 'cancelled'],
+  ] as const) {
     await t.test(`${executor} ${mode}`, async scenario => {
       let external: { url: string; token: string } | undefined;
       if (mode === 'external') {
@@ -118,15 +124,22 @@ test('a clean external project typechecks and runs the same public handoff on Pi
       }
       const upstream = await scriptedResponses(scenario, executor, mode);
       const output = join(evidence, `${executor}-${mode}`);
-      await writeFile(join(project, 'fixture.mjs'), `
+      let entry = 'build/handoff.js';
+      if (mode === 'without-handoff' || mode === 'cancelled') {
+        entry = 'fixture.mjs';
+        await writeFile(join(project, entry), `
 import { handoffConfig } from './build/handoff-config.js';
 import { runMessageHandoff } from './build/handoff.js';
 const config = handoffConfig();
 config.workTimeoutMs = ${mode === 'without-handoff' ? 12000 : 45000};
-const result = await runMessageHandoff(config, new AbortController().signal);
+const abort = new AbortController();
+const result = await runMessageHandoff(config, abort.signal, update => {
+  if (${mode === 'cancelled'} && update.type === 'execution' && update.phase === 'started') abort.abort();
+});
 process.stdout.write(JSON.stringify(result));
 `);
-      const { stdout } = await execute(process.execPath, ['fixture.mjs'], { cwd: project, timeout: 95_000, env: {
+      }
+      const { stdout, stderr } = await execute(process.execPath, [entry], { cwd: project, timeout: 95_000, env: {
         ...env,
         MURM_SDK_IMAGE: image,
         MURM_SDK_EXECUTOR: executor,
@@ -143,19 +156,32 @@ process.stdout.write(JSON.stringify(result));
       assert.equal(report.coreClose.status, 'complete');
       assert.equal(report.reportSaveFailure, null);
       assert.deepEqual(await ownedContainers(report.runtimeId), []);
-      if (mode === 'without-handoff') {
-        assert.equal(report.business.status, 'failed');
-        assert.equal(report.business.error.code, 'HANDOFF_TIMEOUT');
+      const runDir = join(output, report.runtimeId);
+      const events = (await readFile(join(runDir, 'evidence.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+      const sandboxes = events.filter(row => row.type === 'spawn' && row.state === 'ready');
+      assert.deepEqual(sandboxes.map(row => row.agentId), submissions.map(item => item.agentId));
+      assert.equal(new Set(sandboxes.map(row => row.sandboxId)).size, submissions.length);
+      for (const { sandboxId, versions } of sandboxes) {
+        assert.match(sandboxId, /^[a-f0-9-]+$/);
+        assert.ok(versions[`${executor}Version`] && versions.nodeVersion);
+      }
+      const { reportPath, ...savedFields } = report;
+      assert.deepEqual(JSON.parse(await readFile(reportPath, 'utf8')), savedFields);
+      if (mode === 'without-handoff' || mode === 'cancelled') {
+        assert.equal(report.business.status, mode === 'without-handoff' ? 'failed' : 'cancelled');
+        assert.equal(report.business.error.code, mode === 'without-handoff' ? 'HANDOFF_TIMEOUT' : 'HANDOFF_CANCELLED');
         assert.equal(submissions.length, 1);
         assert.equal(report.artifactVerification.status, 'not-requested');
-        assert.deepEqual(upstream.observations.map(item => item.role), ['Publish', 'Publish']);
+        if (mode === 'without-handoff') assert.deepEqual(upstream.observations.map(item => item.role), ['Publish', 'Publish']);
+        else assert.ok(upstream.observations.every(item => item.role === 'Publish'));
       } else {
+        assert.match(stderr, /^\d+ execution$/m);
         assert.equal(report.business.status, 'completed');
         assert.equal(report.artifactVerification.status, 'passed');
         assert.equal(submissions.length, 2);
         assert.notEqual(submissions[0].agentId, submissions[1].agentId);
         assert.deepEqual(upstream.observations.map(item => item.role), ['Publish', 'Publish', 'Receive', 'Receive']);
-        const trace = (await readFile(join(output, report.runtimeId, 'service-calls.jsonl'), 'utf8'))
+        const trace = (await readFile(join(runDir, 'service-calls.jsonl'), 'utf8'))
           .trim().split('\n').map(line => JSON.parse(line));
         const publish = trace.find(row => row.phase === 'settled' && row.operation_id === `${key}-put`);
         const received = trace.find(row => row.phase === 'settled' && row.operation_id === `${key}-get`);
@@ -175,9 +201,39 @@ process.stdout.write(JSON.stringify(result));
         }
       }
       results.push({ executor, mode, runtimeId: report.runtimeId, business: report.business.status,
-        artifact: report.artifactVerification.status, submissions: submissions.length, cleanup: report.coreClose.status });
+        report: relative(evidence, report.reportPath), artifact: report.artifactVerification.status,
+        submissions: submissions.length, cleanup: report.coreClose.status, sandboxes: sandboxes.map(row => row.versions) });
     });
   }
+  await t.test('installed Codex rejects unsupported Context Fork authority before allocation', async () => {
+    await writeFile(join(project, 'unsupported.mjs'), `
+import assert from 'node:assert/strict';
+import { createRuntime } from '@murm/core';
+import { createOpenSandboxBackend, getOpenSandboxBackendCapabilities } from '@murm/core/backends/opensandbox';
+import { ServiceRegistry } from '@murm/core/services';
+import { handoffConfig } from './build/handoff-config.js';
+const config = handoffConfig();
+const backend = createOpenSandboxBackend(config.backend);
+assert.equal(getOpenSandboxBackendCapabilities(backend).contextFork, false);
+await assert.rejects(createRuntime({ backend, services: new ServiceRegistry(), maxAgents: 1, outputDir: config.outputDir,
+  profiles: { worker: { model: 'default', image: config.image, allowContextFork: true } } }), error => {
+  assert.equal(error.code, 'INVALID_CONTRACT');
+  assert.equal(error.cleanup, 'complete');
+  process.stdout.write(error.runtimeId);
+  return true;
+});
+`);
+    const output = join(evidence, 'unsupported');
+    const { stdout: runtimeId } = await execute(process.execPath, ['unsupported.mjs'], { cwd: project, env: {
+      ...env, MURM_SDK_IMAGE: image, MURM_SDK_EXECUTOR: 'codex', MURM_SDK_OUTPUT: output,
+      MURM_SDK_MODEL_ID: 'gpt-5.4', MURM_SDK_MODEL_URL: 'http://127.0.0.1:1/v1/responses',
+      MURM_SDK_LIFECYCLE_URL: 'http://127.0.0.1:1/v1', MURM_SDK_MESSAGE_URL: '',
+    } });
+    assert.match(runtimeId, /^[a-f0-9-]+$/);
+    await assert.rejects(readdir(output), { code: 'ENOENT' });
+    assert.deepEqual(await ownedContainers(runtimeId), []);
+    results.push({ executor: 'codex', mode: 'unsupported-context-fork', rejection: 'INVALID_CONTRACT', allocations: 0 });
+  });
   await writeFile(join(evidence, 'acceptance.json'), JSON.stringify({ ...pins, results }, null, 2) + '\n', { mode: 0o600 });
   t.diagnostic(`Fixed installed SDK evidence: ${evidence}`);
 });
