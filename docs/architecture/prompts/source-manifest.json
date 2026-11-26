@@ -23,7 +23,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "0b63a750902e565932027a182e942b9adc3edcdb3b8718a09faeb82ccdceedf2"
+      "sha256": "d517fdb35211f784dd63c397cb01857b95a81f65700e2a1313973d7aaf6a1d40"
     },
     {
       "path": "src/core/bridge.ts",

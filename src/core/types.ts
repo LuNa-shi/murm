@@ -1,4 +1,5 @@
 import type { ServiceRegistry } from './services.js';
+import type { JsonValue } from './service-types.js';
 
 export {};
 
@@ -214,6 +215,60 @@ export interface CloseReceipt {
   outputDir: string;
   reportPath?: string;
   evidence: { path?: string; recorded: number; lost: number; pending: number };
+}
+
+export type RunBusinessOutcome<Result extends JsonValue = JsonValue> =
+  | { status: 'completed'; value: Result }
+  | { status: 'failed' | 'cancelled'; error: { code: string; message: string } };
+
+export interface RunFinalizationError {
+  code: string;
+  message: string;
+  details?: readonly unknown[];
+}
+
+export type RunCoreClose =
+  | { status: 'complete' | 'pending'; receipt: CloseReceipt }
+  | { status: 'unknown'; error: RunFinalizationError };
+
+export type RunArtifactVerification =
+  | { status: 'not-requested' | 'passed' }
+  | { status: 'pending' | 'failed'; error: RunFinalizationError };
+
+export type RunFacilityCleanup = { id: string } & (
+  | { status: 'complete' }
+  | { status: 'pending'; error: RunFinalizationError }
+);
+
+export interface RunFinalizationOptions<Result extends JsonValue = JsonValue> {
+  runtime: Pick<Runtime, 'id' | 'close'>;
+  outputDir: string;
+  business: RunBusinessOutcome<Result>;
+  cleanupTimeoutMs?: number;
+  verifyArtifacts?(receipt: CloseReceipt, signal: AbortSignal): void | Promise<void>;
+  ownedFacilities?: readonly { id: string; close(signal: AbortSignal): void | Promise<void> }[];
+}
+
+export interface RunLateFacilityCleanup {
+  runtimeId: string;
+  facility: RunFacilityCleanup;
+  reportSaveFailure: RunFinalizationError | null;
+  reportPath?: string;
+}
+
+export interface RunFinalization<Result extends JsonValue = JsonValue> {
+  runtimeId: string;
+  business: RunBusinessOutcome<Result>;
+  coreClose: RunCoreClose;
+  artifactVerification: RunArtifactVerification;
+  facilities: readonly RunFacilityCleanup[];
+  reportSaveFailure: RunFinalizationError | null;
+  reportPath?: string;
+  lateFacilityReportPath?: string;
+  lateFacilityCleanup?: {
+    current(): RunLateFacilityCleanup | undefined;
+    readonly result: Promise<RunLateFacilityCleanup>;
+  };
 }
 
 export interface Runtime {

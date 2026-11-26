@@ -11,9 +11,18 @@ This reference matches **`@murm/core` `0.2.0`** on `main`. See [Types & Source M
 
 | Entry point | Public exports | Purpose |
 | --- | --- | --- |
-| `@murm/core` | `createRuntime` (plus all Core types) | Create and control a `Runtime` for one Run |
+| `@murm/core` | `createRuntime`, `finalizeRun` (plus all Core types) | Create, control and finalize a Run |
 | `@murm/core/services` | `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`, `builtinAgentRegistration`, `getAdapterMetadata`, `invokeService`, `isJson`, `snapshotServiceRegistry` | Define, validate, and register v2 Services |
+| `@murm/core/backends/opensandbox` | `createOpenSandboxBackend`, `getOpenSandboxBackendCapabilities` (plus `OpenSandboxBackendConfig`, `BackendCapabilities`, `ExecutorKind`) | Configure Pi or Codex on OpenSandbox and inspect executor capabilities |
 | `@murm/core/backends/pi-opensandbox` | `createPiOpenSandboxBackend` (plus `PiOpenSandboxBackendConfig`) | Configure the Pi `1.3.0` / OpenSandbox container backend |
+
+## Finalize a Run
+
+Import `finalizeRun` from `@murm/core` after classifying the application outcome. Pass the Runtime, the base output directory and a typed `business` outcome. Use `status: 'completed'` with a JSON value, or `status: 'failed'` or `'cancelled'` with an application error code and message. The returned report separately contains `coreClose`, `artifactVerification`, `facilities` and `reportSaveFailure`.
+
+`verifyArtifacts` may inspect the exported artifacts using the Core close receipt. Supply `ownedFacilities` only for facilities this application owns. Their close callbacks run after verification and confirmed Core cleanup. If Core returns a pending receipt, the report carries its pending resource identities and retains the facilities. The cleanup wait has its own `cleanupTimeoutMs` (default 60,000 ms) and the callbacks receive its AbortSignal. If the host wait ends before Core returns a receipt, the close status is `unknown`. Confirmed save returns the path to `outputDir/<runtime.id>/run-finalization.json`.
+
+If an owned facility's close callback is still in flight at the deadline, `lateFacilityCleanup.current()` can read its eventual receipt. `lateFacilityReportPath` identifies where that separate receipt will be saved when the invocation settles. One call finalizes a Runtime object. A second call fails with `CONFLICT`. For pending work, query the same Runtime using `close` and reconcile the original facility handles.
 
 ## `createRuntime(options)`
 
@@ -71,6 +80,8 @@ runtime.onEvent(handler: (event: AgentEvent) => void): () => void
   - `{ inputId, status: 'accepted', disposition: 'started' | 'queued' | 'handled' }`
   - `{ inputId, status: 'not-accepted', reason: 'idle' }` *(only when `wakeIfIdle: false`)*
   - `{ inputId, status: 'unknown' }` — reconcile by repeating the exact same `requestId` and payload; Core queries the Worker's saved RPC ledger instead of injecting a duplicate prompt.
+If an application timeout or AbortSignal ends the host wait after submission, keep the submitted request ID and arguments. Poll the original receipt with the same `send` call when its result is unknown. Use `interrupt` to interrupt a running turn and `stop` for Agent shutdown. An uncorrelated `settled` event describes the Agent execution. The application verifies business completion separately.
+
 - **Events (`AgentEvent`)** — every event carries `agentId` and monotonic `seq`:
   - `{ type: 'output', text }`
   - `{ type: 'settled', outcome: 'completed' | 'failed' | 'aborted', output?, error? }`

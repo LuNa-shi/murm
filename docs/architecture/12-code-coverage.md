@@ -4,7 +4,7 @@
 
 Runtime baseline: `86dfce6a1497fd1355d9d426a09c7c274ed6e389`; review date: 2026-11-25. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **327 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **328 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -60,7 +60,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 |---|---|---|---|
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | Published Pi/OpenSandbox Backend configuration contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `f193e6ccb9966ef40e3d8fdafaecab967ae8bbea96bf53e4a41f7d0cd7ffe797` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | Published Core Service manifest, adapter and operation contracts | [04-services](04-services.md) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
-| [src/core/types.ts](../../src/core/types.ts) | Published Core Runtime, Agent, event and receipt contracts | [15-core-runtime](15-core-runtime.md) | `6be0d8ee5d874eea232c797e6cc32ad0cca9eb1b8f65a1b67fb8d3a1d0d2550e` |
+| [src/core/types.ts](../../src/core/types.ts) | Published Core Runtime, Agent, event and receipt contracts | [15-core-runtime](15-core-runtime.md) | `8bcb68cda154fe2d876261ac047f2d3945ce5baaded4cc4286b2181bf6a52cc5` |
 
 ### Core runtime (3)
 
@@ -119,7 +119,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [examples/subagents/prompts.ts](../../examples/subagents/prompts.ts) | Production Root and Child instructions for the discovered collaboration Service | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `76fdca19d7bf342d53a0bd57f98c939e39913d3df3316c9aab6c6bcf5f7d4bb4` |
 | [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts) | Runtime-owned time-bounded Responses forwarding, request receipts, and observed usage | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [11-storage-reference](11-storage-reference.md), [15-core-runtime](15-core-runtime.md) | `32cbedaa66c5c92d762d7b02af402b72f5bbd2fba1526531cd398dd8e40fd338` |
 | [src/harnesses/shared/run-input.ts](../../src/harnesses/shared/run-input.ts) | Harness-owned exclusive idle Agent input wait and uncertain submission guard | [15-core-runtime](15-core-runtime.md) | `e6fbda5260ae12d8e2e402923de45a4987748ba5512f0b2c84b3d3ec4b8a7643` |
-| [src/harnesses/shared/run-report.ts](../../src/harnesses/shared/run-report.ts) | Harness host reporting with independent business, cleanup and save failures | [17-harness-reporting](17-harness-reporting.md) | `6f6918a034979ab483eec589f40572f22cf3730515e6b19676323fb65d52f337` |
+| [src/harnesses/shared/run-report.ts](../../src/harnesses/shared/run-report.ts) | Compatibility Harness reporting and shared atomic persistence for application outcome reports | [17-harness-reporting](17-harness-reporting.md) | `5f41914b89a7ed65cc4b35e3e2cadd1f4f4a6275b6b351d45df9e888a4b01217` |
 | [src/harnesses/taskpool/agent-coordinator.ts](../../src/harnesses/taskpool/agent-coordinator.ts) | Trusted Core-returned flat Agent identity registration and readiness | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `bdab99a87b90b4417f90732dbce094f79f03d0abf59c95d94185a1e501670250` |
 | [src/harnesses/taskpool/controller.ts](../../src/harnesses/taskpool/controller.ts) | TaskPool serial discovery, continuation, directed feedback and stop-confirmed replacement policy | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `060b7601b4600e2f70512a6ebc5369a63bc90001a96471d176e051106b578a26` |
 | [src/harnesses/taskpool/coordination-permissions.ts](../../src/harnesses/taskpool/coordination-permissions.ts) | TaskPool host-only validation and immutable copy of existing Task dependency, Material revocation and Mission submission grants | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `3018432bcd64dfe8e96de346d9130657ef40709f9c02f939a6ac179137cc8146` |
@@ -346,7 +346,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 |---|---|---|---|
 | [src/replay/service-history.ts](../../src/replay/service-history.ts) | Automatic transaction-aware private SQLite before/after row history and committed write boundaries | [13-historical-resume](13-historical-resume.md) | `17fe42059e4a7d46915f24f6291f8749f507ed80fe64014ccb871928300f5063` |
 
-### programmable Core (14)
+### programmable Core (15)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -358,9 +358,10 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [src/core/bridge.ts](../../src/core/bridge.ts) | Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `ba92a8c29e06d5bbe59670d1be49d580bda17bd54b2807d204138d5689f661ef` |
 | [src/core/config.ts](../../src/core/config.ts) | Profile snapshot, spawn request and environment validation | [15-core-runtime](15-core-runtime.md) | `f7fe421a16593ebc34d323bcb11aa0b64525d2b3b87a0a7ac708178de8a585f7` |
 | [src/core/file-controls.ts](../../src/core/file-controls.ts) | Agent file-operation identity, preparation receipts, write authority and pending grant fences | [15-core-runtime](15-core-runtime.md) | `31ce77b2051152caadadaa3e98b26cd63f8492e1a8bb7cb5dc871bffb9b509f4` |
-| [src/core/index.ts](../../src/core/index.ts) | Runtime assembly, Agent admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `0b63a750902e565932027a182e942b9adc3edcdb3b8718a09faeb82ccdceedf2` |
+| [src/core/index.ts](../../src/core/index.ts) | Runtime assembly, Agent admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `d517fdb35211f784dd63c397cb01857b95a81f65700e2a1313973d7aaf6a1d40` |
 | [src/core/input-ledger.ts](../../src/core/input-ledger.ts) | Runtime/caller/operation/target/request input identity and parameter conflict ledger | [15-core-runtime](15-core-runtime.md) | `44e6dd8b015fb8ee2fcc2100aa22638e7e66e511ede570510dc0eb30bb85f626` |
 | [src/core/model-access.ts](../../src/core/model-access.ts) | Runtime-scoped model gateway lifecycle, credentials and policy | [15-core-runtime](15-core-runtime.md) | `2ab9f0b09166dadf3430b32d6a427c14ff94e543c2d82200ab36c45b42a1e259` |
+| [src/core/run-finalization.ts](../../src/core/run-finalization.ts) | Public Run finalization, bounded cleanup and late facility receipts | [17-harness-reporting](17-harness-reporting.md) | `1b955aa639ba71765c1684439ee38002d1e17f44f9a73239f8d712ef40667373` |
 | [src/core/run-records.ts](../../src/core/run-records.ts) | Private Runtime summary configuration, ordered evidence writing and credential redaction | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `39779cce4c89af46cf3e56b48f351a4e5b05a681fcb8f903c55396e833dc47b7` |
 | [src/core/services.ts](../../src/core/services.ts) | Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `8c1d64489bd31ab3cec3b3b295a36ebaa2e8a9982f0a4aa059a05c405f41b6d1` |
 | [src/core/startup-prompt.ts](../../src/core/startup-prompt.ts) | Core sandbox startup system prompt, authorized Service directory and optional Added System Prompt | [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `a0a07d64d49ec8effab76dddb84e7be77c340a173bc6370374b27c743fada761` |
@@ -422,7 +423,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [website/src/content/docs-zh/harnesses/taskpool.md](../../website/src/content/docs-zh/harnesses/taskpool.md) | Chinese documentation content for harnesses/taskpool | [22-website](22-website.md) | `edd7d6e25b56d67feb2c3422cda44db1742466374faedd863647efbc1ee01f25` |
 | [website/src/content/docs-zh/overview.md](../../website/src/content/docs-zh/overview.md) | Chinese documentation content for overview | [22-website](22-website.md) | `409ae87d138ef5a7e290df4fbca5fa725723b7c3758e86c5b543a868f72b8508` |
 | [website/src/content/docs-zh/quickstart.md](../../website/src/content/docs-zh/quickstart.md) | Chinese documentation content for quickstart | [22-website](22-website.md) | `1f17e225aa59947c9f91f8165c6792f6c3adcdf8284eb8478ab099bcd6913464` |
-| [website/src/content/docs-zh/reference/api.md](../../website/src/content/docs-zh/reference/api.md) | Chinese documentation content for reference/api | [22-website](22-website.md) | `af1c9d18debc244591c88bb2a587d4d742d00b2c15f8a1e2b045c858cb2f771e` |
+| [website/src/content/docs-zh/reference/api.md](../../website/src/content/docs-zh/reference/api.md) | Chinese documentation content for reference/api | [22-website](22-website.md) | `e64e8f4074a915dcb8f0cb90a8a5e509b7314a2616fb39e184c3bca5df69d1b1` |
 | [website/src/content/docs-zh/reference/deploy.md](../../website/src/content/docs-zh/reference/deploy.md) | Chinese documentation content for reference/deploy | [22-website](22-website.md) | `345b4834ccab713ef08702070fc10fb0a3c8b781202fdc3db60d523b82388a47` |
 | [website/src/content/docs-zh/reference/types.md](../../website/src/content/docs-zh/reference/types.md) | Chinese documentation content for reference/types | [22-website](22-website.md) | `8b2403f2519d4d41274e95d52f28c6f9ae878f55543ebf2e5668cab7a5bec33a` |
 | [website/src/content/docs-zh/run-lifecycle.md](../../website/src/content/docs-zh/run-lifecycle.md) | Chinese documentation content for run-lifecycle | [22-website](22-website.md) | `300cd1d83808ae919104435b5198a71c763b0ce3587a2a7d379dc9d6c5c97e06` |
@@ -437,7 +438,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [website/src/content/docs/harnesses/taskpool.md](../../website/src/content/docs/harnesses/taskpool.md) | Published documentation content for TaskPool | [22-website](22-website.md) | `61f17d3d0d51113db475e62d819b1f92354eeba46d87fa15c61cb072bf36aa72` |
 | [website/src/content/docs/overview.md](../../website/src/content/docs/overview.md) | Published documentation landing overview page | [22-website](22-website.md) | `853c61281a3e00041b18f09e760811287ca04d5dac82005705dacdccfad2f4c1` |
 | [website/src/content/docs/quickstart.md](../../website/src/content/docs/quickstart.md) | Published documentation content for Quick Start | [22-website](22-website.md) | `853c7227419b4996bc52d9ea877285cc23a0bf9c2724c08ca0879309bff11dc9` |
-| [website/src/content/docs/reference/api.md](../../website/src/content/docs/reference/api.md) | Published documentation content for API & Configuration | [22-website](22-website.md) | `af7b77734a6758939b54ce6294a976d8aa209ce6a45c2250b147afb123e9d62d` |
+| [website/src/content/docs/reference/api.md](../../website/src/content/docs/reference/api.md) | Published documentation content for API & Configuration | [22-website](22-website.md) | `04fd940e2f06b2cdf09252e3181c701877c8a1928802e211d42d1a4716045cbb` |
 | [website/src/content/docs/reference/deploy.md](../../website/src/content/docs/reference/deploy.md) | Published documentation content for Deployment | [22-website](22-website.md) | `f3b82ae4f0c74b6029b2214b06163f3cd799cc1de57a3391145c05e1ca6dd538` |
 | [website/src/content/docs/reference/types.md](../../website/src/content/docs/reference/types.md) | Published documentation content for Types & Mapping | [22-website](22-website.md) | `02ea1236584627d23f6c31afd3f06e959f26022cf42877c925ec1a623b2a5a9b` |
 | [website/src/content/docs/run-lifecycle.md](../../website/src/content/docs/run-lifecycle.md) | Published documentation content for Anatomy of a Run | [22-website](22-website.md) | `0357bfaf36fbd670ba94fea327d041adca4297022ada0381ddfd8190be8c55fd` |

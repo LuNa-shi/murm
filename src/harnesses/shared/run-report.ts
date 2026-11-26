@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-
-function describe(error: any) {
+export function describe(error: any) {
   const result: any = { message: typeof error?.message === 'string' ? error.message : typeof error === 'string' ? error : 'Harness operation failed' };
   for (const key of ['code', 'operation', 'runtimeId', 'agentId', 'requestId', 'inputId', 'cleanup', 'reportPath', 'details', 'event', 'receipt']) {
     if (error?.[key] !== undefined) result[key] = error[key];
@@ -53,19 +52,27 @@ export async function runWithReport({ createRuntime, run, afterClose, outputDir,
   }
   const candidateId = runtime?.id ?? report.businessFailure?.runtimeId;
   report.runtimeId = typeof candidateId === 'string' && /^[A-Za-z0-9_:-][A-Za-z0-9_.:-]{0,127}$/.test(candidateId) ? candidateId : randomUUID();
+  return saveReport(outputDir, 'harness-report.json', report, redact);
+}
+
+export async function saveReport<R extends { runtimeId: string; reportSaveFailure: { code: string; message: string; details?: readonly unknown[] } | null }>(
+  outputDir: string, filename: string, report: R, redact: (report: R) => R = value => value,
+): Promise<R & { reportPath?: string }> {
   const directory = join(resolve(outputDir), report.runtimeId);
-  const reportPath = join(directory, 'harness-report.json');
-  const temporary = join(directory, `.harness-report-${randomUUID()}.tmp`);
-  let projected: any;
+  const reportPath = join(directory, filename);
+  const temporary = join(directory, `.${filename}-${randomUUID()}.tmp`);
+  let projected: R | undefined;
   try {
     const bytes = `${JSON.stringify(redact(report), null, 2)}\n`;
-    projected = JSON.parse(bytes);
+    projected = JSON.parse(bytes) as R;
     await mkdir(directory, { recursive: true, mode: 0o700 });
     await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 });
     await rename(temporary, reportPath);
     return { ...projected, reportPath };
-  } catch (error: any) {
-    const reportSaveFailure: any = { code: 'REPORT_SAVE_FAILED', message: 'Harness report could not be saved', details: [describe(error)] };
+  } catch (error) {
+    const reportSaveFailure = {
+      code: 'REPORT_SAVE_FAILED', message: 'Harness report could not be saved', details: [describe(error)],
+    };
     const fallback = structuredClone(redact({ ...(projected ?? report), reportSaveFailure }));
     await rm(temporary, { force: true }).catch(() => {});
     return fallback;

@@ -120,7 +120,7 @@ try {
 } finally {await bridge.close()}
 
 const expectedExports = {
- '@murm/core': ['createRuntime'],
+ '@murm/core': ['createRuntime', 'finalizeRun'],
  '@murm/core/services': ['ServiceRegistry', 'builtinAgentRegistration', 'createHttpJsonAdapter',
   'createInProcessAdapter', 'getAdapterMetadata', 'invokeService', 'isJson', 'snapshotServiceRegistry'],
  '@murm/core/backends/opensandbox': ['createOpenSandboxBackend', 'getOpenSandboxBackendCapabilities'],
@@ -151,13 +151,13 @@ console.log(JSON.stringify({resolved:true,closed:true,cancelled:true}));
     files: ['consumer.mts'],
   }));
   const consumer = `
-import { createRuntime, type Runtime, type AgentInfo, type AgentEvent, type AgentStatus } from '@murm/core';
+import { createRuntime, finalizeRun, type Runtime, type AgentInfo, type AgentEvent, type AgentStatus, type RunFinalization } from '@murm/core';
 import { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from '@murm/core/services';
 import { createOpenSandboxBackend, getOpenSandboxBackendCapabilities, type OpenSandboxBackendConfig } from '@murm/core/backends/opensandbox';
 import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
 type Assert<T extends true> = T;
 type Same<A, B> = [A, B] extends [B, A] ? true : false;
-type CoreExports = Assert<Same<keyof typeof import('@murm/core'), 'createRuntime'>>;
+type CoreExports = Assert<Same<keyof typeof import('@murm/core'), 'createRuntime' | 'finalizeRun'>>;
 type ServiceExports = Assert<Same<keyof typeof import('@murm/core/services'), 'ServiceRegistry' |
   'builtinAgentRegistration' | 'createHttpJsonAdapter' | 'createInProcessAdapter' | 'getAdapterMetadata' |
   'invokeService' | 'isJson' | 'snapshotServiceRegistry'>>;
@@ -184,6 +184,9 @@ createPiOpenSandboxBackend(config);
 const runtime: Runtime = await createRuntime({ backend: createOpenSandboxBackend(config),
   profiles: { reader: { prompt: 'Read', model: 'default', image: 'image', writable: false, services: {} } },
   services: registry, maxAgents: 2, outputDir: './output' });
+const executeFinalization = (): Promise<RunFinalization<{ verified: boolean }>> =>
+  finalizeRun({ runtime, outputDir: './output', business: { status: 'completed', value: { verified: true } } });
+void executeFinalization;
 const agent = await runtime.spawn({ requestId: 'spawn', profile: 'reader' });
 await runtime.list({ parentId: null, status: ['idle', 'starting'] });
 await runtime.send(agent.id, 'Read a note', { mode: 'followUp', requestId: 'start' });
