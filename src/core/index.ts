@@ -104,6 +104,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     registrations.set('agent', createAgentService({ runtimeId, getAgent: id => getAgent(id),
       spawn: (input, caller) => spawn(input, caller), get, send, stop }));
     profiles = snapshotProfiles(options.profiles, config.models, registrations);
+    for (const profile of profiles.values()) executorDriver(config).assertEnvironment(profile.env);
     modelAccessPolicy = options.modelAccessPolicy;
     outputDir = join(resolve(options.outputDir), runtimeId);
   } catch (error: any) {
@@ -400,7 +401,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   async function spawn(input: any, caller: any = 'host') {
     const requestId = input?.requestId;
     let parameters;
-    try { parameters = snapshotSpawn(input, profiles, registrations); }
+    try {
+      parameters = snapshotSpawn(input, profiles, registrations);
+      executorDriver(config).assertEnvironment(parameters.secretEnv);
+    }
     catch (error) { throw problem('INVALID_CONTRACT', (error as Error).message, 'spawn', undefined, requestId); }
     if (parameters.forkFrom !== undefined && !executorDriver(config).capabilities.contextFork) throw problem('NOT_ALLOWED', 'Backend does not support Context Fork', 'spawn', undefined, requestId);
     if (caller !== 'host' && parameters.workspace) throw problem('NOT_ALLOWED', 'Only the host can select workspace mounts', 'spawn', undefined, requestId);

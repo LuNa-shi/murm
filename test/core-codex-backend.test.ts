@@ -25,10 +25,21 @@ test('Codex Runtime accepts an explicitly configured model and rejects Context F
   });
   t.after(() => runtime.close());
   await assert.rejects(runtime.spawn({ profile: 'worker', requestId: 'fork', forkFrom: 'absent' }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(runtime.spawn({ profile: 'worker', requestId: 'override', secretEnv: { CODEX_HOME: '/foreign-session' } }), { code: 'INVALID_CONTRACT' });
   assert.deepEqual(await runtime.list(), []);
   const report = JSON.parse(await readFile(join(outputDir, runtime.id, 'runtime.json'), 'utf8'));
   assert.equal(report.config.backend.type, 'codex-opensandbox');
   assert.equal(report.config.backend.codexVersion, '0.172.0');
   assert.equal(report.config.backend.capabilities.contextFork, false);
   assert.equal((await runtime.close()).cleanup, 'complete');
+});
+
+test('Codex rejects executor configuration through ordinary Profile environment before opening a listener', async () => {
+  for (const key of ['CODEX_HOME', 'CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'OPENAI_BASE_URL', 'OPENAI_API_KEY']) {
+    await assert.rejects(createRuntime({
+      backend: createCodexOpenSandboxBackend(configuration),
+      profiles: { worker: { model: 'default', image: 'codex-test', writable: true, services: {}, env: { [key]: 'override' } } },
+      services: new ServiceRegistry(), maxAgents: 1, outputDir: '/unallocated-codex-runtime',
+    }), { code: 'INVALID_CONTRACT', cleanup: 'complete' });
+  }
 });
