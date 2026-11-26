@@ -10,19 +10,19 @@ import { createInputUpstream } from './fixtures/core-input-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 
 test('real Pi batches steer before start and preserves Session and files across a fenced interrupt', {
-  skip: process.env.SWARMENV_CORE_INPUT_REAL_TEST !== '1' && 'Controlled Pi/OpenSandbox input acceptance requires independent review and explicit opt-in',
+  skip: process.env.MURM_CORE_INPUT_REAL_TEST !== '1' && 'Controlled Pi/OpenSandbox input acceptance requires independent review and explicit opt-in',
   timeout: 180_000,
 }, async t => {
-  const { createRuntime } = await import('@swarmenv/core');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
-  const image = process.env.SWARMENV_CORE_TEST_IMAGE;
+  const { createRuntime } = await import('@murm/core');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
+  const { ServiceRegistry } = await import('@murm/core/services');
+  const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.ok(image);
   const outputDir = join(process.cwd(), 'experiments', `core-input-${Date.now()}`);
   await mkdir(outputDir, { recursive: true, mode: 0o700 });
   const upstream = await createInputUpstream();
   let runtime;
-  let bot;
+  let agent;
   let active = [];
   let cleanup;
   let deleted = false;
@@ -38,7 +38,7 @@ test('real Pi batches steer before start and preserves Session and files across 
     } finally {
       await upstream.close();
       await writeFile(join(outputDir, 'acceptance.json'), JSON.stringify({
-        runtimeId: runtime?.id, botId: bot?.id, receipts, events, resources,
+        runtimeId: runtime?.id, agentId: agent?.id, receipts, events, resources,
         upstream: upstream.receipt(), cleanup: cleanup?.cleanup, deleted,
       }, null, 2), { mode: 0o600 });
     }
@@ -47,19 +47,19 @@ test('real Pi batches steer before start and preserves Session and files across 
   });
   runtime = await createRuntime({
     backend: createPiOpenSandboxBackend({
-      sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-        endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY,
+      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+        endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
         commandTimeoutMs: 30_000 },
-      bridge: { host: '0.0.0.0', publicUrl: process.env.SWARMENV_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
-      modelGateway: { host: '0.0.0.0', advertiseHost: process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', requestTimeoutMs: 20_000, maxOutputTokens: 128 },
+      bridge: { host: '0.0.0.0', publicUrl: process.env.MURM_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
+      modelGateway: { host: '0.0.0.0', advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', requestTimeoutMs: 20_000, maxOutputTokens: 128 },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
     }),
     profiles: { worker: { prompt: 'Perform the exact requested tool steps.', model: 'default', image, writable: true, services: {} } },
-    services: new ServiceRegistry(), maxBots: 1, outputDir,
+    services: new ServiceRegistry(), maxAgents: 1, outputDir,
   });
   assert.deepEqual(await ownedContainers(runtime.id), []);
-  bot = await runtime.spawn({ profile: 'worker', requestId: 'input-acceptance-spawn' });
+  agent = await runtime.spawn({ profile: 'worker', requestId: 'input-acceptance-spawn' });
   active = await ownedContainers(runtime.id);
   assert.equal(active.length, 1);
   const docker = (...args) => promisify(execFile)('docker', ['exec', active[0], ...args], { timeout: 5000 });
@@ -80,18 +80,18 @@ test('real Pi batches steer before start and preserves Session and files across 
     return settled[index];
   }
   async function send(input, requestId, mode) {
-    const receipt = await runtime.send(bot.id, input, { requestId, ...(mode ? { mode } : {}) });
+    const receipt = await runtime.send(agent.id, input, { requestId, ...(mode ? { mode } : {}) });
     receipts.push({ requestId, ...receipt });
     assert.equal(receipt.status, 'accepted');
     return receipt;
   }
   for (const mode of ['steer', 'followUp']) {
     const options = { requestId: 'idle-' + mode, mode, wakeIfIdle: false };
-    const receipt = await runtime.send(bot.id, 'IDLE_MESSAGE_MUST_NOT_RUN', options);
+    const receipt = await runtime.send(agent.id, 'IDLE_MESSAGE_MUST_NOT_RUN', options);
     assert.deepEqual(receipt, { inputId: receipt.inputId, status: 'not-accepted', reason: 'idle' });
-    assert.deepEqual(await runtime.send(bot.id, 'IDLE_MESSAGE_MUST_NOT_RUN', options), receipt);
+    assert.deepEqual(await runtime.send(agent.id, 'IDLE_MESSAGE_MUST_NOT_RUN', options), receipt);
   }
-  assert.equal((await runtime.get(bot.id)).status, 'idle');
+  assert.equal((await runtime.get(agent.id)).status, 'idle');
   // These first two associations require idle, one input source, and no queued
   // or automatic continuation. Busy inputs below intentionally share one run.
   await send('ROUND_ONE: write the persistent file.', 'round-one');
@@ -109,39 +109,39 @@ test('real Pi batches steer before start and preserves Session and files across 
     assert.ok(Date.now() < busyDeadline, 'Bash never reached the execution boundary');
     await delay(50);
   }
-  assert.equal((await runtime.get(bot.id)).status, 'running');
-  const steers = await Promise.all(['A', 'B'].map(suffix => runtime.send(bot.id, `STEER_AT_TOOL_BOUNDARY_${suffix}`, {
+  assert.equal((await runtime.get(agent.id)).status, 'running');
+  const steers = await Promise.all(['A', 'B'].map(suffix => runtime.send(agent.id, `STEER_AT_TOOL_BOUNDARY_${suffix}`, {
     requestId: `busy-steer-${suffix}`, steeringMode: 'all', source: 'controlled-upstream', wakeIfIdle: false,
   })));
-  const followUp = await runtime.send(bot.id, 'FOLLOW_UP_AFTER_CURRENT', { mode: 'followUp', requestId: 'busy-follow-up', wakeIfIdle: false });
+  const followUp = await runtime.send(agent.id, 'FOLLOW_UP_AFTER_CURRENT', { mode: 'followUp', requestId: 'busy-follow-up', wakeIfIdle: false });
   assert.ok(steers.every(steer => steer.status === 'accepted' && steer.disposition === 'queued'));
   assert.equal(followUp.disposition, 'queued');
   resources.bashStillRunningAfterQueue = await docker('test', '-e', '/workspace/project/busy-finished.txt').then(() => false, () => true);
   assert.equal(resources.bashStillRunningAfterQueue, true);
   assert.equal((await waitSettled(2)).output, 'BUSY_ROUND_OK');
   assert.equal(settled.length, 3, 'Busy inputs may share one settled; no per-input completion assumption');
-  assert.equal((await runtime.send(bot.id, 'INTERRUPT_HELD_TOOL', { mode: 'followUp', requestId: 'held-tool' })).disposition, 'started');
+  assert.equal((await runtime.send(agent.id, 'INTERRUPT_HELD_TOOL', { mode: 'followUp', requestId: 'held-tool' })).disposition, 'started');
   const interruptDeadline = Date.now() + 10_000;
   while (!(await docker('test', '-e', '/workspace/project/interrupt-ready.txt').then(() => true, () => false))) {
     assert.ok(Date.now() < interruptDeadline, 'Pi never entered the Bash operation to interrupt');
     await delay(50);
   }
-  assert.equal((await runtime.send(bot.id, 'CANCEL_QUEUED_PHASE', { mode: 'followUp', requestId: 'old-queued' })).disposition, 'queued');
-  const interrupt = await runtime.interrupt(bot.id, { requestId: 'interrupt' });
+  assert.equal((await runtime.send(agent.id, 'CANCEL_QUEUED_PHASE', { mode: 'followUp', requestId: 'old-queued' })).disposition, 'queued');
+  const interrupt = await runtime.interrupt(agent.id, { requestId: 'interrupt' });
   assert.equal(interrupt.status, 'interrupted');
   assert.ok(interrupt.discardedInputHashes?.includes(createHash('sha256').update('CANCEL_QUEUED_PHASE').digest('hex')));
   await waitSettled(3, 'aborted');
   assert.equal(await sessionFiles(), firstSession);
-  assert.equal((await runtime.send(bot.id, 'RESUME_AFTER_INTERRUPT', { requestId: 'resume', steeringMode: 'one-at-a-time' })).disposition, 'started');
-  assert.deepEqual(await runtime.interrupt(bot.id, { requestId: 'interrupt' }), interrupt);
+  assert.equal((await runtime.send(agent.id, 'RESUME_AFTER_INTERRUPT', { requestId: 'resume', steeringMode: 'one-at-a-time' })).disposition, 'started');
+  assert.deepEqual(await runtime.interrupt(agent.id, { requestId: 'interrupt' }), interrupt);
   assert.equal((await waitSettled(4)).output, 'RESUMED_OK');
-  assert.equal((await runtime.send(bot.id, 'FAIL_MODEL', { mode: 'followUp', requestId: 'failed' })).disposition, 'started');
+  assert.equal((await runtime.send(agent.id, 'FAIL_MODEL', { mode: 'followUp', requestId: 'failed' })).disposition, 'started');
   await waitSettled(5, 'failed');
   assert.deepEqual(upstream.receipt(), { requests: 11, failure: undefined, persistedRead: true, bashCompleted: true,
     steerAtBoundary: true, followUpAfterCurrent: true, resumedAfterInterrupt: true });
   resources.sameContainer = JSON.stringify(await ownedContainers(runtime.id)) === JSON.stringify(active);
   assert.equal(resources.sameContainer, true);
-  const stop = await runtime.stop(bot.id, { timeoutMs: 30_000 });
+  const stop = await runtime.stop(agent.id, { timeoutMs: 30_000 });
   assert.equal(stop.cleanup, 'complete');
   const session = await readFile(join(stop.sessionArchive, '..', 'files', firstSession.split('/').at(-1)), 'utf8');
   for (const marker of ['ROUND_ONE_OK', 'INTERRUPT_HELD_TOOL', 'RESUMED_OK', 'FAIL_MODEL']) assert.ok(session.includes(marker));

@@ -1,6 +1,6 @@
 import { createServiceHost } from './service-host.js';
 
-/** Operator-only transport. These routes never enter the Bot capability set. */
+/** Operator-only transport. These routes never enter the Agent capability set. */
 export function createCoordinatorPeerHost({ serviceId, operation, actorRef, token, handler, host = '127.0.0.1', publicUrl = null, maxBodyBytes = 2 * 1024 * 1024 }: any) {
   if (typeof token !== 'string' || token.length < 24) throw new TypeError('Peer requires a private credential of at least 24 characters');
   return createServiceHost({

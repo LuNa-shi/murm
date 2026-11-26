@@ -9,7 +9,7 @@ interface InputParameters {
 }
 
 // Callers are trusted identities supplied by Core, never send options. The
-// public Runtime uses "host"; Bot Service will supply "bot:<authenticated id>".
+// public Runtime uses "host"; Agent Service will supply "agent:<authenticated id>".
 export function createInputLedger<Request>(runtimeId: string) {
   const entries = new Map<string, InputParameters & { request: Request }>();
   const key = (caller: string, target: string, requestId: string) => JSON.stringify([runtimeId, caller, 'send', target, requestId]);

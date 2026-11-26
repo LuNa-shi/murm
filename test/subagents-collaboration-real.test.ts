@@ -5,15 +5,15 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
-import { runSubagentsEnvironment } from '../examples/subagents-environment/main.js';
+import { runSubagentsHarness } from '../examples/subagents/main.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 
 test('normal Subagents resumes a waiting parent after the first child and accepts live user input', {
-  skip: process.env.SWARMENV_SUBAGENTS_COLLABORATION_TEST !== '1' && 'Requires local Pi/OpenSandbox',
+  skip: process.env.MURM_SUBAGENTS_COLLABORATION_TEST !== '1' && 'Requires local Pi/OpenSandbox',
   timeout: 150_000,
 }, async t => {
-  const image = process.env.SWARMENV_CORE_TEST_IMAGE;
+  const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.ok(image);
   const outputDir = join(process.cwd(), 'experiments', 'subagents-collaboration-' + Date.now());
   await mkdir(outputDir, { recursive: true, mode: 0o700 });
@@ -111,11 +111,11 @@ if swarm collaboration spawn_agent --task-name extra --message extra --fork-turn
     server.closeAllConnections();
     return new Promise(resolve => server.close(resolve));
   });
-  const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
+  const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const config = { image, outputDir, maxAgents: 4, maxDepth: 2, workTimeoutMs: 90_000, closeTimeoutMs: 25_000, goal: 'ROOT_TASK',
     backend: {
-      sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-        endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY },
+      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+        endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY },
       bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
       modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 512, requestTimeoutMs: 60_000 },
       models: { default: { provider: 'kimi_proxy', model: 'k3',
@@ -123,12 +123,12 @@ if swarm collaboration spawn_agent --task-name extra --message extra --fork-turn
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
     },
   };
-  const report = await runSubagentsEnvironment(config, undefined, async (env, signal) => {
+  const report = await runSubagentsHarness(config, undefined, async (env, signal) => {
     for (;;) {
       signal.throwIfAborted();
       if (upstreamError) throw upstreamError;
       const state = env.collaborationState();
-      if (firstResultObserved && state.members.some(member => member.botId === env.rootId && member.waiting)) break;
+      if (firstResultObserved && state.members.some(member => member.agentId === env.rootId && member.waiting)) break;
       await delay(25, undefined, { signal });
     }
     const receipt = await env.input('HOST_SUPPLEMENT', 'host-supplement');
@@ -143,7 +143,7 @@ if swarm collaboration spawn_agent --task-name extra --message extra --fork-turn
   assert.equal(report.reportSaveFailure, null);
   assert.ok(supplementObserved);
   assert.deepEqual(report.collaboration.members.map(member => member.path).sort(), ['/root', '/root/fast', '/root/fast/grand', '/root/slow']);
-  assert.equal(report.cleanup.bots.length, 4);
+  assert.equal(report.cleanup.agents.length, 4);
   assert.equal((await ownedContainers(report.runtimeId)).length, 0);
   const serviceTrace = await readFile(join(outputDir, report.runtimeId, 'service-calls.jsonl'), 'utf8');
   assert.match(serviceTrace, /wait-user/);
@@ -151,10 +151,10 @@ if swarm collaboration spawn_agent --task-name extra --message extra --fork-turn
 
 for (const workspaceMode of ['private', 'shared']) {
   test(`normal Subagents interrupts one Child and restores its notice and ${workspaceMode} files`, {
-    skip: process.env.SWARMENV_SUBAGENTS_COLLABORATION_TEST !== '1' && 'Requires local Pi/OpenSandbox',
+    skip: process.env.MURM_SUBAGENTS_COLLABORATION_TEST !== '1' && 'Requires local Pi/OpenSandbox',
     timeout: 150_000,
   }, async t => {
-    const image = process.env.SWARMENV_CORE_TEST_IMAGE;
+    const image = process.env.MURM_CORE_TEST_IMAGE;
     assert.ok(image);
     const outputDir = join(process.cwd(), 'experiments', 'subagents-continuity-' + Date.now());
     await mkdir(outputDir, { recursive: true, mode: 0o700 });
@@ -245,14 +245,14 @@ for (const workspaceMode of ['private', 'shared']) {
       server.closeAllConnections();
       return new Promise(resolve => server.close(resolve));
     });
-    const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-    const report = await runSubagentsEnvironment({ image, outputDir, maxAgents: 3, maxDepth: 1, goal: 'CONTINUITY_ROOT',
+    const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
+    const report = await runSubagentsHarness({ image, outputDir, maxAgents: 3, maxDepth: 1, goal: 'CONTINUITY_ROOT',
       workTimeoutMs: 65_000, closeTimeoutMs: 25_000,
       collect: { paths: ['delivery.txt'], includeGit: false, maxBytes: 4096, required: true },
       ...(workspaceMode === 'shared' ? { workspace: { root: { id: 'team', mode: 'read-write' }, child: { id: 'team', mode: 'read-write' } } } : {}),
       backend: {
-        sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-          endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY },
+        sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+          endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
         modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 512, requestTimeoutMs: 25_000 },
         models: { default: { provider: 'kimi_proxy', model: 'k3',
@@ -265,9 +265,9 @@ for (const workspaceMode of ['private', 'shared']) {
     assert.equal(report.result.output, 'CONTINUITY_OK');
     assert.ok(resumed && peerFinished);
     assert.equal(report.cleanupFailure, null);
-    assert.equal(report.cleanup.bots.length, 3);
-    assert.ok(report.cleanup.bots.every(bot => bot.sessionArchive));
-    const root = report.cleanup.bots.find(bot => bot.botId === report.result.rootId);
+    assert.equal(report.cleanup.agents.length, 3);
+    assert.ok(report.cleanup.agents.every(agent => agent.sessionArchive));
+    const root = report.cleanup.agents.find(agent => agent.agentId === report.result.rootId);
     const files = root.artifacts.find(path => path.endsWith('/artifacts/files'));
     assert.equal(await readFile(join(files, 'delivery.txt'), 'utf8'), workspaceMode === 'shared' ? 'ORIGINAL_FILE' : 'PRIVATE');
     assert.equal((await ownedContainers(report.runtimeId)).length, 0);

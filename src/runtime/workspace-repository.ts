@@ -4,7 +4,7 @@ import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, re
 import { execFile as nodeExecFile, execFileSync, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 
 const execFile = promisify(nodeExecFile);
 const writers = new Map<any, any>();
@@ -12,7 +12,7 @@ const META = '.swarm-workspace.json';
 const JOURNAL = '.swarm-journal.json';
 export const WORKSPACE_HISTORY_DIR = '.swarm-history';
 const ZERO = '0'.repeat(40);
-const GIT_IDENTITY = ['-c', 'user.name=SwarmEnv Runtime', '-c', 'user.email=runtime@swarmenv.invalid'];
+const GIT_IDENTITY = ['-c', 'user.name=murm Runtime', '-c', 'user.email=runtime@murm.invalid'];
 
 function syncDirectory(path: any) {
   const fd = openSync(path, 'r');
@@ -42,7 +42,7 @@ export function readWorkspaceHistory(root: any) {
         typeof event.event_id !== 'string' || !Number.isFinite(Date.parse(event.committed_at)) ||
         event.previous_event_id !== (previous?.event_id ?? null) ||
         (previous && event.committed_at < previous.committed_at)) {
-      throw new SwarmEnvError('REPLAY_HISTORY_INCOMPLETE', 'Workspace history has a missing or invalid event', { file: name });
+      throw new MurmError('REPLAY_HISTORY_INCOMPLETE', 'Workspace history has a missing or invalid event', { file: name });
     }
     previous = event;
     return event;
@@ -50,7 +50,7 @@ export function readWorkspaceHistory(root: any) {
   const headPath = join(path, 'head.json');
   const head = existsSync(headPath) ? JSON.parse(readFileSync(headPath, 'utf8')) : null;
   if (!events.length || head?.sequence !== events.length || head.event_id !== previous.event_id || head.committed_at !== previous.committed_at) {
-    throw new SwarmEnvError('REPLAY_HISTORY_INCOMPLETE', 'Workspace history head does not cover its committed events');
+    throw new MurmError('REPLAY_HISTORY_INCOMPLETE', 'Workspace history head does not cover its committed events');
   }
   return events;
 }
@@ -62,12 +62,12 @@ function gitEnvironment(extra: any = {}) {
 
 function gitSync(root: any, args: any) {
   try { return execFileSync('git', ['-C', root, ...args], { env: gitEnvironment(), encoding: 'utf8', timeout: 30_000, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
-  catch (error: any) { throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace Git operation failed', { operation: args[0] }, { cause: error }); }
+  catch (error: any) { throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace Git operation failed', { operation: args[0] }, { cause: error }); }
 }
 
 async function git(root: any, args: any, options: any = {}) {
   try { return (await execFile('git', ['-C', root, ...args], { env: gitEnvironment(), timeout: 30_000, maxBuffer: 32 * 1024 * 1024, ...options })).stdout; }
-  catch (error: any) { throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace Git operation failed', { operation: args[0] }, { cause: error }); }
+  catch (error: any) { throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace Git operation failed', { operation: args[0] }, { cause: error }); }
 }
 
 // The helper's stdin is owned only by this coordinator. Process loss closes
@@ -80,12 +80,12 @@ async function acquireWriter(root: any, lockName: any = '.swarm-writer.lock') {
   let output = '';
   const closed = new Promise<any>((resolve: any) => helper.once('close', (code: any) => resolve(code)));
   await new Promise<any>((resolve: any, reject: any) => {
-    helper.once('error', (error: any) => reject(new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace writer lock could not start', undefined, { cause: error })));
+    helper.once('error', (error: any) => reject(new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace writer lock could not start', undefined, { cause: error })));
     helper.stdout.on('data', (chunk: any) => {
       output += chunk;
       if (!acquired && output.includes('locked\n')) { acquired = true; resolve(); }
     });
-    helper.once('close', (code: any) => { if (!acquired) reject(new SwarmEnvError(code === 75 ? 'WORKSPACE_BUSY' : ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace writer lock is unavailable', undefined, { retryable: code === 75 })); });
+    helper.once('close', (code: any) => { if (!acquired) reject(new MurmError(code === 75 ? 'WORKSPACE_BUSY' : ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace writer lock is unavailable', undefined, { retryable: code === 75 })); });
   });
   return async () => { helper.stdin.end(); await closed; };
 }
@@ -191,7 +191,7 @@ export class WorkspaceRepository {
     for (const entry of listing.split('\0').filter(Boolean)) {
       const tab = entry.indexOf('\t');
       const [mode, type, object] = entry.slice(0, tab).split(' ');
-      if (type !== 'blob' || !['100644', '100755'].includes(mode)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace tree contains a non-regular file');
+      if (type !== 'blob' || !['100644', '100755'].includes(mode)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace tree contains a non-regular file');
       const content = await git(root, ['cat-file', 'blob', object], { encoding: 'buffer' });
       const text = content.toString('utf8');
       files[entry.slice(tab + 1)] = !content.includes(0) && Buffer.from(text).equals(content) ? text : content;
@@ -208,7 +208,7 @@ export class WorkspaceRepository {
       const result = await execFile('git', ['-C', root, `--attr-source=${main}`, 'merge-tree', '--write-tree', '--name-only', '-z', main, source], { env: gitEnvironment(), timeout: 30_000, maxBuffer: 4 * 1024 * 1024 });
       return { tree: result.stdout.split('\0')[0].trim(), conflicts: [] };
     } catch (error: any) {
-      if (error.code !== 1) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace Git merge failed', undefined, { cause: error });
+      if (error.code !== 1) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace Git merge failed', undefined, { cause: error });
       const fields = String(error.stdout).split('\0');
       const end = fields.indexOf('', 1);
       return { tree: fields[0].trim(), conflicts: fields.slice(1, end < 0 ? fields.length : end) };
@@ -221,7 +221,7 @@ export class WorkspaceRepository {
       output = (await execFile('git', ['-C', root, `--attr-source=${current}`, 'merge-tree', '--write-tree', '--messages', '-z', current, source],
         { env: gitEnvironment(), timeout: 30_000, maxBuffer: 8 * 1024 * 1024 })).stdout;
     } catch (error: any) {
-      if (error.code !== 1) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace apply planning failed', undefined, { cause: error });
+      if (error.code !== 1) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace apply planning failed', undefined, { cause: error });
       output = error.stdout;
       conflicted = true;
     }
@@ -230,19 +230,19 @@ export class WorkspaceRepository {
     // conflicts that cannot be reconstructed from marker text alone.
     const fields = String(output).split('\0');
     const tree = fields.shift()!.trim();
-    if (!/^[a-f0-9]{40,64}$/.test(tree)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Git apply result has no tree');
+    if (!/^[a-f0-9]{40,64}$/.test(tree)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Git apply result has no tree');
     const stages = [];
     while (fields[0]) {
       const line = fields.shift()!;
       const match = /^([0-7]{6}) ([a-f0-9]{40,64}) ([123])\t([\s\S]+)$/.exec(line);
-      if (!match) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Git apply conflict stage is malformed');
+      if (!match) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Git apply conflict stage is malformed');
       stages.push({ mode: match[1], object: match[2], stage: Number(match[3]), path: match[4] });
     }
     fields.shift();
     const messages = [];
     while (fields[0]) {
       const count = Number(fields.shift());
-      if (!Number.isInteger(count) || count < 1 || count > 10_000 || fields.length < count + 2) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Git apply conflict message is malformed');
+      if (!Number.isInteger(count) || count < 1 || count > 10_000 || fields.length < count + 2) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Git apply conflict message is malformed');
       const paths = fields.splice(0, count);
       const type = fields.shift(), message = fields.shift();
       messages.push({ paths, type, message });
@@ -256,12 +256,12 @@ export class WorkspaceRepository {
       return true;
     } catch (error: any) {
       if (error.code === 1) return false;
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace ancestry is unavailable', undefined, { cause: error });
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace ancestry is unavailable', undefined, { cause: error });
     }
   }
 
   async readBlob(root: any, object: any) {
-    if (!/^[a-f0-9]{40,64}$/.test(object)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Invalid Git blob identity');
+    if (!/^[a-f0-9]{40,64}$/.test(object)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Invalid Git blob identity');
     return git(root, ['cat-file', 'blob', object], { encoding: 'buffer' });
   }
 
@@ -280,17 +280,17 @@ export class WorkspaceRepository {
   assertMain(root: any, expected: any) {
     let actual: any = null;
     try { actual = gitSync(root, ['rev-parse', '--verify', 'refs/heads/main']); } catch { /* Initial creation has no main ref. */ }
-    if (actual !== expected) throw new SwarmEnvError('WORKSPACE_RECONCILIATION_REQUIRED', 'Workspace main and index disagree');
+    if (actual !== expected) throw new MurmError('WORKSPACE_RECONCILIATION_REQUIRED', 'Workspace main and index disagree');
   }
 
   recover(root: any) {
     const path = join(root, JOURNAL);
     if (!existsSync(path)) return;
     const intent = JSON.parse(readFileSync(path, 'utf8'));
-    if (![1, 2].includes(intent.version) || !intent.record || (!intent.revision && !['freeze', 'unfreeze', 'receipt'].includes(intent.kind))) throw new SwarmEnvError('WORKSPACE_RECONCILIATION_REQUIRED', 'Workspace intent is invalid');
+    if (![1, 2].includes(intent.version) || !intent.record || (!intent.revision && !['freeze', 'unfreeze', 'receipt'].includes(intent.kind))) throw new MurmError('WORKSPACE_RECONCILIATION_REQUIRED', 'Workspace intent is invalid');
     let observed: any = null;
     try { observed = gitSync(root, ['rev-parse', '--verify', 'refs/heads/main']); } catch { /* Initial creation may not have a ref yet. */ }
-    if (observed !== intent.old_main && observed !== intent.new_main) throw new SwarmEnvError('WORKSPACE_RECONCILIATION_REQUIRED', 'Workspace main matches neither committed intent value');
+    if (observed !== intent.old_main && observed !== intent.new_main) throw new MurmError('WORKSPACE_RECONCILIATION_REQUIRED', 'Workspace main matches neither committed intent value');
     if (intent.kind === 'merge' && observed === intent.old_main && intent.new_main !== intent.old_main) {
       // Abort the unpublished merge first. The terminal receipt is a separate
       // durable event; it must not replace an intent that recovery still owns.
@@ -331,7 +331,7 @@ export class WorkspaceRepository {
     const ref = `refs/swarm/revisions/${revision.revision}`;
     let previous: any = null;
     try { previous = gitSync(root, ['rev-parse', '--verify', ref]); } catch { /* New revision. */ }
-    if (previous && previous !== revision.git_commit) throw new SwarmEnvError('WORKSPACE_RECONCILIATION_REQUIRED', 'Immutable revision ref conflicts with commit intent');
+    if (previous && previous !== revision.git_commit) throw new MurmError('WORKSPACE_RECONCILIATION_REQUIRED', 'Immutable revision ref conflicts with commit intent');
     if (!previous) gitSync(root, ['update-ref', ref, revision.git_commit, ZERO]);
   }
 
@@ -355,7 +355,7 @@ export class WorkspaceRepository {
     while (existsSync(join(directory, historyFile((head?.sequence ?? 0) + 1)))) {
       const next = JSON.parse(readFileSync(join(directory, historyFile((head?.sequence ?? 0) + 1)), 'utf8'));
       if (next.sequence !== (head?.sequence ?? 0) + 1 || next.previous_event_id !== (head?.event_id ?? null)) {
-        throw new SwarmEnvError('REPLAY_HISTORY_INCOMPLETE', 'Workspace history head is inconsistent');
+        throw new MurmError('REPLAY_HISTORY_INCOMPLETE', 'Workspace history head is inconsistent');
       }
       head = next;
     }

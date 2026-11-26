@@ -6,7 +6,7 @@ import test from 'node:test';
 import { ObservationStore, ObservationStoreCollection } from '../src/observability/observation-store.js';
 
 test('ObservationStore persists experiment facts and returns cursor pages in event order', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-observability-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-observability-'));
   const databasePath = join(root, 'observations.sqlite');
   const first = new ObservationStore(databasePath);
   first.registerExperiment({ experimentId: 'run-1', metadata: { problem: 'demo' } });
@@ -91,7 +91,7 @@ test('ObservationStore rejects events outside a registered Experiment and duplic
 });
 
 test('ObservationStoreCollection merges experiments and routes events across worktree databases', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-observability-collection-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-observability-collection-'));
   await mkdir(join(root, 'worktree-a', '.observability'), { recursive: true });
   await mkdir(join(root, 'worktree-b', '.observability'), { recursive: true });
   const first = new ObservationStore(join(root, 'worktree-a', '.observability', 'observability.sqlite'));

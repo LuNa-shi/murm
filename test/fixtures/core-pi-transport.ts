@@ -30,5 +30,5 @@ export class OpenSandboxManager {
   async *collectCoreSession() { yield { type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 }; }
   async stopExecution() {}
 }
-export class DockerBotNetwork { async isolate() {} }
-export class DockerBotDisk { async isolate() { return {}; } }
+export class DockerAgentNetwork { async isolate() {} }
+export class DockerAgentDisk { async isolate() { return {}; } }

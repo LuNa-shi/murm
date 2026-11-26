@@ -10,7 +10,7 @@
     "references": ["references/loogle.md"]
   },
   "secret_refs": {
-    "token": "env:SWARMENV_MATHLIB_SEARCH_TOKEN"
+    "token": "env:MURM_MATHLIB_SEARCH_TOKEN"
   },
   "metadata": {
     "backend": "loogle-compatible"

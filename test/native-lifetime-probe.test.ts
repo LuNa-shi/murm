@@ -7,7 +7,7 @@ for (const failure of ['none', 'spawn', 'admission', 'cleanup', 'deletion', 'ups
     let spawned = 0, closed = 0, verified = 0;
     const runtime = {
       async spawn(options) { assert.deepEqual(Object.keys(options).sort(), ['profile', 'requestId']); const id = String(++spawned); if (failure === 'spawn') throw Error(); return { id, status: 'idle' }; },
-      async close() { closed++; return { cleanup: failure === 'cleanup' ? 'pending' : 'complete', bots: Array.from({ length: 4 }, () => ({ execution: 'stopped', cleanup: 'complete' })) }; },
+      async close() { closed++; return { cleanup: failure === 'cleanup' ? 'pending' : 'complete', agents: Array.from({ length: 4 }, () => ({ execution: 'stopped', cleanup: 'complete' })) }; },
       send() { assert.fail('probe must never send'); },
     };
     const result = await runLifetimeProbe({ runtime, budget: { run: factory => factory(), elapsedMs: () => 0 },
@@ -25,13 +25,13 @@ test('native lifetime gateway limits start production Core without allocating or
   const { mkdtemp, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
-  const { createRuntime } = await import('@swarmenv/core');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+  const { createRuntime } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@murm/core/services');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
   const root = await mkdtemp(join(tmpdir(), 'lifetime-config-'));
   let runtime;
   t.after(async () => { try { if (runtime) await runtime.close({ timeoutMs: 1000 }); } finally { await rm(root, { recursive: true, force: true }); } });
-  runtime = await createRuntime({ outputDir: root, services: new ServiceRegistry(), maxBots: lifetimeProbePlan.bots,
+  runtime = await createRuntime({ outputDir: root, services: new ServiceRegistry(), maxAgents: lifetimeProbePlan.agents,
     profiles: { worker: { image: 'fixture', prompt: 'Wait.', writable: false, model: 'default', services: {} } },
     backend: createPiOpenSandboxBackend({
       sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1', timeoutSeconds: lifetimeProbePlan.timeoutSeconds, resourceLimits: lifetimeProbePlan.resourceLimits },
@@ -43,17 +43,17 @@ test('native lifetime gateway limits start production Core without allocating or
   });
   const close = await runtime.close({ timeoutMs: 1000 });
   assert.equal(close.cleanup, 'complete');
-  assert.deepEqual(close.bots, []);
+  assert.deepEqual(close.agents, []);
 });
 
 
-test('slow Runtime assembly exhausts shared startup phase before any Bot allocation', async () => {
+test('slow Runtime assembly exhausts shared startup phase before any Agent allocation', async () => {
   let time = 0, spawned = 0, closed = 0;
   const budget = createLifetimeProbeBudget({ now: () => time });
   await budget.run(async () => { time = 100001; }, 100000);
   const result = await runLifetimeProbe({ budget, runtime: {
     spawn() { spawned++; throw Error('must not allocate'); },
-    async close() { closed++; return { cleanup: 'complete', bots: [] }; },
+    async close() { closed++; return { cleanup: 'complete', agents: [] }; },
   }, admit() { assert.fail('no admission'); }, verifyDeleted: async () => ({ complete: true }), upstreamRequests: () => 0 });
   assert.equal(spawned, 0); assert.equal(closed, 1); assert.equal(result.status, 'failed');
 });

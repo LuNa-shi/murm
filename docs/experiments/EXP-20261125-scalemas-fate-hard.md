@@ -12,7 +12,7 @@ Status **RUNS SETTLED · ONE CANDIDATE VERDICT UNRESOLVED**. The owner approved 
 
 | Item | Fixed value |
 |---|---|
-| Implementation | `e00f8c4f2fc7103aca3cbc31aadc1c0ef1740fb5`. [Runtime and checker](../architecture/19-scalemas-environment.md) |
+| Implementation | `e00f8c4f2fc7103aca3cbc31aadc1c0ef1740fb5`. [Runtime and checker](https://github.com/LuNa-shi/SwarmEnv/blob/781428d11add844a60492f5654cca7106ee4b80d/docs/architecture/19-scalemas-environment.md) |
 | Installed package and worker | `@swarmenv/core@0.2.0` archive SHA-256 `ed1df463cc4fab6ad171d4d3a5f76670dfc4b64a925c7e081323fc5abedcc8d6`. Pi/OpenSandbox image `sha256:85153578f60ba7ff4bd8cc0681a76dc68f57adebf6318f1fb8d8b79e76dfb922`. |
 | Original problem | FATE-H commit `17967b3118082adfba7c5a5fc03b5f4a53717b59`, ID 2. Dataset SHA-256 `21fb5ab61c037858a3b267509d492a98194eb996581662e5e7d2ed461bfead90`, original declaration SHA-256 `0f264f8c2133b071ee0462f59aeed24ac6b00f4403cc3c143d4d47faaf77f417`. [Pinned fixture](https://raw.githubusercontent.com/frenzymath/FATE-H/17967b3118082adfba7c5a5fc03b5f4a53717b59/FATE-H.json#L14) |
 | Independent checker | Lean 4.28.0 build `7e01a1bf5c70fc6167d49c345d3bf80596e9a79b`, Mathlib `8f9d9cff6bd728b17a24e163c9402775d9e6a365`, manifest SHA-256 `ceef049390de26dee9aa9502397d18cc8442dbe067c3c3f30880323459c47c59`. |

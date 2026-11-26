@@ -4,7 +4,7 @@ import { ContextService } from '../context/context-service.js';
 import { createCoordinatorPeerHost } from './coordinator-peer-host.js';
 import { ServiceAuthoritySnapshot } from './service-authority-snapshot.js';
 import { stableStringify } from '../protocol/envelope.js';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 
 export const CONTEXT_READ_METHODS = Object.freeze(['getMaterial', 'readMaterials', 'listMaterialConsumptions',
   'listMaterialRelations', 'publicChangeToken', 'readTakeMaterialInputs', 'readWorkspaceMaterialUses']);
@@ -28,13 +28,13 @@ export function createContextServicePeer({ database, token, host = '127.0.0.1', 
     if (command?.service !== 'context' || !Array.isArray(command.args) ||
         !['dispatch', ...CONTEXT_READ_METHODS].includes(command.method) ||
         createHash('sha256').update(stableStringify(command)).digest('hex') !== digest) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Invalid coordinator Context command');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Invalid coordinator Context command');
     }
     const writes = command.method === 'dispatch' && !CONTEXT_READ_OPERATIONS.has(command.args[0]);
-    if (writes && (typeof gate_id !== 'string' || !gate_id)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Context mutation requires a durable coordinator gate');
+    if (writes && (typeof gate_id !== 'string' || !gate_id)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Context mutation requires a durable coordinator gate');
     const prior = gate_id && context.db.prepare('SELECT * FROM context_peer_receipts WHERE gate_id = ?').get(gate_id);
     if (prior) {
-      if (prior.digest !== digest) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Context gate was reused with another command');
+      if (prior.digest !== digest) throw new MurmError(ERROR_CODES.CONFLICT, 'Context gate was reused with another command');
       return JSON.parse(prior.receipt_json);
     }
     context.taskService = new ServiceAuthoritySnapshot(command.authority);

@@ -36,7 +36,7 @@ const sourcePaths = [
 ];
 const sourceRows = await Promise.all(sourcePaths.map(async (path: any) => `| [${path}](../../${path}) | \`${hash(await readFile(resolve(root, path)))}\` |`));
 let api = '## Generated API inventory\n\nThis section is generated from executable exports and checked against the source hashes below. It contains declarations; call-time behavior and known differences are explained in [Services](04-services.md), [Mission and Task](03-mission-task.md), and [Workspace](05-workspace-continuity.md).\n\n| Source | SHA-256 |\n|---|---|\n' + sourceRows.join('\n') + '\n';
-api += '\n### Exact built-in command operation surface\n\nBots use native Bash to invoke typed swarm commands. Registry declarations below describe authorized domain operations; no additional Pi tool registration is installed. Optional Services extend the Registry.\n\n';
+api += '\n### Exact built-in command operation surface\n\nAgents use native Bash to invoke typed swarm commands. Registry declarations below describe authorized domain operations; no additional Pi tool registration is installed. Optional Services extend the Registry.\n\n';
 const profile = buildCapabilityProfile({ role: 'bound', registry });
 api += '| Capability identity | Service | Operation |\n|---|---|---|\n';
 for (const cap of profile.capabilities) api += `| \`${cap.id}\` | \`${cap.service_id}\` | \`${cap.operation}\` |\n`;

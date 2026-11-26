@@ -11,9 +11,9 @@
     "rootDir": ".",
     "outDir": "dist",
     "paths": {
-      "@swarmenv/core": ["./src/core/index.js"],
-      "@swarmenv/core/services": ["./src/core/public-services.js"],
-      "@swarmenv/core/backends/pi-opensandbox": ["./src/core/backends/pi-opensandbox.js"]
+      "@murm/core": ["./src/core/index.js"],
+      "@murm/core/services": ["./src/core/public-services.js"],
+      "@murm/core/backends/pi-opensandbox": ["./src/core/backends/pi-opensandbox.js"]
     }
   },
   "include": ["src/**/*.ts", "scripts/**/*.ts", "examples/**/*.ts", "test-support/**/*.ts"]

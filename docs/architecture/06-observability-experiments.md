@@ -16,7 +16,7 @@ The exact observation tables are in [11 Storage](11-storage-reference.md). Start
 | Workspace metadata/Git | Revision, file hashes, checkpoint, lineage and commit references | What was saved for future execution; shell work can exist before a saved revision. |
 | Run metadata/report | Repository/provider/prompt/config identity, aggregate outcome and selected evidence references | A generated summary with its own sampling, redaction and compatibility limits. |
 
-The legacy Bridge emits its normal operation logs without a separate work-unit observer callback. Judge receipts remain durable independently of response delivery; benchmark callback counters are not an observation or progress API. Current Core Service records and flat controller decisions retain their own implemented recording paths.
+The legacy Bridge emits its normal operation logs without a separate work-unit observer callback. Judge receipts remain durable independently of response delivery; benchmark callback counters are not an observation or progress API. Current Core Service records and TaskPool controller decisions retain their own implemented recording paths.
 
 `DurableEventLog` appends NDJSON synchronously, adds a timestamp/scope, and redacts sensitive field names by default into `{redacted:true,sha256}`. Agent/checker loggers can use `raw:true`; those files stay in the private experiment directory. The redaction is a field-name transformation, not a proof that arbitrary prose cannot contain sensitive information. A log append failure can surface to its caller; this logger is not an asynchronous remote delivery queue.
 
@@ -62,7 +62,7 @@ The standalone server accepts `--name value` or `--name=value` for these options
 
 Healthy-daemon reuse returns the existing metadata and exits; passing a different bind address to this invocation does not reconfigure that existing process.
 
-The HTTP server accepts GET only; writes return 405. Defaults remain read-only: there is no HTTP action to take, complete, restart or modify a Task. The retired React client, static assets and Vite entry have been removed. After operator admission, `/`, `/index.html`, `/app.js`, `/styles.css` and other non-API paths return JSON 404 with `NOT_FOUND`; no filesystem static fallback remains. `/health` and the authenticated JSON/SSE surface below remain available. The server does not allocate Bots, send model inputs or change lifecycle state.
+The HTTP server accepts GET only; writes return 405. Defaults remain read-only: there is no HTTP action to take, complete, restart or modify a Task. The retired React client, static assets and Vite entry have been removed. After operator admission, `/`, `/index.html`, `/app.js`, `/styles.css` and other non-API paths return JSON 404 with `NOT_FOUND`; no filesystem static fallback remains. `/health` and the authenticated JSON/SSE surface below remain available. The server does not allocate Agents, send model inputs or change lifecycle state.
 
 ### Routes
 
@@ -92,7 +92,7 @@ Common event filters include `after_sequence`, `execution_id` on the event route
 
 ### Exposure boundary
 
-Operator admission covers event, detail, report and owner-service routes. Direct attached Task/Context routes can return owner-service data, Workspace projections can include path metadata, and report analysis Markdown is capped at 80,000 characters per file. Operator access grants access to those route-specific projections.
+Operator admission covers event, detail, report and owner-service routes. A denied request with operator authentication configured receives a Basic challenge with the `murm Operator` realm. Direct attached Task/Context routes can return owner-service data, Workspace projections can include path metadata, and report analysis Markdown is capped at 80,000 characters per file. Operator access grants access to those route-specific projections.
 
 Sources: [server](../../src/observability/observability-server.ts), [daemon entry/discovery](../../scripts/serve-observability.ts), [server tests](../../test/observability-server.test.ts), [worktree discovery tests](../../test/observability-worktree-discovery.test.ts).
 
@@ -102,7 +102,7 @@ The initial overview combines the last 2000 relevant events, at most 750 latest-
 
 The timeline combines the last 1000 lifecycle events with up to 1000 active assignment/latest-state seeds, so an Execution assigned long before the recent tail can remain visible. Core-state intervals and assignment/release segments are reconstructed independently. Missing historic releases/assignments and imported synthetic timestamps can limit precision.
 
-Execution detail scans at most 10,000 observations and returns selected lifecycle/tool events within 4,000,000 bytes, with explicit truncation metadata. Execution insight uses a bounded scan and recognizes older tool-return shapes such as `swarmenv_task_get` and `swarmenv_execution_get`; it is not a canonical concatenation of every prompt sent to the model. Modern flows, redaction, omitted calls or window limits can leave its prompt/instruction fields empty. Use the prompt catalog and private adapter records for exact send-path analysis.
+Execution detail scans at most 10,000 observations and returns selected lifecycle/tool events within 4,000,000 bytes, with explicit truncation metadata. Execution insight uses a bounded scan and recognizes older tool-return shapes such as `murm_task_get` and `murm_execution_get`; it is not a canonical concatenation of every prompt sent to the model. Modern flows, redaction, omitted calls or window limits can leave its prompt/instruction fields empty. Use the prompt catalog and private adapter records for exact send-path analysis.
 
 SSE reads SQLite every 250 ms in batches of up to 1000 new events and sends a keepalive every 15 seconds. This crosses process boundaries that an in-memory EventEmitter would miss. The cursor is the explicit `after_sequence` query; the stream does not implement a complete Last-Event-ID protocol. A consumer owns its reconnect cursor and sequence deduplication. The overview stream selects only the overview event kinds; it is not a full transcript export.
 
@@ -120,7 +120,7 @@ curl --fail "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/events?after
 curl --no-buffer "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/stream?after_sequence=0"
 ```
 
-These APIs inspect registered observation databases; they do not automatically import a Core Runtime's evidence or replace live Environment control. Current-run input, status, stop and saved-result commands are documented in [Environment reporting](17-environment-reporting.md#foreground-environment-control). The old graphical navigation, theme, chart rendering and browser-local refresh/cache policy have no replacement UI. Their required data access remains in the documented APIs and pure modules. [Launch and migration](07-run-configuration.md#optional-services-and-observer-migration) maps each retired group to its retained owner and checks.
+These APIs inspect registered observation databases; they do not automatically import a Core Runtime's evidence or replace live Harness control. Current-run input, status, stop and saved-result commands are documented in [Harness reporting](17-harness-reporting.md#foreground-harness-control). The old graphical navigation, theme, chart rendering and browser-local refresh/cache policy have no replacement UI. Their required data access remains in the documented APIs and pure modules. [Launch and migration](07-run-configuration.md#optional-services-and-observer-migration) maps each retired group to its retained owner and checks.
 
 Sources: [server projection](../../src/observability/observability-server.ts), [observation projection](../../src/observability/observation-projection.ts), [format](../../src/observability/format.ts), [projection test](../../test/observation-projection.test.ts).
 
@@ -150,13 +150,13 @@ Historical implementation details remain in the [research observation manual](ht
 Missing evidence is `unknown`. Generated docs and schema checks make source changes visible; they cannot create missing historical traces or establish real-Agent acceptance. At a phase/Issue closeout, update the affected implementation chapters and evidence status while retaining the exact experiment baseline. Do not rewrite a past report to appear to have run against the newer implementation.
 
 
-## Runtime and Environment finalization evidence
+## Runtime and Harness finalization evidence
 
-Public Core records input admission, events, Service requests and cleanup under their original Runtime/Bot/request identities. The Environment report retains business failure, Core cleanup, cleanup failure and report-save failure independently. A Bot's `settled` event describes its execution boundary. The saved-result and foreground projections expose actual statuses and receipts, including unknown execution and pending cleanup. [Environment reporting](17-environment-reporting.md) explains the storage, redaction and return paths.
+Public Core records input admission, events, Service requests and cleanup under their original Runtime/Agent/request identities. The Harness report retains business failure, Core cleanup, cleanup failure and report-save failure independently. An Agent's `settled` event describes its execution boundary. The saved-result and foreground projections expose actual statuses and receipts, including unknown execution and pending cleanup. [Harness reporting](17-harness-reporting.md) explains the storage, redaction and return paths.
 
 The standalone Observer defaults to loopback. Remote binding requires its operator credential before state is read. Daemon reuse checks the current health/authentication protocol, and metadata omits the password. Its actual access policy and API routes are described above.
 
-`DurableEventLog` supports explicitly requested raw audit files with owner-private permissions. Its open path rejects symbolic links and hard-linked targets before appending. Core and Environment reports retain the original run identities and cleanup receipts described above. The embedded benchmark audit directory owner, seven-day retention sweep and pruning CLI have been retired with their launcher. Run data retention belongs to the host that owns its output directory.
+`DurableEventLog` supports explicitly requested raw audit files with owner-private permissions. Its open path rejects symbolic links and hard-linked targets before appending. Core and Harness reports retain the original run identities and cleanup receipts described above. The embedded benchmark audit directory owner, seven-day retention sweep and pruning CLI have been retired with their launcher. Run data retention belongs to the host that owns its output directory.
 
 ## Independent service evidence
 
@@ -164,7 +164,7 @@ The independent-service coordinator exposes remote Context/Judge request observa
 
 ## Retired embedded benchmark inputs
 
-The dedicated benchmark CLI, fixed Putnam/FLT/OpenAI Math configurations, embedded mathematical datasets, paper inputs and Pass@K group scheduler have been removed. Their version-bound inputs and operator instructions remain in the [research tree](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9). Historical reports remain preserved on the research branch with their original provenance and metrics. The benchmark runner, fixture/context helpers and parallelism tracker have also been removed. Phase 0005 Environment entry points use the public Core.
+The dedicated benchmark CLI, fixed Putnam/FLT/OpenAI Math configurations, embedded mathematical datasets, paper inputs and Pass@K group scheduler have been removed. Their version-bound inputs and operator instructions remain in the [research tree](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9). Historical reports remain preserved on the research branch with their original provenance and metrics. The benchmark runner, fixture/context helpers and parallelism tracker have also been removed. Phase 0005 Harness entry points use the public Core.
 
 ## Historical independent-attempt evidence
 

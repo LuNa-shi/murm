@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 const exec = promisify(execFile);
 export const checkerDispatchPaths = (path: any, unit: any) => ({ directory: `${path}.dispatch`, lock: `${path}.dispatch/${unit}.lock`, cancelled: `${path}.dispatch/${unit}.cancelled` });
-const unitPattern = /^swarmenv-check-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.service$/;
+const unitPattern = /^murm-check-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.service$/;
 
 export function recordCheckerOwnership(path: any, unit: any, state: any) {
   if (!path) return;

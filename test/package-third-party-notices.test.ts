@@ -26,11 +26,11 @@ test('actual candidate archive carries pinned third-party sources, licenses and 
   assert.equal(sha256(license), '8b28515ffffc5c0fe2807d8ae3735b00b324d9b7ce807dd63ff6ac8922fbce7e');
   const leanNotice = (await readEntry('src/judge/lean-module-verify.NOTICE.md')).toString();
   assert.ok(leanNotice.includes('leanprover/lean4/blob/v4.33.1/src/LeanChecker.lean'));
-  assert.ok(leanNotice.includes('Modified in SwarmEnv'));
+  assert.ok(leanNotice.includes('Modified in murm'));
   const driver = (await readEntry('src/judge/lean-module-verify.lean')).toString();
   assert.ok(driver.includes('Copyright (c) 2023 Kim Morrison. All rights reserved.'));
   assert.ok(driver.includes('Authors: Kim Morrison, Sebastian Ullrich'));
-  assert.ok(driver.includes('Modified in SwarmEnv'));
+  assert.ok(driver.includes('Modified in murm'));
 
   const boardSchema = await readEntry('test/fixtures/agensh-board-schema.sql');
   assert.equal(sha256(boardSchema), 'baa0ce607371751d6e7a526179512f2ff3a59ede88749059bed1a2522b3f3bb2');

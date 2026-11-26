@@ -33,10 +33,10 @@ export function checkerResourceProfile(resources: any) {
 }
 
 /** The client process is a transport only. The unit owns all checker processes. */
-export function createCheckerProcessLimits({ runtimeMs, resources, ownerFile = process.env.SWARMENV_CHECKER_OWNER_FILE }: any) {
+export function createCheckerProcessLimits({ runtimeMs, resources, ownerFile = process.env.MURM_CHECKER_OWNER_FILE }: any) {
   if (!Number.isFinite(runtimeMs) || runtimeMs <= 0 || runtimeMs > 2_147_483_647) throw new TypeError('Invalid checker resource deadline');
   const limit = checkerResourceProfile(resources);
-  const unit = `swarmenv-check-${randomUUID()}.service`;
+  const unit = `murm-check-${randomUUID()}.service`;
   recordCheckerOwnership(ownerFile, unit, 'allocated');
   const environment = Object.freeze({ XDG_RUNTIME_DIR: `/run/user/${process.getuid!()}` });
   const argsFor = (command: any, args: any) => {

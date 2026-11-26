@@ -1,7 +1,7 @@
 import { SERVICE_COMMIT_SCHEMA_SQL } from '../storage/service-peer-schema.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { stableStringify } from '../protocol/envelope.js';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 
 export function ensureServiceCommitSchema(db: any) {
   db.exec(SERVICE_COMMIT_SCHEMA_SQL);
@@ -11,7 +11,7 @@ export function assertServiceCommitSettled(db: any) {
   // The table is created before a peer can issue a write.
   if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'service_commit_gate'").get()) return;
   const pending = db.prepare('SELECT gate_id FROM service_commit_gate WHERE singleton = 1').get();
-  if (pending) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY,
+  if (pending) throw new MurmError(ERROR_CODES.SERVICE_NOT_READY,
     'An independent service commit must be reconciled before lifecycle changes',
     { gate_id: pending.gate_id }, { retryable: true });
 }
@@ -57,13 +57,13 @@ export class ServiceCommitGate {
   }
 
   settle(admission: any, receipt: any) {
-    if (receipt?.terminal !== true) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY,
+    if (receipt?.terminal !== true) throw new MurmError(ERROR_CODES.SERVICE_NOT_READY,
       'A service commit requires a durable terminal receipt', undefined, { retryable: true });
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const pending = this.pending();
       if (!pending || pending.gate_id !== admission.gate_id || pending.digest !== admission.digest) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Service commit receipt does not match the pending command');
+        throw new MurmError(ERROR_CODES.CONFLICT, 'Service commit receipt does not match the pending command');
       }
       if (receipt.events?.length) this.db.prepare('INSERT OR IGNORE INTO service_commit_events (gate_id, events_json) VALUES (?, ?)')
         .run(receipt.events[0].event_id ?? pending.gate_id, JSON.stringify(receipt.events));

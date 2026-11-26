@@ -16,8 +16,8 @@ function fixture(t, database = ':memory:', contextDatabase = null) {
   t.after(() => { if (contextDatabase) context.close(); tasks.close(); });
   const actor = (id, missionId, { start = true, take = true } = {}) => {
     if (!tasks.getMission(missionId)) tasks.createMission({ mission_id: missionId, goal: 'Investigate independent questions' }, makeEnvelope({ actorRef: 'operator:test' }));
-    tasks.registerBot({ botId: id, missionId, coreId: id, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
-    tasks.recordBotSandbox(id, { provider: 'controlled', sandboxId: id }); tasks.markBotReady(id);
+    tasks.registerAgent({ agentId: id, missionId, coreId: id, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+    tasks.recordAgentSandbox(id, { provider: 'controlled', sandboxId: id }); tasks.markAgentReady(id);
     let execution;
     const envelope = operationId => {
       const e = execution && tasks.getExecution(execution.execution_id);
@@ -31,11 +31,11 @@ function fixture(t, database = ':memory:', contextDatabase = null) {
     }
     return { id, envelope, execution };
   };
-  const publish = (bot, id, extra = {}) => context.dispatch('context_publish_material', { content: `Research note ${id}`, ...extra }, bot.envelope(id));
+  const publish = (agent, id, extra = {}) => context.dispatch('context_publish_material', { content: `Research note ${id}`, ...extra }, agent.envelope(id));
   return { tasks, context, actor, publish };
 }
 
-test('Material service rejects unbound, preparing and closing Bots independently of Bridge', t => {
+test('Material service rejects unbound, preparing and closing Agents independently of Bridge', t => {
   const { tasks, actor, publish } = fixture(t);
   const unbound = actor('unbound', 'mission:a', { take: false });
   assert.throws(() => publish(unbound, 'unbound-write'), { code: 'NOT_ALLOWED' });
@@ -43,12 +43,12 @@ test('Material service rejects unbound, preparing and closing Bots independently
   assert.throws(() => publish(preparing, 'preparing-write'), { code: 'NOT_ALLOWED' });
   const active = actor('active', 'mission:a');
   assert.ok(publish(active, 'accepted').material.material_id);
-  tasks.requestBotStop(active.id, 'controlled-stop', { terminalState: 'FAILED' });
+  tasks.requestAgentStop(active.id, 'controlled-stop', { terminalState: 'FAILED' });
   assert.equal(tasks.getExecution(active.execution.execution_id).state, 'RUNNING');
   assert.throws(() => publish(active, 'after-stop'), { code: 'NOT_ALLOWED' });
 });
 
-test('Material reads, consumption and correction cannot cross the durable Bot Mission', t => {
+test('Material reads, consumption and correction cannot cross the durable Agent Mission', t => {
   const { context, actor, publish } = fixture(t);
   const one = actor('one', 'mission:a');
   const two = actor('two', 'mission:b');
@@ -66,15 +66,15 @@ test('Material reads, consumption and correction cannot cross the durable Bot Mi
 
 test('accepted Material publication replays across heartbeat and finish with its original provenance', t => {
   const { context, tasks, actor, publish } = fixture(t);
-  const bot = actor('producer', 'mission:a');
-  const original = publish(bot, 'stable-publish');
-  tasks.dispatch('heartbeat', {}, bot.envelope('heartbeat'));
-  assert.deepEqual(publish(bot, 'stable-publish'), original);
-  tasks.dispatch('task_finish', { outcome: 'incomplete' }, bot.envelope('finish'));
-  assert.deepEqual(publish(bot, 'stable-publish'), original);
-  assert.throws(() => publish(bot, 'new-after-finish'), { code: 'NOT_ALLOWED' });
-  assert.equal(context.getMaterial(original.material.material_id).producer_bot_id, bot.id);
-  assert.throws(() => publish(bot, 'stable-publish', { content: 'changed' }), { code: 'CONFLICT' });
+  const agent = actor('producer', 'mission:a');
+  const original = publish(agent, 'stable-publish');
+  tasks.dispatch('heartbeat', {}, agent.envelope('heartbeat'));
+  assert.deepEqual(publish(agent, 'stable-publish'), original);
+  tasks.dispatch('task_finish', { outcome: 'incomplete' }, agent.envelope('finish'));
+  assert.deepEqual(publish(agent, 'stable-publish'), original);
+  assert.throws(() => publish(agent, 'new-after-finish'), { code: 'NOT_ALLOWED' });
+  assert.equal(context.getMaterial(original.material.material_id).producer_agent_id, agent.id);
+  assert.throws(() => publish(agent, 'stable-publish', { content: 'changed' }), { code: 'CONFLICT' });
 });
 
 test('Task Material links also check the receiving actor Mission for nonproducer Experience', t => {
@@ -91,7 +91,7 @@ test('independent Context publication excludes Task finish in a second process u
   const database = join(root, 'state.sqlite');
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const { tasks, actor, publish } = fixture(t, database, join(root, 'context.sqlite'));
-  const bot = actor('writer', 'mission:a');
+  const agent = actor('writer', 'mission:a');
   const other = new TaskService(database);
   other.db.exec('PRAGMA busy_timeout = 40');
   t.after(() => other.close());
@@ -99,7 +99,7 @@ test('independent Context publication excludes Task finish in a second process u
   let blocked = false;
   tasks.materialScope = (...args) => {
     const scope = authorize(...args);
-    assert.throws(() => other.dispatch('task_finish', { outcome: 'incomplete' }, bot.envelope('competing-finish')), error => error.errcode === 5);
+    assert.throws(() => other.dispatch('task_finish', { outcome: 'incomplete' }, agent.envelope('competing-finish')), error => error.errcode === 5);
     const result = execFileSync(process.execPath, ['--input-type=module', '-e', `
       import { DatabaseSync } from 'node:sqlite';
       const db = new DatabaseSync(process.argv[1]);
@@ -111,47 +111,47 @@ test('independent Context publication excludes Task finish in a second process u
     assert.equal(result.trim(), 'blocked'); blocked = true;
     return scope;
   };
-  const accepted = publish(bot, 'publication-first');
+  const accepted = publish(agent, 'publication-first');
   tasks.materialScope = authorize;
   assert.equal(blocked, true);
-  other.dispatch('task_finish', { outcome: 'incomplete' }, bot.envelope('finish-after-publication'));
-  assert.deepEqual(publish(bot, 'publication-first'), accepted);
-  assert.throws(() => publish(bot, 'new-after-close'), { code: 'NOT_ALLOWED' });
+  other.dispatch('task_finish', { outcome: 'incomplete' }, agent.envelope('finish-after-publication'));
+  assert.deepEqual(publish(agent, 'publication-first'), accepted);
+  assert.throws(() => publish(agent, 'new-after-close'), { code: 'NOT_ALLOWED' });
 });
 
-test('Material provenance cannot be claimed by another producer or upgraded by a Bot name prefix', t => {
+test('Material provenance cannot be claimed by another producer or upgraded by a Agent name prefix', t => {
   const { actor, publish, context } = fixture(t);
   const first = actor('judge:pretender', 'mission:a');
   const second = actor('second-producer', 'mission:a');
-  const input = { material_id: 'fixed-material-id', content: 'same bytes', provenance: { actor_ref: 'system:forged', bot_id: 'forged' } };
+  const input = { material_id: 'fixed-material-id', content: 'same bytes', provenance: { actor_ref: 'system:forged', agent_id: 'forged' } };
   const material = publish(first, 'first-producer', input).material;
-  assert.equal(material.producer_bot_id, first.id);
-  assert.equal(material.provenance.bot_id, first.id);
+  assert.equal(material.producer_agent_id, first.id);
+  assert.equal(material.provenance.agent_id, first.id);
   assert.equal(material.provenance.actor_ref, first.id);
   assert.equal(material.evidence_state, undefined);
-  assert.equal(context.getMaterial(material.material_id).producer_bot_id, first.id);
+  assert.equal(context.getMaterial(material.material_id).producer_agent_id, first.id);
   assert.throws(() => publish(second, 'second-producer', input), { code: 'CONFLICT' });
 });
 
-test('unbound Bot reads public Material in its Mission and remote-only authority cannot authorize writes', t => {
+test('unbound Agent reads public Material in its Mission and remote-only authority cannot authorize writes', t => {
   const { tasks, context, actor, publish } = fixture(t);
   const producer = actor('producer-read', 'mission:a');
   const material = publish(producer, 'readable').material;
   const reader = actor('reader', 'mission:a', { take: false });
   assert.equal(context.dispatch('context_get_material', { material_id: material.material_id }, reader.envelope('read')).material.content_hash, material.content_hash);
-  const isolated = new ContextService(':memory:', { taskService: { materialScope: tasks.materialScope.bind(tasks), getBot: tasks.getBot.bind(tasks) } });
+  const isolated = new ContextService(':memory:', { taskService: { materialScope: tasks.materialScope.bind(tasks), getAgent: tasks.getAgent.bind(tasks) } });
   t.after(() => isolated.close());
   assert.throws(() => isolated.dispatch('context_publish_material', { content: 'unsafe separate commit' }, producer.envelope('separate-write')), { code: 'SERVICE_NOT_READY' });
 });
 
 test('Material contribution verifies the current fence, owner and deadline instead of supplied provenance', t => {
   const { tasks, context, actor, publish } = fixture(t);
-  const bot = actor('fenced-producer', 'mission:a');
+  const agent = actor('fenced-producer', 'mission:a');
   const payload = { content: 'A bounded note' };
-  assert.throws(() => context.dispatch('context_publish_material', payload, { ...bot.envelope('stale-fence'), fencing_version: 0 }), { code: 'FENCED' });
-  assert.throws(() => context.dispatch('context_publish_material', payload, { ...bot.envelope('forged-owner'), actor_ref: 'system:forged' }), { code: 'NOT_ALLOWED' });
-  tasks.db.prepare('UPDATE bots SET hard_deadline = ? WHERE bot_id = ?').run(new Date(Date.now() - 1).toISOString(), bot.id);
-  assert.throws(() => publish(bot, 'past-deadline'), { code: 'NOT_ALLOWED' });
+  assert.throws(() => context.dispatch('context_publish_material', payload, { ...agent.envelope('stale-fence'), fencing_version: 0 }), { code: 'FENCED' });
+  assert.throws(() => context.dispatch('context_publish_material', payload, { ...agent.envelope('forged-owner'), actor_ref: 'system:forged' }), { code: 'NOT_ALLOWED' });
+  tasks.db.prepare('UPDATE agents SET hard_deadline = ? WHERE agent_id = ?').run(new Date(Date.now() - 1).toISOString(), agent.id);
+  assert.throws(() => publish(agent, 'past-deadline'), { code: 'NOT_ALLOWED' });
 });
 
 test('historical cross-Mission relations and links stay stored but cannot affect public reads or new links', t => {

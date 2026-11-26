@@ -1,4 +1,4 @@
-import { MISSION_WORKSPACE_READS } from '../environments/flat/public-workspace-reads.js';
+import { MISSION_WORKSPACE_READS } from '../harnesses/taskpool/public-workspace-reads.js';
 import { createInProcessAdapter, createHttpJsonAdapter } from './service-adapter.js';
 import { createServiceManifest } from './service-manifest.js';
 import { ServiceRegistry } from './service-registry.js';
@@ -15,7 +15,7 @@ const ALL_ROLES = Object.freeze(['bound', 'recovery']);
 const SHARED_READ_OPERATIONS = new Set(['task_status']);
 const EXPOSED_OPERATIONS = Object.freeze({
   task: new Set([
-    'bot_exit',
+    'agent_exit',
     'task_list', 'task_view', 'task_link_material', 'task_finish',
     'task_status', 'task_take', 'task_feedback', 'task_revise', 'task_cancel', 'task_dependency_replace',
     'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history',
@@ -107,7 +107,7 @@ function manifestForService(serviceId: any, tools: any, { endpoint = { transport
       audience: audienceFor(tool),
       side_effect: tool.side_effect ? 'write' : 'read',
       idempotent: !tool.side_effect,
-      context: serviceId === 'catalog' || ['bot_exit', 'get_check_result', 'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history', 'mission_get', 'mission_submit', 'mission_submission_get'].includes(tool.operation) ? [] : ['task', 'execution'],
+      context: serviceId === 'catalog' || ['agent_exit', 'get_check_result', 'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history', 'mission_get', 'mission_submit', 'mission_submission_get'].includes(tool.operation) ? [] : ['task', 'execution'],
       help: {
         when: tool.description,
         ref: `service://${serviceId}/${tool.operation}`,
@@ -128,8 +128,8 @@ function manifestForService(serviceId: any, tools: any, { endpoint = { transport
 export { MISSION_WORKSPACE_READS };
 
 export async function dispatchMissionWorkspaceRead({ taskService, task, missionWorkspace }: any, operation: any, input: any = {}, envelope: any, { signal = null }: any = {}) {
-  const bot = (taskService ?? task)?.getBot?.(envelope?.actor_ref);
-  if (bot && (await missionWorkspace.get({ signal, workspaceId: input.workspace_id })).mission_id !== bot.mission_id) {
+  const agent = (taskService ?? task)?.getAgent?.(envelope?.actor_ref);
+  if (agent && (await missionWorkspace.get({ signal, workspaceId: input.workspace_id })).mission_id !== agent.mission_id) {
     throw Object.assign(new Error('Workspace belongs to another Mission'), { code: 'NOT_ALLOWED' });
   }
   return MISSION_WORKSPACE_READS[operation as keyof typeof MISSION_WORKSPACE_READS](missionWorkspace, input, signal);

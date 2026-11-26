@@ -102,13 +102,13 @@ const OVERVIEW_EVENT_KINDS = [
 ];
 const OVERVIEW_RPC_RECORD_TYPES = new Set(['tool_execution_start', 'tool_execution_end', 'tool_call', 'tool_result']);
 const OVERVIEW_TOOL_NAMES = new Set([
-  'swarmenv_task_list',
-  'swarmenv_task_take',
-  'swarmenv_context_publish',
-  'swarmenv_context_read',
-  'swarmenv_context_consume',
-  'swarmenv_judge_workspace_check',
-  'swarmenv_judge_get_check_result',
+  'murm_task_list',
+  'murm_task_take',
+  'murm_context_publish',
+  'murm_context_read',
+  'murm_context_consume',
+  'murm_judge_workspace_check',
+  'murm_judge_get_check_result',
 ]);
 const EXECUTION_DETAIL_LIFECYCLE_KINDS = new Set([
   'session_started',
@@ -585,12 +585,12 @@ export class ObservabilityServer {
     try {
       const url = new URL(request.url ?? '/', `http://${httpHost(this.host)}`);
       if (request.method === 'GET' && url.pathname === '/health') {
-        send(response, 200, { ok: true, service: 'swarmenv-observability',
+        send(response, 200, { ok: true, service: 'murm-observability',
           auth_version: OBSERVABILITY_AUTH_VERSION, access_mode: this.accessMode });
         return;
       }
       if (!this.#isOperator(request)) {
-        if (this.operatorHash) response.setHeader('www-authenticate', 'Basic realm="SwarmEnv Operator", charset="UTF-8"');
+        if (this.operatorHash) response.setHeader('www-authenticate', 'Basic realm="murm Operator", charset="UTF-8"');
         send(response, this.operatorHash ? 401 : 403, { ok: false, error: { code: 'OPERATOR_REQUIRED', message: 'Observer operator access is required' } });
         return;
       }
@@ -888,7 +888,7 @@ export class ObservabilityServer {
       if (!isToolEnd(record)) continue;
       const details = toolDetails(record);
       if (!details || typeof details !== 'object') continue;
-      if (toolName === 'swarmenv_task_view') {
+      if (toolName === 'murm_task_view') {
         const task = details.task ?? details;
         if (task && typeof task === 'object') {
           insight.task = dashboardValue({
@@ -905,7 +905,7 @@ export class ObservabilityServer {
           });
           insight.task_instructions = dashboardValue(task.task_instructions ?? task.initial_prompt ?? null, 'task_instructions');
         }
-      } else if (toolName === 'swarmenv_catalog_list_tools') {
+      } else if (toolName === 'murm_catalog_list_tools') {
         addCatalogTools(details);
       }
     }
@@ -913,7 +913,7 @@ export class ObservabilityServer {
       const catalogEvents = await this.#allEvents({ experimentId, kinds: ['rpc_record'], view: 'agent' }, 2);
       for (const event of catalogEvents) {
         const record = event.payload?.record;
-        if (isToolEnd(record) && dashboardToolName(record) === 'swarmenv_catalog_list_tools') addCatalogTools(toolDetails(record));
+        if (isToolEnd(record) && dashboardToolName(record) === 'murm_catalog_list_tools') addCatalogTools(toolDetails(record));
       }
     }
     insight.observed_tools = [...tools.keys()].sort();
@@ -967,7 +967,7 @@ export class ObservabilityServer {
       const payload = event.payload ?? {};
       const record = payload.record;
       const candidates = [payload.task, payload.result?.task];
-      if (isToolEnd(record) && dashboardToolName(record) === 'swarmenv_task_view') {
+      if (isToolEnd(record) && dashboardToolName(record) === 'murm_task_view') {
         const result = record.result ?? {};
         const details = result.details ?? result.result ?? result;
         candidates.unshift(details?.task ?? details);

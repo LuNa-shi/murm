@@ -1,19 +1,19 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { createBuiltinServiceRegistry, MISSION_WORKSPACE_READS } from '../sdk/builtin-registry.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { AGENT_ROLES, buildCapabilityProfile } from './capability-profile.js';
-import { prepareWorkspaceCheckSource } from '../environments/flat/workspace-check-source.js';
-import { createMissionSubmissionAccess } from '../environments/flat/mission-coordination.js';
+import { prepareWorkspaceCheckSource } from '../harnesses/taskpool/workspace-check-source.js';
+import { createMissionSubmissionAccess } from '../harnesses/taskpool/mission-coordination.js';
 import { agentCheckResult } from '../judge/check-result.js';
 import { isSoftCloseout } from '../task/execution-budget.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 // Mission-scoped discovery remains available before taking an Execution.
 const UNBOUND_OPERATIONS = new Set([
-  'bot_exit', 'get_check_result', 'material_unsupersede', 'task_revise', 'task_cancel', 'task_dependency_replace',
+  'agent_exit', 'get_check_result', 'material_unsupersede', 'task_revise', 'task_cancel', 'task_dependency_replace',
   'task_list', 'task_view', 'task_status',
   'read_materials', 'context_search_materials', 'context_get_material',
   'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history',
@@ -24,7 +24,7 @@ const COORDINATION_OPERATION_GRANTS = new Map<any, any>([
   ['task_dependency_replace', 'task_dependency_replace'], ['mission_submit', 'mission_submit'],
 ]);
 
-function botExecutionReceipt(execution: any) {
+function agentExecutionReceipt(execution: any) {
   const { execution_id, task_id, owner_ref, core_id, attempt_no, state, terminal_reason,
     input_material_refs, input_snapshot_hash, workspace_input, started_at, handoff_deadline,
     execution_deadline, created_at, updated_at } = execution;
@@ -33,15 +33,15 @@ function botExecutionReceipt(execution: any) {
     execution_deadline, created_at, updated_at };
 }
 
-function botReceipt(result: any) {
+function agentReceipt(result: any) {
   if (result?.execution?.execution_id) {
     const { execution, workspace, ...receipt } = result;
-    return { ...receipt, execution: botExecutionReceipt(execution),
+    return { ...receipt, execution: agentExecutionReceipt(execution),
       ...(Object.hasOwn(result, 'workspace') ? { workspace: execution.workspace_input ?? null } : {}) };
   }
-  if (result?.bot?.bot_id) {
-    const { bot_id, mission_id, core_id, execution_id, state, exit_reason } = result.bot;
-    return { ...result, bot: { bot_id, mission_id, core_id, execution_id, state, exit_reason } };
+  if (result?.agent?.agent_id) {
+    const { agent_id, mission_id, core_id, execution_id, state, exit_reason } = result.agent;
+    return { ...result, agent: { agent_id, mission_id, core_id, execution_id, state, exit_reason } };
   }
   return result;
 }
@@ -163,15 +163,15 @@ export class ServicesBridge {
     this.lastTakeOutcome = null;
   }
 
-  startBotIdentity(botId: any) {
-    const bot = this.taskService.getBot(botId);
-    const previous = this.taskService.getBot(this.actorRef);
-    if (!bot || bot.state !== 'STARTING' || bot.core_id !== this.coreId ||
+  startAgentIdentity(agentId: any) {
+    const agent = this.taskService.getAgent(agentId);
+    const previous = this.taskService.getAgent(this.actorRef);
+    if (!agent || agent.state !== 'STARTING' || agent.core_id !== this.coreId ||
         this.executionId || this.bindingPending || (previous && previous.state !== 'CLOSED')) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge cannot replace an occupied Bot');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bridge cannot replace an occupied Agent');
     }
     this.acceptedTake = null;
-    this.actorRef = botId;
+    this.actorRef = agentId;
     this.token = randomUUID();
     this.lastTakeOutcome = null;
     this.capabilityProfile = null;
@@ -183,9 +183,9 @@ export class ServicesBridge {
   /** Bind the durable task_take result before Runtime activates the Execution. */
   async bindTake(result: any) {
     if (!result?.task?.task_id || !result?.execution?.execution_id) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bindTake requires a Task and Execution result');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'bindTake requires a Task and Execution result');
     }
-    if (this.taskId || this.executionId) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'bridge already has a taken binding');
+    if (this.taskId || this.executionId) throw new MurmError(ERROR_CODES.CONFLICT, 'bridge already has a taken binding');
     this.bindingPending = true;
     this.taskId = result.task.task_id;
     this.executionId = result.execution.execution_id;
@@ -251,7 +251,7 @@ export class ServicesBridge {
   }
 
   async start({ port = 0 }: any = {}) {
-    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Stopped Bridge cannot restart; create a new Bridge');
+    if (this.stopping) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Stopped Bridge cannot restart; create a new Bridge');
     if (this.server) return this.environment();
     this.server = createServer((request: any, response: any) => {
       void this.#track(this.pendingHandlers, () => this.#handle(request, response)).catch((error: any) => {
@@ -263,11 +263,11 @@ export class ServicesBridge {
       const cleanup = () => { server.off('listening', listening); server.off('close', closed); server.off('error', failed); };
       const listening = () => { cleanup(); resolve(); };
       const failed = (error: any) => { cleanup(); reject(error); };
-      const closed = () => failed(new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge stopped before listening'));
+      const closed = () => failed(new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bridge stopped before listening'));
       server.once('listening', listening); server.once('close', closed); server.once('error', failed);
       try { server.listen(port, this.host); } catch (error: any) { failed(error); }
     });
-    if (this.stopping || this.server !== server) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge stopped during startup');
+    if (this.stopping || this.server !== server) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bridge stopped during startup');
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('bridge did not receive a loopback address');
     this.address = address;
@@ -277,10 +277,10 @@ export class ServicesBridge {
   environment() {
     if (!this.address) throw new Error('ServicesBridge has not started');
     return {
-      SWARMENV_BRIDGE_URL: this.publicUrl
+      MURM_BRIDGE_URL: this.publicUrl
         ? this.publicUrl.replaceAll('{port}', String(this.address.port)).replace(/\/$/, '')
         : `http://${this.host === '0.0.0.0' || this.host === '::' ? '127.0.0.1' : this.host}:${this.address.port}`,
-      SWARMENV_BRIDGE_TOKEN: this.token,
+      MURM_BRIDGE_TOKEN: this.token,
     };
   }
 
@@ -308,7 +308,7 @@ export class ServicesBridge {
       return candidate.operation === operation || candidate.name === operation || (capabilityId && (candidate.id ?? candidate.capability_id) === capabilityId);
     });
     if (matches.length > 1) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `ambiguous Agent capability: ${operation}`, {
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `ambiguous Agent capability: ${operation}`, {
         operation,
         capability_id: capabilityId,
         service_id: serviceId,
@@ -319,7 +319,7 @@ export class ServicesBridge {
   }
 
   async #invokeRegistered(capability: any, payload: any, operationId: any, context: any = {}) {
-    if (!this.registry?.invoke) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `registered Service is unavailable: ${capability.service_id}`);
+    if (!this.registry?.invoke) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, `registered Service is unavailable: ${capability.service_id}`);
     const taskId = context.taskId ?? this.taskId;
     const executionId = context.executionId ?? this.executionId;
     const currentExecution = executionId && typeof this.taskService?.getExecution === 'function'
@@ -352,7 +352,7 @@ export class ServicesBridge {
     const taskId = result.execution.task_id;
     let released;
     try {
-      if (typeof this.runtime.releaseExecution !== 'function') throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'finish cleanup Runtime is unavailable');
+      if (typeof this.runtime.releaseExecution !== 'function') throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'finish cleanup Runtime is unavailable');
       released = await this.runtime.releaseExecution(executionId);
     } catch (error: any) {
       this.logger?.append({ event: 'bridge.finish_cleanup_pending', execution_id: executionId, error_class: error?.code ?? error?.name });
@@ -379,7 +379,7 @@ export class ServicesBridge {
     if (this.stopPromise) return this.stopPromise;
     this.stopping = true;
     this.mergeClosing = this.workspaceMerge?.close();
-    this.publicReadAbortController.abort(new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping'));
+    this.publicReadAbortController.abort(new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping'));
     this.stopPromise = this.#stop();
     return this.stopPromise;
   }
@@ -401,7 +401,7 @@ export class ServicesBridge {
   async #handle(request: any, response: any) {
     if (this.stopping) { send(response, 503, { ok: false, error: { code: 'NOT_ALLOWED', message: 'Bridge is stopping' } }); return; }
     if (request.method === 'GET' && request.url === '/health') {
-      send(response, 200, { ok: true, service: 'swarmenv-agent-bridge' });
+      send(response, 200, { ok: true, service: 'murm-agent-bridge' });
       return;
     }
     if (request.method === 'GET' && request.url === '/profile') {
@@ -425,16 +425,16 @@ export class ServicesBridge {
     try {
       input = await readBody(request);
       if (input && typeof input === 'object' && !Array.isArray(input)) input.operation_id ??= `bridge:${input.operation}:${randomUUID()}`;
-      if (authenticatedToken !== this.token) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed while reading the request');
-      const registeredBot = Boolean(this.taskService?.getBot?.(this.actorRef));
+      if (authenticatedToken !== this.token) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent credentials changed while reading the request');
+      const registeredAgent = Boolean(this.taskService?.getAgent?.(this.actorRef));
       const result = await this.call(input);
-      const receipt = registeredBot ? botReceipt(result) : result;
+      const receipt = registeredAgent ? agentReceipt(result) : result;
       send(response, 200, { ok: true, result: receipt });
       this.logger?.append({ event: 'bridge.response_sent', operation: input.operation, operation_id: input.operation_id });
     } catch (error: any) {
       if (!response.writableEnded) {
         const body = errorBody(error);
-        if (input && authenticatedToken === this.token && this.taskService.getBot?.(this.actorRef)) {
+        if (input && authenticatedToken === this.token && this.taskService.getAgent?.(this.actorRef)) {
           const details = body.details ?? {};
           const operation = input.operation;
           let notice;
@@ -446,22 +446,22 @@ export class ServicesBridge {
             notice = `检查后 main 已从 ${details.observed_revision} 前进到 ${details.actual_revision}；本请求未覆盖 main。可在剩余额度内重新合成并检查；若需修复，保留来源 ${details.source_revision} 的公开证据并 save 新版本后重试。`;
           } else if (details.phase === 'hard_stop') {
             notice = '已达到硬上限或发生强制停止，当前 E 不再有发布机会。此前未保存/发布的内容不视为已交接。';
-          } else if (operation === 'bot_exit' && details.phase === 'discovery_required') {
+          } else if (operation === 'agent_exit' && details.phase === 'discovery_required') {
             notice = 'Mission 尚未结束且选工时间仍有剩余。查看当前 Mission、公开 Workspace、材料和已有 Task，领取可推进的责任；没有合适 Task 时保持只读，按选工预算处理，不得创建占位 Task。';
           } else if (details.phase === 'selection_budget') {
-            notice = '选工额度已到时间上限。尚未绑定 E 时使用 bot exit --reason selection-budget；不能为保持运行制造任务。';
+            notice = '选工额度已到时间上限。尚未绑定 E 时使用 agent exit --reason selection-budget；不能为保持运行制造任务。';
           } else if (operation === 'task_take' && body.code === 'CONFLICT' && details.condition === 'task_occupied') {
             notice = `Task ${input.payload?.task_id} 当前由其他 Execution 占有。本请求未建立 E；仍在选工阶段，可在剩余预算内选择其他责任。`;
           } else if (body.code === 'NOT_ALLOWED') {
-            const bot = this.taskService.getBot(this.actorRef);
-            const execution = bot.execution_id && this.taskService.getExecution(bot.execution_id);
-            const phase = details.phase ?? (bot.state === 'ACTIVE' && isSoftCloseout(execution) ? 'soft_closeout' : bot.state.toLowerCase());
+            const agent = this.taskService.getAgent(this.actorRef);
+            const execution = agent.execution_id && this.taskService.getExecution(agent.execution_id);
+            const phase = details.phase ?? (agent.state === 'ACTIVE' && isSoftCloseout(execution) ? 'soft_closeout' : agent.state.toLowerCase());
             const allowed = phase === 'soft_closeout' ? ['workspace_save', 'context_publish_material', 'task_finish']
               : ['active', 'unbound'].includes(phase)
               ? this.getCapabilityProfile().capabilities.map((item: any) => item.operation).filter((item: any) =>
                 typeof item === 'string' && (phase !== 'unbound' || item === 'task_take' || UNBOUND_OPERATIONS.has(item)) &&
                 (phase === 'unbound' || !['task_revise', 'task_cancel'].includes(item)) &&
-                (!COORDINATION_OPERATION_GRANTS.has(item) || bot.coordination_permissions.includes(COORDINATION_OPERATION_GRANTS.get(item))))
+                (!COORDINATION_OPERATION_GRANTS.has(item) || agent.coordination_permissions.includes(COORDINATION_OPERATION_GRANTS.get(item))))
               : [];
             const allowedOperations = [...new Set(allowed)];
             body.details = { ...details, phase, allowed_operations: allowedOperations };
@@ -476,25 +476,25 @@ export class ServicesBridge {
   }
 
   async call(request: any = {}) {
-    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping');
+    if (this.stopping) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping');
     return this.#track(this.pendingCalls, () => this.#admittedCall(request));
   }
 
   async #admittedCall(request: any) {
-    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping');
+    if (this.stopping) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping');
     // Coalesce only an explicit take request, for this live credential. A lost
     // CLI response must not turn in-flight preparation into a second take.
     const key = request.operation === 'task_take' && request.operation_id;
     const capability = key ? this.#profileCapability(this.getCapabilityProfile(), request.operation, { serviceId: request.service_id, capabilityId: request.capability_id }) : null;
-    if (key && !capability) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task take capability is not available for this request');
+    if (key && !capability) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task take capability is not available for this request');
     const fingerprint = key ? stableStringify({ capability: capability.id, payload: request.payload ?? {} }) : null;
     if (key && this.pendingTake?.operation_id === key) {
       const pending = this.pendingTake;
-      if (pending.token !== this.token) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed before retry');
-      if (pending.fingerprint !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'take request ID was reused with another payload');
-      if (this.taskService.getBot?.(this.actorRef)) this.taskService.assertBotDeadline(this.actorRef);
+      if (pending.token !== this.token) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent credentials changed before retry');
+      if (pending.fingerprint !== fingerprint) throw new MurmError(ERROR_CODES.CONFLICT, 'take request ID was reused with another payload');
+      if (this.taskService.getAgent?.(this.actorRef)) this.taskService.assertAgentDeadline(this.actorRef);
       const result = await pending.promise;
-      if (pending.token !== this.token) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed before retry completed');
+      if (pending.token !== this.token) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent credentials changed before retry completed');
       return structuredClone(result);
     }
     const promise = this.#call(request);
@@ -506,16 +506,16 @@ export class ServicesBridge {
   }
 
   async #call({ operation, payload = {}, operation_id: operationId = null, service_id: serviceId = null, capability_id: capabilityId = null }: any = {}) {
-    if (this.bindingPending) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task contribution binding is still being prepared');
+    if (this.bindingPending) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task contribution binding is still being prepared');
     const identityToken = this.token;
     const assertIdentity = (beforeDispatch: any = false) => {
-      if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping');
-      if (this.bindingPending) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task contribution binding is still being prepared');
-      if (this.token !== identityToken) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed before dispatch');
-      const bot = beforeDispatch ? this.taskService.getBot?.(this.actorRef) : null;
-      if (bot && !['bot_exit', 'task_finish'].includes(operation)) this.taskService.assertBotDeadline(this.actorRef);
-      if (bot && !['UNBOUND', 'ACTIVE'].includes(bot.state) && !['bot_exit', 'task_finish'].includes(operation)) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped before dispatch');
+      if (this.stopping) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping');
+      if (this.bindingPending) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task contribution binding is still being prepared');
+      if (this.token !== identityToken) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent credentials changed before dispatch');
+      const agent = beforeDispatch ? this.taskService.getAgent?.(this.actorRef) : null;
+      if (agent && !['agent_exit', 'task_finish'].includes(operation)) this.taskService.assertAgentDeadline(this.actorRef);
+      if (agent && !['UNBOUND', 'ACTIVE'].includes(agent.state) && !['agent_exit', 'task_finish'].includes(operation)) {
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent stopped before dispatch');
       }
     };
     const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
@@ -525,44 +525,44 @@ export class ServicesBridge {
     try {
       const profile = this.getCapabilityProfile();
       const capability = this.#profileCapability(profile, operation, { serviceId, capabilityId });
-      if (!capability) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Agent capability is not available for this Session: ${operation}`, {
+      if (!capability) throw new MurmError(ERROR_CODES.NOT_ALLOWED, `Agent capability is not available for this Session: ${operation}`, {
         operation,
         role: this.role,
         profile_hash: profile.profile_hash,
         action: 'call_list_tools_or_get_service_metadata',
         available_capabilities: profile.capabilities.map((candidate: any) => candidate.tool_name ?? candidate.name),
       });
-      if (capability.operation === 'task_create' && capability.service_id === 'task') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot Task creation is not supported');
+      if (capability.operation === 'task_create' && capability.service_id === 'task') throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent Task creation is not supported');
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bridge payload must be an object', {
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'bridge payload must be an object', {
           operation,
           expected: 'object',
           action: 'retry_with_the_registered_input_schema',
         });
       }
       const boundTask = this.taskId ? this.taskService.getTask(this.taskId) : null;
-      const bot = this.taskService.getBot?.(this.actorRef);
-      if (bot && !['bot_exit', 'task_finish', 'mission_submission_get'].includes(operation)) {
-        const execution = bot.execution_id && this.taskService.getExecution(bot.execution_id);
-        if (execution && (Date.parse(bot.hard_deadline) <= Date.now() || Date.parse(execution.execution_deadline) <= Date.now() ||
-            (['CLOSING', 'CLOSED'].includes(bot.state) && !this.taskService.getExecutionFinish(execution.execution_id)))) {
-          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot contribution is closed', { phase: 'hard_stop' });
+      const agent = this.taskService.getAgent?.(this.actorRef);
+      if (agent && !['agent_exit', 'task_finish', 'mission_submission_get'].includes(operation)) {
+        const execution = agent.execution_id && this.taskService.getExecution(agent.execution_id);
+        if (execution && (Date.parse(agent.hard_deadline) <= Date.now() || Date.parse(execution.execution_deadline) <= Date.now() ||
+            (['CLOSING', 'CLOSED'].includes(agent.state) && !this.taskService.getExecutionFinish(execution.execution_id)))) {
+          throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent contribution is closed', { phase: 'hard_stop' });
         }
-        if (bot.state === 'UNBOUND' && Date.parse(bot.selection_deadline) <= Date.now()) {
-          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot selection deadline elapsed', { phase: 'selection_budget' });
+        if (agent.state === 'UNBOUND' && Date.parse(agent.selection_deadline) <= Date.now()) {
+          throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent selection deadline elapsed', { phase: 'selection_budget' });
         }
       }
-      if (bot && !['bot_exit', 'task_finish'].includes(operation)) this.taskService.assertBotDeadline(this.actorRef);
-      if (bot && !['UNBOUND', 'ACTIVE'].includes(bot.state) && !['bot_exit', 'task_finish'].includes(operation)) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot is not authorized to contribute in its current state', { bot_state: bot.state });
+      if (agent && !['agent_exit', 'task_finish'].includes(operation)) this.taskService.assertAgentDeadline(this.actorRef);
+      if (agent && !['UNBOUND', 'ACTIVE'].includes(agent.state) && !['agent_exit', 'task_finish'].includes(operation)) {
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent is not authorized to contribute in its current state', { agent_state: agent.state });
       }
-      // Scope is established by Runtime's durable Bot binding, never by CLI
+      // Scope is established by Runtime's durable Agent binding, never by CLI
       // flags. Only add fields supported by each public request schema.
-      if (bot) {
+      if (agent) {
         if (['workspace_save', 'workspace_status', 'workspace_current_diff'].includes(operation)) {
           assertIdentity(true);
           const execution = this.executionId && this.taskService.getExecution(this.executionId);
-          if (!execution) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace operation requires an active E');
+          if (!execution) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace operation requires an active E');
           const result = await this.runtime.dispatchExecutionWorkspace((({ workspace_save: 'save', workspace_status: 'status', workspace_current_diff: 'diff' } as Record<string, any>))[operation], payload,
             { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution.fencing_version, requestId: bridgeOperationId });
           log({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
@@ -570,7 +570,7 @@ export class ServicesBridge {
         }
         if (operation === 'workspace_merge') {
           const execution = this.executionId && this.taskService.getExecution(this.executionId);
-          if (!this.workspaceMerge) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace merge is not enabled');
+          if (!this.workspaceMerge) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace merge is not enabled');
           const result = await this.workspaceMerge.merge(payload, { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution?.fencing_version, requestId: bridgeOperationId });
           assertIdentity();
           log({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
@@ -578,55 +578,55 @@ export class ServicesBridge {
         }
         if (operation === 'mission_submit') {
           if (Object.keys(payload).some((key: any) => key !== 'material_ids') || !Array.isArray(payload.material_ids)) {
-            throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Mission submit accepts only an explicit material_ids selection');
+            throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Mission submit accepts only an explicit material_ids selection');
           }
-          const result = await this.missionSubmission.submit({ missionId: bot.mission_id,
-            actorRef: bot.bot_id, taskId: this.taskId ?? null, executionId: this.executionId ?? null,
+          const result = await this.missionSubmission.submit({ missionId: agent.mission_id,
+            actorRef: agent.agent_id, taskId: this.taskId ?? null, executionId: this.executionId ?? null,
             materialIds: payload.material_ids, requestId: bridgeOperationId,
             fencingVersion: this.executionId ? this.taskService.getExecution(this.executionId)?.fencing_version : null });
-          const observed = await this.missionSubmission.describe({ missionId: bot.mission_id, submissionId: result.submission_id });
+          const observed = await this.missionSubmission.describe({ missionId: agent.mission_id, submissionId: result.submission_id });
           assertIdentity();
           log({ event: 'bridge.complete', operation, ok: true, result: observed ?? result });
           return observed ?? result;
         }
-        if (payload.mission_id !== undefined && payload.mission_id !== bot.mission_id) {
-          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'request must stay within the Bot Mission');
+        if (payload.mission_id !== undefined && payload.mission_id !== agent.mission_id) {
+          throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'request must stay within the Agent Mission');
         }
         if (operation === 'mission_submission_get') {
-          const result = await this.missionSubmission.describe({ missionId: bot.mission_id, submissionId: payload.submission_id ?? null });
+          const result = await this.missionSubmission.describe({ missionId: agent.mission_id, submissionId: payload.submission_id ?? null });
           assertIdentity();
           log({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
         if (['mission_get', 'mission_submit', 'mission_submission_get', 'task_list', 'task_status', 'read_materials', 'context_search_materials'].includes(operation)) {
-          payload = { ...payload, mission_id: bot.mission_id };
+          payload = { ...payload, mission_id: agent.mission_id };
         }
         if (['task_view', 'task_take', 'task_revise', 'task_cancel', 'task_dependency_replace'].includes(operation) && payload.task_id !== undefined) {
           const target = this.taskService.getTask(payload.task_id);
-          if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task is not readable in the Bot Mission');
+          if (!target || target.mission_id !== agent.mission_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task is not readable in the Agent Mission');
         }
         if (operation === 'context_get_material') {
           const target = this.contextService.getMaterial(payload.material_id);
-          if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material is not readable in the Bot Mission');
+          if (!target || target.mission_id !== agent.mission_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Material is not readable in the Agent Mission');
         }
         if (Object.hasOwn(MISSION_WORKSPACE_READS, operation)) {
           const workspaceId = this.runtime?.missionWorkspaceId;
           if (!workspaceId || (payload.workspace_id !== undefined && payload.workspace_id !== workspaceId)) {
-            throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace must match the configured Mission Workspace');
+            throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace must match the configured Mission Workspace');
           }
           const workspace = await this.runtime.missionWorkspace.get({ workspaceId, signal: this.publicReadAbortController.signal });
           assertIdentity(true);
-          if (workspace.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace belongs to another Mission');
+          if (workspace.mission_id !== agent.mission_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace belongs to another Mission');
           payload = { ...payload, workspace_id: workspaceId };
         }
       }
       if (operation === 'task_take' && this.acceptedTake?.operation_id === bridgeOperationId) {
-        if (this.acceptedTake.fingerprint !== stableStringify({ capability: capability.id, payload })) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'take request ID was reused with another payload');
+        if (this.acceptedTake.fingerprint !== stableStringify({ capability: capability.id, payload })) throw new MurmError(ERROR_CODES.CONFLICT, 'take request ID was reused with another payload');
         log({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, replayed: true, result: this.acceptedTake.result });
         return structuredClone(this.acceptedTake.result);
       }
-      if (operation === 'bot_exit') {
-        return this.taskService.dispatch('bot_exit', payload, makeEnvelope({ actorRef: this.actorRef, operationId: bridgeOperationId }));
+      if (operation === 'agent_exit') {
+        return this.taskService.dispatch('agent_exit', payload, makeEnvelope({ actorRef: this.actorRef, operationId: bridgeOperationId }));
       }
       const boundTaskScope = boundTask?.mission_id ? boundTask : null;
       const isCatalogDiscovery = capability.service_id === 'catalog' && ['list_services', 'get_service_metadata', 'list_tools'].includes(operation);
@@ -642,10 +642,10 @@ export class ServicesBridge {
         return result;
       }
       if (operation === 'task_take' && (this.taskId || this.executionId)) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'task_take requires the current Execution binding to be released', { task_id: this.taskId, execution_id: this.executionId });
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'task_take requires the current Execution binding to be released', { task_id: this.taskId, execution_id: this.executionId });
       }
       const requiresBinding = operation !== 'task_take' && !UNBOUND_OPERATIONS.has(operation) && Array.isArray(capability.context) && capability.context.length > 0;
-      if (requiresBinding && (!this.taskId || !this.executionId)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a taken Task and Execution`, { operation });
+      if (requiresBinding && (!this.taskId || !this.executionId)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, `${operation} requires a taken Task and Execution`, { operation });
       const currentExecution = this.executionId ? this.taskService.getExecution(this.executionId) : null;
       const invocationPayload = operation === 'task_take'
         ? {
@@ -665,7 +665,7 @@ export class ServicesBridge {
         if (operation === 'task_take') this.lastTakeOutcome = { attempted: true, ok: false, task_id: invocationPayload.task_id ?? null };
         let registeredPayload = invocationPayload;
         if (operation === 'workspace_check') {
-          if (!bot) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace checks require a registered Bot');
+          if (!agent) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace checks require a registered Agent');
           const identity = { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: currentExecution?.fencing_version };
           const source: any = await prepareWorkspaceCheckSource(payload, { workspace: this.runtime.missionWorkspace,
             workspaceId: this.runtime.missionWorkspaceId, projectCheck: this.runtime.workspaceProjectCheck,
@@ -693,9 +693,9 @@ export class ServicesBridge {
       };
       let result = await invoke();
       assertIdentity();
-      if (bot && ['workspace_check', 'get_check_result'].includes(operation) && result) {
+      if (agent && ['workspace_check', 'get_check_result'].includes(operation) && result) {
         const target = this.taskService.getTask(result.target_task_id);
-        if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge result is not readable in the Bot Mission');
+        if (!target || target.mission_id !== agent.mission_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Judge result is not readable in the Agent Mission');
         result = agentCheckResult(result);
       }
       if (operation === 'task_take') {

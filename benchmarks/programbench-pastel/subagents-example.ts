@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
-import { runSubagentsEnvironment } from '../../dist/examples/subagents-environment/main.js';
+import { runSubagentsHarness } from '../../dist/examples/subagents/main.js';
 
 const exec = promisify(execFile);
 const referenceImage = 'programbench/sharkdp_1776_pastel.b60e899@sha256:e75597f4307bf02746598d2b7eb8ae136b9978f0c2551e04b065b14e9e5f9c4e';
@@ -79,16 +79,16 @@ async function modelRequestExists(directory: string, rootId: string, requiredTex
     });
     if (!raw.endsWith('\n')) continue;
     const recorded = JSON.parse(raw);
-    if (recorded.botId === rootId && (!requiredText || recorded.after?.input?.some(item => item.role === 'user' &&
+    if (recorded.agentId === rootId && (!requiredText || recorded.after?.input?.some(item => item.role === 'user' &&
       item.content?.some(part => part.type === 'input_text' && part.text.includes(requiredText))))) return true;
   }
   return false;
 }
 
-export async function runPastelExample(config: Parameters<typeof runSubagentsEnvironment>[0], signal?: AbortSignal) {
+export async function runPastelExample(config: Parameters<typeof runSubagentsHarness>[0], signal?: AbortSignal) {
   let injected = false;
   let rootId: string | undefined;
-  const report = await runSubagentsEnvironment({ ...config, goal: initial,
+  const report = await runSubagentsHarness({ ...config, goal: initial,
     collect: { paths: ['delivery'], required: true, includeGit: false, maxBytes: 2 * 1024 * 1024 },
   }, signal, async (env, work) => {
     rootId = env.rootId;
@@ -97,7 +97,7 @@ export async function runPastelExample(config: Parameters<typeof runSubagentsEnv
       work.throwIfAborted();
       if (env.lastReply()) throw new Error('Root finished before the in-flight input');
       if (await modelRequestExists(traces, env.rootId) &&
-          (await env.status()).some(bot => bot.id === env.rootId && bot.status === 'running')) break;
+          (await env.status()).some(agent => agent.id === env.rootId && agent.status === 'running')) break;
       await delay(25, undefined, { signal: work });
     }
     const admission = await env.input(supplement, 'pastel-hsl');
@@ -109,7 +109,7 @@ export async function runPastelExample(config: Parameters<typeof runSubagentsEnv
     if (reply.type !== 'settled' || reply.outcome !== 'completed') throw new Error('Root failed');
     return { rootId: env.rootId, eventSeq: reply.seq };
   });
-  const root = report.cleanup?.bots?.find(bot => bot.botId === rootId);
+  const root = report.cleanup?.agents?.find(agent => agent.agentId === rootId);
   const files = root?.artifacts.find(path => path.endsWith('/artifacts/files'));
   let independentCheck;
   if (files && !report.cleanupFailure) {

@@ -9,7 +9,7 @@ export interface Backend {
 }
 
 export interface Profile {
-  /** Optional Environment instructions added to the standard startup prompt. */
+  /** Optional Harness instructions added to the standard startup prompt. */
   prompt?: string;
   model: string;
   image: string;
@@ -24,7 +24,7 @@ export interface Profile {
 
 export interface ModelCaller {
   readonly runtimeId: string;
-  readonly botId: string;
+  readonly agentId: string;
   readonly profile: string;
   readonly model: string;
 }
@@ -44,7 +44,7 @@ export interface CreateRuntimeOptions {
   backend: Backend;
   profiles: Readonly<Record<string, Profile>>;
   services: ServiceRegistry;
-  maxBots: number;
+  maxAgents: number;
   outputDir: string;
   modelAccessPolicy?: ModelAccessPolicy;
 }
@@ -66,13 +66,13 @@ export interface CollectionSpec {
 }
 
 export interface PreparedFiles {
-  readonly botId: string;
+  readonly agentId: string;
   readonly version: number;
   readonly digest: string;
 }
 
 export interface FileSnapshot {
-  readonly botId: string;
+  readonly agentId: string;
   readonly requestId: string;
   readonly version: number;
   readonly digest: string;
@@ -80,7 +80,7 @@ export interface FileSnapshot {
 }
 
 export interface FileInstall {
-  readonly botId: string;
+  readonly agentId: string;
   readonly requestId: string;
   readonly version: number;
   readonly digest: string;
@@ -88,7 +88,7 @@ export interface FileInstall {
 }
 
 export interface GrantReceipt {
-  readonly botId: string;
+  readonly agentId: string;
   readonly version: number;
   readonly writable: true;
 }
@@ -120,25 +120,25 @@ export interface ResourceError extends Error {
   code: string;
   operation: string;
   runtimeId?: string;
-  botId?: string;
+  agentId?: string;
   requestId?: string;
   cleanup: 'complete' | 'pending';
   reportPath?: string;
   details: readonly ErrorInfo[];
 }
 
-export type BotStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+export type AgentStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
 
-export interface BotListFilter {
+export interface AgentListFilter {
   parentId?: string | null;
-  status?: BotStatus | readonly BotStatus[];
+  status?: AgentStatus | readonly AgentStatus[];
 }
 
-export interface BotInfo {
+export interface AgentInfo {
   id: string;
   profile: string;
   parentId?: string;
-  status: BotStatus;
+  status: AgentStatus;
   cursor: number;
   latestOutput?: string;
   lastError?: ErrorInfo;
@@ -170,15 +170,15 @@ export interface InterruptReceipt {
   discardedInputHashes?: readonly string[];
 }
 
-export type BotInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
+export type AgentInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
 
-/** Built-in bot.spawn Service result, distinct from host Runtime.spawn. */
-export interface BotSpawnReceipt {
-  bot: BotInfo;
-  initialInput: BotInitialInputResult;
+/** Built-in agent.spawn Service result, distinct from host Runtime.spawn. */
+export interface AgentSpawnReceipt {
+  agent: AgentInfo;
+  initialInput: AgentInitialInputResult;
 }
 
-export type BotEvent = { botId: string; seq: number } & (
+export type AgentEvent = { agentId: string; seq: number } & (
   | { type: 'output'; text: string }
   | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
   | { type: 'error'; error: ErrorInfo; fatal: boolean }
@@ -186,7 +186,7 @@ export type BotEvent = { botId: string; seq: number } & (
 );
 
 export interface PendingCleanup {
-  kind: 'bot' | 'bridge' | 'model' | 'backend' | 'report';
+  kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report';
   id: string;
   action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
   error?: ErrorInfo;
@@ -197,7 +197,7 @@ export interface PendingCleanup {
 }
 
 export interface StopReceipt {
-  botId: string;
+  agentId: string;
   execution: 'stopped' | 'unknown';
   cleanup: 'complete' | 'pending';
   artifacts: readonly string[];
@@ -207,7 +207,7 @@ export interface StopReceipt {
 }
 
 export interface CloseReceipt {
-  bots: readonly StopReceipt[];
+  agents: readonly StopReceipt[];
   cleanup: 'complete' | 'pending';
   errors: readonly ErrorInfo[];
   pending: readonly PendingCleanup[];
@@ -218,23 +218,23 @@ export interface CloseReceipt {
 
 export interface Runtime {
   readonly id: string;
-  spawn(options: SpawnOptions): Promise<BotInfo>;
-  get(botId: string): Promise<BotInfo>;
-  list(filter?: BotListFilter): Promise<BotInfo[]>;
-  start(botId: string, input: string, options: { requestId: string }): Promise<InputReceipt>;
-  steer(botId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
-  interrupt(botId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>;
-  send(botId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
-  send(botId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
-  onEvent(handler: (event: BotEvent) => void): () => void;
-  stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
+  spawn(options: SpawnOptions): Promise<AgentInfo>;
+  get(agentId: string): Promise<AgentInfo>;
+  list(filter?: AgentListFilter): Promise<AgentInfo[]>;
+  start(agentId: string, input: string, options: { requestId: string }): Promise<InputReceipt>;
+  steer(agentId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
+  interrupt(agentId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>;
+  send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
+  send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
+  onEvent(handler: (event: AgentEvent) => void): () => void;
+  stop(agentId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
   readonly files: {
-    snapshot(botId: string, options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }): Promise<FileSnapshot>;
-    installStatus(botId: string, options: { requestId: string }): Promise<FileInstall | null>;
-    install(botId: string, options: { requestId: string; expected: FileSnapshot; files: FileSeed }): Promise<FileInstall>;
-    confirm(botId: string, options: { requestId: string }): Promise<FileInstall>;
-    prepare(botId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
+    snapshot(agentId: string, options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }): Promise<FileSnapshot>;
+    installStatus(agentId: string, options: { requestId: string }): Promise<FileInstall | null>;
+    install(agentId: string, options: { requestId: string; expected: FileSnapshot; files: FileSeed }): Promise<FileInstall>;
+    confirm(agentId: string, options: { requestId: string }): Promise<FileInstall>;
+    prepare(agentId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
     grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
   };
 }

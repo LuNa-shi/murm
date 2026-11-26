@@ -30,7 +30,7 @@ test('operator checker resource overrides are isolated from defaults and validat
 });
 
 test('real cgroup enforces the selected operator resource profile', {
-  skip: process.env.SWARMENV_TEST_SYSTEMD_CHECKER !== '1',
+  skip: process.env.MURM_TEST_SYSTEMD_CHECKER !== '1',
 }, async () => {
   const resources = { memory_bytes: 8 * 1024 ** 3, cpu_percent: 400, max_tasks: 128 };
   const observed = await verifyCheckerProcessLimits(resources);
@@ -40,7 +40,7 @@ test('real cgroup enforces the selected operator resource profile', {
 });
 
 test('real user transient unit enforces memory, swap, PID and CPU bounds and kills descendants', {
-  skip: process.env.SWARMENV_TEST_SYSTEMD_CHECKER !== '1',
+  skip: process.env.MURM_TEST_SYSTEMD_CHECKER !== '1',
 }, async t => {
   assert.equal(await verifyCheckerProcessLimits(), CHECKER_RESOURCE_PROFILE);
   const limits = createCheckerProcessLimits({ runtimeMs: 10_000 });
@@ -69,7 +69,7 @@ test('real user transient unit enforces memory, swap, PID and CPU bounds and kil
 });
 
 test('a bounded pending stop neither releases ownership nor prevents later confirmation', {
-  skip: process.env.SWARMENV_TEST_SYSTEMD_CHECKER !== '1',
+  skip: process.env.MURM_TEST_SYSTEMD_CHECKER !== '1',
 }, async () => {
   const limits = createCheckerProcessLimits({ runtimeMs: 2_000 });
   let clientClosed = false;
@@ -88,7 +88,7 @@ test('a bounded pending stop neither releases ownership nor prevents later confi
 });
 
 test('durable checker ownership reaps the unit and descendants after its client process dies', {
-  skip: process.env.SWARMENV_TEST_SYSTEMD_CHECKER !== '1', timeout: 15000,
+  skip: process.env.MURM_TEST_SYSTEMD_CHECKER !== '1', timeout: 15000,
 }, async t => {
   const { mkdtemp, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
@@ -116,7 +116,7 @@ test('durable checker ownership reaps the unit and descendants after its client 
 });
 
 test('recovery fences a delayed dispatch before claiming its absent unit settled', {
-  skip: process.env.SWARMENV_TEST_SYSTEMD_CHECKER !== '1', timeout: 15000,
+  skip: process.env.MURM_TEST_SYSTEMD_CHECKER !== '1', timeout: 15000,
 }, async t => {
   const { mkdtemp, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');

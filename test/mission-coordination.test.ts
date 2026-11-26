@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { ContextService } from '../src/context/context-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
-import { createMissionCoordination, createMissionSubmissionAccess } from '../src/environments/flat/mission-coordination.js';
+import { createMissionCoordination, createMissionSubmissionAccess } from '../src/harnesses/taskpool/mission-coordination.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { TaskService } from '../src/task/task-service.js';
 
@@ -24,11 +24,11 @@ async function fixture(t) {
   await workspace.create({ missionId, workspaceId, initialFiles: { 'solution.lean': 'fixed public bytes' } });
   taskService.createMission({ mission_id: missionId, goal: 'Research a fixed question', acceptance_conditions: { required_check: identity } },
     makeEnvelope({ actorRef: 'operator:test' }));
-  const bot = (id, permissions = []) => {
-    taskService.registerBot({ botId: id, coreId: id, missionId, coordinationPermissions: permissions,
+  const agent = (id, permissions = []) => {
+    taskService.registerAgent({ agentId: id, coreId: id, missionId, coordinationPermissions: permissions,
       selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
-    taskService.recordBotSandbox(id, { provider: 'controlled', sandboxId: id });
-    taskService.markBotReady(id);
+    taskService.recordAgentSandbox(id, { provider: 'controlled', sandboxId: id });
+    taskService.markAgentReady(id);
   };
   const bind = id => {
     const task = taskService.createTask({ mission_id: missionId, summary: 'Investigate an independent claim', gap: 'The Mission needs evidence for this independent claim', priority: 'medium', expected_output: 'A note',
@@ -55,16 +55,16 @@ async function fixture(t) {
     contextService.close();
     taskService.close();
   });
-  return { directory, taskService, contextService, workspace, bot, bind, store, calls, accepted, stop: () => { stopping = true; } };
+  return { directory, taskService, contextService, workspace, agent, bind, store, calls, accepted, stop: () => { stopping = true; } };
 }
 
-test('granted unbound Bot submits fixed Material references and acceptance survives submitter closure', async t => {
-  const { taskService, contextService, bot, bind, store, calls, accepted } = await fixture(t);
-  bot('producer');
+test('granted unbound Agent submits fixed Material references and acceptance survives submitter closure', async t => {
+  const { taskService, contextService, agent, bind, store, calls, accepted } = await fixture(t);
+  agent('producer');
   const source = bind('producer');
   const { material } = contextService.dispatch('context_publish_material', { material_id: 'evidence',
     content: 'PRIVATE MATERIAL BODY kept out of the submission' }, source.envelope());
-  bot('coordinator', ['mission_submit']);
+  agent('coordinator', ['mission_submit']);
   const input = { missionId, workspaceId, actorRef: 'coordinator', requestId: 'scientific-check', materialIds: [material.material_id] };
   const submission = await store.submit(input);
   assert.equal(submission.state, 'pending');
@@ -72,7 +72,7 @@ test('granted unbound Bot submits fixed Material references and acceptance survi
     relation_version: 0, disputed: false, active_successor_ids: [] }]);
   assert.doesNotMatch(JSON.stringify(submission), /PRIVATE MATERIAL BODY/);
   assert.equal(calls[0].input.files['solution.lean'].toString(), 'fixed public bytes');
-  taskService.requestBotStop('coordinator', 'selection ended after admission');
+  taskService.requestAgentStop('coordinator', 'selection ended after admission');
   calls[0].resolve({ verdict: 'PASS' });
   await store.waitForIdle();
   assert.equal(store.isAccepted(missionId), true);
@@ -80,9 +80,9 @@ test('granted unbound Bot submits fixed Material references and acceptance survi
 });
 
 test('Mission submission rejects implicit Material inputs, forged scope and stale active fences', async t => {
-  const { taskService, bot, bind, store, calls, stop } = await fixture(t);
-  bot('ordinary');
-  bot('coordinator', ['mission_submit']);
+  const { taskService, agent, bind, store, calls, stop } = await fixture(t);
+  agent('ordinary');
+  agent('coordinator', ['mission_submit']);
   const bound = bind('coordinator');
   const input = { missionId, workspaceId, actorRef: 'coordinator', materialIds: [], requestId: 'scope', taskId: bound.taskId,
     executionId: bound.executionId, fencingVersion: bound.fencingVersion };
@@ -99,10 +99,10 @@ test('Mission submission rejects implicit Material inputs, forged scope and stal
 });
 
 test('a correction committed before freeze cannot leave stale observed Material state in acceptance', async t => {
-  const { contextService, workspace, bot, bind, store, calls } = await fixture(t);
-  bot('producer'); const source = bind('producer');
+  const { contextService, workspace, agent, bind, store, calls } = await fixture(t);
+  agent('producer'); const source = bind('producer');
   const { material } = contextService.dispatch('context_publish_material', { material_id: 'changing-evidence', content: 'A specific claim' }, source.envelope());
-  bot('coordinator', ['mission_submit']);
+  agent('coordinator', ['mission_submit']);
   let release, entered;
   const held = new Promise(resolve => { release = resolve; });
   const entering = new Promise(resolve => { entered = resolve; });
@@ -120,12 +120,12 @@ test('a correction committed before freeze cannot leave stale observed Material 
 });
 
 test('unreadable selected attachment cannot start Mission checking', async t => {
-  const { contextService, bot, bind, store, calls } = await fixture(t);
-  bot('producer'); const source = bind('producer');
+  const { contextService, agent, bind, store, calls } = await fixture(t);
+  agent('producer'); const source = bind('producer');
   const material = contextService.dispatch('context_publish_material', { content: 'Selected evidence attachment',
     attachments: [{ name: 'evidence.txt', content_base64: Buffer.from('fixed evidence').toString('base64') }] }, source.envelope()).material;
   contextService.db.prepare('UPDATE material_attachments SET bytes = ? WHERE material_id = ?').run(Buffer.from('corrupted bytes'), material.material_id);
-  bot('coordinator', ['mission_submit']);
+  agent('coordinator', ['mission_submit']);
   const result = await store.submit({ missionId, workspaceId, actorRef: 'coordinator', materialIds: [material.material_id], requestId: 'unreadable-input' });
   assert.equal(result.state, 'error');
   assert.deepEqual(calls, []);
@@ -133,8 +133,8 @@ test('unreadable selected attachment cannot start Mission checking', async t => 
 
 
 test('independent public contributions merge before a failed Mission check and after its freeze releases', async t => {
-  const { taskService, workspace, bot, bind, store, calls } = await fixture(t);
-  bot('coordinator', ['mission_submit']);
+  const { taskService, workspace, agent, bind, store, calls } = await fixture(t);
+  agent('coordinator', ['mission_submit']);
   const bound = bind('coordinator');
   const input = { missionId, workspaceId, actorRef: 'coordinator', materialIds: [],
     taskId: bound.taskId, executionId: bound.executionId, fencingVersion: bound.fencingVersion };
@@ -179,9 +179,9 @@ test('independent public contributions merge before a failed Mission check and a
 });
 
 test('Mission coordination pins current main and explicit empty Materials and enforces acceptance across SQLite connections', async t => {
-  const { directory, taskService, workspace, bot, bind, store, calls } = await fixture(t);
+  const { directory, taskService, workspace, agent, bind, store, calls } = await fixture(t);
   taskService.setMissionStopReader(id => store.isAccepted(id));
-  bot('coordinator', ['mission_submit']);
+  agent('coordinator', ['mission_submit']);
   const bound = bind('coordinator');
   const input = { missionId, workspaceId, actorRef: 'coordinator', taskId: bound.taskId,
     executionId: bound.executionId, fencingVersion: bound.fencingVersion, requestId: 'accepted-snapshot' };
@@ -215,16 +215,16 @@ test('Mission coordination pins current main and explicit empty Materials and en
 });
 
 
-test('retained Bridge uses host-owned Flat submission and observes stop changes without Runtime forwarding', async t => {
+test('retained Bridge uses host-owned TaskPool submission and observes stop changes without Runtime forwarding', async t => {
   const { taskService, contextService, store, calls } = await fixture(t);
   const start = async (bridge, id) => {
     await bridge.start();
     t.after(() => bridge.stop());
-    taskService.registerBot({ botId: id, coreId: bridge.coreId, missionId, coordinationPermissions: ['mission_submit'],
+    taskService.registerAgent({ agentId: id, coreId: bridge.coreId, missionId, coordinationPermissions: ['mission_submit'],
       selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
-    bridge.startBotIdentity(id);
-    taskService.recordBotSandbox(id, { provider: 'controlled', sandboxId: id });
-    taskService.markBotReady(id);
+    bridge.startAgentIdentity(id);
+    taskService.recordAgentSandbox(id, { provider: 'controlled', sandboxId: id });
+    taskService.markAgentReady(id);
   };
   let stopped = false;
   const bridge = new ServicesBridge({ taskService, contextService, runtime: {}, coreId: 'core:submission',
@@ -234,7 +234,7 @@ test('retained Bridge uses host-owned Flat submission and observes stop changes 
     } }),
   });
   await start(bridge, 'coordinator');
-  const receipt = await bridge.call({ operation: 'mission_submit', operation_id: 'flat-host-submission', payload: { material_ids: [] } });
+  const receipt = await bridge.call({ operation: 'mission_submit', operation_id: 'taskpool-host-submission', payload: { material_ids: [] } });
   assert.equal(receipt.state, 'pending');
   assert.equal(receipt.workspace_id, workspaceId);
   assert.equal(receipt.current.mission_state, 'open');

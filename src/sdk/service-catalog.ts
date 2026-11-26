@@ -15,7 +15,7 @@ const TASK_REVISION_FIELDS = {
 const TOOL_DEFINITIONS = Object.freeze([
   {
     name: 'catalog_list_services', service: 'catalog', operation: 'list_services', version: '1.0',
-    description: 'List every available SwarmEnv Service and its tool count.',
+    description: 'List every available murm Service and its tool count.',
     scope: 'public-read', side_effect: false,
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
@@ -108,8 +108,8 @@ const TOOL_DEFINITIONS = Object.freeze([
 // Runtime-owned tools are kept in the service catalog for authenticated internal calls.
 const publicTaskTools = [
   {
-    name: 'bot_exit', service: 'task', operation: 'bot_exit', version: '1.0',
-    description: 'End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.',
+    name: 'agent_exit', service: 'task', operation: 'agent_exit', version: '1.0',
+    description: 'End this unbound Agent after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.',
     scope: 'task-write', side_effect: true,
     parameters: { type: 'object', required: ['reason'], properties: { reason: { type: 'string', enum: ['no-work', 'selection-budget'] } }, additionalProperties: false },
   },
@@ -121,7 +121,7 @@ const publicTaskTools = [
   },
   {
     name: 'task_take', service: 'task', operation: 'task_take', version: '1.0',
-    description: 'Take an existing Task in this Mission using the caller Bot and Core.',
+    description: 'Take an existing Task in this Mission using the caller Agent and Core.',
     scope: 'task-write', side_effect: true,
     parameters: { type: 'object', required: ['task_id'], properties: { task_id: { type: 'string' }, take_key: { type: 'string' }, input_material_refs: { type: 'array', items: { type: 'string' } } }, additionalProperties: false },
   },
@@ -145,7 +145,7 @@ const publicTaskTools = [
   },
   {
     name: 'task_create', service: 'task', operation: 'task_create', version: '1.0',
-    description: 'Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Bot proposals require explicit Environment registration and current Mission authority. Optional base_revision pins input; otherwise take uses main.',
+    description: 'Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Agent proposals require explicit Harness registration and current Mission authority. Optional base_revision pins input; otherwise take uses main.',
     scope: 'task-write', side_effect: true,
     parameters: {
       type: 'object',
@@ -165,7 +165,7 @@ const publicTaskTools = [
   },
   {
     name: 'task_revise', service: 'task', operation: 'task_revise', version: '1.0',
-    description: 'An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.',
+    description: 'An UNBOUND Agent may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.',
     scope: 'task-write', side_effect: true,
     parameters: { type: 'object', required: ['task_id', 'expected_spec_version', 'expected_state_version', 'reason', 'changes'], properties: {
       task_id: { type: 'string' }, expected_spec_version: { type: 'integer', minimum: 1 }, expected_state_version: { type: 'integer', minimum: 0 },
@@ -191,7 +191,7 @@ const publicTaskTools = [
 
   {
     name: 'task_cancel', service: 'task', operation: 'task_cancel', version: '1.0',
-    description: 'An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.',
+    description: 'An UNBOUND Agent may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.',
     scope: 'mission-write', side_effect: true,
     parameters: { type: 'object', required: ['task_id', 'expected_spec_version', 'expected_state_version', 'reason'], properties: {
       task_id: { type: 'string' }, expected_spec_version: { type: 'integer', minimum: 1 }, expected_state_version: { type: 'integer', minimum: 0 },

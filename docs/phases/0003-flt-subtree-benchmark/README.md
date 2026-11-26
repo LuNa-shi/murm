@@ -2,7 +2,7 @@
 
 Target design linked to [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135).
 The owner authorized the root-only direction, all-checkpoint support and use of
-SwarmEnv's existing Workspace/Task/Material/Judge coordination. The latest
+murm's existing Workspace/Task/Material/Judge coordination. The latest
 execution priority is **Q20 only**, one problem at a time; Q100 verification and
 experiments are deferred. Implementation and validation status belong to the
 Issue/PR, not this design attachment.

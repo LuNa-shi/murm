@@ -8,7 +8,7 @@ Run FATE-H #2 once with four peers in shared mode. The shared Added System Promp
 
 | Field | Frozen value |
 | --- | --- |
-| Implementation | `69ede68417b4dcac77f6bc5caa5e5dab3db1a265`. [Shared startup and task input](../architecture/prompts/09-scalemas-environment.md#fate-startup-in-the-shared-condition). |
+| Implementation | `69ede68417b4dcac77f6bc5caa5e5dab3db1a265`. [Shared startup and task input](https://github.com/LuNa-shi/SwarmEnv/blob/781428d11add844a60492f5654cca7106ee4b80d/docs/architecture/prompts/09-scalemas-environment.md#fate-startup-in-the-shared-condition). |
 | Package and Worker | Installed `@swarmenv/core@0.2.0` tarball SHA-256 `1528ff66583a3fc064e8d7845d638c269e2c404d3bbe2ef6f1db709b18da6da3`. Pi 1.3.0 Worker image `sha256:b82fe2e8d969b2519645226bb5c1b6f0792c856295dc04d683e4942e052109ca`. |
 | Prompt SHA-256 | Staged system `26b93bd0e7620c50d3270c23be5b958366513acacefe7a630803b0d3269346b0`. Model developer text including Pi cwd `9ebdf19cc52e3625e14ed5ebd7a1ea1ac0bf0a98fb530618a5073fd430a58b83`. Added guidance `2e68c68bf332ee8866859395534b891e78fc6fa0f47176024a2018a43bd73038`. User input `c52a3d0689bda0ec046a846342b3539d7247acaba51ec595a8767e75ec6dc3bf`. |
 | Service SHA-256 | FATE and shared substrate manifest array `d852e951370a9219ab32fe86be68e1d53c0e260e45e867b9983ba56c7b51f195`. Service, operation and input/output schema tuples `9efde09249c609fede23a63ba5c0ebf8d8441f6b99206718aba18056dbb09291`. |

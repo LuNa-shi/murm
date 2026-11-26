@@ -10,9 +10,9 @@ const directory = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(directory, '../..');
 const upstreamTree = resolve(process.env.PROGRAMBENCH_EVALUATOR_DIR ?? join(privateDirectory, 'upstream'));
 const runnerNames = ['case.ts', 'local-integration.ts', 'run-window.ts', 'source-checkpoint.ts', 'pack-submission.py',
-  'pastel-open.ts', 'pastel-open-subagents.ts', 'pastel-open-flat.ts', 'pastel-open-agensh.ts',
+  'pastel-open.ts', 'pastel-open-subagents.ts', 'pastel-open-taskpool.ts', 'pastel-open-peermesh.ts',
   'pastel-matrix.ts', 'Dockerfile'];
-const modes = ['subagents', 'flat', 'agensh'];
+const modes = ['subagents', 'taskpool', 'peermesh'];
 const provider = 'kimi_proxy';
 const model = 'k3';
 const approvedWindowMs = 1_800_000;
@@ -112,7 +112,7 @@ async function inspectEvaluatorInputs() {
 
 async function hostDistributionDigest() {
   const dist = join(repository, 'dist');
-  const roots = ['src', 'examples/subagents-environment', 'test-support/subagents', 'test/fixtures'];
+  const roots = ['src', 'examples/subagents', 'test-support/subagents', 'test/fixtures'];
   const trees = await Promise.all(roots.map(root => readdir(join(dist, root), { recursive: true, withFileTypes: true })));
   const files = trees.flat().filter(entry => entry.isFile()).map(entry =>
     relative(dist, join(entry.parentPath, entry.name))).sort();
@@ -128,15 +128,15 @@ export async function inspectFrozenInputs(worker) {
   requireThat(!treeStatus, 'PINNED_CHECKOUT_DIRTY');
   // Load distribution modules only after a clean build. dist is ignored by Git.
   await exec(process.execPath, ['scripts/build.ts'], { cwd: repository, timeout: 120_000, maxBuffer: 4 * 1024 ** 2 });
-  const [{ assertShippedModelPair }, { resolveAgenshImages }] = await Promise.all([
-    import('../../dist/src/agent/model-catalog.js'), import('./pastel-open-agensh.ts'),
+  const [{ assertShippedModelPair }, { resolvePeerMeshImages }] = await Promise.all([
+    import('../../dist/src/agent/model-catalog.js'), import('./pastel-open-peermesh.ts'),
   ]);
-  const [localWorker, runnerFiles, catalog, evaluatorPins, agenshImages, hostDistributionSha256] = await Promise.all([
+  const [localWorker, runnerFiles, catalog, evaluatorPins, peerMeshImages, hostDistributionSha256] = await Promise.all([
     exec('docker', ['image', 'inspect', worker, '--format', '{{json .}}'], { timeout: 10_000 }),
     Promise.all(runnerNames.map(async name => [name, sha256(await readFile(join(directory, name === 'run-window.ts' ? '../shared/run-window.ts' : name)))])),
     assertShippedModelPair({ provider, model }),
     inspectEvaluatorInputs(),
-    resolveAgenshImages(),
+    resolvePeerMeshImages(),
     hostDistributionDigest(),
   ]);
   requireThat(await git(repository, 'rev-parse', 'HEAD') === code &&
@@ -144,9 +144,9 @@ export async function inspectFrozenInputs(worker) {
   const workerImage = JSON.parse(localWorker.stdout);
   const labels = workerImage.Config?.Labels;
   requireThat(workerImage.Id === worker && labels?.['org.opencontainers.image.revision'] === code &&
-    labels['org.swarmenv.benchmark.instance'] === instance &&
-    labels['org.swarmenv.benchmark.cleanroom'] === evaluatorDigest, 'PINNED_WORKER_MISMATCH');
-  return { code, worker, instance, ...evaluatorPins, provider, model, agenshImages, hostDistributionSha256,
+    labels['org.murm.benchmark.instance'] === instance &&
+    labels['org.murm.benchmark.cleanroom'] === evaluatorDigest, 'PINNED_WORKER_MISMATCH');
+  return { code, worker, instance, ...evaluatorPins, provider, model, peerMeshImages, hostDistributionSha256,
     modelCatalogSha256: catalog.sha256, taskSha256: sha256(task), runnerFiles: Object.fromEntries(runnerFiles) };
 }
 
@@ -166,12 +166,12 @@ export async function auditPastelReceipt(receipt, { kind, durationMs, maxRequest
       row.elapsedMs < durationMs && (maxOutputTokens === null ||
         (row.requestedOutputTokens >= 16 && row.requestedOutputTokens <= maxOutputTokens))),
   'MODEL_ADMISSION_OUT_OF_BOUNDS');
-  const bots = (receipt.modelUsage ?? []).flatMap(row => row.bots);
-  check(bots.length >= (kind === 'hosted_k3' ? 3 : 2) && bots.every(row => row.pending === 0 &&
+  const agents = (receipt.modelUsage ?? []).flatMap(row => row.agents);
+  check(agents.length >= (kind === 'hosted_k3' ? 3 : 2) && agents.every(row => row.pending === 0 &&
     (maxOutputTokens === null || (row.maxObservedOutputTokens ?? 0) <= maxOutputTokens)),
     'MODEL_LEDGER_INCOMPLETE');
   check(receipt.cleanup === 'complete' && Array.isArray(receipt.remainingContainers) && !receipt.remainingContainers.length &&
-    (receipt.mode !== 'agensh' || (receipt.facilityCleanup === 'complete' && receipt.remainingFacilities?.length === 0)), 'CLEANUP_UNCONFIRMED');
+    (receipt.mode !== 'peermesh' || (receipt.facilityCleanup === 'complete' && receipt.remainingFacilities?.length === 0)), 'CLEANUP_UNCONFIRMED');
 
   const final = window.latestCheckpoint;
   const timely = final && final.observedElapsedMs >= 0 && final.persistedElapsedMs >= final.observedElapsedMs &&
@@ -194,14 +194,14 @@ export async function auditPastelReceipt(receipt, { kind, durationMs, maxRequest
   const frozen = Boolean(files);
   check(frozen, 'CANDIDATE_UNVERIFIED');
   const matching = (receipt.evidence ?? []).filter(row => row.candidateSha256 === final?.sha256);
-  const meteredBots = new Set(bots.filter(row => row.metered > 0).map(row => row.botId));
-  const adopted = matching.flatMap(row => meteredBots.has(row.by) ? row.adopted.filter(item =>
-    item.botId !== row.by && meteredBots.has(item.botId) && Object.hasOwn(files ?? {}, item.file) &&
+  const meteredAgents = new Set(agents.filter(row => row.metered > 0).map(row => row.agentId));
+  const adopted = matching.flatMap(row => meteredAgents.has(row.by) ? row.adopted.filter(item =>
+    item.agentId !== row.by && meteredAgents.has(item.agentId) && Object.hasOwn(files ?? {}, item.file) &&
     files[item.file] === item.sha256) : []);
-  check(adopted.length > 0, 'CROSS_BOT_ADOPTION_UNVERIFIED');
+  check(adopted.length > 0, 'CROSS_AGENT_ADOPTION_UNVERIFIED');
   return { failures, frozen, checkpointMs: final?.persistedElapsedMs, forwardedRequests: attempts.length,
-    meteredBots: meteredBots.size, unknownUsageRequests: bots.reduce((sum, row) => sum + row.unknown, 0),
-    verifiedContributors: [...new Set(adopted.map(row => row.botId))].length };
+    meteredAgents: meteredAgents.size, unknownUsageRequests: agents.reduce((sum, row) => sum + row.unknown, 0),
+    verifiedContributors: [...new Set(adopted.map(row => row.agentId))].length };
 }
 
 async function evaluate(outputDir) {
@@ -237,7 +237,7 @@ function summarizeEvaluation(result) {
 
 /** Call only after checking the human decision linked in the experiment registry. */
 async function runHostedMatrix({ pins, issue, experiments, catalogPath, registryPath }) {
-  requireThat(/^https:\/\/github\.com\/LuNa-shi\/SwarmEnv\/issues\/[1-9][0-9]*$/.test(issue ?? ''), 'ISSUE_LINK_REQUIRED');
+  requireThat(/^https:\/\/github\.com\/LuNa-shi\/murm\/issues\/[1-9][0-9]*$/.test(issue ?? ''), 'ISSUE_LINK_REQUIRED');
   requireThat(modes.every(mode => /^EXP-[0-9]{8}-[0-9]{2}$/.test(experiments?.[mode] ?? '')) &&
     new Set(modes.map(mode => experiments[mode])).size === modes.length, 'THREE_EXPERIMENT_IDS_REQUIRED');
   const registry = await readFile(registryPath, 'utf8');
@@ -276,7 +276,7 @@ async function runHostedMatrix({ pins, issue, experiments, catalogPath, registry
     Object.assign(row, { status: 'launching', submittedAt: new Date().toISOString() });
     console.log(JSON.stringify({ mode, experiment, stage: row.status, matrixDir }));
     try {
-      const { outputDir, receipt } = await runPastel({ ...policy, mode, image: pins.worker, upstream, upstreamKind: policy.kind, agenshImages: pins.agenshImages,
+      const { outputDir, receipt } = await runPastel({ ...policy, mode, image: pins.worker, upstream, upstreamKind: policy.kind, peerMeshImages: pins.peerMeshImages,
         async onStart({ startedAt, runtimeId }) {
           Object.assign(row, { status: 'running', startedAt, runtimeId });
           console.log(JSON.stringify({ mode, experiment, stage: row.status, startedAt, runtimeId, matrixDir }));

@@ -10,7 +10,7 @@ import { collectCoreWorkDir } from '../scripts/core-collection.js';
 const execute = promisify(execFile);
 const spec = { paths: ['.'], includeGit: true, maxBytes: 1024 * 1024, required: true };
 
-test('stopped Bot collection preserves empty directories, binary work and unpushed Git history', async t => {
+test('stopped Agent collection preserves empty directories, binary work and unpushed Git history', async t => {
   const root = await mkdtemp(join(tmpdir(), 'core-collection-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, 'empty'));

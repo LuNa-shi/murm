@@ -1,5 +1,5 @@
-// Run by the trusted worker as the Bot UID, with fixed code and a clean env.
-// Same-UID /proc reads work without granting the Bot or worker CAP_SYS_PTRACE.
+// Run by the trusted worker as the Agent UID, with fixed code and a clean env.
+// Same-UID /proc reads work without granting the Agent or worker CAP_SYS_PTRACE.
 import { readdir, readFile, readlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 

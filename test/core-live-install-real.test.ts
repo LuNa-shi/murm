@@ -6,11 +6,11 @@ import { promisify } from 'node:util';
 import { test } from 'node:test';
 
 test('native Worker holds writers through live install and rejects an open proof descriptor', {
-  skip: process.env.SWARMENV_CORE_LIVE_INSTALL_TEST !== '1', timeout: 35000,
+  skip: process.env.MURM_CORE_LIVE_INSTALL_TEST !== '1', timeout: 35000,
 }, async t => {
-  const image = process.env.SWARMENV_TEST_AGENT_IMAGE;
+  const image = process.env.MURM_TEST_AGENT_IMAGE;
   assert.ok(image);
-  const name = `swarmenv-live-install-${randomUUID()}`;
+  const name = `murm-live-install-${randomUUID()}`;
   const run = promisify(execFile);
   t.after(async () => {
     await run('docker', ['rm', '--force', name], { timeout: 5000 }).catch(() => undefined);
@@ -26,10 +26,10 @@ test('native Worker holds writers through live install and rejects an open proof
     import {spawn} from 'node:child_process';
     import {mkdir,readFile,writeFile,access} from 'node:fs/promises';
     import {setTimeout as delay} from 'node:timers/promises';
-    import {decodeFileSeed} from '/opt/swarmenv/dist/scripts/core-file-seed.js';
+    import {decodeFileSeed} from '/opt/murm/dist/scripts/core-file-seed.js';
     await mkdir('/tmp/live-bin');
     await writeFile('/tmp/live-bin/pi','#!/usr/bin/env node\\n'+${JSON.stringify(fakePi)},{mode:0o755});
-    const worker=spawn(process.execPath,['/opt/swarmenv/agent-worker.mjs','--token','live-test'],{stdio:'ignore',env:{...process.env,PATH:'/tmp/live-bin:'+process.env.PATH}});
+    const worker=spawn(process.execPath,['/opt/murm/agent-worker.mjs','--token','live-test'],{stdio:'ignore',env:{...process.env,PATH:'/tmp/live-bin:'+process.env.PATH}});
     const origin='http://127.0.0.1:44100';
     const post=async(path,body)=>{const r=await fetch(origin+path,{method:'POST',headers:{authorization:'Bearer live-test','content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(5000)});return {status:r.status,...await r.json()};};
     const wait=async(predicate)=>{const until=Date.now()+4000;while(!await predicate()){assert.ok(Date.now()<until,'wait deadline');await delay(10);}};
@@ -37,7 +37,7 @@ test('native Worker holds writers through live install and rejects an open proof
     try{
       await wait(()=>fetch(origin+'/health').then(r=>r.ok,()=>false));
       const seed={'proof.lean':{encoding:'utf8',data:'original'}};
-      const start=await post('/start',{contract_version:'swarmenv-core-v1',resources:[],command:'pi',args:[],system_prompt:'Controlled file installation probe',system_prompt_path:'/workspace/runtime/profile-prompt.txt',files:seed,writable:true});
+      const start=await post('/start',{contract_version:'murm-core-v1',resources:[],command:'pi',args:[],system_prompt:'Controlled file installation probe',system_prompt_path:'/workspace/runtime/profile-prompt.txt',files:seed,writable:true});
       assert.equal(start.status,200);
       await wait(()=>exists('/workspace/runtime/home/beat'));
       const pid=(await fetch(origin+'/health').then(r=>r.json())).pid;
@@ -67,7 +67,7 @@ test('native Worker holds writers through live install and rejects an open proof
     }finally{worker.kill('SIGKILL');}
   `;
   const result = await run('docker', ['run', '--rm', '--name', name, '--cpus', '1', '--memory', '512m', '--pids-limit', '64', '--network', 'none',
-    '--mount', `type=bind,source=${resolve('dist')},target=/opt/swarmenv/dist,readonly`, '--entrypoint', 'node', image, '--input-type=module', '-e', probe],
+    '--mount', `type=bind,source=${resolve('dist')},target=/opt/murm/dist,readonly`, '--entrypoint', 'node', image, '--input-type=module', '-e', probe],
     { timeout: 30000, maxBuffer: 1024 * 1024 });
   assert.deepEqual(JSON.parse(result.stdout.trim()), { sameProcess: true, held: true, binary: true, descriptorGuard: true });
 });

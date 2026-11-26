@@ -1,22 +1,22 @@
-# SwarmEnv implementation manual
+# murm implementation manual
 
 This manual describes the implementation in this tree. Generated fingerprints identify the mapped source files. The associated GitHub Issues and PRs record the revisions used for acceptance, integration and release.
 
 This directory is written for the owner who wants to understand the implementation **without reading source code**. The narrative explains execution order and behavior; the reference pages contain full repository-controlled prompts, tool contracts and storage definitions. Source and test links are evidence for maintainers, not required reading to fill in missing explanations.
 
-The programmable [Core Runtime](15-core-runtime.md) and [Pi/OpenSandbox backend](16-pi-opensandbox-backend.md) implement the Phase 0005 resource and input boundaries. Environment modules own collaboration and domain policies. The [foreground host](17-environment-reporting.md#foreground-environment-control) reuses flat and agensh assembly for input, status and stop. The standalone Notes example uses installed public exports. Their actual verification and remaining acceptance conditions belong to the linked implementation Issues.
+The programmable [Core Runtime](15-core-runtime.md) and [Pi/OpenSandbox backend](16-pi-opensandbox-backend.md) implement the Phase 0005 resource and input boundaries. Harness modules own collaboration and domain policies. The [foreground host](17-harness-reporting.md#foreground-harness-control) reuses TaskPool and PeerMesh assembly for input, status and stop. The standalone Notes example uses installed public exports. Their actual verification and remaining acceptance conditions belong to the linked implementation Issues.
 
-The flat domain services retain the Mission/Task/Execution/Material/Workspace contract described by chapters 01–05. Whole-project diagnostics, checked merges and trusted Mission acceptance have separate authorities. The legacy domain Runtime remains directly callable. Current services retain private row journals, while timestamp-selected historical copies, experiment reconstruction and archived service-schema conversion have been retired. The benchmark runner, fixed mathematical datasets and historical report importer have been removed and are preserved in the fixed research revision. Historical experiment evidence retains its recorded implementation baseline.
+The TaskPool domain services retain the Mission/Task/Execution/Material/Workspace contract described by chapters 01–05. Whole-project diagnostics, checked merges and trusted Mission acceptance have separate authorities. The legacy domain Runtime remains directly callable. Current services retain private row journals, while timestamp-selected historical copies, experiment reconstruction and archived service-schema conversion have been retired. The benchmark runner, fixed mathematical datasets and historical report importer have been removed and are preserved in the fixed research revision. Historical experiment evidence retains its recorded implementation baseline.
 
 ## Reading map
 
-Read 00 first, then 07 for current entry points. Read 15–21 for the programmable Core and Environment flows, and 01–06 for shared and legacy domain mechanisms. Use 08–12 as full references and a review checklist.
+Read 00 first, then 07 for current entry points. Read 15–21 for the programmable Core and Harness flows, and 01–06 for shared and legacy domain mechanisms. Use 08–12 as full references and a review checklist.
 
 | Chapter | Questions it answers |
 |---|---|
 | [00 System and a complete run](00-overview.md) | Who owns which facts? What happens from launch through collaboration, checking, handoff and shutdown? |
-| [01 Agent Core](01-agent-core.md) | How is Pi launched? What does a fresh Bot receive? How are tools installed, authorized and routed? |
-| [02 Execution and control loops](02-execution.md) | How do the flat controller, Core-backed ownership and retained domain Runtime handle Execution states, timers and recovery? |
+| [01 Agent Core](01-agent-core.md) | How is Pi launched? What does a fresh Agent receive? How are tools installed, authorized and routed? |
+| [02 Execution and control loops](02-execution.md) | How do the TaskPool controller, Core-backed ownership and retained domain Runtime handle Execution states, timers and recovery? |
 | [03 Mission and Task](03-mission-task.md) | What fields are persisted? How are independent Mission Tasks proposed, taken, completed, blocked and closed, and which historical paths remain executable? |
 | [04 Services](04-services.md) | What happens inside a named call? How do Context, Judge, Registry, remote services and Mathlib search work? |
 | [05 Workspace and continuity](05-workspace-continuity.md) | How do files, revisions, Git, snapshots, Sandbox, compaction, recovery and handoff preserve work? |
@@ -28,12 +28,12 @@ Read 00 first, then 07 for current entry points. Read 15–21 for the programmab
 | [11 Storage reference](11-storage-reference.md) | Complete database definitions, keys, indexes, ownership and persistence boundaries |
 | [12 Source coverage](12-code-coverage.md) | Runtime/configuration/build source files, their role, chapter ownership and fingerprints; explicit generated/test/data classifications |
 | [13 Private history](13-historical-resume.md) | How are service database history and current Workspace publication records retained and verified? |
-| [15 Programmable Core Runtime](15-core-runtime.md) | How does a host assemble and run a Task-free Bot, subscribe to input results and close the run? |
+| [15 Programmable Core Runtime](15-core-runtime.md) | How does a host assemble and run a Task-free Agent, subscribe to input results and close the run? |
 | [16 Pi/OpenSandbox backend](16-pi-opensandbox-backend.md) | How does Core connect its identity, a guest, a Pi Session and separately confirmed stop and destruction? |
-| [17 Runtime evidence and Environment reports](17-environment-reporting.md) | How do the foreground host, Notes and subagents run? How do reports record input, events, Service operations and cleanup failures? |
-| [18 Agensh Environment](18-agensh-environment.md) | How do peers start a project, share work and merge through separate accounts, and retain their results at shutdown? |
-| [19 Fixed scaleMAS peer pool](19-scalemas-environment.md) | How does a fixed pool publish immutable content, adopt ranked references and continue its Sessions without Tasks? |
-| [20 Fixed lead-helper Environment](20-lead-helper-environment.md) | How do Board transactions, restricted Git identities, direction adoption and cleanup work? |
+| [17 Runtime evidence and Harness reports](17-harness-reporting.md) | How do the foreground host, Notes and Subagents run? How do reports record input, events, Service operations and cleanup failures? |
+| [18 PeerMesh Harness](18-peermesh-harness.md) | How do peers start a project, share work and merge through separate accounts, and retain their results at shutdown? |
+| [19 Fixed Substrate peer pool](19-substrate-harness.md) | How does a fixed pool publish immutable content, adopt ranked references and continue its Sessions without Tasks? |
+| [20 Fixed Lead-Worker Harness](20-lead-worker-harness.md) | How do Board transactions, restricted Git identities, direction adoption and cleanup work? |
 | [21 Native acceptance evidence boundary](21-hour-matrix.md) | Where are the five original long-run proofs retained, and which ordinary workflows remain after removing experiment-only runners? |
 
 ## What complete means here

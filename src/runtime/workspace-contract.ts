@@ -1,5 +1,5 @@
 import { isAbsolute, resolve } from 'node:path';
-import { SwarmEnvError } from '../errors.js';
+import { MurmError } from '../errors.js';
 
 /**
  * Errors that identify a Workspace contract failure and include a remediation
@@ -22,7 +22,7 @@ const INTERNAL_RUNTIME_OUTPUTS = Object.freeze(new Set(['.pi/settings.json']));
 
 function requiredString(value: any, field: any) {
   if (typeof value !== 'string' || value.length === 0) {
-    throw new SwarmEnvError('INVALID_CONTRACT', `${field} is required`);
+    throw new MurmError('INVALID_CONTRACT', `${field} is required`);
   }
   return value;
 }
@@ -31,14 +31,14 @@ function requiredString(value: any, field: any) {
 export function normalizeWorkspacePath(value: any, field: any = 'workspace path') {
   const path = requiredString(value, field);
   if (isAbsolute(path) || path.includes('\0')) {
-    throw new SwarmEnvError('INVALID_CONTRACT', `${field} must be relative`, {
+    throw new MurmError('INVALID_CONTRACT', `${field} must be relative`, {
       path,
       remediation: 'Use a Workspace-relative path declared by the Task contract.',
     });
   }
   const portable = path.replaceAll('\\', '/');
   if (portable.split('/').includes('..')) {
-    throw new SwarmEnvError(WORKSPACE_ERROR_CODES.PATH_FORBIDDEN, `${field} cannot address a parent directory`, {
+    throw new MurmError(WORKSPACE_ERROR_CODES.PATH_FORBIDDEN, `${field} cannot address a parent directory`, {
       path,
       path_class: 'forbidden',
       remediation: 'Use a relative path below the current Task Workspace.',
@@ -46,7 +46,7 @@ export function normalizeWorkspacePath(value: any, field: any = 'workspace path'
   }
   const normalized = resolve('/', portable).slice(1);
   if (!normalized || normalized === META_DIR || normalized.startsWith(`${META_DIR}/`)) {
-    throw new SwarmEnvError(WORKSPACE_ERROR_CODES.PATH_FORBIDDEN, `${field} cannot address Runtime metadata`, {
+    throw new MurmError(WORKSPACE_ERROR_CODES.PATH_FORBIDDEN, `${field} cannot address Runtime metadata`, {
       path,
       path_class: 'forbidden',
       remediation: 'Use a project input or declared output path; .swarm is Runtime-owned.',
@@ -58,17 +58,17 @@ export function normalizeWorkspacePath(value: any, field: any = 'workspace path'
 function pathEntries(value: any, field: any) {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) {
-    throw new SwarmEnvError('INVALID_CONTRACT', `${field} must be an array of paths`);
+    throw new MurmError('INVALID_CONTRACT', `${field} must be an array of paths`);
   }
   return value.map((entry: any, index: any) => {
     if (typeof entry === 'string') return { path: normalizeWorkspacePath(entry, `${field}[${index}]`) };
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-      throw new SwarmEnvError('INVALID_CONTRACT', `${field}[${index}] must be a path or path descriptor`);
+      throw new MurmError('INVALID_CONTRACT', `${field}[${index}] must be a path or path descriptor`);
     }
     const path = normalizeWorkspacePath(entry.path, `${field}[${index}].path`);
     const contentHash = entry.content_hash ?? null;
     if (contentHash !== null && (typeof contentHash !== 'string' || !/^[0-9a-f]{64}$/i.test(contentHash))) {
-      throw new SwarmEnvError('INVALID_CONTRACT', `${field}[${index}].content_hash must be a SHA-256 hash`);
+      throw new MurmError('INVALID_CONTRACT', `${field}[${index}].content_hash must be a SHA-256 hash`);
     }
     return {
       path,
@@ -80,7 +80,7 @@ function pathEntries(value: any, field: any) {
 function unique(entries: any, field: any) {
   const seen = new Set();
   for (const entry of entries) {
-    if (seen.has(entry.path)) throw new SwarmEnvError('INVALID_CONTRACT', `${field} contains duplicate path: ${entry.path}`);
+    if (seen.has(entry.path)) throw new MurmError('INVALID_CONTRACT', `${field} contains duplicate path: ${entry.path}`);
     seen.add(entry.path);
   }
   return entries;
@@ -94,7 +94,7 @@ function unique(entries: any, field: any) {
  */
 export function normalizeWorkspaceContract(workspace: any = {}) {
   if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace)) {
-    throw new SwarmEnvError('INVALID_CONTRACT', 'Task workspace contract must be an object');
+    throw new MurmError('INVALID_CONTRACT', 'Task workspace contract must be an object');
   }
   const source = workspace;
   const required = pathEntries(source.required_inputs, 'required_inputs');
@@ -111,12 +111,12 @@ export function normalizeWorkspaceContract(workspace: any = {}) {
   const requiredPaths = new Set(requiredInputs.map((entry: any) => entry.path));
   for (const entry of allowedOutputs ?? []) {
     if (requiredPaths.has(entry.path)) {
-      throw new SwarmEnvError('INVALID_CONTRACT', `Workspace path cannot be both required input and allowed output: ${entry.path}`);
+      throw new MurmError('INVALID_CONTRACT', `Workspace path cannot be both required input and allowed output: ${entry.path}`);
     }
   }
   for (const entry of forbidden) {
     if (requiredPaths.has(entry.path) || allowedOutputs?.some((output: any) => output.path === entry.path)) {
-      throw new SwarmEnvError('INVALID_CONTRACT', `Workspace path cannot be both forbidden and usable: ${entry.path}`);
+      throw new MurmError('INVALID_CONTRACT', `Workspace path cannot be both forbidden and usable: ${entry.path}`);
     }
   }
   return {
@@ -141,7 +141,7 @@ export function assertReadableWorkspacePath(path: any, contract: any, existingPa
   const normalized = normalizeWorkspacePath(path);
   const pathClass = workspacePathClass(normalized, contract);
   if (pathClass === 'forbidden') {
-    throw new SwarmEnvError(WORKSPACE_ERROR_CODES.PATH_FORBIDDEN, `Workspace path is forbidden: ${normalized}`, {
+    throw new MurmError(WORKSPACE_ERROR_CODES.PATH_FORBIDDEN, `Workspace path is forbidden: ${normalized}`, {
       path: normalized,
       path_class: pathClass,
       remediation: 'Read a required input or a file listed by workspace_list_files.',
@@ -149,7 +149,7 @@ export function assertReadableWorkspacePath(path: any, contract: any, existingPa
   }
   const required = contract?.required_inputs?.find((entry: any) => entry.path === normalized);
   if (required && !existingPaths.has(normalized)) {
-    throw new SwarmEnvError(WORKSPACE_ERROR_CODES.INPUT_MISSING, `Required Workspace input is missing: ${normalized}`, {
+    throw new MurmError(WORKSPACE_ERROR_CODES.INPUT_MISSING, `Required Workspace input is missing: ${normalized}`, {
       path: normalized,
       path_class: pathClass,
       remediation: 'Fix the Task fixture or Workspace manifest before reading this required input.',
@@ -163,14 +163,14 @@ export function validateRequiredWorkspaceInputs(fileManifest: any, contract: any
   for (const input of contract?.required_inputs ?? []) {
     const observed = files[input.path];
     if (!observed) {
-      throw new SwarmEnvError(WORKSPACE_ERROR_CODES.INPUT_MISSING, `Required Workspace input is missing: ${input.path}`, {
+      throw new MurmError(WORKSPACE_ERROR_CODES.INPUT_MISSING, `Required Workspace input is missing: ${input.path}`, {
         path: input.path,
         path_class: 'required_input',
         remediation: 'Fix the Task fixture or Workspace manifest before starting the Execution.',
       });
     }
     if (input.content_hash && observed.content_hash !== input.content_hash) {
-      throw new SwarmEnvError(WORKSPACE_ERROR_CODES.INPUT_HASH_MISMATCH, `Required Workspace input hash does not match: ${input.path}`, {
+      throw new MurmError(WORKSPACE_ERROR_CODES.INPUT_HASH_MISMATCH, `Required Workspace input hash does not match: ${input.path}`, {
         path: input.path,
         expected_content_hash: input.content_hash,
         observed_content_hash: observed.content_hash,

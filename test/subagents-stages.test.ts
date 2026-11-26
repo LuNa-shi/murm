@@ -8,12 +8,12 @@ function controlledRuntime() {
   const core = {
     async get(id) { return { id, status: 'idle', ...(children.includes(id) ? { parentId: 'parent' } : {}) }; },
     onEvent(fn) { listener = fn; return () => { listener = undefined; }; },
-    async send(botId, input, options) {
-      sent.push({ botId, input, ...options });
+    async send(agentId, input, options) {
+      sent.push({ agentId, input, ...options });
       return { status: 'accepted', disposition: 'queued', inputId: `input-${sent.length}` };
     },
-    child(id, seq, output, outcome = 'completed') { listener({ botId: id, seq, type: 'settled', outcome, output }); },
-    parent(output) { listener({ botId: 'parent', seq: ++parentSeq, type: 'settled', outcome: 'completed', output: JSON.stringify(output) }); },
+    child(id, seq, output, outcome = 'completed') { listener({ agentId: id, seq, type: 'settled', outcome, output }); },
+    parent(output) { listener({ agentId: 'parent', seq: ++parentSeq, type: 'settled', outcome: 'completed', output: JSON.stringify(output) }); },
   };
   return { core, children, sent };
 }

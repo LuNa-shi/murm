@@ -9,10 +9,10 @@ import { MissionSubmissionStore } from '../src/runtime/mission-submission.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 
 const identity = { checker_ref: 'lean', checker_version: '1', environment_ref: 'locked' };
-const root = { missionId: 'mission:m', workspaceId: 'workspace-m', actorRef: 'bot:first', materialIds: [] };
+const root = { missionId: 'mission:m', workspaceId: 'workspace-m', actorRef: 'agent:first', materialIds: [] };
 
 async function fixture(t, options = {}) {
-  const dir = await mkdtemp(join(tmpdir(), 'swarmenv-submit-'));
+  const dir = await mkdtemp(join(tmpdir(), 'murm-submit-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const workspace = new MissionWorkspace({ rootDir: dir });
   await workspace.create({ missionId: root.missionId, workspaceId: root.workspaceId, initialFiles: { 'proof.lean': 'initial' } });

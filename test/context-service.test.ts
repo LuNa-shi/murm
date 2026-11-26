@@ -11,8 +11,8 @@ function fixture(t) {
   t.after(() => tasks.close());
   tasks.createMission({ mission_id: 'content', goal: 'Check shared claims' }, makeEnvelope({ actorRef: 'operator:test' }));
   const actor = id => {
-    tasks.registerBot({ botId: id, coreId: id, missionId: 'content', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
-    tasks.recordBotSandbox(id, { provider: 'controlled', sandboxId: id }); tasks.markBotReady(id);
+    tasks.registerAgent({ agentId: id, coreId: id, missionId: 'content', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+    tasks.recordAgentSandbox(id, { provider: 'controlled', sandboxId: id }); tasks.markAgentReady(id);
     const task = tasks.createTask({ mission_id: 'content', summary: `Check ${id}`, gap: `Evidence needed for ${id}`, priority: 'medium', expected_output: 'Evidence', acceptance_conditions: ['Evidence is reproducible'] }, makeEnvelope({ actorRef: id })).task;
     const { execution } = tasks.takeTask(task.task_id, { owner_ref: id, core_id: id, take_key: id });
     const envelope = operationId => {
@@ -30,7 +30,7 @@ test('another registered Execution reads immutable published content and produce
   const { context, actor } = fixture(t); const one = actor('one'); const two = actor('two');
   const first = one('context_publish_material', { material_id: 'first', content: { claim: 'fixed' } }, 'first').material;
   assert.match(first.content_hash, /^[0-9a-f]{64}$/);
-  assert.equal(first.producer_bot_id, 'one');
+  assert.equal(first.producer_agent_id, 'one');
   const second = one('context_publish_material', { content: { claim: 'later' } }, 'second').material;
   assert.notEqual(first.content_hash, second.content_hash);
   assert.deepEqual(two('context_get_material', { material_id: first.material_id }, 'read').material.content, { claim: 'fixed' });

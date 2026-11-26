@@ -107,7 +107,7 @@ async function writeMetadata(path: any, metadata: any) {
 }
 
 const options = optionsFromArgs(process.argv.slice(2));
-const operatorPassword = process.env.SWARMENV_OBSERVABILITY_OPERATOR_PASSWORD ?? null;
+const operatorPassword = process.env.MURM_OBSERVABILITY_OPERATOR_PASSWORD ?? null;
 const accessMode = observabilityAccessMode({ host: options.host, operatorPassword });
 options.scanRoots = inferRepositoryWorktreeRoots(options);
 const experimentRoots = discoverExperimentRoots(options);

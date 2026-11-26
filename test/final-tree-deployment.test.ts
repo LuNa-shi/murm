@@ -40,7 +40,7 @@ test('deployment gate requires the lock and rejects altered content or selection
 });
 
 test('nested artifact bytes, paths and modes are pinned, and symlink escapes fail closed', async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-checker-artifacts-'));
+  const directory = await mkdtemp(join(tmpdir(), 'murm-checker-artifacts-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const root = join(directory, 'library');
   await mkdir(join(root, 'nested'), { recursive: true });
@@ -64,9 +64,9 @@ test('nested artifact bytes, paths and modes are pinned, and symlink escapes fai
 });
 
 test('real artifact lock validates the pinned production deployment and cgroup', {
-  skip: !process.env.SWARMENV_TEST_ARTIFACT_LOCK,
+  skip: !process.env.MURM_TEST_ARTIFACT_LOCK,
 }, async () => {
-  const artifactLock = process.env.SWARMENV_TEST_ARTIFACT_LOCK;
+  const artifactLock = process.env.MURM_TEST_ARTIFACT_LOCK;
   const lock = JSON.parse(await readFile(artifactLock, 'utf8'));
   const source = 'theorem toy : True := by sorry\n';
   const { adapter, evidence } = await createLockedFinalTreeVerifier({

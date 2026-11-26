@@ -6,10 +6,10 @@ import { notesManifest, setup } from './fixtures/core-notes-service.js';
 test('authorized Bridge calls store and read a note with only trusted selected Service identity', async t => {
   let note;
   const callers = [];
-  const { call } = await setup(t, { invoke(request) { callers.push(request.caller); if (request.capability.operation === 'put') note = { ...request.input, author: request.caller.botId }; return note ?? null; } });
-  assert.deepEqual((await call('put', { key: 'one', text: 'fixed' }, { caller: { botId: 'forged' }, envelope: { caller: {}, operation_id: 'forged' } })).result, { key: 'one', text: 'fixed', author: 'bot-one' });
+  const { call } = await setup(t, { invoke(request) { callers.push(request.caller); if (request.capability.operation === 'put') note = { ...request.input, author: request.caller.agentId }; return note ?? null; } });
+  assert.deepEqual((await call('put', { key: 'one', text: 'fixed' }, { caller: { agentId: 'forged' }, envelope: { caller: {}, operation_id: 'forged' } })).result, { key: 'one', text: 'fixed', author: 'agent-one' });
   assert.deepEqual((await call('get', { key: 'one' })).result, note);
-  assert.deepEqual(callers, Array(2).fill({ runtimeId: 'run-one', botId: 'bot-one', profile: 'writer', binding: 'notes-account' }));
+  assert.deepEqual(callers, Array(2).fill({ runtimeId: 'run-one', agentId: 'agent-one', profile: 'writer', binding: 'notes-account' }));
 });
 
 test('schemas reject invalid input before effects and report bad output without repeating a write', async t => {
@@ -30,16 +30,16 @@ test('schemas reject invalid input before effects and report bad output without 
 
 test('discovery filters operation permissions and closing, unknown and foreign tokens have no effects', async t => {
   let calls = 0;
-  const { bot, bridge, call } = await setup(t, { invoke() { calls++; return null; } });
-  bot.services.notes = ['get'];
+  const { agent, bridge, call } = await setup(t, { invoke() { calls++; return null; } });
+  agent.services.notes = ['get'];
   const discovered = await call('get_service_metadata', { service: 'notes' }, { service_id: undefined });
   assert.deepEqual(discovered.result.capabilities.map(capability => capability.operation), ['get']);
   assert.equal((await call('put', { key: 'one', text: 'fixed' })).error.code, 'NOT_ALLOWED');
   const foreign = await setup(t, { invoke() { return null; } });
-  const response = await fetch(bridge.publicUrl + '/call', { method: 'POST', headers: { authorization: 'Bearer ' + foreign.credentials.secretEnvironment.SWARMENV_BRIDGE_TOKEN }, body: '{}' });
+  const response = await fetch(bridge.publicUrl + '/call', { method: 'POST', headers: { authorization: 'Bearer ' + foreign.credentials.secretEnvironment.MURM_BRIDGE_TOKEN }, body: '{}' });
   assert.equal(response.status, 403);
   for (const status of ['starting', 'exited', 'closing', 'closed']) {
-    bot.status = status;
+    agent.status = status;
     assert.equal((await call('get', { key: 'one' })).error.code, 'NOT_ALLOWED');
   }
   assert.equal(calls, 0);
@@ -80,8 +80,8 @@ test('Notes owns same-key business idempotency and conflicts while Registry perf
 
 test('Service names that match Object prototype keys never create implicit Profile permissions', async t => {
   let calls = 0;
-  const { bot, call } = await setup(t, { invoke() { calls++; return null; } }, { manifest: notesManifest('constructor') });
-  bot.services = {};
+  const { agent, call } = await setup(t, { invoke() { calls++; return null; } }, { manifest: notesManifest('constructor') });
+  agent.services = {};
   assert.deepEqual((await call('list_services', {}, { service_id: undefined })).result, { services: [] });
   assert.equal((await call('get', { key: 'one' }, { service_id: 'constructor' })).error.code, 'NOT_ALLOWED');
   assert.equal(calls, 0);
@@ -104,9 +104,9 @@ test('explicit null is validated as supplied, while an omitted payload defaults 
 
 test('an authorized Service named constructor receives no inherited binding', async t => {
   let caller;
-  const { bot, call } = await setup(t, { invoke(request) { caller = request.caller; return null; } }, { manifest: notesManifest('constructor') });
-  bot.services = { constructor: ['get'] };
-  bot.bindings = {};
+  const { agent, call } = await setup(t, { invoke(request) { caller = request.caller; return null; } }, { manifest: notesManifest('constructor') });
+  agent.services = { constructor: ['get'] };
+  agent.bindings = {};
   assert.equal((await call('get', { key: 'one' }, { service_id: 'constructor' })).ok, true);
-  assert.deepEqual(caller, { runtimeId: 'run-one', botId: 'bot-one', profile: 'writer' });
+  assert.deepEqual(caller, { runtimeId: 'run-one', agentId: 'agent-one', profile: 'writer' });
 });

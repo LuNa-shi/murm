@@ -3,7 +3,7 @@ import { open, realpath, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { openSandboxBotKey, openSandboxRuntimeKey } from '../../src/runtime/opensandbox-metadata.js';
+import { openSandboxAgentKey, openSandboxRuntimeKey } from '../../src/runtime/opensandbox-metadata.js';
 
 const fail = code => Object.assign(new Error(code), { code });
 const duration = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
@@ -12,7 +12,7 @@ function expiry(value) {
   const parsed = Date.parse(value), day = Date.parse(value.slice(0, 10));
   return Number.isFinite(day) && new Date(day).toISOString().slice(0, 10) === value.slice(0, 10) ? parsed : NaN;
 }
-async function evidence(directory, runtimeId, botIds, signal) {
+async function evidence(directory, runtimeId, agentIds, signal) {
   if (await realpath(directory) !== directory) throw fail('LIFETIME_EVIDENCE_PATH');
   const info = await stat(directory);
   if (info.uid !== process.getuid() || (info.mode & 0o077)) throw fail('LIFETIME_EVIDENCE_PATH');
@@ -32,7 +32,7 @@ async function evidence(directory, runtimeId, botIds, signal) {
     let rows;
     try { rows = text.trim().split('\n').map(JSON.parse); } catch { throw fail('LIFETIME_EVIDENCE_INVALID'); }
     if (rows.length > 16384 || rows.some((row, i) => row.runtimeId !== runtimeId || row.seq !== i + 1)) throw fail('LIFETIME_EVIDENCE_INVALID');
-    const selected = botIds.map(botId => rows.filter(row => row.type === 'spawn' && row.botId === botId));
+    const selected = agentIds.map(agentId => rows.filter(row => row.type === 'spawn' && row.agentId === agentId));
     if (selected.some(rows => !rows.some(row => row.state === 'ready'))) { await delay(10, undefined, { signal }); continue; }
     return selected.map(rows => {
       if (rows.map(row => row.state).join(',') !== 'registered,allocation-dispatched,allocation-observed,ready') throw fail('LIFETIME_EVIDENCE_INVALID');
@@ -40,21 +40,21 @@ async function evidence(directory, runtimeId, botIds, signal) {
       if (!registered.requestId || typeof registered.source !== 'string' || !registered.source || rows.some(row => row.requestId !== registered.requestId) || observed.observation !== 'create-response' ||
           typeof observed.sandboxId !== 'string' || !observed.sandboxId || ready.sandboxId !== observed.sandboxId ||
           !Number.isSafeInteger(dispatched.timeoutSeconds) || dispatched.timeoutSeconds < 60) throw fail('LIFETIME_EVIDENCE_INVALID');
-      return { botId: registered.botId, requestId: registered.requestId, source: registered.source,
+      return { agentId: registered.agentId, requestId: registered.requestId, source: registered.source,
         sandboxId: observed.sandboxId, requestedSeconds: dispatched.timeoutSeconds, allocationSeq: observed.seq, readySeq: ready.seq };
     });
   }
 }
 
-// Host acceptance preparation, not a Bot Service or an endurance verdict. The
+// Host acceptance preparation, not a Agent Service or an endurance verdict. The
 // trusted caller supplies its live Runtime and private output root. Date and
 // expiresAt must use the provider's common clock; uncertaintyMs is the host's
 // explicit calibrated clock error bound, plus one second for HTTP Date precision.
 // No request duration is converted to an expiry, and no resources are created.
-export async function admitLifetime({ runtime, outputDir, botIds, workMs, cleanupMs, recoveryMs, marginMs,
+export async function admitLifetime({ runtime, outputDir, agentIds, workMs, cleanupMs, recoveryMs, marginMs,
   observationTimeoutMs = 10000, maxObservationAgeMs = 5000, provider, signal }) {
   if (!runtime?.id || typeof runtime.get !== 'function' || typeof outputDir !== 'string' ||
-      !Array.isArray(botIds) || botIds.length < 4 || botIds.length > 8 || new Set(botIds).size !== botIds.length || botIds.some(id => typeof id !== 'string' || !id) ||
+      !Array.isArray(agentIds) || agentIds.length < 4 || agentIds.length > 8 || new Set(agentIds).size !== agentIds.length || agentIds.some(id => typeof id !== 'string' || !id) ||
       ![workMs, cleanupMs, recoveryMs, marginMs, observationTimeoutMs, maxObservationAgeMs].every(duration) || observationTimeoutMs > 60000 || maxObservationAgeMs > 60000 ||
       (signal !== undefined && !(signal instanceof AbortSignal)) ||
       !Number.isSafeInteger(provider?.uncertaintyMs) || provider.uncertaintyMs < 0 || provider.uncertaintyMs > 60000) throw fail('LIFETIME_CONFIG_INVALID');
@@ -71,12 +71,12 @@ export async function admitLifetime({ runtime, outputDir, botIds, workMs, cleanu
   });
   const check = async () => {
     combined.throwIfAborted();
-    for (const id of botIds) if (!['idle', 'running'].includes((await bounded(runtime.get(id))).status)) throw fail('LIFETIME_BOT_UNAVAILABLE');
+    for (const id of agentIds) if (!['idle', 'running'].includes((await bounded(runtime.get(id))).status)) throw fail('LIFETIME_AGENT_UNAVAILABLE');
     combined.throwIfAborted();
   };
   try {
     await check();
-    const members = await bounded(evidence(join(resolve(outputDir), runtime.id), runtime.id, botIds, combined));
+    const members = await bounded(evidence(join(resolve(outputDir), runtime.id), runtime.id, agentIds, combined));
     if (new Set(members.map(row => row.sandboxId)).size !== members.length) throw fail('LIFETIME_RESOURCE_MISMATCH');
     const resources = await Promise.all(members.map(async member => {
       const sentAtMs = performance.now();
@@ -93,7 +93,7 @@ export async function admitLifetime({ runtime, outputDir, botIds, workMs, cleanu
       const receivedAtMs = performance.now();
       let resource; try { resource = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw fail('LIFETIME_PROVIDER_INVALID'); }
       if (resource.id !== member.sandboxId || resource.status?.state !== 'Running' || resource.metadata?.runtime_key !== openSandboxRuntimeKey(runtime.id) ||
-          resource.metadata?.bot_key !== openSandboxBotKey(member.botId) || resource.metadata?.resource_key !== openSandboxBotKey(member.botId)) throw fail('LIFETIME_RESOURCE_MISMATCH');
+          resource.metadata?.agent_key !== openSandboxAgentKey(member.agentId) || resource.metadata?.resource_key !== openSandboxAgentKey(member.agentId)) throw fail('LIFETIME_RESOURCE_MISMATCH');
       const date = response.headers.get('date'); const providerNowMs = Date.parse(date);
       if (!date || !Number.isFinite(providerNowMs) || new Date(providerNowMs).toUTCString() !== date ||
           Math.abs(Date.now() - providerNowMs) > provider.uncertaintyMs + 1000 || (response.headers.get('age') ?? '0') !== '0') throw fail('LIFETIME_CLOCK_UNVERIFIED');

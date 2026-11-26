@@ -11,7 +11,7 @@ import { makeEnvelope } from '../src/protocol/envelope.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { TaskService } from '../src/task/task-service.js';
-import { prepareFlatInputs } from '../src/environments/flat/prepare-inputs.js';
+import { prepareTaskPoolInputs } from '../src/harnesses/taskpool/prepare-inputs.js';
 
 const checkerIdentity = { checker_ref: 'lean', checker_version: 'test', environment_ref: 'test-project' };
 const initialFiles = {
@@ -38,20 +38,20 @@ async function fixture(t, { sourceFile = false } = {}) {
   const workspace = new MissionWorkspace({ rootDir: join(root, 'public') });
   await workspace.create({ missionId, workspaceId, initialFiles });
   const manager = new WorkspaceManager({ rootDir: join(root, 'private') });
-  const bot = tasks.registerBot({ missionId, coreId: 'judge-domain-slot', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
-  tasks.recordBotSandbox(bot.bot_id, { provider: 'controlled', sandboxId: 'no-physical-resource' });
-  tasks.markBotReady(bot.bot_id);
+  const agent = tasks.registerAgent({ missionId, coreId: 'judge-domain-slot', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+  tasks.recordAgentSandbox(agent.agent_id, { provider: 'controlled', sandboxId: 'no-physical-resource' });
+  tasks.markAgentReady(agent.agent_id);
   const task = tasks.createTask({ mission_id: missionId, summary: 'Deliver the checked proof',
     expected_output: 'A fixed public proof', acceptance_conditions: ['Fixed tree verified'],
     completion_contract: { workspace_delivery: { paths: ['Proof.lean'], check: checkerIdentity } },
   }, makeEnvelope({ actorRef: 'operator:test' })).task;
-  let execution = tasks.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'domain-take' }).execution;
+  let execution = tasks.takeTask(task.task_id, { owner_ref: agent.agent_id, core_id: agent.core_id, take_key: 'domain-take' }).execution;
   const envelope = operationId => {
     const current = tasks.getExecution(execution.execution_id);
-    return makeEnvelope({ operationId, actorRef: bot.bot_id, taskId: task.task_id, executionId: current.execution_id,
+    return makeEnvelope({ operationId, actorRef: agent.agent_id, taskId: task.task_id, executionId: current.execution_id,
       specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version });
   };
-  await prepareFlatInputs({ execution, taskService: tasks, missionWorkspace: workspace, workspaceId,
+  await prepareTaskPoolInputs({ execution, taskService: tasks, missionWorkspace: workspace, workspaceId,
     workspaceManager: manager, contextService: context, check() {} });
   execution = tasks.dispatch('start_execution', {}, envelope('domain-start')).execution;
   const builds = [];
@@ -96,7 +96,7 @@ async function fixture(t, { sourceFile = false } = {}) {
   };
   const save = (files, requestId) => workspace.save({ workspaceId, baseRevision: '0.1', files, requestId,
     source: { mission_id: missionId, task_id: task.task_id, execution_id: execution.execution_id,
-      bot_id: bot.bot_id, fencing_version: execution.fencing_version, operation: 'save' } });
+      agent_id: agent.agent_id, fencing_version: execution.fencing_version, operation: 'save' } });
   const finish = (revision, checkId, requestId) => tasks.dispatch('task_finish', {
     outcome: 'done', workspace_revision: revision, check_result_id: checkId,
   }, envelope(requestId));

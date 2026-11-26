@@ -615,7 +615,7 @@ test('capped upstream limits actual forwarding and preserves SSE IDs with capped
     deadlineAt: Date.now() + 2000, maxRequests: 1, maxOutputTokens: 64, filename: 'check.txt', marker: 'EXPECTED' });
   t.after(() => cap.close());
   const body = JSON.stringify({ model: 'k3', input: [], max_output_tokens: 1000 });
-  const first = await fetch(cap.url, { method: 'POST', headers: { 'x-swarmenv-request-id': 'original-id' }, body });
+  const first = await fetch(cap.url, { method: 'POST', headers: { 'x-murm-request-id': 'original-id' }, body });
   assert.equal(first.status, 200);
   assert.equal(first.headers.get('x-request-id'), 'upstream-id');
   assert.equal(await first.text(), sse);
@@ -625,7 +625,7 @@ test('capped upstream limits actual forwarding and preserves SSE IDs with capped
   assert.equal(cap.receipt().requests[0].geometry, undefined);
   assert.equal(cap.receipt().requests[0].requestOptions, undefined);
   assert.equal(cap.receipt().requests[0].terminalGeometry, undefined);
-  assert.equal(received[0].headers['x-swarmenv-request-id'], 'original-id');
+  assert.equal(received[0].headers['x-murm-request-id'], 'original-id');
   assert.equal(received[0].headers.authorization, 'Bearer local-test-only');
   assert.equal((await fetch(cap.url, { method: 'POST', body })).status, 429);
   assert.equal(received.length, 1);
@@ -709,7 +709,7 @@ test('selection-only capped upstream omits tool definitions and tool_choice for 
     response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end('data: [DONE]\n\n');
   });
   const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 1, maxOutputTokens: 512,
-    filename: 'unused', marker: 'FLAT_SELECTION_OK', disableTools: true });
+    filename: 'unused', marker: 'TASKPOOL_SELECTION_OK', disableTools: true });
   t.after(() => cap.close());
   await (await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [], tools: [{ type: 'function', name: 'bash', parameters: { type: 'object' } }], tool_choice: 'auto' }) })).text();
   assert.equal(Object.hasOwn(actual, 'tools'), false);
@@ -726,7 +726,7 @@ test('provider rejection records only status and finite whitelisted classificati
     response.end(JSON.stringify({ error: { code: 'unsupported_parameter', type: 'invalid_request_error', param: 'tool_choice', message: 'private-raw-provider-message' } }));
   });
   const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 1,
-    maxOutputTokens: 512, filename: 'unused', marker: 'FLAT_SELECTION_OK', disableTools: true });
+    maxOutputTokens: 512, filename: 'unused', marker: 'TASKPOOL_SELECTION_OK', disableTools: true });
   t.after(() => cap.close());
   const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
   assert.equal(response.status, 400);
@@ -746,7 +746,7 @@ test('unknown provider error labels and oversized rejection bodies collapse to f
       response.writeHead(400); response.end(body);
     });
     const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 1,
-      maxOutputTokens: 512, filename: 'unused', marker: 'FLAT_SELECTION_OK', disableTools: true });
+      maxOutputTokens: 512, filename: 'unused', marker: 'TASKPOOL_SELECTION_OK', disableTools: true });
     t.after(() => cap.close());
     const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
     assert.deepEqual(await response.json(), { error: { code: 'LIVE_PROVIDER_REJECTED', message: 'LIVE_PROVIDER_REJECTED' } });

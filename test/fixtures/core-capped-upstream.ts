@@ -294,7 +294,7 @@ export async function createCappedUpstream(options) {
     const record = { ...(recordGeometry ? { geometry: requestGeometry(body.input), requestOptions: requestOptions(body) } : {}), number, inputBytes: data.length, status: 'dispatched', maxOutputTokens: hardOutputTokens, generationOutputTokens: body.max_output_tokens, ...(disableTools ? { toolsDisabled: true, toolsMode: 'omitted' } : {}) };
     records.push(record);
     const outgoingHeaders = { ...headers, 'content-type': 'application/json', accept: 'text/event-stream', 'content-length': data.length };
-    for (const name of ['x-swarmenv-request-id', 'x-request-id', 'idempotency-key']) {
+    for (const name of ['x-murm-request-id', 'x-request-id', 'idempotency-key']) {
       if (typeof request.headers[name] === 'string') outgoingHeaders[name] = request.headers[name];
     }
     let upstream, parsingRejection = false;

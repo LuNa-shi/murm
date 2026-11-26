@@ -15,7 +15,7 @@ import { MissionSubmissionStore } from '../src/runtime/mission-submission.js';
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL('../scripts/review-mission.js', import.meta.url));
 const identity = { checker_ref: 'manual-operator', checker_version: 'review-1', environment_ref: 'owner-review' };
-const input = { missionId: 'mission', workspaceId: 'workspace', actorRef: 'bot:author', materialIds: [], requestId: 'submission' };
+const input = { missionId: 'mission', workspaceId: 'workspace', actorRef: 'agent:author', materialIds: [], requestId: 'submission' };
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'replay-manual-review-'));

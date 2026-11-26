@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { collectCoreWorkDir } from '../scripts/core-collection.js';
-import { saveBotArtifacts } from '../src/core/artifact-collection.js';
+import { saveAgentArtifacts } from '../src/core/artifact-collection.js';
 import { createRedactor } from '../src/core/run-records.js';
 
 test('native Session archive retains uncompacted history in private files with credential-redacted verified bytes', async () => {
@@ -19,12 +19,12 @@ test('native Session archive retains uncompacted history in private files with c
   const history = records.map(row => JSON.stringify(row)).join('\n') + '\n';
   await writeFile(join(sourceDir, 'native.jsonl'), history);
   const collect = { paths: ['.'], includeGit: false, required: true, maxBytes: 1000000 };
-  const paths = await saveBotArtifacts({ outputDir, botId: 'bot-one', collect,
+  const paths = await saveAgentArtifacts({ outputDir, agentId: 'agent-one', collect,
     records: () => collectCoreWorkDir(sourceDir, collect), bounds: { bytes: Number.MAX_SAFE_INTEGER, inodes: 1000 },
     destination: 'session', privateFiles: true,
     redactStream: createRedactor(['credential-marker', '"']).jsonl,
   });
-  assert.equal(paths[0], join(outputDir, 'bot-one', 'session', 'manifest.json'));
+  assert.equal(paths[0], join(outputDir, 'agent-one', 'session', 'manifest.json'));
   const archive = await readFile(join(paths[1], 'native.jsonl'), 'utf8');
   const archivedRecords = archive.trimEnd().split('\n').map(line => JSON.parse(line));
   records[1].message.content = 'original history [redacted] and [redacted]';

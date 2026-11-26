@@ -20,8 +20,8 @@ export async function createSubagentsStages(runtime: any, parentId: any, { child
   if (!Array.isArray(childIds) || childIds.length !== 3 || childIds.some((id: any) => typeof id !== 'string' || !id || id === parentId) || new Set(childIds).size !== 3) throw new TypeError('Stages require three original child identities');
   const ids = [...childIds];
   for (const id of [parentId, ...ids]) {
-    const bot = await runtime.get(id);
-    if (bot.id !== id || !['idle', 'running'].includes(bot.status) || id !== parentId && bot.parentId !== parentId) throw new TypeError('Stages require live direct children of the original parent');
+    const agent = await runtime.get(id);
+    if (agent.id !== id || !['idle', 'running'].includes(agent.status) || id !== parentId && agent.parentId !== parentId) throw new TypeError('Stages require live direct children of the original parent');
   }
   const controller = createSubagentsController(runtime, parentId, { maxChildren: 3 });
   const stages: any[] = []; const history: any[] = []; let active = false; let closed = false; let lastParentSeq = 0;
@@ -60,7 +60,7 @@ export async function createSubagentsStages(runtime: any, parentId: any, { child
             if (!delivery) return false;
             current.push(delivery);
           }
-          adopted = { stage, parent: { botId: parentId, requestId, receipt: user.receipt, settled: event }, children: current, conclusions: [...history, ...current.map((row: any) => ({ childId: row.result.childId, eventSeq: row.result.eventSeq, quote: row.result.output }))] };
+          adopted = { stage, parent: { agentId: parentId, requestId, receipt: user.receipt, settled: event }, children: current, conclusions: [...history, ...current.map((row: any) => ({ childId: row.result.childId, eventSeq: row.result.eventSeq, quote: row.result.output }))] };
           return true;
         } });
         completed.catch(() => {});

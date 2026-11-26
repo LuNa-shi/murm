@@ -12,10 +12,10 @@ test('Bridge exposes one authenticated reusable-identity profile endpoint', asyn
   });
   const environment = await bridge.start();
   try {
-    const unauthorized = await fetch(`${environment.SWARMENV_BRIDGE_URL}/profile`);
+    const unauthorized = await fetch(`${environment.MURM_BRIDGE_URL}/profile`);
     assert.equal(unauthorized.status, 401);
-    const response = await fetch(`${environment.SWARMENV_BRIDGE_URL}/profile`, {
-      headers: { authorization: `Bearer ${environment.SWARMENV_BRIDGE_TOKEN}` },
+    const response = await fetch(`${environment.MURM_BRIDGE_URL}/profile`, {
+      headers: { authorization: `Bearer ${environment.MURM_BRIDGE_TOKEN}` },
     });
     assert.equal(response.status, 200);
     const body = await response.json();
@@ -54,7 +54,7 @@ test('Bridge advertises a provider-reachable URL when bound to a non-loopback ho
   });
   const environment = await bridge.start();
   try {
-    assert.match(environment.SWARMENV_BRIDGE_URL, /^http:\/\/host-gateway:\d+$/);
+    assert.match(environment.MURM_BRIDGE_URL, /^http:\/\/host-gateway:\d+$/);
   } finally {
     await bridge.stop();
   }

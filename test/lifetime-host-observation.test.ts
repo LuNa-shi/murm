@@ -12,19 +12,19 @@ async function fixture(t, modify = value => value) {
   const provider = await createLifecycleProvider(t, { createExpiresAt: () => new Date(Date.now() + 5100000).toISOString(),
     onGet(id, resource, response) { gets.push(id); return modify({ id, status: { state: 'Running' }, metadata: resource.labels, expiresAt: new Date(Date.now() + 5000000).toISOString() }, response); } });
   provider.allowDeletion();
-  const { createRuntime } = await import('@swarmenv/core');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
+  const { createRuntime } = await import('@murm/core');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
+  const { ServiceRegistry } = await import('@murm/core/services');
   const outputDir = await mkdtemp(join(tmpdir(), 'lifetime-observation-'));
   runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
     sandbox: { lifecycleBaseUrl: provider.url, timeoutSeconds: 5100 }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
     modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
-  }), profiles: { peer: { image: 'fixture', model: 'default', prompt: 'fixed', writable: false, services: {} } }, services: new ServiceRegistry(), maxBots: 4, outputDir });
+  }), profiles: { peer: { image: 'fixture', model: 'default', prompt: 'fixed', writable: false, services: {} } }, services: new ServiceRegistry(), maxAgents: 4, outputDir });
   t.after(() => rm(outputDir, { recursive: true, force: true }));
-  const bots = []; for (let i = 0; i < 4; i++) bots.push(await runtime.spawn({ profile: 'peer', requestId: `spawn-${i}` }));
-  const options = { runtime, outputDir, botIds: bots.map(bot => bot.id), workMs: 3600000, cleanupMs: 180000, recoveryMs: 300000, marginMs: 120000,
+  const agents = []; for (let i = 0; i < 4; i++) agents.push(await runtime.spawn({ profile: 'peer', requestId: `spawn-${i}` }));
+  const options = { runtime, outputDir, agentIds: agents.map(agent => agent.id), workMs: 3600000, cleanupMs: 180000, recoveryMs: 300000, marginMs: 120000,
     observationTimeoutMs: 2000, maxObservationAgeMs: 1000, provider: { baseUrl: provider.url, uncertaintyMs: 1000 } };
   return { options, gets, runtime };
 }
@@ -48,7 +48,7 @@ for (const [name, modify, code] of [
   ['invalid calendar', value => ({ ...value, expiresAt: '2099-02-30T00:00:00Z' }), 'LIFETIME_EXPIRY_UNKNOWN'],
   ['shorter actual expiry', value => ({ ...value, expiresAt: new Date(Date.now() + 3600000).toISOString() }), 'LIFETIME_TOO_SHORT'],
   ['foreign identity', value => ({ ...value, id: 'other' }), 'LIFETIME_RESOURCE_MISMATCH'],
-  ['foreign owner', value => ({ ...value, metadata: { ...value.metadata, bot_key: 'other' } }), 'LIFETIME_RESOURCE_MISMATCH'],
+  ['foreign owner', value => ({ ...value, metadata: { ...value.metadata, agent_key: 'other' } }), 'LIFETIME_RESOURCE_MISMATCH'],
   ['not running', value => ({ ...value, status: { state: 'Stopped' } }), 'LIFETIME_RESOURCE_MISMATCH'],
   ['missing server clock', (value, response) => { response.sendDate = false; return value; }, 'LIFETIME_CLOCK_UNVERIFIED'],
   ['stale server clock', (value, response) => { response.setHeader('date', 'Mon, 01 Jan 2001 00:00:00 GMT'); return value; }, 'LIFETIME_CLOCK_UNVERIFIED'],
@@ -68,10 +68,10 @@ test('corrupt Core evidence is rejected before any provider lookup', async t => 
   assert.deepEqual(f.gets, []);
 });
 
-test('an unavailable Core Bot rejects before provider lookup', async t => {
+test('an unavailable Core Agent rejects before provider lookup', async t => {
   const f = await fixture(t);
-  await f.runtime.stop(f.options.botIds[0]);
-  await assert.rejects(admitLifetime(f.options), { code: 'LIFETIME_BOT_UNAVAILABLE' });
+  await f.runtime.stop(f.options.agentIds[0]);
+  await assert.rejects(admitLifetime(f.options), { code: 'LIFETIME_AGENT_UNAVAILABLE' });
   assert.deepEqual(f.gets, []);
 });
 
@@ -100,6 +100,6 @@ test('Core close during provider observation prevents admission after otherwise 
     if (value.id === 'fixture-1') await stop();
     return value;
   });
-  stop = () => f.runtime.stop(f.options.botIds[0]);
-  await assert.rejects(admitLifetime(f.options), { code: 'LIFETIME_BOT_UNAVAILABLE' });
+  stop = () => f.runtime.stop(f.options.agentIds[0]);
+  await assert.rejects(admitLifetime(f.options), { code: 'LIFETIME_AGENT_UNAVAILABLE' });
 });

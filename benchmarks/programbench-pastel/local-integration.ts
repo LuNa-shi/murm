@@ -54,12 +54,12 @@ export async function localUpstream(route, requestLimit, timeoutMs = 120_000) {
 
 export function localBackend(upstream, diskMiB = 64, { timeoutSeconds = 180, maxOutputTokens = 2048, requestTimeoutMs = 30_000,
   resourceLimits = { cpu: '1', memory: '1Gi' } } = {}) {
-  const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
+  const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   if (typeof upstream === 'string') upstream = { url: upstream, headers: {} };
   return createPiOpenSandboxBackend({
-    sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
-      apiKey: process.env.SWARMENV_CORE_TEST_API_KEY, timeoutSeconds, commandTimeoutMs: 20_000,
+    sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
+      apiKey: process.env.MURM_CORE_TEST_API_KEY, timeoutSeconds, commandTimeoutMs: 20_000,
       ...(resourceLimits === null ? {} : { resourceLimits }) },
     bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
     modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs, maxOutputTokens },

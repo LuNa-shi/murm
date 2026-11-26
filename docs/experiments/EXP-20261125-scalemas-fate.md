@@ -12,7 +12,7 @@ Status **COMPLETE**. The owner authorized K3, one original problem, four peers, 
 
 | Item | Fixed value |
 |---|---|
-| Implementation | `c1a348020629b93f0c7c3524c5f227b8e4843730` on the `68eb83e` main baseline. Runtime behavior and evidence paths are described in [Architecture](../architecture/19-scalemas-environment.md). |
+| Implementation | `c1a348020629b93f0c7c3524c5f227b8e4843730` on the `68eb83e` main baseline. Runtime behavior and evidence paths are described in [Architecture](https://github.com/LuNa-shi/SwarmEnv/blob/781428d11add844a60492f5654cca7106ee4b80d/docs/architecture/19-scalemas-environment.md). |
 | Installed package and worker | `@swarmenv/core@0.2.0` archive SHA-256 `bf4951cd8eb01d50b10a06e237ff904cccde4d1c0d8476a328e709b202a56c48`. Pi/OpenSandbox image `sha256:b303d55321e08f54b10d8d332e02e4b1632f18ee0a60dada407dea1ed85bbc01`. |
 | Original problem | FATE-M commit `4eb33c8ccd0ff058b461cd763cc406509129743f`, ID 1, `prod_card_eq_card_pow`. Dataset SHA-256 `39c13a39f82bb2f39fc42d0a0efb41c6b0ef16b8194c8c8e0ae281c5cf0276fb`, original declaration SHA-256 `02eeacdb337b721238dc9171e5bcfb247cf7f0279536c6088ff6d6084236e032`. [Pinned fixture](https://github.com/frenzymath/FATE-M/blob/4eb33c8ccd0ff058b461cd763cc406509129743f/FATE-M.json) |
 | Independent checker | Lean 4.28.0 build `7e01a1bf5c70fc6167d49c345d3bf80596e9a79b`, Mathlib `8f9d9cff6bd728b17a24e163c9402775d9e6a365`, Lake manifest SHA-256 `e6efb741f70db112585a49e84e3d04272a6dcf22549b97af072e0c90b08082b0`. |

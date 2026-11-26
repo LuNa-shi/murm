@@ -49,7 +49,7 @@ test('private peer preserves structured nonretryable domain errors', async t => 
 });
 
 test('private peer honors a configured header wait beyond the native fetch five-minute limit', {
-  skip: process.env.SWARMENV_TEST_LONG_PEER !== 'true', timeout: 340_000,
+  skip: process.env.MURM_TEST_LONG_PEER !== 'true', timeout: 340_000,
 }, async t => {
   const input = await peer(t, (request, response) => {
     const timer = setTimeout(() => response.end(JSON.stringify({ ok: true, result: 'long-check-complete' })), 310_000);

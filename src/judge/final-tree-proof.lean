@@ -39,7 +39,7 @@ def main (args : List String) : IO UInt32 := do
     let replayed ← (← mkEmptyEnvironment).replay constants
     unless (match replayed.toKernelEnv.find? target with | some (.thmInfo _) => true | _ => false) do
       return 42
-    IO.println "SWARMENV_FINAL_TREE_VERIFIED"
+    IO.println "MURM_FINAL_TREE_VERIFIED"
     return 0
   else
     return 42

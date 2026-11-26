@@ -2,7 +2,7 @@ import { assertNewExecutionWork } from '../task/execution-budget.js';
 import { installServiceHistory } from '../replay/service-history.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { makeEnvelope, operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
 import { ensureJudgeSchema } from '../storage/judge-schema.js';
 import { validateFixtureManifest } from './fixture.js';
@@ -15,7 +15,7 @@ function parse(value: any) { return value === null || value === undefined ? null
 function hash(value: any) { return createHash('sha256').update(stableStringify(value)).digest('hex'); }
 function contentHash(value: any) { return createHash('sha256').update(value).digest('hex'); }
 function required(value: any, field: any) {
-  if (typeof value !== 'string' || value.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
+  if (typeof value !== 'string' || value.length === 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
   return value;
 }
 
@@ -131,11 +131,11 @@ export class JudgeService {
     const budget = this.getMissionCheckBudget(missionId);
     if (budget.max_requests !== maxRequests || budget.max_concurrent !== maxConcurrent || budget.process_timeout_ms !== this.processTimeoutMs ||
         budget.max_queued !== maxQueued || budget.queue_wait_ms !== queueWaitMs) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Judge Mission policy differs from the fixed policy');
+      throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Judge Mission policy differs from the fixed policy');
     }
     const queued = budget.active_requests >= maxConcurrent || budget.queued_requests > 0;
     if (queued && budget.queued_requests >= maxQueued) {
-      throw new SwarmEnvError('CHECKER_BUSY', 'Judge Mission waiting queue is full', budget, { retryable: true });
+      throw new MurmError('CHECKER_BUSY', 'Judge Mission waiting queue is full', budget, { retryable: true });
     }
     const admittedAt = now();
     this.db.prepare(`INSERT INTO judge_mission_check_admissions
@@ -153,10 +153,10 @@ export class JudgeService {
       const state = this.#transaction(() => {
         const row = this.db.prepare(`SELECT * FROM judge_mission_check_admissions
           WHERE mission_id = ? AND check_result_id = ?`).get(missionId, checkResultId);
-        if (!row || row.settled_at) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge reservation has ended');
+        if (!row || row.settled_at) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Judge reservation has ended');
         if (row.started_at) return 'running';
         if (Date.now() >= Date.parse(row.admitted_at) + this.missionBudget.queueWaitMs) {
-          throw new SwarmEnvError('CHECKER_BUSY', 'Judge waiting queue deadline expired',
+          throw new MurmError('CHECKER_BUSY', 'Judge waiting queue deadline expired',
             this.getMissionCheckBudget(missionId), { retryable: true });
         }
         const first = this.db.prepare(`SELECT check_result_id FROM judge_mission_check_admissions
@@ -212,10 +212,10 @@ export class JudgeService {
     if (operation === 'get_check_result') {
       if (payload.check_result_id) return this.getAgentCheckResult(required(payload.check_result_id, 'check_result_id'));
       if (payload.request_key) return agentCheckResult(this.getByRequestKey(required(payload.request_key, 'request_key')));
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'get_check_result requires check_result_id or request_key');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'get_check_result requires check_result_id or request_key');
     }
     if (operation === 'workspace_check') return this.checkWorkspaceSource(payload, envelope, { assertAuthorized });
-    if (operation !== 'submit_check_result') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Judge operation: ${operation}`);
+    if (operation !== 'submit_check_result') throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unsupported Judge operation: ${operation}`);
     return this.#transaction(() => {
       const fingerprint = operationPayload(operation, payload, envelope);
       const replay = this.#replay(envelope.operation_id, fingerprint);
@@ -252,17 +252,17 @@ export class JudgeService {
     }
     validateEnvelope(envelope);
     if (!envelope.task_id || !envelope.execution_id) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace_check requires a bound Task and Execution');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'workspace_check requires a bound Task and Execution');
     }
     const requestedSource = payload.source ?? payload.workspace_source ?? null;
     const project = ['lean-project', 'lean-module'].includes(requestedSource?.check_mode)
       ? await this.#readProject(requestedSource, envelope) : null;
-    if (this.readProjectRevision && !project && this.taskService?.getBot(envelope.actor_ref)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Registered Bot checks require a trusted public project revision');
+    if (this.readProjectRevision && !project && this.taskService?.getAgent(envelope.actor_ref)) {
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Registered Agent checks require a trusted public project revision');
     }
     const source = project?.source ?? requestedSource;
     if (!source || typeof source.content !== 'string') {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_check requires a Workspace source');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspace_check requires a Workspace source');
     }
     const workspaceSourceRef = source.workspace_id !== undefined
       ? {
@@ -276,7 +276,7 @@ export class JudgeService {
       : null;
     const sourceHash = contentHash(source.content);
     if (source.content_hash !== undefined && source.content_hash !== sourceHash) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace source content_hash does not match content');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace source content_hash does not match content');
     }
     const attestation = payload.source_attestation ?? null;
     if (attestation !== null) {
@@ -286,7 +286,7 @@ export class JudgeService {
         (attestation.workspace_id ?? null) !== (source.workspace_id ?? null) ||
         (attestation.revision ?? null) !== (source.revision ?? null) ||
         attestation.content_hash !== sourceHash) {
-        throw new SwarmEnvError(ERROR_CODES.FENCED, 'Workspace source attestation does not match the current Execution source');
+        throw new MurmError(ERROR_CODES.FENCED, 'Workspace source attestation does not match the current Execution source');
       }
     }
     // Checker and input bindings are provider configuration. Never accept a
@@ -294,16 +294,16 @@ export class JudgeService {
     // payload; the envelope and the configured Judge provider are authoritative.
     const fixtureManifest = this.fixtureManifest;
     if (!fixtureManifest) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge checker binding is not configured');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Judge checker binding is not configured');
     }
     if (payload.target_task && (payload.target_task.task_id !== envelope.task_id || payload.target_task.spec_version !== (envelope.spec_version ?? payload.target_spec_version))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'target_task does not match the bound Task envelope');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'target_task does not match the bound Task envelope');
     }
     if (payload.workspace?.input_snapshot_hash !== undefined && payload.workspace.input_snapshot_hash !== (payload.input_snapshot_hash ?? fixtureManifest.input_snapshot_hash)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace does not match input_snapshot_hash');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspace does not match input_snapshot_hash');
     }
     for (const [field, expected] of [['checker_ref', fixtureManifest.checker_ref], ['checker_version', fixtureManifest.checker_version], ['environment_ref', fixtureManifest.environment_ref]]) {
-      if (payload[field] !== undefined && payload[field] !== expected) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `check request does not match locked ${field}`);
+      if (payload[field] !== undefined && payload[field] !== expected) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `check request does not match locked ${field}`);
     }
     const targetSpecVersion = Number.isInteger(envelope.spec_version) ? envelope.spec_version : 0;
     const inputSnapshotHash = fixtureManifest.input_snapshot_hash ?? hash({
@@ -369,34 +369,34 @@ export class JudgeService {
 
   async #readProject(reference: any, envelope: any) {
     if (!this.readProjectRevision || !this.checker.projectChecker) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'A trusted Lean project checker is not configured');
+      throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'A trusted Lean project checker is not configured');
     }
     const allowed = new Set(['workspace_id', 'revision', 'path', 'check_mode']);
     if (Object.keys(reference).some((key: any) => !allowed.has(key)) || !/^\d+\.\d+$/.test(reference.revision ?? '') ||
         (reference.check_mode === 'lean-module' && reference.path === undefined) ||
         (reference.path !== undefined && (typeof reference.path !== 'string' || !reference.path.endsWith('.lean')))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Lean project check requires one fixed revision and an optional Lean source path');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Lean project check requires one fixed revision and an optional Lean source path');
     }
     const execution = this.taskService?.getExecution(envelope.execution_id);
     const task = this.taskService?.getTask(envelope.task_id);
     if (!execution || !task || execution.owner_ref !== envelope.actor_ref || execution.task_id !== task.task_id ||
-        !this.taskService.getBot(envelope.actor_ref) || execution.workspace_input?.workspace_id !== reference.workspace_id) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Project check requires the bound Bot and its public Workspace');
+        !this.taskService.getAgent(envelope.actor_ref) || execution.workspace_input?.workspace_id !== reference.workspace_id) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Project check requires the bound Agent and its public Workspace');
     }
     const snapshot = await this.readProjectRevision({ workspaceId: reference.workspace_id, revision: reference.revision });
     if (!snapshot || snapshot.mission_id !== task.mission_id || snapshot.workspace_id !== reference.workspace_id ||
         snapshot.revision !== reference.revision || !snapshot.git_tree || !snapshot.git_commit || !snapshot.content_hash) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Project snapshot does not match the bound Mission and revision');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Project snapshot does not match the bound Mission and revision');
     }
-    if (snapshot.conflicts?.length) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Project revision has unresolved Workspace conflicts');
+    if (snapshot.conflicts?.length) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Project revision has unresolved Workspace conflicts');
     const path = reference.path;
     if (path !== undefined && !Object.hasOwn(snapshot.files, path)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge file is unavailable at the fixed public revision');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Judge file is unavailable at the fixed public revision');
     }
     const bytes = path === undefined ? Buffer.alloc(0) : Buffer.from(snapshot.files[path]);
     const content = bytes.toString('utf8');
     if (!Buffer.from(content).equals(bytes) || bytes.includes(0)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Lean project receipt requires a complete UTF-8 file');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Lean project receipt requires a complete UTF-8 file');
     }
     return { missionId: task.mission_id, files: snapshot.files, source: { ...reference, content, git_commit: snapshot.git_commit, git_tree: snapshot.git_tree,
       tree_content_hash: snapshot.content_hash } };
@@ -409,17 +409,17 @@ export class JudgeService {
     // or awaiting a response. They are not part of the scientific input.
     const requestHash = hash(normalized.workspace_source.file_ref?.git_commit ? { ...normalized, state_version: null } : normalized);
     const publicInput = Boolean(normalized.workspace_source.file_ref?.git_commit);
-    const registered = Boolean(this.taskService?.getBot(requestEnvelope.actor_ref));
+    const registered = Boolean(this.taskService?.getAgent(requestEnvelope.actor_ref));
     const separateLifecycle = (publicInput || registered) && this.taskService?.db !== this.db;
     if (separateLifecycle && typeof this.taskService?.withServiceLifecycleWrite !== 'function') {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Public Judge admission requires the local Task lifecycle authority');
+      throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Public Judge admission requires the local Task lifecycle authority');
     }
     const authority = ({ newWork = false }: any = {}) => {
       assertAuthorized?.();
       if (!publicInput && !registered) return;
-      if (!this.taskService) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Public Judge admission requires Task lifecycle authority');
+      if (!this.taskService) throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Public Judge admission requires Task lifecycle authority');
       const execution = this.taskService.getExecution(requestEnvelope.execution_id);
-      if (!execution || execution.owner_ref !== requestEnvelope.actor_ref || execution.task_id !== requestEnvelope.task_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge request requires its actual Execution owner');
+      if (!execution || execution.owner_ref !== requestEnvelope.actor_ref || execution.task_id !== requestEnvelope.task_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Judge request requires its actual Execution owner');
       if (newWork) {
         const scope = this.taskService.materialScope({ ...requestEnvelope, state_version: execution.state_version }, { write: true });
         this.taskService.assertMissionResearchOpen(scope.mission_id);
@@ -471,13 +471,13 @@ export class JudgeService {
     const startProcess = (phase: any) => {
       let inFlight = false;
       return async (launch: any) => {
-        if (inFlight) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Checker phase workers must run serially');
+        if (inFlight) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Checker phase workers must run serially');
         inFlight = true;
         try {
           const guardedLaunch = () => {
             authority({ newWork: true });
             if (phase === 'source' && sourceDeadline !== undefined && Date.now() >= sourceDeadline) {
-              throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Checker source phase deadline elapsed');
+              throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Checker source phase deadline elapsed');
             }
             if (missionId) {
               const column = phase === 'preflight' ? 'preflight_starts' : 'source_starts';
@@ -485,7 +485,7 @@ export class JudgeService {
               const reserved = this.db.prepare(`UPDATE judge_mission_check_admissions SET ${column} = ${column} + 1
                 WHERE mission_id = ? AND check_result_id = ? AND settled_at IS NULL AND ${column} < ?`)
                 .run(missionId, requested.check_result_id, limit);
-              if (reserved.changes !== 1) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Checker attempted an unreserved process launch');
+              if (reserved.changes !== 1) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Checker attempted an unreserved process launch');
             }
             return launch();
           };
@@ -619,7 +619,7 @@ export class JudgeService {
   }
 
   #validateRequest(input: any) {
-    if (!input || typeof input !== 'object') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'check request is required');
+    if (!input || typeof input !== 'object') throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'check request is required');
     validateFixtureManifest(input.fixture_manifest);
     required(input.workspace_source_id, 'workspace_source_id');
     required(input.target_task_id, 'target_task_id');
@@ -628,23 +628,23 @@ export class JudgeService {
     required(input.checker_version, 'checker_version');
     required(input.environment_ref, 'environment_ref');
     if (input.checker_ref !== input.fixture_manifest.checker_ref || input.checker_version !== input.fixture_manifest.checker_version || input.environment_ref !== input.fixture_manifest.environment_ref) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'check request does not match the locked fixture checker or environment');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'check request does not match the locked fixture checker or environment');
     }
-    if (!Number.isInteger(input.target_spec_version) || input.target_spec_version < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'target_spec_version is required');
+    if (!Number.isInteger(input.target_spec_version) || input.target_spec_version < 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'target_spec_version is required');
     if (input.target_task !== undefined && input.target_task !== null &&
       (input.target_task.task_id !== input.target_task_id || input.target_task.spec_version !== input.target_spec_version)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'target_task does not match target_task_id or target_spec_version');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'target_task does not match target_task_id or target_spec_version');
     }
-    if (!input.workspace_source || typeof input.workspace_source.content !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content is required');
+    if (!input.workspace_source || typeof input.workspace_source.content !== 'string') throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content is required');
     if (input.workspace_source.material_id !== undefined && input.workspace_source.material_id !== input.workspace_source_id) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source material_id does not match workspace_source_id');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source material_id does not match workspace_source_id');
     }
     if (input.workspace_source.content_hash !== undefined && input.workspace_source.content_hash !== contentHash(input.workspace_source.content)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content_hash does not match content');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content_hash does not match content');
     }
     const workspace = input.workspace ?? null;
     if (workspace?.input_snapshot_hash !== undefined && workspace.input_snapshot_hash !== input.input_snapshot_hash) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace does not match input_snapshot_hash');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspace does not match input_snapshot_hash');
     }
     const requestKey = required(input.request_key ?? hash({
       workspace_source_id: input.workspace_source_id,
@@ -678,14 +678,14 @@ export class JudgeService {
     const normalized = this.#validateRequest(payload);
     const requestHash = payload.request_hash ?? hash(normalized);
     if (envelope.task_id !== normalized.target_task_id || envelope.spec_version !== normalized.target_spec_version) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'CheckResult envelope does not match the target task binding');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'CheckResult envelope does not match the target task binding');
     }
-    if (payload.status !== 'RECEIVED') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge submissions must be RECEIVED results');
-    if (!['PASS', 'FAIL', 'INCONCLUSIVE', 'ERROR'].includes(payload.verdict)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'invalid CheckResult verdict');
+    if (payload.status !== 'RECEIVED') throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Judge submissions must be RECEIVED results');
+    if (!['PASS', 'FAIL', 'INCONCLUSIVE', 'ERROR'].includes(payload.verdict)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'invalid CheckResult verdict');
     const checked = normalizeCheckerResult(payload);
     const existing = this.getByRequestKey(normalized.request_key);
     if (existing) {
-      if (existing.request_hash !== requestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
+      if (existing.request_hash !== requestHash) throw new MurmError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
       if (payload.status === 'RECEIVED' && ['REQUESTED', 'RUNNING'].includes(existing.status)) {
         this.db.prepare(`UPDATE check_results SET status = ?, verdict = ?, judge_operation_status = ?, checker_process_status = ?, result_class = ?, retryable = ?, diagnostic_code = ?, evidence_json = ?, updated_at = ? WHERE check_result_id = ?`)
           .run('RECEIVED', checked.verdict, 'persisted', checked.checker_process_status, checked.result_class, checked.retryable ? 1 : 0, checked.diagnostic_code, json(checked.evidence), now(), existing.check_result_id);
@@ -713,12 +713,12 @@ export class JudgeService {
       authority();
       const alias = this.db.prepare('SELECT * FROM judge_request_aliases WHERE request_key = ?').get(normalized.request_key);
       if (alias) {
-        if (alias.request_hash !== requestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
+        if (alias.request_hash !== requestHash) throw new MurmError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
         return { result: this.getCheckResult(alias.check_result_id), shouldCheck: false };
       }
       const existing = this.getByRequestKey(normalized.request_key);
       if (existing) {
-        if (existing.request_hash !== requestHash) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
+        if (existing.request_hash !== requestHash) throw new MurmError(ERROR_CODES.CONFLICT, 'request_key was reused with a different check request');
         return { result: existing, shouldCheck: false };
       }
       const missionId = authority({ newWork: true });
@@ -885,7 +885,7 @@ export class JudgeService {
   #replay(operationId: any, fingerprint: any) {
     const row = this.db.prepare('SELECT fingerprint, result_json FROM operations WHERE operation_id = ?').get(operationId);
     if (!row) return null;
-    if (row.fingerprint !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'operation_id was reused with a different payload');
+    if (row.fingerprint !== fingerprint) throw new MurmError(ERROR_CODES.CONFLICT, 'operation_id was reused with a different payload');
     return parse(row.result_json);
   }
 

@@ -5,6 +5,6 @@ function key(prefix: string, identity: string | NodeJS.ArrayBufferView) {
 }
 
 export const openSandboxMissionKey = (missionId: string) => key('m', missionId);
-export const openSandboxBotKey = (botId: string) => key('b', botId);
+export const openSandboxAgentKey = (agentId: string) => key('b', agentId);
 
 export const openSandboxRuntimeKey = (runtimeId: string) => key('r', runtimeId);

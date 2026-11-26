@@ -19,16 +19,16 @@ async function fixture(t) {
   const bridges = [];
   const events = [];
   t.after(async () => { await Promise.all(bridges.map(bridge => bridge.stop())); tasks.close(); });
-  async function bot(id) {
+  async function agent(id) {
     const bridge = new ServicesBridge({ taskService: tasks, contextService: context, registry, runtime: {}, coreId: id,
       logger: { append: event => events.push(event) } });
     bridges.push(bridge);
     await bridge.start();
-    tasks.registerBot({ botId: id, missionId: 'mission:cli-contract', coreId: id,
+    tasks.registerAgent({ agentId: id, missionId: 'mission:cli-contract', coreId: id,
       selectionDeadline: new Date(Date.now() + 120_000).toISOString() });
-    const env = bridge.startBotIdentity(id);
-    tasks.recordBotSandbox(id, { provider: 'controlled', sandboxId: id });
-    tasks.markBotReady(id);
+    const env = bridge.startAgentIdentity(id);
+    tasks.recordAgentSandbox(id, { provider: 'controlled', sandboxId: id });
+    tasks.markAgentReady(id);
     return async (...args) => {
       const { stdout } = await exec(process.execPath, ['dist/scripts/swarm.js', ...args], {
         cwd: process.cwd(), env: { ...process.env, ...env }, timeout: 10_000,
@@ -36,12 +36,12 @@ async function fixture(t) {
       return JSON.parse(stdout);
     };
   }
-  return { tasks, bot, events };
+  return { tasks, agent, events };
 }
 
 test('Bridge audit pairs physical dispatches independently of reused request IDs', async t => {
-  const { bot, events } = await fixture(t);
-  const reader = await bot('reader');
+  const { agent, events } = await fixture(t);
+  const reader = await agent('reader');
   await Promise.all([reader('task', 'list', '--request-id', 'same-read'), reader('task', 'list', '--request-id', 'same-read')]);
   const starts = events.filter(event => event.event === 'bridge.start' && event.operation_id === 'same-read');
   const completions = events.filter(event => event.event === 'bridge.complete' && event.operation_id === 'same-read');
@@ -52,16 +52,16 @@ test('Bridge audit pairs physical dispatches independently of reused request IDs
 });
 
 test('CLI through authenticated Bridges reads host-supplied tasks and revises their contract with history', async t => {
-  const { tasks, bot } = await fixture(t);
-  const author = await bot('author');
-  const editor = await bot('editor');
+  const { tasks, agent } = await fixture(t);
+  const author = await agent('author');
+  const editor = await agent('editor');
   const contract = { mission_id: 'mission:cli-contract', summary: 'Boundary lemma', gap: 'The fixed objective still lacks its boundary implication', expected_output: 'A checked boundary lemma', acceptance_conditions: ['The implication has check evidence'], priority: 'medium' };
   const one = tasks.createTask(contract);
   const two = tasks.createTask({ ...contract, summary: 'Alternative argument' });
   assert.notEqual(one.task.task_id, two.task.task_id);
   assert.equal(one.task.gap, 'The fixed objective still lacks its boundary implication');
   assert.equal(one.task.priority_level, 'medium');
-  assert.equal(tasks.getBot('author').state, 'UNBOUND');
+  assert.equal(tasks.getAgent('author').state, 'UNBOUND');
   const changed = await editor('task', 'revise', one.task.task_id,
     '--expected-spec-version', String(one.task.spec_version), '--expected-state-version', String(one.task.state_version),
     '--reason', 'This now blocks the available integration', '--changes', '{"priority":"high"}', '--request-id', 'revision-one');
@@ -93,7 +93,7 @@ test('CLI process preserves service retryability and request diagnostic fields',
   await once(server, 'listening');
   t.after(() => server.close());
   await assert.rejects(exec(process.execPath, ['dist/scripts/swarm.js', 'workspace', 'save', '--request-id', 'save-original'], {
-    env: { ...process.env, SWARMENV_BRIDGE_URL: `http://127.0.0.1:${server.address().port}`, SWARMENV_BRIDGE_TOKEN: 'fixture' },
+    env: { ...process.env, MURM_BRIDGE_URL: `http://127.0.0.1:${server.address().port}`, MURM_BRIDGE_TOKEN: 'fixture' },
   }), error => {
     const result = JSON.parse(error.stderr.trim());
     assert.equal(result.retryable, false);

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 /** Runtime-owned peers drain when their owning coordinator disappears. A
  * standalone operator service omits parentPid and keeps its own lifetime. */
-export function installPeerLifetime(peer: { stop(): Promise<unknown> }, { parentPid = process.env.SWARMENV_COORDINATOR_PID }: any = {}) {
+export function installPeerLifetime(peer: { stop(): Promise<unknown> }, { parentPid = process.env.MURM_COORDINATOR_PID }: any = {}) {
   let stopping: Promise<void> | undefined;
   let watcher: ReturnType<typeof setInterval> | undefined;
   const stop = () => stopping ??= (async () => {
