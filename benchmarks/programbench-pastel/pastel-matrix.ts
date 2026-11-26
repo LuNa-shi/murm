@@ -112,7 +112,7 @@ async function inspectEvaluatorInputs() {
 
 async function hostDistributionDigest() {
   const dist = join(repository, 'dist');
-  const roots = ['src', 'examples/subagents-environment', 'test/fixtures'];
+  const roots = ['src', 'examples/subagents-environment', 'test-support/subagents', 'test/fixtures'];
   const trees = await Promise.all(roots.map(root => readdir(join(dist, root), { recursive: true, withFileTypes: true })));
   const files = trees.flat().filter(entry => entry.isFile()).map(entry =>
     relative(dist, join(entry.parentPath, entry.name))).sort();
@@ -133,7 +133,7 @@ export async function inspectFrozenInputs(worker) {
   ]);
   const [localWorker, runnerFiles, catalog, evaluatorPins, agenshImages, hostDistributionSha256] = await Promise.all([
     exec('docker', ['image', 'inspect', worker, '--format', '{{json .}}'], { timeout: 10_000 }),
-    Promise.all(runnerNames.map(async name => [name, sha256(await readFile(join(directory, name)))])),
+    Promise.all(runnerNames.map(async name => [name, sha256(await readFile(join(directory, name === 'run-window.ts' ? '../shared/run-window.ts' : name)))])),
     assertShippedModelPair({ provider, model }),
     inspectEvaluatorInputs(),
     resolveAgenshImages(),

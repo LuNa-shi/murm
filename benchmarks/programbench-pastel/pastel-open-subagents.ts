@@ -1,11 +1,11 @@
 import { createRuntime } from '../../dist/src/core/index.js';
 import { ServiceRegistry, type ServiceRegistration } from '../../dist/src/core/services.js';
-import { createSubagentsController } from '../../dist/examples/subagents-environment/controller.js';
+import { createSubagentsController } from '../../dist/test-support/subagents/communication-fixture-controller.js';
 import { sha256 } from './case.ts';
 import { checkpointSource } from './source-checkpoint.ts';
 
 const parentInstructions = `Spawn two child Bots with complementary Pastel work using swarm bot spawn.
-Ask each child for a useful source file and a reference observation. Child results are delivered as JSON with childId, eventSeq, outcome and output.
+Include the relevant task requirements in each child input. Ask each child for a useful source file and a reference observation. Child results are delivered as JSON with childId, eventSeq, outcome and output.
 Use the actual child results to write a source tree, test it with compile.sh and publish checkpoints using swarm candidate publish --stdin.
 The payload is {"files":{"relative-path":"UTF-8 source text"},"used_children":[{"child_id":"actual UUID","event_seq":1,"file":"relative-path"}]}.
 For each included child, preserve at least one whole source file it supplied, or explain your changes in your output. Keep extending the candidate within the available window.`;
@@ -83,8 +83,8 @@ export async function runOpenSubagents({ state, task, window, start, deadline, i
     state.stage = 'subagents-startup';
     const common = { image, writable: true, model: 'default' };
     runtime = await createRuntime({ backend, outputDir, maxBots: capacity, services, profiles: {
-      parent: { ...common, prompt: parentInstructions, services: { bot: ['spawn', 'get', 'send', 'stop'], candidate: ['publish'] }, spawnProfiles: ['child'] },
-      child: { ...common, prompt: `${task}\n\n${childInstructions}`, services: {} },
+      parent: { ...common, services: { bot: ['spawn', 'get', 'send', 'stop'], candidate: ['publish'] }, spawnProfiles: ['child'] },
+      child: { ...common, prompt: childInstructions, services: {} },
     } });
     state.runtimeId = runtime.id;
     parent = await runtime.spawn({ profile: 'parent', requestId: 'pastel-parent' });

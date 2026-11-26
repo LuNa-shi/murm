@@ -59,7 +59,7 @@ print(json.dumps(evidence))
 NOTES_ENVIRONMENT`;
 }
 
-export async function createNotesEnvironmentUpstream({ onFailure = () => {}, observeSessions = async () => {} } = {}) {
+export async function createNotesEnvironmentUpstream({ onFailure = () => {}, observeSessions = async () => {}, verifyStartup = false } = {}) {
   let arrivals = 0; let accepted = 0; let failure; const evidence = [];
   const deadlineAt = Date.now() + 120_000;
   const roles = ['writer', 'reader', 'followup'];
@@ -78,6 +78,18 @@ export async function createNotesEnvironmentUpstream({ onFailure = () => {}, obs
       const role = roles[Math.floor((ordinal - 1) / 2)]; const callId = `notes_${role}`;
       let item;
       if (ordinal % 2) {
+        if (verifyStartup && role !== 'followup') {
+          stage = role + '-startup';
+          const developer = body.input.find(item => item.role === 'developer')?.content;
+          const system = typeof developer === 'string' ? developer : developer?.map(item => item.text ?? '').join('');
+          const task = role === 'writer' ? 'Read review-input.json and note-request.json' : 'Compare the note text with review-input.json';
+          assert.equal(system.match(/<services>/g)?.length, 1);
+          assert.ok(system.includes(role === 'writer' ? 'swarm notes put' : 'swarm notes get'));
+          assert.ok(!system.includes(role === 'writer' ? 'swarm notes get' : 'swarm notes put'));
+          assert.ok(!system.includes(task) && !system.includes('<added_system_prompt>'));
+          const users = body.input.filter(item => item.role === 'user').flatMap(item => item.content);
+          assert.ok(users.some(item => (typeof item === 'string' ? item : item.text)?.includes(task)));
+        }
         stage = 'tool-dispatch';
         if (role === 'followup') await observeSessions('before-followup');
         item = { type: 'function_call', id: `fc_${callId}`, call_id: callId, name: 'bash',

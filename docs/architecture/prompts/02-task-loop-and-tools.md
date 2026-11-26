@@ -7,7 +7,7 @@ Core selects the four native tools read/write/edit/bash. The synthetic namespace
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Built-in Services
 
-Body SHA-256: `e96ecf2177ef74fdd9e6bb02f5469303aab36b47e7b06634e2b595f4f0ca4ec3`
+Body SHA-256: `0bc7504089fbe376c006c3a2193231b3a4f75fc6706ab30fcc0faa892e4d7097`
 
 ````text
 [
@@ -45,7 +45,7 @@ Body SHA-256: `e96ecf2177ef74fdd9e6bb02f5469303aab36b47e7b06634e2b595f4f0ca4ec3`
     "name": "mission",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm mission --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
@@ -55,17 +55,17 @@ Body SHA-256: `e96ecf2177ef74fdd9e6bb02f5469303aab36b47e7b06634e2b595f4f0ca4ec3`
     "name": "task",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm task --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
-    "permission": "Mission reads and direct take; Task creation is host-owned; only UNBOUND may revise or cancel open unowned Tasks using observed versions; finish and feedback require current E; dependency replacement requires a coordination grant"
+    "permission": "Mission reads and direct take; Task creation requires an enabled task_create capability and permits UNBOUND or ACTIVE proposals in the same Mission; only UNBOUND may revise or cancel open unowned Tasks using observed versions; finish and feedback require current E; dependency replacement requires a coordination grant"
   },
   {
     "name": "workspace",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm workspace --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
@@ -75,7 +75,7 @@ Body SHA-256: `e96ecf2177ef74fdd9e6bb02f5469303aab36b47e7b06634e2b595f4f0ca4ec3`
     "name": "bot",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm bot --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
@@ -85,7 +85,7 @@ Body SHA-256: `e96ecf2177ef74fdd9e6bb02f5469303aab36b47e7b06634e2b595f4f0ca4ec3`
 ````
 ## With optional Mathlib Search
 
-Body SHA-256: `ae320737cb7741e6733faf34343fa3d83a1b3c5250e4d3ecdd8760cfd399335c`
+Body SHA-256: `e69b7c12b81ef742ff32f2de30223a1923cfd6d25e4b0d8e4b54de9dc8e8b743`
 
 ````text
 [
@@ -148,7 +148,7 @@ Body SHA-256: `ae320737cb7741e6733faf34343fa3d83a1b3c5250e4d3ecdd8760cfd399335c`
     "name": "mission",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm mission --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
@@ -158,17 +158,17 @@ Body SHA-256: `ae320737cb7741e6733faf34343fa3d83a1b3c5250e4d3ecdd8760cfd399335c`
     "name": "task",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm task --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
-    "permission": "Mission reads and direct take; Task creation is host-owned; only UNBOUND may revise or cancel open unowned Tasks using observed versions; finish and feedback require current E; dependency replacement requires a coordination grant"
+    "permission": "Mission reads and direct take; Task creation requires an enabled task_create capability and permits UNBOUND or ACTIVE proposals in the same Mission; only UNBOUND may revise or cancel open unowned Tasks using observed versions; finish and feedback require current E; dependency replacement requires a coordination grant"
   },
   {
     "name": "workspace",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm workspace --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
@@ -178,7 +178,7 @@ Body SHA-256: `ae320737cb7741e6733faf34343fa3d83a1b3c5250e4d3ecdd8760cfd399335c`
     "name": "bot",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm bot --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],

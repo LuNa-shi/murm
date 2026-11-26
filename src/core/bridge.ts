@@ -11,6 +11,17 @@ interface BridgeBot {
   bindings?: Readonly<Record<string, string>>;
 }
 
+function allows(grants: BridgeBot['services'] | undefined, service: string, operation: string) {
+  return grants !== undefined && Object.hasOwn(grants, service) && Array.isArray(grants[service]) && grants[service].includes(operation);
+}
+
+export function permittedServiceManifests(registrations: ReadonlyMap<string, ServiceRegistration>, grants: BridgeBot['services']) {
+  return [...registrations.values()].flatMap(({ manifest }) => {
+    const capabilities = manifest.capabilities.filter(capability => allows(grants, manifest.id, capability.operation));
+    return capabilities.length ? [{ ...manifest, capabilities }] : [];
+  });
+}
+
 interface BridgeBody {
   operation: string;
   operation_id: string;
@@ -71,12 +82,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
   let closing = false;
   let closePromise: Promise<void> | undefined;
   const active = new Map<AbortController, string | undefined>();
-  const allows = (grants: BridgeBot['services'] | undefined, service: string, operation: string) =>
-    grants !== undefined && Object.hasOwn(grants, service) && Array.isArray(grants[service]) && grants[service].includes(operation);
-  const visibleServices = (grants: BridgeBot['services']) => [...registrations.values()].flatMap(({ manifest }) => {
-    const capabilities = manifest.capabilities.filter(capability => allows(grants, manifest.id, capability.operation));
-    return capabilities.length ? [{ ...manifest, capabilities }] : [];
-  });
+  const visibleServices = (grants: BridgeBot['services']) => permittedServiceManifests(registrations, grants);
   const server = createServer(async (request, response) => {
     let body: BridgeBody | undefined;
     let controller: AbortController | undefined;

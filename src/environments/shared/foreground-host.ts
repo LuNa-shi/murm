@@ -45,7 +45,7 @@ export async function runForegroundEnvironment({ mode, options, timeoutMs = 120_
             ...botState(await team.getBot(peer.botId)),
             ready: peer.router.ready, accepting: peer.router.accepting, fenced: peer.router.fenced,
             batches: peer.router.batches.map(receipt) })));
-        return team.redact({ mode, runtimeId: team.id, runDirectory: resolve(options.outputDir, team.id), closing: closing || view.closing, peers });
+        return team.redact({ mode, runtimeId: team.id, runDirectory: resolve(options.outputDir, team.id), closing: closing || view.closing, peers, ...(options.project ? { project: team.snapshot().project } : {}) });
       };
       const recipient = (key: any) => {
         check();

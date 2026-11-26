@@ -2,7 +2,7 @@ import { mkdir, copyFile, readFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { createRunWindow } from './run-window.ts';
+import { createRunWindow } from '../shared/run-window.ts';
 import { instance, runDirectory, sha256, task } from './case.ts';
 import { localBackend, saveReceipt } from './local-integration.ts';
 import { ownedContainers } from '../../dist/test/fixtures/core-runtime-containers.js';
@@ -52,7 +52,7 @@ async function modelUsage(directory, runtimeId) {
 /** Private orchestration. Its caller owns upstream selection and formal authorization. */
 export async function runPastel({ mode, image, upstream, durationMs = 1_800_000,
   maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, upstreamKind, agenshImages, onStart }: PastelRunOptions) {
-  if (!Object.hasOwn(drivers, mode) || !/^sha256:[a-f0-9]{64}$/.test(image ?? '') ||
+  if (durationMs > 1_800_000 || maxConcurrent > 3 || !Object.hasOwn(drivers, mode) || !/^sha256:[a-f0-9]{64}$/.test(image ?? '') ||
       !['scripted_loopback', 'hosted_k3'].includes(upstreamKind)) throw new Error('Invalid Pastel run input');
   const target = new URL(upstream.url);
   if (upstreamKind === 'scripted_loopback' && (target.protocol !== 'http:' || target.hostname !== '127.0.0.1')) {

@@ -155,11 +155,15 @@ function upstreamPolicy(upstream: any) {
 export const defaultTimedResponsesLimits = Object.freeze({ maxOutputTokens: 32_768, requestTimeoutMs: 120_000 });
 
 function timedPolicy(upstream: any, { maxOutputTokens = defaultTimedResponsesLimits.maxOutputTokens,
-  requestTimeoutMs = defaultTimedResponsesLimits.requestTimeoutMs }: any) {
+  requestTimeoutMs = defaultTimedResponsesLimits.requestTimeoutMs, selectionReasoningEffort }: any) {
   if ((maxOutputTokens !== null && !integer(maxOutputTokens, 16)) || !integer(requestTimeoutMs, 1) || requestTimeoutMs > 2_147_483_647) {
     throw new TypeError('Timed Responses gateway requires a finite request timeout and a valid output-token policy');
   }
-  return { ...upstreamPolicy(upstream), mode: 'time_bounded', maxOutputTokens, requestTimeoutMs };
+  if (selectionReasoningEffort !== undefined && selectionReasoningEffort !== 'low') {
+    throw new TypeError('Selection reasoning effort must be low when configured');
+  }
+  return { ...upstreamPolicy(upstream), mode: 'time_bounded', maxOutputTokens, requestTimeoutMs,
+    ...(selectionReasoningEffort === undefined ? {} : { selectionReasoningEffort }) };
 }
 
 function terminalMeter(model: any, onUsage: any) {
@@ -438,7 +442,7 @@ export class ResponsesBudgetGateway {
     if (response.destroyed || request.aborted) return;
     const maxOutputTokens = this.policy.maxOutputTokens === null ? body.max_output_tokens
       : Math.min(body.max_output_tokens ?? this.policy.maxOutputTokens, this.policy.maxOutputTokens);
-    const payload = this.transformPayload({
+    const normalizedPayload = this.transformPayload({
       ...body, model: this.policy.model, stream: true, store: false,
       ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
       ...(this.policy.serviceTier === null ? {} : { service_tier: this.policy.serviceTier }),
@@ -462,6 +466,10 @@ export class ResponsesBudgetGateway {
         const admission = this.#admit(token, requestId, fingerprint);
         ({ runtimeId, botId, receipt } = admission);
         if (receipt) return;
+        const { selectionReasoningEffort } = this.policy;
+        const payload = selectionReasoningEffort && admission.authority.phase === 'selection'
+          ? { ...normalizedPayload, reasoning: { ...normalizedPayload.reasoning, effort: selectionReasoningEffort } }
+          : normalizedPayload;
         this.#controllers.set(controller, token);
         cancelWatch = this.#watchAuthority({ ...admission, token, controller });
         response.once('close', disconnect);

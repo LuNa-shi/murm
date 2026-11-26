@@ -5,6 +5,28 @@ import { stableStringify } from '../../protocol/envelope.js';
 import { createFlatBotCoordinator } from './bot-coordinator.js';
 import { executionEnvelope } from './prepare-inputs.js';
 
+export const FLAT_AUTONOMOUS_DISCOVERY_MESSAGE = `During discovery, inspect the public Workspace, Tasks, and Materials. Your private project is read-only until you take a Task.
+
+Run swarm task list --states '["ready","running"]'. Read relevant Task contracts with swarm task view. If the pool is empty, propose a first concrete piece of work. If a Task already covers the Mission-wide deliverable, find a distinct, checkable contribution to it. Refresh the list before creating or taking a Task. If another Bot wins a take, check the list again.
+
+You may propose multiple Tasks during discovery and during your Execution. Use a separate swarm task create call for each concrete gap and deliverable. See swarm task create --help. Other Bots can take your proposals. Take one suitable available Task with swarm task take. After it succeeds, remain in this Session with your one Execution and do detailed work there. If you discover a blocker another Bot can resolve, propose that work and continue the parts of your Task you can advance.`;
+
+export function buildFlatAutonomousDiscoveryMessage({ mission, bot, runDeadline, discoveryContext, discoveryWorkflow }: any) {
+  return `Mission: ${mission.mission_id}
+Goal: ${mission.goal}
+Acceptance: ${JSON.stringify(mission.acceptance_conditions)}
+Bot: ${bot.bot_id}
+Selection deadline: ${bot.selection_deadline}
+Bot hard deadline: ${bot.hard_deadline}
+Mission deadline: ${runDeadline}${discoveryContext ? `\n\n${discoveryContext}` : ''}
+
+${FLAT_AUTONOMOUS_DISCOVERY_MESSAGE}
+
+${discoveryWorkflow ?? FLAT_TASK_FINISH_GUIDANCE}`;
+}
+
+export const FLAT_TASK_FINISH_GUIDANCE = 'When your responsibility ends, report the actual outcome with swarm task finish and end this Bot. Stop work when the Mission is accepted or stopped.';
+
 export const FLAT_DISCOVERY_MESSAGE='Read public Tasks and take suitable work. Continue in this Session after take.';
 
 const info=(error: any)=>({code:error?.code??'FLAT_CONTROLLER_FAILED',message:error?.message??'Flat controller failed'});
@@ -12,22 +34,29 @@ const deny=(message: any)=>{throw new SwarmEnvError('NOT_ALLOWED',message);};
 
 /** One serialized source for discovery, continuation and directed user input.
  * Core owns resources; this controller owns only flat policy and domain cleanup. */
-export function createFlatController({runtime,taskService,missionId,capacity=2,profile='researcher',deadlineAt,coordinationPermissions=[],
+export function createFlatController({runtime,taskService,missionId,capacity=2,profile='researcher',deadlineAt,activeDeadline=()=>deadlineAt,coordinationPermissions=[],
   selectionMs=60_000,hardBudgetMs=300_000,heartbeatMs=10_000,stallMs=120_000,continuationLimit=20,discoveryLimit=20,
-  stopTimeoutMs=30_000,discoveryPrompt=FLAT_DISCOVERY_MESSAGE,
-  continuationPrompt,workspaceSaveAvailable=true,
+  stopTimeoutMs=30_000,autonomousTasks=false,discoveryPrompt,discoveryContext,discoveryWorkflow,
+  continuationPrompt,workspaceSaveAvailable=true,completionPolicy='tasks',deliverNotifications=true,materialNotificationMode='followUp',
   afterStopped=async()=>{}, beforeInitialDispatch, automaticContinuation=true, refillWhenNoReadyTask=true }: any) {
-  if(!runtime?.id || !taskService || typeof missionId!=='string' || !missionId || !Number.isSafeInteger(capacity) || capacity<1 ||
-    ![deadlineAt,selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every(Number.isFinite) || deadlineAt<=Date.now() ||
+  if ([discoveryContext, discoveryWorkflow].some(value => value !== undefined && typeof value !== 'string')) {
+    throw new TypeError('Flat discovery context and workflow must be host-supplied text');
+  }
+  if(!['tasks','mission'].includes(completionPolicy) || !['steer','followUp'].includes(materialNotificationMode) || typeof deliverNotifications!=='boolean' || typeof autonomousTasks!=='boolean' || !runtime?.id || !taskService || typeof missionId!=='string' || !missionId || !Number.isSafeInteger(capacity) || capacity<1 ||
+    ![deadlineAt,selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every(Number.isFinite) || deadlineAt<=Date.now() || typeof activeDeadline!=='function' ||
     ![selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every((x: any)=>x>0) || heartbeatMs>10000 ||
     ![continuationLimit,discoveryLimit].every((x: any)=>Number.isSafeInteger(x)&&x>=1) || typeof afterStopped!=='function' || (beforeInitialDispatch!==undefined && typeof beforeInitialDispatch!=='function') || typeof automaticContinuation!=='boolean' || typeof refillWhenNoReadyTask!=='boolean') throw new TypeError('Flat controller requires finite ordered work budgets and trusted Runtime/domain stores');
   const coordinator=createFlatBotCoordinator({runtime,taskService,missionId,coordinationPermissions});
   const bots: any=new Map(),feedbackRequests: any=new Map(),events: any=new Map();
   const inputs: any[]=[],decisions: any[]=[],failures: any[]=[];
   let admissionController: any;
+  function missionStopReason() {
+    return completionPolicy === 'mission' && taskService.getAcceptedSubmission(missionId) ? 'mission-accepted' : 'mission-stopped';
+  }
   let chain=Promise.resolve(),timer: any,deadlineTimer: any,started=false,closing=false,completion: any=null,generation=0;
   const complete=Promise.withResolvers();
-  const remaining=()=>Math.max(0,deadlineAt-Date.now());
+  const workDeadline=()=>Math.min(deadlineAt,activeDeadline());
+  const remaining=()=>Math.max(0,workDeadline()-Date.now());
   const snapshot=()=>structuredClone({runtimeId:runtime.id,missionId,closing,completion,bots:[...bots.values()],inputs,decisions,failures});
   const record=(reason: any,row: any,extra: any={})=>{
     const owner=row&&taskService.getBot(row.botId),execution=owner?.execution_id&&taskService.getExecution(owner.execution_id);
@@ -92,8 +121,22 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
     if (taskService.isMissionStopped(missionId)) {
       input.reason = 'mission-stopped';
       record('input-not-delivered', row, { source, requestId, reason: input.reason });
-      finish('mission-stopped');
+      finish(missionStopReason());
       return input;
+    }
+    if (source === 'discovery') {
+      const owner = taskService.getBot(row.botId);
+      if (owner?.state !== 'UNBOUND' || expired(owner, null)) {
+        input.reason = 'selection-ended';
+        record('input-not-delivered', row, { source, requestId, reason: input.reason });
+        return input;
+      }
+      text ??= autonomousTasks
+        ? buildFlatAutonomousDiscoveryMessage({
+            mission: taskService.getMission(missionId), bot: owner, runDeadline: new Date(workDeadline()).toISOString(),
+            discoveryContext: row.discoveries === 1 ? discoveryContext : undefined, discoveryWorkflow,
+          })
+        : FLAT_DISCOVERY_MESSAGE;
     }
     if(notificationId) taskService.recordNotificationAttempt(notificationId);
     try {
@@ -140,10 +183,37 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
       delivery.delivered=true;
     }
   }
+  async function ordinaryNotifications(row: any) {
+    const {owner,execution}=current(row);
+    if(!deliverNotifications || row.uncertain || row.stopReason || owner?.state!=='ACTIVE' || execution?.state!=='RUNNING') return;
+    row.notifications ??= {};
+    try {
+      for(const notification of taskService.listUnprocessedNotifications(execution.task_id,execution.execution_id)) {
+        if(notification.notification_type==='handoff_warning' || notification.recipient_delivery?.delivered_at) continue;
+        const delivery=row.notifications[notification.notification_id] ??= {
+          requestId:`flat:notification:${execution.execution_id}:${notification.notification_id}`,
+          text:buildBotNotification(notification,{workspaceSaveAvailable}), fence:execution.fencing_version,
+          mode:notification.notification_type==='material_available'?materialNotificationMode:'followUp',
+        };
+        if(!delivery.input || delivery.input.status==='not_submitted') {
+          delivery.input=await submit(row,delivery.text,{source:'notification',requestId:delivery.requestId,mode:delivery.mode,
+            taskId:execution.task_id,executionId:execution.execution_id,fence:delivery.fence,notificationId:notification.notification_id});
+        }
+        const currentBinding=current(row);
+        if(['accepted','queued'].includes(delivery.input.status) && currentBinding.owner?.state==='ACTIVE' && currentBinding.execution?.state==='RUNNING' && currentBinding.execution.execution_id===execution.execution_id && currentBinding.execution.fencing_version===delivery.fence) taskService.markNotificationDelivered(notification.notification_id,execution.execution_id);
+        if(row.uncertain || row.stopReason || closing) return;
+      }
+    } catch {
+      if(!row.notificationPendingRecorded) {
+        row.notificationPendingRecorded=true;
+        record('notification-pending',row,{code:'NOTIFICATION_PENDING'});
+      }
+    }
+  }
   function canRefill() {
     if (closing || remaining() <= 0) return false;
     if (!taskService.isMissionStopped(missionId)) return true;
-    finish('mission-stopped');
+    finish(missionStopReason());
     return false;
   }
   async function refill() {
@@ -157,14 +227,14 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
       catch(error: any) {failures.push(info(error));record('task-repair-failed',null,{taskId:task.task_id});}
     }
     const tasks=missionTasks();
-    if(tasks.length && tasks.every((task: any)=>['DONE','CANCELED'].includes(task.state))) {finish('all-tasks-terminal',{tasks:tasks.map((task: any)=>({taskId:task.task_id,state:task.state}))});return;}
+    if(completionPolicy==='tasks' && tasks.length && tasks.every((task: any)=>['DONE','CANCELED'].includes(task.state))) {finish('all-tasks-terminal',{tasks:tasks.map((task: any)=>({taskId:task.task_id,state:task.state}))});return;}
     const ready=tasks.filter((task: any)=>task.state==='OPEN').length;
     const awaitingDiscovery: any[]=[]; let spawned=0;
     for(let index=0;index<capacity;index++) {
       if([...bots.values()].some((row: any)=>row.slot===index && !row.released)) continue;
       if (!canRefill()) return;
       if(!refillWhenNoReadyTask && spawned>=ready) {record('refill-awaits-ready-task',null);break;}
-      const serial=++generation,now=Date.now(),hard=Math.min(deadlineAt,now+hardBudgetMs),selection=Math.min(hard,now+selectionMs);
+      const serial=++generation,now=Date.now(),hard=Math.min(workDeadline(),now+hardBudgetMs),selection=Math.min(hard,now+selectionMs);
       if(selection<=now) return;
       const legacySlotId=`flat:slot:${index}`,requestId=`flat:spawn:${serial}`;
       const bot=await coordinator.spawn({legacySlotId,requestId,profile,writable:false,selectionDeadline:new Date(selection).toISOString(),hardDeadline:new Date(hard).toISOString()});
@@ -198,7 +268,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
   async function reconcile() {
     if(closing) return;
     if(remaining()<=0) {finish('mission-deadline');return;}
-    if(taskService.isMissionStopped(missionId)) {finish('mission-stopped');return;}
+    if(taskService.isMissionStopped(missionId)) {finish(missionStopReason());return;}
     for(const row of bots.values()) {
       if(row.released) continue;
       const {owner,execution}=current(row),at=Date.now();
@@ -217,6 +287,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
             record('handoff-warning-pending',row,{code:'HANDOFF_WARNING_PENDING'});
           }
         }
+        await ordinaryNotifications(row);
       }
     }
     await refill();
@@ -233,6 +304,8 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
       if(owner?.state==='CLOSING'||execution?.state==='CLOSING') {await stop(row,'task-finish');await refill();return;}
       if(event.outcome!=='completed') {record('failed-turn-is-not-task-completion',row,{outcome:event.outcome});await stop(row,`turn-${event.outcome}`);await refill();return;}
       if(owner?.state==='ACTIVE'&&execution?.state==='RUNNING') {
+        await ordinaryNotifications(row);
+        if(row.uncertain || closing) return;
         if(!automaticContinuation) {record('awaiting-host-followup',row);return;}
         if(row.continuations>=continuationLimit) {await stop(row,'continuation-budget');await refill();return;}
         row.continuations++;record('unfinished-execution',row,{continuation:row.continuations});

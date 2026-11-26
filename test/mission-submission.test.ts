@@ -364,3 +364,75 @@ test('final checker budget holds timed-out work until actual settlement and limi
   assert.equal(store.getFinalCheckBudget(root.missionId).admitted_checks, 2);
   assert.equal(checkerCalls.length, 2);
 });
+
+
+test('explicit unlimited final checks admit six distinct candidates across reopen with finite cleanup concurrency', async t => {
+  const { workspace, store, config, checkerCalls } = await fixture(t, { maxFinalChecks: null });
+  assert.deepEqual(store.getFinalCheckBudget(root.missionId), { max_checks: null, max_concurrent: 1, admitted_checks: 0, active_checks: 0 });
+  let current = store;
+  for (let index = 0; index < 6; index += 1) {
+    const main = await workspace.get({ workspaceId: root.workspaceId });
+    const saved = await workspace.save({ workspaceId: root.workspaceId, baseRevision: main.main_revision,
+      files: { 'proof.lean': `candidate ${index}` }, requestId: `candidate-save-${index}`, core: 1 });
+    await workspace.merge({ workspaceId: root.workspaceId, fromRevision: saved.revision, requestId: `candidate-merge-${index}` });
+    const submission = await current.submit({ ...root, requestId: `candidate-check-${index}` });
+    assert.equal(submission.state, 'pending');
+    assert.deepEqual(current.getFinalCheckBudget(root.missionId), { max_checks: null, max_concurrent: 1, admitted_checks: index + 1, active_checks: 1 });
+    checkerCalls[index].resolve({ verdict: 'FAIL' });
+    await current.waitForIdle();
+    current = new MissionSubmissionStore(config);
+  }
+  assert.equal(checkerCalls.length, 6);
+  assert.deepEqual(current.getFinalCheckBudget(root.missionId), { max_checks: null, max_concurrent: 1, admitted_checks: 6, active_checks: 0 });
+  const incompatible = new MissionSubmissionStore({ ...config, maxFinalChecks: 4 });
+  assert.equal(incompatible.getFinalCheckBudget(root.missionId).max_checks, null);
+  assert.throws(() => new MissionSubmissionStore({ ...config, maxConcurrentFinalChecks: Infinity }), /concurrent/);
+});
+
+test('legacy persisted finite policies retain their limit and usage when unlimited support is opened', async t => {
+  const legacy = new DatabaseSync(':memory:');
+  t.after(() => legacy.close());
+  legacy.exec(`CREATE TABLE mission_final_check_policies (
+    mission_id TEXT PRIMARY KEY, max_checks INTEGER NOT NULL CHECK(max_checks > 0),
+    max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_checks));
+    INSERT INTO mission_final_check_policies VALUES ('mission:m', 2, 1);
+    CREATE TABLE mission_final_check_admissions (mission_id TEXT NOT NULL, submission_id TEXT NOT NULL,
+      admitted_at TEXT NOT NULL, settled_at TEXT, PRIMARY KEY (mission_id, submission_id));
+    INSERT INTO mission_final_check_admissions VALUES ('mission:m', 'historical', '2026-01-01', '2026-01-01');`);
+  const { store, config, checkerCalls, workspace } = await fixture(t, { database: legacy, maxFinalChecks: 2 });
+  assert.deepEqual(store.getFinalCheckBudget(root.missionId), { max_checks: 2, max_concurrent: 1, admitted_checks: 1, active_checks: 0 });
+  const unlimited = new MissionSubmissionStore({ ...config, maxFinalChecks: null });
+  assert.equal((await unlimited.submit({ ...root, requestId: 'cannot-change-policy' })).result.code, 'SERVICE_NOT_READY');
+  assert.equal(checkerCalls.length, 0);
+  const candidate = await store.submit({ ...root, requestId: 'last-admission' });
+  assert.equal(candidate.state, 'pending');
+  checkerCalls[0].resolve({ verdict: 'FAIL' });
+  await store.waitForIdle();
+  const main = await workspace.get({ workspaceId: root.workspaceId });
+  const saved = await workspace.save({ workspaceId: root.workspaceId, baseRevision: main.main_revision,
+    files: { 'proof.lean': 'new candidate' }, requestId: 'over-budget-save', core: 1 });
+  await workspace.merge({ workspaceId: root.workspaceId, fromRevision: saved.revision, requestId: 'over-budget-merge' });
+  const reopened = new MissionSubmissionStore(config);
+  assert.deepEqual((await reopened.submit({ ...root, requestId: 'over-budget' })).result, { code: 'CHECKER_BUDGET_EXHAUSTED', retryable: false });
+  assert.equal(checkerCalls.length, 1);
+  await workspace.create({ missionId: 'mission:unlimited', workspaceId: 'workspace-unlimited', initialFiles: { 'proof.lean': 'fresh' } });
+  const fresh = await unlimited.submit({ ...root, missionId: 'mission:unlimited', workspaceId: 'workspace-unlimited', requestId: 'new-unlimited-policy' });
+  assert.equal(fresh.state, 'pending');
+  checkerCalls[1].resolve({ verdict: 'FAIL' });
+  await unlimited.waitForIdle();
+  assert.equal(unlimited.getFinalCheckBudget('mission:unlimited').max_checks, null);
+  const { store: defaults } = await fixture(t);
+  assert.deepEqual(defaults.getFinalCheckBudget(root.missionId), { max_checks: 4, max_concurrent: 1, admitted_checks: 0, active_checks: 0 });
+});
+
+test('unlimited final checks keep timed-out resources within the finite concurrent limit', async t => {
+  const { store, config, checkerCalls } = await fixture(t, { maxFinalChecks: null, timeoutMs: 500, maxInfrastructureRetries: 1 });
+  await store.submit({ ...root, requestId: 'unlimited-timeout' });
+  await until(() => store.get({ ...root, submissionId: 'unlimited-timeout' }), row => row.state === 'timed_out' && !row.release_pending);
+  const reopened = new MissionSubmissionStore(config);
+  assert.deepEqual((await reopened.submit({ ...root, requestId: 'unlimited-busy' })).result, { code: 'CHECKER_BUSY', retryable: true });
+  assert.equal(checkerCalls.length, 1);
+  checkerCalls[0].resolve({ verdict: 'FAIL' });
+  await store.waitForIdle();
+  assert.deepEqual(reopened.getFinalCheckBudget(root.missionId), { max_checks: null, max_concurrent: 1, admitted_checks: 1, active_checks: 0 });
+});

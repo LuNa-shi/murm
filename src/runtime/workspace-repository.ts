@@ -215,6 +215,56 @@ export class WorkspaceRepository {
     }
   }
 
+  async applyTree(root: any, current: any, source: any) {
+    let output, conflicted = false;
+    try {
+      output = (await execFile('git', ['-C', root, `--attr-source=${current}`, 'merge-tree', '--write-tree', '--messages', '-z', current, source],
+        { env: gitEnvironment(), timeout: 30_000, maxBuffer: 8 * 1024 * 1024 })).stdout;
+    } catch (error: any) {
+      if (error.code !== 1) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace apply planning failed', undefined, { cause: error });
+      output = error.stdout;
+      conflicted = true;
+    }
+    // Git's -z format separates tree, conflict stages, and typed messages.
+    // Preserve stage objects and every involved path, including rename/delete
+    // conflicts that cannot be reconstructed from marker text alone.
+    const fields = String(output).split('\0');
+    const tree = fields.shift()!.trim();
+    if (!/^[a-f0-9]{40,64}$/.test(tree)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Git apply result has no tree');
+    const stages = [];
+    while (fields[0]) {
+      const line = fields.shift()!;
+      const match = /^([0-7]{6}) ([a-f0-9]{40,64}) ([123])\t([\s\S]+)$/.exec(line);
+      if (!match) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Git apply conflict stage is malformed');
+      stages.push({ mode: match[1], object: match[2], stage: Number(match[3]), path: match[4] });
+    }
+    fields.shift();
+    const messages = [];
+    while (fields[0]) {
+      const count = Number(fields.shift());
+      if (!Number.isInteger(count) || count < 1 || count > 10_000 || fields.length < count + 2) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Git apply conflict message is malformed');
+      const paths = fields.splice(0, count);
+      const type = fields.shift(), message = fields.shift();
+      messages.push({ paths, type, message });
+    }
+    return { tree, conflicted, stages, messages };
+  }
+
+  async isAncestor(root: any, ancestor: any, descendant: any) {
+    try {
+      await execFile('git', ['-C', root, 'merge-base', '--is-ancestor', ancestor, descendant], { env: gitEnvironment(), timeout: 30_000 });
+      return true;
+    } catch (error: any) {
+      if (error.code === 1) return false;
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace ancestry is unavailable', undefined, { cause: error });
+    }
+  }
+
+  async readBlob(root: any, object: any) {
+    if (!/^[a-f0-9]{40,64}$/.test(object)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Invalid Git blob identity');
+    return git(root, ['cat-file', 'blob', object], { encoding: 'buffer' });
+  }
+
   commit(root: any, { kind, oldMain, newMain, record, revision, receipt = null }: any) {
     this.assertMain(root, oldMain);
     const intent = { version: 2, event_id: randomUUID(), kind, old_main: oldMain, new_main: newMain, record, revision, receipt };

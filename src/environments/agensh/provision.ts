@@ -7,7 +7,7 @@ const e = encodeURIComponent;
 const requireString = (value: any) => { if (typeof value !== 'string' || !value) throw new TypeError('Incomplete Agensh facility configuration'); return value; };
 
 /** Prepare only new run resources. Shared Git/channel/board data is retained. */
-export async function prepareAgenshFacilities({ runId, gitea, mattermost, startBoard, resources, signal, peerKeys }: any) {
+export async function prepareAgenshFacilities({ runId, gitea, mattermost, startBoard, resources, signal, peerKeys, project }: any) {
   if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId) || typeof startBoard !== 'function') throw new TypeError('Invalid Agensh run or board launcher');
   if (signal !== undefined && !(signal instanceof AbortSignal)) throw new TypeError('Agensh startup signal must be an AbortSignal');
   const check = () => { if (signal?.aborted) throw Object.assign(new Error('Agensh startup aborted'), { code: 'ENVIRONMENT_START_ABORTED' }); };
@@ -26,6 +26,12 @@ export async function prepareAgenshFacilities({ runId, gitea, mattermost, startB
   const keys = peerKeys ?? ['peer'];
   if (!Array.isArray(keys) || keys.length < 1 || keys.length > 8 || new Set(keys).size !== keys.length ||
       keys.some((key: any) => typeof key !== 'string' || !/^[a-z][a-z0-9-]{0,15}$/.test(key))) throw new TypeError('Invalid Agensh peer keys');
+  if (project !== undefined && (!project || typeof project.title !== 'string' || !project.title.trim() || project.title.length > 255 ||
+      typeof project.body !== 'string' || !project.body.trim() || Buffer.byteLength(project.body) > 16_000 ||
+      (project.seed !== undefined && (!project.seed || typeof project.seed !== 'object' || Array.isArray(project.seed) ||
+        Object.keys(project.seed).length > 64 || Object.entries(project.seed).some(([path, data]) =>
+          !path.split('/').every(part => /^(?!\.\.?$)(?!\.git$)[a-z0-9_.-]+$/i.test(part)) ||
+          typeof data !== 'string' || Buffer.byteLength(data) > 64 * 1024))))) throw new TypeError('Invalid Agensh project goal or seed');
   const repository: any = { owner, name: `run-${runId}` };
   const repo = `/api/v1/repos/${e(owner)}/${e(repository.name)}`;
   const boardId = `board-${runId}`;
@@ -68,8 +74,19 @@ export async function prepareAgenshFacilities({ runId, gitea, mattermost, startB
       resources.own({ kind: 'repository-create-intent', id: `${owner}/${repository.name}`, retained: true });
       await git('POST', `/api/v1/admin/users/${e(owner)}/repos`, { name: repository.name, private: true, auto_init: true, default_branch: 'main' });
       resources.own({ kind: 'repository', id: `${owner}/${repository.name}`, retained: true });
-      await git('POST', `${repo}/contents/acceptance.txt`, { branch: 'main', message: 'Seed fixed acceptance input', content: Buffer.from(initialFile).toString('base64') });
-      issue = await git('POST', `${repo}/issues`, { title: peerKeys ? 'Fixed peer collaboration acceptance' : 'Fixed single-peer acceptance', body: initialIssue });
+      if (project) {
+        for (const [path, data] of Object.entries(project.seed ?? {})) {
+          await git('POST', `${repo}/contents/${path.split('/').map(e).join('/')}`, {
+            branch: 'main', message: 'Seed project input', content: Buffer.from(data as string).toString('base64'),
+          });
+        }
+        await git('POST', `${repo}/branch_protections`, { rule_name: 'main', enable_push: false, enable_force_push: false,
+          enable_merge_whitelist: true, merge_whitelist_usernames: [owner], required_approvals: 0 });
+      } else {
+        await git('POST', `${repo}/contents/acceptance.txt`, { branch: 'main', message: 'Seed fixed acceptance input', content: Buffer.from(initialFile).toString('base64') });
+      }
+      issue = await git('POST', `${repo}/issues`, project ? { title: project.title, body: project.body }
+        : { title: peerKeys ? 'Fixed peer collaboration acceptance' : 'Fixed single-peer acceptance', body: initialIssue });
       if (!Number.isSafeInteger(issue?.number)) throw new TypeError('Gitea did not return issue identity');
     }
     await git('PUT', `${repo}/collaborators/${e(username)}`, { permission: 'write' });
@@ -120,6 +137,21 @@ export async function prepareAgenshFacilities({ runId, gitea, mattermost, startB
     await Promise.all([startup(httpClient(gitea.origin, `token ${gitToken.sha1}`))('GET', `${repo}/issues/${issue.number}`),
       startup(httpClient(mattermost.origin, `Bearer ${mmToken.token}`))('GET', `/api/v4/channels/${e(channel.id)}`)]);
   }
+  const directChannels: Record<string, Record<string, string>> = Object.fromEntries(peers.map(peer => [peer.key, {}]));
+  if (project) {
+    for (const [index, sender] of peers.entries()) {
+      const send = startup(httpClient(mattermost.origin, `Bearer ${sender.message.token}`));
+      for (const recipient of peers.slice(index + 1)) {
+        const ids = [sender.message.accountId, recipient.message.accountId];
+        const dm = await send('POST', '/api/v4/channels/direct', ids);
+        if (dm?.type !== 'D' || dm.name?.split('__').sort().join('__') !== ids.sort().join('__')) throw new TypeError('Unexpected direct channel membership');
+        requireString(dm.id);
+        directChannels[sender.key][recipient.key] = dm.id;
+        directChannels[recipient.key][sender.key] = dm.id;
+        resources.own({ kind: 'direct-channel', id: dm.id, retained: true });
+      }
+    }
+  }
   resources.own({ kind: 'board-create-intent', id: boardId, retained: true });
   check();
   const board = await startBoard({ boardId, workerId: peers[0].board.workerId, workerIds: peers.map((peer: any) => peer.board.workerId), own: (resource: any) => resources.own(resource), signal });
@@ -129,5 +161,5 @@ export async function prepareAgenshFacilities({ runId, gitea, mattermost, startB
   resources.own({ kind: 'board-data', id: boardId, retained: true });
   return { runId, repository, repositoryUrl: `${gitea.origin.replace(/\/$/, '')}/${e(owner)}/${e(repository.name)}.git`, channelId: channel.id, boardId,
     endpoints: { gitea: gitea.origin, message: mattermost.origin, board: board.origin }, issueNumber: issue.number,
-    peer: peers[0], ...(peerKeys ? { peers } : {}) };
+    peer: peers[0], ...(peerKeys ? { peers } : {}), ...(project ? { project: true, directChannels } : {}) };
 }

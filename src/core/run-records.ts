@@ -7,6 +7,8 @@ import { appendFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { defaultTimedResponsesLimits } from '../agent/responses-budget-gateway.js';
+import { permittedServiceManifests } from './bridge.js';
+import { renderStartupPrompt } from './startup-prompt.js';
 import { getAdapterMetadata } from './services.js';
 import { readFileSync } from 'node:fs';
 import { findPackageJSON } from 'node:module';
@@ -151,6 +153,7 @@ export function runtimeConfiguration({ config, profiles, registrations, maxBots,
       model: profile.model, image: redact(profile.image), writable: profile.writable, services: profile.services,
       environmentKeys: Object.keys(profile.env ?? {}).sort(), network: profile.network, collect: profile.collect,
       spawnProfiles: profile.spawnProfiles, promptSha256: createHash('sha256').update(profile.prompt ?? '').digest('hex'),
+      stagedSystemPromptSha256: createHash('sha256').update(renderStartupPrompt(permittedServiceManifests(registrations, profile.services), profile.prompt)).digest('hex'),
     }])),
     services: [...registrations.values()].map(({ manifest, adapter }) => ({
       id: manifest.id, transport: manifest.endpoint.transport, ...getAdapterMetadata(adapter),

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { createServer } from 'node:http';
@@ -145,4 +145,55 @@ test('eight mapped peers are ready before kickoff and real HTTP events reach onl
   assert.ok(f.environment.snapshot().peers.every(peer => peer.subscription.closed));
   await assert.rejects(f.environment.poll(), { code: 'ROUTER_SOURCE_STOPPED' });
   await assert.rejects(fetch(`${bridgeUrl}/health`, { signal: AbortSignal.timeout(500) }));
+});
+
+test('project close bounds a held steer and keeps facilities for a later close retry', async t => {
+  const head = 'b'.repeat(40);
+  const server = createServer((request, response) => {
+    if (request.url.endsWith('/branches/main')) {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({ name: 'main', commit: { id: head } }));
+    } else {
+      assert.ok(request.url.endsWith(`/archive/${head}.tar.gz`));
+      response.end('project archive');
+    }
+  });
+  const address = Object.values(networkInterfaces()).flat().find(item => item?.family === 'IPv4' && !item.internal)?.address;
+  assert.ok(address, 'project network requires one non-loopback IPv4 interface');
+  server.listen(0, address); await once(server, 'listening');
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const origin = `http://${address}:${server.address().port}`;
+  let facilityClosed = false;
+  const held = Promise.withResolvers();
+  t.after(() => held.resolve());
+  const f = await setup(t, {
+    project: { title: 'project', body: 'run the project', durationMs: 10_000 },
+    gitea: { adminToken: 'git-host' },
+    router: { turnTimeoutMs: 5000, readContext: async () => 'board', subscribe: async () => ({ ready: true, stop: async () => {} }) },
+    prepare: async ({ resources }) => {
+      resources.own({ kind: 'facility', id: 'project', close() { facilityClosed = true; } });
+      const peers = ['a', 'b'].map(key => ({ key, gitea: { username: key, binding: `git-${key}`, accountId: key, token: `git-token-${key}` },
+        message: { binding: `mm-${key}`, accountId: key, token: `mm-token-${key}` }, board: { binding: `board-${key}`, workerId: `worker-${key}` } }));
+      return { project: true, runId: 'team', repository: { owner: 'owner', name: 'repo' }, repositoryUrl: origin + '/owner/repo.git',
+        channelId: 'channel', boardId: 'board', issueNumber: 1, endpoints: { gitea: origin, message: origin, board: origin }, peers };
+    },
+  });
+  for (let step = 0; step < 100 && transport.submissions.size < 2; step++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(transport.submissions.size, 2);
+  for (const { input } of transport.submissions.values()) {
+    assert.equal(JSON.parse(input.slice(input.indexOf('\n') + 1)).text, 'run the project');
+  }
+  await new Promise(resolve => setImmediate(resolve));
+  const sending = Promise.withResolvers();
+  transport.next = () => { sending.resolve(); return held.promise; };
+  const dm = f.environment.ingest('a', { source: 'mattermost', kind: 'dm', eventId: 'dm', targetWorker: 'worker-a', text: 'held notice' });
+  await sending.promise;
+  const pending = await f.environment.close({ timeoutMs: 300 });
+  assert.equal(pending.cleanup, 'pending');
+  assert.equal(pending.routerCleanup, 'pending');
+  assert.equal(facilityClosed, false);
+  assert.equal(f.environment.snapshot().peers[0].router.batches.find(row => row.batchId === dm.batchId).state, 'steering');
+  held.resolve();
+  assert.equal((await f.environment.close({ timeoutMs: 2000 })).cleanup, 'complete');
+  assert.equal(facilityClosed, true);
 });

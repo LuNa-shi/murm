@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 
 ### Core Runtime model attempts
 
-Source: [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts); source SHA-256: `cf9e5eea98b694c712e7fb2189d63ea73a3101f91dc977d822cf096cd3fb3066`.
+Source: [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts); source SHA-256: `8f51f8c5bc9832cdd99afe2fe8a337d38068d8aa16a3d0ac83a1c3894d624598`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS runtime_model_policies (
@@ -159,13 +159,13 @@ CREATE TABLE IF NOT EXISTS runtime_model_policies (
 
 ### Mission submission coordinator
 
-Source: [src/runtime/mission-submission.ts](../../src/runtime/mission-submission.ts); source SHA-256: `cc106519bc1627edd25a71ebc0c7d16ead16264819dd4ce03448037f1591b2e0`.
+Source: [src/runtime/mission-submission.ts](../../src/runtime/mission-submission.ts); source SHA-256: `2bcd64f9bf4b6e53634e0a42432bb4261bd2362500b6d4f3b55fd0bdd25d5cfe`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_final_check_policies (
         mission_id TEXT PRIMARY KEY,
-        max_checks INTEGER NOT NULL CHECK(max_checks > 0),
-        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_checks)
+        max_checks INTEGER CHECK(max_checks IS NULL OR max_checks > 0),
+        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND (max_checks IS NULL OR max_concurrent <= max_checks))
       );
       CREATE TABLE IF NOT EXISTS mission_final_check_admissions (
         mission_id TEXT NOT NULL,
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS mission_manual_reviews (
 
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `966f025a945f2f7875b6fce2f1cb4d3e0a9aef8e9e1af7c0e7c3180a590d3347`.
+Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `1be13b51b76bbf4eace61b6df4c8895df3bf42662e78d2a67c06815c80a99dca`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (
@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS execution_workspace_state (
 
 ### Task and Execution database
 
-Source: [src/storage/schema.ts](../../src/storage/schema.ts); source SHA-256: `1ff81dfccbefc01fa0e8d96bec0fb6b9cbd6bb334c584b1068120a5c0db53595`.
+Source: [src/storage/schema.ts](../../src/storage/schema.ts); source SHA-256: `09d2504960d665ea5a9d393bd7b059c7415fb96302e3b27e392c36105e5f6a1e`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -765,7 +765,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `0842ce7bae7bd01b6dab03359682c50f7335321799dbc81f08e5d5229bd74df1`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `0b2df9c04e4f3ed93290d1ad6baca8e26ac70d52f8c8c9ede0e5667d3df266a5`.
 
 #### mission_final_check_active
 
@@ -791,8 +791,8 @@ CREATE TABLE mission_final_check_admissions (
 ```sql
 CREATE TABLE mission_final_check_policies (
         mission_id TEXT PRIMARY KEY,
-        max_checks INTEGER NOT NULL CHECK(max_checks > 0),
-        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_checks)
+        max_checks INTEGER CHECK(max_checks IS NULL OR max_checks > 0),
+        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND (max_checks IS NULL OR max_concurrent <= max_checks))
       );
 ```
 

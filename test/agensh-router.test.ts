@@ -213,3 +213,105 @@ test('actual Core input timeout preserves admission and cancels later batches wi
   assert.equal(result.receipt.status, 'accepted'); assert.equal(result.requestId, first.requestId);
   assert.equal(f.submitted(), 1); assert.equal(f.environment.snapshot().router.batches[1].state, 'cancelled');
 });
+
+test('a busy project router steers DM and Board events once while keeping ordinary follow-up serial', async t => {
+  const { createAgenshRouter } = await import('../src/environments/agensh/router.js');
+  const kickoff = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  const calls = [];
+  const runInput = (text, { onStarted }) => {
+    const input = JSON.parse(text.slice(text.indexOf('\n') + 1));
+    calls.push({ mode: 'followUp', input });
+    if (input.kind === 'kickoff') {
+      onStarted?.();
+      entered.resolve();
+      return kickoff.promise;
+    }
+    return Promise.resolve({ inputId: 'follow-up', receipt: { status: 'accepted', disposition: 'started' }, settled: { seq: 2 } });
+  };
+  const router = createAgenshRouter({ mapping: { botId: 'bot-a', workerId: 'worker-a' }, runInput, readContext: async () => 'shared',
+    async steerInput(text) {
+      const input = JSON.parse(text.slice(text.indexOf('\n') + 1));
+      calls.push({ mode: 'steer', input });
+      return { inputId: input.eventId, status: 'accepted', disposition: 'queued' };
+    },
+  });
+  t.after(() => { kickoff.resolve({ inputId: 'initial', settled: { seq: 1 } }); return router.finishClose({}); });
+  router.markReady();
+  const first = router.kickoff('start work');
+  await entered.promise;
+  const make = (source, kind, eventId) => ({ source, kind, eventId, targetWorker: 'worker-a', text: `trusted ${eventId}` });
+  const dmEvent = make('mattermost', 'dm', 'dm-b');
+  const dm = router.ingest(dmEvent);
+  const publicEvent = router.ingest(make('mattermost', 'peer-message', 'team-b'));
+  const board = router.ingest(make('board', 'board-entry', 'G1'));
+  assert.equal(router.ingest(dmEvent).batchId, dm.batchId);
+  assert.equal((await router.wait(dm.batchId)).receipt.disposition, 'queued');
+  assert.equal((await router.wait(board.batchId)).receipt.disposition, 'queued');
+  assert.deepEqual(calls.map(call => [call.mode, call.input.kind]), [['followUp', 'kickoff'], ['steer', 'dm'], ['steer', 'board-entry']]);
+  router.observe({ botId: 'bot-a', seq: 1, type: 'settled', outcome: 'completed' });
+  kickoff.resolve({ inputId: 'initial', receipt: { status: 'accepted', disposition: 'started' }, settled: { seq: 1 } });
+  assert.equal((await router.wait(first.batchId)).state, 'completed');
+  assert.equal((await router.wait(publicEvent.batchId)).state, 'completed');
+  assert.deepEqual(calls.map(call => call.input.eventId), ['kickoff', 'dm-b', 'G1', 'team-b']);
+});
+
+test('settlement racing with a started steer waits for that execution before the next work batch', async t => {
+  const { createAgenshRouter } = await import('../src/environments/agensh/router.js');
+  const kickoff = Promise.withResolvers(), entered = Promise.withResolvers(), steerEntered = Promise.withResolvers();
+  const steer = Promise.withResolvers();
+  const calls = [];
+  const router = createAgenshRouter({ mapping: { botId: 'bot-a', workerId: 'worker-a' }, readContext: async () => '',
+    runInput(_text, { onStarted }) {
+      calls.push('ordinary');
+      onStarted();
+      if (calls.length === 1) {
+        entered.resolve();
+        return kickoff.promise;
+      }
+      return Promise.resolve({ inputId: 'next', settled: { seq: 3 } });
+    },
+    steerInput() { steerEntered.resolve(); return steer.promise; },
+  });
+  t.after(() => { kickoff.resolve({ inputId: 'initial', settled: { seq: 1 } }); steer.resolve({ status: 'unknown', inputId: 'notice' }); return router.finishClose({}); });
+  router.markReady();
+  router.kickoff('go');
+  await entered.promise;
+  const event = { source: 'mattermost', kind: 'dm', eventId: 'dm', targetWorker: 'worker-a', text: 'test' };
+  const dm = router.ingest(event);
+  const next = router.ingest({ ...event, source: 'user', kind: 'user', eventId: 'followup' });
+  await steerEntered.promise;
+  router.observe({ botId: 'bot-a', type: 'settled', outcome: 'completed', seq: 1 });
+  kickoff.resolve({ inputId: 'initial', settled: { seq: 1 } });
+  steer.resolve({ inputId: 'notice', status: 'accepted', disposition: 'started' });
+  assert.equal((await router.wait(dm.batchId)).receipt.disposition, 'started');
+  assert.equal(calls.length, 1);
+  router.observe({ botId: 'bot-a', type: 'settled', outcome: 'completed', seq: 2 });
+  assert.equal((await router.wait(next.batchId)).state, 'completed');
+  assert.equal(calls.length, 2);
+});
+
+test('a steer with unknown receipt reuses its request identity and never becomes a second prompt', async t => {
+  const { createAgenshRouter } = await import('../src/environments/agensh/router.js');
+  const kickoff = Promise.withResolvers(), entered = Promise.withResolvers();
+  const attempts = [];
+  let runs = 0;
+  const router = createAgenshRouter({ mapping: { botId: 'bot-a', workerId: 'worker-a' }, readContext: async () => '',
+    runInput(_text, { onStarted }) { runs++; onStarted(); entered.resolve(); return kickoff.promise; },
+    async steerInput(text, requestId) { attempts.push({ text, requestId }); return { inputId: 'unknown-input', status: 'unknown' }; },
+  });
+  t.after(() => { kickoff.resolve({ inputId: 'initial', settled: { seq: 1 } }); return router.finishClose({}); });
+  router.markReady();
+  const first = router.kickoff('go');
+  await entered.promise;
+  const event = { source: 'mattermost', kind: 'dm', eventId: 'dm', targetWorker: 'worker-a', text: 'test' };
+  const dm = router.ingest(event);
+  assert.equal((await router.wait(dm.batchId)).state, 'uncertain');
+  assert.equal(router.snapshot().fenced, true);
+  assert.equal(attempts.length, 2);
+  assert.deepEqual(attempts[0], attempts[1]);
+  assert.equal(router.ingest(event).inputId, 'unknown-input');
+  kickoff.resolve({ inputId: 'initial', settled: { seq: 1 } });
+  await router.wait(first.batchId);
+  assert.equal(runs, 1);
+});

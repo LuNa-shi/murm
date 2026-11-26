@@ -8,14 +8,15 @@ const preamble = [
 
 const tools = [
   '- read: Read files in the sandbox.',
-  '- write: Create or replace files.',
-  '- edit: Make targeted edits to files.',
+  '- write: Create or replace files where you have write access.',
+  '- edit: Make targeted changes to files where you have write access.',
   '- bash: Run shell commands, including swarm commands.',
 ].join('\n');
 
 const serviceHelp = [
   'Use `swarm service list` to see your available services.',
-  'Add `--help` to a command for arguments and input formats.',
+  'Add `--help` to an operation command for arguments and input formats.',
+  'Some operations require an active execution or other authorization. Check the operation help.',
 ].join('\n');
 
 function oneLine(description: string) {
@@ -24,7 +25,7 @@ function oneLine(description: string) {
 
 export function renderStartupPrompt(services: readonly ServiceManifest[], addedSystemPrompt?: string): string {
   const directory = services.map(({ id, purpose, capabilities }) => [
-    `${id} — ${oneLine(purpose)}`,
+    `${id === 'context' ? 'context (CLI: material)' : id} — ${oneLine(purpose)}`,
     ...capabilities.map(({ operation, description }) => `- \`${serviceCommand(id, operation)}\` ${oneLine(description)}`),
   ].join('\n')).join('\n\n');
   const sections = [

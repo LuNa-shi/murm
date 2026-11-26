@@ -20,7 +20,7 @@ test('installed Notes Environment exchanges a native fact and retains the reader
   // Retain the external consumer on uncertainty; durable inputs and outputs stay in evidenceDir.
   let child;
   let nativeSessions;
-  const upstream = await createNotesEnvironmentUpstream({ onFailure: () => child?.kill('SIGTERM'),
+  const upstream = await createNotesEnvironmentUpstream({ verifyStartup: true, onFailure: () => child?.kill('SIGTERM'),
     observeSessions: async (phase, row) => {
       const ids = (await readdir(outputDir)).filter(id => /^[a-f0-9-]{36}$/.test(id));
       assert.equal(ids.length, 1);

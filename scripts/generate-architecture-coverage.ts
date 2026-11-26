@@ -27,7 +27,9 @@ async function walk(directory: any, prefix: any = ''): Promise<any>  {
   }
   return files;
 }
-const discovered = (await walk(root)).filter((path: any) =>
+const fixtureScopes = map.scope_roots.filter((dir: string) => dir.startsWith('test-support/'));
+const fixtureSources = await Promise.all(fixtureScopes.map((dir: string) => walk(resolve(root, dir), dir)));
+const discovered = [...await walk(root), ...fixtureSources.flat()].filter((path: any) =>
   map.scope_roots.some((dir: any) => path.startsWith(`${dir}/`)) || map.scope_root_files.includes(path) ||
   /\.(?:[cm]?js|jsx|[cm]?ts|tsx|py|sh|json)$/.test(path) || posix.basename(path) === 'Dockerfile'
 ).sort();

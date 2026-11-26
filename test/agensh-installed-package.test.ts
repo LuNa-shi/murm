@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { join } from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { installNotesExample, execute } from './fixtures/notes-installed-package.js';
 
@@ -37,7 +37,10 @@ test('offline archive ships the native Agensh host configuration and declared fo
   assert.match(help.stdout, /status, kickoff, input, wait or stop/);
 
   const config = pathToFileURL(join(root, 'dist/examples/agensh-environment/config.js'));
+  const project = join(installed.directory, 'project.json');
+  await writeFile(project, JSON.stringify({ title: 'Installed project', body: 'Develop the project together' }));
   const settings = {
+    PROJECT_FILE: project,
     RUN_ID: 'installed-fixture',
     IMAGE: 'no-allocation',
     MODEL_URL: 'http://127.0.0.1:1/v1/responses',
@@ -55,6 +58,7 @@ test('offline archive ships the native Agensh host configuration and declared fo
     import config from ${JSON.stringify(config.href)};
     assert.equal(config.mode, 'agensh');
     assert.equal(config.options.runId, 'installed-fixture');
+    assert.equal(config.options.project.title, 'Installed project');
     assert.ok(config.options.backend);
     assert.equal(typeof config.options.startBoard, 'function');
   `], {

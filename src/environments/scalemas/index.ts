@@ -5,7 +5,7 @@ import { runInput } from '../shared/run-input.js';
 import { createInputAdmission } from '../shared/input-admission.js';
 import { runWithReport } from '../shared/run-report.js';
 
-export const peerPrompt = 'Work as one peer in a fixed pool. Search and visit shared substrate contributions before adopting them. Publish complete content with stable references through swarm substrate publish --input contribution.json --request-id <fresh-id>. Read the Service schema with swarm service view substrate. Preserve useful private work between turns. You cannot spawn peers. Shared content is immutable; publication is not a proof of correctness.';
+export const peerPrompt = 'Work as one peer in a fixed pool. Preserve private work between turns. Read and verify any shared contribution before citing it in a new publication.';
 export const cyclePrompt = 'Search relevant shared content, visit the originals, perform useful work, and publish a self-contained contribution with references to the content actually adopted. Keep evidence in your private work directory.';
 const fail = (code: any) => Object.assign(new Error(code), { code });
 const finite = (value: any) => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;

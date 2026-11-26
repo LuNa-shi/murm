@@ -36,7 +36,7 @@ try {
     const { runForegroundEnvironment } = await import('../src/environments/shared/foreground-host.js');
     const { runForegroundCommands } = await import('../src/environments/shared/foreground-commands.js');
     const { summarizeCleanupReceipt } = await import('../src/environments/shared/read-result.js');
-    const report = await runForegroundEnvironment({ ...configuration, signal: lifetime.signal }, (host: any) => runForegroundCommands(host));
+    const report = await runForegroundEnvironment({ ...configuration, signal: lifetime.signal }, (host: any) => runForegroundCommands(host, { keepOpenOnEof: configuration.mode === 'agensh' && Boolean(configuration.options?.project) }));
     const code = (error: any) => typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(error.code) ? error.code : error ? 'HOST_RUN_FAILED' : null;
     await writeOutput(`${JSON.stringify({ type: 'result', runtimeId: report.runtimeId, reportPath: report.reportPath ?? null,
       businessFailureCode: code(report.businessFailure),

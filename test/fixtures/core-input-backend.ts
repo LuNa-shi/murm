@@ -17,9 +17,9 @@ export async function openPiOpenSandboxBackend() {
       transport.listeners.set(botId, onEvent);
       return { sandboxId: `fixture-${botId}`, versions: { piVersion: '1.3.0' } };
     },
-    async send(botId, input, { mode, inputId, steeringMode }) {
+    async send(botId, input, { mode, inputId, steeringMode, wakeIfIdle }) {
       if (!transport.submissions.has(inputId)) {
-        transport.submissions.set(inputId, { botId, input, mode, steeringMode, receipt: { status: 'unknown' } });
+        transport.submissions.set(inputId, { botId, input, mode, steeringMode, wakeIfIdle, receipt: { status: 'unknown' } });
         const next = transport.next; transport.next = undefined;
         await next?.(inputId);
       }

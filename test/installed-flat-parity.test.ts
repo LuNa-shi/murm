@@ -74,7 +74,7 @@ console.log(JSON.stringify({records,reportPath:report.reportPath,runtimeId:repor
     const binding = JSON.parse(await readFile(join(output, 'fixture-binding.json'), 'utf8'));
     const saved = JSON.parse(await readFile(reportPath, 'utf8'));
     const core = JSON.parse(await readFile(join(ready.runDirectory, 'runtime.json'), 'utf8'));
-    assert.deepEqual(core.config.profiles.researcher.services.workspace, ['workspace_public_view', 'workspace_public_read', 'workspace_public_files']);
+    assert.deepEqual(core.config.profiles.researcher.services.workspace, ['workspace_public_diff', 'workspace_public_view', 'workspace_public_read', 'workspace_public_files']);
     assert.equal(ready.runtimeId, saved.runtimeId); assert.equal(core.runtimeId, ready.runtimeId);
     assert.equal(ready.runDirectory, join(output, ready.runtimeId));
     assert.equal(ready.bots.length, 1); assert.equal(ready.bots[0].botId, binding.botId);

@@ -71,3 +71,48 @@ test('one registry selects each peer token and board identity from its trusted B
   await assert.rejects(call('b', 'gitea', 'issue_read', { owner: 'owner', repo: 'repo', method: 'get', index: 1 }, 'git-a'), { code: 'NOT_ALLOWED' });
   assert.equal(requests.length, 4);
 });
+
+test('project peers can open and merge a PR from a self-chosen branch in their run repository', async t => {
+  const checked = 'b'.repeat(40);
+  const later = 'd'.repeat(40);
+  const merged = 'c'.repeat(40);
+  const head = { ref: 'fix/pandoc-reader', sha: checked, repo: { full_name: 'owner/repo' } };
+  let didMerge = false;
+  let mergeable = false;
+  const posts: unknown[] = [];
+  const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
+    const data = { number: 2, user: { id: 1 }, base: { ref: 'main' }, head, mergeable, merged: didMerge, merge_commit_sha: merged };
+    if (req.method === 'POST') {
+      const chunks = []; for await (const chunk of req) chunks.push(chunk);
+      posts.push(JSON.parse(Buffer.concat(chunks).toString()));
+      if (req.url.endsWith('/merge')) didMerge = true;
+    }
+    res.end(JSON.stringify(req.url.includes('/git/commits/') ? { sha: merged, parents: [{ sha: 'a'.repeat(40) }, { sha: later }] } : data));
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const facilities = { project: true, runId: 'run', repository: { owner: 'owner', name: 'repo' }, channelId: 'channel', boardId: 'board',
+    endpoints: { gitea: origin, message: origin, board: origin }, peers: [{ key: 'a', branch: 'peer-run-a', gitea: { binding: 'git', accountId: '1', token: 'git-secret' },
+      message: { binding: 'mm', accountId: 'm', token: 'mm-secret' }, board: { binding: 'board', workerId: 'worker-a' } }] };
+  const { createAgenshDelivery } = await import('../src/environments/agensh/delivery.js');
+  const service = createAgenshServices(facilities, createAgenshDelivery({ facilities, adminToken: 'host', maxReadinessReads: 1 }));
+  service.bindBot({ runtimeId: 'runtime', botId: 'bot', peerKey: 'a', profile: 'peer-a' });
+  const registry = snapshotServiceRegistry(service.services);
+  let counter = 0;
+  const call = (operation, input) => invokeService(registry.get('gitea'), {
+    operation, input: { owner: 'owner', repo: 'repo', ...input }, caller: { runtimeId: 'runtime', botId: 'bot', profile: 'peer-a', binding: 'git' }, envelope: { operation_id: `op-${++counter}` },
+  });
+  const open = branch => call('pull_request_write', { method: 'create', head: branch, base: 'main', title: 'Pandoc reader fix' });
+  for (const branch of ['main', 'foreign:branch']) await assert.rejects(open(branch), { code: 'NOT_ALLOWED' });
+  const pr = await open(head.ref);
+  await assert.rejects(call('pull_request_merge', { index: pr.number, head_sha: checked }), { code: 'DELIVERY_NOT_READY' });
+  head.sha = later;
+  mergeable = true;
+  head.repo.full_name = 'other/repo';
+  await assert.rejects(call('pull_request_merge', { index: pr.number, head_sha: later }), { code: 'DELIVERY_INVALID' });
+  head.repo.full_name = 'owner/repo';
+  assert.deepEqual(await call('pull_request_merge', { index: pr.number, head_sha: later }), { peerKey: 'a', number: 2, headSha: later, mergeSha: merged });
+  assert.deepEqual(posts, [{ title: 'Pandoc reader fix', head: 'fix/pandoc-reader', base: 'main' }, { Do: 'merge', head_commit_id: later }]);
+});
