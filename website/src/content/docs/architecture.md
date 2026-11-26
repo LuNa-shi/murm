@@ -7,34 +7,107 @@ order: 3
 
 Every `murm` Run enforces one hard trust boundary: the **Trusted Host** runs your Harness, owns all upstream credentials, and writes authoritative logs; **Isolated Sandboxes** run unprivileged Pi agent processes with constrained filesystems and default-deny networking.
 
-```text
-┌────────────────────────────────────────────────────────────────────────────┐
-│ TRUSTED HOST (Node.js process)                                             │
-│                                                                            │
-│  [ Your Harness ] ──> [ Core Runtime ] ──> outputDir/<runtimeId>/          │
-│     • Control loop        • Agent registry & slots   (runtime.json,        │
-│     • Role Profiles       • Input & file ledgers      evidence.jsonl,      │
-│     • Custom Services     • Event stream              service-calls.jsonl, │
-│          ▲                                            model-trace/)        │
-│          │                                                                 │
-│  ┌───────┴───────────────────┐      ┌───────────────────────────────────┐  │
-│  │ Service Bridge (HTTP)     │      │ Model Gateway (HTTP /v1/responses)│  │
-│  │ • Bearer auth -> agentId  │      │ • Per-agent revocable token       │  │
-│  │ • Profile.services ACL    │      │ • Injects upstream API keys       │  │
-│  │ • Ajv draft-07 validation │      │ • Optional modelAccessPolicy gate │  │
-│  └───────────▲───────────────┘      └────────────────▲──────────────────┘  │
-└──────────────┼───────────────────────────────────────┼─────────────────────┘
-               │ MURM_BRIDGE_URL                       │ Gateway origin
-               │ (firewall-allowed IPv4)               │ (firewall-allowed IPv4)
-┌──────────────┼───────────────────────────────────────┼─────────────────────┐
-│ ISOLATED SANDBOX (OpenSandbox Docker container per Agent)                  │
-│              │                                       │                     │
-│  [ Root Worker Supervisor ] ── manages ──> [ Unprivileged Pi 1.3.0 ]       │
-│   • Stages frozen profile prompt            • Tools: read/write/edit/bash  │
-│   • Pauses writers for snapshot/install     • Runs `swarm <svc> <op>`      │
-│   • Stops Pi & streams archives on close    • Bounded /workspace/project   │
-└────────────────────────────────────────────────────────────────────────────┘
-```
+<div class="doc-diagram" role="region" aria-label="murm trust boundaries between Trusted Host and Isolated Sandbox">
+  <div class="dd-zone dd-host">
+    <div class="dd-zone-head">
+      <span class="dd-zone-title">TRUSTED HOST</span>
+      <span class="dd-zone-sub">Node.js process · owns secrets, Services, and authoritative logs</span>
+    </div>
+    <div class="dd-row-3">
+      <div class="dd-box dd-yellow">
+        <div class="dd-box-title">Your Harness</div>
+        <ul class="dd-list">
+          <li>Control loop &amp; rules</li>
+          <li>Role Profiles</li>
+          <li>Custom Services</li>
+        </ul>
+      </div>
+      <div class="dd-arrow-h" aria-hidden="true">──►</div>
+      <div class="dd-box dd-indigo">
+        <div class="dd-box-title">Core Runtime</div>
+        <ul class="dd-list">
+          <li>Agent registry &amp; slots</li>
+          <li>Input &amp; file ledgers</li>
+          <li>Lifecycle event stream</li>
+        </ul>
+      </div>
+      <div class="dd-arrow-h" aria-hidden="true">──►</div>
+      <div class="dd-box dd-amber">
+        <div class="dd-box-title">outputDir/&lt;runtimeId&gt;/</div>
+        <ul class="dd-list">
+          <li>runtime.json</li>
+          <li>evidence.jsonl</li>
+          <li>service-calls.jsonl &amp; model-trace/</li>
+        </ul>
+      </div>
+    </div>
+    <div class="dd-inner-link">
+      <div class="dd-pipe">
+        <span class="dd-pipe-line" aria-hidden="true">▲</span>
+        <span class="dd-pipe-meta"><span>validated Service dispatch</span></span>
+      </div>
+      <div class="dd-pipe">
+        <span class="dd-pipe-line" aria-hidden="true">▲</span>
+        <span class="dd-pipe-meta"><span>model traces &amp; lease gate</span></span>
+      </div>
+    </div>
+    <div class="dd-row-2">
+      <div class="dd-box dd-service">
+        <div class="dd-box-title">Service Bridge (HTTP)</div>
+        <ul class="dd-list">
+          <li>Bearer auth → real agentId</li>
+          <li>Profile.services ACL check</li>
+          <li>Ajv draft-07 schema validation</li>
+        </ul>
+      </div>
+      <div class="dd-box dd-indigo">
+        <div class="dd-box-title">Model Gateway (/v1/responses)</div>
+        <ul class="dd-list">
+          <li>Per-agent revocable token</li>
+          <li>Injects upstream API keys on host</li>
+          <li>Optional modelAccessPolicy gate</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="dd-pipes">
+    <div class="dd-pipe">
+      <span class="dd-pipe-line" aria-hidden="true">▲<br/>│</span>
+      <span class="dd-pipe-meta"><strong>MURM_BRIDGE_URL</strong><span>firewall-allowed IPv4</span></span>
+    </div>
+    <div class="dd-pipe">
+      <span class="dd-pipe-line" aria-hidden="true">▲<br/>│</span>
+      <span class="dd-pipe-meta"><strong>Gateway origin</strong><span>firewall-allowed IPv4</span></span>
+    </div>
+  </div>
+
+  <div class="dd-zone dd-sandbox">
+    <div class="dd-zone-head">
+      <span class="dd-zone-title">ISOLATED SANDBOX</span>
+      <span class="dd-zone-sub">OpenSandbox Docker container per Agent · default-deny network</span>
+    </div>
+    <div class="dd-row-2-arrow">
+      <div class="dd-box dd-teal">
+        <div class="dd-box-title">Root Worker Supervisor</div>
+        <ul class="dd-list">
+          <li>Stages frozen profile prompt</li>
+          <li>Pauses writers for snapshot / install</li>
+          <li>Stops Pi &amp; streams archives on close</li>
+        </ul>
+      </div>
+      <div class="dd-arrow-h" aria-hidden="true">── manages ──►</div>
+      <div class="dd-box">
+        <div class="dd-box-title">Unprivileged Pi 1.3.0</div>
+        <ul class="dd-list">
+          <li>Tools: read / write / edit / bash</li>
+          <li>Runs swarm &lt;service&gt; &lt;operation&gt;</li>
+          <li>Bounded /workspace/project quota</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
 
 ## 1. Host vs. Sandbox responsibilities
 

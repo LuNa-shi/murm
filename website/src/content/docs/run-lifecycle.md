@@ -11,21 +11,45 @@ Runtime primitives make the most sense when read in execution order. Follow one 
 
 Every spawned agent follows one explicit lifecycle:
 
-```text
-                   spawn()                     send() [wake]
-  (unallocated) ──────────> starting ────────> idle <═══════════> running
-                                │               │                    │
-                                │ start fail    │ stop() / close()   │ crash
-                                v               v                    v
-                             closing <──────────┴──────────────── exited
-                                │
-                                │ 1. stop Pi execution
-                                │ 2. archive native session
-                                │ 3. collect declared artifacts
-                                │ 4. delete sandbox & free slot
-                                v
-                             closed
-```
+<div class="doc-diagram" role="region" aria-label="Agent lifecycle state machine">
+  <div class="dd-fsm-top">
+    <span class="dd-state dd-muted">(unallocated)</span>
+    <span class="dd-fsm-edge"><span>spawn()</span><span class="dd-edge-bar">──────►</span></span>
+    <span class="dd-state">starting</span>
+    <span class="dd-fsm-edge"><span>ready</span><span class="dd-edge-bar">──────►</span></span>
+    <span class="dd-state dd-service-state">idle</span>
+    <span class="dd-fsm-edge"><span>send() [wake] / settled</span><span class="dd-edge-bar">◄══════►</span></span>
+    <span class="dd-state dd-active">running</span>
+  </div>
+
+  <div class="dd-fsm-branches">
+    <div class="dd-fsm-branch">
+      <strong>starting → closing</strong>
+      <span>Startup failed or aborted; slot stays reserved until cleanup finishes.</span>
+    </div>
+    <div class="dd-fsm-branch">
+      <strong>idle / running → closing</strong>
+      <span>Host calls <code>runtime.stop()</code> or <code>runtime.close()</code>.</span>
+    </div>
+    <div class="dd-fsm-branch">
+      <strong>running → exited → closing</strong>
+      <span>Unexpected guest crash revokes credentials; host closes to free slot.</span>
+    </div>
+  </div>
+
+  <div class="dd-fsm-close">
+    <span class="dd-state">closing</span>
+    <div class="dd-steps-box">
+      <ol>
+        <li>Stop Pi process group (freeze disk state)</li>
+        <li>Archive native Pi session (<code>&lt;agentId&gt;/session/</code>)</li>
+        <li>Export declared <code>collect</code> artifacts (<code>&lt;agentId&gt;/artifacts/</code>)</li>
+        <li>Delete sandbox container &amp; release Slot</li>
+      </ol>
+    </div>
+    <span class="dd-state dd-muted">closed</span>
+  </div>
+</div>
 
 Slots (`maxAgents`) stay occupied from registration in `starting` all the way through `idle`, `running`, `exited`, and `closing` until container deletion is confirmed in `closed`.
 

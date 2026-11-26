@@ -13,21 +13,63 @@ Multi-agent systems become hard to reason about when **coordination logic** (who
 
 Picture a swarm running on `murm` as five cooperating layers:
 
-```text
-  [ HARNESS ]  <── spawn · send · interrupt · onEvent ──>  [ RUNTIME (the arena) ]
-  Your control                                                ├── SANDBOX (Agent A: Pi + workspace)
-  loop & rules                                                ├── SANDBOX (Agent B: Pi + workspace)
-       │                                                      └── SANDBOX (Agent C: Pi + workspace)
-       │ registers                                                       │
-       v                                                                 │ swarm CLI + /v1/responses
-  [ SHARED SERVICES ] <────────── [ HOST GATEWAY ] <─────────────────────┘
-  Customizable domain             Service Bridge (token + schema)
-  state & tools                   Model Gateway  (host API keys)
-                                         │
-                                         v
-                                  [ RUN TRACES ]
-                                  outputDir/<runtimeId>/
-```
+<div class="doc-diagram" role="region" aria-label="Five cooperating layers of murm">
+  <div class="dd-row-2-arrow">
+    <div class="dd-box dd-yellow">
+      <div class="dd-box-title">HARNESS</div>
+      <ul class="dd-list">
+        <li>Your control loop &amp; rules</li>
+        <li>Role Profiles &amp; stop policy</li>
+      </ul>
+    </div>
+    <div class="dd-arrow-h" aria-hidden="true">◄── spawn · send · onEvent ──►</div>
+    <div class="dd-box dd-indigo">
+      <div class="dd-box-title">RUNTIME (the arena)</div>
+      <div class="dd-sandbox-stack">
+        <div class="dd-sandbox-pill"><strong>SANDBOX A</strong> · Agent (Pi + workspace)</div>
+        <div class="dd-sandbox-pill"><strong>SANDBOX B</strong> · Agent (Pi + workspace)</div>
+        <div class="dd-sandbox-pill"><strong>SANDBOX C</strong> · Agent (Pi + workspace)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dd-pipes">
+    <div class="dd-pipe">
+      <span class="dd-pipe-line" aria-hidden="true">│<br/>▼</span>
+      <span class="dd-pipe-meta"><strong>registers</strong><span>v2 manifests &amp; adapters</span></span>
+    </div>
+    <div class="dd-pipe">
+      <span class="dd-pipe-line" aria-hidden="true">│<br/>▼</span>
+      <span class="dd-pipe-meta"><strong>swarm CLI · /v1/responses</strong><span>authenticated over host bridge</span></span>
+    </div>
+  </div>
+
+  <div class="dd-row-3">
+    <div class="dd-box dd-service">
+      <div class="dd-box-title">SHARED SERVICES</div>
+      <ul class="dd-list">
+        <li>Customizable domain state</li>
+        <li>Boards, pools, Git &amp; verifiers</li>
+      </ul>
+    </div>
+    <div class="dd-arrow-h" aria-hidden="true">◄──</div>
+    <div class="dd-box dd-teal">
+      <div class="dd-box-title">HOST GATEWAY</div>
+      <ul class="dd-list">
+        <li>Service Bridge (auth + schema)</li>
+        <li>Model Gateway (host API keys)</li>
+      </ul>
+    </div>
+    <div class="dd-arrow-h" aria-hidden="true">──►</div>
+    <div class="dd-box dd-amber">
+      <div class="dd-box-title">RUN TRACES</div>
+      <ul class="dd-list">
+        <li>outputDir/&lt;runtimeId&gt;/</li>
+        <li>Sessions, calls &amp; artifacts</li>
+      </ul>
+    </div>
+  </div>
+</div>
 
 1. **You write the Harness**: a plain TypeScript program on the host that defines agent roles (**Profiles**), registers shared **Services**, and runs the control loop (`spawn`, `send`, `interrupt`, `onEvent`, `stop`, `close`).
 2. **Runtime is the arena**: it allocates isolated **Sandboxes** up to `maxAgents`, keeps each **Agent** alive across turns, and enforces permissions and capacity limits.

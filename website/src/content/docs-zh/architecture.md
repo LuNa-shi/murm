@@ -7,34 +7,107 @@ order: 3
 
 每一次 `murm` 运行都严格遵循一条信任边界：**可信宿主机（Trusted Host）** 负责运行你的 Harness、保管全部上游密钥并写入权威日志；**隔离沙箱（Isolated Sandboxes）** 负责承载非特权 Pi Agent 进程，受限于独立文件系统与默认拒绝的网络策略。
 
-```text
-┌────────────────────────────────────────────────────────────────────────────┐
-│ 可信宿主机 TRUSTED HOST (Node.js 进程)                                       │
-│                                                                            │
-│  [ 你的 Harness ] ──> [ Core Runtime ] ──> outputDir/<runtimeId>/          │
-│     • 控制循环与规则      • Agent 注册表与槽位     (runtime.json,           │
-│     • 角色 Profiles       • 输入与文件账本          evidence.jsonl,         │
-│     • 自定义 Services     • 事件流                 service-calls.jsonl,    │
-│          ▲                                         model-trace/)           │
-│          │                                                                 │
-│  ┌───────┴───────────────────┐      ┌───────────────────────────────────┐  │
-│  │ Service Bridge (HTTP)     │      │ Model Gateway (HTTP /v1/responses)│  │
-│  │ • Bearer 鉴权 -> agentId  │      │ • 每 Agent 独立可撤销令牌          │  │
-│  │ • Profile.services 权限   │      │ • 在宿主机注入上游 API 密钥        │  │
-│  │ • Ajv draft-07 校验       │      │ • 可选 modelAccessPolicy 租约门控  │  │
-│  └───────────▲───────────────┘      └────────────────▲──────────────────┘  │
-└──────────────┼───────────────────────────────────────┼─────────────────────┘
-               │ MURM_BRIDGE_URL                       │ Gateway origin
-               │ (防火墙放行 IPv4)                     │ (防火墙放行 IPv4)
-┌──────────────┼───────────────────────────────────────┼─────────────────────┐
-│ 隔离沙箱 ISOLATED SANDBOX (每个 Agent 一个 OpenSandbox Docker 容器)          │
-│              │                                       │                     │
-│  [ Root Worker 守护进程 ] ── 监管 ──> [ 非特权 Pi 1.3.0 进程 ]              │
-│   • 写入冻结的 Profile 提示词          • 工具：read / write / edit / bash   │
-│   • 快照/安装时短暂暂停写进程          • 通过 Bash 调用 `swarm <svc> <op>`  │
-│   • 停止 Pi 后流式回传归档             • 受配额约束的 /workspace/project    │
-└────────────────────────────────────────────────────────────────────────────┘
-```
+<div class="doc-diagram" role="region" aria-label="murm 可信宿主机与隔离沙箱信任边界图">
+  <div class="dd-zone dd-host">
+    <div class="dd-zone-head">
+      <span class="dd-zone-title">可信宿主机 · TRUSTED HOST</span>
+      <span class="dd-zone-sub">Node.js 进程 · 保管上游密钥、Services 与权威日志</span>
+    </div>
+    <div class="dd-row-3">
+      <div class="dd-box dd-yellow">
+        <div class="dd-box-title">你的 Harness</div>
+        <ul class="dd-list">
+          <li>控制循环与协作规则</li>
+          <li>角色 Profiles</li>
+          <li>自定义 Services</li>
+        </ul>
+      </div>
+      <div class="dd-arrow-h" aria-hidden="true">──►</div>
+      <div class="dd-box dd-indigo">
+        <div class="dd-box-title">Core Runtime</div>
+        <ul class="dd-list">
+          <li>Agent 注册表与槽位</li>
+          <li>输入与文件账本</li>
+          <li>生命周期事件流</li>
+        </ul>
+      </div>
+      <div class="dd-arrow-h" aria-hidden="true">──►</div>
+      <div class="dd-box dd-amber">
+        <div class="dd-box-title">outputDir/&lt;runtimeId&gt;/</div>
+        <ul class="dd-list">
+          <li>runtime.json</li>
+          <li>evidence.jsonl</li>
+          <li>service-calls.jsonl 与 model-trace/</li>
+        </ul>
+      </div>
+    </div>
+    <div class="dd-inner-link">
+      <div class="dd-pipe">
+        <span class="dd-pipe-line" aria-hidden="true">▲</span>
+        <span class="dd-pipe-meta"><span>经校验的 Service 分发</span></span>
+      </div>
+      <div class="dd-pipe">
+        <span class="dd-pipe-line" aria-hidden="true">▲</span>
+        <span class="dd-pipe-meta"><span>模型追踪与租约门控</span></span>
+      </div>
+    </div>
+    <div class="dd-row-2">
+      <div class="dd-box dd-service">
+        <div class="dd-box-title">Service Bridge (HTTP)</div>
+        <ul class="dd-list">
+          <li>Bearer 鉴权 → 真实 agentId</li>
+          <li>Profile.services 权限白名单</li>
+          <li>Ajv draft-07 严格 Schema 校验</li>
+        </ul>
+      </div>
+      <div class="dd-box dd-indigo">
+        <div class="dd-box-title">Model Gateway (/v1/responses)</div>
+        <ul class="dd-list">
+          <li>每 Agent 独立可撤销令牌</li>
+          <li>在宿主机注入上游 API 密钥</li>
+          <li>可选 modelAccessPolicy 租约门控</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="dd-pipes">
+    <div class="dd-pipe">
+      <span class="dd-pipe-line" aria-hidden="true">▲<br/>│</span>
+      <span class="dd-pipe-meta"><strong>MURM_BRIDGE_URL</strong><span>防火墙放行 IPv4</span></span>
+    </div>
+    <div class="dd-pipe">
+      <span class="dd-pipe-line" aria-hidden="true">▲<br/>│</span>
+      <span class="dd-pipe-meta"><strong>Gateway origin</strong><span>防火墙放行 IPv4</span></span>
+    </div>
+  </div>
+
+  <div class="dd-zone dd-sandbox">
+    <div class="dd-zone-head">
+      <span class="dd-zone-title">隔离沙箱 · ISOLATED SANDBOX</span>
+      <span class="dd-zone-sub">每个 Agent 一个 OpenSandbox Docker 容器 · 默认拒绝网络</span>
+    </div>
+    <div class="dd-row-2-arrow">
+      <div class="dd-box dd-teal">
+        <div class="dd-box-title">Root Worker 守护进程</div>
+        <ul class="dd-list">
+          <li>写入冻结的 Profile 提示词</li>
+          <li>快照 / 安装时短暂暂停写进程</li>
+          <li>停止 Pi 后流式回传会话与归档</li>
+        </ul>
+      </div>
+      <div class="dd-arrow-h" aria-hidden="true">── 监管 ──►</div>
+      <div class="dd-box">
+        <div class="dd-box-title">非特权 Pi 1.3.0 进程</div>
+        <ul class="dd-list">
+          <li>本地工具：read / write / edit / bash</li>
+          <li>通过 Bash 调用 swarm &lt;svc&gt; &lt;op&gt;</li>
+          <li>受磁盘配额约束的 /workspace/project</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
 
 ## 1. 宿主机与沙箱的职责划分
 

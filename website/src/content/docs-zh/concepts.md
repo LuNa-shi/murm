@@ -13,21 +13,63 @@ order: 2
 
 可以把在 `murm` 上运行的一个集群想象成五个相互配合的层次：
 
-```text
-  [ HARNESS ]  <── spawn · send · interrupt · onEvent ──>  [ RUNTIME (沙盘舞台) ]
-  你写的控制循环                                               ├── SANDBOX (Agent A: Pi + 工作区)
-  与协作规则                                                  ├── SANDBOX (Agent B: Pi + 工作区)
-       │                                                      └── SANDBOX (Agent C: Pi + 工作区)
-       │ 注册服务                                                        │
-       v                                                                 │ swarm CLI + /v1/responses
-  [ SHARED SERVICES ] <────────── [ HOST GATEWAY ] <─────────────────────┘
-  可定制的共享状态                 Service Bridge (鉴权 + Schema)
-  与领域工具                      Model Gateway  (宿主机 API 密钥)
-                                         │
-                                         v
-                                  [ RUN TRACES ]
-                                  outputDir/<runtimeId>/
-```
+<div class="doc-diagram" role="region" aria-label="murm 五层协同心智模型图">
+  <div class="dd-row-2-arrow">
+    <div class="dd-box dd-yellow">
+      <div class="dd-box-title">HARNESS</div>
+      <ul class="dd-list">
+        <li>你写的控制循环与协作规则</li>
+        <li>角色 Profiles 与结束策略</li>
+      </ul>
+    </div>
+    <div class="dd-arrow-h" aria-hidden="true">◄── spawn · send · onEvent ──►</div>
+    <div class="dd-box dd-indigo">
+      <div class="dd-box-title">RUNTIME（沙盘舞台）</div>
+      <div class="dd-sandbox-stack">
+        <div class="dd-sandbox-pill"><strong>SANDBOX A</strong> · Agent（Pi + 工作区）</div>
+        <div class="dd-sandbox-pill"><strong>SANDBOX B</strong> · Agent（Pi + 工作区）</div>
+        <div class="dd-sandbox-pill"><strong>SANDBOX C</strong> · Agent（Pi + 工作区）</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dd-pipes">
+    <div class="dd-pipe">
+      <span class="dd-pipe-line" aria-hidden="true">│<br/>▼</span>
+      <span class="dd-pipe-meta"><strong>注册服务</strong><span>v2 Manifest 与适配器</span></span>
+    </div>
+    <div class="dd-pipe">
+      <span class="dd-pipe-line" aria-hidden="true">│<br/>▼</span>
+      <span class="dd-pipe-meta"><strong>swarm CLI · /v1/responses</strong><span>经宿主机网关鉴权转发</span></span>
+    </div>
+  </div>
+
+  <div class="dd-row-3">
+    <div class="dd-box dd-service">
+      <div class="dd-box-title">SHARED SERVICES</div>
+      <ul class="dd-list">
+        <li>可定制共享状态与工具</li>
+        <li>看板、任务池、Git 与验证器</li>
+      </ul>
+    </div>
+    <div class="dd-arrow-h" aria-hidden="true">◄──</div>
+    <div class="dd-box dd-teal">
+      <div class="dd-box-title">HOST GATEWAY</div>
+      <ul class="dd-list">
+        <li>Service Bridge（鉴权 + Schema）</li>
+        <li>Model Gateway（宿主机密钥）</li>
+      </ul>
+    </div>
+    <div class="dd-arrow-h" aria-hidden="true">──►</div>
+    <div class="dd-box dd-amber">
+      <div class="dd-box-title">RUN TRACES</div>
+      <ul class="dd-list">
+        <li>outputDir/&lt;runtimeId&gt;/</li>
+        <li>会话、调用记录与导出产物</li>
+      </ul>
+    </div>
+  </div>
+</div>
 
 1. **你编写 Harness**：运行在宿主机上的普通 TypeScript 程序，定义 Agent 角色（**Profile**）、注册共享 **Services**，并用控制循环调用 `spawn`、`send`、`interrupt`、`onEvent`、`stop`、`close`。
 2. **Runtime 是集群沙盘**：负责按 `maxAgents` 槽位分配隔离的 **Sandbox**，在多轮交互间保持每个 **Agent** 存活，并强制执行权限与容量上限。

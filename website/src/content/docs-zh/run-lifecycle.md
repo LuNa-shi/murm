@@ -11,21 +11,45 @@ order: 4
 
 每个通过 `spawn()` 创建的 Agent 都遵循同一套明确的状态流转：
 
-```text
-                   spawn()                     send() [唤醒]
-    (未分配) ──────────────> starting ────────> idle <═══════════> running
-                                │               │                    │
-                                │ 启动失败       │ stop() / close()   │ 异常崩溃
-                                v               v                    v
-                             closing <──────────┴──────────────── exited
-                                │
-                                │ 1. 停止 Pi 进程
-                                │ 2. 归档原生会话
-                                │ 3. 导出声明的 collect 产物
-                                │ 4. 删除沙箱并释放槽位
-                                v
-                             closed
-```
+<div class="doc-diagram" role="region" aria-label="Agent 生命周期状态机">
+  <div class="dd-fsm-top">
+    <span class="dd-state dd-muted">(未分配)</span>
+    <span class="dd-fsm-edge"><span>spawn()</span><span class="dd-edge-bar">──────►</span></span>
+    <span class="dd-state">starting</span>
+    <span class="dd-fsm-edge"><span>就绪</span><span class="dd-edge-bar">──────►</span></span>
+    <span class="dd-state dd-service-state">idle</span>
+    <span class="dd-fsm-edge"><span>send() [唤醒] / settled</span><span class="dd-edge-bar">◄══════►</span></span>
+    <span class="dd-state dd-active">running</span>
+  </div>
+
+  <div class="dd-fsm-branches">
+    <div class="dd-fsm-branch">
+      <strong>starting → closing</strong>
+      <span>启动失败或被取消；清理完成前槽位保持占用。</span>
+    </div>
+    <div class="dd-fsm-branch">
+      <strong>idle / running → closing</strong>
+      <span>宿主机显式调用 <code>runtime.stop()</code> 或 <code>runtime.close()</code>。</span>
+    </div>
+    <div class="dd-fsm-branch">
+      <strong>running → exited → closing</strong>
+      <span>容器内进程异常退出时自动吊销凭证；经 <code>stop()</code>/<code>close()</code> 释放槽位。</span>
+    </div>
+  </div>
+
+  <div class="dd-fsm-close">
+    <span class="dd-state">closing</span>
+    <div class="dd-steps-box">
+      <ol>
+        <li>停止 Pi 进程组（冻结磁盘状态）</li>
+        <li>归档原生 Pi 会话（<code>&lt;agentId&gt;/session/</code>）</li>
+        <li>导出声明的 <code>collect</code> 产物（<code>&lt;agentId&gt;/artifacts/</code>）</li>
+        <li>销毁沙箱容器并释放并发槽位</li>
+      </ol>
+    </div>
+    <span class="dd-state dd-muted">closed</span>
+  </div>
+</div>
 
 并发容量槽位（`maxAgents`）从 `starting` 注册那一刻起即被占用，历经 `idle`、`running`、`exited`、`closing`，直到容器销毁确认进入 `closed` 才会释放。
 

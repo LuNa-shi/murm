@@ -1945,3 +1945,358 @@ html.reveal-ready [data-reveal-line].is-visible {
   color: var(--ink);
   background: var(--bg-subtle);
 }
+
+/* Pixel-Aligned Architectural Box Diagrams inside Docs Prose (EN & ZH) */
+.prose .doc-diagram {
+  margin: 22px 0 26px;
+  padding: 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--code-border);
+  background: var(--code-bg);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.prose .doc-diagram code {
+  font-size: 0.92em;
+  padding: 1px 4px;
+}
+
+.dd-zone {
+  border: 1.5px solid var(--ink);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  padding: 14px 16px 16px;
+}
+
+.dd-zone.dd-host {
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.dd-zone.dd-sandbox {
+  border-style: dashed;
+  background: var(--sch-surface);
+}
+
+.dd-zone-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dd-zone-title {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+}
+
+.dd-zone-sub {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+
+.dd-row-3 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
+}
+
+.dd-row-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.dd-row-2-arrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.dd-box {
+  border: 1.3px solid var(--border-strong);
+  border-top: 3px solid var(--ink);
+  border-radius: 5px;
+  background: var(--bg-elevated);
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.dd-box.dd-yellow {
+  border-color: var(--ink);
+  border-top-color: var(--ink);
+  background: color-mix(in srgb, var(--marker-yellow) 34%, var(--bg-elevated));
+}
+
+.dd-box.dd-indigo {
+  border-top-color: var(--sch-indigo);
+}
+
+.dd-box.dd-service {
+  border-color: var(--sch-lane-service-border);
+  border-top-color: var(--sch-indigo);
+  background: var(--sch-lane-service);
+}
+
+.dd-box.dd-teal {
+  border-top-color: var(--sch-teal);
+}
+
+.dd-box.dd-amber {
+  border-top-color: var(--sch-amber);
+}
+
+.dd-box-title {
+  font-weight: 700;
+  font-size: 12.5px;
+  color: var(--ink);
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+
+.dd-list {
+  list-style: none;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 11.8px;
+  color: var(--ink-secondary);
+}
+
+.dd-list li {
+  margin: 0 0 3px !important;
+  padding-left: 12px;
+  position: relative;
+  overflow-wrap: anywhere;
+}
+
+.dd-list li:last-child {
+  margin-bottom: 0 !important;
+}
+
+.dd-list li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: var(--ink-muted);
+}
+
+.dd-arrow-h {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sch-indigo);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 0 2px;
+}
+
+.dd-inner-link {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 6px 0;
+}
+
+.dd-pipes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 0 16px;
+}
+
+.dd-pipe {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0;
+  position: relative;
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+}
+
+.dd-pipe-line {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  color: var(--sch-indigo);
+  font-weight: 700;
+}
+
+.dd-pipe-meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.35;
+}
+
+.dd-pipe-meta strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.dd-pipe-meta span {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.dd-sandbox-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.dd-sandbox-pill {
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  background: var(--sch-surface);
+  padding: 4px 8px;
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+}
+
+.dd-sandbox-pill strong {
+  color: var(--ink);
+}
+
+/* State machine diagram */
+.dd-fsm-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dd-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border: 1.4px solid var(--ink);
+  border-radius: 5px;
+  background: var(--bg-elevated);
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.dd-state.dd-muted {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+.dd-state.dd-active {
+  background: color-mix(in srgb, var(--marker-yellow) 40%, var(--bg-elevated));
+}
+
+.dd-state.dd-service-state {
+  background: var(--sch-lane-service);
+  border-color: var(--sch-indigo);
+}
+
+.dd-fsm-edge {
+  flex: 1;
+  min-width: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+  font-size: 10.8px;
+  color: var(--ink-muted);
+}
+
+.dd-fsm-edge .dd-edge-bar {
+  width: 100%;
+  text-align: center;
+  color: var(--sch-indigo);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.dd-fsm-branches {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg-elevated);
+}
+
+.dd-fsm-branch {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+}
+
+.dd-fsm-branch strong {
+  color: var(--ink);
+  font-size: 11.8px;
+}
+
+.dd-fsm-close {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.dd-steps-box {
+  border: 1.3px solid var(--border-strong);
+  border-left: 3px solid var(--sch-teal);
+  border-radius: 5px;
+  background: var(--bg-elevated);
+  padding: 9px 12px;
+  font-size: 11.8px;
+  color: var(--ink-secondary);
+}
+
+.dd-steps-box ol {
+  margin: 0 !important;
+  padding-left: 18px !important;
+}
+
+.dd-steps-box li {
+  margin: 0 0 2px !important;
+}
+
+.dd-steps-box li:last-child {
+  margin-bottom: 0 !important;
+}
+
+@media (max-width: 720px) {
+  .dd-row-3,
+  .dd-row-2,
+  .dd-row-2-arrow,
+  .dd-pipes,
+  .dd-inner-link,
+  .dd-fsm-branches,
+  .dd-fsm-close {
+    grid-template-columns: 1fr;
+  }
+  .dd-arrow-h {
+    transform: rotate(90deg);
+    padding: 4px 0;
+  }
+}
