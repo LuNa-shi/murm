@@ -4,7 +4,6 @@ import { test } from 'node:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createSubstrateService } from '../src/harnesses/substrate/substrate.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
@@ -13,12 +12,13 @@ const execute = promisify(execFile);
 
 test('host checkpoints verify durable search, visit, citation and reads after confirmed publisher stop', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'scalemas-evidence-'));
-  let runtime;
-  const substrate = createSubstrateService({ databasePath: join(directory, 'substrate.sqlite'), runId: 'evidence' });
-  t.after(async () => { if (runtime) await runtime.close({ timeoutMs: 1000 }); substrate.close(); await rm(directory, { recursive: true, force: true }); });
   const starts = [];
   const provider = await createLifecycleProvider(t, { onStart: body => starts.push(body) }); provider.allowDeletion();
   const { createRuntime } = await import('@murm/core');
+  const { createSubstrateService } = await import('../src/harnesses/substrate/substrate.js');
+  let runtime;
+  const substrate = createSubstrateService({ databasePath: join(directory, 'substrate.sqlite'), runId: 'evidence' });
+  t.after(async () => { if (runtime) await runtime.close({ timeoutMs: 1000 }); substrate.close(); await rm(directory, { recursive: true, force: true }); });
 
   const backend = runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url },
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },

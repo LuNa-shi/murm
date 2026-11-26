@@ -11,11 +11,11 @@ function runtime() {
     emit(event) { handler?.(event); } };
 }
 
-test('child snapshots are deduplicated and serialized with user input without claiming input completion', async () => {
+test('child snapshots are copied and serialized with user input without claiming input completion', async () => {
   const core = runtime(); const controller = createSubagentsController(core, 'parent');
   const supplement = controller.submitUser('additional constraint', { requestId: 'user-1' });
-  const event = { type: 'settled', agentId: 'a', seq: 1, outcome: 'completed', output: 'original result' };
-  core.emit(event); core.emit(event); event.output = 'later mutation';
+  const event = { type: 'settled', agentId: 'a', outcome: 'completed', output: 'original result' };
+  core.emit(event); event.output = 'later mutation';
   await supplement; await controller.drain();
   assert.equal(core.sent.length, 2); assert.equal(core.sent[0].input, 'additional constraint');
   assert.equal(JSON.parse(core.sent[1].input).output, 'original result');

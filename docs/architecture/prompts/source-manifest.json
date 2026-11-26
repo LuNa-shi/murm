@@ -123,7 +123,7 @@
     },
     {
       "path": "test-support/subagents/communication-fixture-controller.ts",
-      "sha256": "0a4cc70bb95a55478e0c4814e78c79468f95b37e9c889fa4d983ae060d9aa151"
+      "sha256": "b6fc0163ea5055732c16a880698c87f83e8596ed744c2a70f8869005dc327ca5"
     },
     {
       "path": "test-support/subagents/communication-fixture-prompts.ts",
@@ -551,7 +551,7 @@
     },
     {
       "path": "test-support/subagents/communication-fixture-controller.ts",
-      "line": 26,
+      "line": 27,
       "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
     },
     {
