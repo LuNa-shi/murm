@@ -60,3 +60,7 @@ find 4ea6a746-80ee-4d24-b224-82200a55f384 -type f -print0 |
 ```
 
 The expected SHA-256 is `b70f92951a44462efcf31ddae036fe6643474a58970c5ee10fa3ffbf8f3fd355`.
+
+![Pastel Run overview with three Agent swimlanes and eight collaboration links](trace-viewer-pastel.png)
+
+The screenshot shortens the Run title and hides the event ledger. It shows the recorded timing and collaboration relationships.
