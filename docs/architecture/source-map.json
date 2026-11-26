@@ -2221,6 +2221,46 @@
       "role": "Public site icon"
     },
     {
+      "path": "website/public/licenses/caveat.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
+      "path": "website/public/licenses/departure-mono.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
+      "path": "website/public/licenses/inter.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
+      "path": "website/public/licenses/jetbrains-mono.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
+      "path": "website/public/licenses/space-grotesk.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
       "path": "website/src/assets/fonts/DepartureMono-Regular.woff2",
       "category": "public documentation website",
       "chapters": [
@@ -2229,44 +2269,12 @@
       "role": "Locally bundled Departure Mono font asset"
     },
     {
-      "path": "website/src/assets/images/agent-lifecycle.jpg",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Source illustration for the public architecture and Harness guides"
-    },
-    {
-      "path": "website/src/assets/images/architecture-overview.jpg",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Source illustration for the public architecture and Harness guides"
-    },
-    {
-      "path": "website/src/assets/images/five-programs-compare.jpg",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Source illustration for the public architecture and Harness guides"
-    },
-    {
-      "path": "website/src/assets/images/service-bridge-flow.jpg",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Source illustration for the public architecture and Harness guides"
-    },
-    {
       "path": "website/src/components/CoreModelBlueprint.astro",
       "category": "public documentation website",
       "chapters": [
         "docs/architecture/22-website.md"
       ],
-      "role": "Interactive diagram of the six Core concepts"
+      "role": "Interactive Tactical Sandtable mental model diagram"
     },
     {
       "path": "website/src/components/DomainStrip.astro",
@@ -2283,6 +2291,14 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Interactive selection and diagrams for the five Harnesses"
+    },
+    {
+      "path": "website/src/components/LandingPage.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Shared bilingual landing page component"
     },
     {
       "path": "website/src/components/MurmLogo.astro",
@@ -2347,6 +2363,126 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Documentation loader and frontmatter schema"
+    },
+    {
+      "path": "website/src/content/docs-zh/architecture.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for architecture"
+    },
+    {
+      "path": "website/src/content/docs-zh/build-your-harness.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for build-your-harness"
+    },
+    {
+      "path": "website/src/content/docs-zh/concepts.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for concepts"
+    },
+    {
+      "path": "website/src/content/docs-zh/harnesses/index.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for harnesses/index"
+    },
+    {
+      "path": "website/src/content/docs-zh/harnesses/lead-worker.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for harnesses/lead-worker"
+    },
+    {
+      "path": "website/src/content/docs-zh/harnesses/peermesh.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for harnesses/peermesh"
+    },
+    {
+      "path": "website/src/content/docs-zh/harnesses/subagents.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for harnesses/subagents"
+    },
+    {
+      "path": "website/src/content/docs-zh/harnesses/substrate.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for harnesses/substrate"
+    },
+    {
+      "path": "website/src/content/docs-zh/harnesses/taskpool.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for harnesses/taskpool"
+    },
+    {
+      "path": "website/src/content/docs-zh/overview.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for overview"
+    },
+    {
+      "path": "website/src/content/docs-zh/quickstart.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for quickstart"
+    },
+    {
+      "path": "website/src/content/docs-zh/reference/api.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for reference/api"
+    },
+    {
+      "path": "website/src/content/docs-zh/reference/deploy.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for reference/deploy"
+    },
+    {
+      "path": "website/src/content/docs-zh/reference/types.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for reference/types"
+    },
+    {
+      "path": "website/src/content/docs-zh/run-lifecycle.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation content for run-lifecycle"
     },
     {
       "path": "website/src/content/docs/architecture.md",
@@ -2421,6 +2557,14 @@
       "role": "Published documentation content for TaskPool"
     },
     {
+      "path": "website/src/content/docs/overview.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation landing overview page"
+    },
+    {
       "path": "website/src/content/docs/quickstart.md",
       "category": "public documentation website",
       "chapters": [
@@ -2477,6 +2621,14 @@
       "role": "Documentation shell, section sidebar and page headings"
     },
     {
+      "path": "website/src/lib/i18n.ts",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Bilingual English/Chinese route helpers and UI strings"
+    },
+    {
       "path": "website/src/lib/nav.ts",
       "category": "public documentation website",
       "chapters": [
@@ -2509,6 +2661,22 @@
       "role": "Public landing page assembly"
     },
     {
+      "path": "website/src/pages/zh/docs/[...slug].astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese documentation dynamic route (/zh/docs/*)"
+    },
+    {
+      "path": "website/src/pages/zh/index.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Chinese landing page route (/zh/)"
+    },
+    {
       "path": "website/src/styles/global.css",
       "category": "public documentation website",
       "chapters": [
@@ -2523,46 +2691,6 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Astro TypeScript source configuration"
-    },
-    {
-      "path": "website/public/licenses/caveat.txt",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Distributed font copyright and license notice"
-    },
-    {
-      "path": "website/public/licenses/departure-mono.txt",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Distributed font copyright and license notice"
-    },
-    {
-      "path": "website/public/licenses/inter.txt",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Distributed font copyright and license notice"
-    },
-    {
-      "path": "website/public/licenses/jetbrains-mono.txt",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Distributed font copyright and license notice"
-    },
-    {
-      "path": "website/public/licenses/space-grotesk.txt",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Distributed font copyright and license notice"
     },
     {
       "path": ".github/workflows/deploy-website.yml",

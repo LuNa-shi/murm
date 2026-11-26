@@ -1,98 +1,228 @@
 ---
-import { withBase } from '../lib/url';
+import { docHref, type Lang } from '../lib/i18n';
 
-const HARNESS_META = {
-  subagents: {
-    index: '01',
-    name: 'Subagents',
-    kicker: 'TREE · MAILBOX',
-    headline: 'Recursive named delegation, non-waking steer, and shared-workspace handoff',
-    services: 'collaboration (6 ops)',
-    primitives: 'spawn(forkFrom) · send(wakeIfIdle: false) · interrupt',
-    docHref: withBase('/docs/harnesses/subagents/'),
-    phases: ['01 SPAWN', '02 PARALLEL', '03 STEER', '04 HANDOFF', '05 CLOSE'],
-    notes: {
-      all: 'Overview: /root spawns isolated children on demand, injects mid-flight steers only into busy agents, and integrates verified test suites before archive-before-delete closeout.',
-      '1': '01 · SPAWN: /root invokes collaboration.spawn_agent. The Runtime boots two isolated sandboxes and optionally mounts a shared workspace or forks parent context.',
-      '2': '02 · PARALLEL: All three agents execute concurrently in separate Pi sessions with isolated disk and network limits — API keys never leave the host.',
-      '3': '03 · STEER: Mid-flight requirements call send({ mode: "steer", wakeIfIdle: false }) so busy children react immediately while idle agents stay undisturbed in the mailbox.',
-      '4': '04 · HANDOFF: Children report completion via settled events and send_message; /root runs the handed-off test suite and fixes edge cases.',
-      '5': '05 · CLOSE: runtime.close() stops Pi, archives raw sessions, exports collect deliverables, and deletes containers only after archiving succeeds.',
-    },
-  },
-  taskpool: {
-    index: '02',
-    name: 'TaskPool',
-    kicker: 'POOL · LEASE · MAIN',
-    headline: 'Read-only discovery, exclusive lease claims, host-granted writes, and versioned main merges',
-    services: 'task · material · workspace · judge',
-    primitives: 'writable: false · files.prepare/grant · modelAccessPolicy',
-    docHref: withBase('/docs/harnesses/taskpool/'),
-    phases: ['01 DISCOVER', '02 CLAIM', '03 LEASE GATE', '04 MERGE', '05 REFILL'],
-    notes: {
-      all: 'Overview: Identical workers start read-only, compete for leased tasks, receive host-granted write access, stay bounded by Model Gateway leases, and merge verified snapshots into main.',
-      '1': '01 · DISCOVER: Workers boot with writable: false. They inspect open tasks and immutable Materials without being able to touch local workspace files.',
-      '2': '02 · CLAIM: task_take acquires an exclusive lease + fencing_version; the host stages inputs with files.prepare() and unlocks writes via files.grant().',
-      '3': '03 · LEASE GATE: Every model request checks modelAccessPolicy synchronously — if the lease expires or fencing_version changes, inference aborts immediately.',
-      '4': '04 · MERGE: workspace_save captures a consistent files.snapshot(), optional Judge verifies the candidate, and workspace_merge advances public main.',
-      '5': '05 · REFILL: On task_finish or timeout, the controller stops the finished worker, archives its session, and spawns a fresh worker into the freed slot.',
-    },
-  },
-  peermesh: {
-    index: '03',
-    name: 'PeerMesh',
-    kicker: 'PEERS · CHAT · GIT PR',
-    headline: 'Equal peers negotiating soft claims in chat, coding on personal branches, and landing verified PRs',
-    services: 'board · message · gitea + native git',
-    primitives: 'per-peer bindings · network.allow · secretEnv · collect(includeGit)',
-    docHref: withBase('/docs/harnesses/peermesh/'),
-    phases: ['01 CLAIM', '02 NEGOTIATE', '03 BRANCH', '04 OPEN PR', '05 LAND'],
-    notes: {
-      all: 'Overview: No central dispatcher or exclusive locks — peers declare overlapping soft claims on a Board, coordinate via team chat, and open personal-branch PRs verified by the host.',
-      '1': '01 · CLAIM: Both peer-a and peer-b post overlapping CLAIM entries on the shared Board to signal areas of interest without blocking each other.',
-      '2': '02 · NEGOTIATE: External chat mentions enter each peer’s dedicated serial Router, which attaches a fresh Board snapshot and delivers followUp turns into the existing session.',
-      '3': '03 · BRANCH: Each peer develops on its own WORK_BRANCH using native git with scoped Gitea credentials injected strictly via secretEnv.',
-      '4': '04 · OPEN PR: Peers open pull requests from their personal branch to main through the scoped gitea Service (direct merges stay host-only).',
-      '5': '05 · LAND: Host delivery checks author, branch, and pinned commit SHA before merging to main; collect(includeGit: true) preserves every local checkout.',
-    },
-  },
-  substrate: {
-    index: '04',
-    name: 'Substrate',
-    kicker: 'IMMUTABLE STORE · DAG',
-    headline: 'Zero task queues and zero routing — equal peers publish, search, read, and cite immutable findings',
-    services: 'substrate (SQLite: publish, search, visit)',
-    primitives: 'spawn(files) · runInput · runtime.stop',
-    docHref: withBase('/docs/harnesses/substrate/'),
-    phases: ['01 PUBLISH', '02 RETIRE', '03 SEARCH', '04 VISIT', '05 CITE'],
-    notes: {
-      all: 'Overview: Fixed parallel rounds over one content-addressed SQLite store. Artifacts outlive their authors and evolve through audited search → visit → explicit citation chains.',
-      '1': '01 · PUBLISH: peer-0 publishes a self-contained finding; SQLite assigns an immutable content:<sha256> address inside a BEGIN IMMEDIATE transaction.',
-      '2': '02 · RETIRE: When peer-0 completes its rounds and calls runtime.stop(), its container is deleted while every published artifact stays durably readable in substrate.',
-      '3': '03 · SEARCH: peer-1 queries substrate.search(); results rank by term frequency and citation count, logging the query into substrate_reads.',
-      '4': '04 · VISIT: peer-1 fetches the full verified body and upstream citations via substrate.visit(), recording a durable read proof.',
-      '5': '05 · CITE: peer-1 publishes a refined artifact explicitly citing content:<sha256>; host evidence checks confirm the complete cross-agent lineage.',
-    },
-  },
-  'lead-worker': {
-    index: '05',
-    name: 'Lead-Worker',
-    kicker: 'DIRECTION · FEEDBACK',
-    headline: 'Staged lead direction, transactional worker claims, Git SHA-256 verification, and causal feedback loops',
-    services: 'board (SQLite) · gitea + native git',
-    primitives: 'fixed-team spawn · onEvent fatal fence · runInput stages',
-    docHref: withBase('/docs/harnesses/lead-worker/'),
-    phases: ['01 DIRECT', '02 CLAIM', '03 SHIP', '04 REVISE', '05 ROUND 2'],
-    notes: {
-      all: 'Overview: One lead sets direction while workers claim subtasks transactionally, ship byte-verified Git commits with field notes, and feed findings back into the next direction.',
-      '1': '01 · DIRECT: Lead announces the initial direction, role assignments, and ready subtasks on the transactional SQLite Board.',
-      '2': '02 · CLAIM: Workers concurrently call board.claim() with optimistic expected_revision inside BEGIN IMMEDIATE to lock a single permanent owner.',
-      '3': '03 · SHIP: Each worker pushes a personal Git branch, leaves execution feedback notes, and submits { commit, path, sha256 } verified live against Gitea.',
-      '4': '04 · REVISE: Causal read-gate check — Board allows Lead to publish the revised direction only after reads proves all worker feedback was inspected.',
-      '5': '05 · ROUND 2: The same workers resume in their preserved sessions and Git directories, read the new direction_id, and deliver round-2 updates.',
-    },
-  },
-};
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = 'en' } = Astro.props;
+const isZh = lang === 'zh';
+
+const SHOWCASE_UI = isZh
+  ? {
+      allTab: '全部',
+      overviewTag: '总览',
+      play: '播放',
+      pause: '暂停',
+      zoom: '放大',
+      zoomTitle: '点击放大查看',
+      clickHint: '点击放大 ⤢',
+      docsBtn: '文档 →',
+      deepDive: '阅读详细文档 →',
+      servicesLabel: 'Services：',
+      primitivesLabel: '核心原语：',
+      closeAria: '关闭放大视图',
+    }
+  : {
+      allTab: 'ALL',
+      overviewTag: 'OVERVIEW',
+      play: 'Play',
+      pause: 'Pause',
+      zoom: 'Zoom',
+      zoomTitle: 'Click to zoom in',
+      clickHint: 'Click to zoom ⤢',
+      docsBtn: 'Docs →',
+      deepDive: 'Read deep dive →',
+      servicesLabel: 'Services:',
+      primitivesLabel: 'Primitives:',
+      closeAria: 'Close expanded view',
+    };
+
+const HARNESS_META = isZh
+  ? {
+      subagents: {
+        index: '01',
+        name: 'Subagents',
+        kicker: '层级树 · 邮箱',
+        headline: '递归命名委派、非唤醒中途转向（steer）与共享工作区交接',
+        services: 'collaboration（6 个操作）',
+        primitives: 'spawn(forkFrom) · send(wakeIfIdle: false) · interrupt',
+        docHref: docHref('zh', 'harnesses/subagents'),
+        phases: ['01 创建', '02 并行', '03 转向', '04 交接', '05 收尾'],
+        notes: {
+          all: '总览：/root 按需派生隔离的子 Agent，仅向忙碌成员注入中途 steer 消息，并在“先归档再销毁”收尾前集成验证结果。',
+          '1': '01 · 创建：/root 调用 collaboration.spawn_agent，Runtime 启动独立沙箱并按需挂载共享工作区或分叉父级会话上下文。',
+          '2': '02 · 并行：三个 Agent 在各自持久化 Pi 会话与隔离配额下并行工作，模型 API 密钥始终留在宿主机。',
+          '3': '03 · 转向：中途新需求通过 send({ mode: "steer", wakeIfIdle: false }) 投递——忙碌子 Agent 立即响应，空闲成员保留在邮箱不浪费调用。',
+          '4': '04 · 交接：子 Agent 通过 settled 事件与 send_message 回传结果，/root 运行测试套件并修复边界问题。',
+          '5': '05 · 收尾：runtime.close() 先停止 Pi 进程、归档原始会话与 collect 产物，确认落盘后再销毁容器。',
+        },
+      },
+      taskpool: {
+        index: '02',
+        name: 'TaskPool',
+        kicker: '任务池 · 租约 · 主干',
+        headline: '只读发现、独占租约领取、宿主授权写入与版本化 main 合并',
+        services: 'task · material · workspace · judge',
+        primitives: 'writable: false · files.prepare/grant · modelAccessPolicy',
+        docHref: docHref('zh', 'harnesses/taskpool'),
+        phases: ['01 发现', '02 领任务', '03 租约门控', '04 合并', '05 补位'],
+        notes: {
+          all: '总览：同构 Worker 默认以只读方式启动，竞争带租约的独占任务，获宿主授权后写入，全程受 Model Gateway 租约保护并向 main 合并。',
+          '1': '01 · 发现：Worker 以 writable: false 启动，只能通过 Service 浏览待办任务与不可变 Material，无法改动本地工作区。',
+          '2': '02 · 领任务：task_take 获取独占租约与 fencing_version；宿主调用 files.prepare() 准备输入再由 files.grant() 解锁写入权限。',
+          '3': '03 · 租约门控：每次模型请求同步校验 modelAccessPolicy——一旦租约过期或 fencing_version 变化，流式推理立即中止。',
+          '4': '04 · 合并：workspace_save 通过 files.snapshot() 采集一致快照，可选 Judge 验证通过后由 workspace_merge 推进公共 main。',
+          '5': '05 · 补位：任务完成或超时后，控制器停止该 Worker、归档会话，并在释放的槽位上启动全新 Worker。',
+        },
+      },
+      peermesh: {
+        index: '03',
+        name: 'PeerMesh',
+        kicker: '对等体 · 聊天 · GIT PR',
+        headline: '对等工程师通过软认领与聊天协商分工、个人分支开发并经宿主验证合并 PR',
+        services: 'peermesh-context · message · gitea + 原生 git',
+        primitives: 'per-peer bindings · network.allow · secretEnv · collect(includeGit)',
+        docHref: docHref('zh', 'harnesses/peermesh'),
+        phases: ['01 软认领', '02 协商', '03 分支开发', '04 提 PR', '05 验收集成'],
+        notes: {
+          all: '总览：无中心调度器与独占锁——成员在共享 Board 发布可重叠软认领、通过频道和私信协商分工，并在个人分支提交 PR 经宿主验证合入。',
+          '1': '01 · 软认领：peer-a 与 peer-b 在共享 Board 发布可重叠的 CLAIM 条目，表明关注区域而不互相阻塞。',
+          '2': '02 · 协商：频道与私信事件进入每个成员独立的串行 Router，附带最新 Board 视图并向活跃会话实时 steer。',
+          '3': '03 · 分支开发：每个成员在各自个人分支使用原生 git 开发，隔离的 Gitea 凭证严格通过 secretEnv 注入。',
+          '4': '04 · 提 PR：成员通过受控的 gitea Service 从个人分支向受保护 main 发起 Pull Request。',
+          '5': '05 · 验收集成：宿主核验作者、分支与固定 head_sha 后再执行合并；collect(includeGit: true) 保留完整本地仓库。',
+        },
+      },
+      substrate: {
+        index: '04',
+        name: 'Substrate',
+        kicker: '不可变存储 · 引文 DAG',
+        headline: '零任务队列与零路由——对等成员围绕单一 SQLite 不可变库发布、检索、阅读并引用',
+        services: 'substrate（SQLite：publish / search / visit）',
+        primitives: 'spawn(files) · runInput · runtime.stop',
+        docHref: docHref('zh', 'harnesses/substrate'),
+        phases: ['01 发布', '02 退役', '03 检索', '04 阅读', '05 引用'],
+        notes: {
+          all: '总览：围绕内容寻址 SQLite 存储并发运行多轮探索。成果生命周期超越单个 Agent，通过可审计的 search → visit → 引用链持续演化。',
+          '1': '01 · 发布：peer-0 发布自包含结论，SQLite 在 BEGIN IMMEDIATE 事务中分配不可变地址 content:<sha256>。',
+          '2': '02 · 退役：peer-0 完成轮次后执行 runtime.stop() 释放容器，其发布的全部成果仍持久可读。',
+          '3': '03 · 检索：peer-1 调用 substrate.search()，按词频与被引用数排序返回，并将查询记入 substrate_reads。',
+          '4': '04 · 阅读：peer-1 调用 substrate.visit() 读取完整正文与上游引用，留下可审计阅读记录。',
+          '5': '05 · 引用：peer-1 发布新成果并显式引用 content:<sha256>，宿主证据检查器验证完整跨成员复用链。',
+        },
+      },
+      'lead-worker': {
+        index: '05',
+        name: 'Lead-Worker',
+        kicker: '方向定调 · 反馈闭环',
+        headline: '分阶段主导定调、SQLite 事务排他认领、Git SHA-256 校验与因果阅读门控',
+        services: 'board（SQLite）· gitea + 原生 git',
+        primitives: 'fixed-team spawn · onEvent fatal fence · runInput stages',
+        docHref: docHref('zh', 'harnesses/lead-worker'),
+        phases: ['01 定调', '02 认领', '03 交付', '04 调向', '05 二轮'],
+        notes: {
+          all: '总览：一名 Lead 负责方向定调，多名 Worker 事务化认领子任务、交付经字节校验的 Git 提交并回传一线反馈，驱动下一轮调向。',
+          '1': '01 · 定调：Lead 在事务化 SQLite Board 发布初始方向、分工安排与就绪子任务。',
+          '2': '02 · 认领：多名 Worker 并发调用带乐观锁 expected_revision 的 board.claim()，在 BEGIN IMMEDIATE 内锁定唯一永久负责人。',
+          '3': '03 · 交付：Worker 推送个人分支、提交一线反馈，并上报 { commit, path, sha256 } 由宿主实时向 Gitea 核验。',
+          '4': '04 · 调向：因果阅读门控——只有 reads 记录证明 Lead 已实际读过反馈后，Board 才允许发布新方向。',
+          '5': '05 · 二轮：同一批 Worker 在保留的会话与 Git 工作区中继续执行，读取新 direction_id 并交付第二轮成果。',
+        },
+      },
+    }
+  : {
+      subagents: {
+        index: '01',
+        name: 'Subagents',
+        kicker: 'TREE · MAILBOX',
+        headline: 'Recursive named delegation, non-waking steer, and shared-workspace handoff',
+        services: 'collaboration (6 ops)',
+        primitives: 'spawn(forkFrom) · send(wakeIfIdle: false) · interrupt',
+        docHref: docHref('en', 'harnesses/subagents'),
+        phases: ['01 SPAWN', '02 PARALLEL', '03 STEER', '04 HANDOFF', '05 CLOSE'],
+        notes: {
+          all: 'Overview: /root spawns isolated children on demand, injects mid-flight steers only into busy agents, and integrates verified test suites before archive-before-delete closeout.',
+          '1': '01 · SPAWN: /root invokes collaboration.spawn_agent. The Runtime boots two isolated sandboxes and optionally mounts a shared workspace or forks parent context.',
+          '2': '02 · PARALLEL: All three agents execute concurrently in separate Pi sessions with isolated disk and network limits — API keys never leave the host.',
+          '3': '03 · STEER: Mid-flight requirements call send({ mode: "steer", wakeIfIdle: false }) so busy children react immediately while idle agents stay undisturbed in the mailbox.',
+          '4': '04 · HANDOFF: Children report completion via settled events and send_message; /root runs the handed-off test suite and fixes edge cases.',
+          '5': '05 · CLOSE: runtime.close() stops Pi, archives raw sessions, exports collect deliverables, and deletes containers only after archiving succeeds.',
+        },
+      },
+      taskpool: {
+        index: '02',
+        name: 'TaskPool',
+        kicker: 'POOL · LEASE · MAIN',
+        headline: 'Read-only discovery, exclusive lease claims, host-granted writes, and versioned main merges',
+        services: 'task · material · workspace · judge',
+        primitives: 'writable: false · files.prepare/grant · modelAccessPolicy',
+        docHref: docHref('en', 'harnesses/taskpool'),
+        phases: ['01 DISCOVER', '02 CLAIM', '03 LEASE GATE', '04 MERGE', '05 REFILL'],
+        notes: {
+          all: 'Overview: Identical workers start read-only, compete for leased tasks, receive host-granted write access, stay bounded by Model Gateway leases, and merge verified snapshots into main.',
+          '1': '01 · DISCOVER: Workers boot with writable: false. They inspect open tasks and immutable Materials without being able to touch local workspace files.',
+          '2': '02 · CLAIM: task_take acquires an exclusive lease + fencing_version; the host stages inputs with files.prepare() and unlocks writes via files.grant().',
+          '3': '03 · LEASE GATE: Every model request checks modelAccessPolicy synchronously — if the lease expires or fencing_version changes, inference aborts immediately.',
+          '4': '04 · MERGE: workspace_save captures a consistent files.snapshot(), optional Judge verifies the candidate, and workspace_merge advances public main.',
+          '5': '05 · REFILL: On task_finish or timeout, the controller stops the finished worker, archives its session, and spawns a fresh worker into the freed slot.',
+        },
+      },
+      peermesh: {
+        index: '03',
+        name: 'PeerMesh',
+        kicker: 'PEERS · CHAT · GIT PR',
+        headline: 'Equal peers negotiating soft claims in chat, coding on personal branches, and landing verified PRs',
+        services: 'board · message · gitea + native git',
+        primitives: 'per-peer bindings · network.allow · secretEnv · collect(includeGit)',
+        docHref: docHref('en', 'harnesses/peermesh'),
+        phases: ['01 CLAIM', '02 NEGOTIATE', '03 BRANCH', '04 OPEN PR', '05 LAND'],
+        notes: {
+          all: 'Overview: No central dispatcher or exclusive locks — peers declare overlapping soft claims on a Board, coordinate via team chat, and open personal-branch PRs verified by the host.',
+          '1': '01 · CLAIM: Both peer-a and peer-b post overlapping CLAIM entries on the shared Board to signal areas of interest without blocking each other.',
+          '2': '02 · NEGOTIATE: External chat mentions enter each peer’s dedicated serial Router, which attaches a fresh Board snapshot and delivers followUp turns into the existing session.',
+          '3': '03 · BRANCH: Each peer develops on its own WORK_BRANCH using native git with scoped Gitea credentials injected strictly via secretEnv.',
+          '4': '04 · OPEN PR: Peers open pull requests from their personal branch to main through the scoped gitea Service (direct merges stay host-only).',
+          '5': '05 · LAND: Host delivery checks author, branch, and pinned commit SHA before merging to main; collect(includeGit: true) preserves every local checkout.',
+        },
+      },
+      substrate: {
+        index: '04',
+        name: 'Substrate',
+        kicker: 'IMMUTABLE STORE · DAG',
+        headline: 'Zero task queues and zero routing — equal peers publish, search, read, and cite immutable findings',
+        services: 'substrate (SQLite: publish, search, visit)',
+        primitives: 'spawn(files) · runInput · runtime.stop',
+        docHref: docHref('en', 'harnesses/substrate'),
+        phases: ['01 PUBLISH', '02 RETIRE', '03 SEARCH', '04 VISIT', '05 CITE'],
+        notes: {
+          all: 'Overview: Fixed parallel rounds over one content-addressed SQLite store. Artifacts outlive their authors and evolve through audited search → visit → explicit citation chains.',
+          '1': '01 · PUBLISH: peer-0 publishes a self-contained finding; SQLite assigns an immutable content:<sha256> address inside a BEGIN IMMEDIATE transaction.',
+          '2': '02 · RETIRE: When peer-0 completes its rounds and calls runtime.stop(), its container is deleted while every published artifact stays durably readable in substrate.',
+          '3': '03 · SEARCH: peer-1 queries substrate.search(); results rank by term frequency and citation count, logging the query into substrate_reads.',
+          '4': '04 · VISIT: peer-1 fetches the full verified body and upstream citations via substrate.visit(), recording a durable read proof.',
+          '5': '05 · CITE: peer-1 publishes a refined artifact explicitly citing content:<sha256>; host evidence checks confirm the complete cross-agent lineage.',
+        },
+      },
+      'lead-worker': {
+        index: '05',
+        name: 'Lead-Worker',
+        kicker: 'DIRECTION · FEEDBACK',
+        headline: 'Staged lead direction, transactional worker claims, Git SHA-256 verification, and causal feedback loops',
+        services: 'board (SQLite) · gitea + native git',
+        primitives: 'fixed-team spawn · onEvent fatal fence · runInput stages',
+        docHref: docHref('en', 'harnesses/lead-worker'),
+        phases: ['01 DIRECT', '02 CLAIM', '03 SHIP', '04 REVISE', '05 ROUND 2'],
+        notes: {
+          all: 'Overview: One lead sets direction while workers claim subtasks transactionally, ship byte-verified Git commits with field notes, and feed findings back into the next direction.',
+          '1': '01 · DIRECT: Lead announces the initial direction, role assignments, and ready subtasks on the transactional SQLite Board.',
+          '2': '02 · CLAIM: Workers concurrently call board.claim() with optimistic expected_revision inside BEGIN IMMEDIATE to lock a single permanent owner.',
+          '3': '03 · SHIP: Each worker pushes a personal Git branch, leaves execution feedback notes, and submits { commit, path, sha256 } verified live against Gitea.',
+          '4': '04 · REVISE: Causal read-gate check — Board allows Lead to publish the revised direction only after reads proves all worker feedback was inspected.',
+          '5': '05 · ROUND 2: The same workers resume in their preserved sessions and Git directories, read the new direction_id, and deliver round-2 updates.',
+        },
+      },
+    };
 ---
 
 <div class="showcase-root" data-harness-showcase>
@@ -246,20 +376,20 @@ const HARNESS_META = {
       <div class="stage-controls">
         <button type="button" class="play-btn" data-stage-play>
           <span data-play-icon>▶</span>
-          <span data-play-label>Play</span>
+          <span data-play-label>{SHOWCASE_UI.play}</span>
         </button>
-        <button type="button" class="stage-btn" data-stage-zoom aria-label="Expand diagram to fullscreen">
+        <button type="button" class="stage-btn" data-stage-zoom aria-label={SHOWCASE_UI.zoomTitle}>
           <span>⤢</span>
-          <span>Zoom</span>
+          <span>{SHOWCASE_UI.zoom}</span>
         </button>
-        <a class="stage-btn stage-doc-link" data-stage-doc href={HARNESS_META.subagents.docHref}>Docs →</a>
+        <a class="stage-btn stage-doc-link" data-stage-doc href={HARNESS_META.subagents.docHref}>{SHOWCASE_UI.docsBtn}</a>
       </div>
     </div>
 
-    <div class="schematic-phase-bar" data-phase-bar role="tablist" aria-label="Focus execution phase"></div>
+    <div class="schematic-phase-bar" data-phase-bar role="tablist" aria-label={isZh ? '聚焦执行阶段' : 'Focus execution phase'}></div>
 
     <!-- Clickable Canvas (clicking diagram opens fullscreen Zoom modal) -->
-    <div class="schematic-canvas-scroll stage-canvas-trigger" data-stage-canvas title="Click to zoom in">
+    <div class="schematic-canvas-scroll stage-canvas-trigger" data-stage-canvas title={SHOWCASE_UI.zoomTitle}>
       <!-- PANEL 1: SUBAGENTS -->
       <div class="harness-panel active" data-panel="subagents">
         <svg class="schematic-svg" viewBox="0 0 1060 392" width="1060" height="392" role="img" aria-label="Subagents multi-agent swimlane diagram">
@@ -702,40 +832,40 @@ const HARNESS_META = {
 
     <figcaption class="schematic-caption stage-footer">
       <div class="stage-caption-main">
-        <span class="caption-step" data-phase-tag>OVERVIEW</span>
+        <span class="caption-step" data-phase-tag>{SHOWCASE_UI.overviewTag}</span>
         <span data-phase-note>{HARNESS_META.subagents.notes.all}</span>
       </div>
       <div class="stage-tech-pills">
-        <span><strong>Services:</strong> <code data-stage-services>{HARNESS_META.subagents.services}</code></span>
-        <span><strong>Primitives:</strong> <code data-stage-primitives>{HARNESS_META.subagents.primitives}</code></span>
+        <span><strong>{SHOWCASE_UI.servicesLabel}</strong> <code data-stage-services>{HARNESS_META.subagents.services}</code></span>
+        <span><strong>{SHOWCASE_UI.primitivesLabel}</strong> <code data-stage-primitives>{HARNESS_META.subagents.primitives}</code></span>
       </div>
     </figcaption>
   </figure>
 
   <!-- Fullscreen Zoom Lightbox -->
-  <div class="zoom-backdrop" data-zoom-modal role="dialog" aria-modal="true" aria-label="Expanded harness diagram">
+  <div class="zoom-backdrop" data-zoom-modal role="dialog" aria-modal="true" aria-label={isZh ? '放大查看 Harness 拓扑图' : 'Expanded harness diagram'}>
     <div class="zoom-dialog">
       <div class="zoom-head">
-        <div class="zoom-tabs" role="tablist" aria-label="Switch harness">
+        <div class="zoom-tabs" role="tablist" aria-label={isZh ? '切换 Harness' : 'Switch harness'}>
           <button type="button" class="zoom-tab active" data-zoom-switch="subagents">01 Subagents</button>
           <button type="button" class="zoom-tab" data-zoom-switch="taskpool">02 TaskPool</button>
           <button type="button" class="zoom-tab" data-zoom-switch="peermesh">03 PeerMesh</button>
           <button type="button" class="zoom-tab" data-zoom-switch="substrate">04 Substrate</button>
           <button type="button" class="zoom-tab" data-zoom-switch="lead-worker">05 Lead-Worker</button>
         </div>
-        <button type="button" class="stage-btn" data-zoom-close aria-label="Close expanded view">ESC ✕</button>
+        <button type="button" class="stage-btn" data-zoom-close aria-label={SHOWCASE_UI.closeAria}>ESC ✕</button>
       </div>
       <div class="zoom-body" data-zoom-canvas></div>
       <div class="zoom-foot">
         <span class="caption-step" data-zoom-badge>01 · SUBAGENTS</span>
         <span data-zoom-note></span>
-        <a class="section-link" data-zoom-doc href={HARNESS_META.subagents.docHref}>Read deep dive →</a>
+        <a class="section-link" data-zoom-doc href={HARNESS_META.subagents.docHref}>{SHOWCASE_UI.deepDive}</a>
       </div>
     </div>
   </div>
 </div>
 
-<script define:vars={{ HARNESS_META }}>
+<script define:vars={{ HARNESS_META, SHOWCASE_UI }}>
   (function initHarnessShowcase() {
     const root = document.querySelector('[data-harness-showcase]');
     if (!root) return;
@@ -776,7 +906,7 @@ const HARNESS_META = {
         timer = null;
       }
       if (playIcon) playIcon.textContent = '▶';
-      if (playLabel) playLabel.textContent = 'Play';
+      if (playLabel) playLabel.textContent = SHOWCASE_UI.play;
       playBtn?.classList.remove('playing');
     }
 
@@ -793,13 +923,13 @@ const HARNESS_META = {
         const match = phase === 'all' || node.getAttribute('data-sch-phase') === phase;
         node.classList.toggle('dimmed', !match);
       });
-      if (tagEl) tagEl.textContent = phase === 'all' ? 'OVERVIEW' : meta.phases[Number(phase) - 1] || 'OVERVIEW';
+      if (tagEl) tagEl.textContent = phase === 'all' ? SHOWCASE_UI.overviewTag : meta.phases[Number(phase) - 1] || SHOWCASE_UI.overviewTag;
       if (noteEl) noteEl.textContent = meta.notes[phase] || meta.notes.all;
     }
 
     function renderPhaseBar(meta) {
       const btns = [
-        `<button type="button" class="phase-btn active" data-phase="all" role="tab" aria-selected="true">ALL</button>`,
+        `<button type="button" class="phase-btn active" data-phase="all" role="tab" aria-selected="true">${SHOWCASE_UI.allTab}</button>`,
         ...meta.phases.map(
           (label, i) =>
             `<button type="button" class="phase-btn" data-phase="${i + 1}" role="tab" aria-selected="false">${label}</button>`
@@ -812,7 +942,7 @@ const HARNESS_META = {
       if (activeKey === 'taskpool') {
         legendItems.push('<span class="lane-swatch-item"><i class="lane-swatch lane-swatch-workspace"></i>Workspace</span>');
       }
-      phaseBar.innerHTML = `${btns.join('')}<span class="lane-legend" aria-label="Lane types">${legendItems.join('')}</span><span class="click-hint">Click to zoom ⤢</span>`;
+      phaseBar.innerHTML = `${btns.join('')}<span class="lane-legend" aria-label="Lane types">${legendItems.join('')}</span><span class="click-hint">${SHOWCASE_UI.clickHint}</span>`;
       phaseBar.querySelectorAll('[data-phase]').forEach((btn) => {
         btn.addEventListener('click', () => {
           stopPlay();
@@ -907,7 +1037,7 @@ const HARNESS_META = {
       seqIdx = 0;
       applyPhase(seq[seqIdx]);
       if (playIcon) playIcon.textContent = '❚❚';
-      if (playLabel) playLabel.textContent = 'Pause';
+      if (playLabel) playLabel.textContent = SHOWCASE_UI.pause;
       playBtn.classList.add('playing');
       timer = setInterval(() => {
         seqIdx = (seqIdx + 1) % seq.length;

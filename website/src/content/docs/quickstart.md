@@ -1,7 +1,7 @@
 ---
-title: Quick Start
+title: Quickstart
 description: Run the Subagents example from a source checkout.
-section: GETTING STARTED
+section: GET STARTED
 order: 1
 ---
 
@@ -43,11 +43,34 @@ The example waits for Root's reply, closes the team, and reports the path to `su
 
 Keep the Run directory private. It can contain model requests, Service calls, and archived Sessions.
 
+## 4. Try a custom Service or install Core in another project
+
+The [Notes example](https://github.com/LuNa-shi/murm/tree/main/examples/notes) shows how two Agents use a custom Service to hand off a fact and verify the files saved by the reader. Its README walks through running the example from a packaged Core install and inspecting a saved Run offline.
+
+To install the same package in your own project, set `repo` to your absolute checkout path:
+
+```bash
+repo=/absolute/path/to/murm
+mkdir my-harness
+cd my-harness
+npm pack "$repo" --pack-destination .
+npm init -y
+npm pkg set type=module
+npm install --omit=dev --ignore-scripts ./murm-core-0.2.0.tgz
+```
+
+```ts
+import { createRuntime } from '@murm/core';
+import { ServiceRegistry } from '@murm/core/services';
+import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
+```
+
 ## Where to go next
 
 | Goal | Read next |
 | --- | --- |
 | Understand what a Harness composes | [Core Concepts](../concepts/) |
 | Trace the Host, Worker, Bridge and Model Gateway | [System Architecture](../architecture/) |
+| Read the lifecycle from spawn to teardown | [Anatomy of a Run](../run-lifecycle/) |
 | Compare Agent coordination patterns | [Five Topologies](../harnesses/) |
 | Implement a custom Service and Harness | [Build Your Own Harness](../build-your-harness/) |

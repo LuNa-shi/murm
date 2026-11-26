@@ -1,19 +1,19 @@
 ---
 title: API & Configuration
-description: Reference for Runtime methods, unified send semantics, file control, Service protocol v2, the swarm CLI, backend config, and error contracts.
+description: Complete reference for @murm/core Runtime methods, unified send semantics, file controls, Service protocol v2, the swarm CLI, foreground host CLI, backend config, and error contracts.
 section: REFERENCE
 order: 12
 ---
 
-This reference matches `@murm/core` `0.2.0` at commit [`f98eb71d`](https://github.com/LuNa-shi/SwarmEnv/commit/f98eb71d0eac61ac99a1b98a9d04ef353f781fec). See [Types & Mapping](../types/) for selected TypeScript declarations and links to the source.
+This reference matches **`@murm/core` `0.2.0`** on `main`. See [Types & Source Map](../types/) for the exact TypeScript declarations and source links.
 
-## Package entrypoints
+## Package entry points
 
-| Entrypoint | Exports | Purpose |
+| Entry point | Public exports | Purpose |
 | --- | --- | --- |
-| `@murm/core` | `createRuntime` | Create a Runtime instance for one Run |
-| `@murm/core/services` | `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`, `builtinAgentRegistration`, `getAdapterMetadata`, `invokeService`, `isJson`, `snapshotServiceRegistry` | Register and invoke Services |
-| `@murm/core/backends/pi-opensandbox` | `createPiOpenSandboxBackend` | Configure the Pi/OpenSandbox execution backend |
+| `@murm/core` | `createRuntime` (plus all Core types) | Create and control a `Runtime` for one Run |
+| `@murm/core/services` | `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`, `builtinAgentRegistration`, `getAdapterMetadata`, `invokeService`, `isJson`, `snapshotServiceRegistry` | Define, validate, and register v2 Services |
+| `@murm/core/backends/pi-opensandbox` | `createPiOpenSandboxBackend` (plus `PiOpenSandboxBackendConfig`) | Configure the Pi `1.3.0` / OpenSandbox container backend |
 
 ## `createRuntime(options)`
 
@@ -21,12 +21,16 @@ This reference matches `@murm/core` `0.2.0` at commit [`f98eb71d`](https://githu
 createRuntime(options: CreateRuntimeOptions): Promise<Runtime>
 ```
 
-- `backend`: single-use backend handle from `createPiOpenSandboxBackend()` (cannot be shared across multiple Runtimes).
-- `profiles`: map of role name → `Profile`, frozen on creation; unknown model aliases or Service operations fail immediately.
-- `services`: populated `ServiceRegistry` (ID `agent` is reserved for the built-in agent Service).
-- `maxAgents`: positive integer bounding concurrent resource slots.
-- `outputDir`: root directory; run artifacts are written to `outputDir/<runtime.id>/`.
-- `modelAccessPolicy` *(optional)*: synchronous Model Gateway hook (`authorize(caller): ModelPermit | null`, `withCommit(commit)`) for lease-gated harnesses such as [TaskPool](../../harnesses/taskpool/).
+| Field | Required | Behavior |
+| --- | --- | --- |
+| `backend` | Yes | Single-use opaque handle from `createPiOpenSandboxBackend()`; claiming it binds it exclusively to this Runtime |
+| `profiles` | Yes | Record of role name → `Profile`, deep-copied and frozen at assembly; invalid model aliases, unknown Service operations, or missing `spawnProfiles` fail with `INVALID_CONTRACT` |
+| `services` | Yes | Populated `ServiceRegistry` (the ID `agent` is reserved for the built-in Agent Service) |
+| `maxAgents` | Yes | Positive safe integer bounding concurrent Agent Slots |
+| `outputDir` | Yes | Base output directory; Core writes all run data under `outputDir/<runtime.id>/` |
+| `modelAccessPolicy` | No | Synchronous Model Gateway gate (`authorize(caller): ModelPermit \| null`, `withCommit(commit)`) for lease-bounded harnesses like [TaskPool](../../harnesses/taskpool/) |
+
+Assembly uses a fixed 60-second host wait. No Agent sandboxes are allocated during `createRuntime()`.
 
 ## Agent lifecycle: `spawn`, `get`, `list`
 
@@ -36,18 +40,19 @@ runtime.get(agentId: string): Promise<AgentInfo>
 runtime.list(filter?: AgentListFilter): Promise<AgentInfo[]>
 ```
 
-- `spawn` registers identity, claims a capacity slot, boots the container and Pi session, and resolves in `status: 'idle'` without starting inference.
-- Options: `requestId` (idempotency key), `profile`, `parentId`, `forkFrom` (copies native session prefix from an active agent in the same Runtime), `writable`, `files`, `workspace` (`frozen-copy` or shared `{ id, mode: 'read-only' | 'read-write' }`), `bindings`, `secretEnv`, `collect`.
-- `list` filters by `parentId` (omitted / `null` for root agents / specific ID) and `status`.
-- **States**: `starting` → `idle` ⇄ `running` → `closing` → `closed` (unexpected crash: `exited`). Slots stay occupied through `idle`, `exited`, and `closing` until container deletion finishes in `closed`.
+- **`spawn(options)`**: reserves an `agentId` and capacity Slot, creates the container and Pi session, verifies readiness, and resolves in `status: 'idle'` with no initial inference. Replaying the exact same `requestId` and parameters returns the original result; changed parameters throw `CONFLICT`.
+  - Supported fields: `requestId`, `profile`, `parentId`, `forkFrom` (live agent in same Runtime), `writable` (overrides `Profile.writable`), `files` (`FileSeed`, max 10,000 files / 2 MiB per file / 16 MiB total), `workspace` (`{ id, mode: 'read-only' | 'read-write' }` or `{ mode: 'frozen-copy', files }`), `bindings`, `secretEnv`, `collect`.
+- **`get(agentId)`**: returns an immutable `AgentInfo` snapshot (`id`, `profile`, `parentId?`, `status`, `cursor`, `latestOutput?`, `lastError?`, `lastStop?`). Remains readable after `closed`.
+- **`list(filter?)`**: returns snapshots in creation order. Filter by `parentId` (`null` for root agents, or a specific parent ID) and/or `status` (single status or array).
+- **Lifecycle states**: `starting` → `idle` ⇄ `running` → `closing` → `closed` (unexpected crash: `exited`). Capacity Slots remain occupied until container deletion confirms `closed`.
 
-## Input delivery & events: `send` (recommended), `start`, `steer`, `onEvent`
+## Input delivery & events: `send`, `start`, `steer`, `onEvent`
 
 ```ts
 runtime.send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>
 runtime.send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>
 
-// Convenience aliases (prefer unified send in new Harnesses)
+// Convenience aliases over the same host ledger (prefer runtime.send in new Harnesses)
 runtime.start(agentId: string, input: string, options: { requestId: string }): Promise<InputReceipt>
 runtime.steer(agentId: string, input: string, options: SteerOptions): Promise<InputReceipt>
 
@@ -56,15 +61,23 @@ runtime.onEvent(handler: (event: AgentEvent) => void): () => void
 
 | Option | Default | Behavior |
 | --- | --- | --- |
-| `mode` | `'steer'` | `'steer'` injects after the current tool batch before the next model call; `'followUp'` queues after the active turn settles |
-| `wakeIfIdle` | `true` | `true` wakes an idle agent; `false` delivers only while `running`, returning `{ inputId, status: 'not-accepted', reason: 'idle' }` when idle |
-| `source` | caller | Non-empty host label (up to 256 chars) recorded in logs |
-| `steeringMode` | `'one-at-a-time'` | `'all'` drains all pending steer items at once; persists on the Pi session |
+| `requestId` | *(required)* | 1–128 identifier chars (`[A-Za-z0-9_.:-]`); deduplicates replays and reconciles `unknown` receipts |
+| `mode` | `'steer'` | `'steer'` injects after the current tool batch before the next model request; `'followUp'` queues after the active turn settles |
+| `wakeIfIdle` | `true` | `true` wakes an `idle` agent; `false` delivers only while `running`, returning `{ inputId, status: 'not-accepted', reason: 'idle' }` if idle |
+| `source` | `'host'` | Optional audit label (1–256 chars) recorded separately from authenticated caller identity |
+| `steeringMode` | `'one-at-a-time'` | Valid only with `mode: 'steer'`; `'all'` drains all pending steer inputs together and persists on the Pi session |
 
-- **Receipts**: `accepted` (`disposition: 'started' | 'queued' | 'handled'`), `not-accepted` (`reason: 'idle'`), or `unknown` (reconcile with the exact same `requestId` and payload).
-- **Events** (each carries `agentId` and monotonic `seq`): `output`, `settled` (`outcome: 'completed' | 'failed' | 'aborted'`), `error` (`fatal`), `exit` (`expected`).
+- **Receipts**:
+  - `{ inputId, status: 'accepted', disposition: 'started' | 'queued' | 'handled' }`
+  - `{ inputId, status: 'not-accepted', reason: 'idle' }` *(only when `wakeIfIdle: false`)*
+  - `{ inputId, status: 'unknown' }` — reconcile by repeating the exact same `requestId` and payload; Core queries the Worker's saved RPC ledger instead of injecting a duplicate prompt.
+- **Events (`AgentEvent`)** — every event carries `agentId` and monotonic `seq`:
+  - `{ type: 'output', text }`
+  - `{ type: 'settled', outcome: 'completed' | 'failed' | 'aborted', output?, error? }`
+  - `{ type: 'error', error, fatal }` — when `fatal: true`, Core revokes Bridge/model credentials and fences fresh admissions synchronously before subscribers fire.
+  - `{ type: 'exit', reason, expected }`
 
-## Controlled file primitives
+## Controlled file primitives (`runtime.files`)
 
 ```ts
 runtime.files.prepare(agentId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>
@@ -75,10 +88,10 @@ runtime.files.installStatus(agentId: string, options: { requestId: string }): Pr
 runtime.files.confirm(agentId: string, options: { requestId: string }): Promise<FileInstall>
 ```
 
-- **`prepare` + `grant`**: stages files into an empty read-only workspace and issues a trusted `PreparedFiles` handle; pass that exact in-memory object to `grant` to unlock write access.
-- **`snapshot`**: pauses active writers (including shared-workspace peers) via Worker to return a consistent `{ version, digest, files }` snapshot (up to 16 MiB).
-- **`install` + `confirm`**: replace the captured working files under a writer fence, with the exact `FileSnapshot` as the expected version. After recording the domain outcome, call `confirm` with the install request ID to resume writers. Use `installStatus` or replay the original operation to recover an uncertain receipt.
-- **`collect`**: `{ paths, includeGit, allowMissingGit?, maxBytes, required }`. Failing a `required: true` export or session archive preserves the container and returns `cleanup: 'pending'`.
+- **`prepare` + `grant`**: installs an immutable `FileSeed` into an empty read-only workspace and returns a frozen `PreparedFiles` handle (`agentId`, `version`, `digest`). Passing that exact in-memory object to `grant()` unlocks write access.
+- **`snapshot`**: Worker pauses project writers (all owners for shared mounts) and returns `{ agentId, requestId, version, digest, files }` up to 16 MiB (`includeGit` is opt-in).
+- **`install` + `confirm`**: replaces a live writable private workspace only if full-tree bytes and modes still match `expected: FileSnapshot`, holding writers paused until `confirm()` commits and resumes them. Use `installStatus()` to check a cached receipt without starting a new operation.
+- **`collect`**: configured on `Profile.collect` or overridden at `spawn({ collect })`: `{ paths, includeGit, allowMissingGit?, maxBytes, required }`. When `required: true`, failed export keeps the sandbox alive and returns `cleanup: 'pending'`.
 
 ## Interrupt, stop, and close
 
@@ -88,39 +101,102 @@ runtime.stop(agentId: string, options?: { timeoutMs?: number }): Promise<StopRec
 runtime.close(options?: { timeoutMs?: number }): Promise<CloseReceipt>
 ```
 
-- **`interrupt`**: cancels in-flight Bridge calls, aborts active execution, flushes pending inputs, and returns **`discardedInputHashes`** (SHA-256 digests) while keeping session, workspace, and slot intact.
-- **`stop` / `close`**: runs strictly in order — **stop execution → archive session → collect files → delete sandbox & free slot**. Reports `execution: 'stopped' | 'unknown'` and `cleanup: 'complete' | 'pending'`; retries resume incomplete steps.
+- **`interrupt`**: advances the execution epoch, cancels pending Bridge calls for that agent, clears Pi input queues, aborts active execution, and returns `{ interruptId, status: 'interrupted' | 'unknown', discardedInputHashes? }` while keeping the container, session, files, and Slot intact.
+- **`stop` / `close`**: runs strictly in order — **stop Pi execution → archive native session → export `collect` files → delete sandbox & free Slot** (`close()` also shuts down Bridge/Gateway, runs optional `exportState()`, flushes logs, and atomically writes `runtime.json`). Both default to `timeoutMs: 60_000`. Retries skip completed stages.
 
-## Service protocol v2 & `swarm` CLI
+## Service protocol v2 & built-in `agent` Service
 
-- **Manifest v2** (`contract_version: '2'`): declares `id`, `title`, `purpose`, `endpoint` (`in-process` or `http-json`), and `capabilities` (`side_effect`, `idempotent`, draft-07 `input_schema`/`output_schema`, `errors`, `timeout_ms` default 30s).
-- **`ServiceRequest`**: passes validated `input`, `envelope.operation_id`, unforgeable `caller` (`{ runtimeId, agentId, profile, binding? }`), `signal`, and `assertAuthorized()`.
-- **Optional `exportState({ signal })`**: called on `runtime.close()` (30s cap) and persisted to `service-state.<id>.json`.
-- **HTTP Services**: POST to `endpoint.url + (capability.path ?? '/v2/' + operation)` with `idempotency-key` and optional Bearer token; response must be `{ ok: true, result }` (2 MiB cap, redirects disabled).
-- **Built-in `agent` Service**: only operations granted in `Profile.services.agent` are available. `spawn` and `stop` apply to direct children. `get` and `send` can also target the caller itself. `send` supports `mode` and `wake_if_idle`.
+- **Registration (`ServiceRegistry.registerService`)**: requires `contract_version: '2'`, unique `id` (not reserved `'agent'`), `title`, `purpose`, `provider_version`, `endpoint` (`{ transport: 'in-process' }` or `{ transport: 'http-json', url }`), and non-empty `capabilities`. Schemas compile strictly with Ajv `8.20.0` draft-07 (synchronous, no coercion, no defaults).
+- **Invocation (`ServiceAdapter.invoke`)**: receives `{ manifest, capability, input, envelope: { operation_id }, caller: { runtimeId, agentId, profile, binding? }, signal, assertAuthorized }`. Default per-call timeout is `30_000` ms (configurable per capability via `timeout_ms`: `1..86_400_000`).
+- **Optional state export (`ServiceAdapter.exportState({ signal })`)**: called once during `runtime.close()` (30-second cap) and written to `service-state.<id>.json`.
+- **HTTP JSON wire contract (`createHttpJsonAdapter`)**: POSTs `{ input, envelope, caller }` to `endpoint.url + (capability.path ?? '/v2/' + capability.operation)` with headers `Content-Type: application/json`, `Idempotency-Key: <operation_id>`, and optional host `Authorization: Bearer <token>`. Must return `{ "ok": true, "result": <json> }` (2 MiB max, redirects disabled).
+- **Built-in `agent` Service**: grant operations explicitly via `Profile.services.agent` (`['spawn', 'get', 'send', 'stop']`).
+  - `spawn` requires target role in `Profile.spawnProfiles`; `fork: true` requires `Profile.allowContextFork: true`.
+  - `get` and `send` target the caller itself or a direct child; `stop` targets only a direct child.
+
+## `swarm` CLI (inside containers)
+
+The `swarm` binary (`dist/scripts/swarm.js`) runs inside containers over `MURM_BRIDGE_URL`, `MURM_BRIDGE_TOKEN`, and `MURM_BRIDGE_CONTRACT_VERSION=2` (all injected and protected by Core):
 
 ```bash
+# Discover permitted services and full schemas
 swarm service list
-swarm service view <service-id>
+swarm service view <service-id> --json
+
+# Invoke any registered service operation
 swarm <service> <operation> --input payload.json --request-id <unique-id>
+swarm <service> <operation> --stdin --request-id <unique-id>
+swarm service invoke <service-id> <operation> --input payload.json --request-id <unique-id>
+
+# Built-in agent control (when granted in Profile.services.agent)
+swarm agent spawn --profile worker --text 'Audit src/parser.ts' --fork true --request-id child-1
+swarm agent get <agent-id>
+swarm agent send <agent-id> --text 'Focus on error paths' --mode steer --wake-if-idle false --request-id steer-1
+swarm agent stop <agent-id> --request-id stop-1
+```
+
+**CLI exit codes**: `0` success, `1` transport/service error, `2` CLI/contract argument error, `3` checker completed successfully with a business fail verdict (`fail` / `failed` / `source_failure` / `mathematical_failure` / `incorrect`).
+
+## Host utilities & foreground CLI
+
+- **`src/harnesses/shared/run-input.ts`** (`runInput`): single-source exclusive turn helper (verifies `idle`, subscribes before sending, resolves on `'started'` + matching `settled`).
+- **`src/harnesses/shared/run-report.ts`** (`runWithReport`): runs `createRuntime` → `run` → bounded `close` → optional `afterClose`, preserving independent `businessFailure`, `cleanupFailure`, and `reportSaveFailure` slots in `harness-report.json`.
+- **Foreground host CLI (`scripts/run-harness.ts` & `scripts/read-harness-result.ts`)**: drives configured `taskpool` or `peermesh` harnesses over JSON-line `stdin` (`status`, `kickoff`, `input`, `wait`, `stop`) and inspects saved `runtime.json` + `harness-report.json` offline:
+
+```bash
+node dist/scripts/run-harness.js --config <host-config.mjs>
+node dist/scripts/read-harness-result.js --run-directory <dir> --runtime-id <id>
 ```
 
 ## Pi/OpenSandbox backend config
 
-| Section | Required Fields | Notes |
+```ts
+import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+
+const backend = createPiOpenSandboxBackend({
+  sandbox: {
+    lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
+    endpointHost: '127.0.0.1',
+    apiKey: process.env.OPEN_SANDBOX_API_KEY,
+    resourceLimits: { cpu: '1', memory: '1Gi' },
+    commandTimeoutMs: 20_000,
+    timeoutSeconds: 3600, // optional; safe integer >= 60, default 3600
+  },
+  bridge: {
+    host: '0.0.0.0',
+    publicUrl: 'http://172.17.0.1:{port}', // non-loopback IPv4 reachable from containers
+  },
+  modelGateway: {
+    host: '0.0.0.0',
+    advertiseHost: '172.17.0.1',
+    requestTimeoutMs: 120_000, // default 120_000
+    maxOutputTokens: null,     // safe integer >= 16, default 32_768, or null for provider default
+    selectionReasoningEffort: 'low', // optional; applies during selection phase permits
+  },
+  models: {
+    default: {
+      provider: 'kimi_proxy',
+      model: 'k3',
+      upstream: {
+        url: 'https://your-model-endpoint/v1/responses',
+        headers: { authorization: `Bearer ${process.env.MODEL_TOKEN}` },
+      },
+    },
+  },
+  isolation: {
+    network: 'local-docker',
+    disk: { bytes: 64 * 1024 ** 2, inodes: 4096 },
+  },
+});
+```
+
+## Error codes & recovery
+
+| Code / status | Meaning | How to handle |
 | --- | --- | --- |
-| `sandbox` | `lifecycleBaseUrl` | Optional `apiKey`, `execdToken`, `endpointHost`, `resourceLimits`, `commandTimeoutMs`, `timeoutSeconds` (default 3600, min 60) |
-| `bridge` | `host`, `publicUrl` | `publicUrl` must contain `{port}` and a non-loopback IPv4 reachable from containers |
-| `modelGateway` | `host`, `advertiseHost` | Optional `requestTimeoutMs` (default 120s), `maxOutputTokens` (default 32,768; `null` for unlimited) |
-| `models` | Alias map | Each entry needs `provider`, `model`, `upstream: { url, headers }` (`url` must end with `/v1/responses`) |
-| `isolation` | `network: 'local-docker'`, `disk: { bytes, inodes }` | Mandatory local Docker network and disk quotas |
-
-## Error codes
-
-| Code / Status | Meaning & Recovery |
-| --- | --- |
-| `INVALID_CONTRACT` / `SERVICE_INPUT_INVALID` | Contract, schema, or config mismatch; fix inputs and resubmit |
-| `NOT_FOUND` / `NOT_ALLOWED` | Unknown target, missing Profile permission, or Runtime closing |
-| `CONFLICT` | Same `requestId` reused with different arguments, or version/slot conflict |
-| `OPERATION_UNKNOWN` / `SERVICE_TIMEOUT` / `status: 'unknown'` | Outcome uncertain; reconcile with the exact same `requestId` and payload |
-| `cleanup: 'pending'` | Inspect `pending[].action` and `error`, resolve, and call `stop()` / `close()` again |
+| `INVALID_CONTRACT` / `SERVICE_INPUT_INVALID` | Invalid arguments, config, or JSON Schema input | Fix the input or config; the operation did not execute |
+| `SERVICE_OUTPUT_INVALID` | Adapter returned JSON violating `output_schema` | For writes, state may already have changed — inspect Service state before retrying |
+| `NOT_FOUND` / `NOT_ALLOWED` | Unknown agent/operation, missing Profile grant, fatal fence, or Runtime closing | Check Profile grants and agent status; do not retry unauthorized calls |
+| `CONFLICT` | Same `requestId` reused with different arguments, version mismatch, or no free Slot (`maxAgents`) | Use a fresh `requestId` for new parameters, or wait for `stop()` to free a Slot |
+| `OPERATION_UNKNOWN` / `SERVICE_TIMEOUT` / `status: 'unknown'` | Host wait expired or transport dropped after dispatch | Reconcile by repeating the **exact same `requestId` and payload** |
+| `cleanup: 'pending'` | Execution stop, session archive, required `collect`, or sandbox delete incomplete | Inspect `pending[].action` and `errors`, fix the cause, and call `stop()` / `close()` again |

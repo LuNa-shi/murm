@@ -1,71 +1,219 @@
 ---
 title: System Architecture
-description: Follow the exact trust boundaries, data flows, and request paths connecting the host process, OpenSandbox containers, Worker, Service Bridge, and Model Gateway.
+description: Trust boundaries, host gateways, container Worker supervision, the five-stage Service Bridge pipeline, and the durable Run archive layout.
 section: ARCHITECTURE
 order: 3
 ---
 
-Every `murm` run operates across two explicit trust boundaries: the **Trusted Host** executes your Harness, holds all upstream secrets, and writes authoritative logs; **Isolated Sandboxes** contain each agent's filesystem, shell execution, and network access.
+Every `murm` Run enforces one hard trust boundary: the **Trusted Host** runs your Harness, owns all upstream credentials, and writes authoritative logs; **Isolated Sandboxes** run unprivileged Pi agent processes with constrained filesystems and default-deny networking.
 
-![murm System Architecture: Trusted Host and Isolated Sandboxes](../../assets/images/architecture-overview.jpg)
+<div class="doc-diagram" role="region" aria-label="murm trust boundaries between Trusted Host and Isolated Sandbox">
+  <div class="dd-zone dd-host">
+    <div class="dd-zone-head">
+      <span class="dd-zone-title">TRUSTED HOST</span>
+      <span class="dd-zone-sub">Node.js process · owns secrets, Services, and authoritative logs</span>
+    </div>
+    <div class="dd-row-3">
+      <div class="dd-box dd-yellow">
+        <div class="dd-box-title">Your Harness</div>
+        <ul class="dd-list">
+          <li>Control loop &amp; rules</li>
+          <li>Role Profiles</li>
+          <li>Custom Services</li>
+        </ul>
+      </div>
+      <div class="dd-arrow-h" aria-hidden="true">──►</div>
+      <div class="dd-box dd-indigo">
+        <div class="dd-box-title">Core Runtime</div>
+        <ul class="dd-list">
+          <li>Agent registry &amp; slots</li>
+          <li>Input &amp; file ledgers</li>
+          <li>Lifecycle event stream</li>
+        </ul>
+      </div>
+      <div class="dd-arrow-h" aria-hidden="true">──►</div>
+      <div class="dd-box dd-amber">
+        <div class="dd-box-title">outputDir/&lt;runtimeId&gt;/</div>
+        <ul class="dd-list">
+          <li>runtime.json</li>
+          <li>evidence.jsonl</li>
+          <li>service-calls.jsonl &amp; model-trace/</li>
+        </ul>
+      </div>
+    </div>
+    <div class="dd-inner-link">
+      <div class="dd-pipe">
+        <span class="dd-pipe-line" aria-hidden="true">▲</span>
+        <span class="dd-pipe-meta"><span>validated Service dispatch</span></span>
+      </div>
+      <div class="dd-pipe">
+        <span class="dd-pipe-line" aria-hidden="true">▲</span>
+        <span class="dd-pipe-meta"><span>model traces &amp; lease gate</span></span>
+      </div>
+    </div>
+    <div class="dd-row-2">
+      <div class="dd-box dd-service">
+        <div class="dd-box-title">Service Bridge (HTTP)</div>
+        <ul class="dd-list">
+          <li>Bearer auth → real agentId</li>
+          <li>Profile.services ACL check</li>
+          <li>Ajv draft-07 schema validation</li>
+        </ul>
+      </div>
+      <div class="dd-box dd-indigo">
+        <div class="dd-box-title">Model Gateway (/v1/responses)</div>
+        <ul class="dd-list">
+          <li>Per-agent revocable token</li>
+          <li>Injects upstream API keys on host</li>
+          <li>Optional modelAccessPolicy gate</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="dd-pipes">
+    <div class="dd-pipe">
+      <span class="dd-pipe-line" aria-hidden="true">▲<br/>│</span>
+      <span class="dd-pipe-meta"><strong>MURM_BRIDGE_URL</strong><span>firewall-allowed IPv4</span></span>
+    </div>
+    <div class="dd-pipe">
+      <span class="dd-pipe-line" aria-hidden="true">▲<br/>│</span>
+      <span class="dd-pipe-meta"><strong>Gateway origin</strong><span>firewall-allowed IPv4</span></span>
+    </div>
+  </div>
+
+  <div class="dd-zone dd-sandbox">
+    <div class="dd-zone-head">
+      <span class="dd-zone-title">ISOLATED SANDBOX</span>
+      <span class="dd-zone-sub">OpenSandbox Docker container per Agent · default-deny network</span>
+    </div>
+    <div class="dd-row-2-arrow">
+      <div class="dd-box dd-teal">
+        <div class="dd-box-title">Root Worker Supervisor</div>
+        <ul class="dd-list">
+          <li>Stages frozen profile prompt</li>
+          <li>Pauses writers for snapshot / install</li>
+          <li>Stops Pi &amp; streams archives on close</li>
+        </ul>
+      </div>
+      <div class="dd-arrow-h" aria-hidden="true">── manages ──►</div>
+      <div class="dd-box">
+        <div class="dd-box-title">Unprivileged Pi 1.3.0</div>
+        <ul class="dd-list">
+          <li>Tools: read / write / edit / bash</li>
+          <li>Runs swarm &lt;service&gt; &lt;operation&gt;</li>
+          <li>Bounded /workspace/project quota</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
 
 ## 1. Host vs. Sandbox responsibilities
 
-- **Trusted Host**: runs your **Harness** (host TS logic) and **Runtime**. Creating a Runtime automatically starts two run-scoped local HTTP servers:
-  - **Service Bridge**: receives `swarm` CLI requests from containers, verifies identity and schemas, and dispatches to registered Services.
-  - **Model Gateway**: proxies `/v1/responses` calls from Pi, injects upstream API keys on the host, enforces timeouts/limits, and records raw traces.
-- **Isolated Sandboxes**: each `runtime.spawn()` launches a dedicated Docker container through OpenSandbox with enforced disk quotas and network allowlists, running a **Worker** supervisor alongside the **Pi Agent**.
+### Trusted Host
+Creating a Runtime via `createRuntime()` initializes three run-scoped subsystems before any container starts:
+1. **Model Gateway**: binds one local HTTP listener and SQLite ledger per configured model alias, proxies `/v1/responses` calls to the real upstream provider, and records complete request/response traces.
+2. **Service Bridge**: binds a local HTTP server that authenticates container requests, enforces `Profile.services` permissions, validates JSON Schemas, and invokes registered Services.
+3. **Backend handle**: binds the single-use `PiOpenSandboxBackend` configuration (local Docker isolation, disk limits, OpenSandbox lifecycle endpoint).
 
-## 2. Inside the container: why Worker and Agent are separate
+### Isolated Sandboxes
+Each `runtime.spawn()` creates one Docker container via OpenSandbox with:
+- Dedicated CPU/memory limits (`resourceLimits`) and a bounded project filesystem (`isolation.disk.bytes` and `inodes`).
+- Per-agent network firewall rules installed in the container namespace before Pi starts: only the host Service Bridge, host Model Gateway, and explicit non-loopback IPv4 origins in `Profile.network.allow` are reachable (IPv6 and all other destinations are dropped).
+- An explicit environment containing only `Profile.env`, `spawn.secretEnv`, and the container's own Bridge/Gateway credentials — the host's `process.env` is never leaked into sandboxes.
 
-Containers do not run a bare Pi process. A lightweight trusted **Worker** launches and supervises an unprivileged Pi subprocess configured with only four local tools (`read`, `write`, `edit`, `bash`).
+## 2. Inside the container: why Worker and Pi are separate
 
-Separating Worker from Pi solves two practical multi-agent problems:
+Containers do not run a bare Pi process. A root-owned **Worker** launches and supervises an unprivileged **Pi `1.3.0`** subprocess over JSON-RPC with extensions, skills, prompt templates, and project context files disabled — leaving only Pi's four native local tools (`read`, `write`, `edit`, `bash`).
 
-1. **Controlled file handoffs**: `files.prepare`, `files.grant`, `files.snapshot`, and the guarded install flow execute through the Worker. It can briefly pause active writers, capture a consistent snapshot, or flip directory write permissions without granting Pi extra OS privileges.
-2. **Archive-before-delete teardown**: when stopping an agent, the Runtime instructs Worker to terminate Pi first (freezing disk state) while keeping Worker alive to stream the native Pi session and `collect` artifacts back to the host before deleting the container.
+Separating the supervisor from the agent solves three multi-agent reliability problems:
+
+1. **Guarded file controls**: `runtime.files.prepare`, `grant`, `snapshot`, and `install` run over authenticated Worker management routes (`/core/files/*`). The Worker briefly pauses Agent-UID processes to guarantee consistent reads or atomic workspace swaps without giving Pi extra OS privileges.
+2. **Context Fork**: `runtime.spawn({ forkFrom })` asks the source container's Worker for `/core/session/snapshot`, walks the active session ancestry to the latest balanced tool-call/result boundary, scrubs parent credentials, and boots the child with `fork.jsonl` while the parent keeps running undisturbed.
+3. **Archive-before-delete teardown**: when `runtime.stop()` runs, the Worker terminates the Pi process group first (freezing disk state) while staying alive to stream `/core/session/archive` and `/core/files/collect` back to the host before the container is deleted.
 
 ## 3. How a Service call crosses the Bridge
 
-When an agent executes `swarm <service> <operation>` inside Bash, the call moves through a five-stage verified pipeline:
+Inside Bash, an agent runs a command such as:
 
-![How a Service Call Crosses the Bridge: 5-Step Verified Pipeline](../../assets/images/service-bridge-flow.jpg)
+```bash
+swarm notes put --input note-request.json --request-id notes-put
+```
 
-1. **Container command**: `swarm` automatically attaches the container-scoped `MURM_BRIDGE_TOKEN` and posts JSON to the host Service Bridge.
-2. **Token & ACL check**: the Bridge resolves the real `agentId` and `profile`, then verifies `Profile.services` permits the requested operation. Unauthorized calls fail immediately with `403 NOT_ALLOWED`.
-3. **Strict JSON Schema validation**: `ServiceRegistry` validates inputs against `manifest.input_schema` (draft-07) before business code ever runs.
-4. **Trusted caller injection & execution**: the Bridge constructs an unforgeable `caller` (`runtimeId`, `agentId`, `profile`, and optional `binding`) and invokes either the in-process function or remote HTTP Service.
-5. **Output validation & trace tape**: responses are checked against `output_schema`, returned to the agent, and durably appended to `service-calls.jsonl`.
+The `swarm` CLI reads three protected environment variables injected into the container (`MURM_BRIDGE_URL`, `MURM_BRIDGE_TOKEN`, and `MURM_BRIDGE_CONTRACT_VERSION=2`) and sends a JSON request to the host Bridge:
 
-### How agents discover available Services
+```json
+POST <MURM_BRIDGE_URL>/call
+Authorization: Bearer <per-agent-random-token>
+Content-Type: application/json
 
-Agents can inspect their permitted capabilities at any time via `swarm service list` and `swarm service view <id>` for full operation schemas.
+{
+  "service_id": "notes",
+  "operation": "put",
+  "operation_id": "notes-put",
+  "payload": {
+    "key": "core-service-boundary",
+    "text": "{\"baseline\":\"...\",\"source\":\"...\",\"finding\":\"...\"}"
+  }
+}
+```
 
-Core composes the initial system prompt at Agent startup. Core adds a runtime preamble, a `<tools>` section, and a `<services>` section before any `Profile.prompt` role instructions. The Services section shows a CLI command and description for each operation granted by the frozen Profile and registered manifest, plus guidance on requesting help. For an operation that conflicts with a built-in CLI command, the section shows `swarm service invoke <service> <operation>`. Pi provides its four local tool definitions separately.
+The Bridge executes a five-stage verified pipeline:
+
+1. **Authentication & liveness check**: validates the bearer token before reading the body (2 MiB limit), resolves `{ runtimeId, agentId, profile, binding? }` from private Runtime state, and confirms the agent is `idle` or `running` without a fatal authority fence.
+2. **Profile ACL enforcement**: checks that `Profile.services[service_id]` explicitly includes `operation`. Unauthorized or revoked callers fail immediately with `NOT_ALLOWED`.
+3. **Strict input validation**: validates `payload` against `capability.input_schema` using pinned Ajv `8.20.0` (strict synchronous JSON Schema draft-07, no type coercion, no default insertion). Invalid payloads return `SERVICE_INPUT_INVALID` before the adapter ever runs.
+4. **Single invocation with live authority hook**: dispatches `adapter.invoke({ manifest, capability, input, envelope, caller, signal, assertAuthorized })` once. There is no automatic write retry — Services own business idempotency via `envelope.operation_id`. Calling `assertAuthorized()` right before committing a write rechecks live Bridge revocation synchronously.
+5. **Output validation & trace capture**: validates the returned JSON against `capability.output_schema` (`SERVICE_OUTPUT_INVALID` on violation), returns the result to `swarm`, and records the start/settled rows in `service-calls.jsonl` and lifecycle metadata in `evidence.jsonl`.
+
+### How agents discover their permitted Services
+
+At agent startup, Core stages a frozen system prompt at `/workspace/runtime/profile-prompt.txt` containing:
+1. A runtime preamble and `<tools>` overview;
+2. A `<services>` section generated directly from the agent's permitted operations in `Profile.services` and the registered manifests (using `swarm <service> <operation>`, or `swarm service invoke <service> <operation>` when an operation name conflicts with a built-in CLI group);
+3. Any role-specific instructions from `Profile.prompt`.
+
+Agents can also query their filtered manifest schemas live at any time:
+
+```bash
+swarm service list
+swarm service view notes --json
+swarm notes put --help
+```
 
 ## 4. Model Gateway path
 
-All `/v1/responses` calls from Pi flow through the host **Model Gateway**:
+Every `/v1/responses` request from Pi routes through the host **Model Gateway**:
 
-- **Keys stay on the host**: upstream `Authorization` headers live solely in host configuration; containers never see raw model credentials.
-- **Unified limits and recording**: the Gateway enforces per-request timeouts (default 120s) and output caps, saving redacted request/response traces under `model-trace/<attemptId>/`.
-- **Optional `modelAccessPolicy` gate**: lease-based harnesses such as [TaskPool](../harnesses/taskpool/) can attach a synchronous authorization hook to abort streaming calls the instant a task lease expires or changes fencing version. Most harnesses (Subagents, PeerMesh, Substrate) leave this unset.
+- **Credentials stay on the host**: upstream URLs and `Authorization` headers live only in `PiOpenSandboxBackendConfig.models`. Containers hold only a per-agent revocable gateway token.
+- **Bounded execution & trace capture**: the Gateway enforces `requestTimeoutMs` (default `120_000` ms) and `maxOutputTokens` (default `32_768`, or `null` to preserve provider defaults without a host clamp), plus optional `selectionReasoningEffort: 'low'` for selection-phase permits. Every fresh upstream attempt writes `request.json`, raw streamed `response.txt`, and `result.json` under `model-trace/<attemptId>/`.
+- **Optional `modelAccessPolicy` gate**: lease-based harnesses like [TaskPool](../harnesses/taskpool/) supply a synchronous `authorize(caller)` hook returning a `ModelPermit` (`phase`, `deadlineAt`, optional `lease`). If the lease expires or its `fencing_version` changes mid-stream, the Gateway aborts the in-flight response immediately. Harnesses without leases leave `modelAccessPolicy` unset.
 
 ## 5. Durable Run directory layout
 
-Core writes Run records under `outputDir/<runtimeId>/`. It redacts registered credentials in its traces. The records and archived files may still contain private prompts, tool results and project contents. Harnesses that use the reporting helper also save a separate delivery report.
+Core creates `outputDir/<runtimeId>/` with mode `0700` and writes private files with mode `0600`. Registered credentials (sandbox API keys, execd tokens, upstream headers, `secretEnv`, and HTTP adapter tokens) are scrubbed from traces, including across streamed chunks and JSON-escaped strings.
 
 ```text
 outputDir/<runtimeId>/
-├── runtime.json                 # Effective config, stop receipts, cleanup verdict
-├── evidence.jsonl               # Ordered lifecycle, input, and event timeline
-├── service-calls.jsonl          # Private Service trace, including inputs and results
-├── service-state.<id>.json      # Optional per-Service state snapshots on close
-├── model-trace/<attemptId>/     # Raw request.json, response.txt, result.json
+├── runtime.json                      # Atomic summary: config, prompt digests, stop/close receipts
+├── evidence.jsonl                    # Ordered ledger: spawn, input, event, service, stop, errors
+├── service-calls.jsonl               # Full authenticated Service call payloads, results & errors
+├── service-state.<serviceId>.json    # Optional snapshots from ServiceAdapter.exportState() on close
+├── model-access/                     # Per-model SQLite attempt ledgers (runtime_model_attempts)
+├── model-trace/
+│   └── <attemptId>/
+│       ├── request.json              # Received & forwarded Responses payload + timestamps
+│       ├── response.txt              # Raw streamed upstream response body
+│       └── result.json               # HTTP/terminal status, failure cause, metered usage
 ├── <agentId>/
-│   ├── session/                 # Native Pi JSONL conversation archive
-│   └── artifacts/files/         # Files exported via Profile/Spawn collect specs
-└── harness-report.json      # Harness delivery outcome & independent error slots
+│   ├── session/
+│   │   ├── manifest.json             # Original & redacted SHA-256 digests of native Pi logs
+│   │   └── files/                    # Native Pi JSONL session files (including pre-compaction)
+│   └── artifacts/
+│       ├── manifest.json             # Effective collect policy, file sizes, modes, SHA-256s
+│       └── files/                    # Exported workspace files (and .git when includeGit: true)
+└── harness-report.json               # Written by runWithReport() with independent failure channels
 ```
 
-Next, read [Anatomy of a Run](../run-lifecycle/) to walk through these primitives inside a concrete multi-turn collaboration.
+Next, follow [Anatomy of a Run](../run-lifecycle/) to see how these components behave across a concrete multi-turn execution.
