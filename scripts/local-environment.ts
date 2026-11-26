@@ -46,7 +46,7 @@ export interface LocalProviderHandle {
 }
 
 async function run(command: string, args: string[], signal?: AbortSignal) {
-  return (await execute(command, args, { encoding: 'utf8', timeout: 20_000, maxBuffer: 1024 * 1024, signal })).stdout.trim();
+  return (await execute(command, args, { encoding: 'utf8', timeout: command === 'docker' && args[0] === 'pull' ? 900_000 : 20_000, maxBuffer: 1024 * 1024, signal })).stdout.trim();
 }
 
 function check(id: string, ok: boolean, detail: string, remedy?: string): DiagnosticCheck {
@@ -236,6 +236,7 @@ export async function ensureLocalProvider(config: LocalEnvironmentConfig, { sign
   };
   try {
     await run('docker', ['image', 'inspect', localExecdImage], signal).catch(async () => { await run('docker', ['pull', localExecdImage], signal); });
+    await run('docker', ['image', 'inspect', localProviderImage], signal).catch(async () => { await run('docker', ['pull', localProviderImage], signal); });
     try {
       id = await run('docker', ['run', '-d', '--name', name, '--network', 'host', '--restart', 'unless-stopped', '--label', `org.murm.setup.profile=${profileVersion}`, '--label', `org.murm.setup.owner=${token}`, '--label', `org.murm.setup.state=${stateDir}`, '-e', 'OPENSANDBOX_INSECURE_SERVER=YES', '-v', '/var/run/docker.sock:/var/run/docker.sock', '-v', `${join(stateDir, 'config.toml')}:/config/config.toml:ro`, '-v', `${join(stateDir, 'data')}:/root/.opensandbox`, localProviderImage, '--config', '/config/config.toml'], signal);
       created = true;
