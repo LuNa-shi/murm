@@ -2513,6 +2513,94 @@
         "docs/architecture/06-observability-experiments.md"
       ],
       "role": "Standalone CLI and HTTP/SSE verification"
+    },
+    {
+      "path": "trace-viewer/reader.mjs",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Versioned evidence discovery, indexing, projection and bounded raw reads"
+    },
+    {
+      "path": "trace-viewer/test/reader.test.mjs",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Reader contract verification with synthetic saved and live Core Runs"
+    },
+    {
+      "path": "trace-viewer/public/index.html",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Run list, timeline, evidence and result interface markup"
+    },
+    {
+      "path": "trace-viewer/public/app.js",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Run navigation, rendering, filtering, stream updates and evidence inspector"
+    },
+    {
+      "path": "trace-viewer/public/style.css",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Responsive layout, timeline layers and murm color themes"
+    },
+    {
+      "path": "trace-viewer/public/fonts/departure-mono.woff2",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Self-hosted departure-mono font"
+    },
+    {
+      "path": "trace-viewer/public/licenses/departure-mono.txt",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "License for the bundled departure-mono font"
+    },
+    {
+      "path": "trace-viewer/public/fonts/inter.woff2",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Self-hosted inter font"
+    },
+    {
+      "path": "trace-viewer/public/licenses/inter.txt",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "License for the bundled inter font"
+    },
+    {
+      "path": "trace-viewer/public/fonts/space-grotesk.woff2",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Self-hosted space-grotesk font"
+    },
+    {
+      "path": "trace-viewer/public/licenses/space-grotesk.txt",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "License for the bundled space-grotesk font"
     }
   ]
 }

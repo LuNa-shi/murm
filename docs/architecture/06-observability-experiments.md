@@ -8,7 +8,9 @@ Each browser request must use a loopback Host header. Browser cross-site request
 
 ## Reader and API
 
-The reader discovers `runtime.json` and opens only the configured Run root. It reads the original files through a rebuildable metadata index. The Run identity and each indexed record retain the original relative file and available byte or line reference. See [Runtime evidence and Harness reports](17-harness-reporting.md) for producer details.
+The reader discovers `runtime.json` in the configured directory and its nested Run output directories. It caches a rebuildable in-memory metadata index per opened Run and retains the Runtime identity plus each indexed record's relative file and byte or line reference. The reader decodes schema 1, including the historical `bots`, `botId` and `environment-report.json` fields and current `agents`, `agentId` and `harness-report.json` fields. Legacy records without native timing or archive data expose those gaps. Unknown Service operations keep their generic identities and raw evidence.
+
+The reader allows file access to discovered evidence. It rejects path escapes, symlinks, hard links and non-regular files. It checks the opened descriptor's path via Linux `/proc/self/fd` to enforce containment after opening a file. This requires a Linux viewer host. Browsers connect over HTTP from any OS. See [Runtime evidence and Harness reports](17-harness-reporting.md) for producer details.
 
 All routes are relative to the viewer origin. Run and record IDs are URL-encoded path segments.
 

@@ -1,6 +1,6 @@
 # Open a Run in Trace Viewer
 
-Build the standalone candidate package from the repository root with Node.js 22.19 or later. Install the resulting tarball in a separate directory.
+Build the standalone candidate package from the repository root on Linux with Node.js 22.19 or later. Install the resulting tarball in a separate directory.
 
 ```bash
 mkdir -p /tmp/murm-viewer-package

@@ -3,10 +3,23 @@
   "version": "0.2.0",
   "description": "Read-only Run trace viewer for murm",
   "type": "module",
-  "engines": { "node": ">=22.19.0" },
-  "bin": { "murm": "./murm.mjs" },
-  "files": ["*.mjs", "!*.test.mjs", "public/"],
-  "scripts": { "test": "node --test" },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "bin": {
+    "murm": "./murm.mjs"
+  },
+  "files": [
+    "*.mjs",
+    "!*.test.mjs",
+    "public/"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
   "license": "UNLICENSED",
-  "private": true
+  "private": true,
+  "os": [
+    "linux"
+  ]
 }
