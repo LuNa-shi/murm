@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Core CI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Check pull request whitespace
+        if: github.event_name == 'pull_request'
+        run: git diff --check HEAD^1 HEAD
+      - name: Start with a fresh npm cache
+        run: |
+          npm_cache=$(mktemp -d "$RUNNER_TEMP/murm-npm-cache.XXXXXXXX")
+          printf 'npm_config_cache=%s\n' "$npm_cache" >> "$GITHUB_ENV"
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - name: Prepare npm cache for offline package tests
+        run: |
+          package_dir=$(mktemp -d)
+          trap 'rm -rf -- "$package_dir"' EXIT
+          npm pack --loglevel=error --pack-destination "$package_dir"
+          npm install --prefix "$package_dir/consumer" --prefer-offline --omit=dev --ignore-scripts --no-audit --no-fund "$package_dir"/*.tgz
+      - run: npm test
+
+  trace-viewer:
+    name: Trace Viewer CI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm --prefix trace-viewer test
+
+  website:
+    name: Website CI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --no-audit --no-fund
+      - name: Build and check both locales
+        env:
+          BASE_PATH: /murm
+          SITE_URL: https://luna-shi.github.io
+        run: |
+          npm run build
+          test -s dist/index.html
+          test -s dist/zh/index.html
