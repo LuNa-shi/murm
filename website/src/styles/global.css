@@ -711,196 +711,128 @@ html.reveal-ready [data-reveal-line].is-visible {
   border-bottom-color: var(--accent);
 }
 
-/* ===== 02 · CORE MODEL: Single-Layer Drafting Panel (Unified Ink Grammar) ===== */
-.cm-shell {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: 24px 26px 20px;
-  border: 1.5px solid var(--ink);
-  border-radius: var(--radius-md);
-  background: var(--bg-elevated);
-  box-shadow: 4px 4px 0 var(--ink);
+/* ===== 02 · MENTAL MODEL: Interactive Tactical Sandtable Arena ===== */
+.arena-svg {
+  min-width: 860px;
 }
 
-.cm-plane {
-  display: grid;
-  grid-template-columns: 124px minmax(0, 1fr);
-  align-items: center;
-  gap: 16px 22px;
+.az-zone {
+  cursor: pointer;
+  transition: opacity 0.22s ease;
+  outline: none;
 }
 
-.cm-plane-label {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+.az-zone.dimmed {
+  opacity: 0.18;
 }
 
-.cm-plane-kicker {
+.az-zone:hover .az-outline,
+.az-zone:focus-visible .az-outline,
+.az-zone.focused .az-outline {
+  stroke: var(--sch-indigo);
+  stroke-width: 2.2;
+}
+
+.az-edge {
+  transition: opacity 0.22s ease;
+}
+
+.az-edge.dimmed {
+  opacity: 0.14;
+}
+
+.ar-kicker-blue {
+  fill: var(--sch-indigo);
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+.ar-kicker-dark {
+  fill: var(--ink);
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+.ar-arena-title {
+  fill: var(--ink);
   font-family: var(--font-pixel);
   font-size: 11px;
   letter-spacing: 0.05em;
-  color: var(--accent);
 }
 
-.cm-kicker-exec {
-  color: var(--teal);
+.ar-sb-tag {
+  fill: var(--ink-muted);
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  letter-spacing: 0.04em;
 }
 
-.cm-plane-sub {
-  font-size: 12.2px;
-  color: var(--ink-muted);
+.ar-meta {
+  fill: var(--ink-muted);
+  font-size: 10.5px;
 }
 
-.cm-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 22px minmax(0, 1fr) 22px minmax(0, 1fr);
-  align-items: center;
-  gap: 0;
-}
-
-.cm-arrow {
-  text-align: center;
+.ar-floor-meta {
+  fill: var(--ink-secondary);
   font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--ink-muted);
-  user-select: none;
+  font-size: 10px;
 }
 
-.cm-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 5px;
-  padding: 13px 15px;
-  border: 1.5px solid var(--border);
-  border-radius: 6px;
-  background: var(--sch-surface);
-  text-align: left;
-  cursor: pointer;
-  font-family: inherit;
-  transition: border-color 0.14s ease, box-shadow 0.14s ease, opacity 0.18s ease, transform 0.14s ease;
-}
-
-.cm-cell-primary {
-  background: color-mix(in srgb, var(--marker-yellow) 28%, var(--bg-elevated));
-  border-color: var(--ink);
-}
-
-.cm-cell:hover,
-.cm-cell.is-active {
-  border-color: var(--ink);
-  box-shadow: 2.5px 2.5px 0 var(--ink);
-  transform: translate(-1px, -1px);
-}
-
-.cm-cell.is-muted {
-  opacity: 0.42;
-}
-
-.cm-cell-head {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.cm-cell-head code {
-  font-family: var(--font-pixel);
-  font-size: 13.5px;
-  color: var(--ink);
-}
-
-.cm-pill {
-  font-family: var(--font-pixel);
-  font-size: 9.5px;
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-
-.cm-pill-author {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.cm-pill-exec {
-  background: var(--bg-subtle);
-  color: var(--ink-secondary);
-}
-
-.cm-cell-desc {
-  font-size: 12.6px;
-  color: var(--ink-secondary);
-  line-height: 1.45;
-}
-
-.cm-boundary {
-  display: grid;
-  grid-template-columns: 124px minmax(0, 1fr);
-  align-items: center;
-  gap: 16px 22px;
-  margin: 14px 0;
-  padding: 8px 0;
-  border-top: 1px dashed var(--border-strong);
-  border-bottom: 1px dashed var(--border-strong);
-}
-
-.cm-boundary-label {
-  font-family: var(--font-pixel);
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
-  color: var(--ink-muted);
-}
-
-.cm-boundary-cols {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 22px minmax(0, 1fr) 22px minmax(0, 1fr);
-  align-items: center;
-  text-align: center;
-}
-
-.cm-down {
+.ar-pipe-lbl {
+  fill: var(--ink-secondary);
   font-family: var(--font-mono);
-  font-size: 11.5px;
-  color: var(--ink-muted);
+  font-size: 10px;
+  font-weight: 500;
 }
 
-.cm-down small {
-  font-size: 11px;
-  margin-left: 3px;
-}
-
-.cm-inspector {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.cm-ins-tag {
+.ar-key-txt {
+  fill: var(--ink);
   font-family: var(--font-pixel);
   font-size: 10.5px;
-  letter-spacing: 0.05em;
-  color: var(--accent);
+  letter-spacing: 0.04em;
 }
 
-.cm-ins-note {
-  font-size: 13.6px;
-  color: var(--ink-secondary);
-  line-height: 1.55;
+.ar-console-title {
+  fill: var(--ink);
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
-.cm-ins-code {
+.ar-console-foot {
+  fill: var(--ink);
   font-family: var(--font-mono);
-  font-size: 12.2px;
-  color: var(--ink);
-  padding: 7px 10px;
-  border-radius: 5px;
-  background: var(--bg-subtle);
-  overflow-x: auto;
+  font-size: 10px;
+  opacity: 0.82;
+}
+
+.ar-code-k {
+  fill: var(--sch-indigo);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ar-code-t {
+  fill: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.ar-tool-box {
+  fill: var(--bg-elevated);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.ar-tool-txt {
+  fill: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: 8.8px;
+  font-weight: 500;
 }
 
 /* ===== Proposal 2 Elevated: 5-Across Visual Filmstrip + Live Expanding Stage + Zoom Lightbox ===== */
@@ -1921,9 +1853,6 @@ html.reveal-ready [data-reveal-line].is-visible {
   .hero-stage, .editorial-section, .landing-section { min-height: auto; }
   .chapter { margin-top: 64px; padding: 56px 0 16px; }
   .slogan-row, .pillars-four, .domain-grid { grid-template-columns: 1fr; gap: 32px; }
-  .cm-plane, .cm-boundary { grid-template-columns: 1fr; gap: 10px; }
-  .cm-row { grid-template-columns: 1fr; gap: 8px; }
-  .cm-arrow, .cm-boundary-cols { display: none; }
   .lane-legend { margin-left: 0; border-right: 0; padding-right: 0; }
   .click-hint { margin-left: 0; }
   .docs-shell { grid-template-columns: 1fr; }
