@@ -1,6 +1,6 @@
 # murm
 
-murm is a TypeScript toolkit for building multi-agent Harnesses. A Harness composes Agent Profiles, shared Services and its coordination policy. The Runtime runs each Agent in an isolated Sandbox and records the execution as a Run. The Core library exposes the Runtime, Service framework and Pi/OpenSandbox backend. [Website](https://luna-shi.github.io/SwarmEnv/) · [Core concepts](GLOSSARY.md)
+murm is a TypeScript toolkit for building multi-agent Harnesses. A Harness composes Agent Profiles, shared Services and its coordination policy. The Runtime runs each Agent in an isolated Sandbox and records the execution as a Run. The Core library exposes the Runtime, Service framework and Pi/OpenSandbox backend. [Website](https://luna-shi.github.io/murm/) · [Core concepts](GLOSSARY.md)
 
 ## Run the Notes example
 
@@ -22,7 +22,7 @@ The installable candidate provides `@murm/core`, `@murm/core/services` and `@mur
 
 Install the `murm-core-0.2.0.tgz` archive and use `@murm/core`, `@murm/core/services` and `@murm/core/backends/pi-opensandbox`. Update Harness paths using the table above. Host scripts use `run-harness.js` and `read-harness-result.js`. The foreground host accepts `taskpool` and `peermesh`, and the Agent-side Service CLI is `swarm`.
 
-Use the `MURM_*` settings in the example configuration and rebuild the Worker image from this revision. Start a new Run directory for new Harness and Runtime records. The package entry points, Agent identifiers, Service operation names, and Worker and record contracts use the current vocabulary. The GitHub repository retains its current URL. [Command and record details](docs/architecture/17-harness-reporting.md#foreground-harness-control)
+Use the `MURM_*` settings in the example configuration and rebuild the Worker image from this revision. Start a new Run directory for new Harness and Runtime records. The package entry points, Agent identifiers, Service operation names, and Worker and record contracts use the current vocabulary. The project repository is [LuNa-shi/murm](https://github.com/LuNa-shi/murm). [Command and record details](docs/architecture/17-harness-reporting.md#foreground-harness-control)
 
 ## Start here
 
@@ -62,4 +62,8 @@ The implementation manual describes the current code. Implementation progress an
 The legacy mathematical benchmark runner, dedicated launchers and embedded datasets are preserved in the fixed research revision. [Research tree](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9)
 
 Obsolete documentation remains accessible from the [fixed Git history tree](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs). This working tree does not recreate an `archive/` directory. Ignored raw experiment data may not exist in Git history.
+
+## License
+
+murm's original code and documentation are licensed under the [MIT License](LICENSE). Third-party material retains its own terms. [Third-party notices](docs/third-party-notices.md)
 
