@@ -621,3 +621,25 @@ test('a spawn crossing the snapshot cursor is visible before the new Agent start
   assert.equal(statuses[0], 'starting');
   assert.equal(statuses.at(-1), 'idle');
 });
+
+test('an executor exit during a turn clears the public execution state', { timeout: 5000 }, async t => {
+  const { runtime, agent } = await setup(t);
+  const observation = runtime.observe();
+  t.after(() => observation.cancel());
+  provider.wrapperReplay = true;
+  provider.wait = async message => {
+    provider.publish({ type: 'agent_start' });
+    provider.publish({ type: 'worker_exit', code: 1 });
+    provider.responses.set(message.id, { response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'started' } } });
+  };
+  await runtime.send(agent.id, 'fixed', { requestId: 'observe-exited-execution' });
+  let exit;
+  for await (const update of observation.events) {
+    if (update.type === 'agent' && update.cause === 'exit') { exit = update; break; }
+  }
+  const replay = runtime.observe();
+  replay.cancel();
+  assert.equal(exit.agent.status, 'exited');
+  assert.equal(exit.agent.execution, 'inactive');
+  assert.deepEqual(replay.snapshot.agents.find(item => item.id === agent.id), exit.agent);
+});
