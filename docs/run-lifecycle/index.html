@@ -1,0 +1,240 @@
+<!DOCTYPE html><html lang="en"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Anatomy of a Run · murm</title><meta name="description" content="Follow a two-agent refactoring scenario from spawn and unified send delivery through file handoffs, safe interrupts, and archive-before-delete closeout."><link rel="icon" type="image/svg+xml" href="/SwarmEnv/favicon.svg"><script>
+      (function () {
+        const stored = localStorage.getItem('murm:theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = stored || (prefersDark ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+        const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reduced && 'IntersectionObserver' in window) {
+          document.documentElement.classList.add('reveal-ready');
+        }
+      })();
+    </script><link rel="stylesheet" href="/SwarmEnv/_astro/_slug_.BNdmKG-L.css"></head> <body>  <header class="top-nav"> <div class="top-nav-inner"> <div class="nav-left"> <button type="button" class="icon-btn mobile-menu-btn" id="mobile-menu-toggle" aria-label="Toggle sidebar"> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"> <line x1="4" y1="6" x2="20" y2="6"></line> <line x1="4" y1="12" x2="20" y2="12"></line> <line x1="4" y1="18" x2="20" y2="18"></line> </svg> </button> <a class="brand-link" href="/SwarmEnv/"> <svg width="26" height="22" viewBox="0 0 36 30" fill="none" aria-hidden="true"><g fill="currentColor"><path d="M2 18c2-1.5 3.7-1.1 5.1.3-1.7-.1-3.1.5-4.5 1.6-.4.3-.8-.1-.6-.5z" opacity="0.7"></path><path d="M9 13c2.3-1.7 4.3-1.3 6 .4-2.1-.1-3.7.6-5.4 1.9-.5.3-1-.1-.6-.6z"></path><path d="M15 20c2.2-1.6 4.1-1.2 5.6.4-1.9-.1-3.5.6-5 1.8-.4.3-.9-.1-.6-.6z" opacity="0.85"></path><path d="M18 9c2.5-1.8 4.6-1.4 6.4.4-2.2-.1-4 .7-5.7 2-.5.3-1-.1-.7-.6z"></path><path d="M25 14c2.1-1.5 3.9-1.1 5.4.4-1.9-.1-3.4.6-4.9 1.7-.4.3-.9-.1-.5-.6z" opacity="0.9"></path><path d="M28 7c1.8-1.3 3.3-1 4.6.3-1.6-.1-2.9.5-4.1 1.4-.4.3-.8-.1-.5-.5z" opacity="0.65"></path></g></svg> <span>murm</span> </a> </div> <div class="nav-actions"> <button type="button" class="search-trigger" id="search-open-btn" aria-label="Search documentation"> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"> <circle cx="11" cy="11" r="8"></circle> <path d="m21 21-4.3-4.3"></path> </svg> <span>Search</span> <kbd>⌘K</kbd> </button> <button type="button" class="icon-btn" data-theme-toggle aria-label="Toggle color theme" title="Toggle light / dark theme"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"> <circle cx="12" cy="12" r="4"></circle> <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path> </svg> </button> <a class="icon-btn" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer" aria-label="GitHub repository" title="GitHub"> <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"> <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2Z"></path> </svg> </a> </div> </div> </header>  <div class="docs-shell"> <aside class="docs-sidebar" id="docs-sidebar" aria-label="Documentation navigation"> <div class="sidebar-group"> <div class="sidebar-label">GETTING STARTED</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/quickstart/"> <span>Quick Start</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/concepts/"> <span>Core Concepts</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">ARCHITECTURE</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/architecture/"> <span>System Architecture</span> </a> </li><li> <a class="sidebar-link active" href="/SwarmEnv/docs/run-lifecycle/" aria-current="page"> <span>Anatomy of a Run</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">BUILT-IN HARNESSES</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/"> <span>Five Topologies Overview</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/subagents/"> <span>Subagents</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/taskpool/"> <span>TaskPool</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/peermesh/"> <span>PeerMesh</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/substrate/"> <span>Substrate</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/lead-worker/"> <span>Lead-Worker</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">DEVELOPERS</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/build-your-harness/"> <span>Build Your Own Harness</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">REFERENCE</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/reference/api/"> <span>API &amp; Configuration</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/reference/types/"> <span>Types &amp; Mapping</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/reference/deploy/"> <span>Deployment</span> </a> </li> </ul> </div> </aside> <main class="docs-main"> <div class="docs-eyebrow">ARCHITECTURE</div> <h1 class="docs-title">Anatomy of a Run</h1> <p class="docs-lead">Follow a two-agent refactoring scenario from spawn and unified send delivery through file handoffs, safe interrupts, and archive-before-delete closeout.</p> <article class="prose">  <p>API tables are easier to internalize through a concrete timeline. Walk through one realistic scenario: <strong><code>architect</code> and <code>tester</code> collaborate to refactor a parser module and write regression tests</strong> — mid-flight a new requirement arrives, <code>tester</code> drifts off-track and gets interrupted without losing queued messages, and the run closes cleanly.</p>
+<p><img alt="Agent Lifecycle, Unified send(), Interrupt and Safe Close Order" loading="lazy" decoding="async" fetchpriority="auto" width="1376" height="768" src="/SwarmEnv/_astro/agent-lifecycle.Qm00N_gb_f6VOD.webp" ></p>
+<h2 id="phase-1-start-a-run-and-spawn-idle-agents">Phase 1: Start a Run and spawn idle agents</h2>
+<p>Your Harness calls <code>createRuntime()</code>, freezing the Profile and Service registries and creating <code>outputDir/&#x3C;runId>/</code>. No containers exist yet.</p>
+<p>Calling <code>runtime.spawn()</code> registers an <code>agentId</code>, reserves a capacity <strong>Slot</strong> (bounded by <code>maxBots</code>), boots the sandbox and Pi session, and returns with <code>status: 'idle'</code> — no inference starts automatically:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="ts"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#768390">// Subscribe before sending the first input so fast events are never missed</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> unsubscribe</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> runtime.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">onEvent</span><span style="color:#24292E;--shiki-dark:#ADBAC7">((</span><span style="color:#E36209;--shiki-dark:#F69D50">event</span><span style="color:#24292E;--shiki-dark:#ADBAC7">) </span><span style="color:#D73A49;--shiki-dark:#F47067">=></span><span style="color:#24292E;--shiki-dark:#ADBAC7"> {</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#DCBDFB">  handleEvent</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(event);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> architect</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#D73A49;--shiki-dark:#F47067"> await</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> runtime.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">spawn</span><span style="color:#24292E;--shiki-dark:#ADBAC7">({</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  requestId: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'spawn-architect'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  profile: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'architect'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  workspace: { id: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'parser-repo'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, mode: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'read-write'</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">});</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> tester</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#D73A49;--shiki-dark:#F47067"> await</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> runtime.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">spawn</span><span style="color:#24292E;--shiki-dark:#ADBAC7">({</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  requestId: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'spawn-tester'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  profile: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'tester'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  workspace: { id: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'parser-repo'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, mode: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'read-write'</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">});</span></span></code></pre>
+<p>Separating <code>spawn</code> from the first input lets your Harness wire routing tables, parent-child links, and listeners cleanly before any model call fires.</p>
+<h2 id="phase-2-deliver-work-with-unified-send">Phase 2: Deliver work with unified <code>send</code></h2>
+<p><code>runtime.send(agentId, text, options)</code> is the single entry point for delivering work and notifications. Two flags control timing and wake semantics precisely:</p>
+<ul>
+<li><strong><code>mode: 'followUp'</code></strong>: queues after the agent’s current turn settles. Use for independent new tasks or batched external events.</li>
+<li><strong><code>mode: 'steer'</code></strong> <em>(default)</em>: injects after the current tool batch finishes and before the next model request — correcting direction without killing an in-flight shell command.</li>
+<li><strong><code>wakeIfIdle: false</code></strong> <em>(default <code>true</code>)</em>: delivers <strong>only if the target agent is currently <code>running</code></strong>. If the agent is already <code>idle</code>, the Runtime returns <code>{ status: 'not-accepted', reason: 'idle' }</code> without waking it or spending tokens.</li>
+</ul>
+<p>Here is how cleanly that pattern works for cross-agent notifications:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="ts"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#768390">// 1. Start architect on the refactor (wakes idle agent)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">await</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> runtime.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">send</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(architect.id, </span><span style="color:#032F62;--shiki-dark:#96D0FF">'Refactor src/parser.ts and publish interface changes via notes.'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  requestId: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'task-arch-1'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  mode: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'followUp'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#768390">// 2. Mid-flight, tester spots an edge case and notifies architect if it is actively running</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> notice</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#D73A49;--shiki-dark:#F47067"> await</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> runtime.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">send</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(architect.id, </span><span style="color:#032F62;--shiki-dark:#96D0FF">'Note: case-sensitive paths containing slashes have a special rule.'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  requestId: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'notice-1'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  mode: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'steer'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  wakeIfIdle: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">false</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">if</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> (notice.status </span><span style="color:#D73A49;--shiki-dark:#F47067">===</span><span style="color:#032F62;--shiki-dark:#96D0FF"> 'not-accepted'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">) {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#768390">  // architect already settled to idle — hold in mailbox instead of wasting a model turn</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  mailbox.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">push</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(architect.id, </span><span style="color:#032F62;--shiki-dark:#96D0FF">'Note: case-sensitive paths containing slashes have a special rule.'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">}</span></span></code></pre>
+<h3 id="delivery-receipts-vs-turn-completion">Delivery receipts vs. turn completion</h3>
+<p><code>runtime.send()</code> resolves to an <strong>acceptance receipt</strong> (<code>accepted</code>, <code>not-accepted</code>, or <code>unknown</code>), not the model’s final answer. When a turn finishes reasoning and tool execution, <code>onEvent</code> emits <strong><code>settled</code></strong> (<code>outcome: 'completed' | 'failed' | 'aborted'</code>) and the agent returns to <code>idle</code> with its session and workspace preserved.</p>
+<p>If a transient transport error produces <code>status: 'unknown'</code>, re-issue the exact same <code>requestId</code> and payload to reconcile — the Runtime checks the original submission and never double-injects a duplicate prompt.</p>
+<h2 id="phase-3-three-patterns-for-file-collaboration">Phase 3: Three patterns for file collaboration</h2>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Runtime file primitive</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Concurrent edits on one codebase</strong> (Subagents)</td>
+<td><code>spawn({ workspace: { id, mode: 'read-write' } })</code></td>
+<td>Multiple agents mount one shared runtime directory while keeping sessions and tokens isolated</td>
+</tr>
+<tr>
+<td><strong>Read-only discovery, write after claim</strong> (TaskPool)</td>
+<td>Start with <code>writable: false</code> → <code>files.prepare()</code> → <code>files.grant()</code></td>
+<td>Agent cannot mutate files until the host validates a claim and grants the trusted <code>PreparedFiles</code> handle</td>
+</tr>
+<tr>
+<td><strong>Consistent mid-run read for checks or commits</strong></td>
+<td><code>runtime.files.snapshot(agentId, { requestId, paths })</code></td>
+<td>Worker pauses writers briefly and returns consistent file bytes, version, and digest</td>
+</tr>
+</tbody>
+</table>
+<p>For final deliverables, declare <code>collect</code> on a Profile or <code>spawn</code> call (<code>paths</code>, <code>includeGit</code>, <code>maxBytes</code>, and <code>required</code>).</p>
+<h2 id="phase-4-safe-interruption-without-losing-queued-messages">Phase 4: Safe interruption without losing queued messages</h2>
+<p>Suppose six minutes in, <code>tester</code> is writing tests against an outdated interface. Instead of killing the container and throwing away its accumulated context, call <code>runtime.interrupt()</code>:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="ts"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> interrupted</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#D73A49;--shiki-dark:#F47067"> await</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> runtime.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">interrupt</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(tester.id, {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  requestId: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'interrupt-tester-1'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  timeoutMs: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">15_000</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">if</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> (interrupted.status </span><span style="color:#D73A49;--shiki-dark:#F47067">===</span><span style="color:#032F62;--shiki-dark:#96D0FF"> 'interrupted'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">) {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#768390">  // Restore any queued steer messages discarded by Pi back into your mailbox</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#DCBDFB">  recoverDiscardedMailboxMessages</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(tester.id, interrupted.discardedInputHashes);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#768390">  // Session and workspace remain intact — redirect immediately</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">  await</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> runtime.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">send</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(tester.id, </span><span style="color:#032F62;--shiki-dark:#96D0FF">'Interface is finalized. Rewrite filter tests against latest src/parser.ts.'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    requestId: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'task-tester-2'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    mode: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'followUp'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  });</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">}</span></span></code></pre>
+<p><code>interrupt</code> cancels in-flight Bridge calls for that agent, aborts the active turn, flushes unconsumed inputs, and returns <code>discardedInputHashes</code> (SHA-256 digests) so your Harness can recover dropped notifications losslessly.</p>
+<h2 id="phase-5-archive-before-delete-closeout">Phase 5: Archive-before-delete closeout</h2>
+<p>Follow a strict four-step teardown sequence:</p>
+<ol>
+<li>Stop your Harness’s own timers, pollers, and external event feeds;</li>
+<li>Call <code>await runtime.close({ timeoutMs: 30_000 })</code>;</li>
+<li>The Runtime runs: <strong>reject new calls → stop Pi processes → archive native sessions &#x26; <code>collect</code> files → delete sandboxes &#x26; free slots → shut down Bridge/Gateway and write <code>runtime.json</code></strong>;</li>
+<li>Only after <code>close()</code> completes should your Harness close its own databases or revoke temporary external credentials.</li>
+</ol>
+<p>Receipts report two independent axes:</p>
+<ul>
+<li><strong><code>execution</code> (<code>'stopped' | 'unknown'</code>)</strong>: whether agent execution is confirmed halted;</li>
+<li><strong><code>cleanup</code> (<code>'complete' | 'pending'</code>)</strong>: whether required session archives, required <code>collect</code> exports, and container deletions all succeeded.</li>
+</ul>
+<p>If a required <code>collect</code> export or session archive fails, the Runtime keeps the container intact and returns <code>cleanup: 'pending'</code> with the exact pending actions so you can retry <code>stop()</code> or <code>close()</code> without losing deliverables.</p>
+<p>Next, see how five distinct multi-agent harnesses are built on these exact primitives in <a href="../harnesses/">Five Topologies Overview</a>.</p>  </article> <nav class="docs-pager" aria-label="Pagination"> <a class="pager-link prev" href="/SwarmEnv/docs/architecture/"> <span class="pager-dir">← PREVIOUS</span> <span class="pager-title">System Architecture</span> </a> <a class="pager-link next" href="/SwarmEnv/docs/harnesses/"> <span class="pager-dir">NEXT →</span> <span class="pager-title">Five Topologies Overview</span> </a> </nav> </main> <aside class="docs-toc" aria-label="On this page">  <div class="toc-title">ON THIS PAGE</div> <ul class="toc-list"> <li> <a class="toc-link" href="#phase-1-start-a-run-and-spawn-idle-agents"> Phase 1: Start a Run and spawn idle agents </a> </li><li> <a class="toc-link" href="#phase-2-deliver-work-with-unified-send"> Phase 2: Deliver work with unified send </a> </li><li> <a class="toc-link depth-3" href="#delivery-receipts-vs-turn-completion"> Delivery receipts vs. turn completion </a> </li><li> <a class="toc-link" href="#phase-3-three-patterns-for-file-collaboration"> Phase 3: Three patterns for file collaboration </a> </li><li> <a class="toc-link" href="#phase-4-safe-interruption-without-losing-queued-messages"> Phase 4: Safe interruption without losing queued messages </a> </li><li> <a class="toc-link" href="#phase-5-archive-before-delete-closeout"> Phase 5: Archive-before-delete closeout </a> </li> </ul>  </aside> </div>  <div class="search-backdrop" id="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation"> <div class="search-dialog"> <div class="search-input-wrap"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ink-muted)"> <circle cx="11" cy="11" r="8"></circle> <path d="m21 21-4.3-4.3"></path> </svg> <input class="search-input" id="search-input" type="search" placeholder="Search concepts, harnesses, APIs..." autocomplete="off"> <kbd style="font-family:var(--font-pixel);font-size:10px;color:var(--ink-muted);border:1px solid var(--border);border-radius:4px;padding:1px 6px;">ESC</kbd> </div> <div class="search-results" id="search-results"></div> </div> </div> <script>(function(){const index = [{"title":"System Architecture","description":"Follow the exact trust boundaries, data flows, and request paths connecting the host process, OpenSandbox containers, Worker, Service Bridge, and Model Gateway.","section":"ARCHITECTURE","href":"/SwarmEnv/docs/architecture/"},{"title":"Anatomy of a Run","description":"Follow a two-agent refactoring scenario from spawn and unified send delivery through file handoffs, safe interrupts, and archive-before-delete closeout.","section":"ARCHITECTURE","href":"/SwarmEnv/docs/run-lifecycle/"},{"title":"Types & Mapping","description":"Public TypeScript definitions for @swarmenv/core 0.2.0 (ac72c76) and their mapping to murm concepts.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/types/"},{"title":"Quick Start","description":"Prepare the local sandbox environment, launch your first multi-agent harness, and inspect the recorded run directory.","section":"GETTING STARTED","href":"/SwarmEnv/docs/quickstart/"},{"title":"Core Concepts","description":"Six orthogonal abstractions — Agent, Service, Harness, Runtime, Sandbox, and Run — separating execution infrastructure from coordination logic.","section":"GETTING STARTED","href":"/SwarmEnv/docs/concepts/"},{"title":"Build Your Own Harness","description":"Assemble custom Services, role Profiles, host control loops, and safe closeout to implement a new multi-agent harness without editing the Runtime.","section":"DEVELOPERS","href":"/SwarmEnv/docs/build-your-harness/"},{"title":"API & Configuration","description":"Reference for Runtime methods, unified send semantics, file control, Service protocol v2, the swarm CLI, backend config, and error contracts.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/api/"},{"title":"Five Topologies Overview","description":"How one Runtime powers five distinct multi-agent Harnesses — Subagents, TaskPool, PeerMesh, Substrate, and Lead-Worker.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/"},{"title":"Lead-Worker","description":"Staged direction-and-feedback loop combining transactional SQLite Board claims, causal read gates, and Git commit SHA-256 verification.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/lead-worker/"},{"title":"Deployment","description":"Preview the murm documentation site locally and publish static builds to GitHub Pages or Cloudflare Pages.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/deploy/"},{"title":"Substrate","description":"Zero-queue, zero-routing parallel research where equal peers publish, search, visit, and cite immutable artifacts in a single SQLite store.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/substrate/"},{"title":"PeerMesh","description":"Peer-to-peer engineering team coordinating through overlapping Board claims, team chat channels, per-peer serial routers, and Git pull requests.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/peermesh/"},{"title":"Subagents","description":"Hierarchical recursive delegation, non-waking mailbox messaging, context forking, and safe interrupts built on one custom collaboration Service.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/subagents/"},{"title":"TaskPool","description":"Shared task pool, read-only discovery to host-granted writes, Model Access Policy lease guards, and versioned main merges for long-running projects.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/taskpool/"}];
+
+  const modal = document.getElementById('search-modal');
+  const input = document.getElementById('search-input');
+  const resultsEl = document.getElementById('search-results');
+  const openBtn = document.getElementById('search-open-btn');
+
+  function render(query) {
+    const q = (query || '').trim().toLowerCase();
+    const matches = q
+      ? index.filter((item) =>
+          `${item.title} ${item.description} ${item.section}`.toLowerCase().includes(q)
+        )
+      : index.slice(0, 8);
+
+    if (!matches.length) {
+      resultsEl.innerHTML = `<div style="padding:20px;text-align:center;color:var(--ink-muted);font-size:13.5px;">No matching pages for "${q}"</div>`;
+      return;
+    }
+
+    resultsEl.innerHTML = matches
+      .map(
+        (item) => `
+        <a class="search-item" href="${item.href}">
+          <div class="search-item-title">${item.title} <span style="font-weight:400;font-size:11.5px;color:var(--ink-muted);margin-left:6px;">${item.section}</span></div>
+          <div class="search-item-desc">${item.description}</div>
+        </a>`
+      )
+      .join('');
+  }
+
+  function openSearch() {
+    modal?.classList.add('open');
+    render('');
+    setTimeout(() => input?.focus(), 20);
+  }
+
+  function closeSearch() {
+    modal?.classList.remove('open');
+    if (input) input.value = '';
+  }
+
+  openBtn?.addEventListener('click', openSearch);
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeSearch();
+  });
+  input?.addEventListener('input', (e) => render(e.target.value));
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      modal?.classList.contains('open') ? closeSearch() : openSearch();
+    } else if (e.key === 'Escape' && modal?.classList.contains('open')) {
+      closeSearch();
+    }
+  });
+})();</script> <script>
+      (function () {
+        document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+            document.documentElement.dataset.theme = next;
+            localStorage.setItem('murm:theme', next);
+          });
+        });
+
+        const menuBtn = document.getElementById('mobile-menu-toggle');
+        const sidebar = document.getElementById('docs-sidebar');
+        menuBtn?.addEventListener('click', () => sidebar?.classList.toggle('open'));
+
+        document.querySelectorAll('.prose pre').forEach((pre) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'copy-btn';
+          btn.textContent = 'Copy';
+          btn.addEventListener('click', async () => {
+            const code = pre.querySelector('code')?.textContent || pre.textContent || '';
+            try {
+              await navigator.clipboard.writeText(code);
+              btn.textContent = 'Copied';
+              setTimeout(() => (btn.textContent = 'Copy'), 1400);
+            } catch {
+              btn.textContent = 'Error';
+            }
+          });
+          pre.appendChild(btn);
+        });
+
+        // Subtle reading progress hairline on landing
+        const progressEl = document.querySelector('[data-scroll-progress]');
+        if (progressEl) {
+          const updateBar = () => {
+            const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+            const pct = Math.max(0, Math.min(1, window.scrollY / max));
+            progressEl.style.transform = 'scaleX(' + pct.toFixed(4) + ')';
+          };
+          window.addEventListener('scroll', updateBar, { passive: true });
+          window.addEventListener('resize', updateBar, { passive: true });
+          updateBar();
+        }
+
+        // Chapter-by-chapter staged scroll reveal
+        const revealEls = document.querySelectorAll('[data-reveal], [data-reveal-line]');
+        if (revealEls.length && document.documentElement.classList.contains('reveal-ready')) {
+          const io = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add('is-visible');
+                  io.unobserve(entry.target);
+                }
+              }
+            },
+            { threshold: 0.14, rootMargin: '0px 0px -64px 0px' }
+          );
+          revealEls.forEach((el) => io.observe(el));
+        } else {
+          revealEls.forEach((el) => el.classList.add('is-visible'));
+        }
+      })();
+    </script> </body> </html>

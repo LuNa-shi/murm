@@ -1,0 +1,214 @@
+<!DOCTYPE html><html lang="en"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Quick Start · murm</title><meta name="description" content="Prepare the local sandbox environment, launch your first multi-agent harness, and inspect the recorded run directory."><link rel="icon" type="image/svg+xml" href="/SwarmEnv/favicon.svg"><script>
+      (function () {
+        const stored = localStorage.getItem('murm:theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = stored || (prefersDark ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+        const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reduced && 'IntersectionObserver' in window) {
+          document.documentElement.classList.add('reveal-ready');
+        }
+      })();
+    </script><link rel="stylesheet" href="/SwarmEnv/_astro/_slug_.BNdmKG-L.css"></head> <body>  <header class="top-nav"> <div class="top-nav-inner"> <div class="nav-left"> <button type="button" class="icon-btn mobile-menu-btn" id="mobile-menu-toggle" aria-label="Toggle sidebar"> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"> <line x1="4" y1="6" x2="20" y2="6"></line> <line x1="4" y1="12" x2="20" y2="12"></line> <line x1="4" y1="18" x2="20" y2="18"></line> </svg> </button> <a class="brand-link" href="/SwarmEnv/"> <svg width="26" height="22" viewBox="0 0 36 30" fill="none" aria-hidden="true"><g fill="currentColor"><path d="M2 18c2-1.5 3.7-1.1 5.1.3-1.7-.1-3.1.5-4.5 1.6-.4.3-.8-.1-.6-.5z" opacity="0.7"></path><path d="M9 13c2.3-1.7 4.3-1.3 6 .4-2.1-.1-3.7.6-5.4 1.9-.5.3-1-.1-.6-.6z"></path><path d="M15 20c2.2-1.6 4.1-1.2 5.6.4-1.9-.1-3.5.6-5 1.8-.4.3-.9-.1-.6-.6z" opacity="0.85"></path><path d="M18 9c2.5-1.8 4.6-1.4 6.4.4-2.2-.1-4 .7-5.7 2-.5.3-1-.1-.7-.6z"></path><path d="M25 14c2.1-1.5 3.9-1.1 5.4.4-1.9-.1-3.4.6-4.9 1.7-.4.3-.9-.1-.5-.6z" opacity="0.9"></path><path d="M28 7c1.8-1.3 3.3-1 4.6.3-1.6-.1-2.9.5-4.1 1.4-.4.3-.8-.1-.5-.5z" opacity="0.65"></path></g></svg> <span>murm</span> </a> </div> <div class="nav-actions"> <button type="button" class="search-trigger" id="search-open-btn" aria-label="Search documentation"> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"> <circle cx="11" cy="11" r="8"></circle> <path d="m21 21-4.3-4.3"></path> </svg> <span>Search</span> <kbd>⌘K</kbd> </button> <button type="button" class="icon-btn" data-theme-toggle aria-label="Toggle color theme" title="Toggle light / dark theme"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"> <circle cx="12" cy="12" r="4"></circle> <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path> </svg> </button> <a class="icon-btn" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer" aria-label="GitHub repository" title="GitHub"> <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"> <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2Z"></path> </svg> </a> </div> </div> </header>  <div class="docs-shell"> <aside class="docs-sidebar" id="docs-sidebar" aria-label="Documentation navigation"> <div class="sidebar-group"> <div class="sidebar-label">GETTING STARTED</div> <ul class="sidebar-list"> <li> <a class="sidebar-link active" href="/SwarmEnv/docs/quickstart/" aria-current="page"> <span>Quick Start</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/concepts/"> <span>Core Concepts</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">ARCHITECTURE</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/architecture/"> <span>System Architecture</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/run-lifecycle/"> <span>Anatomy of a Run</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">BUILT-IN HARNESSES</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/"> <span>Five Topologies Overview</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/subagents/"> <span>Subagents</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/taskpool/"> <span>TaskPool</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/peermesh/"> <span>PeerMesh</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/substrate/"> <span>Substrate</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/lead-worker/"> <span>Lead-Worker</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">DEVELOPERS</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/build-your-harness/"> <span>Build Your Own Harness</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">REFERENCE</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/reference/api/"> <span>API &amp; Configuration</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/reference/types/"> <span>Types &amp; Mapping</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/reference/deploy/"> <span>Deployment</span> </a> </li> </ul> </div> </aside> <main class="docs-main"> <div class="docs-eyebrow">GETTING STARTED</div> <h1 class="docs-title">Quick Start</h1> <p class="docs-lead">Prepare the local sandbox environment, launch your first multi-agent harness, and inspect the recorded run directory.</p> <article class="prose">  <h2 id="what-you-need-before-starting">What you need before starting</h2>
+<p>In <code>murm</code>, every <strong>Agent</strong> runs inside an isolated Docker container (<strong>Sandbox</strong>) so concurrent edits and shell commands never interfere with each other or the host machine. Before running a harness, prepare two things:</p>
+<ol>
+<li><strong>Sandbox runtime</strong>: A local OpenSandbox instance (Docker provider) and a single <strong>standard sandbox image</strong> bundling <code>Pi 1.3.0</code>, the <code>swarm</code> CLI, and the lightweight Worker supervisor. Build it once; every Harness reuses the same image.</li>
+<li><strong>Model endpoint</strong>: Any <code>/v1/responses</code>-compatible model endpoint (built-in example configs use <code>kimi_proxy/k3</code>). API keys stay strictly on the host and never enter a container.</li>
+</ol>
+<h2 id="1-clone-and-build">1. Clone and build</h2>
+<p>Make sure <strong>Node.js <code>>= 22.19.0</code></strong> and Docker are installed, then build the repository:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#F69D50">git</span><span style="color:#032F62;--shiki-dark:#96D0FF"> clone</span><span style="color:#032F62;--shiki-dark:#96D0FF"> https://github.com/LuNa-shi/SwarmEnv.git</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#6CB6FF">cd</span><span style="color:#032F62;--shiki-dark:#96D0FF"> SwarmEnv</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#F69D50">npm</span><span style="color:#032F62;--shiki-dark:#96D0FF"> ci</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#F69D50">npm</span><span style="color:#032F62;--shiki-dark:#96D0FF"> run</span><span style="color:#032F62;--shiki-dark:#96D0FF"> build</span></span></code></pre>
+<p>Build the standard sandbox image once:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#F69D50">docker</span><span style="color:#032F62;--shiki-dark:#96D0FF"> build</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> -f</span><span style="color:#032F62;--shiki-dark:#96D0FF"> services/opensandbox-agent/Dockerfile</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> -t</span><span style="color:#032F62;--shiki-dark:#96D0FF"> murm-worker:local</span><span style="color:#032F62;--shiki-dark:#96D0FF"> .</span></span></code></pre>
+<p>Start your local OpenSandbox daemon (default endpoint <code>http://127.0.0.1:8080/v1</code>).</p>
+<h2 id="2-run-your-first-multi-agent-harness-interactive-subagents">2. Run your first multi-agent harness: interactive Subagents</h2>
+<p>Start with <strong><a href="../harnesses/subagents/">Subagents</a></strong>. You give a high-level goal to <code>/root</code>, and <code>/root</code> breaks the task down, spawns named child agents in parallel, exchanges messages, and integrates the results.</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">export</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> SWARMENV_SUBAGENTS_IMAGE</span><span style="color:#D73A49;--shiki-dark:#F47067">=</span><span style="color:#032F62;--shiki-dark:#96D0FF">'murm-worker:local'</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">export</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> SWARMENV_SUBAGENTS_MODEL_URL</span><span style="color:#D73A49;--shiki-dark:#F47067">=</span><span style="color:#032F62;--shiki-dark:#96D0FF">'https://your-model-endpoint/v1/responses'</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">export</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> SWARMENV_SUBAGENTS_MODEL_TOKEN</span><span style="color:#D73A49;--shiki-dark:#F47067">=</span><span style="color:#032F62;--shiki-dark:#96D0FF">'your-bearer-token'</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#768390"># One-shot task</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#F69D50">node</span><span style="color:#032F62;--shiki-dark:#96D0FF"> dist/examples/subagents-environment/main.js</span><span style="color:#005CC5;--shiki-dark:#F47067"> \</span></span>
+<span class="line"><span style="color:#032F62;--shiki-dark:#96D0FF">  dist/examples/subagents-environment/config.js</span><span style="color:#005CC5;--shiki-dark:#F47067"> \</span></span>
+<span class="line"><span style="color:#032F62;--shiki-dark:#96D0FF">  'Inspect this workspace, split into two independent research subtasks, and synthesize a concrete plan.'</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#768390"># Interactive session (add follow-ups anytime, /status to inspect team, /exit to close)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#F69D50">node</span><span style="color:#032F62;--shiki-dark:#96D0FF"> dist/examples/subagents-environment/main.js</span><span style="color:#005CC5;--shiki-dark:#F47067"> \</span></span>
+<span class="line"><span style="color:#032F62;--shiki-dark:#96D0FF">  dist/examples/subagents-environment/config.js</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> --interactive</span></span></code></pre>
+<p>If containers reach your host bridge at an IPv4 address other than <code>172.17.0.1</code>, set <code>SWARMENV_SUBAGENTS_ADVERTISE_HOST</code> to that address.</p>
+<h2 id="3-inspect-the-recorded-run-directory">3. Inspect the recorded Run directory</h2>
+<p>When a run completes, the Runtime persists a redacted, structured archive under <code>./subagents-runs/&#x3C;runId>/</code>:</p>
+<ul>
+<li><code>runtime.json</code> — effective configuration, stop receipts, and cleanup verification;</li>
+<li><code>evidence.jsonl</code> — ordered lifecycle, input delivery, and event timeline;</li>
+<li><code>service-calls.jsonl</code> — every validated Service call with caller identity, inputs, outputs, and latency;</li>
+<li><code>model-trace/&#x3C;attemptId>/</code> — raw model requests, streaming responses, and outcomes;</li>
+<li><code>bots/&#x3C;agentId>/session/</code> — full native Pi session JSONL archives;</li>
+<li><code>bots/&#x3C;agentId>/artifacts/files/</code> — exported files declared by <code>collect</code>.</li>
+</ul>
+<h2 id="4-minimal-custom-service-example-notes">4. Minimal custom-Service example: Notes</h2>
+<p>If you want the smallest possible reference before authoring your own Harness (2 agents, 1 in-process Service, zero external servers), run <strong>Notes</strong>:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">export</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> SWARMENV_NOTES_IMAGE</span><span style="color:#D73A49;--shiki-dark:#F47067">=</span><span style="color:#032F62;--shiki-dark:#96D0FF">'murm-worker:local'</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">export</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> SWARMENV_NOTES_MODEL_URL</span><span style="color:#D73A49;--shiki-dark:#F47067">=</span><span style="color:#032F62;--shiki-dark:#96D0FF">'https://your-model-endpoint/v1/responses'</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">export</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> SWARMENV_NOTES_MODEL_TOKEN</span><span style="color:#D73A49;--shiki-dark:#F47067">=</span><span style="color:#032F62;--shiki-dark:#96D0FF">'your-bearer-token'</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#F69D50">node</span><span style="color:#032F62;--shiki-dark:#96D0FF"> dist/examples/notes-environment/main.js</span><span style="color:#005CC5;--shiki-dark:#F47067"> \</span></span>
+<span class="line"><span style="color:#032F62;--shiki-dark:#96D0FF">  dist/examples/notes-environment/config.js</span><span style="color:#D73A49;--shiki-dark:#F47067"> ></span><span style="color:#032F62;--shiki-dark:#96D0FF"> notes-result.json</span></span></code></pre>
+<p><code>writer</code> publishes a finding through the <code>notes</code> Service, <code>reader</code> fetches and verifies it across two turns in the same persistent session, and the host exports and checks the resulting file. See <a href="https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/examples/notes-environment/main.ts">examples/notes-environment/main.ts</a>.</p>
+<h2 id="5-use-swarmenvcore-in-your-own-project">5. Use <code>@swarmenv/core</code> in your own project</h2>
+<p>To import the runtime package outside this repository:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">repo</span><span style="color:#D73A49;--shiki-dark:#F47067">=</span><span style="color:#032F62;--shiki-dark:#96D0FF">/absolute/path/to/SwarmEnv</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#F69D50">mkdir</span><span style="color:#032F62;--shiki-dark:#96D0FF"> my-murm-harness</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> &#x26;&#x26; </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">cd</span><span style="color:#032F62;--shiki-dark:#96D0FF"> my-murm-harness</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#F69D50">npm</span><span style="color:#032F62;--shiki-dark:#96D0FF"> pack</span><span style="color:#032F62;--shiki-dark:#96D0FF"> "</span><span style="color:#24292E;--shiki-dark:#ADBAC7">$repo</span><span style="color:#032F62;--shiki-dark:#96D0FF">"</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> --pack-destination</span><span style="color:#032F62;--shiki-dark:#96D0FF"> .</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#F69D50">npm</span><span style="color:#032F62;--shiki-dark:#96D0FF"> init</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> -y</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> &#x26;&#x26; </span><span style="color:#6F42C1;--shiki-dark:#F69D50">npm</span><span style="color:#032F62;--shiki-dark:#96D0FF"> pkg</span><span style="color:#032F62;--shiki-dark:#96D0FF"> set</span><span style="color:#032F62;--shiki-dark:#96D0FF"> type=module</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#F69D50">npm</span><span style="color:#032F62;--shiki-dark:#96D0FF"> install</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> --omit=dev</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> --ignore-scripts</span><span style="color:#032F62;--shiki-dark:#96D0FF"> ./swarmenv-core-0.2.0.tgz</span></span></code></pre>
+<p>Three public entrypoints are available: <code>@swarmenv/core</code>, <code>@swarmenv/core/services</code>, and <code>@swarmenv/core/backends/pi-opensandbox</code>.</p>
+<h2 id="where-to-go-next">Where to go next</h2>
+<table>
+<thead>
+<tr>
+<th>Goal</th>
+<th>Read next</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Build a crisp mental model of the six core abstractions</td>
+<td><a href="../concepts/">Core Concepts</a></td>
+</tr>
+<tr>
+<td>Trace how the host, containers, Bridge, and Model Gateway connect</td>
+<td><a href="../architecture/">System Architecture</a></td>
+</tr>
+<tr>
+<td>Compare five built-in multi-agent harnesses</td>
+<td><a href="../harnesses/">Five Topologies Overview</a></td>
+</tr>
+<tr>
+<td>Build your own Service and Harness from scratch</td>
+<td><a href="../build-your-harness/">Build Your Own Harness</a></td>
+</tr>
+</tbody>
+</table>  </article> <nav class="docs-pager" aria-label="Pagination">  <a class="pager-link next" href="/SwarmEnv/docs/concepts/"> <span class="pager-dir">NEXT →</span> <span class="pager-title">Core Concepts</span> </a> </nav> </main> <aside class="docs-toc" aria-label="On this page">  <div class="toc-title">ON THIS PAGE</div> <ul class="toc-list"> <li> <a class="toc-link" href="#what-you-need-before-starting"> What you need before starting </a> </li><li> <a class="toc-link" href="#1-clone-and-build"> 1. Clone and build </a> </li><li> <a class="toc-link" href="#2-run-your-first-multi-agent-harness-interactive-subagents"> 2. Run your first multi-agent harness: interactive Subagents </a> </li><li> <a class="toc-link" href="#3-inspect-the-recorded-run-directory"> 3. Inspect the recorded Run directory </a> </li><li> <a class="toc-link" href="#4-minimal-custom-service-example-notes"> 4. Minimal custom-Service example: Notes </a> </li><li> <a class="toc-link" href="#5-use-swarmenvcore-in-your-own-project"> 5. Use @swarmenv/core in your own project </a> </li><li> <a class="toc-link" href="#where-to-go-next"> Where to go next </a> </li> </ul>  </aside> </div>  <div class="search-backdrop" id="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation"> <div class="search-dialog"> <div class="search-input-wrap"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ink-muted)"> <circle cx="11" cy="11" r="8"></circle> <path d="m21 21-4.3-4.3"></path> </svg> <input class="search-input" id="search-input" type="search" placeholder="Search concepts, harnesses, APIs..." autocomplete="off"> <kbd style="font-family:var(--font-pixel);font-size:10px;color:var(--ink-muted);border:1px solid var(--border);border-radius:4px;padding:1px 6px;">ESC</kbd> </div> <div class="search-results" id="search-results"></div> </div> </div> <script>(function(){const index = [{"title":"System Architecture","description":"Follow the exact trust boundaries, data flows, and request paths connecting the host process, OpenSandbox containers, Worker, Service Bridge, and Model Gateway.","section":"ARCHITECTURE","href":"/SwarmEnv/docs/architecture/"},{"title":"Anatomy of a Run","description":"Follow a two-agent refactoring scenario from spawn and unified send delivery through file handoffs, safe interrupts, and archive-before-delete closeout.","section":"ARCHITECTURE","href":"/SwarmEnv/docs/run-lifecycle/"},{"title":"Types & Mapping","description":"Public TypeScript definitions for @swarmenv/core 0.2.0 (ac72c76) and their mapping to murm concepts.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/types/"},{"title":"Quick Start","description":"Prepare the local sandbox environment, launch your first multi-agent harness, and inspect the recorded run directory.","section":"GETTING STARTED","href":"/SwarmEnv/docs/quickstart/"},{"title":"Core Concepts","description":"Six orthogonal abstractions — Agent, Service, Harness, Runtime, Sandbox, and Run — separating execution infrastructure from coordination logic.","section":"GETTING STARTED","href":"/SwarmEnv/docs/concepts/"},{"title":"Build Your Own Harness","description":"Assemble custom Services, role Profiles, host control loops, and safe closeout to implement a new multi-agent harness without editing the Runtime.","section":"DEVELOPERS","href":"/SwarmEnv/docs/build-your-harness/"},{"title":"API & Configuration","description":"Reference for Runtime methods, unified send semantics, file control, Service protocol v2, the swarm CLI, backend config, and error contracts.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/api/"},{"title":"Five Topologies Overview","description":"How one Runtime powers five distinct multi-agent Harnesses — Subagents, TaskPool, PeerMesh, Substrate, and Lead-Worker.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/"},{"title":"Lead-Worker","description":"Staged direction-and-feedback loop combining transactional SQLite Board claims, causal read gates, and Git commit SHA-256 verification.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/lead-worker/"},{"title":"Deployment","description":"Preview the murm documentation site locally and publish static builds to GitHub Pages or Cloudflare Pages.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/deploy/"},{"title":"Substrate","description":"Zero-queue, zero-routing parallel research where equal peers publish, search, visit, and cite immutable artifacts in a single SQLite store.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/substrate/"},{"title":"PeerMesh","description":"Peer-to-peer engineering team coordinating through overlapping Board claims, team chat channels, per-peer serial routers, and Git pull requests.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/peermesh/"},{"title":"Subagents","description":"Hierarchical recursive delegation, non-waking mailbox messaging, context forking, and safe interrupts built on one custom collaboration Service.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/subagents/"},{"title":"TaskPool","description":"Shared task pool, read-only discovery to host-granted writes, Model Access Policy lease guards, and versioned main merges for long-running projects.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/taskpool/"}];
+
+  const modal = document.getElementById('search-modal');
+  const input = document.getElementById('search-input');
+  const resultsEl = document.getElementById('search-results');
+  const openBtn = document.getElementById('search-open-btn');
+
+  function render(query) {
+    const q = (query || '').trim().toLowerCase();
+    const matches = q
+      ? index.filter((item) =>
+          `${item.title} ${item.description} ${item.section}`.toLowerCase().includes(q)
+        )
+      : index.slice(0, 8);
+
+    if (!matches.length) {
+      resultsEl.innerHTML = `<div style="padding:20px;text-align:center;color:var(--ink-muted);font-size:13.5px;">No matching pages for "${q}"</div>`;
+      return;
+    }
+
+    resultsEl.innerHTML = matches
+      .map(
+        (item) => `
+        <a class="search-item" href="${item.href}">
+          <div class="search-item-title">${item.title} <span style="font-weight:400;font-size:11.5px;color:var(--ink-muted);margin-left:6px;">${item.section}</span></div>
+          <div class="search-item-desc">${item.description}</div>
+        </a>`
+      )
+      .join('');
+  }
+
+  function openSearch() {
+    modal?.classList.add('open');
+    render('');
+    setTimeout(() => input?.focus(), 20);
+  }
+
+  function closeSearch() {
+    modal?.classList.remove('open');
+    if (input) input.value = '';
+  }
+
+  openBtn?.addEventListener('click', openSearch);
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeSearch();
+  });
+  input?.addEventListener('input', (e) => render(e.target.value));
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      modal?.classList.contains('open') ? closeSearch() : openSearch();
+    } else if (e.key === 'Escape' && modal?.classList.contains('open')) {
+      closeSearch();
+    }
+  });
+})();</script> <script>
+      (function () {
+        document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+            document.documentElement.dataset.theme = next;
+            localStorage.setItem('murm:theme', next);
+          });
+        });
+
+        const menuBtn = document.getElementById('mobile-menu-toggle');
+        const sidebar = document.getElementById('docs-sidebar');
+        menuBtn?.addEventListener('click', () => sidebar?.classList.toggle('open'));
+
+        document.querySelectorAll('.prose pre').forEach((pre) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'copy-btn';
+          btn.textContent = 'Copy';
+          btn.addEventListener('click', async () => {
+            const code = pre.querySelector('code')?.textContent || pre.textContent || '';
+            try {
+              await navigator.clipboard.writeText(code);
+              btn.textContent = 'Copied';
+              setTimeout(() => (btn.textContent = 'Copy'), 1400);
+            } catch {
+              btn.textContent = 'Error';
+            }
+          });
+          pre.appendChild(btn);
+        });
+
+        // Subtle reading progress hairline on landing
+        const progressEl = document.querySelector('[data-scroll-progress]');
+        if (progressEl) {
+          const updateBar = () => {
+            const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+            const pct = Math.max(0, Math.min(1, window.scrollY / max));
+            progressEl.style.transform = 'scaleX(' + pct.toFixed(4) + ')';
+          };
+          window.addEventListener('scroll', updateBar, { passive: true });
+          window.addEventListener('resize', updateBar, { passive: true });
+          updateBar();
+        }
+
+        // Chapter-by-chapter staged scroll reveal
+        const revealEls = document.querySelectorAll('[data-reveal], [data-reveal-line]');
+        if (revealEls.length && document.documentElement.classList.contains('reveal-ready')) {
+          const io = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add('is-visible');
+                  io.unobserve(entry.target);
+                }
+              }
+            },
+            { threshold: 0.14, rootMargin: '0px 0px -64px 0px' }
+          );
+          revealEls.forEach((el) => io.observe(el));
+        } else {
+          revealEls.forEach((el) => el.classList.add('is-visible'));
+        }
+      })();
+    </script> </body> </html>

@@ -1,0 +1,747 @@
+<!DOCTYPE html><html lang="en"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>murm · Build your own multi-agent harness</title><meta name="description" content="A minimal runtime for building multi-agent harnesses with composable coordination services."><link rel="icon" type="image/svg+xml" href="/SwarmEnv/favicon.svg"><script>
+      (function () {
+        const stored = localStorage.getItem('murm:theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = stored || (prefersDark ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+        const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reduced && 'IntersectionObserver' in window) {
+          document.documentElement.classList.add('reveal-ready');
+        }
+      })();
+    </script><link rel="stylesheet" href="/SwarmEnv/_astro/_slug_.BNdmKG-L.css"></head> <body class="paper-grid-bg"> <div class="scroll-progress" data-scroll-progress aria-hidden="true"></div>   <canvas class="murm-sky-canvas" data-murm-sky aria-hidden="true"></canvas> <script>
+  (function initBoidsMurmuration() {
+    if (window.__murmBoidsInit) return;
+    window.__murmBoidsInit = true;
+
+    const canvas = document.querySelector('[data-murm-sky]');
+    const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
+    if (!canvas || !ctx) return;
+
+    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let paused = reduced;
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let scrollFade = 1;
+
+    function updateScrollFade() {
+      const fadeEnd = Math.max(420, height * 0.78);
+      const t = Math.max(0, Math.min(1, window.scrollY / fadeEnd));
+      // Smooth ease-out fade as user scrolls past the Hero title
+      const eased = 1 - t * t * (3 - 2 * t);
+      scrollFade = eased;
+      canvas.style.opacity = eased.toFixed(3);
+    }
+
+    window.addEventListener('scroll', updateScrollFade, { passive: true });
+
+    let boids = [];
+
+    function seedFlock() {
+      const count = width < 768 ? 7 : 12;
+      const scale = width < 768 ? 0.74 : 1;
+      boids = [];
+      // Seed as two loose, graceful soaring clusters across upper-right and lower-left Hero sky
+      for (let i = 0; i < count; i++) {
+        const group = i % 2;
+        const cx = group === 0 ? width * 0.72 : width * 0.24;
+        const cy = group === 0 ? height * 0.28 : height * 0.52;
+        const spreadX = (Math.random() - 0.5) * width * 0.34;
+        const spreadY = (Math.random() - 0.5) * height * 0.28;
+        const baseAngle = -0.35 + (Math.random() - 0.5) * 0.55;
+        const alt = 0.62 + (i / count) * 0.58; // depth / altitude 0.62..1.20
+        const spd = 0.44 + alt * 0.26;
+        boids.push({
+          x: cx + spreadX,
+          y: cy + spreadY,
+          vx: Math.cos(baseAngle) * spd,
+          vy: Math.sin(baseAngle) * spd,
+          heading: baseAngle,
+          bank: 0,
+          span: (58 + alt * 56) * scale, // large 78px..126px wingspan
+          alt,
+          alpha: 0.12 + alt * 0.09,
+          phase: Math.random() * Math.PI * 2,
+          flapFreq: 0.0011 + Math.random() * 0.00045,
+          glideOffset: Math.random() * 10,
+        });
+      }
+    }
+
+    function resize() {
+      const prevW = width || window.innerWidth;
+      const prevH = height || window.innerHeight;
+      width = window.innerWidth;
+      height = window.innerHeight;
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      if (!boids.length) {
+        seedFlock();
+      } else {
+        for (const b of boids) {
+          b.x = (b.x / prevW) * width;
+          b.y = (b.y / prevH) * height;
+        }
+      }
+      updateScrollFade();
+    }
+
+    function wrapAngle(a) {
+      while (a > Math.PI) a -= Math.PI * 2;
+      while (a < -Math.PI) a += Math.PI * 2;
+      return a;
+    }
+
+    // Refined 2-joint articulated bird silhouette with elbow-wrist phase lag + banking foreshortening
+    function drawRefinedBird(c, span, innerFlap, outerFlap, bank, fillStyle) {
+      const s = span * 0.5;
+      // Subtle 3D banking foreshortening when curving left/right
+      const scaleR = Math.max(0.66, 1 - bank * 0.42);
+      const scaleL = Math.max(0.66, 1 + bank * 0.42);
+
+      // Right wing landmarks (shoulder -> wrist -> outer primary tip)
+      const rWristX = s * 0.43 * scaleR;
+      const rWristY = -s * (0.20 - innerFlap * 0.14);
+      const rTipX = s * (1.02 - Math.abs(outerFlap) * 0.12) * scaleR;
+      const rTipY = s * (0.14 + outerFlap * 0.28);
+      const rSecX = s * 0.52 * scaleR;
+      const rSecY = s * (0.05 + innerFlap * 0.12);
+
+      // Left wing landmarks
+      const lWristX = -s * 0.43 * scaleL;
+      const lWristY = -s * (0.20 - innerFlap * 0.14);
+      const lTipX = -s * (1.02 - Math.abs(outerFlap) * 0.12) * scaleL;
+      const lTipY = s * (0.14 + outerFlap * 0.28);
+      const lSecX = -s * 0.52 * scaleL;
+      const lSecY = s * (0.05 + innerFlap * 0.12);
+
+      c.beginPath();
+      // Tapered head & slender neck
+      c.moveTo(0, -s * 0.42);
+      c.bezierCurveTo(s * 0.05, -s * 0.36, s * 0.06, -s * 0.24, s * 0.10, -s * 0.17);
+      // Right leading edge: graceful arch through wrist out to slender tapered primary tip
+      c.bezierCurveTo(rWristX * 0.58, rWristY - s * 0.07, rWristX * 1.18, rWristY - s * 0.05, rTipX, rTipY);
+      // Right trailing edge: subtle sculpted primary notch -> smooth secondary curve -> waist
+      c.bezierCurveTo(rTipX * 0.78, rTipY + s * 0.03, rSecX * 1.12, rSecY + s * 0.06, rSecX * 0.65, rSecY);
+      c.bezierCurveTo(s * 0.24 * scaleR, s * 0.05, s * 0.12 * scaleR, s * 0.10, s * 0.055, s * 0.16);
+      // Elegant forked swift tail
+      c.bezierCurveTo(s * 0.08, s * 0.30, s * 0.13, s * 0.42, s * 0.12, s * 0.52);
+      c.bezierCurveTo(s * 0.06, s * 0.42, s * 0.03, s * 0.35, 0, s * 0.30);
+      c.bezierCurveTo(-s * 0.03, s * 0.35, -s * 0.06, s * 0.42, -s * 0.12, s * 0.52);
+      c.bezierCurveTo(-s * 0.13, s * 0.42, -s * 0.08, s * 0.30, -s * 0.055, s * 0.16);
+      // Left trailing edge -> left tip
+      c.bezierCurveTo(-s * 0.12 * scaleL, s * 0.10, -s * 0.24 * scaleL, s * 0.05, lSecX * 0.65, lSecY);
+      c.bezierCurveTo(lSecX * 1.12, lSecY + s * 0.06, lTipX * 0.78, lTipY + s * 0.03, lTipX, lTipY);
+      // Left leading edge -> wrist -> head
+      c.bezierCurveTo(lWristX * 1.18, lWristY - s * 0.05, lWristX * 0.58, lWristY - s * 0.07, -s * 0.10, -s * 0.17);
+      c.bezierCurveTo(-s * 0.06, -s * 0.24, -s * 0.05, -s * 0.36, 0, -s * 0.42);
+      c.closePath();
+
+      c.fillStyle = fillStyle;
+      c.fill();
+    }
+
+    function stepBoids(now, dt) {
+      if (dt <= 0) return;
+      const stepScale = dt / 16.67;
+
+      // Slow organic shifting flock attractor (wandering wind thermal across Hero sky)
+      const windCenterX = width * (0.5 + 0.32 * Math.sin(now * 0.00016));
+      const windCenterY = height * (0.38 + 0.18 * Math.cos(now * 0.00021));
+
+      for (let i = 0; i < boids.length; i++) {
+        const b = boids[i];
+        let sepX = 0, sepY = 0;
+        let aliX = 0, aliY = 0, aliN = 0;
+        let cohX = 0, cohY = 0, cohN = 0;
+
+        for (let j = 0; j < boids.length; j++) {
+          if (i === j) continue;
+          const o = boids[j];
+          const dx = o.x - b.x;
+          const dy = o.y - b.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < 68000 && d2 > 1) {
+            aliX += o.vx; aliY += o.vy; aliN++;
+            cohX += o.x; cohY += o.y; cohN++;
+            if (d2 < 14400) {
+              const d = Math.sqrt(d2);
+              const push = (1 - d / 120);
+              sepX -= (dx / d) * push;
+              sepY -= (dy / d) * push;
+            }
+          }
+        }
+
+        // Reynolds Boids forces tuned for serene slow-motion cohesion
+        let fx = sepX * 0.014;
+        let fy = sepY * 0.014;
+
+        if (aliN > 0) {
+          fx += ((aliX / aliN) - b.vx) * 0.016;
+          fy += ((aliY / aliN) - b.vy) * 0.016;
+        }
+        if (cohN > 0) {
+          fx += ((cohX / cohN) - b.x) * 0.000018;
+          fy += ((cohY / cohN) - b.y) * 0.000018;
+        }
+
+        // Smooth spatial wind-field randomness (gentle soaring curves, never rigid)
+        const fieldAngle =
+          Math.sin(b.x * 0.0018 + now * 0.00018) * 1.4 +
+          Math.cos(b.y * 0.0021 - now * 0.00015) * 1.2;
+        fx += Math.cos(fieldAngle) * 0.0038;
+        fy += Math.sin(fieldAngle) * 0.0038;
+
+        // Gentle homing pull toward drifting thermal so flock stays gracefully in Hero view
+        fx += (windCenterX - b.x) * 0.000016;
+        fy += (windCenterY - b.y) * 0.000020;
+
+        // Soft margin cushion
+        const margin = 90;
+        if (b.x < margin) fx += 0.012;
+        if (b.x > width - margin) fx -= 0.012;
+        if (b.y < margin * 0.7) fy += 0.014;
+        if (b.y > height * 0.86) fy -= 0.014;
+
+        const prevHeading = b.heading;
+        b.vx += fx * stepScale;
+        b.vy += fy * stepScale;
+
+        // Clamp speed to serene slow motion
+        const minSpd = 0.36 + b.alt * 0.12;
+        const maxSpd = 0.62 + b.alt * 0.24;
+        const spd = Math.hypot(b.vx, b.vy) || 0.001;
+        if (spd > maxSpd) {
+          b.vx = (b.vx / spd) * maxSpd;
+          b.vy = (b.vy / spd) * maxSpd;
+        } else if (spd < minSpd) {
+          b.vx = (b.vx / spd) * minSpd;
+          b.vy = (b.vy / spd) * minSpd;
+        }
+
+        // Smooth angular inertia so turns look graceful, never jittery
+        const desired = Math.atan2(b.vy, b.vx);
+        const turnDelta = wrapAngle(desired - prevHeading);
+        const maxTurn = 0.018 * stepScale;
+        const appliedTurn = Math.max(-maxTurn, Math.min(maxTurn, turnDelta));
+        b.heading = prevHeading + appliedTurn;
+
+        const curSpd = Math.hypot(b.vx, b.vy);
+        b.vx = Math.cos(b.heading) * curSpd;
+        b.vy = Math.sin(b.heading) * curSpd;
+
+        // Smooth 3D bank proportional to turn rate
+        const targetBank = Math.max(-0.55, Math.min(0.55, appliedTurn * 24));
+        b.bank += (targetBank - b.bank) * 0.06;
+
+        b.x += b.vx * stepScale;
+        b.y += b.vy * stepScale;
+      }
+    }
+
+    function drawFrame(now, dt) {
+      stepBoids(now, dt);
+
+      const isDark = document.documentElement.dataset.theme === 'dark';
+      const birdRgb = isDark ? '208, 219, 240' : '28, 32, 42';
+      const shadowRgb = isDark ? '74, 104, 230' : '20, 26, 40';
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+
+      // Sort by altitude (lower birds first, higher birds above)
+      const ordered = boids.slice().sort((a, b) => a.alt - b.alt);
+
+      for (const b of ordered) {
+        // Soaring-dominant wingbeat envelope: long calm glides punctuated by 1-2 slow deep strokes
+        const glideWave = Math.max(0, Math.sin(now * 0.00032 + b.glideOffset));
+        const beatAmp = 0.22 + glideWave * 0.78;
+        const tCycle = now * b.flapFreq + b.phase;
+        const innerFlap = Math.sin(tCycle) * 0.55 * beatAmp;
+        // Wrist/outer primary lags behind shoulder by 0.62 rad -> organic bird wing ripple
+        const outerFlap = Math.sin(tCycle - 0.62) * 0.72 * beatAmp;
+
+        const rot = b.heading + Math.PI * 0.5;
+
+        // 1. LARGE SOFT CAST SHADOW gliding on the sunlit paper below-right
+        const sx = b.x + b.alt * 74;
+        const sy = b.y + b.alt * 96;
+        const shadowSpan = b.span * (1.38 + b.alt * 0.26);
+        const shadowAlpha = isDark ? 0.072 : 0.068;
+
+        // Soft diffused shadow wash
+        const washR = shadowSpan * 0.62;
+        const wash = ctx.createRadialGradient(sx, sy, shadowSpan * 0.05, sx, sy, washR);
+        wash.addColorStop(0, 'rgba(' + shadowRgb + ',' + (shadowAlpha * 0.65).toFixed(4) + ')');
+        wash.addColorStop(0.55, 'rgba(' + shadowRgb + ',' + (shadowAlpha * 0.24).toFixed(4) + ')');
+        wash.addColorStop(1, 'rgba(' + shadowRgb + ',0)');
+        ctx.fillStyle = wash;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, washR, washR * 0.65, b.heading, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate(rot);
+        ctx.scale(1.12, 0.88);
+        if ('filter' in ctx) {
+          ctx.filter = 'blur(' + Math.round(11 + b.alt * 7) + 'px)';
+        }
+        drawRefinedBird(ctx, shadowSpan, innerFlap * 0.7, outerFlap * 0.7, b.bank * 0.6, 'rgba(' + shadowRgb + ',' + (shadowAlpha * 1.15).toFixed(4) + ')');
+        ctx.restore();
+
+        // 2. REFINED INK-WASH SOARING BIRD (subtle radial depth from body to tapered tips)
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(rot);
+        const featherGrad = ctx.createRadialGradient(0, -b.span * 0.04, b.span * 0.04, 0, 0, b.span * 0.56);
+        featherGrad.addColorStop(0, 'rgba(' + birdRgb + ',' + (b.alpha * 1.18).toFixed(4) + ')');
+        featherGrad.addColorStop(0.62, 'rgba(' + birdRgb + ',' + (b.alpha * 0.88).toFixed(4) + ')');
+        featherGrad.addColorStop(1, 'rgba(' + birdRgb + ',' + (b.alpha * 0.52).toFixed(4) + ')');
+        drawRefinedBird(ctx, b.span, innerFlap, outerFlap, b.bank, featherGrad);
+        ctx.restore();
+      }
+    }
+
+    function syncToggleButtons() {
+      document.querySelectorAll('[data-murm-toggle]').forEach((btn) => {
+        btn.setAttribute('aria-pressed', paused ? 'true' : 'false');
+        btn.setAttribute('title', paused ? 'Resume flock' : 'Pause flock');
+      });
+    }
+
+    document.addEventListener('click', (e) => {
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('[data-murm-toggle]')) {
+        paused = !paused;
+        syncToggleButtons();
+      }
+    });
+
+    resize();
+    window.addEventListener('resize', resize, { passive: true });
+    syncToggleButtons();
+
+    let lastNow = performance.now();
+    drawFrame(lastNow, 0);
+
+    function tick(now) {
+      const dt = Math.min(48, Math.max(0, now - lastNow));
+      lastNow = now;
+      // Pause animation automatically once scrolled past Hero (scrollFade <= 0.01)
+      if (!paused && !document.hidden && scrollFade > 0.01) {
+        drawFrame(now, dt);
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  })();
+</script> <main class="landing-shell"> <div class="landing-corner" aria-label="Quick links"> <a class="corner-link" href="/SwarmEnv/docs/quickstart/">Docs</a> <span class="corner-sep" aria-hidden="true">/</span> <a class="corner-link" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a> <button type="button" class="corner-icon-btn" data-murm-toggle aria-label="Toggle flock animation" title="Pause flock"> <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"> <path d="M3 14c3-4 6-4 9 0 3-4 6-4 9 0"></path> <path d="M6 9c2-2.5 4-2.5 6 0 2-2.5 4-2.5 6 0" opacity="0.6"></path> </svg> </button> <button type="button" class="corner-icon-btn" data-theme-toggle aria-label="Toggle color theme" title="Toggle light / dark theme"> <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"> <circle cx="12" cy="12" r="4"></circle> <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path> </svg> </button> </div> <!-- Chapter 0: Full-Viewport Hero Stage (birds glide here and dissolve on scroll) --> <section class="hero hero-stage"> <div class="hero-core"> <div class="hero-mark"> <svg width="168" height="62" viewBox="0 0 220 82" fill="none" aria-hidden="true"><g fill="currentColor"><path d="M18 46c2.5-1.9 4.7-1.4 6.4.4-2.2-.2-4 .7-5.8 2-.5.3-1-.2-.6-.7z" opacity="0.72"></path><path d="M28 54c2.1-1.5 3.9-1.1 5.3.3-1.8-.1-3.3.6-4.8 1.6-.4.3-.8-.1-.5-.6z" opacity="0.58"></path><path d="M35 39c2.8-2.1 5.3-1.6 7.3.5-2.5-.2-4.5.8-6.6 2.3-.6.4-1.2-.2-.7-.8z" opacity="0.88"></path><path d="M44 48c2.6-1.9 4.8-1.4 6.6.4-2.3-.1-4.1.7-6 2-.5.4-1.1-.1-.6-.7z" opacity="0.82"></path><path d="M51 31c2.4-1.8 4.4-1.3 6.1.4-2.1-.1-3.8.7-5.5 1.9-.5.3-1-.1-.6-.6z" opacity="0.76"></path><path d="M58 55c2.9-2.2 5.4-1.6 7.5.5-2.6-.2-4.6.8-6.7 2.3-.6.4-1.2-.2-.8-.8z" opacity="0.92"></path><path d="M64 41c3.1-2.3 5.8-1.7 8 .6-2.8-.2-5 .9-7.2 2.5-.6.4-1.3-.2-.8-.8z"></path><path d="M74 49c2.7-2 5-1.5 6.9.5-2.4-.1-4.3.7-6.2 2.1-.5.4-1.1-.1-.7-.7z" opacity="0.9"></path><path d="M81 35c3.2-2.4 6-1.8 8.3.6-2.9-.2-5.1.9-7.4 2.6-.6.4-1.3-.2-.9-.9z"></path><path d="M89 45c2.9-2.1 5.3-1.6 7.4.5-2.6-.2-4.6.8-6.6 2.3-.6.4-1.2-.2-.8-.8z"></path><path d="M97 29c2.7-2 5-1.5 7 .5-2.4-.1-4.4.8-6.3 2.2-.5.4-1.1-.2-.7-.7z" opacity="0.92"></path><path d="M104 39c3.3-2.5 6.2-1.9 8.6.6-3-.2-5.3.9-7.7 2.7-.7.5-1.4-.2-.9-.9z"></path><path d="M111 22c2.5-1.8 4.6-1.4 6.4.4-2.2-.1-4 .7-5.8 2-.5.3-1-.1-.6-.7z" opacity="0.84"></path><path d="M117 31c3.1-2.3 5.8-1.7 8 .6-2.8-.2-5 .9-7.2 2.5-.6.4-1.3-.2-.8-.8z"></path><path d="M123 43c2.8-2.1 5.2-1.6 7.2.5-2.5-.2-4.5.8-6.5 2.2-.5.4-1.1-.2-.7-.8z" opacity="0.88"></path><path d="M130 20c3-2.2 5.6-1.7 7.8.6-2.7-.2-4.8.8-7 2.4-.6.4-1.2-.2-.8-.8z"></path><path d="M137 33c3.2-2.4 6-1.8 8.2.6-2.8-.2-5.1.9-7.4 2.5-.6.4-1.3-.2-.8-.8z"></path><path d="M145 24c2.9-2.1 5.4-1.6 7.5.5-2.6-.2-4.7.8-6.7 2.3-.6.4-1.2-.2-.8-.8z"></path><path d="M153 38c2.6-1.9 4.9-1.4 6.8.5-2.4-.1-4.2.7-6.1 2.1-.5.3-1.1-.1-.7-.7z" opacity="0.9"></path><path d="M161 17c2.4-1.8 4.5-1.3 6.2.4-2.1-.1-3.8.7-5.6 1.9-.5.3-1-.1-.6-.6z" opacity="0.78"></path><path d="M166 29c3-2.2 5.5-1.6 7.6.5-2.6-.2-4.7.8-6.8 2.3-.6.4-1.2-.2-.8-.8z"></path><path d="M176 41c2.4-1.8 4.4-1.3 6.1.4-2.1-.1-3.8.7-5.5 1.9-.5.3-1-.1-.6-.6z" opacity="0.82"></path><path d="M182 23c2.6-1.9 4.8-1.4 6.6.4-2.3-.1-4.1.7-5.9 2-.5.4-1.1-.1-.7-.7z" opacity="0.86"></path><path d="M192 33c2.3-1.7 4.3-1.3 5.9.4-2-.1-3.7.6-5.3 1.8-.4.3-1-.1-.6-.6z" opacity="0.72"></path><path d="M201 26c1.9-1.4 3.5-1 4.9.3-1.7-.1-3 .5-4.4 1.5-.4.3-.8-.1-.5-.5z" opacity="0.55"></path></g></svg> </div> <p class="hero-brand">murm</p> <h1 class="hero-title">
+Build your own <span class="circled-word">multi-agent harness<svg viewBox="0 0 420 112" preserveAspectRatio="none" aria-hidden="true"><path d="M 402 25 C 338 4, 80 4, 18 34 C 1 54, 18 96, 152 104 C 296 111, 408 92, 414 56 C 418 32, 366 14, 290 13"></path></svg></span> </h1> <div class="hero-cta-wrap"> <div class="hero-cta"> <a class="btn btn-tactile" href="/SwarmEnv/docs/quickstart/">Get Started →</a> <a class="btn btn-outline" href="/SwarmEnv/docs/concepts/">Read the Docs</a> <a class="btn btn-outline" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a> </div> <span class="hero-hand-note" aria-hidden="true">one runtime, swap any coordination topology!</span> </div> <div class="slogan-row" aria-label="Three core runtime promises"> <div class="slogan-item"> <svg class="arch-icon" viewBox="0 0 36 36" width="34" height="34" fill="none" aria-hidden="true"> <rect x="6" y="7" width="24" height="22" rx="4" fill="var(--accent-soft)" stroke="var(--ink)" stroke-width="1.6"></rect> <line x1="6" y1="14" x2="30" y2="14" stroke="var(--ink)" stroke-width="1.4"></line> <rect x="10" y="18" width="8" height="6" rx="1.5" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.3"></rect> <line x1="21" y1="19.5" x2="26" y2="19.5" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round"></line> <line x1="21" y1="23" x2="25" y2="23" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round"></line> <circle cx="10.5" cy="10.5" r="1.2" fill="var(--sch-indigo)"></circle> <circle cx="14.5" cy="10.5" r="1.2" fill="var(--ink-muted)"></circle> </svg> <span class="slogan-kicker">01 / SANDBOX</span> <h3>Run agents</h3> <p>Isolated execution</p> </div> <div class="slogan-item"> <svg class="arch-icon" viewBox="0 0 36 36" width="34" height="34" fill="none" aria-hidden="true"> <path d="M 12 18 H 18 M 18 18 C 21 18, 21 11, 24 11 M 18 18 C 21 18, 21 25, 24 25" stroke="var(--sch-teal)" stroke-width="1.7" stroke-linecap="round"></path> <rect x="5" y="13" width="8" height="10" rx="2.5" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.6"></rect> <rect x="14" y="14" width="6" height="8" rx="1.8" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.4"></rect> <rect x="24" y="7" width="7" height="8" rx="2" fill="var(--teal-soft)" stroke="var(--ink)" stroke-width="1.5"></rect> <rect x="24" y="21" width="7" height="8" rx="2" fill="var(--accent-soft)" stroke="var(--ink)" stroke-width="1.5"></rect> </svg> <span class="slogan-kicker">02 / BRIDGE</span> <h3>Compose services</h3> <p>Flexible coordination</p> </div> <div class="slogan-item"> <svg class="arch-icon" viewBox="0 0 36 36" width="34" height="34" fill="none" aria-hidden="true"> <rect x="5" y="7" width="26" height="22" rx="4" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.6"></rect> <rect x="9" y="11" width="9" height="4" rx="1.5" fill="var(--sch-indigo)"></rect> <rect x="14" y="17" width="12" height="4" rx="1.5" fill="var(--sch-teal)"></rect> <rect x="11" y="23" width="11" height="3.5" rx="1.5" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.1"></rect> <circle cx="24" cy="13" r="2" fill="var(--sch-amber)"></circle> </svg> <span class="slogan-kicker">03 / TRACE</span> <h3>Observe runs</h3> <p>Transparent execution</p> </div> </div> </div> <a class="scroll-cue" href="#why-murm" aria-label="Scroll to overview"> <span>SCROLL</span> <span class="scroll-cue-arrow" aria-hidden="true">↓</span> </a> </section> <!-- Chapter 1: 01 · WHY MURM --> <div id="why-murm"> <section class="chapter landing-section why-section"> <div class="chapter-rule" data-reveal-line aria-hidden="true"></div> <div class="section-header" data-reveal style="--reveal-delay: 40ms"> <div> <p class="section-eyebrow">01 · WHY MURM</p> <h2 class="section-title">Write the coordination, not the infrastructure</h2> <p class="section-desc">
+Most multi-agent projects spend weeks rebuilding containers, gateways, and log pipelines — only to lock into one workflow. <code>murm</code> runs the swarm so you only write the rules.
+</p> </div> </div> <div class="pillars-four"> <article class="truth-item" data-reveal style="--reveal-delay: 90ms"> <svg class="arch-icon-md" viewBox="0 0 40 40" width="36" height="36" fill="none" aria-hidden="true"> <path d="M 20 14 V 20 M 11 26 V 20 H 29 V 26" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path> <rect x="14" y="6" width="12" height="8" rx="2.5" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.6"></rect> <rect x="6" y="26" width="10" height="8" rx="2.5" fill="var(--accent-soft)" stroke="var(--ink)" stroke-width="1.6"></rect> <rect x="24" y="26" width="10" height="8" rx="2.5" fill="var(--teal-soft)" stroke="var(--ink)" stroke-width="1.6"></rect> </svg> <h3>Swap topologies, not runtimes</h3> <p>Switch between subagents, task pools, peer meshes, or citation graphs without touching the core engine.</p> </article> <article class="truth-item" data-reveal style="--reveal-delay: 160ms"> <svg class="arch-icon-md" viewBox="0 0 40 40" width="36" height="36" fill="none" aria-hidden="true"> <path d="M 20 6 L 32 11 V 20 C 32 27.2 26.8 32.4 20 35 C 13.2 32.4 8 27.2 8 20 V 11 L 20 6 Z" fill="var(--accent-soft)" stroke="var(--ink)" stroke-width="1.6" stroke-linejoin="round"></path> <rect x="15.5" y="18.5" width="9" height="7" rx="1.8" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.4"></rect> <path d="M 17.5 18.5 V 16 C 17.5 14.3 18.6 13.2 20 13.2 C 21.4 13.2 22.5 14.3 22.5 16 V 18.5" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round"></path> </svg> <h3>Safe isolation by default</h3> <p>Every agent runs in its own container with strict quotas; model keys never leave the host.</p> </article> <article class="truth-item" data-reveal style="--reveal-delay: 230ms"> <svg class="arch-icon-md" viewBox="0 0 40 40" width="36" height="36" fill="none" aria-hidden="true"> <rect x="6" y="15" width="10" height="10" rx="2.5" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.6"></rect> <path d="M 16 20 H 23 M 23 20 L 28 12 M 23 20 L 28 28" stroke="var(--sch-teal)" stroke-width="1.8" stroke-linecap="round"></path> <rect x="26" y="7" width="8" height="8" rx="2" fill="var(--teal-soft)" stroke="var(--ink)" stroke-width="1.5"></rect> <rect x="26" y="25" width="8" height="8" rx="2" fill="var(--amber-soft)" stroke="var(--ink)" stroke-width="1.5"></rect> <circle cx="20" cy="20" r="3.5" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.4"></circle> </svg> <h3>Coordinate through customized services</h3> <p>Build and plug in any shared service — task board, mailbox, Git repo, or formal verifier — behind one schema-checked gateway.</p> </article> <article class="truth-item" data-reveal style="--reveal-delay: 300ms"> <svg class="arch-icon-md" viewBox="0 0 40 40" width="36" height="36" fill="none" aria-hidden="true"> <rect x="8" y="6" width="24" height="28" rx="3.5" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.6"></rect> <rect x="8" y="6" width="24" height="7" rx="3" fill="var(--amber-soft)" stroke="var(--ink)" stroke-width="1.4"></rect> <line x1="13" y1="18.5" x2="27" y2="18.5" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round"></line> <line x1="13" y1="23.5" x2="24" y2="23.5" stroke="var(--sch-teal)" stroke-width="1.8" stroke-linecap="round"></line> <rect x="13" y="27.5" width="10" height="3" rx="1.2" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1"></rect> </svg> <h3>Every run, fully inspectable</h3> <p>Sessions, model calls, and tool actions archive cleanly to disk for debugging and fair benchmarks.</p> </article> </div> </section> </div> <!-- Chapter 2: 02 · MENTAL MODEL (Tactical Sandtable) --> <section class="chapter landing-section"> <div class="chapter-rule" data-reveal-line aria-hidden="true"></div> <div class="section-header" data-reveal style="--reveal-delay: 40ms"> <div> <p class="section-eyebrow">02 · MENTAL MODEL</p> <h2 class="section-title">How a swarm runs on murm</h2> <p class="section-desc">
+You write a <span class="marker-highlight">Harness</span> (control loop &amp; rules). It steers a Runtime arena of isolated Sandboxes, where Agents share Services through an external Gateway while every Run streams to a Trace monitor.
+</p> </div> <a class="section-link" href="/SwarmEnv/docs/concepts/">Read concepts →</a> </div> <div data-reveal style="--reveal-delay: 140ms"> <div class="arena-wrap" data-arena-model> <figure class="schematic-card arena-card"> <div class="schematic-head"> <div class="schematic-title-wrap"> <span class="pixel-badge">MENTAL MODEL</span> <span class="schematic-sub">Hover or click any zone on the sandtable to trace how the swarm is controlled</span> </div> <div class="stage-controls" role="tablist" aria-label="Focus architecture zone"> <button type="button" class="phase-btn active" data-az-select="all" role="tab" aria-selected="true">ALL</button> <button type="button" class="phase-btn" data-az-select="harness" role="tab" aria-selected="false">HARNESS</button> <button type="button" class="phase-btn" data-az-select="runtime" role="tab" aria-selected="false">RUNTIME</button> <button type="button" class="phase-btn" data-az-select="sandbox" role="tab" aria-selected="false">SANDBOXES</button> <button type="button" class="phase-btn" data-az-select="gateway" role="tab" aria-selected="false">GATEWAY</button> <button type="button" class="phase-btn" data-az-select="service" role="tab" aria-selected="false">SERVICES</button> <button type="button" class="phase-btn" data-az-select="trace" role="tab" aria-selected="false">TRACE</button> </div> </div> <div class="schematic-canvas-scroll"> <svg class="schematic-svg arena-svg" viewBox="0 0 1060 448" width="1060" height="448" role="img" aria-label="Tactical sandtable mental model of murm: Harness control loop steering isolated Sandboxes inside a Runtime arena, connected through an external Host Gateway to Shared Services, with a live Run Trace monitor"> <defs> <pattern id="g-arena" width="24" height="24" patternUnits="userSpaceOnUse"> <path d="M 24 0 L 0 0 0 24" fill="none" stroke="var(--sch-grid)" stroke-width="0.9"></path> </pattern> <pattern id="g-arena-fine" width="14" height="14" patternUnits="userSpaceOnUse"> <path d="M 14 0 L 0 0 0 14" fill="none" stroke="var(--sch-grid)" stroke-width="0.7"></path> </pattern> <marker id="ar-co" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"> <path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path> </marker> <marker id="ar-te" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"> <path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-teal)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path> </marker> <marker id="ar-am" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"> <path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-amber)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path> </marker> </defs> <!-- Drafting paper canvas --> <rect x="0" y="0" width="1060" height="448" fill="var(--sch-surface)"></rect> <rect x="0" y="0" width="1060" height="448" fill="url(#g-arena)"></rect> <!-- ================================================================ --> <!-- 1. OVERHEAD SHARED SERVICES (Pale-blue customizable shared zone) --> <!-- ================================================================ --> <g class="az-zone" data-az-zone="service" tabindex="0" role="button" aria-label="Inspect Shared Services"> <rect x="301" y="21" width="514" height="84" rx="8" fill="var(--sch-lane-service)" stroke="var(--sch-indigo)" stroke-width="1.5" stroke-dasharray="5 3" class="az-outline"></rect> <rect x="301" y="21" width="514" height="4" rx="2" fill="var(--sch-indigo)"></rect> <text x="316" y="40" class="ar-kicker-blue">SHARED SERVICES · CUSTOMIZABLE</text> <text x="800" y="40" text-anchor="end" class="ar-meta">plug any coordination state</text> <!-- 3 Service tiles --> <rect x="319" y="51" width="150" height="42" rx="5" class="sch-shadow"></rect> <rect x="316" y="48" width="150" height="42" rx="5" class="sch-card"></rect> <rect x="316" y="48" width="4" height="42" rx="2" fill="var(--sch-amber)"></rect> <text x="328" y="65" class="sch-card-pixel">TASK POOL</text> <text x="328" y="81" class="sch-card-title">Leases &amp; DAGs</text> <rect x="485" y="51" width="150" height="42" rx="5" class="sch-shadow"></rect> <rect x="482" y="48" width="150" height="42" rx="5" class="sch-card"></rect> <rect x="482" y="48" width="4" height="42" rx="2" fill="var(--sch-indigo)"></rect> <text x="494" y="65" class="sch-card-pixel">BOARD / MAILBOX</text> <text x="494" y="81" class="sch-card-title">Messages &amp; claims</text> <rect x="651" y="51" width="150" height="42" rx="5" class="sch-shadow"></rect> <rect x="648" y="48" width="150" height="42" rx="5" class="sch-card"></rect> <rect x="648" y="48" width="4" height="42" rx="2" fill="var(--sch-teal)"></rect> <text x="660" y="65" class="sch-card-pixel">GIT / VERIFIER</text> <text x="660" y="81" class="sch-card-title">PRs, Lean &amp; custom</text> <!-- Handwritten note outside right --> <text x="836" y="64" class="sch-hand-blue">build your own!</text> <path d="M 832 69 C 824 72, 822 72, 818 68" fill="none" stroke="var(--sch-indigo)" stroke-width="1.5" stroke-linecap="round"></path> </g> <!-- ================================================================ --> <!-- 2. HOST GATEWAY (Outside the sandtable, bridging Services + Keys) --> <!-- ================================================================ --> <!-- Vertical bridge pipe: Gateway <-> Services --> <g class="az-edge" data-az-links="gateway service"> <path class="sch-flow-line" d="M 556 132 L 556 108" fill="none" stroke="var(--sch-indigo)" stroke-width="2.1" marker-end="url(#ar-co)"></path> <text x="568" y="123" class="ar-pipe-lbl">auth + JSON schema</text> </g> <!-- Vertical collector pipe: Sandboxes -> Gateway --> <g class="az-edge" data-az-links="gateway sandbox runtime"> <path class="sch-flow-line" d="M 392 216 V 202 H 720 V 216" fill="none" stroke="var(--sch-indigo)" stroke-width="1.6" opacity="0.82"></path> <path class="sch-flow-line" d="M 556 216 V 188" fill="none" stroke="var(--sch-indigo)" stroke-width="2.1" marker-end="url(#ar-co)"></path> <text x="544" y="197" text-anchor="end" class="ar-pipe-lbl">swarm CLI · /v1/responses</text> </g> <g class="az-zone" data-az-zone="gateway" tabindex="0" role="button" aria-label="Inspect Host Gateway"> <rect x="408" y="135" width="298" height="51" rx="6" class="sch-shadow"></rect> <rect x="405" y="132" width="298" height="51" rx="6" class="sch-card az-outline"></rect> <rect x="405" y="132" width="298" height="5" rx="2" fill="var(--sch-indigo)"></rect> <text x="418" y="152" class="ar-kicker-blue">HOST GATEWAY</text> <text x="690" y="152" text-anchor="end" class="ar-meta">OUTSIDE ARENA</text> <text x="418" y="171" class="sch-card-title">Service Bridge  ·  Model Gateway</text> <!-- External API Keys chip cleanly attached to Gateway outside the sandtable --> <path d="M 703 158 H 732" stroke="var(--ink)" stroke-width="1.4" stroke-dasharray="3 2.5"></path> <rect x="735" y="143" width="110" height="30" rx="5" class="sch-shadow"></rect> <rect x="732" y="140" width="110" height="30" rx="5" class="sch-card sch-card-yellow"></rect> <text x="787" y="159" text-anchor="middle" class="ar-key-txt">API KEYS</text> <text x="854" y="159" class="sch-hand-blue-sm">never enter sandboxes!</text> </g> <!-- ================================================================ --> <!-- 3. CENTER TACTICAL SANDTABLE — RUNTIME ARENA + 3 SANDBOXES       --> <!-- ================================================================ --> <!-- Outer Sandtable Table Surface (Runtime) --> <g class="az-zone" data-az-zone="runtime" tabindex="0" role="button" aria-label="Inspect Runtime Sandtable Arena"> <!-- Tactile 3D tabletop base rim --> <path d="M 304 416 L 814 416 L 822 406 L 822 224 L 814 218 L 304 218 Z" fill="var(--ink)" opacity="0.14"></path> <rect x="298" y="216" width="516" height="196" rx="9" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.8" class="az-outline"></rect> <rect x="304" y="222" width="504" height="184" rx="6" fill="url(#g-arena-fine)"></rect> <!-- Tabletop bevel bottom bar --> <path d="M 298 390 H 814 V 403 C 814 408 810 412 805 412 H 307 C 302 412 298 408 298 403 Z" fill="var(--sch-header)" stroke="var(--ink)" stroke-width="1.4"></path> <text x="314" y="239" class="ar-arena-title">RUNTIME · THE ARENA</text> <text x="798" y="239" text-anchor="end" class="ar-meta">ISOLATED EXECUTION SANDTABLE</text> <text x="556" y="404.5" text-anchor="middle" class="ar-floor-meta">containers · disk quotas · network allowlists · archive-before-delete</text> </g> <!-- 3 Isolated Sandbox Pods inside the Arena --> <g class="az-zone" data-az-zone="sandbox" tabindex="0" role="button" aria-label="Inspect Isolated Sandboxes and Agents"> <!-- Sandbox 01 --> <rect x="314" y="252" width="154" height="126" rx="6" fill="var(--sch-surface)" stroke="var(--ink)" stroke-width="1.35" stroke-dasharray="4 3" class="az-outline"></rect> <text x="324" y="268" class="ar-sb-tag">SANDBOX 01</text> <rect x="326" y="280" width="130" height="60" rx="5" class="sch-shadow"></rect> <rect x="323" y="277" width="130" height="60" rx="5" class="sch-card"></rect> <rect x="323" y="277" width="130" height="5" rx="2" fill="var(--sch-indigo)"></rect> <text x="334" y="297" class="sch-card-pixel">AGENT · LEAD</text> <text x="334" y="313" class="sch-card-title">Pi + Workspace</text> <text x="334" y="328" class="ar-meta">persistent session</text> <rect x="323" y="347" width="28" height="17" rx="3" class="ar-tool-box"></rect><text x="337" y="358.5" text-anchor="middle" class="ar-tool-txt">read</text> <rect x="355" y="347" width="32" height="17" rx="3" class="ar-tool-box"></rect><text x="371" y="358.5" text-anchor="middle" class="ar-tool-txt">write</text> <rect x="391" y="347" width="28" height="17" rx="3" class="ar-tool-box"></rect><text x="405" y="358.5" text-anchor="middle" class="ar-tool-txt">edit</text> <rect x="423" y="347" width="30" height="17" rx="3" class="ar-tool-box"></rect><text x="438" y="358.5" text-anchor="middle" class="ar-tool-txt">bash</text> <!-- Sandbox 02 --> <rect x="479" y="252" width="154" height="126" rx="6" fill="var(--sch-surface)" stroke="var(--ink)" stroke-width="1.35" stroke-dasharray="4 3" class="az-outline"></rect> <text x="489" y="268" class="ar-sb-tag">SANDBOX 02</text> <rect x="491" y="280" width="130" height="60" rx="5" class="sch-shadow"></rect> <rect x="488" y="277" width="130" height="60" rx="5" class="sch-card"></rect> <rect x="488" y="277" width="130" height="5" rx="2" fill="var(--sch-teal)"></rect> <text x="499" y="297" class="sch-card-pixel">AGENT · CODER</text> <text x="499" y="313" class="sch-card-title">Pi + Workspace</text> <text x="499" y="328" class="ar-meta">persistent session</text> <rect x="488" y="347" width="28" height="17" rx="3" class="ar-tool-box"></rect><text x="502" y="358.5" text-anchor="middle" class="ar-tool-txt">read</text> <rect x="520" y="347" width="32" height="17" rx="3" class="ar-tool-box"></rect><text x="536" y="358.5" text-anchor="middle" class="ar-tool-txt">write</text> <rect x="556" y="347" width="28" height="17" rx="3" class="ar-tool-box"></rect><text x="570" y="358.5" text-anchor="middle" class="ar-tool-txt">edit</text> <rect x="588" y="347" width="30" height="17" rx="3" class="ar-tool-box"></rect><text x="603" y="358.5" text-anchor="middle" class="ar-tool-txt">bash</text> <!-- Sandbox 03 --> <rect x="644" y="252" width="154" height="126" rx="6" fill="var(--sch-surface)" stroke="var(--ink)" stroke-width="1.35" stroke-dasharray="4 3" class="az-outline"></rect> <text x="654" y="268" class="ar-sb-tag">SANDBOX 03</text> <rect x="656" y="280" width="130" height="60" rx="5" class="sch-shadow"></rect> <rect x="653" y="277" width="130" height="60" rx="5" class="sch-card"></rect> <rect x="653" y="277" width="130" height="5" rx="2" fill="var(--sch-amber)"></rect> <text x="664" y="297" class="sch-card-pixel">AGENT · TESTER</text> <text x="664" y="313" class="sch-card-title">Pi + Workspace</text> <text x="664" y="328" class="ar-meta">persistent session</text> <rect x="653" y="347" width="28" height="17" rx="3" class="ar-tool-box"></rect><text x="667" y="358.5" text-anchor="middle" class="ar-tool-txt">read</text> <rect x="685" y="347" width="32" height="17" rx="3" class="ar-tool-box"></rect><text x="701" y="358.5" text-anchor="middle" class="ar-tool-txt">write</text> <rect x="721" y="347" width="28" height="17" rx="3" class="ar-tool-box"></rect><text x="735" y="358.5" text-anchor="middle" class="ar-tool-txt">edit</text> <rect x="753" y="347" width="30" height="17" rx="3" class="ar-tool-box"></rect><text x="768" y="358.5" text-anchor="middle" class="ar-tool-txt">bash</text> </g> <!-- ================================================================ --> <!-- 4. LEFT CONSOLE — HARNESS CONTROL LOOP (Marker Yellow Highlight) --> <!-- ================================================================ --> <!-- Bi-directional Control Loop Arrows (Harness <-> Runtime) --> <g class="az-edge" data-az-links="harness runtime"> <path class="sch-flow-line" d="M 222 282 L 294 282" fill="none" stroke="var(--sch-indigo)" stroke-width="2.2" marker-end="url(#ar-co)"></path> <text x="258" y="272" text-anchor="middle" class="ar-pipe-lbl">spawn·send</text> <path class="sch-flow-line" d="M 298 346 L 224 346" fill="none" stroke="var(--sch-teal)" stroke-width="2.2" marker-end="url(#ar-te)"></path> <text x="260" y="362" text-anchor="middle" class="ar-pipe-lbl">onEvent()</text> </g> <g class="az-zone" data-az-zone="harness" tabindex="0" role="button" aria-label="Inspect Harness Control Loop"> <text x="120" y="200" text-anchor="middle" class="sch-hand-blue">you write the loop!</text> <rect x="25" y="220" width="196" height="192" rx="8" class="sch-shadow"></rect> <rect x="21" y="216" width="196" height="192" rx="8" class="sch-card sch-card-yellow az-outline"></rect> <text x="35" y="238" class="ar-kicker-dark">HARNESS</text> <text x="203" y="238" text-anchor="end" class="ar-kicker-dark">TS</text> <text x="35" y="259" class="ar-console-title">Control Loop &amp; Rules</text> <!-- Crisp inner pseudo-loop window --> <rect x="35" y="274" width="168" height="92" rx="5" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.2"></rect> <text x="45" y="293" class="ar-code-k">while</text><text x="80" y="293" class="ar-code-t">(running) &#123;</text> <text x="53" y="311" class="ar-code-t">route(event);</text> <text x="53" y="329" class="ar-code-t">applyRules();</text> <text x="53" y="347" class="ar-code-k">send</text><text x="81" y="347" class="ar-code-t">(agent, cmd);</text> <text x="45" y="361" class="ar-code-t">&#125;</text> <text x="35" y="388" class="ar-console-foot">roles · routing · stop rules</text> </g> <!-- ================================================================ --> <!-- 5. RIGHT WORKSTATION SCREEN — RUN TRACE MONITOR                  --> <!-- ================================================================ --> <g class="az-edge" data-az-links="runtime trace"> <path class="sch-flow-line" d="M 814 312 L 866 312" fill="none" stroke="var(--sch-amber)" stroke-width="2.1" marker-end="url(#ar-am)"></path> <text x="840" y="302" text-anchor="middle" class="ar-pipe-lbl">stream</text> </g> <g class="az-zone" data-az-zone="trace" tabindex="0" role="button" aria-label="Inspect Run Trace Monitor"> <!-- Monitor stand --> <rect x="944" y="380" width="22" height="16" rx="2" fill="var(--border-strong)" stroke="var(--ink)" stroke-width="1.3"></rect> <rect x="920" y="394" width="70" height="8" rx="3" fill="var(--sch-header)" stroke="var(--ink)" stroke-width="1.4"></rect> <!-- Monitor bezel --> <rect x="873" y="228" width="168" height="154" rx="8" class="sch-shadow"></rect> <rect x="869" y="224" width="168" height="154" rx="8" class="sch-card az-outline"></rect> <rect x="869.8" y="224.8" width="166.4" height="24" rx="7" fill="var(--sch-header)"></rect> <line x1="870" y1="249" x2="1036" y2="249" stroke="var(--ink)" stroke-width="1" opacity="0.25"></line> <circle cx="884" cy="237" r="3.5" fill="var(--sch-teal)"></circle> <text x="895" y="240.5" class="ar-kicker-dark">TRACE MONITOR</text> <!-- Screen viewport with live multi-lane traces --> <rect x="881" y="259" width="144" height="82" rx="4" fill="var(--sch-surface)" stroke="var(--border-strong)" stroke-width="1"></rect> <text x="888" y="275" class="ar-tool-txt">IN</text> <rect x="914" y="267" width="16" height="9" rx="2" fill="var(--sch-blue)"></rect> <rect x="954" y="267" width="14" height="9" rx="2" fill="var(--sch-teal)"></rect> <rect x="994" y="267" width="20" height="9" rx="2" fill="var(--sch-blue)"></rect> <text x="888" y="298" class="ar-tool-txt">LLM</text> <rect x="922" y="290" width="26" height="9" rx="2" fill="var(--sch-purple)"></rect> <rect x="962" y="290" width="22" height="9" rx="2" fill="var(--sch-purple)"></rect> <rect x="998" y="290" width="18" height="9" rx="2" fill="var(--sch-indigo)"></rect> <text x="888" y="321" class="ar-tool-txt">OPS</text> <rect x="932" y="313" width="24" height="9" rx="2" fill="var(--sch-amber)"></rect> <rect x="970" y="313" width="18" height="9" rx="2" fill="var(--sch-teal)"></rect> <rect x="992" y="313" width="24" height="9" rx="2" fill="var(--sch-amber)"></rect> <!-- Bottom screen metrics --> <text x="882" y="359" class="ar-meta">sessions · calls · traces</text> <text x="955" y="422" text-anchor="middle" class="ar-pipe-lbl">outputDir/&lt;runId&gt;/</text> </g> </svg> </div> <figcaption class="schematic-caption stage-footer"> <div class="stage-caption-main"> <span class="caption-step" data-az-tag>OVERVIEW</span> <span data-az-note>Your Harness runs the control loop on the left, steering isolated Sandboxes inside the Runtime arena, routing shared Services through the external Gateway, and streaming every Run to the Trace monitor.</span> </div> <div class="stage-tech-pills"> <span><strong>Primitive:</strong> <code data-az-code>createRuntime({ backend, profiles, services, maxBots, outputDir })</code></span> </div> </figcaption> </figure> </div> <script>(function(){const ZONES = {"all":{"tag":"OVERVIEW","note":"Your Harness runs the control loop on the left, steering isolated Sandboxes inside the Runtime arena, routing shared Services through the external Gateway, and streaming every Run to the Trace monitor.","code":"createRuntime({ backend, profiles, services, maxBots, outputDir })"},"harness":{"tag":"HARNESS · CONTROL LOOP","note":"The TypeScript program you write. It subscribes to arena events, enforces coordination rules, routes messages, and decides when the swarm finishes.","code":"runtime.onEvent((e) => runtime.send(nextAgent, prompt, { mode: \"steer\" }))"},"runtime":{"tag":"RUNTIME · THE ARENA","note":"The sandtable engine managing container lifecycles, concurrency slots, file handoffs, and archive-before-delete cleanup across the whole swarm.","code":"const runtime = await createRuntime({ backend, profiles, services, maxBots })"},"sandbox":{"tag":"SANDBOXES & AGENTS","note":"Each Agent executes inside its own isolated container with a persistent Pi session, private workspace, 4 local tools, and hard disk/network limits.","code":"await runtime.spawn({ requestId, profile: \"coder\", workspace? })"},"gateway":{"tag":"HOST GATEWAY · OUTSIDE THE ARENA","note":"Trusted boundary outside the sandtable. Proxies model requests (so API keys never enter containers) and authenticates every Service call by caller ID and JSON Schema.","code":"SWARMENV_BRIDGE_TOKEN -> Service Bridge (auth + schema) · Model Gateway"},"service":{"tag":"SHARED SERVICES · CUSTOMIZABLE","note":"Overhead shared space you compose freely — task pools, mailboxes, Git boards, or formal verifiers — accessible to authorized agents without editing agent code.","code":"services.registerService({ manifest, adapter: createInProcessAdapter(...) })"},"trace":{"tag":"RUN TRACE MONITOR","note":"Every model request, tool call, service invocation, and native session is automatically redacted and archived on disk for full replay and inspection.","code":"outputDir/<runId>/{runtime.json, evidence.jsonl, service-calls.jsonl, bots/}"}};
+
+  (function initArenaModel() {
+    const root = document.querySelector('[data-arena-model]');
+    if (!root) return;
+
+    let locked = 'all';
+    const btns = root.querySelectorAll('[data-az-select]');
+    const zones = root.querySelectorAll('[data-az-zone]');
+    const edges = root.querySelectorAll('[data-az-links]');
+    const tagEl = root.querySelector('[data-az-tag]');
+    const noteEl = root.querySelector('[data-az-note]');
+    const codeEl = root.querySelector('[data-az-code]');
+
+    function render(key) {
+      const k = ZONES[key] ? key : 'all';
+      const data = ZONES[k];
+
+      btns.forEach((b) => {
+        const act = b.getAttribute('data-az-select') === k;
+        b.classList.toggle('active', act);
+        b.setAttribute('aria-selected', act ? 'true' : 'false');
+      });
+
+      zones.forEach((z) => {
+        const zk = z.getAttribute('data-az-zone');
+        const active = k === 'all' || zk === k || (k === 'runtime' && zk === 'sandbox');
+        z.classList.toggle('dimmed', !active);
+        z.classList.toggle('focused', k !== 'all' && zk === k);
+      });
+
+      edges.forEach((e) => {
+        const links = (e.getAttribute('data-az-links') || '').split(/\s+/);
+        const match = k === 'all' || links.includes(k);
+        e.classList.toggle('dimmed', !match);
+      });
+
+      if (tagEl) tagEl.textContent = data.tag;
+      if (noteEl) noteEl.textContent = data.note;
+      if (codeEl) codeEl.textContent = data.code;
+    }
+
+    function toggleLock(key) {
+      locked = locked === key ? 'all' : key;
+      render(locked);
+    }
+
+    btns.forEach((b) => {
+      b.addEventListener('click', () => {
+        locked = b.getAttribute('data-az-select') || 'all';
+        render(locked);
+      });
+    });
+
+    zones.forEach((z) => {
+      const k = z.getAttribute('data-az-zone');
+      z.addEventListener('click', () => toggleLock(k));
+      z.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleLock(k);
+        }
+      });
+      z.addEventListener('mouseenter', () => render(k));
+      z.addEventListener('mouseleave', () => render(locked));
+    });
+
+    render('all');
+  })();
+})();</script> </div> </section> <!-- Chapter 3: 03 · ONE RUNTIME, FIVE HARNESSES --> <section class="chapter landing-section"> <div class="chapter-rule" data-reveal-line aria-hidden="true"></div> <div class="section-header" data-reveal style="--reveal-delay: 40ms"> <div> <p class="section-eyebrow">03 · ONE RUNTIME, FIVE HARNESSES</p> <h2 class="section-title">Five coordination topologies on one core</h2> <p class="section-desc">
+Select any card to switch the live execution flow, or click the diagram to <span class="marker-highlight">zoom in</span>. Zero Runtime edits across all five.
+</p> </div> <a class="section-link" href="/SwarmEnv/docs/harnesses/">Compare all five →</a> </div> <div data-reveal style="--reveal-delay: 140ms"> <div class="showcase-root" data-harness-showcase> <!-- 5-Across Interactive Filmstrip Deck --> <div class="filmstrip-grid" role="tablist" aria-label="Select a multi-agent harness"> <!-- 01: Subagents --> <button type="button" class="film-card active" data-select-harness="subagents" role="tab" aria-selected="true"> <div class="film-card-top"> <span class="film-num">01</span> <span class="film-dot" style="background:var(--sch-indigo)"></span> </div> <div class="film-thumb" aria-hidden="true"> <svg viewBox="0 0 180 70" width="180" height="70"> <line x1="14" y1="16" x2="166" y2="16" stroke="var(--border-strong)" stroke-width="1" stroke-dasharray="2 3"></line> <line x1="48" y1="38" x2="144" y2="38" stroke="var(--border-strong)" stroke-width="1" stroke-dasharray="2 3"></line> <line x1="48" y1="58" x2="148" y2="58" stroke="var(--border-strong)" stroke-width="1" stroke-dasharray="2 3"></line> <path class="mini-flow" d="M 42 20 C 46 30, 48 38, 56 38" fill="none" stroke="var(--sch-indigo)" stroke-width="1.6"></path> <path class="mini-flow" d="M 38 20 C 42 42, 46 58, 56 58" fill="none" stroke="var(--sch-indigo)" stroke-width="1.6"></path> <path class="mini-flow" d="M 102 20 C 102 28, 96 31, 96 34" fill="none" stroke="var(--sch-blue)" stroke-width="1.6"></path> <path class="mini-flow" d="M 134 54 C 144 42, 144 30, 148 22" fill="none" stroke="var(--sch-amber)" stroke-width="1.6"></path> <rect x="16" y="10" width="32" height="11" rx="2.5" fill="var(--sch-indigo)"></rect> <rect x="88" y="10" width="28" height="11" rx="2.5" fill="var(--sch-blue)"></rect> <rect x="138" y="10" width="28" height="11" rx="2.5" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1"></rect> <rect x="58" y="32" width="54" height="11" rx="2.5" fill="var(--sch-teal)"></rect> <rect x="58" y="52" width="76" height="11" rx="2.5" fill="var(--sch-amber)"></rect> </svg> </div> <div class="film-card-meta"> <h3>Subagents</h3> <span>TREE · MAILBOX</span> </div> </button> <!-- 02: TaskPool --> <button type="button" class="film-card" data-select-harness="taskpool" role="tab" aria-selected="false"> <div class="film-card-top"> <span class="film-num">02</span> <span class="film-dot" style="background:var(--sch-amber)"></span> </div> <div class="film-thumb" aria-hidden="true"> <svg viewBox="0 0 180 70" width="180" height="70"> <!-- Task pool tickets at top --> <rect x="18" y="8" width="34" height="14" rx="3" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.2"></rect> <rect x="62" y="8" width="34" height="14" rx="3" fill="var(--sch-card-bg)" stroke="var(--ink)" stroke-width="1.2"></rect> <rect x="106" y="8" width="34" height="14" rx="3" fill="var(--sch-card-bg)" stroke="var(--ink)" stroke-width="1.2"></rect> <!-- Lease lock arrow --> <path class="mini-flow" d="M 35 22 L 35 38 L 90 38" fill="none" stroke="var(--sch-indigo)" stroke-width="1.6"></path> <path class="mini-flow" d="M 103 38 L 146 38 L 146 52" fill="none" stroke="var(--sch-teal)" stroke-width="1.6"></path> <circle cx="96" cy="38" r="7" fill="var(--sch-card-bg)" stroke="var(--sch-indigo)" stroke-width="1.6"></circle> <rect x="93" y="36" width="6" height="5" rx="1" fill="var(--sch-indigo)"></rect> <!-- Versioned main rail --> <line x1="18" y1="56" x2="162" y2="56" stroke="var(--ink)" stroke-width="2"></line> <circle cx="42" cy="56" r="4" fill="var(--sch-card-bg)" stroke="var(--ink)" stroke-width="1.6"></circle> <circle cx="94" cy="56" r="4" fill="var(--sch-card-bg)" stroke="var(--ink)" stroke-width="1.6"></circle> <circle cx="146" cy="56" r="5" fill="var(--sch-teal)" stroke="var(--ink)" stroke-width="1.4"></circle> </svg> </div> <div class="film-card-meta"> <h3>TaskPool</h3> <span>POOL · LEASE</span> </div> </button> <!-- 03: PeerMesh --> <button type="button" class="film-card" data-select-harness="peermesh" role="tab" aria-selected="false"> <div class="film-card-top"> <span class="film-num">03</span> <span class="film-dot" style="background:var(--sch-teal)"></span> </div> <div class="film-thumb" aria-hidden="true"> <svg viewBox="0 0 180 70" width="180" height="70"> <!-- Peer triangle chat links --> <path class="mini-flow" d="M 48 16 L 26 42 L 70 42 Z" fill="none" stroke="var(--sch-indigo)" stroke-width="1.5"></path> <circle cx="48" cy="15" r="5.5" fill="var(--sch-indigo)"></circle> <circle cx="26" cy="42" r="5.5" fill="var(--sch-teal)"></circle> <circle cx="70" cy="42" r="5.5" fill="var(--sch-amber)"></circle> <!-- Parallel Git PR branches merging into main --> <line x1="94" y1="36" x2="164" y2="36" stroke="var(--ink)" stroke-width="2"></line> <path class="mini-flow" d="M 98 18 C 122 18, 130 36, 149 36" fill="none" stroke="var(--sch-indigo)" stroke-width="1.6"></path> <path class="mini-flow" d="M 98 54 C 122 54, 130 36, 149 36" fill="none" stroke="var(--sch-teal)" stroke-width="1.6"></path> <circle cx="98" cy="18" r="3.5" fill="var(--sch-indigo)"></circle> <circle cx="98" cy="54" r="3.5" fill="var(--sch-teal)"></circle> <circle cx="154" cy="36" r="5.5" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.5"></circle> </svg> </div> <div class="film-card-meta"> <h3>PeerMesh</h3> <span>PEERS · GIT PR</span> </div> </button> <!-- 04: Substrate --> <button type="button" class="film-card" data-select-harness="substrate" role="tab" aria-selected="false"> <div class="film-card-top"> <span class="film-num">04</span> <span class="film-dot" style="background:var(--sch-purple)"></span> </div> <div class="film-thumb" aria-hidden="true"> <svg viewBox="0 0 180 70" width="180" height="70"> <!-- Clean 5-node upward citation DAG (every line connected cleanly) --> <path class="mini-flow" d="M 48 48 L 66 32 M 90 48 L 76 32 M 90 48 L 112 32 M 132 48 L 122 32 M 76 24 L 88 15 M 112 24 L 96 15" fill="none" stroke="var(--sch-indigo)" stroke-width="1.5"></path> <rect x="34" y="48" width="28" height="13" rx="2.5" fill="var(--sch-card-bg)" stroke="var(--ink)" stroke-width="1.2"></rect> <rect x="76" y="48" width="28" height="13" rx="2.5" fill="var(--sch-card-bg)" stroke="var(--ink)" stroke-width="1.2"></rect> <rect x="118" y="48" width="28" height="13" rx="2.5" fill="var(--sch-card-bg)" stroke="var(--ink)" stroke-width="1.2"></rect> <rect x="56" y="24" width="28" height="12" rx="2.5" fill="var(--accent-soft)" stroke="var(--sch-indigo)" stroke-width="1.2"></rect> <rect x="100" y="24" width="28" height="12" rx="2.5" fill="var(--accent-soft)" stroke="var(--sch-indigo)" stroke-width="1.2"></rect> <rect x="76" y="6" width="32" height="12" rx="2.5" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.3"></rect> </svg> </div> <div class="film-card-meta"> <h3>Substrate</h3> <span>CITATION DAG</span> </div> </button> <!-- 05: Lead-Worker --> <button type="button" class="film-card" data-select-harness="lead-worker" role="tab" aria-selected="false"> <div class="film-card-top"> <span class="film-num">05</span> <span class="film-dot" style="background:var(--sch-blue)"></span> </div> <div class="film-thumb" aria-hidden="true"> <svg viewBox="0 0 180 70" width="180" height="70"> <!-- Direction beams down --> <path d="M 82 22 L 54 46 M 90 22 L 90 46 M 98 22 L 126 46" fill="none" stroke="var(--ink)" stroke-width="1.4" opacity="0.6"></path> <!-- Feedback arcs looping back up --> <path class="mini-flow" d="M 44 50 C 20 38, 28 15, 70 15" fill="none" stroke="var(--sch-indigo)" stroke-width="1.7"></path> <path class="mini-flow" d="M 136 50 C 160 38, 152 15, 110 15" fill="none" stroke="var(--sch-teal)" stroke-width="1.7"></path> <!-- Lead helm pill --> <rect x="68" y="8" width="44" height="15" rx="7.5" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.3"></rect> <!-- 3 Worker nodes --> <rect x="40" y="46" width="26" height="14" rx="3" fill="var(--sch-card-bg)" stroke="var(--ink)" stroke-width="1.2"></rect> <rect x="77" y="46" width="26" height="14" rx="3" fill="var(--sch-card-bg)" stroke="var(--ink)" stroke-width="1.2"></rect> <rect x="114" y="46" width="26" height="14" rx="3" fill="var(--sch-card-bg)" stroke="var(--ink)" stroke-width="1.2"></rect> </svg> </div> <div class="film-card-meta"> <h3>Lead-Worker</h3> <span>FEEDBACK LOOP</span> </div> </button> </div> <!-- Live Expanded Drafting Stage --> <figure class="schematic-card stage-card" data-stage-card> <div class="schematic-head"> <div class="schematic-title-wrap"> <span class="pixel-badge" data-stage-badge>01 · SUBAGENTS</span> <span class="schematic-sub" data-stage-headline>Recursive named delegation, non-waking steer, and shared-workspace handoff</span> </div> <div class="stage-controls"> <button type="button" class="play-btn" data-stage-play> <span data-play-icon>▶</span> <span data-play-label>Play</span> </button> <button type="button" class="stage-btn" data-stage-zoom aria-label="Expand diagram to fullscreen"> <span>⤢</span> <span>Zoom</span> </button> <a class="stage-btn stage-doc-link" data-stage-doc href="/SwarmEnv/docs/harnesses/subagents/">Docs →</a> </div> </div> <div class="schematic-phase-bar" data-phase-bar role="tablist" aria-label="Focus execution phase"></div> <!-- Clickable Canvas (clicking diagram opens fullscreen Zoom modal) --> <div class="schematic-canvas-scroll stage-canvas-trigger" data-stage-canvas title="Click to zoom in"> <!-- PANEL 1: SUBAGENTS --> <div class="harness-panel active" data-panel="subagents"> <svg class="schematic-svg" viewBox="0 0 1060 392" width="1060" height="392" role="img" aria-label="Subagents multi-agent swimlane diagram"> <defs> <pattern id="g-sub" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="var(--sch-grid)" stroke-width="0.9"></path></pattern> <marker id="a-co-1" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></marker> <marker id="a-te-1" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-teal)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></marker> <marker id="a-am-1" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-amber)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></marker> </defs> <rect x="0" y="0" width="1060" height="392" fill="var(--sch-surface)"></rect> <rect x="196" y="42" width="864" height="350" fill="url(#g-sub)"></rect> <rect x="0" y="0" width="1060" height="42" fill="var(--sch-header)"></rect> <line x1="0" y1="42" x2="1060" y2="42" class="sch-ink-rule"></line> <line x1="196" y1="0" x2="196" y2="392" class="sch-ink-rule"></line> <line x1="364" y1="0" x2="364" y2="392" class="sch-grid-v"></line> <line x1="546" y1="0" x2="546" y2="392" class="sch-grid-v"></line> <line x1="726" y1="0" x2="726" y2="392" class="sch-grid-v"></line> <line x1="904" y1="0" x2="904" y2="392" class="sch-grid-v"></line> <text x="20" y="25" class="sch-pixel-head">SANDBOX LANE</text> <text x="210" y="25" class="sch-pixel-head">01 · SPAWN</text> <text x="378" y="25" class="sch-pixel-head">02 · PARALLEL</text> <text x="560" y="25" class="sch-pixel-head">03 · STEER</text> <text x="740" y="25" class="sch-pixel-head">04 · HANDOFF</text> <text x="918" y="25" class="sch-pixel-head">05 · CLOSE</text> <g class="sch-node" data-sch-phase="2"> <rect x="374" y="162" width="162" height="196" rx="10" class="sch-parallel-band"></rect> <path d="M 386 346 L 524 343" stroke="var(--marker-yellow)" stroke-width="11" stroke-linecap="round" opacity="0.9"></path> <text x="455" y="349" text-anchor="middle" class="sch-hand-sm">concurrent sandboxes!</text> </g> <line x1="0" y1="154" x2="1060" y2="154" class="sch-rule-soft"></line> <line x1="0" y1="264" x2="1060" y2="264" class="sch-rule-soft"></line> <rect x="16" y="74" width="8" height="8" rx="1" fill="var(--sch-indigo)"></rect> <text x="32" y="82" class="sch-agent-pixel">/root</text> <text x="32" y="100" class="sch-agent-role">Lead · plan &amp; integrate</text> <rect x="32" y="111" width="46" height="16" rx="3" class="sch-lane-badge-agent"></rect> <text x="55" y="122" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--ink-muted)">AGENT</text> <rect x="16" y="186" width="8" height="8" rx="1" fill="var(--sch-teal)"></rect> <text x="32" y="194" class="sch-agent-pixel">/root/patterns</text> <text x="32" y="212" class="sch-agent-role">Child · regex &amp; symlinks</text> <rect x="32" y="223" width="46" height="16" rx="3" class="sch-lane-badge-agent"></rect> <text x="55" y="234" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--ink-muted)">AGENT</text> <rect x="16" y="294" width="8" height="8" rx="1" fill="var(--sch-amber)"></rect> <text x="32" y="302" class="sch-agent-pixel">/root/filters</text> <text x="32" y="320" class="sch-agent-role">Child · CLI filter suite</text> <rect x="32" y="331" width="46" height="16" rx="3" class="sch-lane-badge-agent"></rect> <text x="55" y="342" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--ink-muted)">AGENT</text> <line x1="210" y1="98" x2="1036" y2="98" class="sch-lifeline"></line> <line x1="382" y1="208" x2="770" y2="208" class="sch-lifeline"></line> <line x1="382" y1="312" x2="824" y2="312" class="sch-lifeline"></line> <g class="sch-node" data-sch-phase="1"> <path class="sch-flow-line" d="M 336 118 C 350 152, 356 208, 378 208" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#a-co-1)"></path> <path class="sch-flow-line" d="M 326 118 C 338 190, 346 312, 378 312" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#a-co-1)"></path> <text x="262" y="158" text-anchor="middle" class="sch-hand-blue">spawn ×2</text> </g> <g class="sch-node" data-sch-phase="3"> <path class="sch-flow-line" d="M 606 118 C 606 150, 594 162, 594 184" fill="none" stroke="var(--sch-indigo)" stroke-width="2.1" marker-end="url(#a-co-1)"></path> <path d="M 622 145 C 624 126, 750 125, 752 145 C 754 164, 620 165, 622 145 Z" fill="var(--sch-surface)" stroke="var(--sch-indigo)" stroke-width="1.6"></path> <text x="687" y="149.5" text-anchor="middle" class="sch-hand-blue-sm">wakeIfIdle: false</text> </g> <g class="sch-node" data-sch-phase="4"> <path class="sch-flow-line" d="M 762 186 C 770 156, 774 138, 782 120" fill="none" stroke="var(--sch-teal)" stroke-width="2" marker-end="url(#a-te-1)"></path> <path class="sch-flow-line" d="M 816 290 C 838 226, 834 158, 842 120" fill="none" stroke="var(--sch-amber)" stroke-width="2" marker-end="url(#a-am-1)"></path> <text x="896" y="236" text-anchor="middle" class="sch-hand-blue">66 tests →</text> </g> <g class="sch-node" data-sch-phase="1"><rect x="212" y="77" width="142" height="44" rx="5" class="sch-shadow"></rect><rect x="209" y="74" width="142" height="44" rx="5" class="sch-card"></rect><rect x="209" y="74" width="142" height="5" rx="2" fill="var(--sch-indigo)"></rect><text x="220" y="94" class="sch-card-pixel">SPAWN_AGENT</text><text x="220" y="110" class="sch-card-title">Split &amp; delegate ×2</text></g> <g class="sch-node" data-sch-phase="2"><rect x="385" y="77" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="382" y="74" width="148" height="44" rx="5" class="sch-card"></rect><rect x="382" y="74" width="148" height="5" rx="2" fill="var(--sch-amber)"></rect><text x="393" y="94" class="sch-card-pixel">WRITE · BASH</text><text x="393" y="110" class="sch-card-title">Implement core CLI</text></g> <g class="sch-node" data-sch-phase="3"><rect x="562" y="77" width="150" height="44" rx="5" class="sch-shadow"></rect><rect x="559" y="74" width="150" height="44" rx="5" class="sch-card"></rect><rect x="559" y="74" width="150" height="5" rx="2" fill="var(--sch-blue)"></rect><text x="570" y="94" class="sch-card-pixel">USER → STEER</text><text x="570" y="110" class="sch-card-title">Forward symlink spec</text></g> <g class="sch-node" data-sch-phase="4"><rect x="742" y="77" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="739" y="74" width="148" height="44" rx="5" class="sch-card"></rect><rect x="739" y="74" width="148" height="5" rx="2" fill="var(--sch-purple)"></rect><text x="750" y="94" class="sch-card-pixel">VERIFY · FIX</text><text x="750" y="110" class="sch-card-title">Run tests &amp; fix edges</text></g> <g class="sch-node" data-sch-phase="5"><rect x="920" y="77" width="124" height="44" rx="5" class="sch-shadow"></rect><rect x="917" y="74" width="124" height="44" rx="5" class="sch-card sch-card-yellow"></rect><text x="928" y="94" class="sch-card-pixel">RUNTIME.CLOSE</text><text x="928" y="110" class="sch-card-title">Archive &amp; cleanup</text></g> <g class="sch-node" data-sch-phase="2"><rect x="385" y="189" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="382" y="186" width="148" height="44" rx="5" class="sch-card"></rect><rect x="382" y="186" width="148" height="5" rx="2" fill="var(--sch-teal)"></rect><text x="393" y="206" class="sch-card-pixel">TOOL · PROBE</text><text x="393" y="222" class="sch-card-title">Probe regex / glob</text></g> <g class="sch-node" data-sch-phase="3"><rect x="562" y="189" width="136" height="44" rx="5" class="sch-shadow"></rect><rect x="559" y="186" width="136" height="44" rx="5" class="sch-card"></rect><rect x="559" y="186" width="136" height="5" rx="2" fill="var(--sch-blue)"></rect><text x="570" y="206" class="sch-card-pixel">STEER INJECT</text><text x="570" y="222" class="sch-card-title">Add symlink suite</text></g> <g class="sch-node" data-sch-phase="4"><rect x="716" y="189" width="76" height="44" rx="5" class="sch-shadow"></rect><rect x="713" y="186" width="76" height="44" rx="5" class="sch-card"></rect><rect x="713" y="186" width="76" height="5" rx="2" fill="var(--sch-teal)"></rect><text x="751" y="207" text-anchor="middle" class="sch-card-pixel">EVENT</text><text x="751" y="222" text-anchor="middle" class="sch-card-title">settled</text></g> <g class="sch-node" data-sch-phase="2"><rect x="385" y="292" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="382" y="289" width="148" height="44" rx="5" class="sch-card"></rect><rect x="382" y="289" width="148" height="5" rx="2" fill="var(--sch-amber)"></rect><text x="393" y="309" class="sch-card-pixel">MODEL · AUDIT</text><text x="393" y="325" class="sch-card-title">Audit CLI filter flags</text></g> <g class="sch-node" data-sch-phase="3"><rect x="562" y="292" width="150" height="44" rx="5" class="sch-shadow"></rect><rect x="559" y="289" width="150" height="44" rx="5" class="sch-card"></rect><rect x="559" y="289" width="150" height="5" rx="2" fill="var(--sch-amber)"></rect><text x="570" y="309" class="sch-card-pixel">WRITE SUITE</text><text x="570" y="325" class="sch-card-title">Write 66 filter tests</text></g> <g class="sch-node" data-sch-phase="4"><rect x="742" y="292" width="112" height="44" rx="5" class="sch-shadow"></rect><rect x="739" y="289" width="112" height="44" rx="5" class="sch-card"></rect><rect x="739" y="289" width="112" height="5" rx="2" fill="var(--sch-indigo)"></rect><text x="795" y="309" text-anchor="middle" class="sch-card-pixel">SERVICE</text><text x="795" y="325" text-anchor="middle" class="sch-card-title">send_message</text></g> </svg> </div> <!-- PANEL 2: TASKPOOL (Flat) --> <div class="harness-panel" data-panel="taskpool" hidden> <svg class="schematic-svg" viewBox="0 0 1060 392" width="1060" height="392" role="img" aria-label="TaskPool lease and versioned main workflow diagram"> <defs> <pattern id="g-tp" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="var(--sch-grid)" stroke-width="0.9"></path></pattern> <marker id="a-co-2" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></marker> <marker id="a-te-2" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-teal)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></marker> </defs> <rect x="0" y="0" width="1060" height="392" fill="var(--sch-surface)"></rect> <!-- Semantic lane tints: white Agent, pale-blue Host Service, pale-teal Workspace --> <rect x="0" y="154" width="196" height="110" fill="var(--sch-lane-service-rail)"></rect> <rect x="196" y="154" width="864" height="110" fill="var(--sch-lane-service)"></rect> <rect x="0" y="154" width="3" height="110" fill="var(--sch-indigo)"></rect> <rect x="0" y="264" width="196" height="128" fill="var(--sch-lane-workspace-rail)"></rect> <rect x="196" y="264" width="864" height="128" fill="var(--sch-lane-workspace)"></rect> <rect x="0" y="264" width="3" height="128" fill="var(--sch-teal)"></rect> <rect x="196" y="42" width="864" height="350" fill="url(#g-tp)"></rect> <rect x="0" y="0" width="1060" height="42" fill="var(--sch-header)"></rect> <line x1="0" y1="42" x2="1060" y2="42" class="sch-ink-rule"></line> <line x1="196" y1="0" x2="196" y2="392" class="sch-ink-rule"></line> <line x1="364" y1="0" x2="364" y2="392" class="sch-grid-v"></line> <line x1="546" y1="0" x2="546" y2="392" class="sch-grid-v"></line> <line x1="726" y1="0" x2="726" y2="392" class="sch-grid-v"></line> <line x1="904" y1="0" x2="904" y2="392" class="sch-grid-v"></line> <text x="20" y="25" class="sch-pixel-head">LANE · TYPE</text> <text x="210" y="25" class="sch-pixel-head">01 · DISCOVER</text> <text x="378" y="25" class="sch-pixel-head">02 · CLAIM</text> <text x="560" y="25" class="sch-pixel-head">03 · LEASE GATE</text> <text x="740" y="25" class="sch-pixel-head">04 · MERGE</text> <text x="918" y="25" class="sch-pixel-head">05 · REFILL</text> <line x1="0" y1="154" x2="1060" y2="154" stroke="var(--sch-lane-service-border)" stroke-width="1"></line> <line x1="0" y1="264" x2="1060" y2="264" stroke="var(--sch-lane-workspace-border)" stroke-width="1"></line> <rect x="16" y="74" width="8" height="8" rx="1" fill="var(--sch-amber)"></rect> <text x="32" y="82" class="sch-agent-pixel">worker-a</text> <text x="32" y="100" class="sch-agent-role">Starts read-only</text> <rect x="32" y="111" width="46" height="16" rx="3" class="sch-lane-badge-agent"></rect> <text x="55" y="122" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--ink-muted)">AGENT</text> <rect x="16" y="186" width="8" height="8" rx="1" fill="var(--sch-indigo)"></rect> <text x="32" y="194" class="sch-agent-pixel">task &amp; lease</text> <text x="32" y="212" class="sch-agent-role">Host Services + Gate</text> <rect x="32" y="223" width="58" height="16" rx="3" class="sch-lane-badge-service"></rect> <text x="61" y="234" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--sch-indigo)">SERVICE</text> <rect x="16" y="294" width="8" height="8" rx="1" fill="var(--sch-teal)"></rect> <text x="32" y="302" class="sch-agent-pixel">workspace main</text> <text x="32" y="320" class="sch-agent-role">Versioned trunk</text> <rect x="32" y="331" width="72" height="16" rx="3" class="sch-lane-badge-workspace"></rect> <text x="68" y="342" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--sch-teal)">WORKSPACE</text> <line x1="210" y1="98" x2="1036" y2="98" class="sch-lifeline"></line> <line x1="210" y1="208" x2="1036" y2="208" class="sch-lifeline"></line> <line x1="210" y1="312" x2="1036" y2="312" class="sch-lifeline"></line> <!-- Connectors --> <g class="sch-node" data-sch-phase="1"> <path class="sch-flow-line" d="M 280 118 L 280 184" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#a-co-2)"></path> <path d="M 222 256 L 338 254" stroke="var(--marker-yellow)" stroke-width="10" stroke-linecap="round" opacity="0.9"></path> <text x="280" y="259" text-anchor="middle" class="sch-hand-sm">writable: false</text> </g> <g class="sch-node" data-sch-phase="2"> <path class="sch-flow-line" d="M 456 186 L 456 122" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#a-co-2)"></path> <text x="468" y="158" text-anchor="start" class="sch-hand-blue">grant write!</text> </g> <g class="sch-node" data-sch-phase="3"> <path class="sch-flow-line" d="M 634 118 L 634 184" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#a-co-2)"></path> <path d="M 552 248 C 554 233, 714 232, 716 248 C 718 262, 550 263, 552 248 Z" fill="var(--sch-surface)" stroke="var(--sch-indigo)" stroke-width="1.5"></path> <text x="634" y="252" text-anchor="middle" class="sch-hand-blue-sm">expired? abort stream!</text> </g> <g class="sch-node" data-sch-phase="4"> <path class="sch-flow-line" d="M 812 118 L 812 286" fill="none" stroke="var(--sch-teal)" stroke-width="2" marker-end="url(#a-te-2)"></path> </g> <!-- Blocks --> <g class="sch-node" data-sch-phase="1"><rect x="212" y="77" width="142" height="44" rx="5" class="sch-shadow"></rect><rect x="209" y="74" width="142" height="44" rx="5" class="sch-card"></rect><rect x="209" y="74" width="142" height="5" rx="2" fill="var(--sch-amber)"></rect><text x="220" y="94" class="sch-card-pixel">TASK_LIST</text><text x="220" y="110" class="sch-card-title">Inspect open tasks</text></g> <g class="sch-node" data-sch-phase="1"><rect x="212" y="189" width="142" height="44" rx="5" class="sch-shadow"></rect><rect x="209" y="186" width="142" height="44" rx="5" class="sch-card"></rect><rect x="209" y="186" width="142" height="5" rx="2" fill="var(--sch-indigo)"></rect><text x="220" y="206" class="sch-card-pixel">POOL STATE</text><text x="220" y="222" class="sch-card-title">Return ready DAG</text></g> <g class="sch-node" data-sch-phase="2"><rect x="385" y="189" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="382" y="186" width="148" height="44" rx="5" class="sch-card"></rect><rect x="382" y="186" width="148" height="5" rx="2" fill="var(--sch-indigo)"></rect><text x="393" y="206" class="sch-card-pixel">TASK_TAKE</text><text x="393" y="222" class="sch-card-title">Lock fencing_version</text></g> <g class="sch-node" data-sch-phase="2"><rect x="385" y="77" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="382" y="74" width="148" height="44" rx="5" class="sch-card sch-card-yellow"></rect><text x="393" y="94" class="sch-card-pixel">FILES.GRANT</text><text x="393" y="110" class="sch-card-title">Unlock workspace</text></g> <g class="sch-node" data-sch-phase="3"><rect x="562" y="77" width="150" height="44" rx="5" class="sch-shadow"></rect><rect x="559" y="74" width="150" height="44" rx="5" class="sch-card"></rect><rect x="559" y="74" width="150" height="5" rx="2" fill="var(--sch-amber)"></rect><text x="570" y="94" class="sch-card-pixel">CODE + HEARTBEAT</text><text x="570" y="110" class="sch-card-title">Auto-continue turns</text></g> <g class="sch-node" data-sch-phase="3"><rect x="562" y="189" width="150" height="44" rx="5" class="sch-shadow"></rect><rect x="559" y="186" width="150" height="44" rx="5" class="sch-card"></rect><rect x="559" y="186" width="150" height="5" rx="2" fill="var(--sch-purple)"></rect><text x="570" y="206" class="sch-card-pixel">ACCESS POLICY</text><text x="570" y="222" class="sch-card-title">Check lease per call</text></g> <g class="sch-node" data-sch-phase="4"><rect x="742" y="77" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="739" y="74" width="148" height="44" rx="5" class="sch-card"></rect><rect x="739" y="74" width="148" height="5" rx="2" fill="var(--sch-teal)"></rect><text x="750" y="94" class="sch-card-pixel">FILES.SNAPSHOT</text><text x="750" y="110" class="sch-card-title">Save &amp; run Judge</text></g> <g class="sch-node" data-sch-phase="4"><rect x="742" y="292" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="739" y="289" width="148" height="44" rx="5" class="sch-card sch-card-yellow"></rect><text x="750" y="309" class="sch-card-pixel">WORKSPACE_MERGE</text><text x="750" y="325" class="sch-card-title">Advance trunk vN+1</text></g> <g class="sch-node" data-sch-phase="5"><rect x="920" y="77" width="124" height="44" rx="5" class="sch-shadow"></rect><rect x="917" y="74" width="124" height="44" rx="5" class="sch-card"></rect><rect x="917" y="74" width="124" height="5" rx="2" fill="var(--sch-indigo)"></rect><text x="928" y="94" class="sch-card-pixel">STOP &amp; REFILL</text><text x="928" y="110" class="sch-card-title">Spawn worker-b</text></g> </svg> </div> <!-- PANEL 3: PEERMESH (Agensh) --> <div class="harness-panel" data-panel="peermesh" hidden> <svg class="schematic-svg" viewBox="0 0 1060 392" width="1060" height="392" role="img" aria-label="PeerMesh peer negotiation and Git PR collaboration diagram"> <defs> <pattern id="g-pm" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="var(--sch-grid)" stroke-width="0.9"></path></pattern> <marker id="a-co-3" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></marker> <marker id="a-te-3" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-teal)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></marker> </defs> <rect x="0" y="0" width="1060" height="392" fill="var(--sch-surface)"></rect> <!-- Semantic lane tint: white Agent peers, pale-blue Host Service middle band --> <rect x="0" y="154" width="196" height="110" fill="var(--sch-lane-service-rail)"></rect> <rect x="196" y="154" width="864" height="110" fill="var(--sch-lane-service)"></rect> <rect x="0" y="154" width="3" height="110" fill="var(--sch-indigo)"></rect> <rect x="196" y="42" width="864" height="350" fill="url(#g-pm)"></rect> <rect x="0" y="0" width="1060" height="42" fill="var(--sch-header)"></rect> <line x1="0" y1="42" x2="1060" y2="42" class="sch-ink-rule"></line> <line x1="196" y1="0" x2="196" y2="392" class="sch-ink-rule"></line> <line x1="364" y1="0" x2="364" y2="392" class="sch-grid-v"></line> <line x1="546" y1="0" x2="546" y2="392" class="sch-grid-v"></line> <line x1="726" y1="0" x2="726" y2="392" class="sch-grid-v"></line> <line x1="904" y1="0" x2="904" y2="392" class="sch-grid-v"></line> <text x="20" y="25" class="sch-pixel-head">LANE · TYPE</text> <text x="210" y="25" class="sch-pixel-head">01 · CLAIM</text> <text x="378" y="25" class="sch-pixel-head">02 · NEGOTIATE</text> <text x="560" y="25" class="sch-pixel-head">03 · BRANCH</text> <text x="740" y="25" class="sch-pixel-head">04 · OPEN PR</text> <text x="918" y="25" class="sch-pixel-head">05 · LAND</text> <line x1="0" y1="154" x2="1060" y2="154" stroke="var(--sch-lane-service-border)" stroke-width="1"></line> <line x1="0" y1="264" x2="1060" y2="264" stroke="var(--sch-lane-service-border)" stroke-width="1"></line> <rect x="16" y="74" width="8" height="8" rx="1" fill="var(--sch-indigo)"></rect> <text x="32" y="82" class="sch-agent-pixel">peer-a</text> <text x="32" y="100" class="sch-agent-role">branch-a · own token</text> <rect x="32" y="111" width="46" height="16" rx="3" class="sch-lane-badge-agent"></rect> <text x="55" y="122" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--ink-muted)">AGENT</text> <rect x="16" y="186" width="8" height="8" rx="1" fill="var(--sch-teal)"></rect> <text x="32" y="194" class="sch-agent-pixel">board &amp; chat</text> <text x="32" y="212" class="sch-agent-role">Board + Chat + Gitea</text> <rect x="32" y="223" width="58" height="16" rx="3" class="sch-lane-badge-service"></rect> <text x="61" y="234" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--sch-indigo)">SERVICE</text> <rect x="16" y="294" width="8" height="8" rx="1" fill="var(--sch-amber)"></rect> <text x="32" y="302" class="sch-agent-pixel">peer-b</text> <text x="32" y="320" class="sch-agent-role">branch-b · own token</text> <rect x="32" y="331" width="46" height="16" rx="3" class="sch-lane-badge-agent"></rect> <text x="55" y="342" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--ink-muted)">AGENT</text> <line x1="210" y1="98" x2="1036" y2="98" class="sch-lifeline"></line> <line x1="210" y1="208" x2="1036" y2="208" class="sch-lifeline"></line> <line x1="210" y1="312" x2="1036" y2="312" class="sch-lifeline"></line> <g class="sch-node" data-sch-phase="1"> <path class="sch-flow-line" d="M 280 118 L 280 184" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#a-co-3)"></path> <path class="sch-flow-line" d="M 280 289 L 280 232" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#a-co-3)"></path> <path d="M 218 356 L 348 354" stroke="var(--marker-yellow)" stroke-width="10" stroke-linecap="round" opacity="0.9"></path> <text x="283" y="359" text-anchor="middle" class="sch-hand-sm">overlap allowed!</text> </g> <g class="sch-node" data-sch-phase="2"> <path class="sch-flow-line" d="M 456 186 L 456 122" fill="none" stroke="var(--sch-teal)" stroke-width="2" marker-end="url(#a-te-3)"></path> <path class="sch-flow-line" d="M 456 230 L 456 286" fill="none" stroke="var(--sch-teal)" stroke-width="2" marker-end="url(#a-te-3)"></path> </g> <g class="sch-node" data-sch-phase="4"> <path class="sch-flow-line" d="M 812 118 L 812 184" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#a-co-3)"></path> <path class="sch-flow-line" d="M 812 289 L 812 232" fill="none" stroke="var(--sch-teal)" stroke-width="2" marker-end="url(#a-te-3)"></path> </g> <g class="sch-node" data-sch-phase="5"> <path class="sch-flow-line" d="M 887 208 L 915 208" fill="none" stroke="var(--sch-teal)" stroke-width="2" marker-end="url(#a-te-3)"></path> </g> <g class="sch-node" data-sch-phase="1"><rect x="212" y="77" width="142" height="44" rx="5" class="sch-shadow"></rect><rect x="209" y="74" width="142" height="44" rx="5" class="sch-card"></rect><rect x="209" y="74" width="142" height="5" rx="2" fill="var(--sch-indigo)"></rect><text x="220" y="94" class="sch-card-pixel">BOARD_WRITE</text><text x="220" y="110" class="sch-card-title">Post soft CLAIM</text></g> <g class="sch-node" data-sch-phase="1"><rect x="212" y="189" width="142" height="44" rx="5" class="sch-shadow"></rect><rect x="209" y="186" width="142" height="44" rx="5" class="sch-card"></rect><rect x="209" y="186" width="142" height="5" rx="2" fill="var(--sch-teal)"></rect><text x="220" y="206" class="sch-card-pixel">SHARED BOARD</text><text x="220" y="222" class="sch-card-title">Visible to all peers</text></g> <g class="sch-node" data-sch-phase="1"><rect x="212" y="292" width="142" height="44" rx="5" class="sch-shadow"></rect><rect x="209" y="289" width="142" height="44" rx="5" class="sch-card"></rect><rect x="209" y="289" width="142" height="5" rx="2" fill="var(--sch-amber)"></rect><text x="220" y="309" class="sch-card-pixel">BOARD_WRITE</text><text x="220" y="325" class="sch-card-title">Post soft CLAIM</text></g> <g class="sch-node" data-sch-phase="2"><rect x="385" y="189" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="382" y="186" width="148" height="44" rx="5" class="sch-card"></rect><rect x="382" y="186" width="148" height="5" rx="2" fill="var(--sch-blue)"></rect><text x="393" y="206" class="sch-card-pixel">SERIAL ROUTER</text><text x="393" y="222" class="sch-card-title">Chat + Board context</text></g> <g class="sch-node" data-sch-phase="2"><rect x="385" y="77" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="382" y="74" width="148" height="44" rx="5" class="sch-card"></rect><rect x="382" y="74" width="148" height="5" rx="2" fill="var(--sch-indigo)"></rect><text x="393" y="94" class="sch-card-pixel">FOLLOWUP</text><text x="393" y="110" class="sch-card-title">Agree module split</text></g> <g class="sch-node" data-sch-phase="2"><rect x="385" y="292" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="382" y="289" width="148" height="44" rx="5" class="sch-card"></rect><rect x="382" y="289" width="148" height="5" rx="2" fill="var(--sch-amber)"></rect><text x="393" y="309" class="sch-card-pixel">FOLLOWUP</text><text x="393" y="325" class="sch-card-title">Take sibling module</text></g> <g class="sch-node" data-sch-phase="3"><rect x="562" y="77" width="150" height="44" rx="5" class="sch-shadow"></rect><rect x="559" y="74" width="150" height="44" rx="5" class="sch-card"></rect><rect x="559" y="74" width="150" height="5" rx="2" fill="var(--sch-indigo)"></rect><text x="570" y="94" class="sch-card-pixel">NATIVE GIT</text><text x="570" y="110" class="sch-card-title">Push branch-a</text></g> <g class="sch-node" data-sch-phase="3"><rect x="562" y="292" width="150" height="44" rx="5" class="sch-shadow"></rect><rect x="559" y="289" width="150" height="44" rx="5" class="sch-card"></rect><rect x="559" y="289" width="150" height="5" rx="2" fill="var(--sch-amber)"></rect><text x="570" y="309" class="sch-card-pixel">NATIVE GIT</text><text x="570" y="325" class="sch-card-title">Push branch-b</text></g> <g class="sch-node" data-sch-phase="4"><rect x="742" y="77" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="739" y="74" width="148" height="44" rx="5" class="sch-card"></rect><rect x="739" y="74" width="148" height="5" rx="2" fill="var(--sch-indigo)"></rect><text x="750" y="94" class="sch-card-pixel">GITEA SERVICE</text><text x="750" y="110" class="sch-card-title">Open PR #1 → main</text></g> <g class="sch-node" data-sch-phase="4"><rect x="742" y="189" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="739" y="186" width="148" height="44" rx="5" class="sch-card"></rect><rect x="739" y="186" width="148" height="5" rx="2" fill="var(--sch-teal)"></rect><text x="750" y="206" class="sch-card-pixel">HOST GATE</text><text x="750" y="222" class="sch-card-title">Verify SHA &amp; branch</text></g> <g class="sch-node" data-sch-phase="4"><rect x="742" y="292" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="739" y="289" width="148" height="44" rx="5" class="sch-card"></rect><rect x="739" y="289" width="148" height="5" rx="2" fill="var(--sch-amber)"></rect><text x="750" y="309" class="sch-card-pixel">GITEA SERVICE</text><text x="750" y="325" class="sch-card-title">Open PR #2 → main</text></g> <g class="sch-node" data-sch-phase="5"><rect x="920" y="189" width="124" height="44" rx="5" class="sch-shadow"></rect><rect x="917" y="186" width="124" height="44" rx="5" class="sch-card sch-card-yellow"></rect><text x="928" y="206" class="sch-card-pixel">DELIVERY</text><text x="928" y="222" class="sch-card-title">Merge &amp; archive</text></g> </svg> </div> <!-- PANEL 4: SUBSTRATE (ScaleMAS) --> <div class="harness-panel" data-panel="substrate" hidden> <svg class="schematic-svg" viewBox="0 0 1060 392" width="1060" height="392" role="img" aria-label="Substrate immutable citation store workflow diagram"> <defs> <pattern id="g-su" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="var(--sch-grid)" stroke-width="0.9"></path></pattern> <marker id="a-co-4" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></marker> <marker id="a-pu-4" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-purple)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></marker> </defs> <rect x="0" y="0" width="1060" height="392" fill="var(--sch-surface)"></rect> <!-- Semantic lane tint: white Agent peers, pale-blue Host Service middle band --> <rect x="0" y="154" width="196" height="110" fill="var(--sch-lane-service-rail)"></rect> <rect x="196" y="154" width="864" height="110" fill="var(--sch-lane-service)"></rect> <rect x="0" y="154" width="3" height="110" fill="var(--sch-indigo)"></rect> <rect x="196" y="42" width="864" height="350" fill="url(#g-su)"></rect> <rect x="0" y="0" width="1060" height="42" fill="var(--sch-header)"></rect> <line x1="0" y1="42" x2="1060" y2="42" class="sch-ink-rule"></line> <line x1="196" y1="0" x2="196" y2="392" class="sch-ink-rule"></line> <line x1="364" y1="0" x2="364" y2="392" class="sch-grid-v"></line> <line x1="546" y1="0" x2="546" y2="392" class="sch-grid-v"></line> <line x1="726" y1="0" x2="726" y2="392" class="sch-grid-v"></line> <line x1="904" y1="0" x2="904" y2="392" class="sch-grid-v"></line> <text x="20" y="25" class="sch-pixel-head">LANE · TYPE</text> <text x="210" y="25" class="sch-pixel-head">01 · PUBLISH</text> <text x="378" y="25" class="sch-pixel-head">02 · RETIRE</text> <text x="560" y="25" class="sch-pixel-head">03 · SEARCH</text> <text x="740" y="25" class="sch-pixel-head">04 · VISIT</text> <text x="918" y="25" class="sch-pixel-head">05 · CITE</text> <line x1="0" y1="154" x2="1060" y2="154" stroke="var(--sch-lane-service-border)" stroke-width="1"></line> <line x1="0" y1="264" x2="1060" y2="264" stroke="var(--sch-lane-service-border)" stroke-width="1"></line> <rect x="16" y="74" width="8" height="8" rx="1" fill="var(--sch-indigo)"></rect> <text x="32" y="82" class="sch-agent-pixel">peer-0</text> <text x="32" y="100" class="sch-agent-role">Initial explorer</text> <rect x="32" y="111" width="46" height="16" rx="3" class="sch-lane-badge-agent"></rect> <text x="55" y="122" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--ink-muted)">AGENT</text> <rect x="16" y="186" width="8" height="8" rx="1" fill="var(--sch-purple)"></rect> <text x="32" y="194" class="sch-agent-pixel">substrate.db</text> <text x="32" y="212" class="sch-agent-role">Immutable SQLite</text> <rect x="32" y="223" width="58" height="16" rx="3" class="sch-lane-badge-service"></rect> <text x="61" y="234" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--sch-indigo)">SERVICE</text> <rect x="16" y="294" width="8" height="8" rx="1" fill="var(--sch-teal)"></rect> <text x="32" y="302" class="sch-agent-pixel">peer-1</text> <text x="32" y="320" class="sch-agent-role">Later researcher</text> <rect x="32" y="331" width="46" height="16" rx="3" class="sch-lane-badge-agent"></rect> <text x="55" y="342" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--ink-muted)">AGENT</text> <line x1="210" y1="98" x2="532" y2="98" class="sch-lifeline"></line> <line x1="210" y1="208" x2="1036" y2="208" class="sch-lifeline"></line> <line x1="560" y1="312" x2="1036" y2="312" class="sch-lifeline"></line> <g class="sch-node" data-sch-phase="1"> <path class="sch-flow-line" d="M 280 118 L 280 184" fill="none" stroke="var(--sch-purple)" stroke-width="2" marker-end="url(#a-pu-4)"></path> </g> <g class="sch-node" data-sch-phase="2"> <path d="M 382 256 L 534 254" stroke="var(--marker-yellow)" stroke-width="10" stroke-linecap="round" opacity="0.9"></path> <text x="458" y="259" text-anchor="middle" class="sch-hand-sm">artifact outlives author!</text> </g> <g class="sch-node" data-sch-phase="3"> <path class="sch-flow-line" d="M 634 289 L 634 232" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#a-co-4)"></path> </g> <g class="sch-node" data-sch-phase="4"> <path class="sch-flow-line" d="M 812 230 L 812 286" fill="none" stroke="var(--sch-purple)" stroke-width="2" marker-end="url(#a-pu-4)"></path> </g> <g class="sch-node" data-sch-phase="5"> <path class="sch-flow-line" d="M 978 289 L 978 232" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#a-co-4)"></path> </g> <g class="sch-node" data-sch-phase="1"><rect x="212" y="77" width="142" height="44" rx="5" class="sch-shadow"></rect><rect x="209" y="74" width="142" height="44" rx="5" class="sch-card"></rect><rect x="209" y="74" width="142" height="5" rx="2" fill="var(--sch-indigo)"></rect><text x="220" y="94" class="sch-card-pixel">PUBLISH</text><text x="220" y="110" class="sch-card-title">Write finding v1</text></g> <g class="sch-node" data-sch-phase="1"><rect x="212" y="189" width="142" height="44" rx="5" class="sch-shadow"></rect><rect x="209" y="186" width="142" height="44" rx="5" class="sch-card sch-card-yellow"></rect><text x="220" y="206" class="sch-card-pixel">CONTENT:SHA256</text><text x="220" y="222" class="sch-card-title">Immutable record</text></g> <g class="sch-node" data-sch-phase="2"><rect x="385" y="77" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="382" y="74" width="148" height="44" rx="5" class="sch-card"></rect><rect x="382" y="74" width="148" height="5" rx="2" fill="var(--ink-secondary)"></rect><text x="393" y="94" class="sch-card-pixel">RUNTIME.STOP</text><text x="393" y="110" class="sch-card-title">Retire peer-0</text></g> <g class="sch-node" data-sch-phase="2"><rect x="385" y="189" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="382" y="186" width="148" height="44" rx="5" class="sch-card"></rect><rect x="382" y="186" width="148" height="5" rx="2" fill="var(--sch-purple)"></rect><text x="393" y="206" class="sch-card-pixel">PERSISTED</text><text x="393" y="222" class="sch-card-title">Stays queryable</text></g> <g class="sch-node" data-sch-phase="3"><rect x="562" y="292" width="150" height="44" rx="5" class="sch-shadow"></rect><rect x="559" y="289" width="150" height="44" rx="5" class="sch-card"></rect><rect x="559" y="289" width="150" height="5" rx="2" fill="var(--sch-teal)"></rect><text x="570" y="309" class="sch-card-pixel">SEARCH</text><text x="570" y="325" class="sch-card-title">Query prior findings</text></g> <g class="sch-node" data-sch-phase="3"><rect x="562" y="189" width="150" height="44" rx="5" class="sch-shadow"></rect><rect x="559" y="186" width="150" height="44" rx="5" class="sch-card"></rect><rect x="559" y="186" width="150" height="5" rx="2" fill="var(--sch-purple)"></rect><text x="570" y="206" class="sch-card-pixel">READ AUDIT</text><text x="570" y="222" class="sch-card-title">Rank &amp; log reads</text></g> <g class="sch-node" data-sch-phase="4"><rect x="742" y="189" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="739" y="186" width="148" height="44" rx="5" class="sch-card"></rect><rect x="739" y="186" width="148" height="5" rx="2" fill="var(--sch-purple)"></rect><text x="750" y="206" class="sch-card-pixel">VISIT</text><text x="750" y="222" class="sch-card-title">Return full 8 KiB body</text></g> <g class="sch-node" data-sch-phase="4"><rect x="742" y="292" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="739" y="289" width="148" height="44" rx="5" class="sch-card"></rect><rect x="739" y="289" width="148" height="5" rx="2" fill="var(--sch-teal)"></rect><text x="750" y="309" class="sch-card-pixel">SYNTHESIZE</text><text x="750" y="325" class="sch-card-title">Extend peer-0 result</text></g> <g class="sch-node" data-sch-phase="5"><rect x="920" y="292" width="124" height="44" rx="5" class="sch-shadow"></rect><rect x="917" y="289" width="124" height="44" rx="5" class="sch-card"></rect><rect x="917" y="289" width="124" height="5" rx="2" fill="var(--sch-teal)"></rect><text x="928" y="309" class="sch-card-pixel">PUBLISH + REF</text><text x="928" y="325" class="sch-card-title">Cite content:hash</text></g> <g class="sch-node" data-sch-phase="5"><rect x="920" y="189" width="124" height="44" rx="5" class="sch-shadow"></rect><rect x="917" y="186" width="124" height="44" rx="5" class="sch-card sch-card-yellow"></rect><text x="928" y="206" class="sch-card-pixel">DAG VERIFIED</text><text x="928" y="222" class="sch-card-title">Citation edge saved</text></g> </svg> </div> <!-- PANEL 5: LEAD-WORKER (Lead-helper) --> <div class="harness-panel" data-panel="lead-worker" hidden> <svg class="schematic-svg" viewBox="0 0 1060 392" width="1060" height="392" role="img" aria-label="Lead-Worker staged direction and causal feedback workflow diagram"> <defs> <pattern id="g-lw" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="var(--sch-grid)" stroke-width="0.9"></path></pattern> <marker id="a-co-5" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></marker> <marker id="a-te-5" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-teal)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></marker> </defs> <rect x="0" y="0" width="1060" height="392" fill="var(--sch-surface)"></rect> <!-- Semantic lane tint: white Agent roles, pale-blue Host Service middle band --> <rect x="0" y="154" width="196" height="110" fill="var(--sch-lane-service-rail)"></rect> <rect x="196" y="154" width="864" height="110" fill="var(--sch-lane-service)"></rect> <rect x="0" y="154" width="3" height="110" fill="var(--sch-indigo)"></rect> <rect x="196" y="42" width="864" height="350" fill="url(#g-lw)"></rect> <rect x="0" y="0" width="1060" height="42" fill="var(--sch-header)"></rect> <line x1="0" y1="42" x2="1060" y2="42" class="sch-ink-rule"></line> <line x1="196" y1="0" x2="196" y2="392" class="sch-ink-rule"></line> <line x1="364" y1="0" x2="364" y2="392" class="sch-grid-v"></line> <line x1="546" y1="0" x2="546" y2="392" class="sch-grid-v"></line> <line x1="726" y1="0" x2="726" y2="392" class="sch-grid-v"></line> <line x1="904" y1="0" x2="904" y2="392" class="sch-grid-v"></line> <text x="20" y="25" class="sch-pixel-head">LANE · TYPE</text> <text x="210" y="25" class="sch-pixel-head">01 · DIRECT</text> <text x="378" y="25" class="sch-pixel-head">02 · CLAIM</text> <text x="560" y="25" class="sch-pixel-head">03 · SHIP</text> <text x="740" y="25" class="sch-pixel-head">04 · REVISE</text> <text x="918" y="25" class="sch-pixel-head">05 · ROUND 2</text> <line x1="0" y1="154" x2="1060" y2="154" stroke="var(--sch-lane-service-border)" stroke-width="1"></line> <line x1="0" y1="264" x2="1060" y2="264" stroke="var(--sch-lane-service-border)" stroke-width="1"></line> <rect x="16" y="74" width="8" height="8" rx="1" fill="var(--sch-indigo)"></rect> <text x="32" y="82" class="sch-agent-pixel">lead</text> <text x="32" y="100" class="sch-agent-role">Sets &amp; adapts direction</text> <rect x="32" y="111" width="46" height="16" rx="3" class="sch-lane-badge-agent"></rect> <text x="55" y="122" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--ink-muted)">AGENT</text> <rect x="16" y="186" width="8" height="8" rx="1" fill="var(--sch-amber)"></rect> <text x="32" y="194" class="sch-agent-pixel">board &amp; gitea</text> <text x="32" y="212" class="sch-agent-role">SQLite + SHA verify</text> <rect x="32" y="223" width="58" height="16" rx="3" class="sch-lane-badge-service"></rect> <text x="61" y="234" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--sch-indigo)">SERVICE</text> <rect x="16" y="294" width="8" height="8" rx="1" fill="var(--sch-teal)"></rect> <text x="32" y="302" class="sch-agent-pixel">workers ×N</text> <text x="32" y="320" class="sch-agent-role">Personal Git branches</text> <rect x="32" y="331" width="46" height="16" rx="3" class="sch-lane-badge-agent"></rect> <text x="55" y="342" text-anchor="middle" class="sch-lane-badge-txt" fill="var(--ink-muted)">AGENT</text> <line x1="210" y1="98" x2="1036" y2="98" class="sch-lifeline"></line> <line x1="210" y1="208" x2="1036" y2="208" class="sch-lifeline"></line> <line x1="210" y1="312" x2="1036" y2="312" class="sch-lifeline"></line> <g class="sch-node" data-sch-phase="1"> <path class="sch-flow-line" d="M 280 118 L 280 184" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#a-co-5)"></path> </g> <g class="sch-node" data-sch-phase="2"> <path class="sch-flow-line" d="M 456 289 L 456 232" fill="none" stroke="var(--sch-teal)" stroke-width="2" marker-end="url(#a-te-5)"></path> </g> <g class="sch-node" data-sch-phase="3"> <path class="sch-flow-line" d="M 634 289 L 634 232" fill="none" stroke="var(--sch-teal)" stroke-width="2" marker-end="url(#a-te-5)"></path> </g> <g class="sch-node" data-sch-phase="4"> <path class="sch-flow-line" d="M 812 186 L 812 122" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#a-co-5)"></path> <path d="M 738 256 L 888 254" stroke="var(--marker-yellow)" stroke-width="10" stroke-linecap="round" opacity="0.9"></path> <text x="813" y="259" text-anchor="middle" class="sch-hand-sm">must read notes first!</text> </g> <g class="sch-node" data-sch-phase="5"> <path class="sch-flow-line" d="M 887 98 C 945 98, 978 150, 978 286" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#a-co-5)"></path> </g> <g class="sch-node" data-sch-phase="1"><rect x="212" y="77" width="142" height="44" rx="5" class="sch-shadow"></rect><rect x="209" y="74" width="142" height="44" rx="5" class="sch-card sch-card-yellow"></rect><text x="220" y="94" class="sch-card-pixel">ANNOUNCE</text><text x="220" y="110" class="sch-card-title">Set direction v1</text></g> <g class="sch-node" data-sch-phase="1"><rect x="212" y="189" width="142" height="44" rx="5" class="sch-shadow"></rect><rect x="209" y="186" width="142" height="44" rx="5" class="sch-card"></rect><rect x="209" y="186" width="142" height="5" rx="2" fill="var(--sch-amber)"></rect><text x="220" y="206" class="sch-card-pixel">SUBTASKS</text><text x="220" y="222" class="sch-card-title">Ready on Board</text></g> <g class="sch-node" data-sch-phase="2"><rect x="385" y="292" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="382" y="289" width="148" height="44" rx="5" class="sch-card"></rect><rect x="382" y="289" width="148" height="5" rx="2" fill="var(--sch-teal)"></rect><text x="393" y="309" class="sch-card-pixel">BOARD.CLAIM</text><text x="393" y="325" class="sch-card-title">Lock unique owner</text></g> <g class="sch-node" data-sch-phase="2"><rect x="385" y="189" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="382" y="186" width="148" height="44" rx="5" class="sch-card"></rect><rect x="382" y="186" width="148" height="5" rx="2" fill="var(--sch-amber)"></rect><text x="393" y="206" class="sch-card-pixel">BEGIN IMMEDIATE</text><text x="393" y="222" class="sch-card-title">Check revision</text></g> <g class="sch-node" data-sch-phase="3"><rect x="562" y="292" width="150" height="44" rx="5" class="sch-shadow"></rect><rect x="559" y="289" width="150" height="44" rx="5" class="sch-card"></rect><rect x="559" y="289" width="150" height="5" rx="2" fill="var(--sch-teal)"></rect><text x="570" y="309" class="sch-card-pixel">PUSH + NOTE</text><text x="570" y="325" class="sch-card-title">Commit &amp; feedback</text></g> <g class="sch-node" data-sch-phase="3"><rect x="562" y="189" width="150" height="44" rx="5" class="sch-shadow"></rect><rect x="559" y="186" width="150" height="44" rx="5" class="sch-card"></rect><rect x="559" y="186" width="150" height="5" rx="2" fill="var(--sch-amber)"></rect><text x="570" y="206" class="sch-card-pixel">VERIFY SHA-256</text><text x="570" y="222" class="sch-card-title">Live Gitea check</text></g> <g class="sch-node" data-sch-phase="4"><rect x="742" y="189" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="739" y="186" width="148" height="44" rx="5" class="sch-card"></rect><rect x="739" y="186" width="148" height="5" rx="2" fill="var(--sch-indigo)"></rect><text x="750" y="206" class="sch-card-pixel">CAUSAL GATE</text><text x="750" y="222" class="sch-card-title">Verify feedback read</text></g> <g class="sch-node" data-sch-phase="4"><rect x="742" y="77" width="148" height="44" rx="5" class="sch-shadow"></rect><rect x="739" y="74" width="148" height="44" rx="5" class="sch-card sch-card-yellow"></rect><text x="750" y="94" class="sch-card-pixel">ANNOUNCE V2</text><text x="750" y="110" class="sch-card-title">Revise direction</text></g> <g class="sch-node" data-sch-phase="5"><rect x="920" y="292" width="124" height="44" rx="5" class="sch-shadow"></rect><rect x="917" y="289" width="124" height="44" rx="5" class="sch-card"></rect><rect x="917" y="289" width="124" height="5" rx="2" fill="var(--sch-teal)"></rect><text x="928" y="309" class="sch-card-pixel">SAME SESSION</text><text x="928" y="325" class="sch-card-title">Ship round 2</text></g> </svg> </div> </div> <figcaption class="schematic-caption stage-footer"> <div class="stage-caption-main"> <span class="caption-step" data-phase-tag>OVERVIEW</span> <span data-phase-note>Overview: /root spawns isolated children on demand, injects mid-flight steers only into busy agents, and integrates verified test suites before archive-before-delete closeout.</span> </div> <div class="stage-tech-pills"> <span><strong>Services:</strong> <code data-stage-services>collaboration (6 ops)</code></span> <span><strong>Primitives:</strong> <code data-stage-primitives>spawn(forkFrom) · send(wakeIfIdle: false) · interrupt</code></span> </div> </figcaption> </figure> <!-- Fullscreen Zoom Lightbox --> <div class="zoom-backdrop" data-zoom-modal role="dialog" aria-modal="true" aria-label="Expanded harness diagram"> <div class="zoom-dialog"> <div class="zoom-head"> <div class="zoom-tabs" role="tablist" aria-label="Switch harness"> <button type="button" class="zoom-tab active" data-zoom-switch="subagents">01 Subagents</button> <button type="button" class="zoom-tab" data-zoom-switch="taskpool">02 TaskPool</button> <button type="button" class="zoom-tab" data-zoom-switch="peermesh">03 PeerMesh</button> <button type="button" class="zoom-tab" data-zoom-switch="substrate">04 Substrate</button> <button type="button" class="zoom-tab" data-zoom-switch="lead-worker">05 Lead-Worker</button> </div> <button type="button" class="stage-btn" data-zoom-close aria-label="Close expanded view">ESC ✕</button> </div> <div class="zoom-body" data-zoom-canvas></div> <div class="zoom-foot"> <span class="caption-step" data-zoom-badge>01 · SUBAGENTS</span> <span data-zoom-note></span> <a class="section-link" data-zoom-doc href="/SwarmEnv/docs/harnesses/subagents/">Read deep dive →</a> </div> </div> </div> </div> <script>(function(){const HARNESS_META = {"subagents":{"index":"01","name":"Subagents","kicker":"TREE · MAILBOX","headline":"Recursive named delegation, non-waking steer, and shared-workspace handoff","services":"collaboration (6 ops)","primitives":"spawn(forkFrom) · send(wakeIfIdle: false) · interrupt","docHref":"/SwarmEnv/docs/harnesses/subagents/","phases":["01 SPAWN","02 PARALLEL","03 STEER","04 HANDOFF","05 CLOSE"],"notes":{"1":"01 · SPAWN: /root invokes collaboration.spawn_agent. The Runtime boots two isolated sandboxes and optionally mounts a shared workspace or forks parent context.","2":"02 · PARALLEL: All three agents execute concurrently in separate Pi sessions with isolated disk and network limits — API keys never leave the host.","3":"03 · STEER: Mid-flight requirements call send({ mode: \"steer\", wakeIfIdle: false }) so busy children react immediately while idle agents stay undisturbed in the mailbox.","4":"04 · HANDOFF: Children report completion via settled events and send_message; /root runs the handed-off test suite and fixes edge cases.","5":"05 · CLOSE: runtime.close() stops Pi, archives raw sessions, exports collect deliverables, and deletes containers only after archiving succeeds.","all":"Overview: /root spawns isolated children on demand, injects mid-flight steers only into busy agents, and integrates verified test suites before archive-before-delete closeout."}},"taskpool":{"index":"02","name":"TaskPool","kicker":"POOL · LEASE · MAIN","headline":"Read-only discovery, exclusive lease claims, host-granted writes, and versioned main merges","services":"task · material · workspace · judge","primitives":"writable: false · files.prepare/grant · modelAccessPolicy","docHref":"/SwarmEnv/docs/harnesses/taskpool/","phases":["01 DISCOVER","02 CLAIM","03 LEASE GATE","04 MERGE","05 REFILL"],"notes":{"1":"01 · DISCOVER: Workers boot with writable: false. They inspect open tasks and immutable Materials without being able to touch local workspace files.","2":"02 · CLAIM: task_take acquires an exclusive lease + fencing_version; the host stages inputs with files.prepare() and unlocks writes via files.grant().","3":"03 · LEASE GATE: Every model request checks modelAccessPolicy synchronously — if the lease expires or fencing_version changes, inference aborts immediately.","4":"04 · MERGE: workspace_save captures a consistent files.snapshot(), optional Judge verifies the candidate, and workspace_merge advances public main.","5":"05 · REFILL: On task_finish or timeout, the controller stops the finished worker, archives its session, and spawns a fresh worker into the freed slot.","all":"Overview: Identical workers start read-only, compete for leased tasks, receive host-granted write access, stay bounded by Model Gateway leases, and merge verified snapshots into main."}},"peermesh":{"index":"03","name":"PeerMesh","kicker":"PEERS · CHAT · GIT PR","headline":"Equal peers negotiating soft claims in chat, coding on personal branches, and landing verified PRs","services":"board · message · gitea + native git","primitives":"per-peer bindings · network.allow · secretEnv · collect(includeGit)","docHref":"/SwarmEnv/docs/harnesses/peermesh/","phases":["01 CLAIM","02 NEGOTIATE","03 BRANCH","04 OPEN PR","05 LAND"],"notes":{"1":"01 · CLAIM: Both peer-a and peer-b post overlapping CLAIM entries on the shared Board to signal areas of interest without blocking each other.","2":"02 · NEGOTIATE: External chat mentions enter each peer’s dedicated serial Router, which attaches a fresh Board snapshot and delivers followUp turns into the existing session.","3":"03 · BRANCH: Each peer develops on its own WORK_BRANCH using native git with scoped Gitea credentials injected strictly via secretEnv.","4":"04 · OPEN PR: Peers open pull requests from their personal branch to main through the scoped gitea Service (direct merges stay host-only).","5":"05 · LAND: Host delivery checks author, branch, and pinned commit SHA before merging to main; collect(includeGit: true) preserves every local checkout.","all":"Overview: No central dispatcher or exclusive locks — peers declare overlapping soft claims on a Board, coordinate via team chat, and open personal-branch PRs verified by the host."}},"substrate":{"index":"04","name":"Substrate","kicker":"IMMUTABLE STORE · DAG","headline":"Zero task queues and zero routing — equal peers publish, search, read, and cite immutable findings","services":"substrate (SQLite: publish, search, visit)","primitives":"spawn(files) · runInput · runtime.stop","docHref":"/SwarmEnv/docs/harnesses/substrate/","phases":["01 PUBLISH","02 RETIRE","03 SEARCH","04 VISIT","05 CITE"],"notes":{"1":"01 · PUBLISH: peer-0 publishes a self-contained finding; SQLite assigns an immutable content:<sha256> address inside a BEGIN IMMEDIATE transaction.","2":"02 · RETIRE: When peer-0 completes its rounds and calls runtime.stop(), its container is deleted while every published artifact stays durably readable in substrate.","3":"03 · SEARCH: peer-1 queries substrate.search(); results rank by term frequency and citation count, logging the query into substrate_reads.","4":"04 · VISIT: peer-1 fetches the full verified body and upstream citations via substrate.visit(), recording a durable read proof.","5":"05 · CITE: peer-1 publishes a refined artifact explicitly citing content:<sha256>; host evidence checks confirm the complete cross-agent lineage.","all":"Overview: Fixed parallel rounds over one content-addressed SQLite store. Artifacts outlive their authors and evolve through audited search → visit → explicit citation chains."}},"lead-worker":{"index":"05","name":"Lead-Worker","kicker":"DIRECTION · FEEDBACK","headline":"Staged lead direction, transactional worker claims, Git SHA-256 verification, and causal feedback loops","services":"board (SQLite) · gitea + native git","primitives":"fixed-team spawn · onEvent fatal fence · runInput stages","docHref":"/SwarmEnv/docs/harnesses/lead-worker/","phases":["01 DIRECT","02 CLAIM","03 SHIP","04 REVISE","05 ROUND 2"],"notes":{"1":"01 · DIRECT: Lead announces the initial direction, role assignments, and ready subtasks on the transactional SQLite Board.","2":"02 · CLAIM: Workers concurrently call board.claim() with optimistic expected_revision inside BEGIN IMMEDIATE to lock a single permanent owner.","3":"03 · SHIP: Each worker pushes a personal Git branch, leaves execution feedback notes, and submits { commit, path, sha256 } verified live against Gitea.","4":"04 · REVISE: Causal read-gate check — Board allows Lead to publish the revised direction only after reads proves all worker feedback was inspected.","5":"05 · ROUND 2: The same workers resume in their preserved sessions and Git directories, read the new direction_id, and deliver round-2 updates.","all":"Overview: One lead sets direction while workers claim subtasks transactionally, ship byte-verified Git commits with field notes, and feed findings back into the next direction."}}};
+
+  (function initHarnessShowcase() {
+    const root = document.querySelector('[data-harness-showcase]');
+    if (!root) return;
+
+    const order = ['subagents', 'taskpool', 'peermesh', 'substrate', 'lead-worker'];
+    let activeKey = 'subagents';
+    let activePhase = 'all';
+    let timer = null;
+    let seqIdx = 0;
+
+    const cards = root.querySelectorAll('[data-select-harness]');
+    const panels = root.querySelectorAll('[data-panel]');
+    const badgeEl = root.querySelector('[data-stage-badge]');
+    const headlineEl = root.querySelector('[data-stage-headline]');
+    const docEl = root.querySelector('[data-stage-doc]');
+    const phaseBar = root.querySelector('[data-phase-bar]');
+    const tagEl = root.querySelector('[data-phase-tag]');
+    const noteEl = root.querySelector('[data-phase-note]');
+    const svcEl = root.querySelector('[data-stage-services]');
+    const primEl = root.querySelector('[data-stage-primitives]');
+    const playBtn = root.querySelector('[data-stage-play]');
+    const playIcon = root.querySelector('[data-play-icon]');
+    const playLabel = root.querySelector('[data-play-label]');
+    const zoomBtn = root.querySelector('[data-stage-zoom]');
+    const canvasTrigger = root.querySelector('[data-stage-canvas]');
+
+    const modal = root.querySelector('[data-zoom-modal]');
+    const zoomCanvas = root.querySelector('[data-zoom-canvas]');
+    const zoomTabs = root.querySelectorAll('[data-zoom-switch]');
+    const zoomBadge = root.querySelector('[data-zoom-badge]');
+    const zoomNote = root.querySelector('[data-zoom-note]');
+    const zoomDoc = root.querySelector('[data-zoom-doc]');
+    const zoomClose = root.querySelector('[data-zoom-close]');
+
+    function stopPlay() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      if (playIcon) playIcon.textContent = '▶';
+      if (playLabel) playLabel.textContent = 'Play';
+      playBtn?.classList.remove('playing');
+    }
+
+    function applyPhase(phase) {
+      activePhase = phase;
+      const meta = HARNESS_META[activeKey];
+      const activePanel = root.querySelector(`[data-panel="${activeKey}"]`);
+      phaseBar.querySelectorAll('[data-phase]').forEach((btn) => {
+        const isAct = btn.getAttribute('data-phase') === phase;
+        btn.classList.toggle('active', isAct);
+        btn.setAttribute('aria-selected', isAct ? 'true' : 'false');
+      });
+      activePanel?.querySelectorAll('[data-sch-phase]').forEach((node) => {
+        const match = phase === 'all' || node.getAttribute('data-sch-phase') === phase;
+        node.classList.toggle('dimmed', !match);
+      });
+      if (tagEl) tagEl.textContent = phase === 'all' ? 'OVERVIEW' : meta.phases[Number(phase) - 1] || 'OVERVIEW';
+      if (noteEl) noteEl.textContent = meta.notes[phase] || meta.notes.all;
+    }
+
+    function renderPhaseBar(meta) {
+      const btns = [
+        `<button type="button" class="phase-btn active" data-phase="all" role="tab" aria-selected="true">ALL</button>`,
+        ...meta.phases.map(
+          (label, i) =>
+            `<button type="button" class="phase-btn" data-phase="${i + 1}" role="tab" aria-selected="false">${label}</button>`
+        ),
+      ];
+      const legendItems = ['<span class="lane-swatch-item"><i class="lane-swatch lane-swatch-agent"></i>Agent</span>'];
+      if (activeKey !== 'subagents') {
+        legendItems.push('<span class="lane-swatch-item"><i class="lane-swatch lane-swatch-service"></i>Service</span>');
+      }
+      if (activeKey === 'taskpool') {
+        legendItems.push('<span class="lane-swatch-item"><i class="lane-swatch lane-swatch-workspace"></i>Workspace</span>');
+      }
+      phaseBar.innerHTML = `${btns.join('')}<span class="lane-legend" aria-label="Lane types">${legendItems.join('')}</span><span class="click-hint">Click to zoom ⤢</span>`;
+      phaseBar.querySelectorAll('[data-phase]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          stopPlay();
+          applyPhase(btn.getAttribute('data-phase') || 'all');
+        });
+      });
+    }
+
+    function syncZoomContent() {
+      if (!modal?.classList.contains('open')) return;
+      const meta = HARNESS_META[activeKey];
+      const activePanel = root.querySelector(`[data-panel="${activeKey}"]`);
+      const svg = activePanel?.querySelector('svg');
+      if (zoomCanvas && svg) {
+        zoomCanvas.innerHTML = '';
+        const clone = svg.cloneNode(true);
+        clone.querySelectorAll('.dimmed').forEach((n) => n.classList.remove('dimmed'));
+        const idMap = new Map();
+        clone.querySelectorAll('defs [id]').forEach((el) => {
+          const oldId = el.getAttribute('id');
+          const newId = 'z-' + oldId;
+          idMap.set(oldId, newId);
+          el.setAttribute('id', newId);
+        });
+        clone.querySelectorAll('[fill],[marker-end],[marker-start]').forEach((el) => {
+          ['fill', 'marker-end', 'marker-start'].forEach((attr) => {
+            const val = el.getAttribute(attr);
+            if (!val) return;
+            const m = val.match(/^url\(#(.+)\)$/);
+            if (m && idMap.has(m[1])) {
+              el.setAttribute(attr, `url(#${idMap.get(m[1])})`);
+            }
+          });
+        });
+        zoomCanvas.appendChild(clone);
+      }
+      zoomTabs.forEach((t) => t.classList.toggle('active', t.getAttribute('data-zoom-switch') === activeKey));
+      if (zoomBadge) zoomBadge.textContent = `${meta.index} · ${meta.name.toUpperCase()}`;
+      if (zoomNote) zoomNote.textContent = meta.notes.all;
+      if (zoomDoc) zoomDoc.setAttribute('href', meta.docHref);
+    }
+
+    function selectHarness(key) {
+      stopPlay();
+      activeKey = HARNESS_META[key] ? key : 'subagents';
+      const meta = HARNESS_META[activeKey];
+
+      cards.forEach((c) => {
+        const isAct = c.getAttribute('data-select-harness') === activeKey;
+        c.classList.toggle('active', isAct);
+        c.setAttribute('aria-selected', isAct ? 'true' : 'false');
+      });
+
+      panels.forEach((p) => {
+        const isAct = p.getAttribute('data-panel') === activeKey;
+        p.classList.toggle('active', isAct);
+        p.hidden = !isAct;
+      });
+
+      if (badgeEl) badgeEl.textContent = `${meta.index} · ${meta.name.toUpperCase()}`;
+      if (headlineEl) headlineEl.textContent = meta.headline;
+      if (docEl) docEl.setAttribute('href', meta.docHref);
+      if (svcEl) svcEl.textContent = meta.services;
+      if (primEl) primEl.textContent = meta.primitives;
+
+      renderPhaseBar(meta);
+      applyPhase('all');
+      syncZoomContent();
+    }
+
+    function openZoom() {
+      modal?.classList.add('open');
+      document.body.style.overflow = 'hidden';
+      syncZoomContent();
+    }
+
+    function closeZoom() {
+      modal?.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    cards.forEach((c) => {
+      c.addEventListener('click', () => selectHarness(c.getAttribute('data-select-harness')));
+    });
+
+    playBtn?.addEventListener('click', () => {
+      if (timer) {
+        stopPlay();
+        return;
+      }
+      const seq = ['1', '2', '3', '4', '5', 'all'];
+      seqIdx = 0;
+      applyPhase(seq[seqIdx]);
+      if (playIcon) playIcon.textContent = '❚❚';
+      if (playLabel) playLabel.textContent = 'Pause';
+      playBtn.classList.add('playing');
+      timer = setInterval(() => {
+        seqIdx = (seqIdx + 1) % seq.length;
+        applyPhase(seq[seqIdx]);
+      }, 2200);
+    });
+
+    zoomBtn?.addEventListener('click', openZoom);
+    canvasTrigger?.addEventListener('click', openZoom);
+    zoomClose?.addEventListener('click', closeZoom);
+    modal?.addEventListener('click', (e) => {
+      if (e.target === modal) closeZoom();
+    });
+    zoomTabs.forEach((t) => {
+      t.addEventListener('click', () => selectHarness(t.getAttribute('data-zoom-switch')));
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (!modal?.classList.contains('open')) return;
+      if (e.key === 'Escape') closeZoom();
+      else if (e.key === 'ArrowRight') {
+        const next = order[(order.indexOf(activeKey) + 1) % order.length];
+        selectHarness(next);
+      } else if (e.key === 'ArrowLeft') {
+        const prev = order[(order.indexOf(activeKey) + order.length - 1) % order.length];
+        selectHarness(prev);
+      }
+    });
+
+    selectHarness('subagents');
+  })();
+})();</script> </div> </section> <!-- Chapter 4: 04 · ONE UNIFORM PLATFORM --> <section class="chapter landing-section domain-section"> <div class="chapter-rule" data-reveal-line aria-hidden="true"></div> <div class="section-header" data-reveal style="--reveal-delay: 40ms"> <div> <p class="section-eyebrow">04 · ONE UNIFORM PLATFORM</p> <h2 class="section-title">One runtime across domains</h2> <p class="section-desc">
+Keep the same runtime and <span class="marker-highlight">harnesses</span> — swap only the workspace and domain verifier.
+</p> </div> </div> <div class="domain-grid"> <!-- 01: CODING — Cobalt + Yellow Architectural Emblem (64x64) --> <article class="domain-item" data-reveal style="--reveal-delay: 100ms"> <div class="domain-emblem" aria-hidden="true"> <svg viewBox="0 0 72 72" width="68" height="68" fill="none"> <!-- Tactile drafting shadow --> <rect x="11" y="13" width="52" height="46" rx="7" fill="var(--ink)" opacity="0.12"></rect> <!-- Main terminal / workspace sheet --> <rect x="8" y="10" width="52" height="46" rx="7" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.8"></rect> <path d="M 8 17 C 8 13.1 11.1 10 15 10 H 53 C 56.9 10 60 13.1 60 17 V 21 H 8 V 17 Z" fill="var(--accent-soft)"></path> <line x1="8" y1="21" x2="60" y2="21" stroke="var(--ink)" stroke-width="1.5"></line> <circle cx="15" cy="15.5" r="2" fill="var(--sch-indigo)"></circle> <circle cx="21.5" cy="15.5" r="2" fill="var(--ink-muted)"></circle> <!-- Code chevrons + Git merge branch inside --> <path d="M 18 30 L 14 35 L 18 40" stroke="var(--sch-indigo)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path> <path d="M 25 30 L 29 35 L 25 40" stroke="var(--sch-indigo)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path> <!-- Parallel Git branch merging into yellow verified commit --> <line x1="38" y1="28" x2="38" y2="48" stroke="var(--ink)" stroke-width="1.9" stroke-linecap="round"></line> <path d="M 49 32 C 49 38, 38 38, 38 44" stroke="var(--sch-indigo)" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 2.5"></path> <circle cx="38" cy="29" r="3.2" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.6"></circle> <circle cx="49" cy="31" r="3.2" fill="var(--accent-soft)" stroke="var(--sch-indigo)" stroke-width="1.7"></circle> <circle cx="38" cy="46" r="4.5" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.7"></circle> <!-- Corner pixel badge --> <rect x="46" y="45" width="18" height="14" rx="3.5" fill="var(--sch-indigo)" stroke="var(--ink)" stroke-width="1.5"></rect> <path d="M 51 52 L 54 55 L 59.5 49.5" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path> </svg> </div> <span class="domain-kicker">CODING</span> <h3>Software Engineering</h3> <p>Parallel agents working across shared workspaces, feature branches, and automated test suites.</p> </article> <!-- 02: FORMAL MATH — Teal + Yellow Architectural Emblem (64x64) --> <article class="domain-item" data-reveal style="--reveal-delay: 200ms"> <div class="domain-emblem" aria-hidden="true"> <svg viewBox="0 0 72 72" width="68" height="68" fill="none"> <!-- Tactile drafting shadow --> <rect x="11" y="13" width="52" height="46" rx="7" fill="var(--ink)" opacity="0.12"></rect> <!-- Main proof sheet --> <rect x="8" y="10" width="52" height="46" rx="7" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.8"></rect> <!-- Subtle grid lines inside sheet --> <line x1="8" y1="25" x2="60" y2="25" stroke="var(--border)" stroke-width="1"></line> <line x1="8" y1="41" x2="60" y2="41" stroke="var(--border)" stroke-width="1"></line> <!-- Proof derivation tree / turnstile ⊢ --> <path d="M 18 20 V 45 M 18 32.5 H 29" stroke="var(--sch-teal)" stroke-width="2.4" stroke-linecap="round"></path> <!-- Lemma branches feeding into theorem check --> <rect x="31" y="17" width="18" height="8" rx="2.5" fill="var(--teal-soft)" stroke="var(--sch-teal)" stroke-width="1.5"></rect> <rect x="31" y="29" width="18" height="8" rx="2.5" fill="var(--teal-soft)" stroke="var(--ink)" stroke-width="1.5"></rect> <path d="M 40 25 V 29 M 40 37 V 42" stroke="var(--sch-teal)" stroke-width="1.8" stroke-linecap="round"></path> <!-- Verified QED square (clear of corner seal) --> <rect x="34" y="42" width="12" height="9" rx="2" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.6"></rect> <!-- Floating Judge verified seal --> <circle cx="57" cy="52" r="9" fill="var(--sch-teal)" stroke="var(--ink)" stroke-width="1.6"></circle> <path d="M 53.2 52 L 56 54.8 L 61.2 49.5" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path> </svg> </div> <span class="domain-kicker domain-kicker-teal">FORMAL MATH</span> <h3>Theorem Proving</h3> <p>Distributed proof search guided by a pluggable formal verifier service and versioned proof trunks.</p> </article> <!-- 03: RESEARCH — Amber/Purple + Yellow Architectural Emblem (64x64) --> <article class="domain-item" data-reveal style="--reveal-delay: 300ms"> <div class="domain-emblem" aria-hidden="true"> <svg viewBox="0 0 72 72" width="68" height="68" fill="none"> <!-- Tactile drafting shadow --> <rect x="11" y="13" width="52" height="46" rx="7" fill="var(--ink)" opacity="0.12"></rect> <!-- Main synthesis canvas --> <rect x="8" y="10" width="52" height="46" rx="7" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.8"></rect> <!-- Citation DAG edges rising upward (cleanly clear of corner badge) --> <path d="M 18 44 L 25 32 M 30 44 L 25 32 M 30 44 L 39 32 M 42 44 L 39 32 M 25 32 L 32 19 M 39 32 L 32 19" stroke="var(--sch-amber)" stroke-width="1.9" stroke-linecap="round"></path> <!-- Bottom base findings --> <circle cx="18" cy="44" r="3.8" fill="var(--amber-soft)" stroke="var(--ink)" stroke-width="1.6"></circle> <circle cx="30" cy="44" r="3.8" fill="var(--amber-soft)" stroke="var(--ink)" stroke-width="1.6"></circle> <circle cx="42" cy="44" r="3.8" fill="var(--amber-soft)" stroke="var(--ink)" stroke-width="1.6"></circle> <!-- Mid-level synthesized findings --> <rect x="19" y="28" width="12" height="8" rx="2.5" fill="var(--bg-elevated)" stroke="var(--sch-amber)" stroke-width="1.6"></rect> <rect x="33" y="28" width="12" height="8" rx="2.5" fill="var(--bg-elevated)" stroke="var(--sch-purple)" stroke-width="1.6"></rect> <!-- Apex highlighted breakthrough --> <rect x="24" y="15" width="16" height="8.5" rx="2.8" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.7"></rect> <!-- Floating citation spark badge --> <rect x="47" y="45" width="18" height="14" rx="3.5" fill="var(--sch-amber)" stroke="var(--ink)" stroke-width="1.5"></rect> <path d="M 56 48.2 L 57.1 50.9 L 59.8 52 L 57.1 53.1 L 56 55.8 L 54.9 53.1 L 52.2 52 L 54.9 50.9 Z" fill="#ffffff"></path> </svg> </div> <span class="domain-kicker domain-kicker-amber">RESEARCH</span> <h3>Open-Ended Synthesis</h3> <p>Autonomous exploration where findings persist in a shared citation graph beyond individual agents.</p> </article> </div> </section> <footer class="landing-footer" data-reveal> <span class="footer-brand">MURM · <code>@swarmenv/core</code> 0.2.0 (<code>ac72c76</code>)</span> <div class="footer-links"> <a href="/SwarmEnv/docs/quickstart/">Quick Start</a> <a href="/SwarmEnv/docs/build-your-harness/">Build a Harness</a> <a href="/SwarmEnv/docs/reference/api/">API Reference</a> <a href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a> </div> </footer> </main>  <div class="search-backdrop" id="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation"> <div class="search-dialog"> <div class="search-input-wrap"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ink-muted)"> <circle cx="11" cy="11" r="8"></circle> <path d="m21 21-4.3-4.3"></path> </svg> <input class="search-input" id="search-input" type="search" placeholder="Search concepts, harnesses, APIs..." autocomplete="off"> <kbd style="font-family:var(--font-pixel);font-size:10px;color:var(--ink-muted);border:1px solid var(--border);border-radius:4px;padding:1px 6px;">ESC</kbd> </div> <div class="search-results" id="search-results"></div> </div> </div> <script>(function(){const index = [{"title":"System Architecture","description":"Follow the exact trust boundaries, data flows, and request paths connecting the host process, OpenSandbox containers, Worker, Service Bridge, and Model Gateway.","section":"ARCHITECTURE","href":"/SwarmEnv/docs/architecture/"},{"title":"Anatomy of a Run","description":"Follow a two-agent refactoring scenario from spawn and unified send delivery through file handoffs, safe interrupts, and archive-before-delete closeout.","section":"ARCHITECTURE","href":"/SwarmEnv/docs/run-lifecycle/"},{"title":"Types & Mapping","description":"Public TypeScript definitions for @swarmenv/core 0.2.0 (ac72c76) and their mapping to murm concepts.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/types/"},{"title":"Quick Start","description":"Prepare the local sandbox environment, launch your first multi-agent harness, and inspect the recorded run directory.","section":"GETTING STARTED","href":"/SwarmEnv/docs/quickstart/"},{"title":"Core Concepts","description":"Six orthogonal abstractions — Agent, Service, Harness, Runtime, Sandbox, and Run — separating execution infrastructure from coordination logic.","section":"GETTING STARTED","href":"/SwarmEnv/docs/concepts/"},{"title":"Build Your Own Harness","description":"Assemble custom Services, role Profiles, host control loops, and safe closeout to implement a new multi-agent harness without editing the Runtime.","section":"DEVELOPERS","href":"/SwarmEnv/docs/build-your-harness/"},{"title":"API & Configuration","description":"Reference for Runtime methods, unified send semantics, file control, Service protocol v2, the swarm CLI, backend config, and error contracts.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/api/"},{"title":"Five Topologies Overview","description":"How one Runtime powers five distinct multi-agent Harnesses — Subagents, TaskPool, PeerMesh, Substrate, and Lead-Worker.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/"},{"title":"Lead-Worker","description":"Staged direction-and-feedback loop combining transactional SQLite Board claims, causal read gates, and Git commit SHA-256 verification.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/lead-worker/"},{"title":"Deployment","description":"Preview the murm documentation site locally and publish static builds to GitHub Pages or Cloudflare Pages.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/deploy/"},{"title":"Substrate","description":"Zero-queue, zero-routing parallel research where equal peers publish, search, visit, and cite immutable artifacts in a single SQLite store.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/substrate/"},{"title":"PeerMesh","description":"Peer-to-peer engineering team coordinating through overlapping Board claims, team chat channels, per-peer serial routers, and Git pull requests.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/peermesh/"},{"title":"Subagents","description":"Hierarchical recursive delegation, non-waking mailbox messaging, context forking, and safe interrupts built on one custom collaboration Service.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/subagents/"},{"title":"TaskPool","description":"Shared task pool, read-only discovery to host-granted writes, Model Access Policy lease guards, and versioned main merges for long-running projects.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/taskpool/"}];
+
+  const modal = document.getElementById('search-modal');
+  const input = document.getElementById('search-input');
+  const resultsEl = document.getElementById('search-results');
+  const openBtn = document.getElementById('search-open-btn');
+
+  function render(query) {
+    const q = (query || '').trim().toLowerCase();
+    const matches = q
+      ? index.filter((item) =>
+          `${item.title} ${item.description} ${item.section}`.toLowerCase().includes(q)
+        )
+      : index.slice(0, 8);
+
+    if (!matches.length) {
+      resultsEl.innerHTML = `<div style="padding:20px;text-align:center;color:var(--ink-muted);font-size:13.5px;">No matching pages for "${q}"</div>`;
+      return;
+    }
+
+    resultsEl.innerHTML = matches
+      .map(
+        (item) => `
+        <a class="search-item" href="${item.href}">
+          <div class="search-item-title">${item.title} <span style="font-weight:400;font-size:11.5px;color:var(--ink-muted);margin-left:6px;">${item.section}</span></div>
+          <div class="search-item-desc">${item.description}</div>
+        </a>`
+      )
+      .join('');
+  }
+
+  function openSearch() {
+    modal?.classList.add('open');
+    render('');
+    setTimeout(() => input?.focus(), 20);
+  }
+
+  function closeSearch() {
+    modal?.classList.remove('open');
+    if (input) input.value = '';
+  }
+
+  openBtn?.addEventListener('click', openSearch);
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeSearch();
+  });
+  input?.addEventListener('input', (e) => render(e.target.value));
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      modal?.classList.contains('open') ? closeSearch() : openSearch();
+    } else if (e.key === 'Escape' && modal?.classList.contains('open')) {
+      closeSearch();
+    }
+  });
+})();</script> <script>
+      (function () {
+        document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+            document.documentElement.dataset.theme = next;
+            localStorage.setItem('murm:theme', next);
+          });
+        });
+
+        const menuBtn = document.getElementById('mobile-menu-toggle');
+        const sidebar = document.getElementById('docs-sidebar');
+        menuBtn?.addEventListener('click', () => sidebar?.classList.toggle('open'));
+
+        document.querySelectorAll('.prose pre').forEach((pre) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'copy-btn';
+          btn.textContent = 'Copy';
+          btn.addEventListener('click', async () => {
+            const code = pre.querySelector('code')?.textContent || pre.textContent || '';
+            try {
+              await navigator.clipboard.writeText(code);
+              btn.textContent = 'Copied';
+              setTimeout(() => (btn.textContent = 'Copy'), 1400);
+            } catch {
+              btn.textContent = 'Error';
+            }
+          });
+          pre.appendChild(btn);
+        });
+
+        // Subtle reading progress hairline on landing
+        const progressEl = document.querySelector('[data-scroll-progress]');
+        if (progressEl) {
+          const updateBar = () => {
+            const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+            const pct = Math.max(0, Math.min(1, window.scrollY / max));
+            progressEl.style.transform = 'scaleX(' + pct.toFixed(4) + ')';
+          };
+          window.addEventListener('scroll', updateBar, { passive: true });
+          window.addEventListener('resize', updateBar, { passive: true });
+          updateBar();
+        }
+
+        // Chapter-by-chapter staged scroll reveal
+        const revealEls = document.querySelectorAll('[data-reveal], [data-reveal-line]');
+        if (revealEls.length && document.documentElement.classList.contains('reveal-ready')) {
+          const io = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add('is-visible');
+                  io.unobserve(entry.target);
+                }
+              }
+            },
+            { threshold: 0.14, rootMargin: '0px 0px -64px 0px' }
+          );
+          revealEls.forEach((el) => io.observe(el));
+        } else {
+          revealEls.forEach((el) => el.classList.add('is-visible'));
+        }
+      })();
+    </script> </body> </html>

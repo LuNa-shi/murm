@@ -1,0 +1,313 @@
+<!DOCTYPE html><html lang="en"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Build Your Own Harness · murm</title><meta name="description" content="Assemble custom Services, role Profiles, host control loops, and safe closeout to implement a new multi-agent harness without editing the Runtime."><link rel="icon" type="image/svg+xml" href="/SwarmEnv/favicon.svg"><script>
+      (function () {
+        const stored = localStorage.getItem('murm:theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = stored || (prefersDark ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+        const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reduced && 'IntersectionObserver' in window) {
+          document.documentElement.classList.add('reveal-ready');
+        }
+      })();
+    </script><link rel="stylesheet" href="/SwarmEnv/_astro/_slug_.BNdmKG-L.css"></head> <body>  <header class="top-nav"> <div class="top-nav-inner"> <div class="nav-left"> <button type="button" class="icon-btn mobile-menu-btn" id="mobile-menu-toggle" aria-label="Toggle sidebar"> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"> <line x1="4" y1="6" x2="20" y2="6"></line> <line x1="4" y1="12" x2="20" y2="12"></line> <line x1="4" y1="18" x2="20" y2="18"></line> </svg> </button> <a class="brand-link" href="/SwarmEnv/"> <svg width="26" height="22" viewBox="0 0 36 30" fill="none" aria-hidden="true"><g fill="currentColor"><path d="M2 18c2-1.5 3.7-1.1 5.1.3-1.7-.1-3.1.5-4.5 1.6-.4.3-.8-.1-.6-.5z" opacity="0.7"></path><path d="M9 13c2.3-1.7 4.3-1.3 6 .4-2.1-.1-3.7.6-5.4 1.9-.5.3-1-.1-.6-.6z"></path><path d="M15 20c2.2-1.6 4.1-1.2 5.6.4-1.9-.1-3.5.6-5 1.8-.4.3-.9-.1-.6-.6z" opacity="0.85"></path><path d="M18 9c2.5-1.8 4.6-1.4 6.4.4-2.2-.1-4 .7-5.7 2-.5.3-1-.1-.7-.6z"></path><path d="M25 14c2.1-1.5 3.9-1.1 5.4.4-1.9-.1-3.4.6-4.9 1.7-.4.3-.9-.1-.5-.6z" opacity="0.9"></path><path d="M28 7c1.8-1.3 3.3-1 4.6.3-1.6-.1-2.9.5-4.1 1.4-.4.3-.8-.1-.5-.5z" opacity="0.65"></path></g></svg> <span>murm</span> </a> </div> <div class="nav-actions"> <button type="button" class="search-trigger" id="search-open-btn" aria-label="Search documentation"> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"> <circle cx="11" cy="11" r="8"></circle> <path d="m21 21-4.3-4.3"></path> </svg> <span>Search</span> <kbd>⌘K</kbd> </button> <button type="button" class="icon-btn" data-theme-toggle aria-label="Toggle color theme" title="Toggle light / dark theme"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"> <circle cx="12" cy="12" r="4"></circle> <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path> </svg> </button> <a class="icon-btn" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer" aria-label="GitHub repository" title="GitHub"> <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"> <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2Z"></path> </svg> </a> </div> </div> </header>  <div class="docs-shell"> <aside class="docs-sidebar" id="docs-sidebar" aria-label="Documentation navigation"> <div class="sidebar-group"> <div class="sidebar-label">GETTING STARTED</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/quickstart/"> <span>Quick Start</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/concepts/"> <span>Core Concepts</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">ARCHITECTURE</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/architecture/"> <span>System Architecture</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/run-lifecycle/"> <span>Anatomy of a Run</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">BUILT-IN HARNESSES</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/"> <span>Five Topologies Overview</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/subagents/"> <span>Subagents</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/taskpool/"> <span>TaskPool</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/peermesh/"> <span>PeerMesh</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/substrate/"> <span>Substrate</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/lead-worker/"> <span>Lead-Worker</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">DEVELOPERS</div> <ul class="sidebar-list"> <li> <a class="sidebar-link active" href="/SwarmEnv/docs/build-your-harness/" aria-current="page"> <span>Build Your Own Harness</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">REFERENCE</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/reference/api/"> <span>API &amp; Configuration</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/reference/types/"> <span>Types &amp; Mapping</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/reference/deploy/"> <span>Deployment</span> </a> </li> </ul> </div> </aside> <main class="docs-main"> <div class="docs-eyebrow">DEVELOPERS</div> <h1 class="docs-title">Build Your Own Harness</h1> <p class="docs-lead">Assemble custom Services, role Profiles, host control loops, and safe closeout to implement a new multi-agent harness without editing the Runtime.</p> <article class="prose">  <p>Building a new multi-agent system in <code>murm</code> means writing a plain TypeScript <strong>Harness</strong> against <code>@swarmenv/core</code> — zero edits to the Runtime, Worker image, or <code>swarm</code> CLI.</p>
+<p>Every Harness combines four building blocks: <strong>shared Services</strong>, <strong>role Profiles</strong>, a <strong>host control loop</strong>, and <strong>resilient closeout</strong>.</p>
+<h2 id="1-answer-three-design-questions-first">1. Answer three design questions first</h2>
+<ol>
+<li><strong>Where does shared state live?</strong> In-memory host <code>Map</code>, local SQLite, an external database, or Git + chat servers?</li>
+<li><strong>What drives the next turn?</strong> Fixed sequential turns, reactive <code>onEvent</code>/mailbox routing, or a periodic reconciliation loop?</li>
+<li><strong>What defines completion?</strong> A Service record reaching a target state, a verified Git PR, or a final synthesis from <code>/root</code>?</li>
+</ol>
+<h2 id="2-define-and-register-a-shared-service">2. Define and register a shared Service</h2>
+<p>A Service pairs a declarative <strong>manifest</strong> (operations + JSON Schemas) with either an <strong>in-process function</strong> (<code>createInProcessAdapter</code>) or an <strong>HTTP adapter</strong> (<code>createHttpJsonAdapter</code>).</p>
+<p>Below is a production-ready local Service pattern demonstrating three key habits: <strong>trusting the Runtime-injected <code>caller</code></strong>, <strong>idempotent retries</strong>, and <strong>calling <code>assertAuthorized()</code> right before mutating state</strong>:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="ts"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">import</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  ServiceRegistry,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  createInProcessAdapter,</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">  type</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> ServiceManifest,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">} </span><span style="color:#D73A49;--shiki-dark:#F47067">from</span><span style="color:#032F62;--shiki-dark:#96D0FF"> '@swarmenv/core/services'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> notesManifest</span><span style="color:#D73A49;--shiki-dark:#F47067">:</span><span style="color:#6F42C1;--shiki-dark:#F69D50"> ServiceManifest</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  id: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'notes'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  title: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'Notes'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  purpose: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'Share verified findings between collaborating agents'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  provider_version: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'1'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  contract_version: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'2'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  endpoint: { transport: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'in-process'</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  capabilities: [</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      name: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'put'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      operation: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'put'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      description: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'Publish a note by key'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      side_effect: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'write'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      idempotent: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">true</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      help: { when: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'Share a finding for downstream agents'</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      input_schema: {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'object'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        properties: {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">          key: { type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'string'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, minLength: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">1</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, maxLength: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">64</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">          text: { type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'string'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, minLength: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">1</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, maxLength: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">4096</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        required: [</span><span style="color:#032F62;--shiki-dark:#96D0FF">'key'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, </span><span style="color:#032F62;--shiki-dark:#96D0FF">'text'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">],</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        additionalProperties: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">false</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      output_schema: {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'object'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        properties: {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">          key: { type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'string'</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">          text: { type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'string'</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">          author: { type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'string'</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        required: [</span><span style="color:#032F62;--shiki-dark:#96D0FF">'key'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, </span><span style="color:#032F62;--shiki-dark:#96D0FF">'text'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, </span><span style="color:#032F62;--shiki-dark:#96D0FF">'author'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">],</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        additionalProperties: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">false</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      errors: [{ code: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'CONFLICT'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, retryable: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">false</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> }],</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      name: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'get'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      operation: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'get'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      description: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'Read a published note by key'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      side_effect: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'read'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      idempotent: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">true</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      help: { when: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'Inspect a finding published by another agent'</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      input_schema: {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'object'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        properties: { key: { type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'string'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, minLength: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">1</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, maxLength: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">64</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> } },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        required: [</span><span style="color:#032F62;--shiki-dark:#96D0FF">'key'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">],</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        additionalProperties: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">false</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      output_schema: { anyOf: [{ type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'object'</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> }, { type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'null'</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> }] },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      errors: [],</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  ],</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">export</span><span style="color:#D73A49;--shiki-dark:#F47067"> function</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB"> createNotesService</span><span style="color:#24292E;--shiki-dark:#ADBAC7">() {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">  const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> records</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#D73A49;--shiki-dark:#F47067"> new</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB"> Map</span><span style="color:#24292E;--shiki-dark:#ADBAC7">&#x3C;</span><span style="color:#005CC5;--shiki-dark:#6CB6FF">string</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, { </span><span style="color:#E36209;--shiki-dark:#F69D50">key</span><span style="color:#D73A49;--shiki-dark:#F47067">:</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> string</span><span style="color:#24292E;--shiki-dark:#ADBAC7">; </span><span style="color:#E36209;--shiki-dark:#F69D50">text</span><span style="color:#D73A49;--shiki-dark:#F47067">:</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> string</span><span style="color:#24292E;--shiki-dark:#ADBAC7">; </span><span style="color:#E36209;--shiki-dark:#F69D50">author</span><span style="color:#D73A49;--shiki-dark:#F47067">:</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> string</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> }>();</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">  const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> services</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#D73A49;--shiki-dark:#F47067"> new</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB"> ServiceRegistry</span><span style="color:#24292E;--shiki-dark:#ADBAC7">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  services.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">registerService</span><span style="color:#24292E;--shiki-dark:#ADBAC7">({</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    manifest: notesManifest,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    adapter: </span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">createInProcessAdapter</span><span style="color:#24292E;--shiki-dark:#ADBAC7">({</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#DCBDFB">      invoke</span><span style="color:#24292E;--shiki-dark:#ADBAC7">({ </span><span style="color:#E36209;--shiki-dark:#F69D50">capability</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, </span><span style="color:#E36209;--shiki-dark:#F69D50">input</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, </span><span style="color:#E36209;--shiki-dark:#F69D50">caller</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, </span><span style="color:#E36209;--shiki-dark:#F69D50">assertAuthorized</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> }) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">        const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> req</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> input </span><span style="color:#D73A49;--shiki-dark:#F47067">as</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> { </span><span style="color:#E36209;--shiki-dark:#F69D50">key</span><span style="color:#D73A49;--shiki-dark:#F47067">:</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> string</span><span style="color:#24292E;--shiki-dark:#ADBAC7">; </span><span style="color:#E36209;--shiki-dark:#F69D50">text</span><span style="color:#D73A49;--shiki-dark:#F47067">?:</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> string</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> };</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">        const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> existing</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> records.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">get</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(req.key);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">        if</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> (capability.operation </span><span style="color:#D73A49;--shiki-dark:#F47067">===</span><span style="color:#032F62;--shiki-dark:#96D0FF"> 'get'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">) </span><span style="color:#D73A49;--shiki-dark:#F47067">return</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> existing </span><span style="color:#D73A49;--shiki-dark:#F47067">??</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> null</span><span style="color:#24292E;--shiki-dark:#ADBAC7">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">        if</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> (existing) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">          if</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> (existing.author </span><span style="color:#D73A49;--shiki-dark:#F47067">===</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> caller.botId </span><span style="color:#D73A49;--shiki-dark:#F47067">&#x26;&#x26;</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> existing.text </span><span style="color:#D73A49;--shiki-dark:#F47067">===</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> req.text) </span><span style="color:#D73A49;--shiki-dark:#F47067">return</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> existing;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">          throw</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> Object.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">assign</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(</span><span style="color:#D73A49;--shiki-dark:#F47067">new</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB"> Error</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(</span><span style="color:#032F62;--shiki-dark:#96D0FF">'Key already exists with different content'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">), { code: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'CONFLICT'</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> });</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#768390">        // Confirm the caller is still authorized right before committing state</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#DCBDFB">        assertAuthorized</span><span style="color:#24292E;--shiki-dark:#ADBAC7">();</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">        const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> entry</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> { key: req.key, text: req.text</span><span style="color:#D73A49;--shiki-dark:#F47067">!</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, author: caller.botId };</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">        records.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">set</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(req.key, entry);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">        return</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> entry;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">      },</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#768390">      // Optional: automatically writes service-state.notes.json on runtime.close()</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#DCBDFB">      exportState</span><span style="color:#24292E;--shiki-dark:#ADBAC7">: () </span><span style="color:#D73A49;--shiki-dark:#F47067">=></span><span style="color:#24292E;--shiki-dark:#ADBAC7"> [</span><span style="color:#D73A49;--shiki-dark:#F47067">...</span><span style="color:#24292E;--shiki-dark:#ADBAC7">records.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">values</span><span style="color:#24292E;--shiki-dark:#ADBAC7">()],</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    }),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">  return</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> { services, records };</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">}</span></span></code></pre>
+<p>If your Service runs in a separate process, switch <code>endpoint</code> to <code>{ transport: 'http-json', url: 'http://127.0.0.1:9000' }</code> and pass <code>createHttpJsonAdapter({ token, timeoutMs })</code> — the agent’s <code>swarm</code> commands stay identical.</p>
+<h2 id="3-configure-role-profiles-and-boundaries">3. Configure role Profiles and boundaries</h2>
+<p>Use Profiles to pair role instructions with hard runtime permissions:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="ts"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">import</span><span style="color:#D73A49;--shiki-dark:#F47067"> type</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> { Profile } </span><span style="color:#D73A49;--shiki-dark:#F47067">from</span><span style="color:#032F62;--shiki-dark:#96D0FF"> '@swarmenv/core'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> profiles</span><span style="color:#D73A49;--shiki-dark:#F47067">:</span><span style="color:#6F42C1;--shiki-dark:#F69D50"> Record</span><span style="color:#24292E;--shiki-dark:#ADBAC7">&#x3C;</span><span style="color:#005CC5;--shiki-dark:#6CB6FF">string</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, </span><span style="color:#6F42C1;--shiki-dark:#F69D50">Profile</span><span style="color:#24292E;--shiki-dark:#ADBAC7">> </span><span style="color:#D73A49;--shiki-dark:#F47067">=</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  researcher: {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    prompt: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'Inspect the codebase and publish findings via `swarm notes put`.'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    model: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'default'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    image: config.image,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    writable: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">true</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    services: { notes: [</span><span style="color:#032F62;--shiki-dark:#96D0FF">'put'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">] },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  reviewer: {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    prompt: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'Verify findings with `swarm notes get` and write a report to review.md.'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    model: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'default'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    image: config.image,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    writable: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">true</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    services: { notes: [</span><span style="color:#032F62;--shiki-dark:#96D0FF">'get'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">] },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    collect: { paths: [</span><span style="color:#032F62;--shiki-dark:#96D0FF">'review.md'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">], includeGit: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">false</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, maxBytes: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">256</span><span style="color:#D73A49;--shiki-dark:#F47067"> *</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> 1024</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, required: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">true</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">};</span></span></code></pre>
+<p>Common optional capabilities:</p>
+<ul>
+<li><strong>Let agents spawn sub-agents</strong>: grant built-in <code>bot</code> operations (<code>{ bot: ['spawn', 'get', 'send', 'stop'] }</code>), restrict allowed roles with <code>spawnProfiles</code>, enable context inheritance via <code>allowContextFork: true</code>, or wrap them in a domain Service like <a href="../harnesses/subagents/">Subagents</a>.</li>
+<li><strong>Share a repository across agents</strong>: pass <code>workspace: { id: 'shared-repo', mode: 'read-write' }</code> in <code>runtime.spawn()</code>.</li>
+<li><strong>Access internal services (such as Gitea)</strong>: whitelist the origin in <code>Profile.network.allow</code> and inject per-agent tokens via <code>spawn({ secretEnv })</code>.</li>
+</ul>
+<h2 id="4-write-the-host-control-loop-three-standard-patterns">4. Write the host control loop (three standard patterns)</h2>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="ts"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">import</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> { createRuntime } </span><span style="color:#D73A49;--shiki-dark:#F47067">from</span><span style="color:#032F62;--shiki-dark:#96D0FF"> '@swarmenv/core'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">import</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> { createPiOpenSandboxBackend } </span><span style="color:#D73A49;--shiki-dark:#F47067">from</span><span style="color:#032F62;--shiki-dark:#96D0FF"> '@swarmenv/core/backends/pi-opensandbox'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> runtime</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#D73A49;--shiki-dark:#F47067"> await</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB"> createRuntime</span><span style="color:#24292E;--shiki-dark:#ADBAC7">({</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  backend: </span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">createPiOpenSandboxBackend</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(config.backend),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  services,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  profiles,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  maxBots: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">4</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  outputDir: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'./runs'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">});</span></span></code></pre>
+<h3 id="pattern-a-serial-turn-helper-fixed-pipelines-or-parallel-fixed-rounds">Pattern A: Serial turn helper (fixed pipelines or parallel fixed rounds)</h3>
+<p>When each agent has a single input source and runs one turn at a time, reuse <a href="https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/shared/run-input.ts">runInput</a>:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="ts"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> researcher</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#D73A49;--shiki-dark:#F47067"> await</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> runtime.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">spawn</span><span style="color:#24292E;--shiki-dark:#ADBAC7">({ requestId: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'spawn-1'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, profile: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'researcher'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, files: seedFiles });</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">await</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB"> runInput</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(runtime, researcher.id, </span><span style="color:#032F62;--shiki-dark:#96D0FF">'Audit parser boundaries and publish notes.'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  requestId: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'turn-1'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  timeoutMs: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">60_000</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">});</span></span></code></pre>
+<h3 id="pattern-b-event--non-waking-mailbox-dynamic-delegation--real-time-messaging">Pattern B: Event + non-waking mailbox (dynamic delegation &#x26; real-time messaging)</h3>
+<p>Listen to <code>runtime.onEvent</code>, attempt non-waking <code>steer</code> delivery first, and buffer in a per-agent mailbox if the recipient is idle:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="ts"><code><span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">runtime.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">onEvent</span><span style="color:#24292E;--shiki-dark:#ADBAC7">((</span><span style="color:#E36209;--shiki-dark:#F69D50">event</span><span style="color:#24292E;--shiki-dark:#ADBAC7">) </span><span style="color:#D73A49;--shiki-dark:#F47067">=></span><span style="color:#24292E;--shiki-dark:#ADBAC7"> {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">  if</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> (event.type </span><span style="color:#D73A49;--shiki-dark:#F47067">!==</span><span style="color:#032F62;--shiki-dark:#96D0FF"> 'settled'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">) </span><span style="color:#D73A49;--shiki-dark:#F47067">return</span><span style="color:#24292E;--shiki-dark:#ADBAC7">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">  const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> payload</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> JSON</span><span style="color:#24292E;--shiki-dark:#ADBAC7">.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">stringify</span><span style="color:#24292E;--shiki-dark:#ADBAC7">({ from: event.botId, outcome: event.outcome, output: event.output </span><span style="color:#D73A49;--shiki-dark:#F47067">??</span><span style="color:#032F62;--shiki-dark:#96D0FF"> ''</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> });</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">  void</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> runtime.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">send</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(targetId, payload, {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    requestId: </span><span style="color:#032F62;--shiki-dark:#96D0FF">`deliver:${</span><span style="color:#24292E;--shiki-dark:#ADBAC7">event</span><span style="color:#032F62;--shiki-dark:#96D0FF">.</span><span style="color:#24292E;--shiki-dark:#ADBAC7">botId</span><span style="color:#032F62;--shiki-dark:#96D0FF">}:${</span><span style="color:#24292E;--shiki-dark:#ADBAC7">event</span><span style="color:#032F62;--shiki-dark:#96D0FF">.</span><span style="color:#24292E;--shiki-dark:#ADBAC7">seq</span><span style="color:#032F62;--shiki-dark:#96D0FF">}`</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    mode: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'steer'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">    wakeIfIdle: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">false</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  }).</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">then</span><span style="color:#24292E;--shiki-dark:#ADBAC7">((</span><span style="color:#E36209;--shiki-dark:#F69D50">receipt</span><span style="color:#24292E;--shiki-dark:#ADBAC7">) </span><span style="color:#D73A49;--shiki-dark:#F47067">=></span><span style="color:#24292E;--shiki-dark:#ADBAC7"> {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">    if</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> (receipt.status </span><span style="color:#D73A49;--shiki-dark:#F47067">===</span><span style="color:#032F62;--shiki-dark:#96D0FF"> 'not-accepted'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">) </span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">enqueueMailbox</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(targetId, payload);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  });</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">});</span></span></code></pre>
+<h3 id="pattern-c-reconciliation-loop-task-pools-leases-and-automatic-replacement">Pattern C: Reconciliation loop (task pools, leases, and automatic replacement)</h3>
+<p>Treat your domain database as the source of truth: on <code>settled</code>, continue with <code>mode: 'followUp'</code> if the business task is still active; run a periodic <code>setInterval</code> to renew heartbeats, stop expired workers, and refill idle slots (see <a href="https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/flat/controller.ts">TaskPool Controller</a>).</p>
+<h2 id="5-resilient-closeout-and-verification">5. Resilient closeout and verification</h2>
+<p>Wrap your Harness with <a href="https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/shared/run-report.ts">runWithReport</a> so <strong>harness errors</strong>, <strong>cleanup errors</strong>, and <strong>report-save errors</strong> are preserved independently without masking one another:</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="ts"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">const</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> report</span><span style="color:#D73A49;--shiki-dark:#F47067"> =</span><span style="color:#D73A49;--shiki-dark:#F47067"> await</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB"> runWithReport</span><span style="color:#24292E;--shiki-dark:#ADBAC7">({</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  outputDir: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'./runs'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  closeTimeoutMs: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">30_000</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#DCBDFB">  createRuntime</span><span style="color:#24292E;--shiki-dark:#ADBAC7">: () </span><span style="color:#D73A49;--shiki-dark:#F47067">=></span><span style="color:#6F42C1;--shiki-dark:#DCBDFB"> createRuntime</span><span style="color:#24292E;--shiki-dark:#ADBAC7">({ </span><span style="color:#D73A49;--shiki-dark:#F47067">...</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> }),</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">  async</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB"> run</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(</span><span style="color:#E36209;--shiki-dark:#F69D50">runtime</span><span style="color:#24292E;--shiki-dark:#ADBAC7">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">    return</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> { delivered: </span><span style="color:#005CC5;--shiki-dark:#6CB6FF">true</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> };</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  },</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#DCBDFB">  afterClose</span><span style="color:#24292E;--shiki-dark:#ADBAC7">: </span><span style="color:#D73A49;--shiki-dark:#F47067">async</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> () </span><span style="color:#D73A49;--shiki-dark:#F47067">=></span><span style="color:#24292E;--shiki-dark:#ADBAC7"> {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#768390">    // Tear down external resources only after the Runtime confirms container cleanup</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">    await</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB"> closeExternalResources</span><span style="color:#24292E;--shiki-dark:#ADBAC7">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  },</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">});</span></span></code></pre>
+<p>After your first run finishes, inspect <code>outputDir/&#x3C;runId>/</code> (<code>runtime.json</code>, <code>evidence.jsonl</code>, <code>service-calls.jsonl</code>, and <code>bots/*/artifacts/files/</code>) to verify three invariants:</p>
+<ol>
+<li>Agents spawned and overlapped as intended;</li>
+<li>Downstream agents actually read upstream Service outputs and acted on them;</li>
+<li><code>runtime.json</code> reports <code>cleanup: 'complete'</code> with every required deliverable archived.</li>
+</ol>  </article> <nav class="docs-pager" aria-label="Pagination"> <a class="pager-link prev" href="/SwarmEnv/docs/harnesses/lead-worker/"> <span class="pager-dir">← PREVIOUS</span> <span class="pager-title">Lead-Worker</span> </a> <a class="pager-link next" href="/SwarmEnv/docs/reference/api/"> <span class="pager-dir">NEXT →</span> <span class="pager-title">API &amp; Configuration</span> </a> </nav> </main> <aside class="docs-toc" aria-label="On this page">  <div class="toc-title">ON THIS PAGE</div> <ul class="toc-list"> <li> <a class="toc-link" href="#1-answer-three-design-questions-first"> 1. Answer three design questions first </a> </li><li> <a class="toc-link" href="#2-define-and-register-a-shared-service"> 2. Define and register a shared Service </a> </li><li> <a class="toc-link" href="#3-configure-role-profiles-and-boundaries"> 3. Configure role Profiles and boundaries </a> </li><li> <a class="toc-link" href="#4-write-the-host-control-loop-three-standard-patterns"> 4. Write the host control loop (three standard patterns) </a> </li><li> <a class="toc-link depth-3" href="#pattern-a-serial-turn-helper-fixed-pipelines-or-parallel-fixed-rounds"> Pattern A: Serial turn helper (fixed pipelines or parallel fixed rounds) </a> </li><li> <a class="toc-link depth-3" href="#pattern-b-event--non-waking-mailbox-dynamic-delegation--real-time-messaging"> Pattern B: Event + non-waking mailbox (dynamic delegation &amp; real-time messaging) </a> </li><li> <a class="toc-link depth-3" href="#pattern-c-reconciliation-loop-task-pools-leases-and-automatic-replacement"> Pattern C: Reconciliation loop (task pools, leases, and automatic replacement) </a> </li><li> <a class="toc-link" href="#5-resilient-closeout-and-verification"> 5. Resilient closeout and verification </a> </li> </ul>  </aside> </div>  <div class="search-backdrop" id="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation"> <div class="search-dialog"> <div class="search-input-wrap"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ink-muted)"> <circle cx="11" cy="11" r="8"></circle> <path d="m21 21-4.3-4.3"></path> </svg> <input class="search-input" id="search-input" type="search" placeholder="Search concepts, harnesses, APIs..." autocomplete="off"> <kbd style="font-family:var(--font-pixel);font-size:10px;color:var(--ink-muted);border:1px solid var(--border);border-radius:4px;padding:1px 6px;">ESC</kbd> </div> <div class="search-results" id="search-results"></div> </div> </div> <script>(function(){const index = [{"title":"System Architecture","description":"Follow the exact trust boundaries, data flows, and request paths connecting the host process, OpenSandbox containers, Worker, Service Bridge, and Model Gateway.","section":"ARCHITECTURE","href":"/SwarmEnv/docs/architecture/"},{"title":"Anatomy of a Run","description":"Follow a two-agent refactoring scenario from spawn and unified send delivery through file handoffs, safe interrupts, and archive-before-delete closeout.","section":"ARCHITECTURE","href":"/SwarmEnv/docs/run-lifecycle/"},{"title":"Types & Mapping","description":"Public TypeScript definitions for @swarmenv/core 0.2.0 (ac72c76) and their mapping to murm concepts.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/types/"},{"title":"Quick Start","description":"Prepare the local sandbox environment, launch your first multi-agent harness, and inspect the recorded run directory.","section":"GETTING STARTED","href":"/SwarmEnv/docs/quickstart/"},{"title":"Core Concepts","description":"Six orthogonal abstractions — Agent, Service, Harness, Runtime, Sandbox, and Run — separating execution infrastructure from coordination logic.","section":"GETTING STARTED","href":"/SwarmEnv/docs/concepts/"},{"title":"Build Your Own Harness","description":"Assemble custom Services, role Profiles, host control loops, and safe closeout to implement a new multi-agent harness without editing the Runtime.","section":"DEVELOPERS","href":"/SwarmEnv/docs/build-your-harness/"},{"title":"API & Configuration","description":"Reference for Runtime methods, unified send semantics, file control, Service protocol v2, the swarm CLI, backend config, and error contracts.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/api/"},{"title":"Five Topologies Overview","description":"How one Runtime powers five distinct multi-agent Harnesses — Subagents, TaskPool, PeerMesh, Substrate, and Lead-Worker.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/"},{"title":"Lead-Worker","description":"Staged direction-and-feedback loop combining transactional SQLite Board claims, causal read gates, and Git commit SHA-256 verification.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/lead-worker/"},{"title":"Deployment","description":"Preview the murm documentation site locally and publish static builds to GitHub Pages or Cloudflare Pages.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/deploy/"},{"title":"Substrate","description":"Zero-queue, zero-routing parallel research where equal peers publish, search, visit, and cite immutable artifacts in a single SQLite store.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/substrate/"},{"title":"PeerMesh","description":"Peer-to-peer engineering team coordinating through overlapping Board claims, team chat channels, per-peer serial routers, and Git pull requests.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/peermesh/"},{"title":"Subagents","description":"Hierarchical recursive delegation, non-waking mailbox messaging, context forking, and safe interrupts built on one custom collaboration Service.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/subagents/"},{"title":"TaskPool","description":"Shared task pool, read-only discovery to host-granted writes, Model Access Policy lease guards, and versioned main merges for long-running projects.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/taskpool/"}];
+
+  const modal = document.getElementById('search-modal');
+  const input = document.getElementById('search-input');
+  const resultsEl = document.getElementById('search-results');
+  const openBtn = document.getElementById('search-open-btn');
+
+  function render(query) {
+    const q = (query || '').trim().toLowerCase();
+    const matches = q
+      ? index.filter((item) =>
+          `${item.title} ${item.description} ${item.section}`.toLowerCase().includes(q)
+        )
+      : index.slice(0, 8);
+
+    if (!matches.length) {
+      resultsEl.innerHTML = `<div style="padding:20px;text-align:center;color:var(--ink-muted);font-size:13.5px;">No matching pages for "${q}"</div>`;
+      return;
+    }
+
+    resultsEl.innerHTML = matches
+      .map(
+        (item) => `
+        <a class="search-item" href="${item.href}">
+          <div class="search-item-title">${item.title} <span style="font-weight:400;font-size:11.5px;color:var(--ink-muted);margin-left:6px;">${item.section}</span></div>
+          <div class="search-item-desc">${item.description}</div>
+        </a>`
+      )
+      .join('');
+  }
+
+  function openSearch() {
+    modal?.classList.add('open');
+    render('');
+    setTimeout(() => input?.focus(), 20);
+  }
+
+  function closeSearch() {
+    modal?.classList.remove('open');
+    if (input) input.value = '';
+  }
+
+  openBtn?.addEventListener('click', openSearch);
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeSearch();
+  });
+  input?.addEventListener('input', (e) => render(e.target.value));
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      modal?.classList.contains('open') ? closeSearch() : openSearch();
+    } else if (e.key === 'Escape' && modal?.classList.contains('open')) {
+      closeSearch();
+    }
+  });
+})();</script> <script>
+      (function () {
+        document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+            document.documentElement.dataset.theme = next;
+            localStorage.setItem('murm:theme', next);
+          });
+        });
+
+        const menuBtn = document.getElementById('mobile-menu-toggle');
+        const sidebar = document.getElementById('docs-sidebar');
+        menuBtn?.addEventListener('click', () => sidebar?.classList.toggle('open'));
+
+        document.querySelectorAll('.prose pre').forEach((pre) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'copy-btn';
+          btn.textContent = 'Copy';
+          btn.addEventListener('click', async () => {
+            const code = pre.querySelector('code')?.textContent || pre.textContent || '';
+            try {
+              await navigator.clipboard.writeText(code);
+              btn.textContent = 'Copied';
+              setTimeout(() => (btn.textContent = 'Copy'), 1400);
+            } catch {
+              btn.textContent = 'Error';
+            }
+          });
+          pre.appendChild(btn);
+        });
+
+        // Subtle reading progress hairline on landing
+        const progressEl = document.querySelector('[data-scroll-progress]');
+        if (progressEl) {
+          const updateBar = () => {
+            const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+            const pct = Math.max(0, Math.min(1, window.scrollY / max));
+            progressEl.style.transform = 'scaleX(' + pct.toFixed(4) + ')';
+          };
+          window.addEventListener('scroll', updateBar, { passive: true });
+          window.addEventListener('resize', updateBar, { passive: true });
+          updateBar();
+        }
+
+        // Chapter-by-chapter staged scroll reveal
+        const revealEls = document.querySelectorAll('[data-reveal], [data-reveal-line]');
+        if (revealEls.length && document.documentElement.classList.contains('reveal-ready')) {
+          const io = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add('is-visible');
+                  io.unobserve(entry.target);
+                }
+              }
+            },
+            { threshold: 0.14, rootMargin: '0px 0px -64px 0px' }
+          );
+          revealEls.forEach((el) => io.observe(el));
+        } else {
+          revealEls.forEach((el) => el.classList.add('is-visible'));
+        }
+      })();
+    </script> </body> </html>

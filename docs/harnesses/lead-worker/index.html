@@ -1,0 +1,189 @@
+<!DOCTYPE html><html lang="en"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Lead-Worker · murm</title><meta name="description" content="Staged direction-and-feedback loop combining transactional SQLite Board claims, causal read gates, and Git commit SHA-256 verification."><link rel="icon" type="image/svg+xml" href="/SwarmEnv/favicon.svg"><script>
+      (function () {
+        const stored = localStorage.getItem('murm:theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = stored || (prefersDark ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+        const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reduced && 'IntersectionObserver' in window) {
+          document.documentElement.classList.add('reveal-ready');
+        }
+      })();
+    </script><link rel="stylesheet" href="/SwarmEnv/_astro/_slug_.BNdmKG-L.css"></head> <body>  <header class="top-nav"> <div class="top-nav-inner"> <div class="nav-left"> <button type="button" class="icon-btn mobile-menu-btn" id="mobile-menu-toggle" aria-label="Toggle sidebar"> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"> <line x1="4" y1="6" x2="20" y2="6"></line> <line x1="4" y1="12" x2="20" y2="12"></line> <line x1="4" y1="18" x2="20" y2="18"></line> </svg> </button> <a class="brand-link" href="/SwarmEnv/"> <svg width="26" height="22" viewBox="0 0 36 30" fill="none" aria-hidden="true"><g fill="currentColor"><path d="M2 18c2-1.5 3.7-1.1 5.1.3-1.7-.1-3.1.5-4.5 1.6-.4.3-.8-.1-.6-.5z" opacity="0.7"></path><path d="M9 13c2.3-1.7 4.3-1.3 6 .4-2.1-.1-3.7.6-5.4 1.9-.5.3-1-.1-.6-.6z"></path><path d="M15 20c2.2-1.6 4.1-1.2 5.6.4-1.9-.1-3.5.6-5 1.8-.4.3-.9-.1-.6-.6z" opacity="0.85"></path><path d="M18 9c2.5-1.8 4.6-1.4 6.4.4-2.2-.1-4 .7-5.7 2-.5.3-1-.1-.7-.6z"></path><path d="M25 14c2.1-1.5 3.9-1.1 5.4.4-1.9-.1-3.4.6-4.9 1.7-.4.3-.9-.1-.5-.6z" opacity="0.9"></path><path d="M28 7c1.8-1.3 3.3-1 4.6.3-1.6-.1-2.9.5-4.1 1.4-.4.3-.8-.1-.5-.5z" opacity="0.65"></path></g></svg> <span>murm</span> </a> </div> <div class="nav-actions"> <button type="button" class="search-trigger" id="search-open-btn" aria-label="Search documentation"> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"> <circle cx="11" cy="11" r="8"></circle> <path d="m21 21-4.3-4.3"></path> </svg> <span>Search</span> <kbd>⌘K</kbd> </button> <button type="button" class="icon-btn" data-theme-toggle aria-label="Toggle color theme" title="Toggle light / dark theme"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"> <circle cx="12" cy="12" r="4"></circle> <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path> </svg> </button> <a class="icon-btn" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer" aria-label="GitHub repository" title="GitHub"> <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"> <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2Z"></path> </svg> </a> </div> </div> </header>  <div class="docs-shell"> <aside class="docs-sidebar" id="docs-sidebar" aria-label="Documentation navigation"> <div class="sidebar-group"> <div class="sidebar-label">GETTING STARTED</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/quickstart/"> <span>Quick Start</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/concepts/"> <span>Core Concepts</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">ARCHITECTURE</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/architecture/"> <span>System Architecture</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/run-lifecycle/"> <span>Anatomy of a Run</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">BUILT-IN HARNESSES</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/"> <span>Five Topologies Overview</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/subagents/"> <span>Subagents</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/taskpool/"> <span>TaskPool</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/peermesh/"> <span>PeerMesh</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/harnesses/substrate/"> <span>Substrate</span> </a> </li><li> <a class="sidebar-link active" href="/SwarmEnv/docs/harnesses/lead-worker/" aria-current="page"> <span>Lead-Worker</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">DEVELOPERS</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/build-your-harness/"> <span>Build Your Own Harness</span> </a> </li> </ul> </div><div class="sidebar-group"> <div class="sidebar-label">REFERENCE</div> <ul class="sidebar-list"> <li> <a class="sidebar-link" href="/SwarmEnv/docs/reference/api/"> <span>API &amp; Configuration</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/reference/types/"> <span>Types &amp; Mapping</span> </a> </li><li> <a class="sidebar-link" href="/SwarmEnv/docs/reference/deploy/"> <span>Deployment</span> </a> </li> </ul> </div> </aside> <main class="docs-main"> <div class="docs-eyebrow">BUILT-IN HARNESSES</div> <h1 class="docs-title">Lead-Worker</h1> <p class="docs-lead">Staged direction-and-feedback loop combining transactional SQLite Board claims, causal read gates, and Git commit SHA-256 verification.</p> <article class="prose">  <p><strong>Lead-Worker</strong> <em>(repository module: <code>src/environments/lead-helper</code>)</em> fits teams that need one clear owner of direction while forcing field constraints discovered during execution back into the next round of planning. One <strong>lead</strong> and 2–7 <strong>workers</strong> (<code>helper</code> roles in code) coordinate through a local SQLite <strong>Board</strong> and personal Gitea branches. Source code: <a href="https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments/lead-helper">src/environments/lead-helper</a>.</p>
+<h2 id="1-registered-services">1. Registered Services</h2>
+<p>Lead-Worker registers two Services with asymmetric role permissions (<a href="https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/lead-helper/board.ts">board.ts</a>):</p>
+<ul>
+<li><strong><code>board</code> (transactional SQLite state machine)</strong>:
+<ul>
+<li><code>lead</code>: <code>read</code>, <code>list_subtasks</code>, <code>announce</code> (set/revise direction), <code>assign</code>, <code>create_subtask</code>, <code>update_subtask</code>, <code>note</code>.</li>
+<li><code>helper</code> (worker): <code>read</code>, <code>list_subtasks</code>, <code>create_subtask</code>, <code>claim</code> (exclusive transactional claim), <code>update_subtask</code>, <code>note</code> (feedback), <code>landed</code>, <code>complete</code>.</li>
+</ul>
+</li>
+<li><strong><code>gitea</code></strong>: <code>pull_request_write</code> for both roles, paired with native <code>git</code> pushes to personal branches.</li>
+</ul>
+<p>The <code>board</code> Service enforces three strict invariants:</p>
+<ol>
+<li><strong>Exclusive transactional claims</strong>: <code>claim</code> checks <code>expected_revision</code> inside <code>BEGIN IMMEDIATE</code> to assign a single permanent <code>owner</code>.</li>
+<li><strong>Read-before-write causal gates</strong>: <code>lead</code> cannot <code>announce</code> citing <code>feedback_ids</code> unless <code>reads</code> proves it read them; workers cannot <code>complete</code> unless they read the latest <code>direction_id</code>.</li>
+<li><strong>Byte-level Git verification</strong>: <code>complete</code> submits <code>{ commit, path, sha256, bytes }</code>, which the Board verifies live against Gitea via <code>git.verifyDelivery</code> before committing.</li>
+</ol>
+<h2 id="2-runtime-primitives-used">2. Runtime primitives used</h2>
+<ul>
+<li><strong>Fixed team with isolated credentials</strong>: spawns <code>lead</code> and <code>helper1..helperN</code> upfront with distinct Profiles, Gitea <code>bindings</code>, <code>secretEnv.GITEA_TOKEN</code>, and required <code>collect(includeGit: true)</code>. Built-in <code>bot</code> Service is disabled.</li>
+<li><strong>Fatal failure fence</strong>: <code>runtime.onEvent</code> watches for any <code>fatal</code> error or unexpected <code>exit</code>, calling <code>board.fence()</code> to freeze writes while preserving ownership state and failure artifacts.</li>
+<li><strong>Staged turn orchestration</strong>: uses <code>runInput</code> across alternating lead/worker stages in persistent sessions.</li>
+</ul>
+<h2 id="3-host-control-loop">3. Host control loop</h2>
+<p><a href="https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/lead-helper/index.ts">src/environments/lead-helper/index.ts</a> implements the two-round <code>runWorkflow</code> (and extensible <code>runStage</code> with candidate verification):</p>
+<pre class="astro-code astro-code-themes github-light github-dark-dimmed" style="background-color:#fff;--shiki-dark-bg:#22272e;color:#24292e;--shiki-dark:#adbac7; overflow-x: auto;" tabindex="0" data-language="ts"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#768390">// Step 1: Lead publishes initial direction, assignments, and ready subtasks</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">await</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB"> dispatch</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(</span><span style="color:#032F62;--shiki-dark:#96D0FF">'lead'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, </span><span style="color:#032F62;--shiki-dark:#96D0FF">'lead-initialize'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, { type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'initialize'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, goal, helpers });</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#DCBDFB">assertInitialBoardReady</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(board.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">snapshot</span><span style="color:#24292E;--shiki-dark:#ADBAC7">());</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#768390">// Step 2: Workers concurrently claim subtasks, push Git commits, and post feedback</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">await</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> Promise</span><span style="color:#24292E;--shiki-dark:#ADBAC7">.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">all</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  helperRoles.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">map</span><span style="color:#24292E;--shiki-dark:#ADBAC7">((</span><span style="color:#E36209;--shiki-dark:#F69D50">role</span><span style="color:#24292E;--shiki-dark:#ADBAC7">) </span><span style="color:#D73A49;--shiki-dark:#F47067">=></span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#DCBDFB">    dispatch</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(role, </span><span style="color:#032F62;--shiki-dark:#96D0FF">`${</span><span style="color:#24292E;--shiki-dark:#ADBAC7">role</span><span style="color:#032F62;--shiki-dark:#96D0FF">}-initial`</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, { type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'helper-initial'</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> })</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  )</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#768390">// Step 3: Register supplemental user input; Lead reads all feedback and updates direction</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">board.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">registerUserInput</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(</span><span style="color:#032F62;--shiki-dark:#96D0FF">'lead-adjust'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, supplement);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">await</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB"> dispatch</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(</span><span style="color:#032F62;--shiki-dark:#96D0FF">'lead'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, </span><span style="color:#032F62;--shiki-dark:#96D0FF">'lead-adjust'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'user-and-feedback'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  user_input_id: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'lead-adjust'</span><span style="color:#24292E;--shiki-dark:#ADBAC7">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  supplement,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#768390">// Step 4: Same workers read the revised direction in their preserved sessions and ship round 2</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F47067">await</span><span style="color:#005CC5;--shiki-dark:#6CB6FF"> Promise</span><span style="color:#24292E;--shiki-dark:#ADBAC7">.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">all</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  helperRoles.</span><span style="color:#6F42C1;--shiki-dark:#DCBDFB">map</span><span style="color:#24292E;--shiki-dark:#ADBAC7">((</span><span style="color:#E36209;--shiki-dark:#F69D50">role</span><span style="color:#24292E;--shiki-dark:#ADBAC7">) </span><span style="color:#D73A49;--shiki-dark:#F47067">=></span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#DCBDFB">    dispatch</span><span style="color:#24292E;--shiki-dark:#ADBAC7">(role, </span><span style="color:#032F62;--shiki-dark:#96D0FF">`${</span><span style="color:#24292E;--shiki-dark:#ADBAC7">role</span><span style="color:#032F62;--shiki-dark:#96D0FF">}-followup`</span><span style="color:#24292E;--shiki-dark:#ADBAC7">, { type: </span><span style="color:#032F62;--shiki-dark:#96D0FF">'helper-followup'</span><span style="color:#24292E;--shiki-dark:#ADBAC7"> })</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">  )</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#ADBAC7">);</span></span></code></pre>
+<p>On close, the host waits for <code>runtime.close()</code> to confirm all Git checkouts are archived and containers removed before closing SQLite and revoking temporary Gitea tokens.</p>
+<h2 id="source-files">Source files</h2>
+<ul>
+<li>Orchestrator (<code>runWorkflow</code> / <code>runStage</code>): <a href="https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/lead-helper/index.ts">src/environments/lead-helper/index.ts</a></li>
+<li>SQLite Board &#x26; causal checks: <a href="https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/lead-helper/board.ts">src/environments/lead-helper/board.ts</a></li>
+<li>Gitea provisioning &#x26; delivery verification: <a href="https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/lead-helper/git.ts">src/environments/lead-helper/git.ts</a></li>
+<li>Usage guide: <a href="https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/examples/lead-helper-environment/README.md">examples/lead-helper-environment/README.md</a></li>
+</ul>  </article> <nav class="docs-pager" aria-label="Pagination"> <a class="pager-link prev" href="/SwarmEnv/docs/harnesses/substrate/"> <span class="pager-dir">← PREVIOUS</span> <span class="pager-title">Substrate</span> </a> <a class="pager-link next" href="/SwarmEnv/docs/build-your-harness/"> <span class="pager-dir">NEXT →</span> <span class="pager-title">Build Your Own Harness</span> </a> </nav> </main> <aside class="docs-toc" aria-label="On this page">  <div class="toc-title">ON THIS PAGE</div> <ul class="toc-list"> <li> <a class="toc-link" href="#1-registered-services"> 1. Registered Services </a> </li><li> <a class="toc-link" href="#2-runtime-primitives-used"> 2. Runtime primitives used </a> </li><li> <a class="toc-link" href="#3-host-control-loop"> 3. Host control loop </a> </li><li> <a class="toc-link" href="#source-files"> Source files </a> </li> </ul>  </aside> </div>  <div class="search-backdrop" id="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation"> <div class="search-dialog"> <div class="search-input-wrap"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ink-muted)"> <circle cx="11" cy="11" r="8"></circle> <path d="m21 21-4.3-4.3"></path> </svg> <input class="search-input" id="search-input" type="search" placeholder="Search concepts, harnesses, APIs..." autocomplete="off"> <kbd style="font-family:var(--font-pixel);font-size:10px;color:var(--ink-muted);border:1px solid var(--border);border-radius:4px;padding:1px 6px;">ESC</kbd> </div> <div class="search-results" id="search-results"></div> </div> </div> <script>(function(){const index = [{"title":"System Architecture","description":"Follow the exact trust boundaries, data flows, and request paths connecting the host process, OpenSandbox containers, Worker, Service Bridge, and Model Gateway.","section":"ARCHITECTURE","href":"/SwarmEnv/docs/architecture/"},{"title":"Anatomy of a Run","description":"Follow a two-agent refactoring scenario from spawn and unified send delivery through file handoffs, safe interrupts, and archive-before-delete closeout.","section":"ARCHITECTURE","href":"/SwarmEnv/docs/run-lifecycle/"},{"title":"Types & Mapping","description":"Public TypeScript definitions for @swarmenv/core 0.2.0 (ac72c76) and their mapping to murm concepts.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/types/"},{"title":"Quick Start","description":"Prepare the local sandbox environment, launch your first multi-agent harness, and inspect the recorded run directory.","section":"GETTING STARTED","href":"/SwarmEnv/docs/quickstart/"},{"title":"Core Concepts","description":"Six orthogonal abstractions — Agent, Service, Harness, Runtime, Sandbox, and Run — separating execution infrastructure from coordination logic.","section":"GETTING STARTED","href":"/SwarmEnv/docs/concepts/"},{"title":"Build Your Own Harness","description":"Assemble custom Services, role Profiles, host control loops, and safe closeout to implement a new multi-agent harness without editing the Runtime.","section":"DEVELOPERS","href":"/SwarmEnv/docs/build-your-harness/"},{"title":"API & Configuration","description":"Reference for Runtime methods, unified send semantics, file control, Service protocol v2, the swarm CLI, backend config, and error contracts.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/api/"},{"title":"Five Topologies Overview","description":"How one Runtime powers five distinct multi-agent Harnesses — Subagents, TaskPool, PeerMesh, Substrate, and Lead-Worker.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/"},{"title":"Lead-Worker","description":"Staged direction-and-feedback loop combining transactional SQLite Board claims, causal read gates, and Git commit SHA-256 verification.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/lead-worker/"},{"title":"Deployment","description":"Preview the murm documentation site locally and publish static builds to GitHub Pages or Cloudflare Pages.","section":"REFERENCE","href":"/SwarmEnv/docs/reference/deploy/"},{"title":"Substrate","description":"Zero-queue, zero-routing parallel research where equal peers publish, search, visit, and cite immutable artifacts in a single SQLite store.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/substrate/"},{"title":"PeerMesh","description":"Peer-to-peer engineering team coordinating through overlapping Board claims, team chat channels, per-peer serial routers, and Git pull requests.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/peermesh/"},{"title":"Subagents","description":"Hierarchical recursive delegation, non-waking mailbox messaging, context forking, and safe interrupts built on one custom collaboration Service.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/subagents/"},{"title":"TaskPool","description":"Shared task pool, read-only discovery to host-granted writes, Model Access Policy lease guards, and versioned main merges for long-running projects.","section":"BUILT-IN HARNESSES","href":"/SwarmEnv/docs/harnesses/taskpool/"}];
+
+  const modal = document.getElementById('search-modal');
+  const input = document.getElementById('search-input');
+  const resultsEl = document.getElementById('search-results');
+  const openBtn = document.getElementById('search-open-btn');
+
+  function render(query) {
+    const q = (query || '').trim().toLowerCase();
+    const matches = q
+      ? index.filter((item) =>
+          `${item.title} ${item.description} ${item.section}`.toLowerCase().includes(q)
+        )
+      : index.slice(0, 8);
+
+    if (!matches.length) {
+      resultsEl.innerHTML = `<div style="padding:20px;text-align:center;color:var(--ink-muted);font-size:13.5px;">No matching pages for "${q}"</div>`;
+      return;
+    }
+
+    resultsEl.innerHTML = matches
+      .map(
+        (item) => `
+        <a class="search-item" href="${item.href}">
+          <div class="search-item-title">${item.title} <span style="font-weight:400;font-size:11.5px;color:var(--ink-muted);margin-left:6px;">${item.section}</span></div>
+          <div class="search-item-desc">${item.description}</div>
+        </a>`
+      )
+      .join('');
+  }
+
+  function openSearch() {
+    modal?.classList.add('open');
+    render('');
+    setTimeout(() => input?.focus(), 20);
+  }
+
+  function closeSearch() {
+    modal?.classList.remove('open');
+    if (input) input.value = '';
+  }
+
+  openBtn?.addEventListener('click', openSearch);
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeSearch();
+  });
+  input?.addEventListener('input', (e) => render(e.target.value));
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      modal?.classList.contains('open') ? closeSearch() : openSearch();
+    } else if (e.key === 'Escape' && modal?.classList.contains('open')) {
+      closeSearch();
+    }
+  });
+})();</script> <script>
+      (function () {
+        document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+            document.documentElement.dataset.theme = next;
+            localStorage.setItem('murm:theme', next);
+          });
+        });
+
+        const menuBtn = document.getElementById('mobile-menu-toggle');
+        const sidebar = document.getElementById('docs-sidebar');
+        menuBtn?.addEventListener('click', () => sidebar?.classList.toggle('open'));
+
+        document.querySelectorAll('.prose pre').forEach((pre) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'copy-btn';
+          btn.textContent = 'Copy';
+          btn.addEventListener('click', async () => {
+            const code = pre.querySelector('code')?.textContent || pre.textContent || '';
+            try {
+              await navigator.clipboard.writeText(code);
+              btn.textContent = 'Copied';
+              setTimeout(() => (btn.textContent = 'Copy'), 1400);
+            } catch {
+              btn.textContent = 'Error';
+            }
+          });
+          pre.appendChild(btn);
+        });
+
+        // Subtle reading progress hairline on landing
+        const progressEl = document.querySelector('[data-scroll-progress]');
+        if (progressEl) {
+          const updateBar = () => {
+            const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+            const pct = Math.max(0, Math.min(1, window.scrollY / max));
+            progressEl.style.transform = 'scaleX(' + pct.toFixed(4) + ')';
+          };
+          window.addEventListener('scroll', updateBar, { passive: true });
+          window.addEventListener('resize', updateBar, { passive: true });
+          updateBar();
+        }
+
+        // Chapter-by-chapter staged scroll reveal
+        const revealEls = document.querySelectorAll('[data-reveal], [data-reveal-line]');
+        if (revealEls.length && document.documentElement.classList.contains('reveal-ready')) {
+          const io = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add('is-visible');
+                  io.unobserve(entry.target);
+                }
+              }
+            },
+            { threshold: 0.14, rootMargin: '0px 0px -64px 0px' }
+          );
+          revealEls.forEach((el) => io.observe(el));
+        } else {
+          revealEls.forEach((el) => el.classList.add('is-visible'));
+        }
+      })();
+    </script> </body> </html>
