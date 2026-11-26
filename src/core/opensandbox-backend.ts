@@ -43,7 +43,9 @@ interface BackendAgent {
   outcome?: 'completed' | 'failed' | 'aborted';
   stopping: boolean;
   exited: boolean;
-  pollController: AbortController;
+  eventPoll: ReturnType<typeof createWorkerEventPoll>;
+  nativeExecuting: boolean;
+  pendingInputs: number;
   historyLost?: boolean;
   started?: boolean;
   polling?: Promise<void>;
@@ -77,7 +79,9 @@ interface WorkerReply {
 }
 
 interface SandboxManager {
-  agentRpc(agentId: string, input: Record<string, unknown>, options: { timeoutMs: number; since?: number }): Promise<WorkerReply>;
+  agentRpc(agentId: string, input: Record<string, unknown>, options: {
+    timeoutMs: number; since?: number; transportTimeoutMs?: number; signal?: AbortSignal;
+  }): Promise<WorkerReply>;
   coreFileOperation(agentId: string, action: 'snapshot', input: SnapshotOptions): Promise<Omit<FileSnapshot, 'agentId'>>;
   coreFileOperation(agentId: string, action: 'prepare' | 'grant' | 'install' | 'confirm', input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
   coreFileOperation(agentId: string, action: 'pause' | 'resume', input: { requestId: string }): Promise<{ paused: boolean; requestId: string }>;
@@ -142,7 +146,7 @@ import type { OpenSandboxBackendConfig } from './backend-config.js';
 import { selectExecutorDriver, type ExecutorDriver } from './executor-driver.js';
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
-import { setTimeout as delay } from 'node:timers/promises';
+import { createWorkerEventPoll } from './worker-event-poll.js';
 import { OpenSandboxManager } from '../runtime/opensandbox-manager.js';
 import { DockerAgentNetwork } from '../runtime/docker-agent-network.js';
 import { DockerAgentDisk } from '../runtime/docker-agent-disk.js';
@@ -243,11 +247,13 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (Number.isSafeInteger(sequence) && sequence <= agent.cursor) continue;
       if (!Number.isSafeInteger(sequence) || sequence !== agent.cursor + 1) {
         agent.historyLost = true;
+        agent.eventPoll.stop();
         agent.onEvent({ type: 'error', error: { code: 'SERVICE_UNAVAILABLE', message: 'Worker event history has a gap', retryable: false }, fatal: true });
         return;
       }
       agent.cursor = sequence;
       if (record.type === 'agent_start') {
+        agent.nativeExecuting = true;
         agent.onExecutionStart?.();
         agent.output = '';
         agent.error = null;
@@ -262,27 +268,33 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         if (agent.output) agent.onEvent({ type: 'output', text: agent.output });
       }
       if (record.type === 'agent_settled') {
+        agent.nativeExecuting = false;
         const outcome = record.aborted ? 'aborted' : agent.outcome ?? 'completed';
         agent.onEvent({ type: 'settled', outcome, output: agent.output, ...(agent.error ? { error: agent.error } : {}) });
       }
       if (record.type === 'worker_exit') {
         agent.exited = true;
+        agent.eventPoll.stop();
         agent.onEvent({ type: 'exit', reason: `${driver.name} exited (${record.code ?? record.signal ?? 'unknown'})`, expected: agent.stopping });
       }
       if (record.type === 'worker_error') agent.onEvent({ type: 'error', error: { code: 'PROCESS_EXITED', message: record.message, retryable: false }, fatal: true });
     }
   }
 
-  async function poll(agent: BackendAgent) {
-    while (!agent.pollController.signal.aborted && !agent.exited && !agent.historyLost) {
-      try {
-        const result = await agent.manager.agentRpc(agent.id, { type: 'get_state', since: agent.cursor }, { timeoutMs: 5000 });
-        consume(agent, result.records ?? []);
-      } catch (caught) {
-    const error = caught as Error & { code: string };
-        if (!agent.stopping) agent.onEvent({ type: 'error', error: { code: error.code ?? 'SERVICE_UNAVAILABLE', message: 'Worker event polling failed', retryable: true }, fatal: false });
+  async function readWorkerEvents(agent: BackendAgent, signal: AbortSignal) {
+    const since = agent.cursor;
+    try {
+      const result = await agent.manager.agentRpc(agent.id, { type: 'get_state', since },
+        { timeoutMs: 2000, transportTimeoutMs: 2000, signal });
+      if (signal.aborted) return false;
+      consume(agent, result.records ?? []);
+      return since === agent.cursor && !agent.nativeExecuting && !agent.pendingInputs && !agent.stopping;
+    } catch (caught) {
+      const error = caught as Error & { code: string };
+      if (!signal.aborted && !agent.stopping) {
+        agent.onEvent({ type: 'error', error: { code: error.code ?? 'SERVICE_UNAVAILABLE', message: 'Worker event polling failed', retryable: true }, fatal: false });
       }
-      await delay(100, undefined, { signal: agent.pollController.signal }).catch(() => undefined);
+      return false;
     }
   }
 
@@ -309,7 +321,8 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         if (source.stopping || source.exited || source.historyLost || signal?.aborted || closing) throw Object.assign(new Error('Context Fork source stopped during capture'), { code: 'NOT_ALLOWED' });
       }
       const manager = new (OpenSandboxManager as unknown as SandboxManagerConstructor)({ ...config.sandbox, image: profile.image });
-      const agent: BackendAgent = { id: agentId, manager, onEvent, onExecutionStart, cursor: 0, output: '', error: null, stopping: false, exited: false, pollController: new AbortController() };
+      const agent: BackendAgent = { id: agentId, manager, onEvent, onExecutionStart, cursor: 0, output: '', error: null,
+        stopping: false, exited: false, eventPoll: createWorkerEventPoll(), nativeExecuting: false, pendingInputs: 0 };
       agents.set(agentId, agent);
       const workspace = options.workspace?.mode !== 'frozen-copy' ? options.workspace : undefined;
       if (workspace) {
@@ -362,7 +375,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (ready.response?.success !== true || ready.response.command !== 'get_state') throw invalid('Executor readiness response was not confirmed');
       consume(agent, ready.records ?? []);
       assertOpen();
-      agent.polling = poll(agent);
+      agent.polling = agent.eventPoll.run(signal => readWorkerEvents(agent, signal));
       return { sandboxId: sandbox.sandbox_id, versions, ...(startup?.backend ? { backend: startup.backend } : {}) };
     },
     async snapshotFiles(agentId: string, input: SnapshotOptions) {
@@ -417,6 +430,8 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         const dispatch = submission.first;
         const command = wakeIfIdle ? 'prompt' : mode === 'steer' ? 'steer' : 'follow_up';
         submission.first = false;
+        agent.pendingInputs++;
+        agent.eventPoll.wake();
         submission.work = (async (): Promise<BackendInputReceipt> => {
           let result;
           try {
@@ -451,13 +466,17 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
           if (!(wakeIfIdle ? ['started', 'queued', 'handled'] : ['queued', 'handled']).includes(disposition!)) return { status: 'unknown', reason: 'worker-disposition-missing' };
           submission!.receipt = { status: 'accepted', disposition: disposition! };
           return submission!.receipt;
-        })().finally(() => { submission!.work = undefined; });
+        })().finally(() => {
+          agent.pendingInputs--;
+          submission!.work = undefined;
+        });
       }
       return submission.work;
     },
     async interrupt(agentId: string, { interruptId, executionEpoch }: { interruptId: string; executionEpoch: number }): Promise<Omit<InterruptReceipt, 'interruptId'>> {
       const agent = agents.get(agentId);
       if (!agent || agent.stopping || agent.exited || agent.historyLost || closing) return { status: 'unknown' };
+      agent.eventPoll.wake();
       const result = await agent.manager.agentRpc(agentId, { type: 'core_interrupt', id: interruptId, executionEpoch },
         { timeoutMs: 30_000, since: agent.cursor });
       consume(agent, result.records ?? []);
@@ -473,9 +492,10 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       const agent = agents.get(agentId);
       if (!agent) return { collectable: false };
       agent.stopping = true;
+      agent.eventPoll.wake();
       const stopped = await agent.manager.stopAgent(agentId, 'SIGTERM', { preserveWorker: true });
       agent.executionStopped = true;
-      agent.pollController.abort();
+      agent.eventPoll.stop();
       await agent.polling;
       if (stopped && agent.started && !agent.exited) {
         agent.exited = true;
@@ -508,7 +528,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       const agent = agents.get(agentId);
       if (!agent) return;
       if (!agent.executionStopped) throw Object.assign(new Error('Sandbox deletion requires confirmed execution stop'), { code: 'NOT_ALLOWED' });
-      agent.pollController.abort();
+      agent.eventPoll.stop();
       await agent.manager.stopExecution(agentId);
       await agent.polling;
       if (agent.workspace) {
