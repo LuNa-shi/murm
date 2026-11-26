@@ -1,3 +1,4 @@
+import { fileProtocol } from './core-file-seed.js';
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -38,13 +39,14 @@ async function inspectWorker(reference: string, signal: AbortSignal): Promise<Wo
     };
   }
   const labels = image.Config?.Labels ?? {};
-  const protocolMatches = labels['org.murm.opensandbox.worker-protocol'] === protocol;
+  const protocolMatches = labels['org.murm.opensandbox.worker-protocol'] === protocol &&
+    labels['org.murm.opensandbox.file-protocol'] === fileProtocol;
   const piMatches = labels['org.murm.opensandbox.pi-version'] === pi && image.Config?.Env?.includes(`MURM_PI_VERSION=${pi}`) === true;
   return {
     checks: [
       { id: 'worker-image', ok: true, detail: `Docker resolved ${image.Id}.` },
       { id: 'worker-protocol', ok: protocolMatches,
-        detail: protocolMatches ? `The image declares ${protocol}.` : `The image does not declare the required Worker protocol ${protocol}.`,
+        detail: protocolMatches ? `The image declares ${protocol} and ${fileProtocol}.` : `The image does not declare the required Worker protocol ${protocol} and ${fileProtocol}.`,
         ...(protocolMatches ? {} : { remedy }) },
       { id: 'worker-pi', ok: piMatches,
         detail: piMatches ? `The image declares Pi ${pi}.` : `The image does not declare the required Pi version ${pi}.`,
@@ -60,7 +62,7 @@ export async function prepareWorkerImage({ packageRoot, requestedImage, install,
   packageRoot: string; requestedImage?: string; install: boolean; signal: AbortSignal;
 }): Promise<WorkerInspection & { reference: string; source: 'cache' | 'build' | 'pull' }> {
   const manifest: { version: string } = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
-  const reference = requestedImage ?? `murm-worker:${manifest.version}-${protocol}-pi-${pi}`;
+  const reference = requestedImage ?? `murm-worker:${manifest.version}-${protocol}-${fileProtocol}-pi-${pi}`;
   const cached = await inspectWorker(reference, signal);
   if (!install || cached.image || !cached.absent) return { ...cached, reference, source: 'cache' };
 

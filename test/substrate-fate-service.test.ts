@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { invokeService, ServiceRegistry, snapshotServiceRegistry } from '@murm/core/services';
+import { invokeService, ServiceRegistry, snapshotServiceRegistry } from '../src/core/services.js';
 import { createFateTaskService } from '../examples/substrate/fate-service.js';
 
 test('a peer gets ten independent Lean trials, retries a stable one for free, and freezes only its final submitted proof', async t => {

@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core/services';
+import { ServiceRegistry } from '@murm/core';
 import { createOwnedResources } from '../peermesh/resources.js';
 import { runInput } from '../shared/run-input.js';
 import { runWithReport } from '../shared/run-report.js';
@@ -13,7 +13,7 @@ import { leadPrompt, helperPrompt, initializeInstruction, helperInitialInstructi
 const fail = (code: any) => Object.assign(new Error(code), { code });
 const bounded = (value: any, fallback: any, maximum: any) => { const result = value ?? fallback; if (!Number.isSafeInteger(result) || result < 1 || result > maximum) throw new TypeError('Invalid lead-worker wait bound'); return result; };
 export async function createLeadWorkerHarness(options: any) {
-  const { runId, image, model = 'default', outputDir, backend, exportLimit = 64 * 1024 ** 2, helperCount = 2, includeGit = true } = options;
+  const { runId, image, model = 'default', outputDir, sandbox, executor, models, connection, exportLimit = 64 * 1024 ** 2, helperCount = 2, includeGit = true } = options;
   const roles = leadWorkerRoles(helperCount);
   const helperRoles = roles.slice(1);
   if (typeof includeGit !== 'boolean' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir || !Number.isSafeInteger(exportLimit) || exportLimit < 1 || exportLimit > 64 * 1024 ** 2) throw new TypeError('Invalid lead-worker run configuration');
@@ -72,7 +72,7 @@ export async function createLeadWorkerHarness(options: any) {
     if (timeoutMs < 1) throw fail('WORKFLOW_STOPPED');
     const row: any = { role, agentId: team[role], requestId, source: payload.type }; inputs.push(row); activeInputs.add(team[role]);
     try {
-      const result = await runInput(runtime, team[role], JSON.stringify(payload), { requestId, timeoutMs, signal: workSignal }); Object.assign(row, { inputId: result.inputId, receipt: result.receipt, state: 'completed', settledSeq: result.settled.seq, settled: { agentId: result.settled.agentId, seq: result.settled.seq, outcome: result.settled.outcome } }); return result;
+      const result = await runInput(runtime, team[role], JSON.stringify(payload), { requestId, timeoutMs, signal: workSignal }); Object.assign(row, { inputId: result.inputId, receipt: result.receipt, state: 'completed', settled: { agentId: result.settled.agentId, outcome: result.settled.outcome } }); return result;
     } catch (error: any) { Object.assign(row, { inputId: error.inputId, receipt: error.receipt, state: 'failed', code: error.code ?? 'INPUT_FAILED', uncertain: !['input_failed', 'input_aborted'].includes(error.code) }); recordFence({ agentId: team[role], code: row.code }); lifetime.abort(); throw error; }
     finally { activeInputs.delete(team[role]); }
   };
@@ -95,10 +95,10 @@ export async function createLeadWorkerHarness(options: any) {
         env: { RUN_REPOSITORY: facilities.repositoryUrl, WORK_BRANCH: actor.branch, GITEA_USERNAME: actor.username, GIT_TERMINAL_PROMPT: '0', GIT_AUTHOR_NAME: actor.username, GIT_AUTHOR_EMAIL: `${actor.username}@murm.invalid`, GIT_COMMITTER_NAME: actor.username, GIT_COMMITTER_EMAIL: `${actor.username}@murm.invalid`, RUN_OWNER: facilities.repository.owner, RUN_REPO: facilities.repository.name },
         network: { allow: [new URL(facilities.repositoryUrl).origin] }, services: { board: boardPermissions[role === 'lead' ? 'lead' : 'helper'], gitea: ['pull_request_write'] } }];
     }));
-    runtime = await createRuntime({ backend, services, profiles, maxAgents: roles.length, outputDir });
+    runtime = await createRuntime({ sandbox, executor, models, connection, services, profiles, maxAgents: roles.length, outputDir });
     if (startup.aborted) throw fail('HARNESS_START_ABORTED');
     unsubscribe = runtime.onEvent((event: any) => {
-      if (events.length < 256) events.push({ agentId: event.agentId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
+      if (events.length < 256) events.push({ agentId: event.agentId, seq: events.length + 1, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
       if (events.length >= 256 || event.type === 'error' && event.fatal || event.type === 'settled' && event.outcome !== 'completed' || event.type === 'exit' && !event.expected) {
         if (!closing) { recordFence({ agentId: event.agentId, code: 'AGENT_FAILED' });
           // The exclusive helper owns terminal-event/late-receipt ordering.

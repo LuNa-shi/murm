@@ -17,20 +17,19 @@ export default {
   outputDir: './notes-runs',
   turnTimeoutMs: 30_000,
   closeTimeoutMs: 30_000,
-  backend: {
-    executor,
-    sandbox: {
-      lifecycleBaseUrl: process.env.MURM_NOTES_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.MURM_NOTES_ENDPOINT_HOST ?? '127.0.0.1',
-      apiKey: process.env.MURM_NOTES_LIFECYCLE_TOKEN,
-      resourceLimits: { cpu: '1', memory: '1Gi' },
-      commandTimeoutMs: 20_000,
-    },
-    bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-    modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 25_000, maxOutputTokens: executor === 'codex' ? null : 4096 },
-    models: { default: { provider, model, upstream: {
-      url: upstream, headers: token ? { authorization: `Bearer ${token}` } : {},
-    } } },
+  executor,
+  sandbox: {
+    lifecycleBaseUrl: process.env.MURM_NOTES_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+    endpointHost: process.env.MURM_NOTES_ENDPOINT_HOST ?? '127.0.0.1',
+    apiKey: process.env.MURM_NOTES_LIFECYCLE_TOKEN,
+    resourceLimits: { cpu: '1', memory: '1Gi' },
+    commandTimeoutMs: 20_000,
     isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
   },
+  connection: { advertiseHost: host,
+    modelGateway: { requestTimeoutMs: 25_000, maxOutputTokens: executor === 'codex' ? null : 4096 },
+  },
+  models: { default: { provider, model, upstream: {
+    url: upstream, headers: token ? { authorization: `Bearer ${token}` } : {},
+  } } },
 };

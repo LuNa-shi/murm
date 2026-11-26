@@ -35,9 +35,9 @@ export function acceptanceFailed(report, deadlineExpired, live) {
 
 export function promptRevocationVerified(evidence) {
   return Boolean(evidence?.heldBeforeTransition &&
-    ['domainTransitionAt', 'upstreamSocketClosedAt', 'settledAt'].every(key => Number.isFinite(evidence[key])) &&
-    ['socketCloseElapsedMs', 'settledElapsedMs'].every(key => Number.isFinite(evidence[key]) && evidence[key] >= 0 && evidence[key] <= 5000) &&
+    ['domainTransitionAt', 'upstreamSocketClosedAt', 'stopReceiptAt'].every(key => Number.isFinite(evidence[key])) &&
+    ['socketCloseElapsedMs', 'stopReceiptElapsedMs'].every(key => Number.isFinite(evidence[key]) && evidence[key] >= 0 && evidence[key] <= 5000) &&
     evidence.requestTimeoutMs === 60_000 && Number.isFinite(evidence.requestAgeAtTransitionMs) && evidence.requestAgeAtTransitionMs >= 0 &&
-    evidence.requestAgeAtTransitionMs + Math.max(evidence.socketCloseElapsedMs, evidence.settledElapsedMs) < evidence.requestTimeoutMs &&
-    ['failed', 'aborted'].includes(evidence.outcome));
+    evidence.requestAgeAtTransitionMs + Math.max(evidence.socketCloseElapsedMs, evidence.stopReceiptElapsedMs) < evidence.requestTimeoutMs &&
+    evidence.execution === 'stopped');
 }

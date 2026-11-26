@@ -27,13 +27,7 @@ If you already have the infrastructure ready, choose your next step:
 
 The package is named `@murm/core`. These are import paths within that package:
 
-| Import path | Purpose |
-| --- | --- |
-| `@murm/core` | Create a Runtime, control and observe Agents, and finalize a Run; also exports public types |
-| `@murm/core/services` | Define Services and connect in-process or HTTP implementations |
-| `@murm/core/backends/opensandbox` | Configure OpenSandbox execution with Pi or Codex and inspect backend capabilities |
-
-The package also retains `@murm/core/backends/pi-opensandbox` for Pi-specific callers. New Harnesses can use the generic OpenSandbox entry point. The current package is private in `package.json`; the supported installation recipes use a source checkout or an `npm pack` tarball. [SDK installation](sdk.md) explains both.
+Import the public values and types from `@murm/core`. Configure OpenSandbox with `createSandbox` and manage Agents, Services, files and cleanup through `createRuntime`. Install from a checkout or an `npm pack` tarball. See the [SDK guide](sdk.md).
 
 ## Explore the collaboration mechanisms
 

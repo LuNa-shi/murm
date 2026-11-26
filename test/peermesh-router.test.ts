@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -22,9 +23,8 @@ async function fixture(t, onPrompt = () => {}, routerOptions = {}) {
     } }); provider.allowDeletion();
   const outputDir = await mkdtemp(join(tmpdir(), 'agensh-router-')); t.after(() => rm(outputDir, { recursive: true, force: true }));
   const { createPeerMeshRouterHarness } = await import('../src/harnesses/peermesh/routed.js');
-  const { createPiOpenSandboxBackend } = await import('../src/core/backends/pi-opensandbox.js');
   harness = await createPeerMeshRouterHarness({ runId: 'router', image: 'fixture', outputDir, exportLimit: 1024 ** 2,
-    backend: createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: provider.url }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
+    ...runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 16 * 1024 ** 2, inodes: 2048 } } }),
     prepare: async () => ({ runId: 'router', repository: { owner: 'owner', name: 'repo' }, repositoryUrl: 'http://172.17.0.1:3000/owner/repo.git', channelId: 'channel', boardId: 'board', issueNumber: 1,
       endpoints: { gitea: 'http://172.17.0.1:3000', message: 'http://127.0.0.1:1', board: 'http://127.0.0.1:1' },

@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core/services';
+import { ServiceRegistry } from '@murm/core';
 import { agentControlBackend, createAgentControlUpstream, parentCommand } from './fixtures/core-agent-service-upstream.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
@@ -24,7 +24,7 @@ test('real parent Bash controls one child through two native Pi rounds and physi
   report.failure=!success; await writeFile(join(outputDir,'acceptance.json'),JSON.stringify(report,null,2),{mode:0o600}); assert.equal(success,true);
  });
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-  const runtime = await createRuntime({ backend: agentControlBackend(upstream, {
+  const runtime = await createRuntime({ ...agentControlBackend(upstream, {
     lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
     endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
   }, { host }), profiles: {

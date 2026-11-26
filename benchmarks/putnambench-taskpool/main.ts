@@ -9,18 +9,14 @@ import { loadPutnamB1, putnamModel, putnamSelectionMs, putnamWindowMs } from './
 const execute = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const git = (args: string[]) => execute('git', args, { cwd: root, timeout: 10_000 });
-const [operation, checkerConfig, datasetRoot, experimentId, image, windowSeconds, selectionSeconds, selectionEffortArg, modelArg, ...extra] = process.argv.slice(2);
+const [operation, checkerConfig, datasetRoot, experimentId, image, windowSeconds, selectionSeconds, modelArg, ...extra] = process.argv.slice(2);
 if (!['preflight', 'run'].includes(operation) || !checkerConfig || !datasetRoot || extra.length ||
     (operation === 'preflight' && experimentId !== undefined) ||
     (operation === 'run' && (!/^EXP-\d{8}-\d{2}$/.test(experimentId ?? '') || !/^sha256:[a-f0-9]{64}$/.test(image ?? '')))) {
-  throw new Error('Usage: main.ts preflight CHECKER_CONFIG PUTNAMBENCH_ROOT | main.ts run CHECKER_CONFIG PUTNAMBENCH_ROOT EXP_ID WORKER_IMAGE_ID [WINDOW_SECONDS [SELECTION_SECONDS [low [MODEL]]]]');
+  throw new Error('Usage: main.ts preflight CHECKER_CONFIG PUTNAMBENCH_ROOT | main.ts run CHECKER_CONFIG PUTNAMBENCH_ROOT EXP_ID WORKER_IMAGE_ID [WINDOW_SECONDS [SELECTION_SECONDS [MODEL]]]');
 }
 const durationMs = putnamWindowMs(windowSeconds);
 const selectionMs = putnamSelectionMs(durationMs, selectionSeconds);
-if (selectionEffortArg !== undefined && selectionEffortArg !== 'low') {
-  throw new Error('Putnam selection reasoning effort must be low when configured');
-}
-const selectionReasoningEffort = selectionEffortArg === 'low' ? selectionEffortArg : undefined;
 const problem = await loadPutnamB1(datasetRoot, putnamModel(modelArg));
 let code: string | undefined;
 let directory: string | undefined;
@@ -57,7 +53,6 @@ if (operation === 'run') {
   await writeFile(join(parent, 'identity.json'), JSON.stringify({
     experimentId, code, image, dataset: problem.putnambench_commit, instance: problem.id,
     provider: problem.provider, model: problem.model, capacity: problem.capacity, durationMs, selectionMs,
-    selectionReasoningEffort: selectionReasoningEffort ?? null,
   }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
 }
 
@@ -70,7 +65,7 @@ if (operation === 'preflight') {
     artifactLock: checks.evidence.artifact_lock_sha256, project: seed.project.verdict, final: seed.final.verdict }) + '\n');
 } else {
   const { runPutnamTaskPool } = await import('./run.ts');
-  const { createPiOpenSandboxBackend } = await import('../../dist/src/core/backends/pi-opensandbox.js');
+  const { createSandbox } = await import('@murm/core');
   const { assertShippedModelPair } = await import('../../dist/src/agent/model-catalog.js');
   await assertShippedModelPair({ provider: problem.provider, model: problem.model });
   const environmentPrefix = 'PI_' + problem.provider.toUpperCase();
@@ -100,18 +95,17 @@ if (operation === 'preflight') {
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
   try {
-    const receipt = await runPutnamTaskPool({ problem, checks, directory: directory!, image: image!, durationMs, selectionMs, selectionReasoningEffort,
+    const receipt = await runPutnamTaskPool({ problem, checks, directory: directory!, image: image!, durationMs, selectionMs,
       upstream: { url: upstream.href, headers: { authorization: 'Bearer ' + key } }, signal: abort.signal,
-      backend: endpoint => createPiOpenSandboxBackend({
-        sandbox: {
+      runtimeSettings: endpoint => ({
+        sandbox: createSandbox({
           lifecycleBaseUrl: process.env.MURM_SANDBOX_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
           endpointHost: process.env.MURM_SANDBOX_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_SANDBOX_API_KEY,
           timeoutSeconds: 4_080, commandTimeoutMs: 20_000,
-        },
-        bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-        modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: durationMs, maxOutputTokens: null, selectionReasoningEffort },
+          isolation: { disk: { bytes: 64 * 1024 ** 2, inodes: 8192 } },
+        }),
+        connection: { advertiseHost: host, modelGateway: { requestTimeoutMs: durationMs, maxOutputTokens: null } },
         models: { default: { provider: problem.provider, model: problem.model, upstream: endpoint } },
-        isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 8192 } },
       }),
     });
     process.stdout.write(JSON.stringify({ experimentId, directory, completion: receipt.completion,

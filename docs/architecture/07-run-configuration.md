@@ -18,14 +18,7 @@ intact for Node to resolve. The suite exercises external boundaries with
 deliberately invalid inputs and partial mocks. The separate installed-consumer
 check typechecks valid and invalid uses of the generated public declarations.
 
-All three package exports resolve to JavaScript and declarations under
-`dist/src/core/`. The Service entry uses an explicit facade that preserves its eight existing value exports and keeps host credential registration internal. `npm pack` runs the build through `prepack`. Install the resulting
-archive with `npm install --omit=dev` to run the same JavaScript without a compiler
-or loader. The installed `swarm` binary, host scripts and in-place example modules
-come from `dist/`. Run `npm run docs:generate` to rebuild documentation references,
-`npm run docs:check` to verify them, and `npm test` for the test suite. Each command
-builds first. The documentation tools execute compiled modules and fingerprint
-their source inputs. Tests execute in the compiled tree.
+The package root exposes the six public Core values and their types through the JavaScript and declaration entry under `dist/src/core/`. `npm pack` runs the build through `prepack`. Installing the resulting archive with `npm install --omit=dev` makes the compiled programs available without a compiler or loader. Run `npm run docs:generate`, `npm run docs:check` and `npm test` from a source checkout. Each builds first. The editable host templates supply a plain Sandbox configuration for `createSandbox`, plus separate Runtime executor, model and connection settings. Core Worker startup checks `file-tree-v1`, and local setup's Worker profile and reuse check require its matching image label.
 
 Each image compiles from the locked inputs in a TypeScript build stage. The
 final image installs production dependencies only and copies the compiled tree.
@@ -109,7 +102,7 @@ The shipped `.env.example` lists host variables consumed by the Notes configurat
 | `dist/scripts/mathlib-search-service.js` | Optional HTTP search over configured upstream or mounted source. [Services](04-services.md#6-optional-mathlib-search) |
 | `murm trace --root <runs-dir> --port 8787` | Standalone browser viewer for saved and active Core Runs. [Trace Viewer](06-observability-experiments.md) |
 
-Public package exports resolve Core, Services and the configured OpenSandbox factory. Pass `backend.executor` as `pi` or `codex`, or omit it to use Pi. Call `getOpenSandboxBackendCapabilities` with the returned handle to configure capability-dependent Profiles or Services before Runtime assembly. Existing Pi callers can continue to use the deprecated Pi factory. Repository domain code and regression tests import internal components from their owning modules. The legacy domain source barrel, benchmark runner, scheduling helpers, fixed configurations, mathematical datasets, Pass@K and historical report importer have been retired. Their version-bound implementations are preserved in [research](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9).
+Use the `@murm/core` root entry. Runtime's `executor` defaults to `pi`. Select `codex` explicitly when needed and query static capabilities with `getExecutorCapabilities(executor)`.
 
 ## Startup, input and shutdown
 

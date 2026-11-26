@@ -26,7 +26,7 @@ test('TaskPool can finish with a public Material when no live Workspace capture 
   const accept=id=>{transport.confirm(id,'started');transport.next=accept;}; transport.next=accept;
   let materialId;
   const report=await runTaskPoolHarness({...stores,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
-    outputDir:root,deadlineAt:Date.now()+10000,backend:{},model:'default',image:'fixture',capacity:1,
+    outputDir:root,deadlineAt:Date.now()+10000,sandbox: {},model:'default',image:'fixture',capacity:1,
     async drive(controller) {
       const [{agentId}]=controller.snapshot().agents;
       const credentials=controls.credentials.get(agentId);
@@ -74,7 +74,7 @@ test('flat close retains physical cleanup and reconciles remaining Agents after 
   };
   const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
-    deadlineAt: Date.now() + 10_000, backend: {}, model: 'default', image: 'fixture', capacity: 2,
+    deadlineAt: Date.now() + 10_000, sandbox: {}, model: 'default', image: 'fixture', capacity: 2,
     snapshotProject: async () => { throw new Error('No capture is needed for discovery shutdown'); },
     async drive(controller) { controller.halt('controlled-host-stop'); },
   });
@@ -110,7 +110,7 @@ test('TaskPool host composes public Bash publication and controller finish with 
   const manifest=Object.fromEntries(Object.entries(files).map(([path,bytes])=>[path,{bytes:bytes.length,content_hash:hash(bytes)}]));
   let materialId,revision,captures=0;
   const report=await runTaskPoolHarness({...stores,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
-    outputDir:root,deadlineAt:Date.now()+10000,backend:{},model:'default',image:'fixture',capacity:1,
+    outputDir:root,deadlineAt:Date.now()+10000,sandbox: {},model:'default',image:'fixture',capacity:1,
     async snapshotProject({executionId,fencingVersion}) {captures++;return {execution_id:executionId,binding_version:fencingVersion,state:'ACTIVE',files:Object.fromEntries(Object.entries(files).map(([path,bytes])=>[path,bytes.toString('base64')])),manifest,content_hash:hash(stableStringify(manifest))};},
     async drive(controller) {
       const agent=controller.snapshot().agents[0];
@@ -181,7 +181,7 @@ async function runPublicationProbe(t, snapshotProject, probe) {
   let probeFailure;
   const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
-    deadlineAt: Date.now() + 20_000, backend: {}, model: 'default', image: 'fixture', capacity: 1,
+    deadlineAt: Date.now() + 20_000, sandbox: {}, model: 'default', image: 'fixture', capacity: 1,
     // Trusted test capture only. This does not provide a production live snapshot.
     snapshotProject,
     async drive(controller) {
@@ -378,7 +378,7 @@ test('flat rejects a configured Workspace from another Mission before allocating
   let entered = false;
   const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, workspaceId: foreign.workspace_id,
-    outputDir: root, deadlineAt: Date.now() + 10_000, backend: {}, model: 'default', image: 'fixture', capacity: 1,
+    outputDir: root, deadlineAt: Date.now() + 10_000, sandbox: {}, model: 'default', image: 'fixture', capacity: 1,
     snapshotProject: async () => { throw new Error('No capture is needed for a public read'); },
     async drive(controller) { entered = true; controller.halt('unexpected-admission'); },
   });
@@ -412,7 +412,7 @@ for (const [operation, method, payload] of [
   let probeFailure;
   const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
-    deadlineAt: Date.now() + 15_000, backend: {}, model: 'default', image: 'fixture', capacity: 2,
+    deadlineAt: Date.now() + 15_000, sandbox: {}, model: 'default', image: 'fixture', capacity: 2,
     snapshotProject: async () => { throw new Error('No capture is needed for a public read'); },
     async drive(controller, runtime) {
       controller.halt('public-read-probe');
@@ -521,7 +521,7 @@ test('flat metadata admission preserves host cancellation when an already admitt
   const controller = new AbortController();
   const pending = runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
-    deadlineAt: Date.now() + 10_000, backend: {}, model: 'default', image: 'fixture', capacity: 1,
+    deadlineAt: Date.now() + 10_000, sandbox: {}, model: 'default', image: 'fixture', capacity: 1,
     signal: controller.signal,
     snapshotProject: async () => { throw new Error('No capture is needed during admission'); },
   });
@@ -564,7 +564,7 @@ test('four current CLI discovery Agents take exclusive work and reuse only a phy
   let initial, takes, replacement;
   const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, missionId, workspaceId: workspace.workspace_id,
-    outputDir: root, deadlineAt: Date.now() + 20_000, backend: {}, model: 'default', image: 'fixture', capacity: 4,
+    outputDir: root, deadlineAt: Date.now() + 20_000, sandbox: {}, model: 'default', image: 'fixture', capacity: 4,
     controller: { heartbeatMs: 10000, stallMs: 15000 },
     snapshotProject: async () => { throw new Error('Discovery, take and incomplete finish never capture private files'); },
     async drive(controller, runtime) {
@@ -641,7 +641,7 @@ test('the ordinary TaskPool host exposes Mathlib search only to its current rese
   const report = await runTaskPoolHarness({
     ...stores, taskService: stores.tasks, contextService: stores.context, missionWorkspace: stores.workspace,
     workspaceManager: stores.manager, outputDir: root, deadlineAt: Date.now() + 10_000,
-    backend: {}, model: 'default', image: 'fixture', capacity: 1,
+    sandbox: {}, model: 'default', image: 'fixture', capacity: 1,
     handoff: { handoffLeadMs: 500 },
     mathlibSearch: { mathlibRevision: 'fixed-library', leanVersion: '4.33.1', readiness: async () => true,
       async search(input) { searched.push(input.query); return { results: [{ name: 'Nat.add_comm' }] }; } },

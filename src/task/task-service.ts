@@ -20,14 +20,14 @@ const TASK_PUBLIC_MUTATING_OPERATIONS = new Set(['mission_create', 'task_create'
 const TASK_PUBLIC_READ_OPERATIONS = new Set(['mission_get', 'task_list', 'task_view', 'task_materials']);
 const TASK_MUTATING_OPERATIONS = new Set([
   'agent_exit',
-  'reconcile_task', 'start_execution', 'stop_execution', 'fence_execution', 'save_workspace_revision',
+  'reconcile_task', 'task_take', 'start_execution', 'stop_execution', 'fence_execution', 'save_workspace_revision',
   'task_link_material', 'task_finish',
   ...TASK_PUBLIC_MUTATING_OPERATIONS,
   'task_take',
 ]);
 const TASK_EVENT_OPERATIONS = new Set([
   'mission_create', 'task_create', 'task_revise',
-  'reconcile_task', 'start_execution', 'stop_execution', 'fence_execution', 'save_workspace_revision',
+  'reconcile_task', 'task_take', 'start_execution', 'stop_execution', 'fence_execution', 'save_workspace_revision',
   'task_create', 'task_cancel', 'task_dependency_replace',
   'task_link_material', 'task_finish',
   'task_feedback',

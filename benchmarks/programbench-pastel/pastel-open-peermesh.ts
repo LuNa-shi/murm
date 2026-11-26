@@ -83,7 +83,7 @@ export async function resolvePeerMeshImages() {
   return { references, images: Object.fromEntries(images) };
 }
 
-export async function runOpenPeerMesh({ state, task, window, start, deadline, image, backend, outputDir, durationMs, peerMeshImages }) {
+export async function runOpenPeerMesh({ state, task, window, start, deadline, image, runtimeSettings, outputDir, durationMs, peerMeshImages }) {
   state.stage = 'peermesh-startup';
   const { images } = peerMeshImages ?? await resolvePeerMeshImages();
   const stack = await createLocalPeerMeshStack({ directory: join(outputDir, 'facilities'), setupMs: 120_000,
@@ -94,7 +94,7 @@ export async function runOpenPeerMesh({ state, task, window, start, deadline, im
     const configuration = await stack.start();
     const git = httpClient(configuration.gitea.origin, `token ${configuration.gitea.adminToken}`);
     const repo = () => `/api/v1/repos/${encodeURIComponent(facilities.repository.owner)}/${encodeURIComponent(facilities.repository.name)}`;
-    team = await createPeerMeshTeam({ ...configuration, runId, image, outputDir, backend, signal: window.signal,
+    team = await createPeerMeshTeam({ ...configuration, runId, image, outputDir, ...runtimeSettings, signal: window.signal,
       peerKeys: ['a', 'b', 'c'],
       router: { workTimeoutMs: durationMs + 120_000, turnTimeoutMs: durationMs, maxBatches: 32,
         maxNudges: 0, events: { pollIntervalMs: 2500, maxPolls: Math.ceil((durationMs + 120_000) / 2500) } },

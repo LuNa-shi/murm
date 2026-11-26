@@ -50,26 +50,27 @@ test('murm rejects an invalid argument before loading developer configuration', 
 });
 
 
-test('doctor rejects invalid editable backend settings before infrastructure work', async t => {
+test('doctor rejects invalid editable Runtime settings before infrastructure work', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'murm-doctor-config-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const backend = {
-    sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
-    bridge: { host: '0.0.0.0', publicUrl: 'http://172.17.0.1:{port}' },
-    modelGateway: { host: '0.0.0.0', advertiseHost: '172.17.0.1' },
-    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: '', headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+  const sandbox = {
+    lifecycleBaseUrl: 'http://127.0.0.1:1/v1',
+    isolation: { disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+  };
+  const settings = {
+    sandbox, connection: { advertiseHost: '172.17.0.1' },
+    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
   };
   const filename = join(directory, 'config.mjs');
   for (const changed of [
-    { ...backend, bridge: { ...backend.bridge, publicUrl: 'http://127.0.0.1:{port}' } },
-    { ...backend, isolation: { ...backend.isolation, disk: { bytes: 1, inodes: 4096 } } },
+    { ...settings, connection: { advertiseHost: '127.0.0.1' } },
+    { ...settings, sandbox: { ...sandbox, isolation: { disk: { bytes: 1, inodes: 4096 } } } },
   ]) {
-    await writeFile(filename, 'export default ' + JSON.stringify({ image: 'unused', backend: changed }));
+    await writeFile(filename, 'export default ' + JSON.stringify({ image: 'unused', ...changed }));
     const result = spawnSync(process.execPath, [cli, 'doctor', '--config', filename, '--smoke'], { encoding: 'utf8' });
     assert.equal(result.status, 1, result.stderr);
     const report = JSON.parse(result.stdout);
-    assert.ok(report.checks.some(check => check.id === 'config.backend' && !check.ok), result.stdout);
+    assert.ok(report.checks.some(check => check.id === 'config.runtime' && !check.ok), result.stdout);
     assert.equal(report.smoke, undefined);
     assert.deepEqual(report.timings, []);
   }
@@ -80,16 +81,13 @@ test('doctor classifies invalid active model routes before allocation', async t 
   t.after(() => rm(directory, { recursive: true, force: true }));
   const filename = join(directory, 'config.mjs');
   await writeFile(filename, `export default {
-    image: 'unused', model: 'default', childModel: 'child', backend: {
-      sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
-      bridge: { host: '0.0.0.0', publicUrl: 'http://172.17.0.1:{port}' },
-      modelGateway: { host: '0.0.0.0', advertiseHost: '172.17.0.1' },
+    image: 'unused', model: 'default', childModel: 'child',
+      sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1', isolation: { disk: { bytes: 67108864, inodes: 4096 } } },
+      connection: { advertiseHost: '172.17.0.1' },
       models: {
         default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'https://example.com/v1/responses', headers: {} } },
         child: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'https://example.com/', headers: {} } },
       },
-      isolation: { network: 'local-docker', disk: { bytes: 67108864, inodes: 4096 } },
-    }
   }`);
   const result = spawnSync(process.execPath, [cli, 'doctor', '--config', filename], { encoding: 'utf8' });
   assert.equal(result.status, 1);
@@ -104,10 +102,10 @@ test('configured doctor reports Codex as unsupported by the Pi probe before touc
   t.after(() => rm(directory, { recursive: true, force: true }));
   const filename = join(directory, 'config.mjs');
   await writeFile(filename, `export default {
-    image: 'unused', backend: {
-      executor: 'codex',
-      models: { default: { upstream: { url: 'https://example.com/v1/responses' } } },
-    },
+    image: 'unused', executor: 'codex',
+    sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1', isolation: { disk: { bytes: 67108864, inodes: 4096 } } },
+    connection: { advertiseHost: '172.17.0.1' },
+    models: { default: { model: 'gpt-6.1-sol', provider: 'openai', upstream: { url: 'https://example.com/v1/responses', headers: {} } } },
   }`);
   const result = spawnSync(process.execPath, [cli, 'doctor', '--config', filename, '--smoke'], { encoding: 'utf8' });
   assert.equal(result.status, 1, result.stderr);

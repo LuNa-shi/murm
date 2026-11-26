@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFile } from 'node:child_process';
@@ -8,7 +9,6 @@ import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { createPeerMeshHarness } from '../src/harnesses/peermesh/index.js';
-import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
 import { httpClient } from '../src/harnesses/peermesh/http.js';
 import { createLocalPeerMeshStack } from './fixtures/peermesh-local-stack.js';
 import { createPeerUpstream, peerInputs } from './fixtures/peermesh-peer-upstream.js';
@@ -48,7 +48,7 @@ test('actual single Agensh peer uses trusted Services, native Git and one persis
     work = createWorkGate(120_000, 'ACTUAL_PEER_WORK_EXPIRED', cleanup);
     upstream = await createPeerUpstream({ deniedOrigin: `http://${host}:${deniedServer.address().port}`, onFailure: () => work.abort() }); upstream.start();
     harness = await work.create(() => createPeerMeshHarness({ ...configuration, signal: work.signal, runId, image, outputDir: join(directory, 'core'), model: 'default', exportLimit: 8 * 1024 ** 2,
-      backend: createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+      ...runtimeSettings({ sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
         endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 80_000, maxOutputTokens: 128 },
         models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },

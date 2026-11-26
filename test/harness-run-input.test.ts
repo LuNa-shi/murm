@@ -23,17 +23,16 @@ function fixture(send, status = 'idle') {
       return send(publish);
     },
   };
-  function publish(options = {}) { listener?.({ agentId, seq: 11, type: 'settled', outcome: 'completed', ...options }); }
+  function publish(options = {}) { listener?.({ agentId, type: 'settled', outcome: 'completed', ...options }); }
   return { runtime, publish, calls, listening: () => Boolean(listener) };
 }
 
-test('exclusive waits accept a new settlement before or after receipt, ignore old and foreign events, and permit another request', async () => {
+test('exclusive waits accept a new settlement before or after receipt, ignore foreign events, and permit another request', async () => {
   let round = 0;
   const { runtime, calls, listening } = fixture(async publish => {
     publish({ agentId: 'foreign', outcome: 'failed' });
-    publish({ seq: 10, outcome: 'failed' });
     if (++round === 1) publish({ output: 'one' });
-    else setImmediate(() => publish({ seq: 12, output: 'two' }));
+    else setImmediate(() => publish({ output: 'two' }));
     return started;
   });
   const first = await runInput(runtime, agentId, 'fixed', options);

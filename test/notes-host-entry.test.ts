@@ -13,11 +13,10 @@ test('installed Notes entry documents and inspects real failed Runtime receipts'
   const outputDir = join(installed.directory, 'failed-runs');
   await writeFile(join(installed.directory, 'failed-config.mjs'), `export default {
 image:'unused',outputDir:${JSON.stringify(outputDir)},fact:{baseline:'',source:'x',finding:'x'},
-backend:{sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1'},
-bridge:{host:'127.0.0.1',publicUrl:'http://172.17.0.1:{port}'},
-modelGateway:{host:'127.0.0.1',advertiseHost:'172.17.0.1'},
+sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1',isolation:{disk:{bytes:67108864,inodes:4096}}},
+connection:{advertiseHost:'172.17.0.1'},
 models:{default:{provider:'kimi_proxy',model:'k3',upstream:{url:'http://127.0.0.1:1/v1/responses',headers:{authorization:'PRIVATE_UNUSED_MODEL_KEY'}}}},
-isolation:{network:'local-docker',disk:{bytes:67108864,inodes:4096}}}};`);
+};`);
   let report;
   await assert.rejects(run('failed-config.mjs'), error => {
     assert.equal(error.code, 1); report = JSON.parse(error.stdout);

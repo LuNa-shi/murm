@@ -1,3 +1,4 @@
+import { fileProtocol } from '../../scripts/core-file-seed.js';
 import assert from 'node:assert/strict';
 import childProcess from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -102,9 +103,10 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       return response.end(`event: stdout\ndata: ${JSON.stringify({ text: argv[0] === 'pi' ? '1.3.0' : 'v22.19.0' })}\n\nevent: execution_complete\ndata: {"exit_code":0}\n\n`);
     }
+    if (path === '/worker/core/contract') return send({ result: { file_protocol: fileProtocol } });
     if (path === '/worker/start') {
       const version = body.writable || body.files !== undefined ? 1 : 0;
-      const result = { contract: { version: 'murm-core-v1', resources: [] },
+      const result = { contract: { version: 'murm-core-v1', resources: [], file_protocol: fileProtocol },
         project_quota: body.project_quota, model_catalog_resource: body.model_catalog_resource,
         project_files: { writable: body.writable, version, ...(version ? { digest: decodeFileSeed(body.files ?? {}).digest } : {}) } };
       onStart?.(body, result);

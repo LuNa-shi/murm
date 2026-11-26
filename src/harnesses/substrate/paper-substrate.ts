@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Tiktoken } from 'js-tiktoken/lite';
 import encoder from 'js-tiktoken/ranks/o200k_base';
-import { createInProcessAdapter, type JsonValue, type ServiceCaller, type ServiceCapability, type ServiceManifest, type ServiceRegistry } from '@murm/core/services';
+import { createInProcessAdapter, type JsonValue, type ServiceCaller, type ServiceCapability, type ServiceManifest, type ServiceRegistry } from '@murm/core';
 import { stableStringify } from '../../protocol/envelope.js';
 
 export type SharingMode = 'shared' | 'private' | 'none';

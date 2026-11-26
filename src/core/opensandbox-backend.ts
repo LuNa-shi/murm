@@ -1,11 +1,11 @@
-import type { AgentEvent, ErrorInfo, FileSnapshot, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from './types.js';
+import type { AgentEvent, ErrorInfo, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from './types.js';
 import type { SessionFork } from '../../scripts/core-session-fork.js';
 import type { createCoreBridge } from './bridge.js';
 import { renderStartupPrompt } from './startup-prompt.js';
 import type { createCoreModelAccess } from './model-access.js';
 
 export type BackendEvent = {
-  [Kind in AgentEvent['type']]: Omit<Extract<AgentEvent, { type: Kind }>, 'agentId' | 'seq'>
+  [Kind in AgentEvent['type']]: Omit<Extract<AgentEvent, { type: Kind }>, 'agentId'>
 }[AgentEvent['type']];
 
 export type BackendInputReceipt =
@@ -30,7 +30,8 @@ interface WorkspaceOwners {
   retiring?: Promise<unknown>;
   captureWork?: Promise<unknown>;
 }
-type SnapshotOptions = Parameters<import('./types.js').Runtime['files']['snapshot']>[1];
+import type { WorkerFileReplace, WorkerFileSnapshot } from './file-controls.js';
+import type { FileReplaceOptions, FileSnapshotOptions } from './types.js';
 
 interface BackendAgent {
   workspace?: SharedWorkspace;
@@ -87,8 +88,8 @@ export interface SandboxManager {
   agentRpc(agentId: string, input: Record<string, unknown>, options: {
     timeoutMs: number; since?: number; transportTimeoutMs?: number; signal?: AbortSignal;
   }): Promise<WorkerReply>;
-  coreFileOperation(agentId: string, action: 'snapshot', input: SnapshotOptions): Promise<Omit<FileSnapshot, 'agentId'>>;
-  coreFileOperation(agentId: string, action: 'prepare' | 'grant' | 'install' | 'confirm', input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
+  coreFileOperation(agentId: string, action: 'snapshot', input: FileSnapshotOptions): Promise<WorkerFileSnapshot>;
+  coreFileOperation(agentId: string, action: 'replace', input: FileReplaceOptions): Promise<WorkerFileReplace>;
   coreFileOperation(agentId: string, action: 'pause' | 'resume', input: { requestId: string }): Promise<{ paused: boolean; requestId: string }>;
   coreSessionSnapshot(agentId: string): Promise<SessionFork>;
   collectCoreSession(agentId: string): AsyncIterable<import('./artifact-collection.js').ArtifactRecord>;
@@ -136,8 +137,8 @@ interface BackendSpawnOptions {
   recordAllocation(record: AllocationRecord): void;
 }
 
-import type { Backend } from './types.js';
-import type { OpenSandboxBackendConfig } from './backend-config.js';
+import type { CreateRuntimeOptions } from './types.js';
+import type { OpenSandboxBackendConfig, Sandbox, SandboxConfig } from './backend-config.js';
 import { selectExecutorDriver, type ExecutorDriver } from './executor-driver.js';
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
@@ -147,7 +148,8 @@ import { checkLocalWorkspaceQuota, createLocalOpenSandboxProvider, type OpenSand
 
 export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'> & { readonly driver: Readonly<ExecutorDriver> };
 
-const handles = new WeakMap<Backend, { config: ResolvedOpenSandboxBackendConfig; claimed: boolean }>();
+type SandboxSettings = Pick<OpenSandboxBackendConfig, 'sandbox' | 'isolation'>;
+const sandboxes = new WeakMap<Sandbox, SandboxSettings>();
 
 function invalid(message: string) {
   return Object.assign(new Error(message), { code: 'INVALID_CONTRACT' });
@@ -174,56 +176,71 @@ function sandboxExpiry(value: unknown) {
   return new Date(instant).toISOString();
 }
 
-export function createOpenSandboxBackend(config: OpenSandboxBackendConfig): Backend {
-  const driver = selectExecutorDriver(config?.executor);
-  if (config?.isolation?.network !== 'local-docker') throw invalid('OpenSandbox requires local-docker isolation');
-  httpUrl(config.sandbox?.lifecycleBaseUrl, 'sandbox.lifecycleBaseUrl');
-  const timeoutSeconds = config.sandbox.timeoutSeconds === undefined ? 3600 : config.sandbox.timeoutSeconds;
-  if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 60) throw invalid('sandbox.timeoutSeconds must be a safe integer of at least 60');
-  if (typeof config.bridge?.host !== 'string' || !config.bridge.publicUrl?.includes('{port}')) throw invalid('Bridge host and publicUrl with {port} are required');
-  httpUrl(config.bridge.publicUrl.replaceAll('{port}', '12345'), 'bridge.publicUrl');
-  if (typeof config.modelGateway?.host !== 'string' || typeof config.modelGateway.advertiseHost !== 'string') throw invalid('Model gateway host and advertiseHost are required');
-  const outputPolicy = config.modelGateway.maxOutputTokens === undefined
-    ? driver.defaultMaxOutputTokens : config.modelGateway.maxOutputTokens;
-  if (outputPolicy !== undefined && outputPolicy !== null && (!Number.isSafeInteger(outputPolicy) || outputPolicy < 16)) {
-    throw invalid('modelGateway.maxOutputTokens must be null or a safe integer of at least 16');
+export function createSandbox(config: SandboxConfig): Sandbox {
+  if (!config || (config.kind !== undefined && config.kind !== 'opensandbox') ||
+      Object.keys(config).some(key => !['kind', 'lifecycleBaseUrl', 'apiKey', 'execdToken', 'endpointHost',
+        'resourceLimits', 'commandTimeoutMs', 'timeoutSeconds', 'isolation'].includes(key))) {
+    throw invalid('createSandbox requires an OpenSandbox configuration with only Sandbox settings');
   }
-  const selectionReasoningEffort = config.modelGateway.selectionReasoningEffort;
-  if (selectionReasoningEffort !== undefined && selectionReasoningEffort !== 'low') {
-    throw invalid('modelGateway.selectionReasoningEffort must be low when configured');
+  const { kind: _kind, isolation, ...sandbox } = config;
+  if (!isolation || (isolation.network !== undefined && isolation.network !== 'local-docker')) {
+    throw invalid('OpenSandbox requires local-docker isolation');
   }
-  if (!Number.isSafeInteger(config.isolation.disk?.bytes) || !Number.isSafeInteger(config.isolation.disk?.inodes)) throw invalid('Explicit disk byte and inode limits are required');
-  try { checkLocalWorkspaceQuota(config.isolation.disk); } catch (caught) {
-    const error = caught as Error & { code: string }; throw invalid(error.message); }
-  const bridgeOrigin = httpUrl(config.bridge.publicUrl.replaceAll('{port}', '12345'), 'Bridge origin');
-  for (const host of [bridgeOrigin.hostname, config.modelGateway.advertiseHost]) {
-    if (isIP(host) !== 4 || host.startsWith('127.') || host === '0.0.0.0') throw invalid('Sandbox destinations require concrete non-loopback IPv4 addresses');
+  httpUrl(sandbox.lifecycleBaseUrl, 'sandbox.lifecycleBaseUrl');
+  const timeoutSeconds = sandbox.timeoutSeconds === undefined ? 3600 : sandbox.timeoutSeconds;
+  if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 60) {
+    throw invalid('sandbox.timeoutSeconds must be a safe integer of at least 60');
   }
-  if (!config.models || !Object.keys(config.models).length) throw invalid('At least one model alias is required');
-  for (const model of Object.values(config.models)) {
-    if (typeof model.provider !== 'string' || typeof model.model !== 'string') throw invalid('Each model needs provider and model');
-    const url = httpUrl(model.upstream?.url, 'model upstream');
-    if (!url.pathname.endsWith('/v1/responses')) throw invalid('Model upstream must use /v1/responses');
-    if (!model.upstream.headers || typeof model.upstream.headers !== 'object') throw invalid('Model upstream headers are required');
+  if (!Number.isSafeInteger(isolation.disk?.bytes) || !Number.isSafeInteger(isolation.disk?.inodes)) {
+    throw invalid('Explicit disk byte and inode limits are required');
   }
-  const handle = Object.freeze({}) as Backend;
-  const { executor, ...settings } = config;
-  const snapshot = freeze(structuredClone({ ...settings, modelGateway: { ...settings.modelGateway, maxOutputTokens: outputPolicy } }));
-  handles.set(handle, { config: Object.freeze({ ...snapshot, driver }), claimed: false });
+  try { checkLocalWorkspaceQuota(isolation.disk); }
+  catch (error) { throw invalid((error as Error).message); }
+  const handle = Object.freeze({}) as Sandbox;
+  sandboxes.set(handle, freeze(structuredClone({
+    sandbox: { ...sandbox, timeoutSeconds }, isolation: { network: 'local-docker' as const, disk: isolation.disk },
+  })));
   return handle;
 }
 
-export function getOpenSandboxBackendCapabilities(handle: Backend) {
-  const entry = handles.get(handle);
-  if (!entry) throw invalid('An OpenSandbox backend handle is required');
-  return entry.config.driver.capabilities;
-}
-
-export function claimOpenSandboxBackend(handle: Backend) {
-  const entry = handles.get(handle);
-  if (!entry || entry.claimed) throw invalid('A fresh OpenSandbox backend handle is required');
-  entry.claimed = true;
-  return entry.config;
+export function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRuntimeOptions, 'models' | 'executor' | 'connection'>): ResolvedOpenSandboxBackendConfig {
+  const settings = sandboxes.get(handle);
+  if (!settings) throw invalid('A createSandbox handle is required');
+  const { executor, models, connection } = options;
+  const driver = selectExecutorDriver(executor);
+  const publicUrl = connection?.bridge?.publicUrl ?? (connection?.advertiseHost && `http://${connection.advertiseHost}:{port}`);
+  const advertiseHost = connection?.modelGateway?.advertiseHost ?? connection?.advertiseHost;
+  if (typeof publicUrl !== 'string' || !publicUrl.includes('{port}')) {
+    throw invalid('Runtime requires connection.advertiseHost or connection.bridge.publicUrl containing {port}');
+  }
+  if (typeof advertiseHost !== 'string') {
+    throw invalid('Runtime requires connection.advertiseHost or connection.modelGateway.advertiseHost');
+  }
+  const bridgeOrigin = httpUrl(publicUrl.replaceAll('{port}', '12345'), 'connection.bridge.publicUrl');
+  for (const host of [bridgeOrigin.hostname, advertiseHost]) {
+    if (isIP(host) !== 4 || host.startsWith('127.') || host === '0.0.0.0') {
+      throw invalid('Sandbox destinations require concrete non-loopback IPv4 addresses');
+    }
+  }
+  const gateway = connection?.modelGateway;
+  const outputPolicy = gateway?.maxOutputTokens === undefined ? driver.defaultMaxOutputTokens : gateway.maxOutputTokens;
+  if (outputPolicy !== undefined && outputPolicy !== null && (!Number.isSafeInteger(outputPolicy) || outputPolicy < 16)) {
+    throw invalid('modelGateway.maxOutputTokens must be null or a safe integer of at least 16');
+  }
+  if (!models || !Object.keys(models).length) throw invalid('At least one model alias is required');
+  for (const model of Object.values(models)) {
+    if (typeof model?.provider !== 'string' || typeof model?.model !== 'string') throw invalid('Each model needs provider and model');
+    const url = httpUrl(model.upstream?.url, 'model upstream');
+    if (!url.pathname.endsWith('/v1/responses')) throw invalid('Model upstream must use /v1/responses');
+    if (!model.upstream.headers || typeof model.upstream.headers !== 'object' ||
+        Object.values(model.upstream.headers).some(value => typeof value !== 'string')) throw invalid('Model upstream headers must be strings');
+  }
+  const snapshot = freeze(structuredClone({
+    bridge: { host: connection?.bridge?.host ?? '0.0.0.0', publicUrl },
+    modelGateway: { requestTimeoutMs: gateway?.requestTimeoutMs, host: gateway?.host ?? '0.0.0.0', advertiseHost, maxOutputTokens: outputPolicy },
+    models,
+  }));
+  return Object.freeze({ ...settings, ...snapshot, driver });
 }
 
 export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, {
@@ -309,15 +326,15 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
     }
   }
 
-  function fileOperation(agentId: string, action: 'snapshot', input: SnapshotOptions): Promise<Omit<FileSnapshot, 'agentId'>>;
-  function fileOperation(agentId: string, action: 'prepare' | 'grant' | 'install' | 'confirm', input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
-  function fileOperation(agentId: string, action: 'snapshot' | 'prepare' | 'grant' | 'install' | 'confirm', input: unknown) {
+  function fileOperation(agentId: string, action: 'snapshot', input: FileSnapshotOptions): Promise<WorkerFileSnapshot>;
+  function fileOperation(agentId: string, action: 'replace', input: FileReplaceOptions): Promise<WorkerFileReplace>;
+  function fileOperation(agentId: string, action: 'snapshot' | 'replace', input: FileSnapshotOptions | FileReplaceOptions) {
     const agent = agents.get(agentId);
     if (!agent || agent.stopping || agent.exited || agent.historyLost || closing) {
       throw Object.assign(new Error('Core Agent is unavailable for file control'), { code: 'NOT_ALLOWED' });
     }
-    return action === 'snapshot' ? agent.manager.coreFileOperation(agentId, action, input as SnapshotOptions)
-      : agent.manager.coreFileOperation(agentId, action, input);
+    return action === 'snapshot' ? agent.manager.coreFileOperation(agentId, action, input as FileSnapshotOptions)
+      : agent.manager.coreFileOperation(agentId, action, input as FileReplaceOptions);
   }
 
   return {
@@ -331,7 +348,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         forkSession = await source.manager.coreSessionSnapshot(source.id);
         if (source.stopping || source.exited || source.historyLost || signal?.aborted || closing) throw Object.assign(new Error('Context Fork source stopped during capture'), { code: 'NOT_ALLOWED' });
       }
-      const workspace = options.workspace?.mode !== 'frozen-copy' ? options.workspace : undefined;
+      const workspace = options.workspace;
       let entry = workspace && workspaces.get(workspace.id);
       if (entry?.retiring) {
         await entry.retiring;
@@ -384,7 +401,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         files: options.files, forkSession, workspace,
         env: { ...(profile.env ?? {}), ...bridgeCredentials.environment, ...credentials.environment },
         secretEnvironment: { ...(options.secretEnv ?? {}), ...bridgeCredentials.secretEnvironment, ...credentials.secretEnvironment },
-        projectQuota: quota, modelCatalogResource: credentials.catalogResource, beforeAgentStart: assertOpen });
+        requireCoreFileProtocol: true, projectQuota: quota, modelCatalogResource: credentials.catalogResource, beforeAgentStart: assertOpen });
       agent.started = true;
       const ready = await manager.agentRpc(agentId, { type: 'get_state', id: `ready-${randomUUID()}` }, { timeoutMs: 10_000, since: 0 });
       if (ready.response?.success !== true || ready.response.command !== 'get_state') throw invalid('Executor readiness response was not confirmed');
@@ -393,7 +410,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       agent.polling = agent.eventPoll.run(signal => readWorkerEvents(agent, signal));
       return { ...allocation, sandboxId: sandbox.sandbox_id, versions, ...(startup?.backend ? { backend: startup.backend } : {}) };
     },
-    async snapshotFiles(agentId: string, input: SnapshotOptions) {
+    async snapshotFiles(agentId: string, input: FileSnapshotOptions) {
       const agent = agents.get(agentId);
       if (!agent?.workspace) return fileOperation(agentId, 'snapshot', input);
       const workspace = workspaces.get(agent.workspace.id)!;
@@ -420,13 +437,10 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       workspace.captureWork = work.catch(() => undefined);
       return work;
     },
-    async installFiles(agentId: string, input: any) {
-      if (agents.get(agentId)?.workspace) throw Object.assign(new Error('Live install requires a private workDir'), { code: 'NOT_ALLOWED' });
-      return await fileOperation(agentId, 'install', input) as any;
+    replaceFiles(agentId: string, input: FileReplaceOptions) {
+      if (agents.get(agentId)?.workspace) throw Object.assign(new Error('File replacement requires a private workDir'), { code: 'NOT_ALLOWED' });
+      return fileOperation(agentId, 'replace', input);
     },
-    async confirmFiles(agentId: string, input: any) { return await fileOperation(agentId, 'confirm', input) as any; },
-    prepareFiles(agentId: string, input: { version: number; files: NonNullable<SpawnOptions['files']> }) { return fileOperation(agentId, 'prepare', input); },
-    grantFiles(agentId: string, input: { version: number; digest: string }) { return fileOperation(agentId, 'grant', input); },
     async send(agentId: string, input: string, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle }: { mode: InputMode; inputId: string; steeringMode?: SendOptions['steeringMode']; executionEpoch: number; wakeIfIdle: boolean }): Promise<BackendInputReceipt> {
       const agent = agents.get(agentId);
       if (!agent) throw Object.assign(new Error('Agent is unavailable'), { code: 'NOT_ALLOWED' });

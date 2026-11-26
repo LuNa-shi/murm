@@ -1,4 +1,4 @@
-import type { AgentInfo, ErrorInfo, ModelAccessPolicy, PendingCleanup } from './types.js';
+import type { AgentInfo, ErrorInfo, PendingCleanup } from './types.js';
 import type { createModelTrace } from './model-trace.js';
 import type { ResolvedOpenSandboxBackendConfig } from './opensandbox-backend.js';
 
@@ -20,7 +20,6 @@ interface ModelOptions {
   outputDir: string;
   config: ResolvedOpenSandboxBackendConfig;
   getAgent(id: string): ModelAgent | undefined;
-  modelAccessPolicy?: ModelAccessPolicy;
   modelTrace?: ReturnType<typeof createModelTrace>;
   onOwned?: (owner: ModelOwner) => void;
 }
@@ -80,38 +79,11 @@ function kimiResponsesPayload(payload: { input?: unknown; [key: string]: unknown
   return input.length === payload.input.length ? payload : { ...payload, input };
 }
 
-function synchronousPolicy(policy: ModelAccessPolicy | undefined): <T>(commit: () => T) => T {
-  if (policy === undefined) return commit => commit();
-  if (!policy || typeof policy.authorize !== 'function' || typeof policy.withCommit !== 'function' ||
-      [policy.authorize, policy.withCommit].some(fn => fn.constructor.name === 'AsyncFunction')) {
-    throw invalid('Model access policy requires synchronous authorize and withCommit functions');
-  }
-  return <T>(commit: () => T): T => {
-    let active = true;
-    let calls = 0;
-    let result: T | undefined;
-    try {
-      const returned = policy.withCommit(() => {
-        if (!active) return undefined;
-        if (++calls !== 1) throw invalid('Model policy must commit synchronously exactly once');
-        result = commit();
-        return result;
-      });
-      if ((returned as { then?: unknown } | undefined)?.then) Promise.resolve(returned).catch(() => {});
-      if (calls !== 1 || (returned as { then?: unknown } | undefined)?.then) throw invalid('Model policy must commit synchronously exactly once');
-      return result as T;
-    } finally {
-      active = false;
-    }
-  };
-}
-
-export async function createCoreModelAccess({ runtimeId, outputDir, config, getAgent, modelAccessPolicy, modelTrace, onOwned }: ModelOptions) {
+export async function createCoreModelAccess({ runtimeId, outputDir, config, getAgent, modelTrace, onOwned }: ModelOptions) {
   if (typeof runtimeId !== 'string' || !runtimeId || typeof outputDir !== 'string' || !outputDir ||
       typeof getAgent !== 'function' || !config?.models || !Object.keys(config.models).length) {
     throw invalid('Model access requires Runtime identity, output directory, models and Agent authority');
   }
-  const withLifecycleWrite = synchronousPolicy(modelAccessPolicy);
   const { driver } = config;
   const gatewayConfig = structuredClone(config.modelGateway);
   if (!gatewayConfig || typeof gatewayConfig.host !== 'string' || !gatewayConfig.host ||
@@ -180,23 +152,11 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
         upstream: { ...entry.model.upstream, model: entry.model.model }, timeBounds: gatewayConfig,
         ...(entry.model.provider === 'kimi_proxy' && entry.model.model === 'k3' ? { transformPayload: kimiResponsesPayload } : {}),
         beginTrace: modelTrace ? (request: Record<string, unknown>) => modelTrace.begin({ ...request, modelAlias: alias, provider: entry.model.provider }) : undefined,
-        withLifecycleWrite,
         validateAgent: ({ runtimeId: callerRuntimeId, agentId }: { runtimeId: string; agentId: string }) => {
           if (callerRuntimeId !== runtimeId) return null;
           const agent = liveAgent(agentId, alias);
           if (!agent || agent.status === 'starting') return null;
-          if (!modelAccessPolicy) return { phase: 'work', deadline: Date.now() + entry.gateway!.policy.requestTimeoutMs };
-          const permit = modelAccessPolicy.authorize(Object.freeze({ runtimeId, agentId, profile: agent.profile, model: alias }));
-          if ((permit as { then?: unknown } | null)?.then) {
-            Promise.resolve(permit).catch(() => {});
-            return null;
-          }
-          if (!permit || !['selection', 'work', 'closeout'].includes(permit.phase) ||
-              !Number.isFinite(permit.deadlineAt) || permit.deadlineAt <= Date.now()) return null;
-          const lease = permit.lease;
-          if (lease !== undefined && (!lease || typeof lease.key !== 'string' || !lease.key || !Number.isSafeInteger(lease.version) ||
-              lease.version < 0 || !Number.isFinite(lease.expiresAt) || lease.expiresAt <= Date.now())) return null;
-          return { phase: permit.phase, deadline: permit.deadlineAt, ...(lease ? { lease: { ...lease } } : {}) };
+          return { deadline: Date.now() + entry.gateway!.policy.requestTimeoutMs };
         } };
       entry.gateway = new ResponsesBudgetGateway(gatewayOptions);
       const listening = await entry.gateway.start({ host: gatewayConfig.host });

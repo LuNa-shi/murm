@@ -15,21 +15,18 @@ test('installed Substrate host resolves the public backend and saves an aborted 
     process.env.MURM_SUBSTRATE_MODEL_TOKEN='PRIVATE_MODEL_TOKEN';
     const config=(await import(new URL('./config.js',pathToFileURL(${JSON.stringify(main)})))).default;
     assert.equal(config.poolSize,3);assert.equal(config.maxRounds,2);
-    assert.equal(config.backend.models.default.provider,'kimi_proxy');assert.equal(config.backend.models.default.model,'k3');
+    assert.equal(config.models.default.provider,'kimi_proxy');assert.equal(config.models.default.model,'k3');
     const report=await runSubstrateExample({...config,outputDir:${JSON.stringify(join(installed.directory, 'output'))}},signal);
     assert.equal(report.businessFailure.code,'CONTROLLED_ABORT');assert.equal(report.cleanup,null);
     assert.deepEqual(report.peers,[]);assert.equal(report.reportSaveFailure,null);
     const saved=JSON.parse(await readFile(report.reportPath,'utf8'));
     assert.deepEqual(saved.peers,[]);assert.equal(saved.businessFailure.code,'CONTROLLED_ABORT');
     assert.equal(JSON.stringify(saved).includes('PRIVATE_MODEL_TOKEN'),false);
-    assert.ok(import.meta.resolve('@murm/core/backends/pi-opensandbox').includes('/node_modules/@murm/core/'));
+    assert.ok(import.meta.resolve('@murm/core').includes('/node_modules/@murm/core/'));
     const fate = { ...config, poolSize: 4, fate: {projectRoot:'unused', leanRoot:'unused'} };
     const withModel = (provider, model) => ({
       ...fate,
-      backend: {
-        ...fate.backend,
-        models: {default: {...fate.backend.models.default, provider, model}},
-      },
+      models: {default: {...fate.models.default, provider, model}},
     });
     await assert.rejects(runSubstrateExample(fate,signal),{code:'CONTROLLED_ABORT'});
     await assert.rejects(runSubstrateExample(withModel('gpt_proxy','gpt-6.1-sol'),signal),{code:'CONTROLLED_ABORT'});

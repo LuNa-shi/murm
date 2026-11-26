@@ -15,11 +15,11 @@ Before either Agent exists, the Harness registers a Messages Service with `put` 
 
 `createRuntime()` captures that configuration and opens the host-side gateways and Run records. `runtime.spawn()` then allocates a Sandbox and starts a persistent executor session. The returned Agent is initially idle: creating it does not send a task to the model.
 
-The Harness subscribes with `runtime.observe()` before submitting work. It calls `runtime.send()` with a stable `requestId`. The receipt reports whether that input was accepted; the Harness continues observing what actually executes.
+The Harness subscribes with `runtime.onEvent(listener)` before submitting work. It calls `runtime.send()` with a stable `requestId`. The receipt reports whether that input was accepted; the Harness continues observing what actually executes.
 
 Inside the Sandbox, the writer discovers its permitted Service operations and calls `swarm messages put` through a local shell tool. The host Bridge authenticates the caller, checks its permission, validates the request, and invokes the registered implementation. The information now lives in Service state, where the reader can retrieve it with `swarm messages get`.
 
-The Harness checks both the expected Service operation and the Agent's completed execution before proceeding. At the end, `finalizeRun()` closes the Runtime, gives the application an opportunity to verify exported artifacts, and records the separate business, verification, and cleanup outcomes. The Messages example compares the reader's exported bytes with the original value, so success has evidence beyond an Agent saying it has finished.
+The Harness checks both the expected Service operation and the Agent's completed execution before proceeding. At the end, the Harness calls `runtime.close()`, verifies exported artifacts, and records the separate business, verification, and cleanup outcomes. The Messages example compares the reader's exported bytes with the original value, so success has evidence beyond an Agent saying it has finished.
 
 ## Where the pieces live
 
@@ -32,7 +32,7 @@ The Harness checks both the expected Service operation and the Agent's completed
         <li>Role Profiles &amp; stop policy</li>
       </ul>
     </div>
-    <div class="dd-arrow-h" aria-hidden="true">◄── spawn · send · observe ──►</div>
+    <div class="dd-arrow-h" aria-hidden="true">◄── spawn · send · onEvent ──►</div>
     <div class="dd-box dd-indigo">
       <div class="dd-box-title">RUNTIME</div>
       <div class="dd-sandbox-stack">
@@ -106,7 +106,7 @@ A `settled` event describes an execution. It does not establish exactly which of
 
 At Runtime creation, Profiles and registered Service manifests are captured. Later edits to the original configuration object or new registrations on the original registry do not reconfigure that Runtime. Shared Service state can still evolve during execution; for example, a task pool creates and claims Tasks while its operation contract remains the same.
 
-Each Runtime selects one executor through its backend. The OpenSandbox backend supports Pi and Codex. Query `getOpenSandboxBackendCapabilities()` when your Harness needs a specific feature: Pi supports context forking and both steering modes, while Codex currently supports the `all` steering mode and does not support context forking.
+Each Runtime selects one executor in its Runtime options. The OpenSandbox backend supports Pi and Codex. Query `getExecutorCapabilities(executor)` when your Harness needs a specific feature: Pi supports context forking and both steering modes, while Codex currently supports the `all` steering mode and does not support context forking.
 
 ## Services define the collaboration mechanism
 

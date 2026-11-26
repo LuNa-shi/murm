@@ -38,9 +38,9 @@ swarm task take TASK_ID_FROM_LIST --request-id take-selected-task
 研究者以 `writable: false` 启动。它可以通过 Service 阅读公共 Task、Material 和 Workspace，项目目录保持只读。成功预留 Task 后，[task-handoff.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/task-handoff.ts) 执行交接：
 
 1. 固定公共 Workspace 修订和引用的 Material 输入，准备期间通过心跳保持预留有效。
-2. 调用 `runtime.files.prepare(agentId, { requestId, files })`，将文件装入只读目录。
+
 3. 在 TaskService 中激活 Execution，设置执行和交接截止时间。
-4. 将原始准备句柄传给 `runtime.files.grant({ requestId, prepared })`，再复核 Agent 与领域归属。
+
 
 准备文件与授予写权限是两步，因为文件准备可能在 Task 可以授权之前失败。这两个 SDK 操作都由可信宿主执行。Agent 通过 `task` Service 申请工作，不自行构造准备句柄或授予写权限。
 
@@ -48,15 +48,7 @@ swarm task take TASK_ID_FROM_LIST --request-id take-selected-task
 
 ## 让模型调用服从租约
 
-Harness 将 `createTaskPoolModelAccessPolicy` 装入 Runtime。许可来自可信 TaskService 中的状态，而非 Agent 提交的身份字段：
-
-| 领域状态 | 模型调用许可 |
-| --- | --- |
-| `UNBOUND`，且尚未到选择任务和 Agent 截止时间 | 有界的 `selection` 许可 |
-| `ACTIVE`，持有自己的 `RUNNING` Execution，且租约有效 | 包含租约标识、版本和到期时间的 `work` 或 `closeout` 许可 |
-| 已过期、已停止、归属不匹配或其他不符合条件的状态 | 无许可 |
-
-Model Gateway 在接纳请求时检查权限，并在流式响应期间重新检查。租约到期、所有者变化或 `fencing_version` 改变后，它会拒绝新请求，并取消不再具有有效授权的流。可选的 `modelGateway.selectionReasoningEffort` 允许单独降低发现阶段的推理力度。
+TaskPool 控制器在可信 TaskService 提交后检查 Mission、归属与截止时间，并调整计时器。归属失效、到期或收到停止请求时，控制器立即调用 `runtime.stop`。Core 撤销该 Agent 的模型权限并中止活动连接。TaskPool 依据执行停止回执释放任务归属，清理完成后才复用 Slot。
 
 这层控制与 Service 鉴权和文件权限共同工作：即使容器尚未完全停止，过期 Agent 也不能继续使用模型。完整判断见 [model-access-policy.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/model-access-policy.ts)。
 

@@ -3,7 +3,7 @@ import { lstat, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { ERROR_CODES, MurmError } from '../errors.js';
 import { openSandboxAgentKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
-import { decodeFileSeed } from '../../scripts/core-file-seed.js';
+import { decodeFileSeed, fileProtocol } from '../../scripts/core-file-seed.js';
 import { snapshotCollectionSpec, MAX_COLLECTION_LINE_BYTES } from '../../scripts/core-collection.js';
 
 const DEFAULT_EXECd_PORT = 44772;
@@ -609,7 +609,7 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ writable = false, files, forkSession, workspace, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, codex, beforeAgentStart = null }: any = {}) {
+  async startAgent({ writable = false, files, forkSession, workspace, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, codex, requireCoreFileProtocol = false, beforeAgentStart = null }: any = {}) {
     const contract = { protocolVersion: 'murm-core-v1', resources: [] };
     const record: any = this.#record(executionId);
     const signature = (values: any) => Array.isArray(values) && values.every((item: any) => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
@@ -628,6 +628,16 @@ export class OpenSandboxManager {
     endpoint = endpoint.replace(/\/$/, '');
     const workerHeaders = { authorization: `Bearer ${workerToken}` };
     await this.#waitWorker(endpoint, workerHeaders);
+    if (requireCoreFileProtocol) {
+      const probe = await this.#request(`${endpoint}/core/contract`, {
+        absolute: true, method: 'GET', extraHeaders: workerHeaders, timeoutMs: 15_000, allowStatuses: [400, 404],
+      });
+      const supported = probe.body?.result?.file_protocol;
+      if (supported !== fileProtocol) {
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT,
+          `Core requires Worker file protocol ${fileProtocol}; detected ${supported ?? 'none'}`);
+      }
+    }
     beforeAgentStart?.();
     record.coreAgent = true;
     record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), starting: true };
@@ -659,7 +669,7 @@ export class OpenSandboxManager {
       timeoutMs: 30_000,
     });
     const receipt = startup.body?.result?.contract;
-    if (receipt?.version !== contract.protocolVersion || !Array.isArray(receipt.resources) || signature(receipt.resources) !== signature(resources)) {
+    if (receipt?.version !== contract.protocolVersion || (requireCoreFileProtocol && receipt.file_protocol !== fileProtocol) || !Array.isArray(receipt.resources) || signature(receipt.resources) !== signature(resources)) {
       throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest the pinned Agent contract resources');
     }
     const backend = startup.body?.result?.backend;

@@ -1240,20 +1240,12 @@
       "role": "Runtime assembly, Agent admission, input and bounded lifecycle"
     },
     {
-      "path": "src/core/runtime-observation.ts",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Bounded Runtime observation journal, cursor replay and subscription cancellation"
-    },
-    {
-      "path": "src/core/run-finalization.ts",
+      "path": "src/harnesses/shared/run-finalization.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Public Run finalization, bounded cleanup and late facility receipts"
+      "role": "Application-owned run finalization and bounded facility cleanup evidence"
     },
     {
       "path": "src/core/config.ts",
@@ -1334,23 +1326,6 @@
       "role": "Executor startup, version, configuration checks and capability contract"
     },
     {
-      "path": "src/core/backends/pi-opensandbox.ts",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Public opaque Pi/OpenSandbox backend factory export"
-    },
-    {
-      "path": "src/core/backends/opensandbox.ts",
-      "category": "Core API",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Public configuration-based selection of the OpenSandbox execution driver"
-    },
-    {
       "path": "src/agent/model-catalog.ts",
       "category": "programmable Core",
       "chapters": [
@@ -1380,7 +1355,7 @@
       "chapters": [
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Agent file-operation identity, preparation receipts, write authority and pending grant fences"
+      "role": "Complete FileTree snapshot and single-step replacement request ownership and receipts"
     },
     {
       "path": "scripts/core-file-seed.ts",
@@ -1389,7 +1364,7 @@
         "docs/architecture/15-core-runtime.md",
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Shared FileSeed validation, portable byte representation and canonical digest"
+      "role": "Shared FileTree validation, portable byte representation and canonical digest"
     },
     {
       "path": "scripts/core-work-dir.ts",
@@ -1397,7 +1372,7 @@
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Trusted Worker FileSeed installation, readback, versioned write grant and close coordination"
+      "role": "Trusted Worker file snapshots, digest-checked replacement, verified write grant and close coordination"
     },
     {
       "path": "scripts/core-collection.ts",
@@ -1424,15 +1399,6 @@
         "docs/architecture/15-core-runtime.md"
       ],
       "role": "Harness-owned exclusive idle Agent input wait and uncertain submission guard"
-    },
-    {
-      "path": "src/harnesses/taskpool/model-access-policy.ts",
-      "category": "Execution and control",
-      "chapters": [
-        "docs/architecture/02-execution.md",
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "TaskPool Task/Mission model authority and Core synchronous policy adapter"
     },
     {
       "path": "src/harnesses/taskpool/agent-coordinator.ts",
@@ -1551,7 +1517,7 @@
         "docs/architecture/02-execution.md",
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Fixed Workspace and Material input provenance and canonical FileSeed preparation"
+      "role": "Fixed Workspace and Material input provenance and canonical FileTree preparation"
     },
     {
       "path": "scripts/git-credential-peermesh.ts",
@@ -2118,14 +2084,6 @@
         "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Full Bridge operation trace and optional Service state snapshots"
-    },
-    {
-      "path": "src/core/public-services.ts",
-      "category": "service deployment",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Curated runtime values at the public Services entry point"
     },
     {
       "path": "src/core/model-trace.ts",

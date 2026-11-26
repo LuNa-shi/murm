@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -7,8 +8,8 @@ import { randomBytes } from 'node:crypto';
 import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createRuntime } from '@murm/core';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
-import { ServiceRegistry, createHttpJsonAdapter } from '@murm/core/services';
+
+import { ServiceRegistry, createHttpJsonAdapter } from '@murm/core';
 import { createNotesService, notesManifest } from './fixtures/core-notes-service.js';
 import { createNotesUpstream, notesCommand } from './fixtures/core-notes-upstream.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
@@ -68,7 +69,7 @@ test('real Pi Bash holds the same execution through a long authenticated HTTP Se
     assert.ok(Object.values(resources).every(row => row.empty));
   });
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-  const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
+  const runtime = await createRuntime({ ...runtimeSettings({
     sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
       resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },

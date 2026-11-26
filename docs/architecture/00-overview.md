@@ -28,13 +28,13 @@ flowchart TD
 | Service adapter | The named operation's implementation and domain state, in process or behind a configured external endpoint. | Agent resource lifecycle unless explicitly delegated by a Harness. |
 | Model gateway | Host-owned model routing, credentials, access policy and traces. | Service manifests or task completion. |
 
-The package has three primary public entries: `@murm/core`, `@murm/core/services` and `@murm/core/backends/opensandbox`. The Pi-only `backends/pi-opensandbox` subpath remains for compatibility. Internal folders such as `src/sdk/` and `src/harnesses/` do not create additional public package exports. The [Core chapter](15-core-runtime.md) describes the exact interfaces.
+The public package entry is `@murm/core`. It supplies Sandbox and Runtime assembly, Service author interfaces and public types. The [Core chapter](15-core-runtime.md) describes each contract.
 
 ## One complete Run
 
 ### 1. The host assembles the application
 
-The host registers Service manifests and adapters, chooses named Profiles, supplies the model and OpenSandbox configuration, and creates a backend handle. `createRuntime` claims that handle and captures the Profiles and Service registry. The host also specifies capacity and an output root. There is no public hot-registration or Service-operation grant/revoke API in the current Runtime.
+The host registers Service manifests and adapters, chooses named Profiles, supplies the model and OpenSandbox configuration, and creates a Sandbox configuration handle. `createRuntime` uses that configuration and captures the Profiles and Service registry. The host also specifies capacity and an output root. There is no public hot-registration or Service-operation grant/revoke API in the current Runtime.
 
 A Service can be a local function, an HTTP JSON v2 endpoint, or a custom adapter for an existing application. The adapter keeps its remote credential on the host. Agent Profiles name the operations each Agent may call. These permissions are enforced by the Bridge, not by instructions in a prompt. [Services](04-services.md) explains validation, caller identity, cancellation and commit guards.
 
@@ -46,7 +46,7 @@ A successful spawn receipt identifies a ready Agent. Startup can have an uncerta
 
 ### 3. The Harness submits work and observes activity
 
-Establish `runtime.observe()` before submitting work when the application needs a consistent view of state and subsequent events. The call returns a snapshot and a cursor-based stream. Resumption is bounded by retained history in the same Runtime process; a gap requires an explicit recovery decision.
+Register `runtime.onEvent` before sending work and use `get/list/state` for current views. Public events report output, execution boundaries, errors, exits and query invalidation. The ordered Worker and operation evidence is preserved in Run records for offline inspection.
 
 `send` submits text with a request ID and a delivery mode. Its receipt reports whether the input was accepted, not whether the task is finished. The default mode is `steer`; `followUp` requests a later execution opportunity. Several inputs can contribute to an execution, so an execution-settled event is not a general one-to-one input completion receipt.
 
@@ -60,7 +60,7 @@ In the Messages SDK example, the host observes a successful write and read, then
 
 ### 5. Finalization records results and resource state
 
-`finalizeRun` captures the business outcome, invokes Core close with a separate cleanup deadline, optionally verifies exported artifacts, and writes `run-finalization.json`. These results remain separate so a completed job with pending cleanup is visible.
+Public close returns Core execution and cleanup receipts. The host verifies exported bytes, records business and persistence results, and closes its own facilities. Bundled Harnesses use shared private report helpers.
 
 Core close stops admission and tracks in-flight work. Agent cleanup and endpoint shutdown can proceed concurrently; each Agent's cleanup confirms execution stop before archiving its Session, collecting configured files and deleting the Sandbox. Required export failures retain the Sandbox. Backend closure waits for Agent cleanup, and report/trace failures remain explicit in the receipt. The timeout of a host wait never establishes physical deletion. [Core Runtime](15-core-runtime.md), [backend cleanup](16-pi-opensandbox-backend.md) and [finalization](17-harness-reporting.md) describe the full failure paths.
 

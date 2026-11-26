@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createRunWindow } from '../shared/run-window.ts';
 import { instance, runDirectory, sha256, task } from './case.ts';
-import { localBackend, saveReceipt } from './local-integration.ts';
+import { localRuntimeSettings, saveReceipt } from './local-integration.ts';
 import { ownedContainers } from '../../dist/test/fixtures/core-runtime-containers.js';
 import { runOpenSubagents } from './pastel-open-subagents.ts';
 import { runOpenTaskPool } from './pastel-open-taskpool.ts';
@@ -76,9 +76,9 @@ export async function runPastel({ mode, image, upstream, durationMs = 1_800_000,
   };
   let fault;
   try {
-    const backend = localBackend(window.upstream, 128, { timeoutSeconds: Math.ceil(durationMs / 1000) + 180,
+    const runtimeSettings = localRuntimeSettings(window.upstream, 128, { timeoutSeconds: Math.ceil(durationMs / 1000) + 180,
       maxOutputTokens, requestTimeoutMs: durationMs, ...(upstreamKind === 'hosted_k3' ? { resourceLimits: null } : {}) });
-    await drivers[mode]({ state, task, window, start, deadline, image, backend, outputDir, durationMs,
+    await drivers[mode]({ state, task, window, start, deadline, image, runtimeSettings, outputDir, durationMs,
       capacity: Math.min(3, maxConcurrent), peerMeshImages });
   } catch (error) {
     const expectedDeadline = window.signal.reason?.code === 'deadline' &&

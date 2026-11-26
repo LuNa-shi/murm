@@ -38,9 +38,9 @@ After `take` succeeds, edit the private project, save an enabled Workspace revis
 A researcher starts with `writable: false`. It can read public Task, Material and Workspace state through Services while the project directory remains read-only. Winning a Task reservation starts the handoff in [task-handoff.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/task-handoff.ts):
 
 1. Pin the public Workspace revision and linked Material inputs. A preparation heartbeat keeps the reservation alive.
-2. Call `runtime.files.prepare(agentId, { requestId, files })` to stage those files in the read-only directory.
+
 3. Activate the Execution in TaskService with its execution and handoff deadlines.
-4. Call `runtime.files.grant({ requestId, prepared })` with the original prepared handle, then recheck the Agent and domain ownership.
+
 
 The two SDK calls are distinct because file preparation can fail before the Task is ready to authorize writes. Preparation and grant belong to the trusted host. The Agent requests work through the `task` Service; it does not manufacture a prepared handle or grant itself file access.
 
@@ -48,15 +48,7 @@ If a handoff fails after reservation, the host records its stage and stops or re
 
 ## Keep model access tied to the lease
 
-The Harness installs `createTaskPoolModelAccessPolicy` on the Runtime. Its authorization comes from the trusted TaskService state, rather than from fields sent by an Agent:
-
-| Domain state | Model permission |
-| --- | --- |
-| `UNBOUND`, within selection and Agent deadlines | A bounded `selection` permit |
-| `ACTIVE`, with an owned `RUNNING` Execution and current lease | A `work` or `closeout` permit containing the lease key, version and expiry |
-| Expired, stopped, mismatched or otherwise ineligible | No permit |
-
-The Model Gateway checks this authority when admitting requests and rechecks during an active stream. Expiry, ownership changes or a changed `fencing_version` cause it to deny new requests and cancel a stream whose authorization no longer holds. The optional `modelGateway.selectionReasoningEffort` can reduce reasoning effort during discovery independently of active work.
+The TaskPool controller watches committed TaskService transitions and arms timers for ownership and deadlines. On loss of authority, expiry or a stop request, it calls `runtime.stop`. Core revokes that Agent’s model credentials and aborts live model connections. TaskPool releases the Task owner only on confirmed execution stop and reuses the Slot only after cleanup completes.
 
 The policy complements Service authorization and file access: a stale Agent must not keep using the model while its container is still being stopped. See [model-access-policy.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/model-access-policy.ts) for the complete guards.
 

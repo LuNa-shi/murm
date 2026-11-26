@@ -242,7 +242,13 @@ export async function invokeService(registration: ServiceRegistration, { operati
 }
 
 /** Host-configured HTTP adapter. Its credential never enters Agent environments. */
-export function createHttpJsonAdapter({ token, timeoutMs = 30_000, fetchImpl = globalThis.fetch }: { token?: string; timeoutMs?: number; fetchImpl?: typeof fetch } = {}) {
+export interface HttpJsonAdapterOptions {
+  token?: string;
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+}
+
+export function createHttpJsonAdapter({ token, timeoutMs = 30_000, fetchImpl = globalThis.fetch }: HttpJsonAdapterOptions = {}): ServiceAdapter {
   if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 86_400_000 ||
       (token !== undefined && (typeof token !== 'string' || !token))) invalid('HTTP adapter requires a bounded timeout, fetch and optional host token');
   const adapter = Object.freeze({ async invoke({ manifest, capability, input, envelope, caller, signal }: ServiceRequest): Promise<JsonValue> {

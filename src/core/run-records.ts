@@ -1,4 +1,4 @@
-import type { Profile, ModelAccessPolicy, ErrorInfo, RuntimeEvidenceProgress } from './types.js';
+import type { Profile, ErrorInfo } from './types.js';
 import type { ResolvedOpenSandboxBackendConfig } from './opensandbox-backend.js';
 import type { ServiceRegistration } from './services.js';
 
@@ -121,12 +121,11 @@ export function createRedactor(values: readonly unknown[] = []) {
   return { add, text, value, stream, jsonl, error };
 }
 
-export function runtimeConfiguration({ config, profiles, registrations, maxAgents, modelAccessPolicy, defaultTimeoutMs }: {
+export function runtimeConfiguration({ config, profiles, registrations, maxAgents, defaultTimeoutMs }: {
   config: ResolvedOpenSandboxBackendConfig;
   profiles: ReadonlyMap<string, Profile>;
   registrations: ReadonlyMap<string, ServiceRegistration>;
   maxAgents: number;
-  modelAccessPolicy?: ModelAccessPolicy;
   defaultTimeoutMs: number;
 }, redact: (value: string) => string) {
   const { sandbox, isolation, models, modelGateway, driver } = config;
@@ -144,7 +143,6 @@ export function runtimeConfiguration({ config, profiles, registrations, maxAgent
       piSubmitTransportMs: 40_000, fileOperationTransportMs: 30_000, workerStopTransportMs: 15_000, collectionTransportMs: 30_000,
       providerCommandMs: sandbox.commandTimeoutMs ?? 120_000, bridgeServiceMs: 30_000,
     },
-    modelAccessPolicy: modelAccessPolicy ? 'host' : 'default',
     models: Object.fromEntries(Object.entries(models).map(([alias, model]) => [alias, {
       provider: model.provider, model: model.model,
       maxOutputTokens: modelGateway.maxOutputTokens === undefined ? defaultTimedResponsesLimits.maxOutputTokens : modelGateway.maxOutputTokens,
@@ -169,10 +167,7 @@ export type RunEvidenceRecord = Readonly<Record<string, unknown>> & {
   at: string;
 };
 
-export function createRunRecords(outputDir: string, runtimeId: string, observers?: {
-  record(row: RunEvidenceRecord): void;
-  loss(evidence: RuntimeEvidenceProgress): void;
-}) {
+export function createRunRecords(outputDir: string, runtimeId: string) {
   const path = join(outputDir, 'evidence.jsonl');
   let queued: string[] = [];
   let queuedBytes = 0;
@@ -186,7 +181,6 @@ export function createRunRecords(outputDir: string, runtimeId: string, observers
 
   function lose(count: number) {
     lost += count;
-    observers?.loss(progress());
   }
 
   async function drain() {
@@ -214,7 +208,6 @@ export function createRunRecords(outputDir: string, runtimeId: string, observers
     },
     record(type: string, data: Readonly<Record<string, unknown>>) {
       const row = { ...data, type, seq: ++sequence, runtimeId, at: new Date().toISOString() };
-      observers?.record(row);
       let line;
       try { line = JSON.stringify(row) + '\n'; }
       catch { lose(1); return; }

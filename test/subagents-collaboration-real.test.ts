@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { mkdir, readFile } from 'node:fs/promises';
@@ -250,7 +251,7 @@ for (const workspaceMode of ['private', 'shared']) {
       workTimeoutMs: 65_000, closeTimeoutMs: 25_000,
       collect: { paths: ['delivery.txt'], includeGit: false, maxBytes: 4096, required: true },
       ...(workspaceMode === 'shared' ? { workspace: { root: { id: 'team', mode: 'read-write' }, child: { id: 'team', mode: 'read-write' } } } : {}),
-      backend: {
+      ...runtimeSettings({
         sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
           endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
@@ -258,7 +259,7 @@ for (const workspaceMode of ['private', 'shared']) {
         models: { default: { provider: 'kimi_proxy', model: 'k3',
           upstream: { url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {} } } },
         isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
-      },
+      }),
     });
     assert.equal(upstreamError, undefined);
     assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure));

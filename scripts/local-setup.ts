@@ -6,7 +6,7 @@ import {
 import { runLocalSmoke } from './local-setup-smoke.js';
 import { loadLocalProjectConfig } from './local-setup-template.js';
 import { prepareWorkerImage } from './local-setup-worker.js';
-import { createOpenSandboxBackend } from '../src/core/backends/opensandbox.js';
+import { claimOpenSandboxBackend, createSandbox } from '../src/core/opensandbox-backend.js';
 import type { LocalCommand } from './murm-arguments.js';
 
 const packageRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -18,7 +18,7 @@ type Model = { configuration: 'complete' | 'missing' | 'invalid'; verification: 
 
 function modelState(config: ProjectConfig): Model {
   const aliases = new Set([config.rootModel ?? config.model ?? 'default', config.childModel ?? config.model ?? 'default']);
-  const routes = [...aliases].map(alias => config.backend.models?.[alias]);
+  const routes = [...aliases].map(alias => config.models?.[alias]);
   let configuration: Model['configuration'] = routes.some(route => !route) ? 'invalid' : 'complete';
   for (const route of routes) {
     const upstream = route?.upstream?.url;
@@ -36,23 +36,23 @@ function modelState(config: ProjectConfig): Model {
   return { configuration, verification: 'not-verified' };
 }
 
-function checkProjectBackend(config: ProjectConfig): DiagnosticCheck {
-  if (config.backend.executor === 'codex') return {
+function checkProjectRuntime(config: ProjectConfig): DiagnosticCheck {
+  if (config.executor === 'codex') return {
     id: 'config.executor', ok: false, detail: 'Configured doctor currently supports Pi projects.',
     remedy: 'Use murm doctor for host checks and the installed Subagents example to run with Codex.',
   };
   try {
     // The real backend validates every infrastructure field without allocating.
     // Missing model endpoints are reported separately while preparing the host.
-    createOpenSandboxBackend({
-      ...config.backend,
-      models: Object.fromEntries(Object.entries(config.backend.models).map(([alias, route]) => [alias, {
+    claimOpenSandboxBackend(createSandbox(config.sandbox), {
+      executor: config.executor, connection: config.connection,
+      models: Object.fromEntries(Object.entries(config.models).map(([alias, route]) => [alias, {
         ...route, upstream: { ...route.upstream, url: 'http://127.0.0.1/v1/responses' },
       }])),
     });
-    return { id: 'config.backend', ok: true, detail: 'The editable backend configuration satisfies the Core startup contract.' };
+    return { id: 'config.runtime', ok: true, detail: 'The editable Sandbox and Runtime configuration satisfies the Core startup contract.' };
   } catch {
-    return { id: 'config.backend', ok: false, detail: 'The editable backend configuration violates the Core startup contract.',
+    return { id: 'config.runtime', ok: false, detail: 'The editable Sandbox and Runtime configuration violates the Core startup contract.',
       remedy: 'Check Bridge and Gateway addresses, sandbox settings, model aliases and explicit disk quotas in config.js.' };
   }
 }
@@ -107,7 +107,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       ? await loadLocalProjectConfig(command.configPath) : undefined;
     if (config) {
       report.model = modelState(config);
-      checks.push(checkProjectBackend(config));
+      checks.push(checkProjectRuntime(config));
     }
     if (report.model?.configuration === 'invalid') checks.push({
       id: 'config.models', ok: false, detail: 'An active model alias or Responses endpoint is invalid.',
@@ -115,8 +115,8 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     });
     if (checks.some(check => !check.ok)) return report;
     const environment = await resolveSubagentsEnvironment({
-      ...config?.backend.sandbox,
-      advertiseHost: config?.backend.modelGateway.advertiseHost,
+      ...config?.sandbox,
+      advertiseHost: config?.connection?.modelGateway?.advertiseHost ?? config?.connection?.advertiseHost,
     });
     stage = 'host';
     checks.push(...await timed('host', () => checkLocalHost(environment)));
@@ -141,7 +141,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
 
     if (command.command === 'setup' || command.smoke) {
       stage = 'smoke';
-      report.smoke = await timed('smoke', () => runLocalSmoke({ ...environment, image: worker.image!.id, backend: config?.backend, signal }));
+      report.smoke = await timed('smoke', () => runLocalSmoke({ ...environment, image: worker.image!.id, sandbox: config?.sandbox, connection: config?.connection, signal }));
       if (!report.smoke.ok) {
         report.infrastructure = 'failed';
         return report;

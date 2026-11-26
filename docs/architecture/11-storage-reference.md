@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 
 ### Core Runtime model attempts
 
-Source: [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts); source SHA-256: `32cbedaa66c5c92d762d7b02af402b72f5bbd2fba1526531cd398dd8e40fd338`.
+Source: [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts); source SHA-256: `a638af3906060cacc675833aee7cd7d8aaa1786f8905b136e45459938eb2ac96`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS runtime_model_policies (
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS mission_manual_reviews (
 
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `ee2174836a0b2d5ede579312f4a8b86eed7ce77fd50002fbb2c50fafcadb8b2f`.
+Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `a0e586084b2368c6af4599693a93d691eab3ea345f9b3855897e9b7b1ad25137`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (
@@ -710,7 +710,7 @@ CREATE TABLE IF NOT EXISTS checker_preflights (
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `73d37d53b15d4a745ccfa0354b0f93d365de0c33af8de0139b7683291233614d`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `8249953a2ff94299e5ed28bfd74dfad918c15375bc842fe33d94bbfb2e3b6ade`.
 
 #### mission_final_check_active
 

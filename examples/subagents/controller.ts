@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { AgentEvent, InputReceipt, Runtime, SpawnOptions } from '@murm/core';
-import type { JsonValue, ServiceRequest } from '@murm/core/services';
+import type { RuntimeEvent, InputReceipt, Runtime, SpawnOptions } from '@murm/core';
+import type { JsonValue, ServiceRequest } from '@murm/core';
 
-type Settled = Extract<AgentEvent, { type: 'settled' }>;
-type Exit = Extract<AgentEvent, { type: 'exit' }>;
-type Reply = Settled | Extract<AgentEvent, { type: 'exit' }>;
+type Settled = Extract<RuntimeEvent, { type: 'settled' }>;
+type Exit = Extract<RuntimeEvent, { type: 'exit' }>;
+type Reply = (Settled | Exit) & { seq: number };
 type Message = {
   id: string;
   kind: 'message' | 'result';
@@ -76,6 +76,7 @@ export function createSubagentsController(
   const jobs = new Set<Promise<unknown>>();
   const deliveryFailures: { id: string; reason: string }[] = [];
   let lastReply: Reply | undefined;
+  let eventSequence = 0;
   let accepting = true;
 
   function open() {
@@ -171,7 +172,7 @@ export function createSubagentsController(
     }
   }
 
-  function resultFor(member: Member, event: Settled | Exit | Extract<AgentEvent, { type: 'error' }>) {
+  function resultFor(member: Member, event: Settled | Exit | Extract<RuntimeEvent, { type: 'error' }>, seq: number) {
     const recipient = member.parent;
     if (!recipient || !accepting) return;
     const message: Message = {
@@ -180,7 +181,7 @@ export function createSubagentsController(
         ? (event.outcome === 'completed' ? event.output ?? '' : event.error?.message ?? 'Child execution failed')
         : event.type === 'exit' ? event.reason : event.error.message,
       outcome: event.type === 'settled' && event.outcome === 'completed' ? 'completed' : 'failed',
-      eventSeq: event.seq, state: 'pending',
+      eventSeq: seq, state: 'pending',
     };
     void track(serial(recipient, async () => {
       open();
@@ -192,23 +193,25 @@ export function createSubagentsController(
   }
 
   const unsubscribe = runtime.onEvent(event => {
+    if (!('agentId' in event)) return;
     const member = byId.get(event.agentId);
     if (!member) return;
+    const seq = ++eventSequence;
     if (event.type === 'settled' || event.type === 'exit') member.executionRevision++;
     if (event.type === 'settled') {
       member.lastOutcome = event.outcome === 'aborted' ? 'interrupted' : event.outcome;
-      if (event.outcome !== 'aborted' && !(member.fatalReported && event.outcome === 'failed')) resultFor(member, event);
+      if (event.outcome !== 'aborted' && !(member.fatalReported && event.outcome === 'failed')) resultFor(member, event, seq);
     } else if (event.type === 'error' && event.fatal && !member.fatalReported) {
       member.lastOutcome = 'failed';
       member.fatalReported = true;
-      resultFor(member, event);
+      resultFor(member, event, seq);
     } else if (event.type === 'exit' && !event.expected && !member.fatalReported && member.lastOutcome !== 'failed') {
       member.lastOutcome = 'failed';
-      resultFor(member, event);
+      resultFor(member, event, seq);
     }
     if (member === root && (event.type === 'settled' || event.type === 'exit')) {
-      lastReply = event;
-      for (const listener of replyListeners) listener(event);
+      lastReply = { ...event, seq };
+      for (const listener of replyListeners) listener(lastReply);
     }
   });
 

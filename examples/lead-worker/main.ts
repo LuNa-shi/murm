@@ -1,13 +1,13 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
+import { createSandbox } from '@murm/core';
 import { runLeadWorker } from '../../src/harnesses/lead-worker/index.js';
 
 export function runLeadWorkerExample(config: any, signal: any) {
-  const backend = createOpenSandboxBackend(config.backend);
-  const secretValues = [config.backend?.sandbox?.apiKey, config.backend?.sandbox?.execdToken,
-    ...Object.values((config.backend?.models ?? {} as Record<string, any>)).flatMap((model: any) => Object.values((model.upstream?.headers ?? {} as Record<string, any>)))].filter((value: any) => typeof value === 'string' && value);
-  return runLeadWorker({ ...config, backend, signal, secretValues }, { goal: config.goal, supplement: config.supplement, signal });
+  const sandbox = createSandbox(config.sandbox);
+  const secretValues = [config.sandbox?.apiKey, config.sandbox?.execdToken,
+    ...Object.values((config.models ?? {} as Record<string, any>)).flatMap((model: any) => Object.values((model.upstream?.headers ?? {} as Record<string, any>)))].filter((value: any) => typeof value === 'string' && value);
+  return runLeadWorker({ ...config, sandbox, signal, secretValues }, { goal: config.goal, supplement: config.supplement, signal });
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const lifetime: any = new AbortController();

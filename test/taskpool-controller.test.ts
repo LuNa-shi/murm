@@ -29,7 +29,7 @@ async function fixture(t,options={}) {
       onFinish(receipt) { options.onFinish(receipt); controller.notify(); } });
     for (const registration of publication.registrations) services.registerService(registration);
   }
-  runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Fixed',model:'default',image:'fixture',writable:false,services:publication?{task:['task_finish']}:{}}},services,maxAgents:options.capacity??2,outputDir:root});
+  runtime=await createRuntime({sandbox: {},profiles:{researcher:{prompt:'Fixed',model:'default',image:'fixture',writable:false,services:publication?{task:['task_finish']}:{}}},services,maxAgents:options.capacity??2,outputDir:root});
   const accepted=id=>{transport.confirm(id,'started');transport.next=accepted;}; transport.next=accepted;
   const reads={beforeGet:null};
   controller=createTaskPoolController({runtime:{...runtime,async get(id){await reads.beforeGet?.();return runtime.get(id);}},taskService:stores.tasks,missionId:stores.missionId,capacity:1,deadlineAt:Date.now()+60000,heartbeatMs:10000,stallMs:30000,...options});

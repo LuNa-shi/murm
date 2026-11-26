@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { createRuntime, type Backend, type ModelCaller, type Profile, type StopReceipt } from '@murm/core';
-import { ServiceRegistry, type ServiceCaller } from '@murm/core/services';
+import { createRuntime, type CreateRuntimeOptions, type Profile, type StopReceipt } from '@murm/core';
+import { ServiceRegistry, type ServiceCaller } from '@murm/core';
 import { runInput } from '../../src/harnesses/shared/run-input.js';
 import { runWithReport } from '../../src/harnesses/shared/run-report.js';
 import { createPaperSubstrate, type SharingMode } from '../../src/harnesses/substrate/paper-substrate.js';
@@ -52,8 +52,7 @@ interface FateOptions {
   verifiedCompletion?: boolean;
 }
 
-interface RunOptions {
-  backend: Backend;
+interface RunOptions extends Pick<CreateRuntimeOptions, 'sandbox' | 'executor' | 'models' | 'connection'> {
   fate: FateOptions;
   runId: string;
   image: string;
@@ -199,7 +198,7 @@ function limited<T>(promise: Promise<T>, signal: AbortSignal) {
 }
 
 export async function runFateSubstrate({
-  backend, fate, runId, image, outputDir, model = 'default', poolSize = 4,
+  sandbox, executor, models, connection, fate, runId, image, outputDir, model = 'default', poolSize = 4,
   workTimeoutMs = fate.benchmark === 'FATE-H' ? durations.hardWork : durations.work,
   closeTimeoutMs = durations.close, checkpointAfterMs,
 }: RunOptions, externalSignal?: AbortSignal) {
@@ -247,7 +246,7 @@ export async function runFateSubstrate({
   let deadlineMs = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const remainingMs = () => workSignal.aborted ? 0 : Math.max(0, deadlineMs - Date.now());
-  const authorize = (caller: ServiceCaller | ModelCaller) => {
+  const authorize = (caller: ServiceCaller) => {
     if (!startedAt || caller.runtimeId !== runtimeId || caller.profile !== 'peer' || !peers.get(caller.agentId)?.active || remainingMs() === 0) {
       throw Object.assign(noTime(), { code: 'NOT_ALLOWED' });
     }
@@ -303,13 +302,8 @@ export async function runFateSubstrate({
       async createRuntime() {
         await limited(search('Fintype.card', setupSignal), setupSignal);
         return createRuntime({
-          backend, outputDir: directory, services, maxAgents: poolSize, profiles: { peer: profile },
-          modelAccessPolicy: {
-            authorize(caller) {
-              try { authorize(caller); return { phase: 'work', deadlineAt: deadlineMs }; } catch { return null; }
-            },
-            withCommit: commit => commit(),
-          },
+          sandbox, executor, models, connection, outputDir: directory, services, maxAgents: poolSize, profiles: { peer: profile },
+
         });
       },
       async run(core: Awaited<ReturnType<typeof createRuntime>>) {

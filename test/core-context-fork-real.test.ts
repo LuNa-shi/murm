@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -16,8 +17,8 @@ test('Core Context Fork inherits a live native Session with isolated credentials
   timeout: 180000,
 }, async t => {
   const { createRuntime } = await import('@murm/core');
-  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
-  const { ServiceRegistry } = await import('@murm/core/services');
+
+  const { ServiceRegistry } = await import('@murm/core');
   const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.ok(image);
   const requests = [];
@@ -56,7 +57,7 @@ test('Core Context Fork inherits a live native Session with isolated credentials
   const outputDir = join(process.cwd(), 'experiments', `core-fork-${Date.now()}`);
   await mkdir(outputDir, { recursive: true, mode: 0o700 });
   runtime = await createRuntime({
-    backend: createPiOpenSandboxBackend({
+    ...runtimeSettings({
       sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
         endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
         commandTimeoutMs: 30000 },

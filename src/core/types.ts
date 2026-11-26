@@ -1,13 +1,7 @@
+import type { ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SteeringMode } from './backend-config.js';
 import type { ServiceRegistry } from './services.js';
-import type { JsonValue } from './service-types.js';
 
 export {};
-
-declare const backendBrand: unique symbol;
-
-export interface Backend {
-  readonly [backendBrand]: true;
-}
 
 export interface Profile {
   /** Optional Harness instructions added to the standard startup prompt. */
@@ -23,40 +17,66 @@ export interface Profile {
   collect?: CollectionSpec;
 }
 
-export interface ModelCaller {
-  readonly runtimeId: string;
-  readonly agentId: string;
-  readonly profile: string;
-  readonly model: string;
-}
-
-export interface ModelPermit {
-  phase: 'selection' | 'work' | 'closeout';
-  deadlineAt: number;
-  lease?: { key: string; version: number; expiresAt: number };
-}
-
-export interface ModelAccessPolicy {
-  authorize(caller: ModelCaller): ModelPermit | null;
-  withCommit<T>(commit: () => T): T;
-}
-
 export interface CreateRuntimeOptions {
-  backend: Backend;
+  sandbox: Sandbox;
+  executor?: ExecutorKind;
+  models: Readonly<Record<string, ModelConfig>>;
+  connection?: RuntimeConnectionOptions;
   profiles: Readonly<Record<string, Profile>>;
   services: ServiceRegistry;
   maxAgents: number;
   outputDir: string;
-  modelAccessPolicy?: ModelAccessPolicy;
 }
 
 export interface FileEntry {
-  encoding: 'utf8' | 'base64';
-  data: string;
-  mode?: 0o644 | 0o755;
+  readonly encoding: 'utf8' | 'base64';
+  readonly data: string;
+  readonly mode?: 0o644 | 0o755;
 }
+export type FileTree = Readonly<Record<string, FileEntry>>;
+export type CompleteFileDigest = `complete:sha256:${string}`;
+export type PartialFileDigest = `partial:sha256:${string}`;
 
-export type FileSeed = Readonly<Record<string, FileEntry>>;
+export interface FileSnapshotOptions {
+  requestId: string;
+  paths: readonly string[];
+  maxBytes?: number;
+}
+export interface CompleteFileSnapshotOptions extends FileSnapshotOptions {
+  paths: readonly ['.'];
+}
+export interface CompleteFileSnapshot {
+  readonly agentId: string;
+  readonly requestId: string;
+  readonly version: number;
+  readonly files: FileTree;
+  readonly scope: 'complete';
+  readonly digest: CompleteFileDigest;
+}
+export interface PartialFileSnapshot {
+  readonly agentId: string;
+  readonly requestId: string;
+  readonly version: number;
+  readonly files: FileTree;
+  readonly scope: 'partial';
+  readonly digest: PartialFileDigest;
+}
+export type FileSnapshot = CompleteFileSnapshot | PartialFileSnapshot;
+
+export interface FileReplaceOptions {
+  requestId: string;
+  expectedDigest: CompleteFileDigest;
+  files: FileTree;
+  writable?: true;
+}
+export type FileReplaceReceipt = {
+  readonly agentId: string;
+  readonly requestId: string;
+} & (
+  | { readonly status: 'completed'; readonly digest: CompleteFileDigest; readonly writable: boolean }
+  | { readonly status: 'failed'; readonly error: ErrorInfo }
+  | { readonly status: 'unknown' }
+);
 
 export interface CollectionSpec {
   paths: readonly string[];
@@ -66,37 +86,7 @@ export interface CollectionSpec {
   required: boolean;
 }
 
-export interface PreparedFiles {
-  readonly agentId: string;
-  readonly version: number;
-  readonly digest: string;
-}
-
-export interface FileSnapshot {
-  readonly agentId: string;
-  readonly requestId: string;
-  readonly version: number;
-  readonly digest: string;
-  readonly files: FileSeed;
-}
-
-export interface FileInstall {
-  readonly agentId: string;
-  readonly requestId: string;
-  readonly version: number;
-  readonly digest: string;
-  readonly phase: 'installed' | 'committed';
-}
-
-export interface GrantReceipt {
-  readonly agentId: string;
-  readonly version: number;
-  readonly writable: true;
-}
-
-export type WorkspaceOptions =
-  | { id: string; mode: 'read-only' | 'read-write' }
-  | { mode: 'frozen-copy'; files: FileSeed };
+export type WorkspaceOptions = { id: string; mode: 'read-only' | 'read-write' };
 
 export interface SpawnOptions {
   forkFrom?: string;
@@ -104,7 +94,7 @@ export interface SpawnOptions {
   profile: string;
   parentId?: string;
   writable?: boolean;
-  files?: FileSeed;
+  files?: FileTree;
   bindings?: Readonly<Record<string, string>>;
   secretEnv?: Readonly<Record<string, string>>;
   workspace?: WorkspaceOptions;
@@ -140,7 +130,6 @@ export interface AgentInfo {
   profile: string;
   parentId?: string;
   status: AgentStatus;
-  cursor: number;
   latestOutput?: string;
   lastError?: ErrorInfo;
   lastStop?: StopReceipt;
@@ -148,14 +137,11 @@ export interface AgentInfo {
 
 export type InputMode = 'steer' | 'followUp';
 
-export interface SteerOptions {
+export interface SendOptions {
   requestId: string;
-  source?: string;
-  steeringMode?: 'all' | 'one-at-a-time';
-}
-
-export interface SendOptions extends SteerOptions {
   mode?: InputMode;
+  source?: string;
+  steeringMode?: SteeringMode;
   wakeIfIdle?: boolean;
 }
 
@@ -179,12 +165,26 @@ export interface AgentSpawnReceipt {
   initialInput: AgentInitialInputResult;
 }
 
-export type AgentEvent = { agentId: string; seq: number } & (
+export type AgentEvent = { agentId: string } & (
   | { type: 'output'; text: string }
   | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
   | { type: 'error'; error: ErrorInfo; fatal: boolean }
   | { type: 'exit'; reason: string; expected: boolean }
 );
+
+export type RuntimeEvent = AgentEvent
+  | { type: 'agentChanged'; agentId: string }
+  | { type: 'runtimeChanged' };
+
+export type RuntimeState = 'open' | 'closing' | 'closed';
+
+export interface InterruptOptions {
+  requestId: string;
+  timeoutMs?: number;
+}
+
+export interface StopOptions { timeoutMs?: number }
+export interface CloseOptions { timeoutMs?: number }
 
 export interface PendingCleanup {
   kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report';
@@ -218,145 +218,23 @@ export interface CloseReceipt {
   evidence: { path?: string; recorded: number; lost: number; pending: number };
 }
 
-export type RunBusinessOutcome<Result extends JsonValue = JsonValue> =
-  | { status: 'completed'; value: Result }
-  | { status: 'failed' | 'cancelled'; error: { code: string; message: string } };
-
-export interface RunFinalizationError {
-  code: string;
-  message: string;
-  details?: readonly unknown[];
-}
-
-export type RunCoreClose =
-  | { status: 'complete' | 'pending'; receipt: CloseReceipt }
-  | { status: 'unknown'; error: RunFinalizationError };
-
-export type RunArtifactVerification =
-  | { status: 'not-requested' | 'passed' }
-  | { status: 'pending' | 'failed'; error: RunFinalizationError };
-
-export type RunFacilityCleanup = { id: string } & (
-  | { status: 'complete' }
-  | { status: 'pending'; error: RunFinalizationError }
-);
-
-export interface RunFinalizationOptions<Result extends JsonValue = JsonValue> {
-  runtime: Pick<Runtime, 'id' | 'close'>;
-  outputDir: string;
-  business: RunBusinessOutcome<Result>;
-  cleanupTimeoutMs?: number;
-  verifyArtifacts?(receipt: CloseReceipt, signal: AbortSignal): void | Promise<void>;
-  ownedFacilities?: readonly { id: string; close(signal: AbortSignal): void | Promise<void> }[];
-}
-
-export interface RunLateFacilityCleanup {
-  runtimeId: string;
-  facility: RunFacilityCleanup;
-  reportSaveFailure: RunFinalizationError | null;
-  reportPath?: string;
-}
-
-export interface RunFinalization<Result extends JsonValue = JsonValue> {
-  runtimeId: string;
-  business: RunBusinessOutcome<Result>;
-  coreClose: RunCoreClose;
-  artifactVerification: RunArtifactVerification;
-  facilities: readonly RunFacilityCleanup[];
-  reportSaveFailure: RunFinalizationError | null;
-  reportPath?: string;
-  lateFacilityReportPath?: string;
-  lateFacilityCleanup?: {
-    current(): RunLateFacilityCleanup | undefined;
-    readonly result: Promise<RunLateFacilityCleanup>;
-  };
-}
-
-export interface RuntimeObservationCursor {
-  readonly runtimeId: string;
-  readonly sequence: number;
-}
-
-export interface RuntimeEvidenceProgress {
-  readonly recorded: number;
-  readonly lost: number;
-  readonly pending: number;
-}
-
-export interface AgentObservation {
-  readonly id: string;
-  readonly profile: string;
-  readonly parentId?: string;
-  readonly status: AgentStatus;
-  readonly agentSeq: number;
-  readonly execution: 'active' | 'inactive' | 'unknown';
-  readonly cleanup?: {
-    readonly status: StopReceipt['cleanup'];
-    readonly execution: StopReceipt['execution'];
-    readonly action?: PendingCleanup['action'];
-    readonly resourceKey?: string;
-    readonly sandboxId?: string;
-  };
-}
-
-export interface RuntimeObservationSnapshot {
-  readonly schemaVersion: 1;
-  readonly cursor: RuntimeObservationCursor;
-  readonly runtimeState: 'open' | 'closing' | 'closed';
-  readonly cleanup?: CloseReceipt['cleanup'];
-  readonly agents: readonly AgentObservation[];
-  readonly evidence: RuntimeEvidenceProgress;
-}
-
-export type RuntimeObservationChange =
-  | { type: 'runtime'; runtimeState: RuntimeObservationSnapshot['runtimeState']; cleanup?: CloseReceipt['cleanup'] }
-  | { type: 'agent'; agent: AgentObservation; cause: 'spawn' | 'stop' | 'interrupt' | AgentEvent['type'] }
-  | { type: 'input'; agent: AgentObservation; inputId: string; requestId: string;
-      state: ConditionalInputReceipt['status'] | 'registered' | 'dispatched' | 'receipt-query' | 'rejected';
-      disposition?: Extract<InputReceipt, { status: 'accepted' }>['disposition']; reason?: string }
-  | { type: 'execution'; agent: AgentObservation; phase: 'started' | 'settled'; association: 'unknown';
-      workerSequence?: number; outcome?: Extract<AgentEvent, { type: 'settled' }>['outcome'] }
-  | { type: 'service'; agentId: string; serviceId: string; operation: string; operationId: string;
-      attemptId: string; state: string; outcome: string; errorCode?: string }
-  | { type: 'trace-gap'; agent: AgentObservation; expectedWorkerSequence?: number; observedWorkerSequence?: number }
-  | { type: 'persistence'; evidence: RuntimeEvidenceProgress };
-
-export type RuntimeObservationUpdate =
-  | (RuntimeObservationChange & { readonly schemaVersion: 1; readonly cursor: RuntimeObservationCursor; readonly recordSeq?: number })
-  | { readonly type: 'gap'; readonly schemaVersion: 1; readonly cursor: RuntimeObservationCursor;
-      readonly reason: 'cursor-expired' | 'slow-consumer'; readonly after: RuntimeObservationCursor };
-
-export interface RuntimeObservationOptions {
-  after?: RuntimeObservationCursor;
-  signal?: AbortSignal;
-}
-
-export interface RuntimeObservation {
-  readonly snapshot: RuntimeObservationSnapshot | null;
-  readonly events: AsyncIterableIterator<RuntimeObservationUpdate>;
-  cancel(): void;
-}
-
 export interface Runtime {
   readonly id: string;
+  readonly state: RuntimeState;
   spawn(options: SpawnOptions): Promise<AgentInfo>;
   get(agentId: string): Promise<AgentInfo>;
   list(filter?: AgentListFilter): Promise<AgentInfo[]>;
-  start(agentId: string, input: string, options: { requestId: string }): Promise<InputReceipt>;
-  steer(agentId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
-  interrupt(agentId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>;
+  interrupt(agentId: string, options: InterruptOptions): Promise<InterruptReceipt>;
   send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
   send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
-  onEvent(handler: (event: AgentEvent) => void): () => void;
-  observe(options?: RuntimeObservationOptions): RuntimeObservation;
-  stop(agentId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
-  close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
-  readonly files: {
-    snapshot(agentId: string, options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }): Promise<FileSnapshot>;
-    installStatus(agentId: string, options: { requestId: string }): Promise<FileInstall | null>;
-    install(agentId: string, options: { requestId: string; expected: FileSnapshot; files: FileSeed }): Promise<FileInstall>;
-    confirm(agentId: string, options: { requestId: string }): Promise<FileInstall>;
-    prepare(agentId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
-    grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
-  };
+  onEvent(handler: (event: RuntimeEvent) => void | Promise<void>): () => void;
+  stop(agentId: string, options?: StopOptions): Promise<StopReceipt>;
+  close(options?: CloseOptions): Promise<CloseReceipt>;
+  readonly files: RuntimeFiles;
+}
+
+export interface RuntimeFiles {
+  snapshot(agentId: string, options: CompleteFileSnapshotOptions): Promise<CompleteFileSnapshot>;
+  snapshot(agentId: string, options: FileSnapshotOptions): Promise<FileSnapshot>;
+  replace(agentId: string, options: FileReplaceOptions): Promise<FileReplaceReceipt>;
 }

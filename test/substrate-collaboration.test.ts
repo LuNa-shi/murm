@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -18,12 +19,12 @@ test('host checkpoints verify durable search, visit, citation and reads after co
   const starts = [];
   const provider = await createLifecycleProvider(t, { onStart: body => starts.push(body) }); provider.allowDeletion();
   const { createRuntime } = await import('@murm/core');
-  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
-  const backend = createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: provider.url },
+
+  const backend = runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url },
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } });
-  runtime = await createRuntime({ backend, outputDir: directory, maxAgents: 2, services: substrate.services,
+  runtime = await createRuntime({ ...backend, outputDir: directory, maxAgents: 2, services: substrate.services,
     profiles: { peer: { image: 'fixture', model: 'default', prompt: 'Fixed peer', writable: true, services: { substrate: ['publish', 'search', 'visit'] } } } });
   substrate.bindRuntime(runtime.id);
   const publisher = await runtime.spawn({ requestId: 'publisher', profile: 'peer' }); substrate.bindPeer(publisher.id);

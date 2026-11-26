@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -8,12 +9,11 @@ import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
 test('Environment admits one real Core peer with bindings, native Git secret and required collection before work', async t => {
   let start; const provider = await createLifecycleProvider(t, { onStart: body => { start = body; }, onCollect: () => ({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Fixture export pending' } }) });
   const { createPeerMeshHarness } = await import('../src/harnesses/peermesh/index.js');
-  const { createPiOpenSandboxBackend } = await import('../src/core/backends/pi-opensandbox.js');
   provider.allowDeletion();
   const outputDir = await mkdtemp(join(tmpdir(), 'agensh-harness-')); t.after(() => rm(outputDir, { recursive: true, force: true }));
   let facilityClosed = false;
   const harness = await createPeerMeshHarness({ runId: 'fixture', image: 'murm-agent:test', outputDir, model: 'default', exportLimit: 1024 * 1024,
-    backend: createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: provider.url, endpointHost: '127.0.0.1' }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
+    ...runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url, endpointHost: '127.0.0.1' }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' }, models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 16 * 1024 ** 2, inodes: 2048 } } }),
     prepare: async ({ resources }) => { resources.own({ kind: 'board-process', id: 'board-fixture', close: () => { facilityClosed = true; } }); return {

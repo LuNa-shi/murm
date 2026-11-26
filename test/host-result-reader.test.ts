@@ -1,11 +1,12 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core/services';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { ServiceRegistry } from '@murm/core';
+
 import { runWithReport } from '../src/harnesses/shared/run-report.js';
 
 async function recordedRun(t, run = async () => ({ accepted: true, privateOutput: 'DO_NOT_PRINT_RESULT' })) {
@@ -13,7 +14,7 @@ async function recordedRun(t, run = async () => ({ accepted: true, privateOutput
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const report = await runWithReport({ outputDir, createRuntime: () => createRuntime({
     outputDir, maxAgents: 1, profiles: { worker: { prompt: 'Unused profile', model: 'default', image: 'unused', writable: true, services: {} } }, services: new ServiceRegistry(),
-    backend: createPiOpenSandboxBackend({
+    ...runtimeSettings({
       sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },

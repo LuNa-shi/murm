@@ -26,6 +26,7 @@ export class OpenSandboxManager {
     }
     throw new Error('Unexpected command');
   }
+  coreResource() { return { creation: 'created', sandboxId: 'controlled' }; }
   async stopAgent() { return true; }
   async *collectCoreSession() { yield { type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 }; }
   async stopExecution() {}

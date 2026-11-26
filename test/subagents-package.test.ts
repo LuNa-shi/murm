@@ -13,7 +13,7 @@ test('external installed subagents example imports only package exports and adja
   await writeFile(join(installed.directory, 'smoke.mjs'), `
 import assert from 'node:assert/strict';
 import {runSubagentsHarness} from './main.js';
-for (const name of ['@murm/core','@murm/core/services','@murm/core/backends/pi-opensandbox']) assert.ok(import.meta.resolve(name).startsWith(new URL('./node_modules/',import.meta.url).href));
+assert.ok(import.meta.resolve('@murm/core').startsWith(new URL('./node_modules/',import.meta.url).href));
 const cancelled=new AbortController(); cancelled.abort();
 for (const maxAgents of [2,3,7]) {
 const report=await runSubagentsHarness({maxAgents,backend:{},image:'unused',outputDir:'./runs-'+maxAgents},cancelled.signal);

@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -7,8 +8,8 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
 import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core/services';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { ServiceRegistry } from '@murm/core';
+
 import { createIsolationUpstream } from './fixtures/core-isolation-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
@@ -109,7 +110,6 @@ test('Core isolates concurrent Agents, frozen roles and independent Runtimes on 
   t.after(() => { if (oldSentinel === undefined) delete process.env.CORE_HOST_SENTINEL; else process.env.CORE_HOST_SENTINEL = oldSentinel; });
   const reports = { resources: {}, agents: [], turns: {}, cleanup: [], failure: true, workloadLimitMs: 180_000, cleanupTailLimitMs: 30_000 };
   const runtimes = [];
-  const callers = [];
   let deadlineExpired = false;
   const deadline = setTimeout(() => {
     deadlineExpired = true;
@@ -129,7 +129,7 @@ test('Core isolates concurrent Agents, frozen roles and independent Runtimes on 
     assert.ok(Object.values(reports.resources).every(row => row.empty));
   });
   function configuration() {
-    return createPiOpenSandboxBackend({
+    return runtimeSettings({
       sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
         endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
         resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
@@ -146,8 +146,7 @@ test('Core isolates concurrent Agents, frozen roles and independent Runtimes on 
       env: { CORE_ROLE: 'A' }, network: { allow: [allowed.url] } },
     peer: { prompt: 'FROZEN_PROFILE_B', model: 'beta', image: imageB, writable: true, services: {}, env: { CORE_ROLE: 'B' } },
   };
-  const modelAccessPolicy = { authorize(caller) { callers.push(caller); return { phase: 'work', deadlineAt: Date.now() + 15_000 }; }, withCommit: commit => commit() };
-  const runtime = await createRuntime({ backend: configuration(), profiles, services: new ServiceRegistry(), maxAgents: 2, outputDir, modelAccessPolicy });
+  const runtime = await createRuntime({ ...configuration(), profiles, services: new ServiceRegistry(), maxAgents: 2, outputDir });
   runtimes.push(runtime);
   reports.resources[runtime.id] = { maxAgents: 2, beforeSpawnCount: (await ownedContainers(runtime.id)).length };
   assert.equal(reports.resources[runtime.id].beforeSpawnCount, 0);
@@ -174,9 +173,9 @@ test('Core isolates concurrent Agents, frozen roles and independent Runtimes on 
     assert.ok(observed.nanoCpus === 1_000_000_000 || observed.cpuQuota > 0 && observed.cpuQuota === observed.cpuPeriod);
     reports.agents.push({ runtimeId: runtime.id, agentId: agent.id, profile: agent.profile, initialStatus: agent.status, ...observed });
   }
-  const other = await createRuntime({ backend: configuration(), profiles: {
+  const other = await createRuntime({ ...configuration(), profiles: {
     observer: { prompt: 'FROZEN_PROFILE_C', model: 'alpha', image: imageB, writable: false, services: {}, env: { CORE_ROLE: 'B' } },
-  }, services: new ServiceRegistry(), maxAgents: 1, outputDir, modelAccessPolicy });
+  }, services: new ServiceRegistry(), maxAgents: 1, outputDir });
   runtimes.push(other);
   reports.resources[other.id] = { maxAgents: 1, beforeSpawnCount: (await ownedContainers(other.id)).length };
   assert.equal(reports.resources[other.id].beforeSpawnCount, 0);
@@ -241,8 +240,6 @@ test('Core isolates concurrent Agents, frozen roles and independent Runtimes on 
   assert.deepEqual(await observeSession(c), cSession);
   agentEvidence(c).sessionRetained = true;
   reports.resources[other.id].idleRetained = true;
-  assert.ok(callers.some(caller => caller.agentId === a.id && caller.model === 'alpha'));
-  assert.ok(callers.some(caller => caller.agentId === b.id && caller.model === 'beta'));
   assert.equal(upstream.failure, undefined);
   assert.equal(upstream.receipts.length, 10);
   assert.equal(denied.count(), 0);

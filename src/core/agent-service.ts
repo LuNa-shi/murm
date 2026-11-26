@@ -70,9 +70,8 @@ const stopReceipt = object({
 const agentInfo = object({
   id, profile: id, parentId: id,
   status: { enum: ['starting', 'idle', 'running', 'exited', 'closing', 'closed'] },
-  cursor: { type: 'integer', minimum: 0 },
   latestOutput: { type: 'string' }, lastError: errorInfo, lastStop: stopReceipt,
-}, ['id', 'profile', 'status', 'cursor']);
+}, ['id', 'profile', 'status']);
 const inputReceipt = { oneOf: [
   object({ inputId: id, status: { const: 'unknown' } }, ['inputId', 'status']),
   object({ inputId: id, status: { const: 'not-accepted' }, reason: { const: 'idle' } }, ['inputId', 'status', 'reason']),

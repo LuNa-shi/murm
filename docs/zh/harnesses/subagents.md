@@ -7,7 +7,7 @@ order: 7
 
 **Subagents** 建模了一套层级协作团队：由主 Agent（`/root`）拆解目标、递归派生命名子 Agent（最多 `maxDepth` 层）、通过消息实时协同并最终整合交付。源码：[examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents)。
 
-宿主使用三个公开 SDK 入口：`@murm/core`、`@murm/core/services` 和 `@murm/core/backends/opensandbox`。`createSubagentsHarness` 属于示例，应从复制后的本地模块或仓库模块导入，不能从包根入口导入。安装方式和 Runtime 所有权见 [SDK 指南](../sdk.md)。
+宿主统一从 `@murm/core` 导入公开 SDK。 `createSubagentsHarness` 是示例源码。安装步骤见 [SDK 指南](../sdk.md)。
 
 ## 1. 注册的 Service（`collaboration`）
 

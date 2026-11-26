@@ -45,10 +45,10 @@ node dist/examples/bridge-services/handoff.js
 程序向 stderr 输出观察游标与事件种类，最后向 stdout 输出一条 JSON，包含交接标识、原始输入 request ID 和报告。默认报告路径是：
 
 ```text
-handoff-runs/<runtimeId>/run-finalization.json
+handoff-runs/<runtimeId>/handoff-report.json
 ```
 
-这个示例仅使用公开包入口。打开 [`handoff.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/handoff.ts)，可以完整看到创建 Service 与 Runtime、开始观察、依次运行角色、检查 Service 操作和执行完成、调用 `finalizeRun` 核对导出文件的全过程。
+这个示例仅使用公开包入口。打开 [`handoff.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/handoff.ts)，可以完整看到创建 Service 与 Runtime、开始观察、依次运行角色、检查 Service 操作和执行完成、使用 `runtime.close` 回执核对导出文件的全过程。
 
 ## 4. 核对结果
 

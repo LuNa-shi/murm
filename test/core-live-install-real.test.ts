@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
 
-test('native Worker holds writers through live install and rejects an open proof descriptor', {
+test('native Worker resumes writers before replacement receipt and rejects an open proof descriptor', {
   skip: process.env.MURM_CORE_LIVE_INSTALL_TEST !== '1', timeout: 35000,
 }, async t => {
   const image = process.env.MURM_TEST_AGENT_IMAGE;
@@ -26,7 +26,6 @@ test('native Worker holds writers through live install and rejects an open proof
     import {spawn} from 'node:child_process';
     import {mkdir,readFile,writeFile,access} from 'node:fs/promises';
     import {setTimeout as delay} from 'node:timers/promises';
-    import {decodeFileSeed} from '/opt/murm/dist/scripts/core-file-seed.js';
     await mkdir('/tmp/live-bin');
     await writeFile('/tmp/live-bin/pi','#!/usr/bin/env node\\n'+${JSON.stringify(fakePi)},{mode:0o755});
     const worker=spawn(process.execPath,['/opt/murm/agent-worker.mjs','--token','live-test'],{stdio:'ignore',env:{...process.env,PATH:'/tmp/live-bin:'+process.env.PATH}});
@@ -41,26 +40,25 @@ test('native Worker holds writers through live install and rejects an open proof
       assert.equal(start.status,200);
       await wait(()=>exists('/workspace/runtime/home/beat'));
       const pid=(await fetch(origin+'/health').then(r=>r.json())).pid;
-      const snapshot=(await post('/core/files/snapshot',{requestId:'before',paths:['.'],includeGit:false,maxBytes:4096,required:true})).result;
+      const snapshot=(await post('/core/files/snapshot',{requestId:'before',paths:['.'],maxBytes:4096})).result;
       await writeFile('/workspace/runtime/home/open','yes');
       await wait(()=>exists('/workspace/runtime/home/opened'));
       const files={'proof.lean':{encoding:'utf8',data:'integrated',mode:493},'binary':{encoding:'base64',data:'AP+A'}};
-      const input={requestId:'install',version:2,expectedDigest:snapshot.digest,files};
-      const busy=await post('/core/files/install',input);
+      const input={requestId:'install',expectedDigest:snapshot.digest,files};
+      const busy=await post('/core/files/replace',input);
       assert.equal(busy.code,'WORKSPACE_BUSY');
       assert.equal(await readFile('/workspace/project/proof.lean','utf8'),'original');
       await writeFile('/workspace/runtime/home/close','yes');
       await wait(()=>exists('/workspace/runtime/home/closed'));
-      const installed=await post('/core/files/install',input);
-      assert.equal(installed.status,200);assert.equal(installed.result.phase,'installed');
-      const beat=await readFile('/workspace/runtime/home/beat','utf8');await delay(100);
-      assert.equal(await readFile('/workspace/runtime/home/beat','utf8'),beat);
+      const installed=await post('/core/files/replace',input);
+      assert.equal(installed.status,200);assert.equal(installed.result.status,'completed');
+      const beat=await readFile('/workspace/runtime/home/beat','utf8');
+      await wait(async()=>await readFile('/workspace/runtime/home/beat','utf8')!==beat);
       assert.equal(await readFile('/workspace/project/proof.lean','utf8'),'integrated');
       assert.deepEqual(await readFile('/workspace/project/binary'),Buffer.from([0,255,128]));
-      const repeat=await post('/core/files/install',input);assert.deepEqual(repeat.result,installed.result);
-      const confirmed=await post('/core/files/confirm',{requestId:'install',version:2,digest:decodeFileSeed(files).digest});
-      assert.equal(confirmed.status,200);assert.equal(confirmed.result.phase,'committed');
-      await wait(async()=>await readFile('/workspace/runtime/home/beat','utf8')!==beat);
+      await writeFile('/workspace/project/proof.lean','later writer change');
+      const repeat=await post('/core/files/replace',input);assert.deepEqual(repeat.result,installed.result);
+      assert.equal(await readFile('/workspace/project/proof.lean','utf8'),'later writer change');
       assert.equal((await fetch(origin+'/health').then(r=>r.json())).pid,pid);
       assert.equal((await post('/stop',{})).status,200);
       console.log(JSON.stringify({sameProcess:true,held:true,binary:true,descriptorGuard:true}));

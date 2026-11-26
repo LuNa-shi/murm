@@ -15,7 +15,7 @@ const { createRuntime } = await import('../src/core/index.js'); hooks.deregister
 async function fixture(t, count) {
   const root = await mkdtemp(join(tmpdir(), 'core-participation-'));
   transport.reset();
-  const runtime = await createRuntime({ backend: {}, profiles: { peer: { prompt: 'Fixed', model: 'default', image: 'fixture', writable: false, services: {} } }, services: new ServiceRegistry(), maxAgents: count, outputDir: root });
+  const runtime = await createRuntime({ sandbox: {}, profiles: { peer: { prompt: 'Fixed', model: 'default', image: 'fixture', writable: false, services: {} } }, services: new ServiceRegistry(), maxAgents: count, outputDir: root });
   t.after(async () => { await runtime.close(); await rm(root, { recursive: true, force: true }); });
   const agents = await Promise.all(Array.from({ length: count }, (_, i) => runtime.spawn({ profile: 'peer', requestId: `spawn-${i}` })));
   return { runtime, agents, complete() {

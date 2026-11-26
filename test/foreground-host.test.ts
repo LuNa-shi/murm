@@ -49,7 +49,7 @@ test('foreground host targets the existing agensh router and preserves request r
     assert.equal(transport.submissions.size, 2);
     const view = await host.status();
     assert.equal(view.peers[1].batches.length, 0);
-    assert.ok(view.peers[0].cursor > before.peers[0].cursor);
+    assert.equal(view.peers[0].status, before.peers[0].status);
     assert.ok([...transport.submissions.values()].every(row => row.mode === 'followUp'));
     assert.ok(!JSON.stringify(view).includes('private'));
     assert.deepEqual(host.stop(), { status: 'stopping' });
@@ -95,7 +95,7 @@ test('foreground status follows Core activity and exposes only the latest error 
     assert.equal((await host.wait({ recipient: 'a', batchId: kickoff.batchId, timeoutMs: 1000 })).state, 'completed');
     const idle = await host.status();
     assert.equal(idle.peers[0].status, 'idle');
-    assert.ok(idle.peers[0].cursor > active.peers[0].cursor);
+    assert.equal('cursor' in idle.peers[0], false);
     assert.equal(idle.peers[0].lastErrorCode, undefined);
     assert.ok(!JSON.stringify(idle).includes('private model output'));
     host.stop();
@@ -153,7 +153,7 @@ test('actual foreground CLI routes explicit peer commands and emits bounded save
   assert.deepEqual(view.peers.map(peer => peer.agentId), records.find(record => record.type === 'ready').status.peers.map(peer => peer.agentId));
   assert.equal(view.runDirectory, join(root, view.runtimeId));
   assert.deepEqual(view.peers.map(peer => peer.status), ['idle', 'idle']);
-  assert.ok(view.peers[0].cursor > 0);
+  assert.equal(view.peers[0].status, 'idle');
   assert.equal(view.peers[0].batches.length, 2); assert.equal(view.peers[1].batches.length, 0);
   const result = records.find(record => record.type === 'result'); assert.equal(result.cleanup, 'complete'); assert.equal(result.agents.length, 2);
   assert.ok(result.agents.every(agent => agent.execution === 'stopped' && agent.cleanup === 'complete'));

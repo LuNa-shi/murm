@@ -2,7 +2,7 @@
 
 This example creates one lead and two helpers through the public Core SDK. The team size and role Profiles are fixed before startup. Each Agent has its own Profile, sandbox, workDir, persistent Session, Git account and branch. The Board is a local SQLite Service with exclusive owner claims, not PeerMesh's soft overlapping CLAIM notes. The trusted host owns the controller, identity bindings and cleanup.
 
-The host imports Runtime and Services from the public SDK and constructs `createOpenSandboxBackend` from `@murm/core/backends/opensandbox`. The Lead-Worker controller is a repository module, not an extra package export. See the [SDK guide](../../docs/en/sdk.md) and [mechanism guide](../../docs/en/harnesses/lead-worker.md). Runtime changes to Profiles and Services belong to the separate [dynamic-team design](../../docs/designs/dynamic-lead-worker.md); the current example uses the fixed workflow described here.
+The host imports only from `@murm/core` for Runtime, Sandbox and Service author APIs. See the [SDK guide](../../docs/en/sdk.md) for configuration and resource ownership.
 
 ## Install and configure
 

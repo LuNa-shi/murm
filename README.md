@@ -47,13 +47,7 @@ npm install --save-exact /absolute/path/to/murm-core-0.2.0.tgz
 
 One package provides three primary import paths:
 
-| Import | Use it to |
-| --- | --- |
-| `@murm/core` | Create a Runtime, configure typed Profiles, control Agents, observe execution and finalize a Run. |
-| `@murm/core/services` | Register Services and connect in-process or HTTP JSON adapters. |
-| `@murm/core/backends/opensandbox` | Configure OpenSandbox, select Pi or Codex, and inspect executor capabilities. |
-
-`@murm/core/backends/pi-opensandbox` remains a Pi-only compatibility entry. These are subpaths of the same package, with a single version and installation.
+Import the public Runtime, Sandbox, events, file controls, Service registration, adapters and their types from `@murm/core`. Configure OpenSandbox with `createSandbox` and select Pi or Codex on `createRuntime`.
 
 The [SDK guide](docs/en/sdk.md) follows a complete two-Agent Messages handoff. Its [TypeScript example](examples/bridge-services/README.md#run-the-typescript-handoff) runs from both the checkout and an independently installed archive. It registers a Service, starts a writer and reader, observes Service calls and execution settlement, verifies the exported file, and saves the finalization report. It also demonstrates connecting an existing HTTP Service while keeping its credential on the host.
 
@@ -75,7 +69,7 @@ These are repository implementations and examples, not additional package export
 
 Each Agent has its own Sandbox and persistent Session, with a private working directory by default. A Harness can explicitly select a shared workspace. Profiles and the Service registry are captured when the Runtime is created. A settled Agent remains available and occupies its Slot until cleanup completes.
 
-Input submission and task success are separate observations. `send()` returns an admission receipt; the Harness observes execution and checks its own result. `observe()` provides a snapshot and a cursor-based stream for maintaining a live view. `finalizeRun()` records business outcome, artifact verification and Core cleanup separately. Required export failures retain the affected Sandbox for investigation or retry. See [Run lifecycle](docs/en/run-lifecycle.md) and [API reference](docs/en/reference/api.md).
+Subscribe with `onEvent` before sending work and read current state through `get`, `list` and `runtime.state`. A `send` receipt reports input admission. A `settled` event reports an execution boundary. The Harness checks the business result.
 
 The supported backend uses same-host, Docker-backed OpenSandbox. Pi and Codex expose different capabilities; query the backend before relying on context fork or a steering mode. [Architecture](docs/en/architecture.md) explains the host, Worker, Bridge and model gateway boundaries.
 
@@ -98,7 +92,7 @@ BASE_PATH=/murm SITE_URL=https://luna-shi.github.io npm --prefix website run bui
 | `src/core/` | Public SDK, Agent lifecycle, Bridge, observation, finalization and backend integration. |
 | `src/harnesses/`, `examples/` | Collaboration policies, runnable hosts and editable SDK examples. |
 | `src/runtime/`, `src/task/`, `src/context/`, `src/judge/`, `src/workspace/` | Resource and domain implementations used by the built-in Harnesses. |
-| `src/sdk/`, `src/services/` | Internal Service infrastructure and optional integrations. The public Service entry is `@murm/core/services`. |
+| `src/sdk/`, `src/services/` | Internal Service infrastructure and optional integrations. The public Service author interfaces are in `@murm/core`. |
 | `deploy/`, `scripts/` | Worker and Service deployment, setup, CLI entry points and build tools. |
 | `docs/en/`, `docs/zh/` | English and Chinese user guides, also rendered by the website. |
 | `docs/architecture/` | Current implementation manual, full prompt/API/storage references and source inventory. |

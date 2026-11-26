@@ -37,7 +37,7 @@ async function fixture(t,options={}) {
   for(const row of publication.registrations.filter(row=>row.manifest.id!=='task')) services.registerService(row);
   const allowed=Object.fromEntries(publication.registrations.map(row=>[row.manifest.id,row.manifest.capabilities.map(cap=>cap.operation)]));
   allowed.task.push(...discovery.manifest.capabilities.map(cap=>cap.operation));
-  runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Check a fixed public revision',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:1,outputDir:root});
+  runtime=await createRuntime({sandbox: {},profiles:{researcher:{prompt:'Check a fixed public revision',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:1,outputDir:root});
   t.after(async()=>{publication.close();await discovery.close();await runtime.close({timeoutMs:1000});await judge.waitForIdle();judge.close();stores.close();await rm(root,{recursive:true,force:true});});
   const agent=await runtime.spawn({profile:'researcher',requestId:'fixed-checker'});
   stores.tasks.registerAgent({agentId:agent.id,missionId:stores.missionId,legacySlotId:'taskpool-slot:checker',selectionDeadline:new Date(Date.now()+60000).toISOString()});
@@ -210,7 +210,7 @@ test('Environment saves owned pending Judge identities when an already started s
   transport.reset();const accept=id=>{transport.confirm(id,'started');transport.next=accept;};transport.next=accept;
   let checking;
   try {
-    const report=await runTaskPoolHarness({backend:{},model:'default',image:'fixture',capacity:1,outputDir:root,
+    const report=await runTaskPoolHarness({sandbox: {},model:'default',image:'fixture',capacity:1,outputDir:root,
       taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,
       deadlineAt:Date.now()+60000,closeTimeoutMs:1000,judgeService:judge,snapshotProject(){throw new Error('No live capture belongs in this test');},
       async drive(controller) {

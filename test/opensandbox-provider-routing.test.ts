@@ -1,7 +1,8 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { test, type TestContext } from 'node:test';
-import { claimOpenSandboxBackend, createOpenSandboxBackend, openOpenSandboxBackend } from '../src/core/opensandbox-backend.js';
+import { claimOpenSandboxBackend, openOpenSandboxBackend } from '../src/core/opensandbox-backend.js';
 import { OpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 
 async function endpoint(t: TestContext, id: string, version: number) {
@@ -32,7 +33,8 @@ async function endpoint(t: TestContext, id: string, version: number) {
     else if (route.startsWith('GET /v1/sandboxes/same-sandbox/endpoints/')) json({ endpoint: `${origin}/worker` });
     else if (route === 'GET /worker/health' || route === 'GET /execd/ready') json({});
     else if (route === 'POST /execd/command') json({ exit_code: 0, stdout: JSON.stringify(input).includes('pi') ? '1.3.0' : 'v24.21.0' });
-    else if (route === 'POST /worker/start') json({ result: { contract: { version: 'murm-core-v1', resources: [] },
+    else if (route === 'GET /worker/core/contract') json({ result: { file_protocol: 'file-tree-v1' } });
+    else if (route === 'POST /worker/start') json({ result: { contract: { version: 'murm-core-v1', file_protocol: 'file-tree-v1', resources: [] },
       project_quota: quota, project_files: { version: 0, writable: false } } });
     else if (route === 'POST /worker/rpc') json({ result: { response: { command: 'get_state', success: true }, records: [] } });
     else if (route === 'POST /worker/core/files/snapshot') json({ result: { version } });
@@ -55,13 +57,14 @@ async function endpoint(t: TestContext, id: string, version: number) {
 test('one Backend routes identical sandbox IDs and lost creates to their original OpenSandbox endpoints', { timeout: 15_000 }, async t => {
   const first = await endpoint(t, 'first', 11);
   const second = await endpoint(t, 'second', 22);
-  const config = claimOpenSandboxBackend(createOpenSandboxBackend({
+  const settings = runtimeSettings({
     sandbox: { lifecycleBaseUrl: `${first.origin}/v1` },
     bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
     modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `${first.origin}/v1/responses`, headers: {} } } },
     isolation: { network: 'local-docker', disk: first.quota },
-  }));
+  });
+  const config = claimOpenSandboxBackend(settings.sandbox, settings);
   const publicUrl = 'http://172.17.0.1:9000';
   const backend = await openOpenSandboxBackend(config, {
     runtimeId: 'provider-ownership-test', outputDir: '', providers: [first, second],

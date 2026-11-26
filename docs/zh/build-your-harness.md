@@ -30,7 +30,7 @@ Harness 是使用 SDK 构建的应用。它决定谁来工作、Agent 如何共�
 下面是交接示例中完整的 [`messages.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/messages.ts)：
 
 ```ts
-import { createHttpJsonAdapter, createInProcessAdapter, type ServiceRegistration } from '@murm/core/services';
+import { createHttpJsonAdapter, createInProcessAdapter, type ServiceRegistration } from '@murm/core';
 
 const key = { type: 'string', minLength: 1, maxLength: 64 };
 const text = { type: 'string', minLength: 1, maxLength: 2048 };
@@ -145,8 +145,7 @@ idle Agent 仍然占用槽位。Task 完成、一次执行完成和并发容量�
 
 ## 5. 验证结果并完成收尾
 
-使用一次 `finalizeRun()` 记录应用结果。为清理设置独立截止时间，通过 `verifyArtifacts` 检查导出文件，只把应用拥有的资源列入 `ownedFacilities`。已有外部服务保留自己的生命周期。
+停止派发并调用 `runtime.close({ timeoutMs })`。独立检查业务结果、导出产物和清理回执。只有应用拥有的设施才由应用关闭，保留 Core 恢复必需的外部设施。
 
-分别查看报告中的业务、产物校验、Core close、设施清理和保存状态。正确答案伴随 pending 清理仍需后续处理；清理成功本身也不能证明答案正确。报告契约见 [SDK 指南](sdk.md)，资源保留规则见 [Run 生命周期](run-lifecycle.md)。
 
 扩大新 Harness 的运行规模之前，先验证一次完整的小规模运行：预期 Service 状态转换、正确的角色权限、真实产物内容，以及所有待清理资源都有明确记录。然后检查该机制最关键的行为，例如排他认领、跨 Agent 复用或父子所有权。已有 [Harness 指南](harnesses/index.md) 分别解释了这些行为及其边界。

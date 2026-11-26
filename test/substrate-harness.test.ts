@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
@@ -31,8 +32,8 @@ async function fixture(t, onPrompt, hooks = {}) {
         { worker_sequence: sequence + 3, type: 'agent_settled' },
       ] };
     }, ...hooks }); provider.allowDeletion();
-  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
-  const backend = createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: provider.url },
+
+  const backend = runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url },
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } } });
@@ -42,7 +43,7 @@ async function fixture(t, onPrompt, hooks = {}) {
 test('Substrate fixed three-peer pool uses serial fresh inputs on each same Core Agent and saves exact artifacts with independent cleanup', async t => {
   const f = await fixture(t);
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
-  const report = await runSubstrate({ backend: f.backend, runId: 'fixed', image: 'fixture', outputDir: f.directory, question: 'Fixed source question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 });
+  const report = await runSubstrate({ ...f.backend, runId: 'fixed', image: 'fixture', outputDir: f.directory, question: 'Fixed source question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 });
   assert.equal(report.businessFailure, null); assert.equal(report.cleanupFailure, null); assert.equal(report.reportSaveFailure, null);
   assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.cleanup.agents.length, 3);
   assert.equal(f.provider.allocations(), 3); assert.equal(f.starts.length, 3); assert.equal(f.prompts.length, 6);
@@ -60,7 +61,7 @@ test('a six-peer Substrate pool is fully ready before work and each peer complet
   const readyCounts = [];
   const f = await fixture(t, ({ starts }) => { readyCounts.push(starts.length); });
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
-  const report = await runSubstrate({ backend: f.backend, runId: 'six-peers', image: 'fixture', outputDir: f.directory,
+  const report = await runSubstrate({ ...f.backend, runId: 'six-peers', image: 'fixture', outputDir: f.directory,
     question: 'Fixed source question', poolSize: 6, workTimeoutMs: 10_000, turnTimeoutMs: 2000, closeTimeoutMs: 2000 });
   assert.equal(report.businessFailure, null);
   assert.equal(report.policy.poolSize, 6);
@@ -83,7 +84,7 @@ test('Substrate rejects unsupported pool sizes before allocating Agents', async 
   const f = await fixture(t);
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
   for (const poolSize of [2, 9, 4.5, '6', null]) {
-    await assert.rejects(runSubstrate({ backend: f.backend, runId: 'bad-pool', image: 'fixture', outputDir: f.directory,
+    await assert.rejects(runSubstrate({ ...f.backend, runId: 'bad-pool', image: 'fixture', outputDir: f.directory,
       question: 'Fixed source question', poolSize }), { name: 'TypeError', message: /pool size/i });
   }
   assert.equal(f.provider.allocations(), 0);
@@ -98,7 +99,7 @@ test('host cycle scheduling delays one peer while other peers complete their ser
   });
   const scheduled = [];
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
-  const work = runSubstrate({ backend: f.backend, runId: 'scheduled', image: 'fixture', outputDir: f.directory,
+  const work = runSubstrate({ ...f.backend, runId: 'scheduled', image: 'fixture', outputDir: f.directory,
     question: 'Fixed source question', workTimeoutMs: 8000, turnTimeoutMs: 1000, closeTimeoutMs: 1000,
     async beforeCycle(context) {
       scheduled.push(context);
@@ -125,7 +126,7 @@ test('cancellation during host cycle waiting cleans every peer without admitting
   const controller = new AbortController(), signals = [];
   const f = await fixture(t);
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
-  const work = runSubstrate({ backend: f.backend, runId: 'cancel-schedule', image: 'fixture', outputDir: f.directory,
+  const work = runSubstrate({ ...f.backend, runId: 'cancel-schedule', image: 'fixture', outputDir: f.directory,
     question: 'Fixed source question', workTimeoutMs: 8000, turnTimeoutMs: 1000, closeTimeoutMs: 1000,
     beforeCycle({ signal }) {
       signals.push(signal);
@@ -147,7 +148,7 @@ test('cancellation during host cycle waiting cleans every peer without admitting
 test('a rejected host cycle schedule stops its peer while other peers finish', async t => {
   const f = await fixture(t);
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
-  const report = await runSubstrate({ backend: f.backend, runId: 'bad-schedule', image: 'fixture', outputDir: f.directory,
+  const report = await runSubstrate({ ...f.backend, runId: 'bad-schedule', image: 'fixture', outputDir: f.directory,
     question: 'Fixed source question', workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000,
     beforeCycle({ peerIndex }) { if (peerIndex === 0) throw Object.assign(new Error('Fixed schedule rejection'), { code: 'HOST_SCHEDULE_REJECTED' }); } });
   assert.equal(report.businessFailure.code, 'SUBSTRATE_PEERS_FAILED');
@@ -162,7 +163,7 @@ test('invalid host cycle scheduling is rejected before allocating Agents or crea
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
   const { readdir } = await import('node:fs/promises');
   for (const beforeCycle of [null, false, 1, 'wait', {}]) {
-    await assert.rejects(runSubstrate({ backend: f.backend, runId: 'invalid-schedule', image: 'fixture', outputDir: f.directory,
+    await assert.rejects(runSubstrate({ ...f.backend, runId: 'invalid-schedule', image: 'fixture', outputDir: f.directory,
       question: 'Fixed source question', beforeCycle }), { name: 'TypeError' });
   }
   assert.deepEqual(await readdir(f.directory), []);
@@ -198,7 +199,7 @@ test('actual CLI handoff adopts immutable producer content after producer stop; 
     }
   }, { onStop() { producerStopped = true; stopped.resolve(); return { stopped: true }; } });
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
-  const report = await runSubstrate({ backend: f.backend, runId: 'handoff', image: 'fixture', outputDir: f.directory, question: 'Fixed algebra source', maxRounds: 2, workTimeoutMs: 8000, turnTimeoutMs: 5000, closeTimeoutMs: 1000,
+  const report = await runSubstrate({ ...f.backend, runId: 'handoff', image: 'fixture', outputDir: f.directory, question: 'Fixed algebra source', maxRounds: 2, workTimeoutMs: 8000, turnTimeoutMs: 5000, closeTimeoutMs: 1000,
     beforeCycle: ({ peerIndex }) => peerIndex === 1 ? stopped.promise : undefined });
   assert.equal(report.businessFailure.code, 'SUBSTRATE_PEERS_FAILED'); assert.equal(report.cleanupFailure, null);
   assert.equal(report.peers[2].failure.code, 'input_failed'); assert.equal(report.peers[2].stop.execution, 'stopped');
@@ -214,7 +215,7 @@ test('actual CLI handoff adopts immutable producer content after producer stop; 
 test('unknown submission stops only its peer and never retries or replaces it while other peers finish', async t => {
   const f = await fixture(t, ({ peer }) => peer === 2 ? 'unknown' : undefined);
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
-  const report = await runSubstrate({ backend: f.backend, runId: 'unknown', image: 'fixture', outputDir: f.directory, question: 'Fixed question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 });
+  const report = await runSubstrate({ ...f.backend, runId: 'unknown', image: 'fixture', outputDir: f.directory, question: 'Fixed question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 });
   assert.equal(report.peers[2].failure.code, 'input_unknown'); assert.equal(report.peers[2].turns.length, 1);
   assert.equal(report.peers[2].failure.receipt.status, 'unknown'); assert.ok(report.peers[2].failure.receipt.inputId);
   assert.ok(report.peers.slice(0, 2).every(peer => peer.turns.length === 2 && peer.failure === null));
@@ -224,7 +225,7 @@ test('unknown submission stops only its peer and never retries or replaces it wh
 test('required artifact failure reports pending ownership independently from successful peer work and retains public data', async t => {
   const f = await fixture(t, undefined, { onCollect: () => ({ error: { code: 'INVALID_CONTRACT', error: 'Fixed export blocker' } }) });
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
-  const report = await runSubstrate({ backend: f.backend, runId: 'pending', image: 'fixture', outputDir: f.directory, question: 'Fixed question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 });
+  const report = await runSubstrate({ ...f.backend, runId: 'pending', image: 'fixture', outputDir: f.directory, question: 'Fixed question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 });
   assert.equal(report.businessFailure, null); assert.equal(report.cleanupFailure.code, 'CLEANUP_PENDING');
   assert.equal(report.cleanup.cleanup, 'pending');
   assert.ok(report.cleanup.agents.every(agent => agent.execution === 'stopped' && agent.cleanup === 'pending'));
@@ -236,7 +237,7 @@ test('host cancellation fences further inputs and uses an independent cleanup wi
   const controller = new AbortController();
   const f = await fixture(t, () => { controller.abort(); });
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
-  const report = await runSubstrate({ backend: f.backend, runId: 'cancelled', image: 'fixture', outputDir: f.directory, question: 'Fixed question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 }, controller.signal);
+  const report = await runSubstrate({ ...f.backend, runId: 'cancelled', image: 'fixture', outputDir: f.directory, question: 'Fixed question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 }, controller.signal);
   assert.equal(report.businessFailure.code, 'SUBSTRATE_WORK_ABORTED');
   assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.cleanupFailure, null);
   assert.ok(f.prompts.length <= 3); assert.ok(report.peers.every(peer => peer.turns.length === 1));
@@ -246,7 +247,7 @@ test('host cancellation fences further inputs and uses an independent cleanup wi
 test('host observes real six-peer ready, started turns and owned stop receipts', async t => {
   const f = await fixture(t);const seen=[];let identity;
   const { runSubstrate }=await import('../src/harnesses/substrate/index.js');
-  const report=await runSubstrate({backend:f.backend,runId:'host-observed',image:'fixture',outputDir:f.directory,question:'Fixed question',poolSize:6,maxRounds:2,workTimeoutMs:10000,turnTimeoutMs:1000,closeTimeoutMs:1000,
+  const report=await runSubstrate({...f.backend,runId:'host-observed',image:'fixture',outputDir:f.directory,question:'Fixed question',poolSize:6,maxRounds:2,workTimeoutMs:10000,turnTimeoutMs:1000,closeTimeoutMs:1000,
     async onReady({runtime,peerIds}) {identity=runtime.id;assert.equal(peerIds.length,6);assert.equal(f.prompts.length,0);for(const id of peerIds)assert.equal((await runtime.get(id)).status,'idle');seen.push('ready');},
     onCycle({agentId,result,snapshot}) {assert.equal(seen[0],'ready');assert.equal(result.receipt.disposition,'started');assert.equal(result.settled.agentId,agentId);assert.equal(snapshot.runtimeId,identity);seen.push('turn');},
     onPeerStop({agentId,receipt,snapshot}) {assert.equal(receipt.agentId,agentId);assert.equal(receipt.execution,'stopped');assert.equal(snapshot.runtimeId,identity);seen.push('stop');},

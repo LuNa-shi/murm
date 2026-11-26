@@ -47,7 +47,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
     ![selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every((x: any)=>x>0) || heartbeatMs>10000 ||
     ![continuationLimit,discoveryLimit].every((x: any)=>Number.isSafeInteger(x)&&x>=1) || typeof afterStopped!=='function' || (beforeInitialDispatch!==undefined && typeof beforeInitialDispatch!=='function') || typeof automaticContinuation!=='boolean' || typeof refillWhenNoReadyTask!=='boolean') throw new TypeError('TaskPool controller requires finite ordered work budgets and trusted Runtime/domain stores');
   const coordinator=createTaskPoolAgentCoordinator({runtime,taskService,missionId,coordinationPermissions});
-  const agents: any=new Map(),feedbackRequests: any=new Map(),events: any=new Map();
+  const agents: any=new Map(),feedbackRequests: any=new Map();
   const inputs: any[]=[],decisions: any[]=[],failures: any[]=[];
   let admissionController: any;
   function missionStopReason() {
@@ -55,6 +55,8 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
   }
   let chain=Promise.resolve(),timer: any,deadlineTimer: any,started=false,closing=false,completion: any=null,generation=0;
   const complete=Promise.withResolvers();
+  const stopWork = new Map<string, Promise<void>>();
+  const agentTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const workDeadline=()=>Math.min(deadlineAt,activeDeadline());
   const remaining=()=>Math.max(0,workDeadline()-Date.now());
   const snapshot=()=>structuredClone({runtimeId:runtime.id,missionId,closing,completion,agents:[...agents.values()],inputs,decisions,failures});
@@ -74,15 +76,40 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
   function finish(reason: any,extra: any={}) {
     if(completion) return;
     completion=reason; closing=true; admissionController?.abort(); clearInterval(timer); clearTimeout(deadlineTimer); unsubscribe();
+    for (const row of agents.values()) if (!row.released) void stop(row, reason);
     record(reason,null,extra); complete.resolve(snapshot());
   }
   function current(row: any) {
     const owner=taskService.getAgent(row.agentId);
     return {owner,execution:owner?.execution_id?taskService.getExecution(owner.execution_id):null};
   }
-  function expired(owner: any,execution: any) {
-    const at=Date.now();
-    return at>=Date.parse(owner?.hard_deadline) || (owner?.state==='UNBOUND'&&at>=Date.parse(owner.selection_deadline)) || (execution&&at>=Date.parse(execution.execution_deadline));
+  function domainDeadline(owner: any, execution: any) {
+    return Math.min(
+      Date.parse(owner?.hard_deadline),
+      owner?.state === 'UNBOUND' ? Date.parse(owner.selection_deadline) : Infinity,
+      execution?.execution_deadline ? Date.parse(execution.execution_deadline) : Infinity,
+      execution?.lease_expires_at ? Date.parse(execution.lease_expires_at) : Infinity,
+    );
+  }
+  function expired(owner: any, execution: any) {
+    return Date.now() >= domainDeadline(owner, execution);
+  }
+  function armAgent(row: any) {
+    clearTimeout(agentTimers.get(row.agentId));
+    agentTimers.delete(row.agentId);
+    if (closing || row.released || row.stopReason) return;
+    const { owner, execution } = current(row);
+    if (owner?.state === 'CLOSING' || execution?.state === 'CLOSING') {
+      void stop(row, 'task-finish');
+      return;
+    }
+    const deadline = domainDeadline(owner, execution);
+    if (!Number.isFinite(deadline)) return;
+    if (deadline <= Date.now()) {
+      void stop(row, 'domain-deadline');
+      return;
+    }
+    agentTimers.set(row.agentId, setTimeout(() => armAgent(row), Math.min(deadline - Date.now(), 2_147_483_647)));
   }
   async function applyStop(row: any,receipt: any) {
     row.lastStop=receipt;
@@ -98,19 +125,36 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
     row.released=receipt.cleanup==='complete';
     record(row.released?'slot-released':'cleanup-pending-retains-slot',row);
   }
-  async function stop(row: any,reason: any) {
-    if(!row.stopReason) {record(reason,row);row.stopReason=reason;}
-    try {
-      taskService.requestAgentStop(row.agentId,reason,{terminalState:'FAILED'});
-      await applyStop(row,await runtime.stop(row.agentId,{timeoutMs:stopTimeoutMs}));
-    } catch(error: any) {row.cleanupError=info(error);record('stop-error-retains-slot',row);}
+  function stop(row: any, reason: string) {
+    const existing = stopWork.get(row.agentId);
+    if (existing) return existing;
+    const pending = Promise.withResolvers<void>();
+    stopWork.set(row.agentId, pending.promise);
+    clearTimeout(agentTimers.get(row.agentId));
+    agentTimers.delete(row.agentId);
+    if (!row.stopReason) { record(reason, row); row.stopReason = reason; }
+    void (async () => {
+      try { taskService.requestAgentStop(row.agentId, reason, { terminalState: 'FAILED' }); }
+      catch (error) { row.intentError = info(error); }
+      try {
+        const receipt = await runtime.stop(row.agentId, { timeoutMs: stopTimeoutMs });
+        await applyStop(row, receipt);
+      } catch (error) {
+        row.cleanupError = info(error);
+        record('stop-error-retains-slot', row);
+      }
+    })().finally(() => {
+      stopWork.delete(row.agentId);
+      pending.resolve();
+    }).catch(error => failures.push(info(error)));
+    return pending.promise;
   }
   async function submit(row: any,text: any,{source,requestId,mode='followUp',taskId,executionId,fence,notificationId}: any={}) {
     const input: any={agentId:row.agentId,source,requestId,mode,taskId:taskId??null,executionId:executionId??null,fence:fence??null,status:'not_submitted'};
     inputs.push(input);
     if(closing || remaining()<=0 || row.uncertain || row.stopReason) {input.reason='controller-closed-or-input-unknown';return input;}
     const live=await runtime.get(row.agentId);
-    if(closing || remaining()<=0 || !['idle','running'].includes(live.status)) {input.reason='agent-unavailable';return input;}
+
     if(taskId) {
       const {owner,execution}=current(row);
       if(owner?.state!=='ACTIVE' || execution?.state!=='RUNNING' || execution.execution_id!==executionId || execution.task_id!==taskId || execution.fencing_version!==fence || execution.owner_ref!==row.agentId || taskService.getTask(taskId)?.state!=='RUNNING' || Date.now()>=Math.min(Date.parse(owner.hard_deadline),Date.parse(execution.execution_deadline),Date.parse(execution.lease_expires_at))) {
@@ -118,6 +162,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
         input.reason='task-binding-changed';record('input-not-delivered',row,{source,requestId,reason:input.reason});return input;
       }
     }
+    if(closing || remaining()<=0 || row.stopReason || !['idle','running'].includes(live.status)) {input.reason='agent-unavailable';return input;}
     if (taskService.isMissionStopped(missionId)) {
       input.reason = 'mission-stopped';
       record('input-not-delivered', row, { source, requestId, reason: input.reason });
@@ -240,6 +285,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       const agent=await coordinator.spawn({legacySlotId,requestId,profile,writable:false,selectionDeadline:new Date(selection).toISOString(),hardDeadline:new Date(hard).toISOString()});
       const row: any={agentId:agent.id,legacySlotId,slot:index,generation:serial,continuations:0,discoveries:1,lastActivityAt:Date.now(),released:false};
       agents.set(agent.id,row);spawned++;record('spawn-readonly-discovery',row);
+      armAgent(row);
       if(closing) await stop(row,'controller-closing');
       else if(beforeInitialDispatch) awaitingDiscovery.push(row);
       else await submit(row,discoveryPrompt,{source:'discovery',requestId:`taskpool:discovery:${serial}:1`});
@@ -278,6 +324,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       if(owner?.state==='ACTIVE' && execution?.state==='RUNNING') {
         try {
           taskService.dispatch('heartbeat',{},executionEnvelope(execution,`taskpool:heartbeat:${randomUUID()}`));
+          armAgent(row);
         }
         catch(error: any) {row.failure=info(error);await stop(row,'lease-failed');continue;}
         try {await handoffWarning(row);}
@@ -317,15 +364,29 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       } else {await stop(row,'domain-binding-ended');await refill();}
     }
   }
-  const unsubscribe=runtime.onEvent((value: any)=>{
-    if(closing || !Number.isSafeInteger(value.seq) || value.seq<=(events.get(value.agentId)??0)) return;
-    events.set(value.agentId,value.seq);
+  const unsubscribeRuntime=runtime.onEvent((value: any)=>{
+    if(closing || !['settled','error','exit'].includes(value.type)) return;
     void enqueue(()=>event(value)).catch(()=>{});
   });
+  function checkDomain() {
+    if (closing) return;
+    if (taskService.isMissionStopped(missionId)) {
+      finish(missionStopReason());
+      return;
+    }
+    for (const row of agents.values()) armAgent(row);
+  }
+  const unsubscribeTask = taskService.subscribeTaskEvents?.(checkDomain);
+  const unsubscribeExecution = taskService.subscribeExecutionState?.(checkDomain);
+  function unsubscribe() {
+    unsubscribeRuntime();
+    unsubscribeTask?.();
+    unsubscribeExecution?.();
+  }
   return Object.freeze({
     start(){return enqueue(async()=>{if(started) return snapshot();started=true;deadlineTimer=setTimeout(()=>finish('mission-deadline'),Math.max(1,remaining()));await refill();if(!closing) timer=setInterval(()=>{void enqueue(reconcile).catch(()=>{});},heartbeatMs);return snapshot();});},
     tick:()=>enqueue(reconcile),
-    notify(){if(!closing) void enqueue(reconcile).catch(()=>{});},
+    notify(){checkDomain();if(!closing) void enqueue(reconcile).catch(()=>{});},
     feedback({taskId,input,requestId,mode='steer'}: any) {
       if(typeof taskId!=='string'||typeof input!=='string'||!input || typeof requestId!=='string'||!requestId||!['steer','followUp'].includes(mode)) throw new TypeError('Directed TaskPool feedback requires Task, text, stable request and mode');
       const fingerprint=stableStringify({taskId,input,mode});
@@ -351,7 +412,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
     async close({timeoutMs=stopTimeoutMs}: any={}) {
       finish(completion??'host-stop');
       let timeout: any;
-      const jobs=chain.then(()=>Promise.allSettled([...agents.values()].filter((row: any)=>!row.released).map((row: any)=>stop(row,'controller-close'))));
+      const jobs=Promise.allSettled([...agents.values()].filter((row: any)=>!row.released).map((row: any)=>stop(row,'controller-close')));
       try {await Promise.race([jobs,new Promise<any>((resolve: any)=>{timeout=setTimeout(resolve,timeoutMs);})]);}
       finally{clearTimeout(timeout);}
       return snapshot();

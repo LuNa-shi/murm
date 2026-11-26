@@ -20,10 +20,8 @@ export const CORE_MODEL_SCHEMA_SQL = `
       );
     `;
 
-const phases = ['selection', 'work', 'closeout'];
 const maximumBodyBytes = 8 * 1024 * 1024;
 const maximumEventBytes = 8 * 1024 * 1024;
-const executionAuthorityCheckMs = 1000;
 const maximumReceiptBytes = 1024 * 1024;
 const terminalStatuses = new Map<any, any>([
   ['response.completed', 'completed'],
@@ -162,15 +160,11 @@ function upstreamPolicy(upstream: any) {
 export const defaultTimedResponsesLimits = Object.freeze({ maxOutputTokens: 32_768, requestTimeoutMs: 120_000 });
 
 function timedPolicy(upstream: any, { maxOutputTokens = defaultTimedResponsesLimits.maxOutputTokens,
-  requestTimeoutMs = defaultTimedResponsesLimits.requestTimeoutMs, selectionReasoningEffort }: any) {
+  requestTimeoutMs = defaultTimedResponsesLimits.requestTimeoutMs }: any) {
   if ((maxOutputTokens !== null && !integer(maxOutputTokens, 16)) || !integer(requestTimeoutMs, 1) || requestTimeoutMs > 2_147_483_647) {
     throw new TypeError('Timed Responses gateway requires a finite request timeout and a valid output-token policy');
   }
-  if (selectionReasoningEffort !== undefined && selectionReasoningEffort !== 'low') {
-    throw new TypeError('Selection reasoning effort must be low when configured');
-  }
-  return { ...upstreamPolicy(upstream), mode: 'time_bounded', maxOutputTokens, requestTimeoutMs,
-    ...(selectionReasoningEffort === undefined ? {} : { selectionReasoningEffort }) };
+  return { ...upstreamPolicy(upstream), mode: 'time_bounded', maxOutputTokens, requestTimeoutMs };
 }
 
 function terminalMeter(model: any, onUsage: any) {
@@ -230,7 +224,6 @@ class GatewayError extends Error {
 export class ResponsesBudgetGateway {
   declare db: any;
   declare validateAgent: any;
-  declare withLifecycleWrite: any;
   declare fetch: any;
   declare policy: any;
   declare headers: any;
@@ -245,7 +238,7 @@ export class ResponsesBudgetGateway {
   #controllers: any = new Map<any, any>();
   #stopPromise: any;
   #executor: 'pi' | 'codex';
-  constructor({ db, upstream, timeBounds, executor = 'pi', validateAgent, withLifecycleWrite = (commit: any) => commit(), fetchImpl = globalThis.fetch, transformPayload = (payload: unknown) => payload, beginTrace }: any = {}) {
+  constructor({ db, upstream, timeBounds, executor = 'pi', validateAgent, fetchImpl = globalThis.fetch, transformPayload = (payload: unknown) => payload, beginTrace }: any = {}) {
     if (!db?.prepare || typeof validateAgent !== 'function' || typeof fetchImpl !== 'function') {
       throw new TypeError('Database, synchronous Agent authority, and fetch are required');
     }
@@ -254,9 +247,7 @@ export class ResponsesBudgetGateway {
     if (executor !== 'pi' && executor !== 'codex') throw new TypeError('Unsupported Responses executor');
     this.#executor = executor;
     this.db = db;
-    if (typeof withLifecycleWrite !== 'function') throw new TypeError('Lifecycle write boundary must be synchronous');
     this.validateAgent = validateAgent;
-    this.withLifecycleWrite = withLifecycleWrite;
     this.fetch = fetchImpl;
     this.transformPayload = transformPayload;
     this.beginTrace = beginTrace;
@@ -355,10 +346,9 @@ export class ResponsesBudgetGateway {
       let authority;
       try { authority = this.validateAgent(binding); }
       catch { throw new GatewayError(403, 'agent_not_admitted'); }
-      const phase = authority?.phase;
+      if (!authority) throw new GatewayError(403, 'agent_not_admitted');
       const authorityDeadline = authority?.deadline ?? Date.now() + this.policy.requestTimeoutMs;
       if (!Number.isFinite(authorityDeadline) || authorityDeadline <= Date.now()) throw new GatewayError(403, 'agent_deadline_elapsed');
-      if (!phases.includes(phase)) throw new GatewayError(403, 'agent_not_admitted');
       this.db.prepare('INSERT OR IGNORE INTO runtime_model_policies VALUES (?, ?)').run(runtimeId, this.pin);
       if (this.db.prepare('SELECT policy_digest FROM runtime_model_policies WHERE runtime_id = ?')
         .get(runtimeId).policy_digest !== this.pin) throw new GatewayError(409, 'budget_policy_changed');
@@ -378,49 +368,13 @@ export class ResponsesBudgetGateway {
       this.db.prepare(`INSERT INTO runtime_model_attempts
         (runtime_id, agent_id, request_id, phase, fingerprint, state, started_at_ms, deadline_ms)
         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`)
-        .run(runtimeId, agentId, requestId, phase, fingerprint, startedAt, deadline);
+        .run(runtimeId, agentId, requestId, 'runtime', fingerprint, startedAt, deadline);
       this.db.exec('COMMIT');
-      return { ...binding, deadline, authority };
+      return { ...binding, deadline };
     } catch (error: any) {
       this.db.exec('ROLLBACK');
       throw error;
     }
-  }
-
-  #watchAuthority({ token, deadline, authority, controller }: any) {
-    let hardDeadline = deadline;
-    let timer: any;
-    const originalLease = authority?.lease;
-    const arm = (current: any) => {
-      const nextCheck = Math.min(hardDeadline, current?.lease?.expiresAt ?? Infinity, Date.now() + executionAuthorityCheckMs);
-      timer = setTimeout(check, Math.max(0, nextCheck - Date.now()));
-    };
-    const check = () => {
-      if (controller.signal.aborted) return;
-      try {
-        const binding = this.#tokens.get(token);
-        if (Date.now() < hardDeadline && binding) {
-          const current = this.validateAgent(binding);
-          const lease = current?.lease;
-          const at = Date.now();
-          const sameLease = originalLease
-            ? lease?.key === originalLease.key && lease.version === originalLease.version && at < lease.expiresAt
-            : !lease;
-          if (current && sameLease && at < current.deadline) {
-            hardDeadline = Math.min(hardDeadline, current.deadline);
-            if (at < hardDeadline) {
-              arm(current);
-              return;
-            }
-          }
-        }
-      } catch {
-        // Unavailable authority cannot keep an admitted request alive.
-      }
-      controller.abort();
-    };
-    arm(authority);
-    return () => clearTimeout(timer);
   }
 
   async #handle(request: any, response: any) {
@@ -473,33 +427,24 @@ export class ResponsesBudgetGateway {
     let receiptBytes = 0;
     const receiptChunks: any[] = [];
     try {
-      // Record admission and dispatch in the same lifecycle writer window.
-      // Release that lock before waiting on the upstream.
-      this.withLifecycleWrite(() => {
-        const admission = this.#admit(token, requestId, fingerprint);
-        ({ runtimeId, agentId, receipt } = admission);
-        if (receipt) return;
-        const { selectionReasoningEffort } = this.policy;
-        const payload = selectionReasoningEffort && admission.authority.phase === 'selection'
-          ? { ...normalizedPayload, reasoning: { ...normalizedPayload.reasoning, effort: selectionReasoningEffort } }
-          : normalizedPayload;
-        this.#controllers.set(controller, token);
-        cancelWatch = this.#watchAuthority({ ...admission, token, controller });
-        response.once('close', disconnect);
-        trace = this.beginTrace?.({ runtimeId, agentId, requestId, startedAt: new Date().toISOString(),
-          before: body, after: payload });
-        upstreamWork = this.fetch(this.policy.url, {
-          method: 'POST', headers: this.headers, redirect: 'error', signal: controller.signal,
-          body: JSON.stringify(payload),
-        });
-        // A lifecycle COMMIT failure must still observe this started request.
-        Promise.resolve(upstreamWork).catch(() => {});
-      });
+      const admission = this.#admit(token, requestId, fingerprint);
+      ({ runtimeId, agentId, receipt } = admission);
       if (receipt) {
         response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
         response.end(receipt);
         return;
       }
+      const payload = normalizedPayload;
+      this.#controllers.set(controller, token);
+      const deadlineTimer = setTimeout(() => controller.abort(), Math.max(0, admission.deadline - Date.now()));
+      cancelWatch = () => clearTimeout(deadlineTimer);
+      response.once('close', disconnect);
+      trace = this.beginTrace?.({ runtimeId, agentId, requestId, startedAt: new Date().toISOString(),
+        before: body, after: payload });
+      upstreamWork = this.fetch(this.policy.url, {
+        method: 'POST', headers: this.headers, redirect: 'error', signal: controller.signal,
+        body: JSON.stringify(payload),
+      });
       const upstream: Response = await upstreamWork;
       upstreamStatus = upstream.status;
       const upstreamId = upstream.headers.get('x-request-id');

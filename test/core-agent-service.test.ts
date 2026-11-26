@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { test } from 'node:test';
-import { ServiceRegistry } from '@murm/core/services';
+import { ServiceRegistry } from '../src/core/services.js';
 import { transport } from './fixtures/core-agent-service-backend.js';
 const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/core-agent-service-backend.js', import.meta.url).href, shortCircuit: true };
@@ -15,7 +15,7 @@ async function setup(t, options = {}) {
   transport.reset();
   const outputDir = await mkdtemp(join(tmpdir(), 'agent-service-'));
   const base = { prompt: 'fixed', model: 'default', image: 'test', writable: true, services: {} };
-  const runtime = await createRuntime({ backend: {}, profiles: {
+  const runtime = await createRuntime({ sandbox: {}, profiles: {
     parent: { ...base, services: { agent: ['spawn', 'get', 'send', 'stop'] }, spawnProfiles: ['child'] }, child: base,
   }, services: new ServiceRegistry(), maxAgents: 8, ...options, outputDir });
   t.after(async () => { assert.equal((await runtime.close()).cleanup, 'complete'); await rm(outputDir, { recursive: true, force: true }); });

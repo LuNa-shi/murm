@@ -1,12 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { addAbortListener } from 'node:events';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createRuntime, finalizeRun } from '@murm/core';
-import type { RuntimeObservationUpdate, RunBusinessOutcome } from '@murm/core';
-import { createOpenSandboxBackend, getOpenSandboxBackendCapabilities } from '@murm/core/backends/opensandbox';
-import { ServiceRegistry } from '@murm/core/services';
+import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry } from '@murm/core';
+import type { CloseReceipt, RuntimeEvent } from '@murm/core';
 import { handoffConfig, type HandoffConfig } from './handoff-config.js';
 import { createMessageService } from './messages.js';
 
@@ -18,20 +16,24 @@ const failure = (code: string) => Object.assign(new Error(code), { code });
 export async function runMessageHandoff(
   config: HandoffConfig,
   abort: AbortSignal,
-  onObservation: (update: RuntimeObservationUpdate) => void = () => {},
+  onEvent: (event: RuntimeEvent) => void = () => {},
 ) {
   abort.throwIfAborted();
   const signal = AbortSignal.any([abort, AbortSignal.timeout(config.workTimeoutMs)]);
   const key = `handoff-${randomUUID()}`;
   const expected = randomBytes(24).toString('hex');
-  const messages = createMessageService(config.externalMessages);
+  const calls = new Set<string>();
+  const callKey = (agentId: string, operation: string, operationId: string) => JSON.stringify([agentId, operation, operationId]);
+  const messages = createMessageService(config.externalMessages, call => {
+    calls.add(callKey(call.agentId, call.operation, call.operationId));
+  });
   const services = new ServiceRegistry();
   services.registerService(messages);
-  const backend = createOpenSandboxBackend(config.backend);
-  const capabilities = getOpenSandboxBackendCapabilities(backend);
+  const capabilities = getExecutorCapabilities(config.executor ?? 'pi');
   const profile = { model: 'default', image: config.image, writable: true };
   const runtime = await createRuntime({
-    backend, services, maxAgents: 2, outputDir: config.outputDir,
+    sandbox: createSandbox(config.sandbox), executor: config.executor, models: config.models,
+    connection: config.connection, services, maxAgents: 2, outputDir: config.outputDir,
     profiles: {
       writer: { ...profile, prompt: writerPrompt, services: { messages: ['put'] } },
       reader: { ...profile, prompt: readerPrompt, services: { messages: ['get'] },
@@ -39,7 +41,7 @@ export async function runMessageHandoff(
     },
   });
 
-  const observation = runtime.observe({ signal });
+  const unsubscribe = runtime.onEvent(onEvent);
   const cancelled = Promise.withResolvers<never>();
   void cancelled.promise.catch(() => {});
   const abortListener = addAbortListener(signal, () => cancelled.reject(signal.reason));
@@ -52,38 +54,33 @@ export async function runMessageHandoff(
     const requestId = `input-${operationId}`;
     const submission: (typeof submissions)[number] = { agentId, requestId };
     submissions.push(submission);
-    const admission = runtime.send(agentId, input, { requestId, mode: 'followUp' }).then(receipt => {
-      signal.throwIfAborted();
-      submission.inputId = receipt.inputId;
-      if (receipt.status !== 'accepted' || receipt.disposition !== 'started') throw failure('HANDOFF_INPUT_UNCONFIRMED');
+    const execution = Promise.withResolvers<void>();
+    const unsubscribeRole = runtime.onEvent(event => {
+      if (!('agentId' in event) || event.agentId !== agentId) return;
+      if (event.type === 'settled') {
+        if (event.outcome === 'completed') execution.resolve();
+        else execution.reject(failure('HANDOFF_EXECUTION_FAILED'));
+      } else if (event.type === 'exit' || (event.type === 'error' && event.fatal)) {
+        execution.reject(failure('HANDOFF_EXECUTION_UNCONFIRMED'));
+      }
     });
-
-    await Promise.race([Promise.all([admission, observeRole(agentId, operation, operationId)]), cancelled.promise]);
-  }
-
-  async function observeRole(agentId: string, operation: 'put' | 'get', operationId: string) {
-    let serviceSucceeded = false;
-    let executionSettled = false;
-    while (!serviceSucceeded || !executionSettled) {
-      const { done, value: update } = await observation.events.next();
+    try {
+      const admission = runtime.send(agentId, input, { requestId, mode: 'followUp' }).then(receipt => {
+        signal.throwIfAborted();
+        submission.inputId = receipt.inputId;
+        if (receipt.status !== 'accepted' || receipt.disposition !== 'started') throw failure('HANDOFF_INPUT_UNCONFIRMED');
+      });
+      await Promise.race([Promise.all([admission, execution.promise]), cancelled.promise]);
       signal.throwIfAborted();
-      if (done || update.type === 'gap') throw failure('HANDOFF_OBSERVATION_GAP');
-      onObservation(update);
-      if (update.type === 'service' && update.agentId === agentId && update.serviceId === 'messages' &&
-          update.operation === operation && update.operationId === operationId && update.state === 'settled') {
-        if (update.outcome !== 'succeeded') throw failure('HANDOFF_SERVICE_FAILED');
-        serviceSucceeded = true;
-      }
-      if (update.type === 'execution' && update.agent.id === agentId && update.phase === 'settled') {
-        if (update.outcome !== 'completed') throw failure('HANDOFF_EXECUTION_FAILED');
-        executionSettled = true;
-      }
-      if ((update.type === 'agent' && update.agent.id === agentId && update.cause === 'exit') ||
-          (update.type === 'trace-gap' && update.agent.id === agentId)) throw failure('HANDOFF_EXECUTION_UNCONFIRMED');
+      if (!calls.has(callKey(agentId, operation, operationId))) throw failure('HANDOFF_SERVICE_UNCONFIRMED');
+    } finally {
+      unsubscribeRole();
     }
   }
 
-  let business: RunBusinessOutcome<{ handoffObserved: true }>;
+  let business:
+    | { status: 'completed'; value: { handoffObserved: true } }
+    | { status: 'cancelled' | 'failed'; error: { code: string; message: string } };
   try {
     signal.throwIfAborted();
     const writer = await Promise.race([runtime.spawn({ requestId: 'writer', profile: 'writer',
@@ -102,19 +99,40 @@ export async function runMessageHandoff(
       : error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'HANDOFF_FAILED';
     business = { status: abort.aborted ? 'cancelled' : 'failed', error: { code, message: 'The handoff did not finish' } };
   } finally {
-    observation.cancel();
+    unsubscribe();
     abortListener[Symbol.dispose]();
   }
 
-  const report = await finalizeRun({ runtime, outputDir: config.outputDir, business, cleanupTimeoutMs: config.cleanupTimeoutMs,
-    ...(readerId === undefined ? {} : { async verifyArtifacts(receipt, cleanupSignal) {
-      const reader = receipt.agents.find(agent => agent.agentId === readerId);
-      const files = reader?.artifacts.find(path => path.endsWith('/artifacts/files'));
-      if (!files || await readFile(join(files, receivedFile), { encoding: 'utf8', signal: cleanupSignal }) !== `${expected}\n`) {
-        throw failure('HANDOFF_ARTIFACT_MISMATCH');
-      }
-    } }),
-  });
+  let coreClose: { status: 'complete' | 'pending'; receipt: CloseReceipt } | { status: 'unknown' };
+  try {
+    const receipt = await runtime.close({ timeoutMs: config.cleanupTimeoutMs });
+    coreClose = { status: receipt.cleanup, receipt };
+  } catch {
+    coreClose = { status: 'unknown' };
+  }
+  let artifactVerification: { status: 'not-requested' | 'passed' | 'pending' | 'failed' } = { status: 'not-requested' };
+  if (readerId !== undefined) {
+    const reader = coreClose.status === 'unknown' ? undefined : coreClose.receipt.agents.find(agent => agent.agentId === readerId);
+    const files = reader?.artifacts.find(path => path.endsWith('/artifacts/files'));
+    artifactVerification = { status: coreClose.status === 'complete' ? 'failed' : 'pending' };
+    if (files) {
+      try {
+        const actual = await readFile(join(files, receivedFile), {
+          encoding: 'utf8', signal: AbortSignal.timeout(config.cleanupTimeoutMs),
+        });
+        artifactVerification = { status: actual === `${expected}\n` ? 'passed' : 'failed' };
+      } catch { /* The expected bytes could not be verified. */ }
+    }
+  }
+  const report = { runtimeId: runtime.id, business, coreClose, artifactVerification,
+    reportSaveFailure: null as null | { code: string }, reportPath: undefined as string | undefined };
+  try {
+    const reportPath = join(config.outputDir, runtime.id, 'handoff-report.json');
+    await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n', { mode: 0o600 });
+    report.reportPath = reportPath;
+  } catch {
+    report.reportSaveFailure = { code: 'REPORT_SAVE_FAILED' };
+  }
   return { report, key, submissions, capabilities };
 }
 
@@ -125,7 +143,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   process.on('SIGTERM', stop);
   try {
     const { report, key, submissions } = await runMessageHandoff(handoffConfig(), abort.signal, update => {
-      process.stderr.write(`${update.cursor.sequence} ${update.type}\n`);
+      process.stderr.write(`${update.type}\n`);
     });
     process.stdout.write(JSON.stringify({ key, submissions, report }) + '\n');
     if (report.business.status !== 'completed' || report.artifactVerification.status !== 'passed' ||

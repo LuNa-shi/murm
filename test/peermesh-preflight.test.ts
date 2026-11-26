@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -5,7 +6,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRuntime } from '../src/core/index.js';
-import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
 import { createPeerProfile } from '../src/harnesses/peermesh/index.js';
 import { createPeerMeshServices } from '../src/harnesses/peermesh/services.js';
 import { createBoardLauncher } from '../src/harnesses/peermesh/board-process.js';
@@ -65,7 +65,7 @@ test('exact PeerMesh Profile and Services assemble actual Runtime/Bridge/gateway
     peer: { gitea: { binding: 'git', accountId: 'git-account', username: 'peer', token: 'git-private' }, message: { binding: 'message', accountId: 'mm-account', token: 'mm-private' }, board: { binding: 'board', workerId: 'worker' } } };
   const { services } = createPeerMeshServices(facilities);
   const profile = createPeerProfile({ image: 'fixture-no-allocation', facilities });
-  const runtime = await createRuntime({ outputDir, maxAgents: 1, services, profiles: { peer: profile }, backend: createPiOpenSandboxBackend({
+  const runtime = await createRuntime({ outputDir, maxAgents: 1, services, profiles: { peer: profile }, ...runtimeSettings({
     sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 128 * 1024 ** 2, inodes: 8192 } },
   }) });
