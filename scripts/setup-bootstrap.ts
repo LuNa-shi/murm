@@ -63,7 +63,7 @@ async function lockedSetup(startedAt: number) {
   const shrinkwrap = await readFile(join(root, 'npm-shrinkwrap.json'));
   const lock = createHash('sha256').update(process.versions.node).update(manifest).update(shrinkwrap).digest('hex');
   const depsStamp = join(root, 'node_modules/.murm-setup-lock');
-  const distStamp = join(root, 'dist/.murm-setup-build');
+  const distStamp = join(root, 'node_modules/.murm-setup-build');
   const matches = (path: string, value: string) => readFile(path, 'utf8').then(previous => previous === value, () => false);
   let start = performance.now();
   const depsCached = await matches(depsStamp, lock) && await exists(join(root, 'node_modules/.bin/tsc'));

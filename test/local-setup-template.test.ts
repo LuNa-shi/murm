@@ -37,8 +37,12 @@ test('generated Subagents installs a real archive outside the checkout and retai
     'import config from "./config.js"; console.log(JSON.stringify({maxAgents:config.maxAgents,url:config.backend.models.default.upstream.url,token:config.backend.models.default.upstream.headers.authorization}));'],
   { cwd: directory, env });
   assert.deepEqual(JSON.parse(read.stdout), { maxAgents: 2, url: 'http://127.0.0.1:9999/v1/responses', token: 'Bearer fixture-only' });
-  const second = await prepareSubagentsProject({ ...options, packageArchive: join(directory, '.murm', `core-${first.archiveSha256}.tgz`) });
+  const repeated = await execute(join(directory, 'node_modules/.bin/murm'), ['init', '--template', 'subagents', '--dir', '.'], {
+    cwd: directory, env: { ...env, DOCKER_HOST: `unix://${join(directory, 'missing.sock')}` },
+  });
+  const { project: second } = JSON.parse(repeated.stdout);
   assert.equal(second.installed, false);
+  assert.equal(second.archiveSha256, first.archiveSha256);
   assert.ok(second.preservedFiles.includes('config.js'));
   assert.ok(second.preservedFiles.includes('.env'));
   assert.equal(await readFile(join(directory, 'config.js'), 'utf8'), config);

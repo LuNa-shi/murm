@@ -13,6 +13,7 @@ function compile(project: string) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+await rm(resolve(root, 'node_modules/.murm-setup-build'), { force: true });
 await rm(dist, { recursive: true, force: true });
 compile('tsconfig.json');
 
