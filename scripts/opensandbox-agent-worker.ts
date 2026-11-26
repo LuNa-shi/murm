@@ -233,7 +233,8 @@ async function startAgent(input: any) {
   }
   delete suppliedEnv.MURM_WORKER_TOKEN;
   const agentEnvironment = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', ...suppliedEnv,
-    HOME: join(RUNTIME_DIR, 'home'), TMPDIR: join(RUNTIME_DIR, 'tmp'), PI_CODING_AGENT_DIR: join(RUNTIME_DIR, 'pi-agent'), CODEX_HOME: join(RUNTIME_DIR, 'codex-home') };
+    HOME: join(RUNTIME_DIR, 'home'), TMPDIR: join(RUNTIME_DIR, 'tmp'), PI_CODING_AGENT_DIR: join(RUNTIME_DIR, 'pi-agent'),
+    ...(executorKind === 'codex' ? { CODEX_HOME: join(RUNTIME_DIR, 'codex-home') } : {}) };
   let modelCatalogResource: any = null;
   let executorVersion: string | undefined;
   if (executorKind === 'pi') {
@@ -260,8 +261,8 @@ async function startAgent(input: any) {
       '[model_providers.murm]', 'name = "murm"', `base_url = ${JSON.stringify(input.codex.baseUrl)}`,
       'wire_api = "responses"', 'env_key = "OPENAI_API_KEY"', 'requires_openai_auth = false', 'supports_websockets = false',
     ].join('\n');
-    await writeFile(join(agentEnvironment.CODEX_HOME, 'config.toml'), `${configuration}\n`, { mode: 0o600 });
-    await chown(join(agentEnvironment.CODEX_HOME, 'config.toml'), AGENT_UID, AGENT_UID);
+    await writeFile(join(agentEnvironment.CODEX_HOME!, 'config.toml'), `${configuration}\n`, { mode: 0o600 });
+    await chown(join(agentEnvironment.CODEX_HOME!, 'config.toml'), AGENT_UID, AGENT_UID);
   }
   if (project.closing) throw new Error('Agent stopped during startup');
   child = spawn('setpriv', [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : []), input.command, ...(executorKind === 'codex' ? ['app-server'] : input.args)],
