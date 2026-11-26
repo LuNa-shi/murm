@@ -1,4 +1,6 @@
-export interface PiOpenSandboxBackendConfig {
+export interface OpenSandboxBackendConfig {
+  /** Selected by the public backend factory. */
+  executor?: { kind: 'pi' | 'codex'; version: string };
   sandbox: {
     lifecycleBaseUrl: string;
     apiKey?: string;
@@ -29,3 +31,7 @@ export interface PiOpenSandboxBackendConfig {
     disk: { bytes: number; inodes: number };
   };
 }
+
+export type PiOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'>;
+
+export type CodexOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'>;

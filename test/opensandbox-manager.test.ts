@@ -212,6 +212,49 @@ test('OpenSandbox resolves Agent versions by executing inside the guest', async 
   assert.deepEqual(commands, [['pi', '--version'], ['node', '--version']]);
 });
 
+test('OpenSandbox attests the guest Codex executor before admitting an Agent', async () => {
+  const codex = { model: 'gpt-codex', baseUrl: 'http://gateway.test:4411/v1', version: '0.172.0' };
+  const backend = { kind: 'codex', version: codex.version, authMode: 'api-key', threadId: 'thread-a' };
+  for (const attested of [backend, { ...backend, version: '0.171.0' }, undefined]) {
+    const manager = createOpenSandboxManager({
+      lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test',
+      fetchImpl: async (url, options) => {
+        if (url.endsWith('/sandboxes')) return response({ id: 'sbx-codex' }, { status: 202 });
+        if (url.includes('/endpoints/44772')) return response({ url: 'http://execd.test/sbx-codex' });
+        if (url.includes('/endpoints/44100')) return response({ url: 'http://worker.test/sbx-codex' });
+        if (url.endsWith('/health')) return response({ ok: true });
+        if (url.endsWith('/stop')) return response({ result: { stopped: true } });
+        if (url.endsWith('/start')) {
+          const start = JSON.parse(options.body);
+          assert.equal(start.command, 'codex');
+          assert.deepEqual(start.args, []);
+          assert.deepEqual(start.codex, { model: codex.model, baseUrl: codex.baseUrl });
+          assert.equal(start.secret_env.OPENAI_API_KEY, 'scoped-gateway-key');
+          return response({ result: { backend: attested,
+            contract: { version: 'murm-core-v1', resources: [] },
+            project_files: { version: 0, writable: false } } });
+        }
+        if (options.method === 'DELETE') return response({}, { status: 204 });
+        return response({}, { status: 404 });
+      },
+    });
+    await manager.ensureExecution({ executionId: 'codex', agentId: 'codex' });
+    const commands = [];
+    manager.exec = async ({ command }) => {
+      commands.push(command);
+      return { exit_code: 0, stdout: command[0] === 'codex' ? 'codex-cli 0.172.0' : 'v22.19.0', stderr: '' };
+    };
+    assert.deepEqual(await manager.agentVersions({ executionId: 'codex', executor: 'codex' }),
+      { codexVersion: '0.172.0', nodeVersion: '22.19.0' });
+    assert.deepEqual(commands, [['codex', '--version'], ['node', '--version']]);
+    const startup = manager.startAgent({ executionId: 'codex', resources: [], codex,
+      secretEnvironment: { OPENAI_API_KEY: 'scoped-gateway-key' } });
+    if (attested === backend) assert.deepEqual((await startup).backend, backend);
+    else await assert.rejects(startup, { code: ERROR_CODES.AGENT_STARTUP_CONTRACT });
+    await manager.stopExecution('codex');
+  }
+});
+
 test('OpenSandbox normalizes the Docker provider bare Execd endpoint shape', async () => {
   const manager = createOpenSandboxManager({
     lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test', endpointHost: '127.0.0.1',

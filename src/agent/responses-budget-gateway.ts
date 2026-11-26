@@ -110,10 +110,17 @@ function validTool(tool: any) {
     (tool.strict === undefined || tool.strict === null || typeof tool.strict === 'boolean');
 }
 
-function validPayload(body: any, model: any) {
-  if (!fields(body, requestFields) || (body.model !== undefined && body.model !== model) ||
+const codexMetadataFields = ['thread_id', 'root_turn_id', 'turn_id', 'session_id',
+  'x-codex-window-id', 'x-codex-installation-id', 'x-codex-turn-metadata'];
+const codexRequestFields = [...requestFields, 'client_metadata'];
+
+function validPayload(body: any, model: any, executor: 'pi' | 'codex') {
+  if (!fields(body, executor === 'codex' ? codexRequestFields : requestFields) || (body.model !== undefined && body.model !== model) ||
       (body.stream !== undefined && body.stream !== true) ||
       (body.store !== undefined && body.store !== false) || !optionalText(body.instructions)) return false;
+  if (body.client_metadata !== undefined &&
+      (!fields(body.client_metadata, codexMetadataFields) ||
+        !Object.values(body.client_metadata).every(value => typeof value === 'string' && Buffer.byteLength(value) <= 16_384))) return false;
   if (typeof body.input !== 'string' && !(Array.isArray(body.input) && body.input.every(validItem))) return false;
   if (body.tools !== undefined && !(Array.isArray(body.tools) && body.tools.every(validTool))) return false;
   if (body.tool_choice !== undefined && !['auto', 'none', 'required'].includes(body.tool_choice) &&
@@ -237,12 +244,15 @@ export class ResponsesBudgetGateway {
   #working: any = new Set();
   #controllers: any = new Map<any, any>();
   #stopPromise: any;
-  constructor({ db, upstream, timeBounds, validateAgent, withLifecycleWrite = (commit: any) => commit(), fetchImpl = globalThis.fetch, transformPayload = (payload: unknown) => payload, beginTrace }: any = {}) {
+  #executor: 'pi' | 'codex';
+  constructor({ db, upstream, timeBounds, executor = 'pi', validateAgent, withLifecycleWrite = (commit: any) => commit(), fetchImpl = globalThis.fetch, transformPayload = (payload: unknown) => payload, beginTrace }: any = {}) {
     if (!db?.prepare || typeof validateAgent !== 'function' || typeof fetchImpl !== 'function') {
       throw new TypeError('Database, synchronous Agent authority, and fetch are required');
     }
     if (!object(timeBounds)) throw new TypeError('Runtime Responses access requires time bounds');
     if (upstream?.contract !== undefined) throw new TypeError('Runtime Responses access does not accept an upstream contract');
+    if (executor !== 'pi' && executor !== 'codex') throw new TypeError('Unsupported Responses executor');
+    this.#executor = executor;
     this.db = db;
     if (typeof withLifecycleWrite !== 'function') throw new TypeError('Lifecycle write boundary must be synchronous');
     this.validateAgent = validateAgent;
@@ -256,7 +266,7 @@ export class ResponsesBudgetGateway {
     this.headers.set('content-type', 'application/json');
     for (const name of ['host', 'content-length', 'connection', 'transfer-encoding']) this.headers.delete(name);
     // Use the existing Runtime policy encoding for ledgers opened with the same settings.
-    this.pin = createHash('sha256').update(JSON.stringify([this.policy, null])).digest('hex');
+    this.pin = createHash('sha256').update(JSON.stringify([this.policy, executor === 'pi' ? null : executor])).digest('hex');
     db.exec(CORE_MODEL_SCHEMA_SQL);
   }
 
@@ -438,12 +448,15 @@ export class ResponsesBudgetGateway {
     let body;
     try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
     catch { throw new GatewayError(400, 'invalid_json'); }
-    if (!validPayload(body, this.policy.model)) throw new GatewayError(400, 'unsupported_responses_request');
+    if (!validPayload(body, this.policy.model, this.#executor)) throw new GatewayError(400, 'unsupported_responses_request');
     if (response.destroyed || request.aborted) return;
     const maxOutputTokens = this.policy.maxOutputTokens === null ? body.max_output_tokens
       : Math.min(body.max_output_tokens ?? this.policy.maxOutputTokens, this.policy.maxOutputTokens);
+    // Codex diagnostics describe the guest. Keep them in private pre-forward
+    // Trace and in the original fingerprint, never in the upstream request.
+    const { client_metadata: _metadata, ...providerBody } = body;
     const normalizedPayload = this.transformPayload({
-      ...body, model: this.policy.model, stream: true, store: false,
+      ...providerBody, model: this.policy.model, stream: true, store: false,
       ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
       ...(this.policy.serviceTier === null ? {} : { service_tier: this.policy.serviceTier }),
     });

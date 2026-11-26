@@ -10,7 +10,8 @@ import { createInputLedger } from './input-ledger.js';
 import { createFileControls } from './file-controls.js';
 import { saveAgentArtifacts } from './artifact-collection.js';
 import { createRedactor, createRunRecords, runtimeConfiguration } from './run-records.js';
-import { claimPiOpenSandboxBackend, openPiOpenSandboxBackend } from './pi-opensandbox-backend.js';
+import { claimOpenSandboxBackend, openOpenSandboxBackend } from './opensandbox-backend.js';
+import { executorDriver } from './executor-driver.js';
 import { createAgentService } from './agent-service.js';
 import { createServiceTrace, exportServiceStates } from './service-trace.js';
 import { registerServicePrivateValues, snapshotServiceRegistry } from './services.js';
@@ -95,7 +96,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         typeof options.modelAccessPolicy?.withCommit !== 'function')) {
       throw new TypeError('modelAccessPolicy must provide synchronous authorize and withCommit');
     }
-    config = claimPiOpenSandboxBackend(options.backend);
+    config = claimOpenSandboxBackend(options.backend);
     redactor.add([config.sandbox.apiKey, config.sandbox.execdToken,
       ...Object.values(config.models).flatMap((model: any) => Object.values(model.upstream.headers))]);
     registrations = snapshotServiceRegistry(options.services);
@@ -182,7 +183,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       }),
       onOwned: (owner: any) => { bridge = owner; } });
     assertAssembling();
-    backend = await openPiOpenSandboxBackend(config, { runtimeId, outputDir, bridge, modelAccess,
+    backend = await openOpenSandboxBackend(config, { runtimeId, outputDir, bridge, modelAccess,
       registerPrivateValues: redactor.add });
     await saveSummary('open');
   })();
@@ -401,6 +402,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     let parameters;
     try { parameters = snapshotSpawn(input, profiles, registrations); }
     catch (error) { throw problem('INVALID_CONTRACT', (error as Error).message, 'spawn', undefined, requestId); }
+    if (parameters.forkFrom !== undefined && !executorDriver(config).capabilities.contextFork) throw problem('NOT_ALLOWED', 'Backend does not support Context Fork', 'spawn', undefined, requestId);
     if (caller !== 'host' && parameters.workspace) throw problem('NOT_ALLOWED', 'Only the host can select workspace mounts', 'spawn', undefined, requestId);
     const fingerprint = createHash('sha256').update(JSON.stringify(Object.entries(parameters).sort())).digest('hex');
     const requestKey = JSON.stringify([caller, requestId]);
@@ -449,7 +451,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         if (agent.fatal || info.status !== 'starting') throw new Error('Agent stopped before becoming idle');
         info.status = 'idle';
         records.record('spawn', { state: 'ready', agentId: info.id, requestId: redactor.text(requestId),
-          sandboxId: resource.sandboxId, versions: resource.versions });
+          sandboxId: resource.sandboxId, versions: resource.versions, ...(resource.backend ? { backend: resource.backend } : {}) });
         return structuredClone(info);
       });
       request.result = agent.start.catch((error: any) => {
@@ -500,6 +502,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         (steeringMode !== undefined && (mode !== 'steer' || !['all', 'one-at-a-time'].includes(steeringMode)))) {
       throw problem('INVALID_CONTRACT', 'Input needs text, a requestId and valid delivery options', operation, agentId, requestId);
     }
+    if (steeringMode !== undefined && !executorDriver(config).capabilities.steeringModes.includes(steeringMode)) throw problem('NOT_ALLOWED', 'Backend does not support the requested steeringMode', operation, agentId, requestId);
     const agent = findAgent(agentId, operation, requestId);
     const parameters = { input, mode, source, steeringMode, wakeIfIdle };
     let request: InputRequest | undefined;

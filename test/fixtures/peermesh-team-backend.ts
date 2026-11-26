@@ -1,6 +1,6 @@
-import { openPiOpenSandboxBackend as open, transport } from './core-agent-service-backend.js';
-export { claimPiOpenSandboxBackend } from './core-agent-service-backend.js';
-export async function openPiOpenSandboxBackend(...arguments_) {
+import { openOpenSandboxBackend as open, transport } from './core-agent-service-backend.js';
+export { claimOpenSandboxBackend } from './core-agent-service-backend.js';
+export async function openOpenSandboxBackend(...arguments_) {
   return { ...await open(...arguments_), async *collect(...parameters) {
     await transport.onCollect?.(...parameters);
     yield { type: 'directory', path: '.git' };
