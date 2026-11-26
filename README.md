@@ -4,15 +4,18 @@ murm is a TypeScript toolkit for building multi-agent Harnesses. A Harness compo
 
 ## Quick Start
 
-On a Linux host with Node.js 22.19 or newer and same-host Docker, run this from the checkout.
+Run Subagents directly from the checkout. On a Linux host with Node.js 22.19 or newer, a local OpenSandbox provider and a compatible Worker image, build the checkout with `npm ci && npm run build`. If the host still needs OpenSandbox or the Worker, run `./scripts/setup` from the checkout root to build the checkout and prepare both. [Host requirements](docs/architecture/07-run-configuration.md#host-checks-and-checkout-preparation)
+
+Create `examples/subagents/.env` with your Worker image and model endpoint, as shown in the [Subagents example](examples/subagents/README.md#run-from-the-checkout). Then run a task from the example directory.
 
 ```sh
-./scripts/setup
-node dist/scripts/murm.js init --template subagents --dir ../my-murm
-cd ../my-murm
+cd examples/subagents
+node --env-file=.env ../../dist/examples/subagents/main.js \
+  ../../dist/examples/subagents/config.js \
+  'Suggest two checks to make before merging a pull request.'
 ```
 
-Setup prepares OpenSandbox and the Worker once per host and checks a real Sandbox with a local Responses endpoint. Init installs an editable Subagents project in the directory specified by `--dir` and preserves project edits on repeat. Set `MURM_SUBAGENTS_MODEL_URL` and any required token in its `.env`, then run `murm` from the project directory, or `npm start` to use the project-local binary. [Quick Start](https://luna-shi.github.io/murm/quickstart/) · [Host requirements and diagnosis](docs/architecture/07-run-configuration.md#local-setup-and-doctor)
+The example prints the report path and closes its Sandboxes after the task. Edit `examples/subagents/config.ts` to change the configuration and rebuild from the checkout root. [Quick Start](https://luna-shi.github.io/murm/docs/quickstart/)
 
 The two-Agent Notes handoff shows how to implement a custom Service and verify exported files across turns. [Notes example](examples/notes/README.md)
 

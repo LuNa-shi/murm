@@ -1,40 +1,43 @@
 ---
 title: Five Topologies Overview
-description: How one Runtime powers five distinct multi-agent Harnesses — Subagents, TaskPool, PeerMesh, Substrate, and Lead-Worker.
+description: How one murm Runtime powers five distinct multi-agent Harnesses — Subagents, TaskPool, PeerMesh, Substrate, and Lead-Worker — with zero Runtime changes.
 section: BUILT-IN HARNESSES
-order: 5
+order: 6
 ---
 
-In `murm`, the five built-in multi-agent systems are not hardcoded "modes" inside the engine. They are five ordinary TypeScript **Harnesses** built on the exact same Runtime API. Changing how agents collaborate means swapping the registered **Services** and the host **control loop** — the sandbox, Bridge, and trace archive remain untouched.
+The five multi-agent systems in `murm` are not built-in "modes" inside the engine. They are five ordinary TypeScript **Harnesses** written against the exact same `@murm/core` Runtime API.
 
-![One Runtime, Five Multi-Agent Topologies](../../../assets/images/five-programs-compare.jpg)
+Changing how a swarm collaborates means swapping the **Services** you register and the **control loop** you run on the host — the Sandbox backend, Service Bridge, Model Gateway, and trace archive remain identical.
 
-> **Repository module names**: in the source tree, `TaskPool` lives at `src/harnesses/taskpool`, `PeerMesh` at `src/harnesses/peermesh`, `Substrate` at `src/harnesses/substrate`, and `Lead-Worker` at `src/harnesses/lead-worker`.
+> **Repository locations**: `Subagents` lives at `examples/subagents/`, while `TaskPool` (`src/harnesses/taskpool/`), `PeerMesh` (`src/harnesses/peermesh/`), `Substrate` (`src/harnesses/substrate/`), and `Lead-Worker` (`src/harnesses/lead-worker/`) live under `src/harnesses/` with runnable examples under `examples/`.
 
-## Side-by-side comparison from a Harness author's perspective
+## Side-by-side comparison
 
-| Harness | Registered Services | Key Runtime Primitives | Host Control Loop | Deliverables & Verification |
+| Harness | Registered Services | Core Runtime Primitives | Host Control Loop | Deliverables & Verification |
 | --- | --- | --- | --- | --- |
-| **[Subagents](./subagents/)** | `collaboration` (6 ops: spawn, message, followup, wait, interrupt, list) | `spawn(forkFrom)`, `send(wakeIfIdle: false)`, `interrupt(discardedInputHashes)`, shared `workspace` | **Event + mailbox loop**: listens for child `settled` and peer messages; busy targets get immediate `steer`, idle targets buffer until `wait_agent` or `followup_task` | Shared workspace files or message payloads |
-| **[TaskPool](./taskpool/)** | `task`, `material`, `workspace`, `judge` | Read-only `writable: false`, `files.prepare` + `files.grant`, `modelAccessPolicy`, slot refill `stop`/`spawn` | **Reconciliation loop**: `take` triggers file handoff and write grant; `settled` continues unfinished executions via `followUp`; heartbeat renews leases and replaces expired workers | Immutable Materials + verified merges into shared `main` |
-| **[PeerMesh](./peermesh/)** | `message` (Mattermost), `gitea`, `peermesh-context` (soft-claim Board) + native `git` | `bindings`, `network.allow`, `secretEnv`, `collect(includeGit: true)` | **Per-peer serial router**: ingests chat/PR events, injects current Board view, dispatches `followUp` batches into the existing session, triggers idle nudges | Personal Git branches + PRs merged after host delivery checks |
-| **[Substrate](./substrate/)** | SQLite `substrate` (`publish`, `search`, `visit`) | `spawn(files)`, `runInput` serial turn helper | **Parallel fixed rounds**: zero task queues and zero routing — `Promise.all` drives every equal peer through `maxRounds` independent exploration cycles | Content-addressed immutable records (`content:<sha256>`) + read audit table |
-| **[Lead-Worker](./lead-worker/)** | SQLite `board` (direction, assignment, transactional claims, feedback) + `gitea` | Fixed-team `spawn`, per-role `bindings` and `secretEnv` | **Alternating staged orchestration**: `lead` publishes direction → workers claim concurrently, ship commits, and post feedback → `lead` revises direction → same workers execute next round | Personal branch commits verified by commit SHA, path, SHA-256, and direction read gate |
+| **[Subagents](./subagents/)** | `collaboration` (6 ops: `spawn_agent`, `send_message`, `followup_task`, `wait_agent`, `interrupt_agent`, `list_agents`) | `spawn(forkFrom)`, `send(wakeIfIdle: false)`, `interrupt(discardedInputHashes)`, optional shared `workspace` | **Event + mailbox loop**: busy recipients receive immediate `steer`; idle recipients buffer until `wait_agent` or `followup_task` | Shared workspace files or message payloads returned to `/root` |
+| **[TaskPool](./taskpool/)** | `task`, `material`, `workspace`, optional `judge` & `mission` | `writable: false` → `files.prepare` + `files.grant`, `modelAccessPolicy`, slot refill `stop`/`spawn` | **Dual event + heartbeat reconciliation**: `take` triggers file handoff; `settled` continues active executions; timer renews leases and replaces expired slots | Immutable Materials + verified merges into shared Workspace `main` |
+| **[PeerMesh](./peermesh/)** | `peermesh-context` (soft Board), `message` (Mattermost), `gitea` + native `git` | `bindings`, `network.allow`, `secretEnv`, `steer(steeringMode: 'all')`, `collect(includeGit: true)` | **Per-peer serial router**: polls chat/PR events, injects Board context, steers DMs & Board updates mid-turn, runs `followUp` batches and idle nudges | Personal Git branches + host-verified PR merges into protected `main` |
+| **[Substrate](./substrate/)** | SQLite `substrate` (`publish`, `search`, `visit`) | `spawn(files)`, `runInput` serial turns, `stop()` per peer | **Parallel fixed rounds**: zero queues and zero routing — `Promise.all` drives equal peers through `maxRounds` independent cycles with optional `onCycle` hooks | Content-addressed immutable records (`content:<sha256>`) + read audit log |
+| **[Lead-Worker](./lead-worker/)** | SQLite `board` (direction, assignments, claims, feedback) + `gitea` | Fixed-team `spawn`, asymmetric role Profiles, `bindings`, `secretEnv`, `collect(includeGit: true)` | **Alternating staged orchestration**: lead publishes direction → workers claim & ship commits + feedback concurrently → lead revises direction → same workers run next round | Branch commits verified live against Gitea by commit SHA, path, byte length, SHA-256, and causal read gates |
 
 ## One conflict, five different policies
 
-The quickest test of where coordination logic belongs is asking: **"What happens when two agents pick the same piece of work?"**
+A quick way to see what belongs in a Harness (instead of the Runtime) is asking: **"What happens when two agents want the same piece of work?"**
 
-- **TaskPool** enforces hard mutual exclusion inside the `task` Service using database leases and `fencing_version` — only one execution receives write permission.
-- **PeerMesh** treats `CLAIM` on its Board as an overlapping soft intention so peers negotiate splits in chat.
-- **Lead-Worker** locks a single permanent `owner` inside SQLite using `BEGIN IMMEDIATE` transactions and `expected_revision` optimistic locking.
-- **Substrate** drops claiming altogether — peers explore freely and converge through immutable publishing and explicit citations.
-- **Subagents** partitions work at delegation time via `spawn_agent`, and `/root` corrects overlaps mid-flight using `send_message` or `interrupt_agent`.
+- **TaskPool** enforces hard mutual exclusion inside the `task` Service using database leases and `fencing_version`. Only the winning Execution receives `files.grant()` write access and a valid `modelAccessPolicy` permit.
+- **PeerMesh** treats Board `CLAIM` entries as advisory, overlapping intentions so peers coordinate splits in Mattermost chat and direct messages.
+- **Lead-Worker** locks a single permanent `owner` in SQLite via `BEGIN IMMEDIATE` transactions and `expected_revision` optimistic concurrency checks — claims never expire or reassign.
+- **Substrate** removes claiming entirely: equal peers explore concurrently and converge through immutable publishing and explicit citations.
+- **Subagents** partitions work at delegation time through `spawn_agent`, and `/root` corrects drift mid-flight with `send_message` or `interrupt_agent`.
 
-## Pick your starting point
+## Choose your starting point
 
-- Dynamic delegation, mid-flight user steering, and mailbox buffering → **[Subagents](./subagents/)**
-- Long-running pools, worker turnover, lease guards, and versioned `main` → **[TaskPool](./taskpool/)**
-- Peer engineers collaborating via chat channels, boards, and Git PRs → **[PeerMesh](./peermesh/)**
-- Open-ended parallel research around an immutable citation store → **[Substrate](./substrate/)**
-- Staged lead-and-worker loops with causal read gates and Git verification → **[Lead-Worker](./lead-worker/)**
+| If you need... | Start with |
+| --- | --- |
+| Recursive delegation, context forking, interactive user steering, and mailbox buffering | **[Subagents](./subagents/)** |
+| Long-running task queues, automatic worker turnover, lease guards, and versioned `main` | **[TaskPool](./taskpool/)** |
+| Flat peer engineers collaborating via chat channels, soft boards, and Git pull requests | **[PeerMesh](./peermesh/)** |
+| Open-ended parallel research or theorem proving around an immutable citation store | **[Substrate](./substrate/)** |
+| Explicit lead direction with enforced feedback read gates and byte-verified Git commits | **[Lead-Worker](./lead-worker/)** |
+| Minimal 2-agent reference before authoring a bespoke Harness | **[Build Your Own Harness](../build-your-harness/)** |

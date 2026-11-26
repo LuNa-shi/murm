@@ -2,80 +2,113 @@
 title: Substrate
 description: Zero-queue, zero-routing parallel research where equal peers publish, search, visit, and cite immutable artifacts in a single SQLite store.
 section: BUILT-IN HARNESSES
-order: 9
+order: 10
 ---
 
-**Substrate** *(repository module: `src/harnesses/substrate`)* shows how minimal a multi-agent Harness can be: no task table, no central manager, and no private messages. Three to eight equal peers research concurrently around one **immutable shared substrate** — searching and reading prior findings, then publishing self-contained follow-ups with explicit citations. Source code: [src/harnesses/substrate](https://github.com/LuNa-shi/SwarmEnv/tree/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate).
+**Substrate** (`src/harnesses/substrate/`) shows how small a multi-agent Harness can be: no task queue, no manager, and no private messages. Three to eight equal peers explore concurrently around one **immutable SQLite substrate** — searching and reading each other's publications, then publishing self-contained follow-ups with explicit citations.
 
-## 1. Registered Service
+## 1. Registered Service (`substrate`)
 
-Substrate registers a single SQLite-backed **`substrate` Service** ([substrate.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate/substrate.ts)) with three operations:
+[src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/substrate.ts) registers a single in-process SQLite Service (`substrate`) with three operations:
 
-| Operation | Input | Storage & Ordering Guarantees |
+| Operation | Input | Guarantees |
 | --- | --- | --- |
-| **`search`** | `{ query, limit }` (1–8) | Token-matches published artifacts; ranks by **term frequency desc → citation count desc → stable address asc**, logging every query to `substrate_reads` |
-| **`visit`** | `{ address }` | Returns full body (up to 8 KiB), verified author, and upstream references; logs read to `substrate_reads` |
-| **`publish`** | `{ content, references? }` | Validates every cited address inside a `BEGIN IMMEDIATE` transaction, assigns immutable `content:<sha256>`, and deduplicates on `(run_id, author, request_id)` |
+| **`search`** | `{ query, limit }` *(limit 1–8)* | Matches query tokens across published content; ranks by **term occurrences desc → incoming citations desc → stable address asc**; logs every query in `substrate_reads` |
+| **`visit`** | `{ address }` | Returns full content (up to 8 KiB), verified `author`, `version: 1`, and cited `references`; logs the read in `substrate_reads` |
+| **`publish`** | `{ content, references? }` *(up to 16 unique addresses)* | Validates every referenced address inside a `BEGIN IMMEDIATE` transaction, assigns `content:<sha256>`, and deduplicates on `(run_id, author, request_id)` |
 
-Because published entries are immutable, revising an earlier claim means publishing a new artifact citing the old address — preserving the full knowledge graph automatically.
+Inside a peer container, agents interact through `swarm substrate`:
 
-## 2. Runtime primitives used
+```bash
+swarm substrate search --query 'boundary condition' --limit 5
+swarm substrate visit --address content:7f83b165...
+swarm substrate publish \
+  --content 'Lemma proof for the k >= 5 case...' \
+  --references '["content:7f83b165..."]' \
+  --request-id peer0-round1-pub
+```
 
-Substrate touches only four baseline Runtime calls:
-- `createRuntime({ services: substrate.services, maxAgents: poolSize, profiles: { peer } })`
-- `runtime.spawn({ profile: 'peer', files: { 'question.txt': ... } })`
-- `runInput` (`runtime.send(..., { mode: 'followUp' })` + `settled` wait)
-- `runtime.stop(peerId)` (retires each peer cleanly once its rounds finish while `substrate.sqlite` remains intact)
+Because entries are immutable, correcting or extending an earlier finding means publishing a new artifact that cites the original address — preserving the full citation DAG automatically.
 
-## 3. Host control loop
+## 2. Host control loop
 
-In [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate/index.ts), `Promise.all` drives every peer independently through `maxRounds` turns (with optional `maxConcurrentInputs` throttling and an `onCycle` correction hook):
+Substrate uses just four baseline Runtime calls: `createRuntime`, `spawn`, `runInput`, and `stop`. In [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/index.ts), `Promise.all` drives every peer concurrently across `maxRounds` turns (2–32), with optional `maxConcurrentInputs` throttling and an `onCycle` hook for host-side correction turns:
 
 ```ts
-// 1. Spawn poolSize equal peers and register their agentIds in substrate
-for (let i = 0; i < poolSize; i++) {
+// 1. Spawn poolSize (3..8) equal peers and bind their IDs to the substrate Service
+for (let index = 0; index < poolSize; index++) {
   const agent = await runtime.spawn({
-    requestId: `peer:${i}`,
+    requestId: `peer:${index}`,
     profile: 'peer',
-    files: { 'question.txt': { encoding: 'utf8', data: question } },
+    files: { 'question.txt': { data: question, encoding: 'utf8' } },
   });
   substrate.bindPeer(agent.id);
-  peers.push(agent);
+  peers.push({ index, agentId: agent.id, turns: [] });
 }
 
-// 2. Drive all peers concurrently across maxRounds turns inside persistent sessions
+// 2. Drive every peer concurrently in its own persistent session
 await Promise.all(
-  peers.map(async (peer, idx) => {
+  peers.map(async (peer) => {
     try {
       for (let round = 0; round < maxRounds; round++) {
-        const prompt = `scaleMAS peer=${idx} cycle=${round}\n${question}\n${cyclePrompt}`;
-        await runInput(runtime, peer.id, prompt, {
-          requestId: `${peer.id}:cycle:${round}`,
+        const text = `Substrate peer=${peer.index} cycle=${round}\n${question}\n${cyclePrompt}`;
+        const receipt = await runInput(runtime, peer.agentId, text, {
+          requestId: `${peer.agentId}:cycle:${round}`,
           timeoutMs: turnTimeoutMs,
+          signal: workSignal,
         });
-        // Optional onCycle hook can inspect output and issue a follow-up correction
+        // Optional onCycle hook can inspect substrate.snapshot() and trigger a bounded correction turn
       }
     } finally {
-      substrate.retirePeer(peer.id);
-      await runtime.stop(peer.id, { timeoutMs: closeTimeoutMs });
+      substrate.retirePeer(peer.agentId);
+      await runtime.stop(peer.agentId, { timeoutMs: closeTimeoutMs });
     }
-  })
+  }),
 );
 ```
 
-## 4. Verifying cross-agent knowledge reuse
+When each peer finishes its rounds, `substrate.retirePeer(peer.agentId)` revokes further Service writes for that peer and `runtime.stop()` archives its private files and Pi session while `substrate.sqlite` remains intact for remaining peers.
 
-[collaboration-evidence.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate/collaboration-evidence.ts) audits the SQLite publish table alongside `substrate_reads` to verify the complete causal chain: **(1) an artifact persists after its author stops → (2) another peer runs `search` and `visit` on it → (3) that peer publishes a new artifact explicitly citing that address**.
+## 3. Running Substrate & inspecting reuse
 
-## FATE example
+```bash
+export MURM_SUBSTRATE_RUN=research-01
+export MURM_SUBSTRATE_IMAGE=$(docker image inspect murm-worker:local --format '{{.Id}}')
+export MURM_SUBSTRATE_MODEL_URL='https://your-model-endpoint/v1/responses'
+export MURM_SUBSTRATE_MODEL_TOKEN='your-bearer-token'
 
-The [Substrate example](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/substrate/README.md) also includes FATE-M, FATE-H and FATE-X configurations. The host fixes the problem and work window and independently grades frozen Lean candidates. The selected condition exposes a shared library, private libraries, or no library. With `fate.verifiedCompletion: true`, a peer can finish early only after Lean passes on the exact proof it submits. An unfinished reply can be followed up in the same Session within the work window.
+node dist/examples/substrate/main.js dist/examples/substrate/config.js > substrate-result.json
 
-The 30-minute verified-completion run on FATE-X problem 31 recorded reuse of another peer’s Lean code. The four frozen candidates all failed independent grading. [Run report](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/docs/experiments/EXP-20261125-20-scalemas-fatex-verified.md)
+# Read saved receipts without loading model configuration:
+node dist/examples/substrate/main.js --result "./substrate-runs/$runtime_id" --runtime-id "$runtime_id"
+```
+
+[collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/collaboration-evidence.ts) audits `substrate_contents`, `substrate_references`, and `substrate_reads` to verify the complete cross-peer reuse chain:
+1. Peer A publishes an artifact that persists after Peer A retires;
+2. Peer B discovers it via `search` and reads it via `visit`;
+3. Peer B publishes a new artifact explicitly citing Peer A's `content:<sha256>` address.
+
+## 4. Formal theorem proving with FATE (Lean 4)
+
+The [Substrate example](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) also ships **FATE-M**, **FATE-H**, and **FATE-X** Lean `4.28.0` benchmark configurations on the exact same host runner. By adding a host-side Lean checking Service (`check_lean`) alongside the substrate Service, you can compare three experimental conditions on the same Runtime:
+- `shared`: all peers share one substrate library;
+- `private`: each peer has only its own isolated library;
+- `none`: no substrate library.
+
+Setting `fate.verifiedCompletion: true` lets a peer finish early only after `check_lean` returns `passed` on the exact proof it submits; otherwise the host sends follow-up turns in the same persistent session until the proof passes or the work deadline expires.
+
+```bash
+export MURM_FATE_BENCHMARK=FATE-X
+export MURM_FATE_PROJECT=/path/to/fate-x
+export MURM_FATE_LEAN=/path/to/lean-4.28.0
+
+node dist/examples/substrate/main.js --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-X
+node dist/examples/substrate/main.js dist/examples/substrate/fate-config.js
+```
 
 ## Source files
 
-- Concurrent round driver: [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate/index.ts)
-- SQLite substrate: [src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate/substrate.ts)
-- Collaboration evidence checker: [src/harnesses/substrate/collaboration-evidence.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate/collaboration-evidence.ts)
-- Usage guide: [examples/substrate/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/substrate/README.md)
+- Concurrent round driver: [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/index.ts)
+- SQLite `substrate` Service: [src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/substrate.ts)
+- Cross-peer reuse auditor: [src/harnesses/substrate/collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/collaboration-evidence.ts)
+- CLI & FATE Lean configs: [examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) · [FATE-X #31 run report](https://github.com/LuNa-shi/murm/blob/main/docs/experiments/EXP-20261125-20-scalemas-fatex-verified.md)

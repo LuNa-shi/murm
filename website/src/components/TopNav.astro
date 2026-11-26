@@ -1,19 +1,23 @@
 ---
 import MurmLogo from './MurmLogo.astro';
-import { withBase } from '../lib/url';
+import { UI, homeHref, type Lang } from '../lib/i18n';
 
 interface Props {
   showMobileMenu?: boolean;
+  lang?: Lang;
+  switchHref: string;
 }
 
-const { showMobileMenu = false } = Astro.props;
+const { showMobileMenu = false, lang = 'en', switchHref } = Astro.props;
+const t = UI[lang];
+const otherLang: Lang = lang === 'zh' ? 'en' : 'zh';
 ---
 
 <header class="top-nav">
   <div class="top-nav-inner">
     <div class="nav-left">
       {showMobileMenu && (
-        <button type="button" class="icon-btn mobile-menu-btn" id="mobile-menu-toggle" aria-label="Toggle sidebar">
+        <button type="button" class="icon-btn mobile-menu-btn" id="mobile-menu-toggle" aria-label={t.menuAria}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="4" y1="6" x2="20" y2="6" />
             <line x1="4" y1="12" x2="20" y2="12" />
@@ -21,23 +25,37 @@ const { showMobileMenu = false } = Astro.props;
           </svg>
         </button>
       )}
-      <a class="brand-link" href={withBase('/')}>
+      <a class="brand-link" href={homeHref(lang)}>
         <MurmLogo variant="nav" />
         <span>murm</span>
       </a>
     </div>
 
     <div class="nav-actions">
-      <button type="button" class="search-trigger" id="search-open-btn" aria-label="Search documentation">
+      <button type="button" class="search-trigger" id="search-open-btn" aria-label={t.searchAria}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8" />
           <path d="m21 21-4.3-4.3" />
         </svg>
-        <span>Search</span>
+        <span>{t.searchBtn}</span>
         <kbd>⌘K</kbd>
       </button>
 
-      <button type="button" class="icon-btn" data-theme-toggle aria-label="Toggle color theme" title="Toggle light / dark theme">
+      <a
+        class="lang-switch-btn"
+        href={switchHref}
+        data-lang-switch={otherLang}
+        aria-label={t.switchAria}
+        title={t.switchAria}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+        </svg>
+        <span>{t.switchLabel}</span>
+      </a>
+
+      <button type="button" class="icon-btn" data-theme-toggle aria-label={t.themeAria} title={t.themeTitle}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
           <circle cx="12" cy="12" r="4" />
           <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />

@@ -53,7 +53,7 @@ The archive includes the exact upstream Apache 2.0 license text beside the adapt
 
 ## Local setup and doctor
 
-From a checkout, run `./scripts/setup` to prepare the host and `node dist/scripts/murm.js init --template subagents --dir ../my-murm` to create the project. The installed binary exposes these as `murm setup` and `murm init --template subagents --dir ./my-murm`. Run `murm` from the project directory for an interactive session. The Agent uses `swarm` inside the Worker. Use `murm doctor` for host diagnosis, `--config ./my-murm/config.js` to check a project configuration and `--smoke` to allocate a temporary Sandbox and run the complete check.
+Developers can [run Subagents directly from the checkout](../../examples/subagents/README.md#run-from-the-checkout). From the checkout root, `./scripts/setup` builds the checkout and prepares the host. To generate a separate editable project, run `node dist/scripts/murm.js init --template subagents --dir ../my-murm`. The installed binary exposes these helpers as `murm setup` and `murm init --template subagents --dir ./my-murm`. Run `murm` from the generated project directory for an interactive session. The Agent uses `swarm` inside the Worker. Use `murm doctor` for host diagnosis, `--config ./my-murm/config.js` to check a project configuration and `--smoke` to allocate a temporary Sandbox and run the complete check.
 
 The host binary dispatches local preparation independently of the optional Trace Viewer. The `trace` subcommand loads `@murm/trace-viewer/command` when that package is installed. The Core dependency tree does not include the Viewer.
 
