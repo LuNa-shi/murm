@@ -9,6 +9,8 @@ This documentation site lives in `website/` and builds with Astro into zero-back
 
 ## 1. Local development
 
+Use Node.js 22.23.4 or later.
+
 ```bash
 cd website
 npm ci
@@ -28,10 +30,11 @@ Every subsequent push to `main` touching `website/**` automatically builds and d
 
 ## 3. Deploy to Cloudflare Pages
 
-To host on Cloudflare Pages under a custom domain (for example `murm.dev`), connect the repository with these three settings:
+To host on Cloudflare Pages under a custom domain (for example `murm.dev`), connect the repository with these settings:
 
 | Setting | Value |
 | --- | --- |
+| **Build environment** | Node.js 24 |
 | **Root directory** | `website` |
 | **Build command** | `BASE_PATH=/ npm run build` |
 | **Build output directory** | `dist` |
