@@ -111,7 +111,8 @@ export async function runMessageHandoff(
     coreClose = { status: 'unknown' };
   }
   let artifactVerification: { status: 'not-requested' | 'passed' | 'pending' | 'failed' } = { status: 'not-requested' };
-  if (readerId !== undefined) {
+  const handoffMissing = business.status === 'failed' && business.error.code === 'HANDOFF_SERVICE_UNCONFIRMED';
+  if (readerId !== undefined || handoffMissing) {
     const reader = coreClose.status === 'unknown' ? undefined : coreClose.receipt.agents.find(agent => agent.agentId === readerId);
     const files = reader?.artifacts.find(path => path.endsWith('/artifacts/files'));
     artifactVerification = { status: coreClose.status === 'complete' ? 'failed' : 'pending' };

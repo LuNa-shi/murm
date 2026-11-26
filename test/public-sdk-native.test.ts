@@ -173,7 +173,7 @@ process.stdout.write(JSON.stringify(result));
         assert.equal(report.business.status, mode === 'without-handoff' ? 'failed' : 'cancelled');
         assert.equal(report.business.error.code, mode === 'without-handoff' ? 'HANDOFF_SERVICE_UNCONFIRMED' : 'HANDOFF_CANCELLED');
         assert.equal(submissions.length, 1);
-        assert.equal(report.artifactVerification.status, 'not-requested');
+        assert.equal(report.artifactVerification.status, mode === 'without-handoff' ? 'failed' : 'not-requested');
         if (mode === 'without-handoff') assert.deepEqual(upstream.observations.map(item => item.role), ['Publish', 'Publish']);
         else assert.ok(upstream.observations.every(item => item.role === 'Publish'));
       } else {

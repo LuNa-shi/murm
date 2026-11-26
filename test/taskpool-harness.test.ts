@@ -451,13 +451,14 @@ for (const [operation, method, payload] of [
   transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
   const accept = id => { transport.confirm(id, 'started'); transport.next = accept; };
   transport.next = accept;
-  let probeFailure;
+  let probeFailure, originalAgents;
   const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
     deadlineAt: Date.now() + 15_000, sandbox: {}, model: 'default', image: 'fixture', capacity: 2,
     snapshotProject: async () => { throw new Error('No capture is needed for a public read'); },
     async drive(controller, runtime) {
       const [first, second] = controller.snapshot().agents;
+      originalAgents = [first.agentId, second.agentId];
       const call = async (agent, requestId) => {
         const credentials = controls.credentials.get(agent.agentId);
         const url = new URL(credentials.environment.MURM_BRIDGE_URL);
@@ -537,7 +538,9 @@ for (const [operation, method, payload] of [
   assert.equal(report.businessFailure?.code, 'TASKPOOL_BUSINESS_FAILED');
   assert.equal(report.cleanupFailure, null);
   assert.equal(report.cleanup.cleanup, 'complete');
-  assert.equal(report.cleanup.agents.length, 2);
+  for (const id of originalAgents) {
+    assert.equal(report.cleanup.agents.find(agent => agent.agentId === id)?.cleanup, 'complete');
+  }
 });
 
 

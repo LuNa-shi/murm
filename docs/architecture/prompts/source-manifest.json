@@ -55,7 +55,7 @@
     },
     {
       "path": "examples/bridge-services/handoff.ts",
-      "sha256": "b3aa93a6276ddcd325d86553a980bba5a6b2a111bc4af5f6f633c7f3c1d8d07a"
+      "sha256": "7080e16faf59b36ded0f33a2efc85c37c82f0d0a5bd7479f289b8718be52a8fe"
     },
     {
       "path": "examples/notes/main.ts",
