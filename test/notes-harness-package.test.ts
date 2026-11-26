@@ -151,7 +151,7 @@ console.log(JSON.stringify({resolved:true,closed:true,cancelled:true}));
     files: ['consumer.mts'],
   }));
   const consumer = `
-import { createRuntime, finalizeRun, type Runtime, type AgentInfo, type AgentEvent, type AgentStatus, type RunFinalizationReport } from '@murm/core';
+import { createRuntime, finalizeRun, type Runtime, type AgentInfo, type AgentEvent, type AgentStatus, type RunFinalization } from '@murm/core';
 import { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from '@murm/core/services';
 import { createOpenSandboxBackend, getOpenSandboxBackendCapabilities, type OpenSandboxBackendConfig } from '@murm/core/backends/opensandbox';
 import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
@@ -184,7 +184,7 @@ createPiOpenSandboxBackend(config);
 const runtime: Runtime = await createRuntime({ backend: createOpenSandboxBackend(config),
   profiles: { reader: { prompt: 'Read', model: 'default', image: 'image', writable: false, services: {} } },
   services: registry, maxAgents: 2, outputDir: './output' });
-const executeFinalization = (): Promise<RunFinalizationReport<{ verified: boolean }>> =>
+const executeFinalization = (): Promise<RunFinalization<{ verified: boolean }>> =>
   finalizeRun({ runtime, outputDir: './output', business: { status: 'completed', value: { verified: true } } });
 void executeFinalization;
 const agent = await runtime.spawn({ requestId: 'spawn', profile: 'reader' });
