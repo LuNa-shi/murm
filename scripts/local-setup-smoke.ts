@@ -17,6 +17,7 @@ export interface LocalSmokeOptions {
   advertiseHost: string;
   signal?: AbortSignal;
   timeoutMs?: number;
+  backend?: Parameters<typeof createPiOpenSandboxBackend>[0];
 }
 
 export interface LocalSmokeCheck {
@@ -91,12 +92,13 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
     }, adapter: { invoke(request) { request.assertAuthorized(); serviceCaller = request.caller.agentId; return { verified: true }; } } });
     runtime = await createRuntime({
       backend: createPiOpenSandboxBackend({
-        sandbox: { lifecycleBaseUrl: options.lifecycleBaseUrl, endpointHost: options.endpointHost ?? '127.0.0.1',
-          apiKey: options.apiKey, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
-        bridge: { host: '0.0.0.0', publicUrl: `http://${options.advertiseHost}:{port}` },
-        modelGateway: { host: '0.0.0.0', advertiseHost: options.advertiseHost, requestTimeoutMs: 20_000, maxOutputTokens: 128 },
+        ...options.backend,
+        sandbox: { commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' }, ...options.backend?.sandbox,
+          lifecycleBaseUrl: options.lifecycleBaseUrl, endpointHost: options.endpointHost ?? '127.0.0.1', apiKey: options.apiKey },
+        bridge: { host: '0.0.0.0', publicUrl: `http://${options.advertiseHost}:{port}`, ...options.backend?.bridge },
+        modelGateway: { host: '0.0.0.0', advertiseHost: options.advertiseHost, requestTimeoutMs: 20_000, maxOutputTokens: 128, ...options.backend?.modelGateway },
         models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
-        isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+        isolation: options.backend?.isolation ?? { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
       }),
       profiles: { probe: { prompt: SETUP_PROFILE_PROMPT, model: 'default', image: options.image,
         writable: true, services: { 'setup-probe': ['verify'] } } },

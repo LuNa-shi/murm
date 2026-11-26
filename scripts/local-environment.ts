@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { access, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
@@ -41,7 +41,7 @@ export interface LocalProviderHandle {
   created: boolean;
   id: string;
   images: { server: string; execd: string };
-  release(): Promise<void>;
+  retain(): Promise<void>;
   cleanup(): Promise<ProviderCleanup>;
 }
 
@@ -197,7 +197,45 @@ export async function checkLocalProvider(config: LocalEnvironmentConfig): Promis
   ];
 }
 
+async function withProviderLock<T>(config: LocalEnvironmentConfig, action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  const url = lifecycleUrl(config);
+  if (!url) throw Object.assign(new Error('Local loopback OpenSandbox /v1 URL required'), { code: 'PROVIDER_CONFIGURATION_INVALID' });
+  signal?.throwIfAborted();
+  const directory = join(homedir(), '.cache/murm/opensandbox');
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const child = spawn('flock', ['--exclusive', '--timeout', '180', join(directory, `port-${url.port || 80}.lock`),
+    '/usr/bin/python3', '-I', '-c', 'import sys; print("locked", flush=True); sys.stdin.buffer.read()'],
+  { stdio: ['pipe', 'pipe', 'pipe'] });
+  child.stdin.on('error', () => {});
+  const cancel = () => child.kill('SIGTERM');
+  signal?.addEventListener('abort', cancel, { once: true });
+  if (signal?.aborted) cancel();
+  try {
+    await new Promise<void>((resolveLock, reject) => {
+      child.once('error', reject);
+      child.once('exit', () => reject(Object.assign(new Error('Provider lock could not be acquired'), { code: 'PROVIDER_BUSY' })));
+      child.stdout.once('data', () => resolveLock());
+    });
+    signal?.removeEventListener('abort', cancel);
+    signal?.throwIfAborted();
+    return await action();
+  } finally {
+    signal?.removeEventListener('abort', cancel);
+    child.stdin.end();
+  }
+}
+
 export async function ensureLocalProvider(config: LocalEnvironmentConfig, { signal }: { signal?: AbortSignal } = {}): Promise<LocalProviderHandle> {
+  return withProviderLock(config, async () => {
+    const handle = await ensureLocalProviderLocked(config, { signal });
+    return { ...handle,
+      retain: () => withProviderLock(config, handle.retain),
+      cleanup: () => withProviderLock(config, handle.cleanup),
+    };
+  }, signal);
+}
+
+async function ensureLocalProviderLocked(config: LocalEnvironmentConfig, { signal }: { signal?: AbortSignal } = {}): Promise<LocalProviderHandle> {
   const url = lifecycleUrl(config);
   if (!url) throw Object.assign(new Error('Local loopback OpenSandbox /v1 URL required'), { code: 'PROVIDER_CONFIGURATION_INVALID' });
   signal?.throwIfAborted();
@@ -221,8 +259,13 @@ export async function ensureLocalProvider(config: LocalEnvironmentConfig, { sign
   }
   let id = '';
   let created = false;
+  let providerReady = false;
   const handle: LocalProviderHandle = { config, created: false, id: name, images: { server: '', execd: '' },
-    release: async () => {},
+    retain: async () => {
+      const current: ProviderInfo = JSON.parse(await run('docker', ['inspect', name]))[0];
+      if (current.Id !== id || current.Config.Labels?.['org.murm.setup.owner'] !== token) throw new Error('Provider ownership changed');
+      await writeFile(join(stateDir, 'adopted'), '', { mode: 0o600 });
+    },
     cleanup: async () => {
       try {
         const current: ProviderInfo = JSON.parse(await run('docker', ['inspect', name]))[0];
@@ -231,6 +274,16 @@ export async function ensureLocalProvider(config: LocalEnvironmentConfig, { sign
           return { status: 'complete', id: id || name };
         }
         if (await access(join(stateDir, 'adopted')).then(() => true, () => false)) return { status: 'complete', id: current.Id, retained: true };
+        if (providerReady) {
+          const headers: Record<string, string> = {};
+          if (config.apiKey) headers['OPEN-SANDBOX-API-KEY'] = config.apiKey;
+          const response = await fetch(`${config.lifecycleBaseUrl.replace(/\/$/, '')}/sandboxes?page=1&pageSize=1`,
+            { headers, signal: AbortSignal.timeout(5000) });
+          if (!response.ok) return { status: 'pending', id: current.Id };
+          const list = await response.json() as { items?: unknown[] };
+          if (!Array.isArray(list.items)) return { status: 'pending', id: current.Id };
+          if (list.items.length) return { status: 'complete', id: current.Id, retained: true };
+        }
         await run('docker', ['rm', '-f', current.Id]);
         const remaining = await run('docker', ['ps', '-a', '--no-trunc', '--filter', `id=${current.Id}`, '--format', '{{.ID}}']);
         if (remaining) return { status: 'pending', id: current.Id };
@@ -260,7 +313,10 @@ export async function ensureLocalProvider(config: LocalEnvironmentConfig, { sign
       signal?.throwIfAborted();
       const provider = await inspectProvider(config);
       if (provider && await providerHealthy(config)) {
-        if (created) return { ...handle, created: true, id, images: await imageIds(provider) };
+        if (created) {
+          providerReady = true;
+          return { ...handle, created: true, id, images: await imageIds(provider) };
+        }
         await rm(stateDir, { recursive: true, force: true });
         return reuse(provider);
       }
@@ -275,7 +331,10 @@ export async function ensureLocalProvider(config: LocalEnvironmentConfig, { sign
   async function reuse(provider: ProviderInfo): Promise<LocalProviderHandle> {
     const path = provider.Config.Labels?.['org.murm.setup.state'];
     if (provider.Config.Labels?.['org.murm.setup.profile'] === profileVersion && path?.startsWith(join(homedir(), '.cache/murm/opensandbox/'))) await writeFile(join(path, 'adopted'), '', { mode: 0o600 });
-    return { config, id: provider.Id, images: await imageIds(provider), created: false, release: async () => {}, cleanup: async () => ({ status: 'complete', id: provider.Id, retained: true }) };
+    return { config, id: provider.Id, images: await imageIds(provider), created: false, retain: async () => {
+      const current = await inspectProvider(config);
+      if (current?.Id !== provider.Id) throw new Error('Provider identity changed');
+    }, cleanup: async () => ({ status: 'complete', id: provider.Id, retained: true }) };
   }
 }
 
