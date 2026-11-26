@@ -16,6 +16,9 @@ import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
 import { buildTaskPoolAutonomousDiscoveryMessage } from '../src/harnesses/taskpool/controller.js';
 import { renderStartupPrompt } from '../src/core/startup-prompt.js';
+import { fateServiceManifest } from '../examples/substrate/fate-service.js';
+import { fateVerificationContinuation, fateVerifiedInput } from '../examples/substrate/fate-run.js';
+import { paperSubstrateManifest } from '../src/harnesses/substrate/paper-substrate.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const outputDir = 'docs/architecture/prompts';
@@ -31,6 +34,7 @@ const sourcePaths = [
   'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
   'examples/notes/main.ts', 'src/harnesses/shared/run-input.ts', 'src/harnesses/substrate/index.ts', 'src/harnesses/substrate/substrate.ts',
   'src/harnesses/taskpool/controller.ts', 'src/harnesses/taskpool/harness.ts',
+  'examples/substrate/fate-run.ts', 'examples/substrate/fate-service.ts', 'src/harnesses/substrate/paper-substrate.ts',
   'benchmarks/putnambench-flat/run.ts',
   'benchmarks/programbench-pastel/subagents-example.ts',
   'examples/subagents/main.ts', 'examples/subagents/controller.ts',
@@ -168,20 +172,35 @@ for (const path of ['examples/subagents/controller.ts', 'test-support/subagents/
     if (line.includes('await runtime.send(')) sendSites.push({ path, line: index + 1, expression: line.trim() });
   }
 }
-const scaleMASPath = 'src/harnesses/substrate/index.ts';
+const substrateIndexPath = 'src/harnesses/substrate/index.ts';
 const substratePath = 'src/harnesses/substrate/substrate.ts';
+const fatePath = 'examples/substrate/fate-run.ts';
 output('01-core-startup.md', header('Core startup system prompt',
   'The backend passes this file through Pi --system-prompt. The current working directory is appended by Pi. Services are rendered from the registered manifest purpose and operation descriptions after Bridge permission filtering. An optional nonblank Profile.prompt is included verbatim inside added_system_prompt.')
   + block('Profile with no allowed Service operations and no Added System Prompt', renderStartupPrompt([])));
-output('09-substrate-harness.md', header('Fixed Substrate peer prompts',
-  'All three peers receive the same Profile prompt. Each serial cycle sends the full host question after a peer/cycle header, followed by the fixed cycle text. These texts do not encode a Task/Mission protocol or verify correctness.')
-  + block('Peer Profile prompt', between(scaleMASPath, "export const peerPrompt = '", "';\n"))
+const fateManifest = fateServiceManifest();
+const fateSharing = evaluate(between(fatePath, 'export const fateSharingPrompt = ', ';\n'));
+const fatePrivate = evaluate(between(fatePath, 'export const fatePrivatePrompt = ', ';\n'));
+output('09-substrate-harness.md', header('Substrate peer prompts',
+  'In the generic configuration all three default peers receive the same Profile prompt. Each serial cycle sends the full host question after a peer/cycle header, followed by the fixed cycle text. These texts do not encode a Task/Mission protocol or verify correctness.')
+  + block('Peer Profile prompt', between(substrateIndexPath, "export const peerPrompt = '", "';\n"))
   + block('Substrate purpose', between(substratePath, "purpose: '", "'"))
   + ['publish', 'visit', 'search'].map(operation =>
     block('Substrate ' + operation, between(substratePath, "capability('" + operation + "', '", "'"))).join('')
-  + block('Cycle instruction', between(scaleMASPath, "export const cyclePrompt = '", "';\n"))
-  + block('Exact input composition', between(scaleMASPath, '                  const text = ', '\n                  const sendInput'),
-    'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Bot inside the original turn deadline.'));
+  + block('Cycle instruction', between(substrateIndexPath, "export const cyclePrompt = '", "';\n"))
+  + block('Exact input composition', between(substrateIndexPath, '                  const text = ', '\n                  const sendInput'),
+    'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Bot inside the original turn deadline.')
+  + block('FATE startup in the no-library condition', renderStartupPrompt([fateManifest]))
+  + block('FATE startup in the shared condition', renderStartupPrompt([fateManifest, paperSubstrateManifest('shared')], fateSharing))
+  + block('FATE startup in the private condition', renderStartupPrompt([fateManifest, paperSubstrateManifest('private')], fatePrivate))
+  + block('FATE shared startup with verified completion', renderStartupPrompt([fateServiceManifest(true), paperSubstrateManifest('shared')], fateSharing),
+    'The verified FATE manifest also supplies the submit description for the private and no-library variants, which otherwise use the startup composition above.')
+  + block('FATE initial input', evaluate(between(fatePath, 'export const fateInput = ', ';\n')),
+    'Every peer receives the same followUp through runInput after the fixed pool is ready. The host stages the frozen formal and informal problem as files. The informal file appends the problem resource address derived from the original declaration SHA-256.')
+  + block('FATE initial input with verified completion and a 30-minute work window', fateVerifiedInput(1_800_000),
+    'The host supplies the configured workTimeoutMs. The displayed duration uses whole minutes when divisible by 60,000, otherwise seconds. The initial task is sent after all peers are ready.')
+  + block('FATE continuation before verified completion', fateVerificationContinuation,
+    'A verified-completion peer receives this followUp through runInput in the same Session after a known natural settlement without a verified finish, while the work window remains open. It uses a fresh continuation request ID. The final scorer sends no prompt.'));
 output('08-peermesh-harness.md', header('PeerMesh peer, batch and notice prompts',
   'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper. The project path uses Core start for ordinary batches and Core steer for eligible peer notices during an active batch. The compatibility paths use explicit followUp.')
   + block('Compatibility peer Profile prompt', between('src/harnesses/peermesh/index.ts', 'export const peerPrompt = `', '`;'))

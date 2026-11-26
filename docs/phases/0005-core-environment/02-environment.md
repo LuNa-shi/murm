@@ -389,6 +389,8 @@ authorizeFlatModelCall 从旧 validateBot 提取，返回 ModelPermit：phase/de
 
 ## 7. Substrate
 
+[ScaleMAS 论文机制与 FATE](05-scalemas-fate.md) 规定 #202 的对齐配置与验收；本节描述通用兼容路径。
+
 Substrate 用持久共享内容、搜索、引用与组合来组织工作，检验不依赖 Task 的共享成果协作。
 
 ### 7.1 配置与权限

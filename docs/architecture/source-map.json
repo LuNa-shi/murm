@@ -22,7 +22,9 @@
     "examples/peermesh/.npmignore",
     "tsconfig.json",
     "tsconfig.tests.json",
-    ".dockerignore"
+    ".dockerignore",
+    "examples/substrate/FateProofGuard.lean",
+    "examples/substrate/VerifyFateProof.lean"
   ],
   "excluded": [
     {
@@ -2094,6 +2096,63 @@
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Native Pi Session prefix, tool pairing and credential removal"
+    },
+    {
+      "path": "examples/substrate/fate-checker.ts",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md"
+      ],
+      "role": "Frozen dependency checks and isolated Lean compilation and replay"
+    },
+    {
+      "path": "examples/substrate/fate-config.ts",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md"
+      ],
+      "role": "Frozen FATE host settings, benchmark selection and model authorization inputs"
+    },
+    {
+      "path": "examples/substrate/fate-run.ts",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Autonomous FATE startup, time fencing, observed progress, candidate freezing and grading"
+    },
+    {
+      "path": "examples/substrate/fate-service.ts",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md"
+      ],
+      "role": "Task search, working Lean budget, stable request scope and durable proof submission"
+    },
+    {
+      "path": "src/harnesses/substrate/paper-substrate.ts",
+      "category": "Environment composition",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md"
+      ],
+      "role": "Paper-style immutable publications, anonymous scoped retrieval, transactional replay and decaying citation ranking"
+    },
+    {
+      "path": "examples/substrate/FateProofGuard.lean",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md"
+      ],
+      "role": "Single proof term parsing inside the trusted declaration"
+    },
+    {
+      "path": "examples/substrate/VerifyFateProof.lean",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md"
+      ],
+      "role": "Original target comparison, kernel replay and axiom auditing"
     }
   ]
 }

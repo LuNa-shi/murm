@@ -66,6 +66,18 @@
       "sha256": "5698c3cde49338ea376f192320134879f6efa208b975d6002a19a0be899fe484"
     },
     {
+      "path": "examples/substrate/fate-run.ts",
+      "sha256": "4fa30ed0edbed9fd5650cf2764caea7a89586eaed2cd35c8ed28cfc8616f8e90"
+    },
+    {
+      "path": "examples/substrate/fate-service.ts",
+      "sha256": "b0c0c1c9079237a623cbd4e992598824478727b99331236eb70875d090ab3aee"
+    },
+    {
+      "path": "src/harnesses/substrate/paper-substrate.ts",
+      "sha256": "96ed6927542fc17a6865c998e67f73127287d0ce01840e322c8f902be0aa2d93"
+    },
+    {
       "path": "benchmarks/putnambench-flat/run.ts",
       "sha256": "7fa89edae4d8d41c6d0bc25f8ad50689385f4aaba7afd90a991ac8ffd74c4c69"
     },
@@ -234,6 +246,18 @@
       "sha256": "1e96fc7dae086fcde47e0d5648f0ab79d43e74c4b8653f574ef05f6ad03cf2f6"
     },
     {
+      "path": "examples/substrate/fate-run.ts",
+      "anchor": "export const fateSharingPrompt = ",
+      "line": 14,
+      "sha256": "7ff4c5380303146e92f355f40eba5ae009425023e3ecf1555270b22fce8a40fb"
+    },
+    {
+      "path": "examples/substrate/fate-run.ts",
+      "anchor": "export const fatePrivatePrompt = ",
+      "line": 20,
+      "sha256": "05c26ed53c67fbb7695f75540d677abf442593c7cc128144dedd0a612098d4f2"
+    },
+    {
       "path": "src/harnesses/substrate/index.ts",
       "anchor": "export const peerPrompt = '",
       "line": 8,
@@ -274,6 +298,12 @@
       "anchor": "                  const text = ",
       "line": 99,
       "sha256": "de42b6aff46ba3ae542d606c5787836d6ee3f25900a68b336ce82004ae828926"
+    },
+    {
+      "path": "examples/substrate/fate-run.ts",
+      "anchor": "export const fateInput = ",
+      "line": 25,
+      "sha256": "6430a48b9dce088568b31fe6d537888fd59bcfa9bedf8308434285d4759ccf24"
     },
     {
       "path": "src/harnesses/peermesh/index.ts",
@@ -565,7 +595,7 @@
     },
     {
       "path": "docs/architecture/prompts/09-substrate-harness.md",
-      "sha256": "d5c6ff4ff5ec1f12f229ff8770f4880dcde63a8bcf8a6cdf0449c9a8fa83f766"
+      "sha256": "5c60d19a7908ee385466fc152489f32dc7eee139df194f896eaa16441796b953"
     },
     {
       "path": "docs/architecture/prompts/08-peermesh-harness.md",

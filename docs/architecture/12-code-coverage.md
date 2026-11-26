@@ -4,13 +4,13 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **226 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **233 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/subagents/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes/.npmignore`, `examples/subagents/.npmignore`, `examples/lead-worker/.npmignore`, `examples/substrate/.npmignore`, `examples/peermesh/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/subagents/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes/.npmignore`, `examples/subagents/.npmignore`, `examples/lead-worker/.npmignore`, `examples/substrate/.npmignore`, `examples/peermesh/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`, `examples/substrate/FateProofGuard.lean`, `examples/substrate/VerifyFateProof.lean`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -57,6 +57,23 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [scripts/build.ts](../../scripts/build.ts) | Clean TypeScript compilation and staging of runtime and verification assets in dist. | [07-run-configuration](07-run-configuration.md) | `93ed17a20f1e09a63cbe6a7f272f33a8cc6b8f8421594085b0e481cbdb4f8cac` |
 | [tsconfig.json](../../tsconfig.json) | Strict TypeScript and Node ESM compiler configuration for the mirrored dist tree. | [07-run-configuration](07-run-configuration.md) | `c7c1f875d0f2ae15c5cc91519701a8a9fe9c293f481c41d0fcae868a76ef0f12` |
 | [tsconfig.tests.json](../../tsconfig.tests.json) | TypeScript test emission configuration for the executable test tree. | [07-run-configuration](07-run-configuration.md) | `9927b0d021c575089dd66a4b84056140dd25b9dd24201df5913ee42d8acf8d0f` |
+
+### Environment composition (1)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [src/harnesses/substrate/paper-substrate.ts](../../src/harnesses/substrate/paper-substrate.ts) | Paper-style immutable publications, anonymous scoped retrieval, transactional replay and decaying citation ranking | [19-substrate-harness](19-substrate-harness.md) | `96ed6927542fc17a6865c998e67f73127287d0ce01840e322c8f902be0aa2d93` |
+
+### Environment integration (6)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [examples/substrate/fate-checker.ts](../../examples/substrate/fate-checker.ts) | Frozen dependency checks and isolated Lean compilation and replay | [19-substrate-harness](19-substrate-harness.md) | `b23c203095ba67532c8df6a993187c0ecab0bd9012b5fb0b6f6d9e88d72a1b9b` |
+| [examples/substrate/fate-config.ts](../../examples/substrate/fate-config.ts) | Frozen FATE host settings, benchmark selection and model authorization inputs | [19-substrate-harness](19-substrate-harness.md) | `3f4e2000dae75046f809577155ae72686f32a230623ec6b56745f80732bb8882` |
+| [examples/substrate/fate-run.ts](../../examples/substrate/fate-run.ts) | Autonomous FATE startup, time fencing, observed progress, candidate freezing and grading | [19-substrate-harness](19-substrate-harness.md), [08-prompts](08-prompts.md) | `4fa30ed0edbed9fd5650cf2764caea7a89586eaed2cd35c8ed28cfc8616f8e90` |
+| [examples/substrate/fate-service.ts](../../examples/substrate/fate-service.ts) | Task search, working Lean budget, stable request scope and durable proof submission | [19-substrate-harness](19-substrate-harness.md) | `b0c0c1c9079237a623cbd4e992598824478727b99331236eb70875d090ab3aee` |
+| [examples/substrate/FateProofGuard.lean](../../examples/substrate/FateProofGuard.lean) | Single proof term parsing inside the trusted declaration | [19-substrate-harness](19-substrate-harness.md) | `436f1934936f11cb7c8791ba5cd2915021556c907841dcc8b2fa5c6762d76dfb` |
+| [examples/substrate/VerifyFateProof.lean](../../examples/substrate/VerifyFateProof.lean) | Original target comparison, kernel replay and axiom auditing | [19-substrate-harness](19-substrate-harness.md) | `9df9cc34141f9df070f537fd0f8bc376aced586010ec839dd7ed0a8cef709694` |
 
 ### Example entry points (4)
 
@@ -217,7 +234,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [scripts/check-architecture.ts](../../scripts/check-architecture.ts) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `0df92907ec29c96b93503d09ffbe8902732676ed040dba3546a9d7205c4e25da` |
 | [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `63e10512f292e45af9b503810b680b53de6076fb31358459936e6f06763959bf` |
 | [scripts/generate-architecture-coverage.ts](../../scripts/generate-architecture-coverage.ts) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `02854fccac16e25dab914c4585d0824c8ec4b2c7d8b5e2d40348c3ef20028582` |
-| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `8b59033e98a81f1fae0af1b5aa64507fd397c5a182378580e69a488866fa5156` |
+| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `30869d2865f5599afc3fcaeafbcff9df2abcf42930b86e2eb3f35cffecffd9e7` |
 
 ### durable storage (3)
 
@@ -237,9 +254,9 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [examples/peermesh/config.ts](../../examples/peermesh/config.ts) | Installed foreground PeerMesh configuration with host-owned prerequisites and finite defaults | [17-harness-reporting](17-harness-reporting.md), [18-peermesh-harness](18-peermesh-harness.md) | `14865237dda0b1f2ac0c31795ca8930075ce8f7756f27ad40880cee604883293` |
 | [examples/substrate/.npmignore](../../examples/substrate/.npmignore) | Exclude default Substrate run evidence from packaged examples | [19-substrate-harness](19-substrate-harness.md) | `96d2d52c4436fe5ca685974790d77ab96fd18d5cf03f688004ae26b0e0616811` |
 | [examples/substrate/config.ts](../../examples/substrate/config.ts) | Host-only Kimi K3 Substrate configuration and finite resource defaults | [19-substrate-harness](19-substrate-harness.md) | `26217013a60c9300010e5d7285b0813155347487479c6e22a0d24cc209484a64` |
-| [examples/substrate/main.ts](../../examples/substrate/main.ts) | Editable installed Substrate host, public backend assembly and saved result CLI | [19-substrate-harness](19-substrate-harness.md) | `4461bf13c4669fa20f35aee706647db4bc52d6b75470413740f97bf92518e06d` |
-| [npm-shrinkwrap.json](../../npm-shrinkwrap.json) | Shipped exact dependency resolution for public package and image builds | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `38d77917355e9bc733d0d9cdc94b6bf29761f70b5d11188e8d74726c09d3fa17` |
-| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `25c99f37ffc554d88535e521e9a2539a081e00d071e875048d315edf55ff87ce` |
+| [examples/substrate/main.ts](../../examples/substrate/main.ts) | Editable installed Substrate host, public backend assembly and saved result CLI | [19-substrate-harness](19-substrate-harness.md) | `765ed23e3f47f72be4c29d978a67f85cff1072a5bdee84a1cf017b819da6417f` |
+| [npm-shrinkwrap.json](../../npm-shrinkwrap.json) | Shipped exact dependency resolution for public package and image builds | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `ea68fed4811f67baa4de34694d6e9d66c99230ad994b8271a9e5c5e450baac53` |
+| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `3dad0a487a74db4600970a816a18f4d7c36718ac2a72ac1e1663895883cd1a00` |
 | [scripts/mathlib-search-service.ts](../../scripts/mathlib-search-service.ts) | Mathlib HTTP provider process and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `1aed08fd45737f05d34d9bdcb3da3caa41c29fa777ed0e0c85fc0c9b2ca59b3f` |
 | [scripts/read-environment-result.ts](../../scripts/read-environment-result.ts) | Compatibility entry point delegating to read-harness-result | [17-harness-reporting](17-harness-reporting.md) | `9b10d7087ed76e66eb401c947718565d52bd42d8e44ee3b77d9352df26eff88e` |
 | [scripts/read-harness-result.ts](../../scripts/read-harness-result.ts) | Host CLI for saved result inspection using the shared reader | [17-harness-reporting](17-harness-reporting.md) | `acd479b4318cd06e2b1cdcf319ce2487032d003eef4dcdd12f557fbf06c54a02` |
