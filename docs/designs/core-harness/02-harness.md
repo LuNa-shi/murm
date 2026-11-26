@@ -53,7 +53,7 @@ Harness 是开发者使用 murm Core 编写的协作程序。它决定哪些 Age
 2. 准备所需外部设施，完成 readiness；登记自己创建的连接、账户和进程。
 3. 注册 manifest + adapter，配置 Profiles；固定本次身份引用与权限。
 4. 调用 createRuntime。Core 合入内置 Agent Service、校验注册表和 Profile、装配 Bridge 与模型入口。
-5. 在提交模型工作前安装事件处理器；spawn 只创建资源，不提交 input。
+5. 先安装事件处理器，再读取初始状态和 spawn；spawn 创建并确认资源就绪，工作输入另行提交。
 6. 建立 Harness 的 Agent 路由、领域关联或外部订阅，再显式 send。
 7. 运行 controller / router，按业务结果和预算决定结束，保存结果与清理回执。
 
@@ -63,7 +63,7 @@ Core 的创建、文件准备和 send 具有有限的单次宿主等待上限。
 
 ### 2.3 公共状态与私有工作目录
 
-**Q3 已确认：** 每个 Agent 使用独立 sandbox、workDir 和 Session，首版不提供 Agent 间共享文件目录。Agent 之间的可见性由 Service、Git 或明确的 artifact 交付决定；另一个 Agent 的本地路径本身不构成可访问的结果。
+每个 Agent 有独立 Sandbox 和 Session，默认使用私有 workDir。明确配置的共享挂载使用其只读或可写权限，在线替换适用于私有 workDir。Agent 也可通过 Service、Git 或显式 artifact 交接结果。
 
 共享数据的生命周期由 Service/Harness 决定，Agent 退出后可以继续保留。公共 Workspace 属于 TaskPool；其他模式可以使用 Git、内容库或 Board，不必建立 Task/Execution。
 
@@ -839,7 +839,7 @@ export async function main(config: Config, signal?: AbortSignal) {
 
 ### A.3 局部检查范围
 
-修订期间用模拟 Runtime 检查了等待 helper 的事件顺序、取消、超时、重复 ID、失败结果，以及 Harness 的工厂失败、业务/清理双失败和报告保存。它们验证示例自身控制流，不验证尚未实现的 Core、真实模型、Bridge 或 OpenSandbox。真实链路仍按第 10 节实施验收。
+首版设计的模拟 Runtime 记录对应原修订。新版示例的实现回归覆盖事件顺序、取消、超时、重复 ID、失败结果，以及工厂失败、业务/清理双失败和报告保存。真实链路按 [#255 验收](03-delivery-and-validation.md#公共-sdk-的外部应用验收) 与第 10 节核对。
 
 ## 附录 B：一次性输入等待 helper
 

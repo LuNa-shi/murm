@@ -175,7 +175,7 @@ createRuntime、spawn、files.snapshot/replace 与 send 的单次宿主等待也
 | SERVICE\_TIMEOUT / SERVICE\_UNAVAILABLE | backend 或 Service 调用失败；是否可重试仍要结合提交状态 |
 | OPERATION\_UNKNOWN | 资源变更可能已发生，需保留请求身份核对 |
 
-请求去重键为 `runtime + caller + operation + target + requestId`。相同键与相同参数复用同一次提交，参数不同报冲突。send 的重试用于读取同一提交记录；unknown 在取得新证据后可以更新，但不能因此再次写入 Pi。并发 stop / close 复用同一收尾流程，后续调用可重试 pending 项。
+请求去重键为 `runtime + caller + operation + target + requestId`。相同键与相同参数复用同一次提交，参数不同报冲突。files.replace 以 Runtime 内的 requestId 标识该次替换，目标 Agent 是绑定参数之一。send 的重试用于读取同一提交记录；unknown 在取得新证据后可以更新，但不能因此再次写入 Pi。并发 stop / close 复用同一收尾流程，后续调用可重试 pending 项。
 
 去重必须贯穿 Core、adapter 和 Worker。现有 adapter 会在部分超时后重试，而 Worker 只缓存完成结果，存在进行中请求被再次提交的窗口；迁移时需加入进行中请求复用，或禁用未知结果的透明重投。[adapter RPC](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/agent/opensandbox-agent-adapter.js) · [Worker RPC](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/scripts/opensandbox-agent-worker.mjs)
 
@@ -301,21 +301,21 @@ M0 验收 fixture 使用如下初始树和在线目标。其余对象由测试�
 
 ### 7.2 一次文件替换与 Workspace 协议
 
-`snapshot` 在 Worker 控制的安全边界采集一致树；同 ID 和相同选择返回原捕获。无安全窗口时返回 busy，读操作结果未知时用原身份核对。共享项目可以按已有模式挂载，`replace` 对任意共享项目拒绝，私有只读和私有可写项目均可替换。
+`snapshot` 在 Worker 控制的安全边界采集一致树；同 ID 和相同选择返回原捕获。无安全窗口时返回 busy，读操作结果未知时用原身份核对。共享项目可按已有模式挂载；必须证明采集窗口覆盖全部写者，否则返回 busy。`replace` 对任意共享项目拒绝，私有只读和私有可写项目均可替换。
 
-`replace` 在当前 Runtime 内先按 Agent 与 requestId 查找操作，再用完整 expectedDigest、规范目标树和 `writable` 核对参数；同 ID 改参报 CONFLICT。新操作在 Worker 控制下确认没有不安全的活跃写者、打开文件或阻塞目录，捕获完整摘要并和 expectedDigest 比较，再按完整目标执行新增、删除、字节与模式更新。省略 `writable` 保持现状，`true` 在安装验证后开放写入，不接受 `false`。Core 验证字节、文件模式和真实权限后记录结果，恢复自身持有的执行控制，才确认 completed。Agent 和 Session 保持原身份。版本不匹配报 CONFLICT，安全窗口不可取得报 WORKSPACE_BUSY，均发生于修改前。
+`replace` 在当前 Runtime 内先按该操作的 requestId 查找既有请求，再核对 Agent、完整 expectedDigest、规范目标树和 `writable`；同 ID 改参报 CONFLICT。新操作在 Worker 控制下确认没有不安全的活跃写者、打开文件或阻塞目录，捕获完整摘要并和 expectedDigest 比较，再按完整目标执行新增、删除、字节与模式更新。省略 `writable` 保持现状，`true` 在安装验证后开放写入，不接受 `false`。Core 验证字节、文件模式和真实权限后记录结果，恢复自身持有的执行控制，才确认 completed。Agent 和 Session 保持原身份。版本不匹配报 CONFLICT，安全窗口不可取得报 WORKSPACE_BUSY，均发生于修改前。
 
-修改中失败且旧文件、权限和执行控制已确认恢复后，返回 `failed`，保存失败回执。已经派发、超时或无法确认安装、回滚、权限或释放状态时返回 `unknown`，保留原 Worker 记录和未解除的控制，拒绝冲突操作；同 ID 先核对或继续原操作。安全条件不能恢复时由宿主 stop/close 收尾。确认结果后重复原请求只返回该次回执，即使 Agent 已继续写入也不覆盖。停止/替换竞争时缺少确定证据即保持 unknown。旧 Worker 不支持新协议时在修改前准确拒绝。幂等范围是活 Runtime，宿主崩溃后不承诺自动恢复。
+修改中失败且旧文件、权限和执行控制已确认恢复后，返回 `failed`，保存失败回执。已经派发、超时或无法确认安装、回滚、权限或释放状态时返回 `unknown`，保留原 Worker 记录和未解除的控制，拒绝冲突操作；同 ID 先核对或继续原操作。安全条件不能恢复时由宿主 stop/close 收尾。确认结果后重复原请求只返回该次回执，即使 Agent 已继续写入也不覆盖。停止/替换竞争时缺少确定证据即保持 unknown。Worker 在就绪检查中声明新文件控制协议；缺少支持时在文件修改前以 INVALID_CONTRACT 拒绝并指明所需协议和检测到的版本，Core 不尝试旧阶段操作。幂等范围是活 Runtime，宿主崩溃后不承诺自动恢复。
 
 Workspace Service 先固定版本、合并并记下 pending 意图，保存原 Core 请求与可重建的目标。Core 返回 completed 后，Service 再持久化版本、parents、冲突和来源。文件完成而业务记录失败时，用原回执向前完成记录；期间互锁冲突 save/apply 和依赖状态的 finish，保留同一业务请求身份。TaskPool 的初次只读交接在开放写入前确立可信 Execution 归属与 fence，失败或未知保留归属直到确认停止。TaskPool 具体流程见 [Harness 设计](02-harness.md#63-运行流程与关键接线)。
 
 ### 7.3 收尾采集
 
-**Q3 已确认：Agent 间不直接共享 workDir；Git、Service 或显式 artifact 才是跨 Agent 成果交接通道。**
+Agent 默认使用私有 workDir。跨 Agent 成果可经 Git、Service 或显式 artifact 交接；现有共享只读/可写挂载仍可显式配置，不能用于在线 replace。
 
 collect 在分配资源前登记并在 Agent 生命周期内固定，所有 stop/close 路径使用同一政策。paths 相对于 workDir；includeGit 明确是否包含 Git 历史；maxBytes 是硬上限；required 指定失败是否阻止资源删除。省略 collect 时仅保留 Core 运行记录，不承诺私有目录中的文件会自动保存。
 
-includeGit 与 paths 的组合应得到可解释的归档清单；超限或文件缺失明确报告，不截断后宣称成功。导出在 Agent 进程停止后由仍存活的 Worker 执行，结果写到本次 outputDir 的 Agent 子目录。启动凭据置于进程环境或受信位置，不作为普通 FileSeed 混入 workDir；Agent 自行写入工作目录的内容仍属于其文件，不能声称归档会自动识别并删除所有秘密。
+includeGit 与 paths 的组合应得到可解释的归档清单；超限或文件缺失明确报告，不截断后宣称成功。导出在 Agent 进程停止后由仍存活的 Worker 执行，结果写到本次 outputDir 的 Agent 子目录。启动凭据置于进程环境或受信位置，不作为普通 FileTree 内容 混入 workDir；Agent 自行写入工作目录的内容仍属于其文件，不能声称归档会自动识别并删除所有秘密。
 
 现有 Workspace snapshot 排除 `.git`，要求 ACTIVE Execution，并有限额；新的 Agent 收尾导出必须有独立的 Agent 资源授权，支持 closing 状态。[当前 snapshot](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/scripts/sandbox-project.mjs)
 
@@ -331,11 +331,11 @@ includeGit 与 paths 的组合应得到可解释的归档清单；超限或文�
 
 正常收尾按以下顺序执行：
 
-1. 目标 Agent 进入 closing，关闭它的新工作入口；停止模型执行和它启动的相关命令，确认文件不再被这些进程修改。
-2. 保留 Worker 的受控文件连接，按 collect 保存指定文件、所需 Git 历史、输出与错误，并记录保存位置。
-3. 必须保存的成果已保存成功后，销毁 sandbox、撤销访问并确认结果，最后释放 Slot。
+1. 目标 Agent 进入 closing，同步关闭新工作与模型请求入口，取消本地在途模型连接，再停止执行和相关命令。
+2. 确认执行终止后保留受控 Worker 连接，归档原生 Session，按 collect 保存指定文件与 Git 历史，记录产物位置和错误。
+3. 必需归档和产物保存完成后删除 Sandbox。确认删除及该 Agent 所需资源清理后释放 Slot。
 
-collect.required 表示 Harness 在启动前声明“这些成果必须保存”。**已确认：如果 Agent 已停止，但这些 required 成果没有保存成功，就暂时保留该 sandbox 和 Slot，报告失败原因，排查后可重试 stop/close。** 好处是避免直接删除尚未保存的成果；代价是该资源和容量暂时不能释放，可能影响后续 Agent 启动。保留现场的范围与期限由宿主后续处置，首版不增加自动恢复系统。
+collect.required 表示 Harness 在启动前声明“这些成果必须保存”。**已确认：如果 Agent 已停止，但原生 Session 或 required 成果没有保存成功，就暂时保留该 sandbox 和 Slot，报告失败原因，排查后可重试 stop/close。** 好处是避免直接删除尚未保存的成果；代价是该资源和容量暂时不能释放，可能影响后续 Agent 启动。保留现场的范围与期限由宿主后续处置，首版不增加自动恢复系统。
 
 已推送到共享 Git、已写入公共 Service 的数据按 Harness 的保留政策处理。本节主要解决仍在 Agent 私有目录中的成果。可选采集失败会保留错误记录，并允许继续销毁；若连 Agent 是否已停止都无法确认，则记录 execution=unknown，不能按“已停止”释放领域工作。
 
@@ -343,7 +343,7 @@ collect.required 表示 Harness 在启动前声明“这些成果必须保存”
 
 ### 8.2 有期限的 close
 
-关闭操作的等待时间有上限，避免一次保存或删除故障让宿主程序一直卡住。stop/close 的 timeoutMs 必须为正且有限；省略时本稿建议最多等待 60 秒。时间到了就返回当前进度与未完成项，后续可以检查原因并重试；超时本身不表示操作已经成功，也不表示远端请求已取消。
+关闭操作的等待时间有上限，避免一次保存或删除故障让宿主程序一直卡住。stop/close 的 timeoutMs 必须为正且有限；省略时以 60 秒为单次宿主等待上限。时间到了就返回当前进度与未完成项，后续可以检查原因并重试；超时本身不表示操作已经成功，也不表示远端请求已取消。
 
 回执中的状态分别回答两个问题：
 
@@ -410,7 +410,7 @@ ResourceError 在已创建身份时提供 runtimeId/agentId/requestId，并尽�
 | --- | --- |
 | Q1 底层 Agent | A：首版仅 Pi + OpenSandbox；内部保留 backend 边界，不公开多执行器插件 |
 | Q2 运行中配置 | A：Profile 与 Service 启动前注册并冻结；允许按已有 Profile 动态创建 Agent |
-| Q3 文件共享 | A：各 Agent 独立 sandbox/workDir，不提供共享目录；通过 Git/Service/显式 artifact 协作 |
+| Q3 文件共享 | 首版默认独立 Sandbox/workDir，通过 Git/Service/显式 artifact 协作；现有显式共享挂载按 §7 保留 |
 | Q4 输入默认值 | B：默认 steer；显式 followUp 可用，PeerMesh 串行 router 选择 followUp |
 | Q5 idle 状态 | A：Session/workDir/Slot 持续保留，直到明确 stop |
 | Q6 导出失败 | A：预先标为 required 的成果导出失败时保留 sandbox/Slot 并报告 pending |
@@ -654,6 +654,15 @@ export type InputReceipt =
 export type ConditionalInputReceipt =
   | InputReceipt
   | { inputId: string; status: "not-accepted"; reason: "idle" };
+
+export type AgentInitialInputResult =
+  | InputReceipt
+  | { status: "rejected"; error: ErrorInfo }
+  | null;
+export interface AgentSpawnReceipt {
+  agent: AgentInfo;
+  initialInput: AgentInitialInputResult;
+}
 
 export interface InterruptOptions {
   requestId: string;
