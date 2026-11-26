@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **287 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **284 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -42,28 +42,26 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [src/judge/lean-module-verify.LICENSE.txt](../../src/judge/lean-module-verify.LICENSE.txt) | Pinned third-party license or provenance attachment distributed with identified Lean material | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `8b28515ffffc5c0fe2807d8ae3735b00b324d9b7ce807dd63ff6ac8922fbce7e` |
 | [src/judge/lean-module-verify.NOTICE.md](../../src/judge/lean-module-verify.NOTICE.md) | Pinned third-party license or provenance attachment distributed with identified Lean material | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `2bdbf775ed31967cd3bc01b4186d5312a18975f237d931712a8d6e575f12391f` |
 
-### Core API (2)
+### Core API (1)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/core/backends/codex-opensandbox.ts](../../src/core/backends/codex-opensandbox.ts) | Dedicated public Codex/OpenSandbox factory and configuration types | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `7dd8df6949bc5b0a32c31dce84c9aeeea8abc88d997ea617be2a2ec1b61abda8` |
-| [src/core/backends/opensandbox.ts](../../src/core/backends/opensandbox.ts) | Public configuration-based selection of the OpenSandbox execution driver | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [07-run-configuration](07-run-configuration.md) | `ca245b3bb2c4c58ff28585c0cb0abdafb7de6614509cd97c9b7b070771104684` |
+| [src/core/backends/opensandbox.ts](../../src/core/backends/opensandbox.ts) | Public configuration-based selection of the OpenSandbox execution driver | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [07-run-configuration](07-run-configuration.md) | `5a0508b36fa7b6e556c9fcce87cda56cbfcf876563874a2a30818069e2ee24ca` |
 
 ### Core public runtime (3)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/core/backend-config.ts](../../src/core/backend-config.ts) | Published Pi/OpenSandbox Backend configuration contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `3c57bd258a3dbb9fa64da0bffd19abc7a687f5cbcea9941b47f7338cf6c6608e` |
+| [src/core/backend-config.ts](../../src/core/backend-config.ts) | Published Pi/OpenSandbox Backend configuration contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `f193e6ccb9966ef40e3d8fdafaecab967ae8bbea96bf53e4a41f7d0cd7ffe797` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | Published Core Service manifest, adapter and operation contracts | [04-services](04-services.md) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
 | [src/core/types.ts](../../src/core/types.ts) | Published Core Runtime, Agent, event and receipt contracts | [15-core-runtime](15-core-runtime.md) | `6be0d8ee5d874eea232c797e6cc32ad0cca9eb1b8f65a1b67fb8d3a1d0d2550e` |
 
-### Core runtime (3)
+### Core runtime (2)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/core/codex-opensandbox-backend.ts](../../src/core/codex-opensandbox-backend.ts) | Pinned Codex backend assembly and gateway defaults | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `0edade897ffcd53cffb8d3e18930a8a38d4fae9f775de582ac165c614a725580` |
-| [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | Executor startup, version, configuration checks and capability contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `5f454baac56f27a1fa27eebd2ead410e783a646c9804ad690f2a4bf0e5d74a90` |
-| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | Shared OpenSandbox lifecycle, session control, input polling and cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `e685d1ef495f11eddb5319a51efa95e5b9f076ba22fd1d0b3ff20d98ccf78db3` |
+| [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | Executor startup, version, configuration checks and capability contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `7a3031d029faafbfe7b9f6226a2d5784dc1a52170c8d0ad34a6b5618596bb2a0` |
+| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | Shared OpenSandbox lifecycle, session control, input polling and cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `0fca7879aa7376c9e3cfeeeefabdb938f8e3bd3769d3438430753ea877b7b8f2` |
 
 ### Delivery and configuration (4)
 
@@ -71,7 +69,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 |---|---|---|---|
 | [.dockerignore](../../.dockerignore) | Build context exclusions for generated outputs, dependency trees and local data. | [07-run-configuration](07-run-configuration.md) | `5592ad2f492c4d0255176e75ff5f8e8ac0460821f95d1a89b0f841f8c98aa8ac` |
 | [scripts/build.ts](../../scripts/build.ts) | Clean TypeScript compilation and staging of runtime and verification assets in dist. | [07-run-configuration](07-run-configuration.md) | `93ed17a20f1e09a63cbe6a7f272f33a8cc6b8f8421594085b0e481cbdb4f8cac` |
-| [tsconfig.json](../../tsconfig.json) | Strict TypeScript and Node ESM compiler configuration for the mirrored dist tree. | [07-run-configuration](07-run-configuration.md) | `c76742e83b1161220a6eb8d8217201bd4d321f9abbe0afbc499e6a4ccd455277` |
+| [tsconfig.json](../../tsconfig.json) | Strict TypeScript and Node ESM compiler configuration for the mirrored dist tree. | [07-run-configuration](07-run-configuration.md) | `eac1c48fc851e1f3b6697d0c7b5dcde7ed653a971ff3014b545849c6971930a1` |
 | [tsconfig.tests.json](../../tsconfig.tests.json) | TypeScript test emission configuration for the executable test tree. | [07-run-configuration](07-run-configuration.md) | `9927b0d021c575089dd66a4b84056140dd25b9dd24201df5913ee42d8acf8d0f` |
 
 ### Environment composition (1)
@@ -110,7 +108,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [examples/subagents/collaboration-service.ts](../../examples/subagents/collaboration-service.ts) | Six authorized Bash operations and Service state export | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `d8fba63bf48fa426f24f83c76b6a92ed8a07f593ce6c15e0b17ffd9669c2f281` |
 | [examples/subagents/config.ts](../../examples/subagents/config.ts) | Local subagents host model, resource and deadline configuration | [17-harness-reporting](17-harness-reporting.md) | `e757513ee875365fdcb2610b2dfea8dee3136e2454b890d92376b0696000508a` |
 | [examples/subagents/controller.ts](../../examples/subagents/controller.ts) | Tree directory, trusted authorization, message routing, waits, continuation and result snapshots | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `db972be60e1cc8800862aa6634e06e3436969b536049912efe29d5ab939830e1` |
-| [examples/subagents/main.ts](../../examples/subagents/main.ts) | Subagents host Profiles, live user input, one-shot or interactive execution and whole-tree reporting | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `6da40aacbbe4351a9b94c7b4d63c1916fd2434aa6c1e1d26f0ea95ffc2d4e83e` |
+| [examples/subagents/main.ts](../../examples/subagents/main.ts) | Subagents host Profiles, live user input, one-shot or interactive execution and whole-tree reporting | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `0c721b66f8c1a8f25a98e6688fe26762221f8502fbcdda60efae5f465af1cf9e` |
 | [examples/subagents/prompts.ts](../../examples/subagents/prompts.ts) | Production Root and Child instructions for the discovered collaboration Service | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `76fdca19d7bf342d53a0bd57f98c939e39913d3df3316c9aab6c6bcf5f7d4bb4` |
 | [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts) | Runtime-owned time-bounded Responses forwarding, request receipts, and observed usage | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [11-storage-reference](11-storage-reference.md), [15-core-runtime](15-core-runtime.md) | `32cbedaa66c5c92d762d7b02af402b72f5bbd2fba1526531cd398dd8e40fd338` |
 | [src/harnesses/shared/run-input.ts](../../src/harnesses/shared/run-input.ts) | Harness-owned exclusive idle Agent input wait and uncertain submission guard | [15-core-runtime](15-core-runtime.md) | `252f2fd6ec60f0300898081708299760df748803e415600329b6e56f81e9cee3` |
@@ -152,7 +150,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [examples/lead-worker/config.ts](../../examples/lead-worker/config.ts) | Kimi K3 fixed-team sample configuration and finite resource bounds | [20-lead-worker-harness](20-lead-worker-harness.md) | `400313bec32ac28df8b3c3fcd876e753b8fd8a49d5708daafa6b5bce171d5dbe` |
-| [examples/lead-worker/main.ts](../../examples/lead-worker/main.ts) | Editable Lead-Worker CLI with public backend assembly and report output | [20-lead-worker-harness](20-lead-worker-harness.md) | `da381c0bda9ef43eceb45e3d888efe2cc43bd85ecd3709814d905bc9d1be2af4` |
+| [examples/lead-worker/main.ts](../../examples/lead-worker/main.ts) | Editable Lead-Worker CLI with public backend assembly and report output | [20-lead-worker-harness](20-lead-worker-harness.md) | `00c6c22f64f72aa3105dccfe8ce21c953a2abe247a6375941f91bedaae4c4af3` |
 | [scripts/git-credential-peermesh.ts](../../scripts/git-credential-peermesh.ts) | Single-peer PeerMesh ownership, trusted facility identity and Git integration | [18-peermesh-harness](18-peermesh-harness.md) | `6aeed7b20e3e77f5828e4a5e6261dfec2f08f5f53987132214a4a763e296b23c` |
 | [src/harnesses/lead-worker/board.ts](../../src/harnesses/lead-worker/board.ts) | Transactional durable Board, trusted caller ownership and proof acceptance | [20-lead-worker-harness](20-lead-worker-harness.md) | `dfc6984f85b71fe3894230a6f405efd45fb1ddf36b1204a51316e5acae5af148` |
 | [src/harnesses/lead-worker/git.ts](../../src/harnesses/lead-worker/git.ts) | Run-scoped fixed-team Git provisioning, PR authorization, head and pinned byte verification | [20-lead-worker-harness](20-lead-worker-harness.md) | `c926ec705f7da30c9281c1a5582a0fb8021abb429e80d188f3b179ea5d49d5fa` |
@@ -248,7 +246,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/check-architecture.ts](../../scripts/check-architecture.ts) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `0df92907ec29c96b93503d09ffbe8902732676ed040dba3546a9d7205c4e25da` |
-| [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `63e10512f292e45af9b503810b680b53de6076fb31358459936e6f06763959bf` |
+| [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `c3edac1675c27ce9826cecb70ba9177e19d2120b33f9538a796470fa7ad84ebc` |
 | [scripts/generate-architecture-coverage.ts](../../scripts/generate-architecture-coverage.ts) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `228407cc3420e01ca2f7e4a6d82043fa8e318167e268868f56ca5737606015c4` |
 | [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1823c542bc75d522975d7c5b97a3e3a9f275d842e46a709ed45bdf878dd0bcec` |
 
@@ -274,12 +272,12 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [.env.example](../../.env.example) | Nonsecret example environment-variable names | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `1f65a7b768414e1fa394b70530f944b94f853ee621d51ccc758ed94c16887a78` |
 | [.gitignore](../../.gitignore) | Raw evidence and credential retention boundary in the working tree and npm packlist | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `6b8f64521e5686d00b33aef067df0322ed1a34621cf65abe198b47d715183f39` |
 | [examples/peermesh/.npmignore](../../examples/peermesh/.npmignore) | Exclude default PeerMesh run evidence from packaged examples | [18-peermesh-harness](18-peermesh-harness.md) | `ac411e8b4dc0607557b5bcf2b156c4c4d7d77013e81e5aa7bee645b06081c323` |
-| [examples/peermesh/config.ts](../../examples/peermesh/config.ts) | Installed foreground PeerMesh configuration with host-owned prerequisites and finite defaults | [17-harness-reporting](17-harness-reporting.md), [18-peermesh-harness](18-peermesh-harness.md) | `11861211231c77fe1ff3e5dc7a5291ef425d059ce9e1e78e7c822b98e3b5a8f3` |
+| [examples/peermesh/config.ts](../../examples/peermesh/config.ts) | Installed foreground PeerMesh configuration with host-owned prerequisites and finite defaults | [17-harness-reporting](17-harness-reporting.md), [18-peermesh-harness](18-peermesh-harness.md) | `bfa648c98d6ee2c51140f807ca3f56350439066c223fa49475d01f9ebcf691f8` |
 | [examples/substrate/.npmignore](../../examples/substrate/.npmignore) | Exclude default Substrate run evidence from packaged examples | [19-substrate-harness](19-substrate-harness.md) | `37bd319107ba47c67d77277a6368cd92aabf4f7b3678123ff077c2e098100b16` |
 | [examples/substrate/config.ts](../../examples/substrate/config.ts) | Host-only Kimi K3 Substrate configuration and finite resource defaults | [19-substrate-harness](19-substrate-harness.md) | `28249fb8fcb94812c46b879b056f610efbcbf2eb5ee81b18594fbc9892b102c0` |
-| [examples/substrate/main.ts](../../examples/substrate/main.ts) | Editable installed Substrate host, public backend assembly and saved result CLI | [19-substrate-harness](19-substrate-harness.md) | `cb9812350e938ece4cc02ac5d1f54ea0e071601dc7a86b2bc0ed413e814f5877` |
+| [examples/substrate/main.ts](../../examples/substrate/main.ts) | Editable installed Substrate host, public backend assembly and saved result CLI | [19-substrate-harness](19-substrate-harness.md) | `e2c747d96612946857f6ca6645cb96897bda8b7175114f621aff1fefc6c1625b` |
 | [npm-shrinkwrap.json](../../npm-shrinkwrap.json) | Shipped exact dependency resolution for public package and image builds | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `fb6b8ab5929563303120e7028d8743e24f43935be72e614bb6ffe1bf5dc6189f` |
-| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `dfed591b5de83fb1cbc7d7721815dc99ebbc6dfe7c579bc7b4b417fa650c63c4` |
+| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `8751563585d5a717e4568b95386d6185bd1483fed60dc8cf82d6618801759334` |
 | [scripts/mathlib-search-service.ts](../../scripts/mathlib-search-service.ts) | Mathlib HTTP provider process and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `1aed08fd45737f05d34d9bdcb3da3caa41c29fa777ed0e0c85fc0c9b2ca59b3f` |
 | [scripts/read-harness-result.ts](../../scripts/read-harness-result.ts) | Host CLI for saved result inspection using the shared reader | [17-harness-reporting](17-harness-reporting.md) | `ec5eb4529550206ce0b624d9286f84a4f3f07c1d76635d795d3189eeb717b04d` |
 | [scripts/run-harness.ts](../../scripts/run-harness.ts) | Foreground host CLI for explicit local Harness configuration and bounded control | [17-harness-reporting](17-harness-reporting.md) | `0b1258756e186435aa19105cd9b04285f84c7d61154dd4457b4e52760533fd18` |
@@ -321,7 +319,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 |---|---|---|---|
 | [src/replay/service-history.ts](../../src/replay/service-history.ts) | Automatic transaction-aware private SQLite before/after row history and committed write boundaries | [13-historical-resume](13-historical-resume.md) | `17fe42059e4a7d46915f24f6291f8749f507ed80fe64014ccb871928300f5063` |
 
-### programmable Core (15)
+### programmable Core (14)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -329,15 +327,14 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [src/agent/model-catalog.ts](../../src/agent/model-catalog.ts) | Shared pinned Pi Responses model and image catalog validation | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `aff111ab6bcc78c319b74dae282e78438e91c67aac48471b9ee3df25576d53eb` |
 | [src/core/agent-service.ts](../../src/core/agent-service.ts) | Built-in Agent Service v2 schema, trusted direct-child authorization and convenience-spawn receipt ledger | [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `b096c74532f64916168e8d60acab127e4acc265cb36782eb6a1deb91f2566884` |
 | [src/core/artifact-collection.ts](../../src/core/artifact-collection.ts) | Host artifact stream validation, private staging and manifest publication | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `8279193fa515c63c4a51819dd806172e8ba7b8b6edd5170b33833b7dd27611bf` |
-| [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | Public opaque Pi/OpenSandbox backend factory export | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `f8167e4c39facba00538c3ebc97cd7c54ad3164bb138303917896aac72c1539b` |
+| [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | Public opaque Pi/OpenSandbox backend factory export | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `f6b1d4d2bb9b30253195adfecda5abb24f17e0971c710c0007d6baac23d84734` |
 | [src/core/bridge.ts](../../src/core/bridge.ts) | Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `a8c872112b7e059bb3a36758c4d5a1ce0ea80f694cd0ffff640357e9d4c1ac98` |
-| [src/core/config.ts](../../src/core/config.ts) | Profile snapshot, spawn request and environment validation | [15-core-runtime](15-core-runtime.md) | `b5109ddd1f08e6e8202050b9ab3f4d1694c4115af8e812c0c3524ae7265a05ac` |
+| [src/core/config.ts](../../src/core/config.ts) | Profile snapshot, spawn request and environment validation | [15-core-runtime](15-core-runtime.md) | `f7fe421a16593ebc34d323bcb11aa0b64525d2b3b87a0a7ac708178de8a585f7` |
 | [src/core/file-controls.ts](../../src/core/file-controls.ts) | Agent file-operation identity, preparation receipts, write authority and pending grant fences | [15-core-runtime](15-core-runtime.md) | `31ce77b2051152caadadaa3e98b26cd63f8492e1a8bb7cb5dc871bffb9b509f4` |
-| [src/core/index.ts](../../src/core/index.ts) | Runtime assembly, Agent admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `cd40cf1eff69640e3ff2c0b4355cb4f15c46e1d0e1f07f2f4d688d0ffeba1be3` |
+| [src/core/index.ts](../../src/core/index.ts) | Runtime assembly, Agent admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `303e8742d65e0b47e2d87a9d4c8c65e382ec85851e0bc16016ba802eee4d0b63` |
 | [src/core/input-ledger.ts](../../src/core/input-ledger.ts) | Runtime/caller/operation/target/request input identity and parameter conflict ledger | [15-core-runtime](15-core-runtime.md) | `44e6dd8b015fb8ee2fcc2100aa22638e7e66e511ede570510dc0eb30bb85f626` |
-| [src/core/model-access.ts](../../src/core/model-access.ts) | Runtime-scoped model gateway lifecycle, credentials and policy | [15-core-runtime](15-core-runtime.md) | `0dc018ec4919dad1a6f845b59556dada4c4c69bbaa496a1e753c4ae4169724c6` |
-| [src/core/pi-opensandbox-backend.ts](../../src/core/pi-opensandbox-backend.ts) | Pi compatibility factory and pinned driver selection | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `2cd5fb766e82a9c48baad8712643ec2cfaa52937920e82d71f23e1de0ad1f591` |
-| [src/core/run-records.ts](../../src/core/run-records.ts) | Private Runtime summary configuration, ordered evidence writing and credential redaction | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `9bda0798e268232a2521b4d912bf65765ede79fa270fdabe8f278d7e01a6ab28` |
+| [src/core/model-access.ts](../../src/core/model-access.ts) | Runtime-scoped model gateway lifecycle, credentials and policy | [15-core-runtime](15-core-runtime.md) | `2ab9f0b09166dadf3430b32d6a427c14ff94e543c2d82200ab36c45b42a1e259` |
+| [src/core/run-records.ts](../../src/core/run-records.ts) | Private Runtime summary configuration, ordered evidence writing and credential redaction | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `39779cce4c89af46cf3e56b48f351a4e5b05a681fcb8f903c55396e833dc47b7` |
 | [src/core/services.ts](../../src/core/services.ts) | Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `fe9840ec2a5d25e05ac7546c2f236ca72c858d5128a1d8f464c26dd8cb5b5e9c` |
 | [src/core/startup-prompt.ts](../../src/core/startup-prompt.ts) | Core sandbox startup system prompt, authorized Service directory and optional Added System Prompt | [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `a0a07d64d49ec8effab76dddb84e7be77c340a173bc6370374b27c743fada761` |
 
@@ -386,8 +383,8 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [website/src/components/TopNav.astro](../../website/src/components/TopNav.astro) | Site navigation, mobile menu, theme and search controls | [22-website](22-website.md) | `1d2b964c6be84514c697c3099f36a48e8cde874044cbed39a461792d2e699330` |
 | [website/src/content.config.ts](../../website/src/content.config.ts) | Documentation loader and frontmatter schema | [22-website](22-website.md) | `8444c4b74e5d270930870199183259f7d1dcd346b2a1166d91da3e7b0826846b` |
 | [website/src/content/docs/architecture.md](../../website/src/content/docs/architecture.md) | Published documentation content for System Architecture | [22-website](22-website.md) | `35f7e41b8a836206cdb62764fef4790450e3c6150110343554fc994519e1d3f8` |
-| [website/src/content/docs/build-your-harness.md](../../website/src/content/docs/build-your-harness.md) | Published documentation content for Build Your Own Harness | [22-website](22-website.md) | `c39f0c2074d73fdc651f75dce439cfb9cbbb170e6385ce1ee447bbe8cf85b70a` |
-| [website/src/content/docs/concepts.md](../../website/src/content/docs/concepts.md) | Published documentation content for Core Concepts | [22-website](22-website.md) | `61043eaea9c1fd3ff83ab5f342b89d40e19ee69cdccf894ed46cb0fb976e9e15` |
+| [website/src/content/docs/build-your-harness.md](../../website/src/content/docs/build-your-harness.md) | Published documentation content for Build Your Own Harness | [22-website](22-website.md) | `20d1055689b286ce2d803d9a4f78f51080615c288759bfb4144d137262b1d4d4` |
+| [website/src/content/docs/concepts.md](../../website/src/content/docs/concepts.md) | Published documentation content for Core Concepts | [22-website](22-website.md) | `234f40f0be93d0f7be4b1e0bdbbdeb880fc3b3ed3865dc2a3c3e549fed03b2bf` |
 | [website/src/content/docs/harnesses/index.md](../../website/src/content/docs/harnesses/index.md) | Published documentation content for Five Topologies Overview | [22-website](22-website.md) | `b878e2a85d20f91b2eea063d631bb40b9018b1e0569b45165140e226b8effba7` |
 | [website/src/content/docs/harnesses/lead-worker.md](../../website/src/content/docs/harnesses/lead-worker.md) | Published documentation content for Lead-Worker | [22-website](22-website.md) | `f4851c703e210eac4edb5c75ab61167e5d94e0b15d9e1527ff576bdccc48f889` |
 | [website/src/content/docs/harnesses/peermesh.md](../../website/src/content/docs/harnesses/peermesh.md) | Published documentation content for PeerMesh | [22-website](22-website.md) | `f30afc8c32dcc96ce193baee3bb0877878de1b6cfd095b597d9f2cb31ab44699` |

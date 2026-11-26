@@ -26,10 +26,6 @@
       "types": "./dist/src/core/backends/pi-opensandbox.d.ts",
       "default": "./dist/src/core/backends/pi-opensandbox.js"
     },
-    "./backends/codex-opensandbox": {
-      "types": "./dist/src/core/backends/codex-opensandbox.d.ts",
-      "default": "./dist/src/core/backends/codex-opensandbox.js"
-    },
     "./backends/opensandbox": {
       "types": "./dist/src/core/backends/opensandbox.d.ts",
       "default": "./dist/src/core/backends/opensandbox.js"

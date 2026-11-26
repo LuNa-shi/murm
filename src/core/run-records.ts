@@ -1,8 +1,7 @@
 import type { Profile, ModelAccessPolicy, ErrorInfo } from './types.js';
-import type { OpenSandboxBackendConfig } from './backend-config.js';
+import type { ResolvedOpenSandboxBackendConfig } from './opensandbox-backend.js';
 import type { ServiceRegistration } from './services.js';
 
-import { executorDriver } from './executor-driver.js';
 import { createHash } from 'node:crypto';
 import { appendFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -123,15 +122,14 @@ export function createRedactor(values: readonly unknown[] = []) {
 }
 
 export function runtimeConfiguration({ config, profiles, registrations, maxAgents, modelAccessPolicy, defaultTimeoutMs }: {
-  config: OpenSandboxBackendConfig;
+  config: ResolvedOpenSandboxBackendConfig;
   profiles: ReadonlyMap<string, Profile>;
   registrations: ReadonlyMap<string, ServiceRegistration>;
   maxAgents: number;
   modelAccessPolicy?: ModelAccessPolicy;
   defaultTimeoutMs: number;
 }, redact: (value: string) => string) {
-  const { sandbox, isolation, models, modelGateway } = config;
-  const driver = executorDriver(config);
+  const { sandbox, isolation, models, modelGateway, driver } = config;
   return {
     schemaVersion: 1,
     coreVersion: packageInfo.version,

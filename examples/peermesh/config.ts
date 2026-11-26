@@ -31,9 +31,9 @@ const startBoard = createBoardLauncher({
   python: setting('BOARD_PYTHON') ?? 'python3',
 });
 
-const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
+const { createOpenSandboxBackend } = await import('@murm/core/backends/opensandbox');
 const host = setting('HOST') ?? '172.17.0.1';
-const backend = createPiOpenSandboxBackend({
+const backend = createOpenSandboxBackend({
   sandbox: {
     lifecycleBaseUrl: setting('LIFECYCLE_URL') ?? 'http://127.0.0.1:8080/v1',
     endpointHost: setting('ENDPOINT_HOST') ?? '127.0.0.1',

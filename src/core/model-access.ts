@@ -1,6 +1,6 @@
 import type { AgentInfo, ErrorInfo, ModelAccessPolicy, PendingCleanup } from './types.js';
 import type { createModelTrace } from './model-trace.js';
-import type { OpenSandboxBackendConfig } from './backend-config.js';
+import type { ResolvedOpenSandboxBackendConfig } from './opensandbox-backend.js';
 
 interface ModelAgent {
   status: AgentInfo['status'];
@@ -18,7 +18,7 @@ interface ModelOwner {
 interface ModelOptions {
   runtimeId: string;
   outputDir: string;
-  config: OpenSandboxBackendConfig;
+  config: ResolvedOpenSandboxBackendConfig;
   getAgent(id: string): ModelAgent | undefined;
   modelAccessPolicy?: ModelAccessPolicy;
   modelTrace?: ReturnType<typeof createModelTrace>;
@@ -26,7 +26,7 @@ interface ModelOptions {
 }
 
 interface ModelAlias {
-  model: OpenSandboxBackendConfig['models'][string];
+  model: ResolvedOpenSandboxBackendConfig['models'][string];
   catalogResource?: Readonly<{ path: string; sha256: string }>;
   ledgerPath?: string;
   db?: DatabaseSync;
@@ -48,7 +48,6 @@ import { mkdir, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { ResponsesBudgetGateway } from '../agent/responses-budget-gateway.js';
-import { assertShippedModelPair } from '../agent/model-catalog.js';
 
 function invalid(message: string) {
   return Object.assign(new Error(message), { code: 'INVALID_CONFIG' });
@@ -113,6 +112,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
     throw invalid('Model access requires Runtime identity, output directory, models and Agent authority');
   }
   const withLifecycleWrite = synchronousPolicy(modelAccessPolicy);
+  const { driver } = config;
   const gatewayConfig = structuredClone(config.modelGateway);
   if (!gatewayConfig || typeof gatewayConfig.host !== 'string' || !gatewayConfig.host ||
       typeof gatewayConfig.advertiseHost !== 'string' || !/^[a-zA-Z0-9.:-]+$/.test(gatewayConfig.advertiseHost) ||
@@ -122,8 +122,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
   const aliases = new Map<string, ModelAlias>();
   for (const [alias, model] of Object.entries(structuredClone(config.models))) {
     if (!alias || !model?.upstream) throw invalid('Each model alias requires a configured upstream');
-    const catalogResource = config.executor?.kind === 'codex' ? undefined
-      : await assertShippedModelPair(model).catch(error => { throw invalid(error.message); });
+    const catalogResource = await driver.modelCatalogResource?.(model).catch(error => { throw invalid(error.message); });
     aliases.set(alias, { model, catalogResource: catalogResource && Object.freeze(catalogResource) });
   }
   const directory = join(outputDir, 'model-access');
@@ -177,7 +176,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
       entry.db = new DatabaseSync(path);
       entry.ledgerPath = path;
       await chmod(path, 0o600);
-      const gatewayOptions = { db: entry.db, executor: config.executor?.kind ?? 'pi',
+      const gatewayOptions = { db: entry.db, executor: driver.kind,
         upstream: { ...entry.model.upstream, model: entry.model.model }, timeBounds: gatewayConfig,
         ...(entry.model.provider === 'kimi_proxy' && entry.model.model === 'k3' ? { transformPayload: kimiResponsesPayload } : {}),
         beginTrace: modelTrace ? (request: Record<string, unknown>) => modelTrace.begin({ ...request, modelAlias: alias, provider: entry.model.provider }) : undefined,
@@ -224,10 +223,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
       }
       const token = entry.gateway!.issueToken({ runtimeId, agentId });
       tokens.set(agentId, { token, gateway: entry.gateway! });
-      const prefix = `PI_${entry.model.provider.toUpperCase().replaceAll('-', '_')}`;
-      return { environment: config.executor?.kind === 'codex' ? {} : { [`${prefix}_BASE_URL`]: entry.baseUrl! },
-        secretEnvironment: config.executor?.kind === 'codex' ? { OPENAI_API_KEY: token } : { [`${prefix}_API_KEY`]: token },
-        baseUrl: entry.baseUrl!, catalogResource: entry.catalogResource };
+      return { ...driver.credentials(entry.model, entry.baseUrl!, token), baseUrl: entry.baseUrl!, catalogResource: entry.catalogResource };
     },
     revokeAgent(agentId: string) {
       const binding = tokens.get(agentId);

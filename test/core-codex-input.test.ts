@@ -14,7 +14,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   return next(specifier, context);
 } });
 const { createRuntime } = await import('@murm/core');
-const { createCodexOpenSandboxBackend } = await import('@murm/core/backends/codex-opensandbox');
+const { createOpenSandboxBackend } = await import('@murm/core/backends/opensandbox');
 const { ServiceRegistry } = await import('@murm/core/services');
 hooks.deregister();
 
@@ -22,7 +22,8 @@ test('Codex uses an Agent gateway token and retains one executor across inputs w
   provider.reset();
   const outputDir = await mkdtemp(join(tmpdir(), 'core-codex-input-'));
   const runtime = await createRuntime({
-    backend: createCodexOpenSandboxBackend({
+    backend: createOpenSandboxBackend({
+      executor: 'codex',
       sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1', maxOutputTokens: null },

@@ -139,7 +139,7 @@ interface BackendSpawnOptions {
 
 import type { Backend } from './types.js';
 import type { OpenSandboxBackendConfig } from './backend-config.js';
-import { executorDriver } from './executor-driver.js';
+import { selectExecutorDriver, type ExecutorDriver } from './executor-driver.js';
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -147,7 +147,9 @@ import { OpenSandboxManager } from '../runtime/opensandbox-manager.js';
 import { DockerAgentNetwork } from '../runtime/docker-agent-network.js';
 import { DockerAgentDisk } from '../runtime/docker-agent-disk.js';
 
-const handles = new WeakMap<Backend, { config: OpenSandboxBackendConfig; claimed: boolean }>();
+export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'> & { readonly driver: Readonly<ExecutorDriver> };
+
+const handles = new WeakMap<Backend, { config: ResolvedOpenSandboxBackendConfig; claimed: boolean }>();
 
 function invalid(message: string) {
   return Object.assign(new Error(message), { code: 'INVALID_CONTRACT' });
@@ -175,6 +177,7 @@ function sandboxExpiry(value: unknown) {
 }
 
 export function createOpenSandboxBackend(config: OpenSandboxBackendConfig): Backend {
+  const driver = selectExecutorDriver(config?.executor);
   if (config?.isolation?.network !== 'local-docker') throw invalid('OpenSandbox requires local-docker isolation');
   httpUrl(config.sandbox?.lifecycleBaseUrl, 'sandbox.lifecycleBaseUrl');
   const timeoutSeconds = config.sandbox.timeoutSeconds === undefined ? 3600 : config.sandbox.timeoutSeconds;
@@ -182,7 +185,8 @@ export function createOpenSandboxBackend(config: OpenSandboxBackendConfig): Back
   if (typeof config.bridge?.host !== 'string' || !config.bridge.publicUrl?.includes('{port}')) throw invalid('Bridge host and publicUrl with {port} are required');
   httpUrl(config.bridge.publicUrl.replaceAll('{port}', '12345'), 'bridge.publicUrl');
   if (typeof config.modelGateway?.host !== 'string' || typeof config.modelGateway.advertiseHost !== 'string') throw invalid('Model gateway host and advertiseHost are required');
-  const outputPolicy = config.modelGateway.maxOutputTokens;
+  const outputPolicy = config.modelGateway.maxOutputTokens === undefined
+    ? driver.defaultMaxOutputTokens : config.modelGateway.maxOutputTokens;
   if (outputPolicy !== undefined && outputPolicy !== null && (!Number.isSafeInteger(outputPolicy) || outputPolicy < 16)) {
     throw invalid('modelGateway.maxOutputTokens must be null or a safe integer of at least 16');
   }
@@ -205,8 +209,16 @@ export function createOpenSandboxBackend(config: OpenSandboxBackendConfig): Back
     if (!model.upstream.headers || typeof model.upstream.headers !== 'object') throw invalid('Model upstream headers are required');
   }
   const handle = Object.freeze({}) as Backend;
-  handles.set(handle, { config: freeze(structuredClone(config)), claimed: false });
+  const { executor, ...settings } = config;
+  const snapshot = freeze(structuredClone({ ...settings, modelGateway: { ...settings.modelGateway, maxOutputTokens: outputPolicy } }));
+  handles.set(handle, { config: Object.freeze({ ...snapshot, driver }), claimed: false });
   return handle;
+}
+
+export function getOpenSandboxBackendCapabilities(handle: Backend) {
+  const entry = handles.get(handle);
+  if (!entry) throw invalid('An OpenSandbox backend handle is required');
+  return entry.config.driver.capabilities;
 }
 
 export function claimOpenSandboxBackend(handle: Backend) {
@@ -216,8 +228,8 @@ export function claimOpenSandboxBackend(handle: Backend) {
   return entry.config;
 }
 
-export async function openOpenSandboxBackend(config: OpenSandboxBackendConfig, { runtimeId, bridge, modelAccess, registerPrivateValues = () => {} }: BackendOptions) {
-  const driver = executorDriver(config);
+export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, { runtimeId, bridge, modelAccess, registerPrivateValues = () => {} }: BackendOptions) {
+  const { driver } = config;
   const agents = new Map<string, BackendAgent>();
   const workspaces = new Map<string, WorkspaceOwners>();
   let closing = false;
@@ -333,7 +345,7 @@ export async function openOpenSandboxBackend(config: OpenSandboxBackendConfig, {
       if (workspace) await disk.sharedWorkspace('attach', { runtimeId, workspaceId: workspace.id, mode: workspace.mode,
         sandboxId: sandbox.sandbox_id, agent: identity });
       const versions = await manager.agentVersions({ executionId: agentId, executor: driver.kind });
-      driver.assertVersion(versions);
+      if (versions[`${driver.kind}Version`] !== driver.version) throw invalid(`Backend requires ${driver.kind} ${driver.version}`);
       assertOpen();
       const model = config.models[profile.model];
       const startup = await manager.startAgent({ executionId: agentId,

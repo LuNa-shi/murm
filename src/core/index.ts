@@ -11,7 +11,6 @@ import { createFileControls } from './file-controls.js';
 import { saveAgentArtifacts } from './artifact-collection.js';
 import { createRedactor, createRunRecords, runtimeConfiguration } from './run-records.js';
 import { claimOpenSandboxBackend, openOpenSandboxBackend } from './opensandbox-backend.js';
-import { executorDriver } from './executor-driver.js';
 import { createAgentService } from './agent-service.js';
 import { createServiceTrace, exportServiceStates } from './service-trace.js';
 import { registerServicePrivateValues, snapshotServiceRegistry } from './services.js';
@@ -86,7 +85,8 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const context = { operation: 'createRuntime', runtimeId };
   const redactor = createRedactor([process.env.OPEN_SANDBOX_API_KEY, process.env.MURM_EXECD_ACCESS_TOKEN]);
   const errorInfo = redactor.error;
-  let config: any, registrations: any, profiles: any, modelAccessPolicy, outputDir: any;
+  let config: ReturnType<typeof claimOpenSandboxBackend>;
+  let registrations: any, profiles: any, modelAccessPolicy, outputDir: any;
   try {
     if (!Number.isSafeInteger(options?.maxAgents) || options.maxAgents < 1 ||
         typeof options.outputDir !== 'string' || !options.outputDir.trim()) {
@@ -98,16 +98,15 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     }
     config = claimOpenSandboxBackend(options.backend);
     redactor.add([config.sandbox.apiKey, config.sandbox.execdToken,
-      ...Object.values(config.models).flatMap((model: any) => Object.values(model.upstream.headers))]);
+      ...Object.values(config.models).flatMap((model) => Object.values(model.upstream.headers))]);
     registrations = snapshotServiceRegistry(options.services);
     registerServicePrivateValues(registrations, redactor.add);
     registrations.set('agent', createAgentService({ runtimeId, getAgent: id => getAgent(id),
       spawn: (input, caller) => spawn(input, caller), get, send, stop }));
     profiles = snapshotProfiles(options.profiles, config.models, registrations);
     for (const profile of profiles.values()) {
-      const driver = executorDriver(config);
-      driver.assertEnvironment(profile.env);
-      if (profile.allowContextFork && !driver.capabilities.contextFork) throw new TypeError('Backend does not support Profile Context Fork authority');
+      config.driver.assertEnvironment?.(profile.env);
+      if (profile.allowContextFork && !config.driver.capabilities.contextFork) throw new TypeError('Backend does not support Profile Context Fork authority');
     }
     modelAccessPolicy = options.modelAccessPolicy;
     outputDir = join(resolve(options.outputDir), runtimeId);
@@ -407,10 +406,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     let parameters;
     try {
       parameters = snapshotSpawn(input, profiles, registrations);
-      executorDriver(config).assertEnvironment(parameters.secretEnv);
+      config.driver.assertEnvironment?.(parameters.secretEnv);
     }
     catch (error) { throw problem('INVALID_CONTRACT', (error as Error).message, 'spawn', undefined, requestId); }
-    if (parameters.forkFrom !== undefined && !executorDriver(config).capabilities.contextFork) throw problem('NOT_ALLOWED', 'Backend does not support Context Fork', 'spawn', undefined, requestId);
+    if (parameters.forkFrom !== undefined && !config.driver.capabilities.contextFork) throw problem('NOT_ALLOWED', 'Backend does not support Context Fork', 'spawn', undefined, requestId);
     if (caller !== 'host' && parameters.workspace) throw problem('NOT_ALLOWED', 'Only the host can select workspace mounts', 'spawn', undefined, requestId);
     const fingerprint = createHash('sha256').update(JSON.stringify(Object.entries(parameters).sort())).digest('hex');
     const requestKey = JSON.stringify([caller, requestId]);
@@ -510,7 +509,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         (steeringMode !== undefined && (mode !== 'steer' || !['all', 'one-at-a-time'].includes(steeringMode)))) {
       throw problem('INVALID_CONTRACT', 'Input needs text, a requestId and valid delivery options', operation, agentId, requestId);
     }
-    if (steeringMode !== undefined && !executorDriver(config).capabilities.steeringModes.includes(steeringMode)) throw problem('NOT_ALLOWED', 'Backend does not support the requested steeringMode', operation, agentId, requestId);
+    if (steeringMode !== undefined && !config.driver.capabilities.steeringModes.includes(steeringMode)) throw problem('NOT_ALLOWED', 'Backend does not support the requested steeringMode', operation, agentId, requestId);
     const agent = findAgent(agentId, operation, requestId);
     const parameters = { input, mode, source, steeringMode, wakeIfIdle };
     let request: InputRequest | undefined;

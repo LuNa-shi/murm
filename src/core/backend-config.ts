@@ -1,6 +1,19 @@
+export type ExecutorKind = 'pi' | 'codex';
+
+export interface BackendCapabilities {
+  readonly activeSteer: boolean;
+  readonly followUp: boolean;
+  readonly conditionalInput: boolean;
+  readonly queuedInputCancellation: boolean;
+  readonly contextFork: boolean;
+  readonly modelRequestAuthorization: boolean;
+  readonly rawModelRequestTrace: boolean;
+  readonly steeringModes: readonly ('all' | 'one-at-a-time')[];
+}
+
 export interface OpenSandboxBackendConfig {
-  /** Selected by the public backend factory. */
-  executor?: { kind: 'pi' | 'codex'; version: string };
+  /** Defaults to Pi. The backend resolves this selection when the handle is created. */
+  executor?: ExecutorKind;
   sandbox: {
     lifecycleBaseUrl: string;
     apiKey?: string;
@@ -16,7 +29,7 @@ export interface OpenSandboxBackendConfig {
     host: string;
     advertiseHost: string;
     requestTimeoutMs?: number;
-    /** null preserves provider/Pi output parameters without a host token clamp. */
+    /** null preserves executor output parameters without a host token clamp. */
     maxOutputTokens?: number | null;
     /** Sets upstream reasoning effort for requests admitted in the selection phase. */
     selectionReasoningEffort?: 'low';
@@ -33,5 +46,3 @@ export interface OpenSandboxBackendConfig {
 }
 
 export type PiOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'>;
-
-export type CodexOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'>;

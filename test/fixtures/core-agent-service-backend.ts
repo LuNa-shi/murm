@@ -1,6 +1,6 @@
-import { configuration } from './core-input-backend.js';
+import { claimOpenSandboxBackend as claim, configuration } from './core-input-backend.js';
 export const transport = { spawns: new Map(), submissions: new Map(), reset() { this.spawns.clear(); this.submissions.clear(); this.next = undefined; this.onSpawn = undefined; this.onStop = undefined; this.onCollect = undefined; this.collectable = false; } };
-export const claimOpenSandboxBackend = () => ({ ...configuration, bridge: { ...configuration.bridge, publicUrl: 'http://127.0.0.1:{port}' }, isolation: { disk: { bytes: 1048576, inodes: 100 } } });
+export const claimOpenSandboxBackend = () => ({ ...claim(), bridge: { ...configuration.bridge, publicUrl: 'http://127.0.0.1:{port}' }, isolation: { disk: { bytes: 1048576, inodes: 100 } } });
 export async function openOpenSandboxBackend(config, { bridge }) {
   transport.url = bridge.publicUrl;
   return {

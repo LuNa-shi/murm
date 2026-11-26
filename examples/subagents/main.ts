@@ -4,14 +4,14 @@ import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { createRuntime, type CollectionSpec, type FileSeed, type SpawnOptions } from '@murm/core';
 import { ServiceRegistry } from '@murm/core/services';
-import { createOpenSandboxBackend, type ConfiguredOpenSandboxBackendConfig } from '@murm/core/backends/opensandbox';
+import { createOpenSandboxBackend, getOpenSandboxBackendCapabilities, type OpenSandboxBackendConfig } from '@murm/core/backends/opensandbox';
 import { collaborationOperations, createCollaborationService } from './collaboration-service.js';
 import { createSubagentsController } from './controller.js';
 import { childPrompt, rootPrompt } from './prompts.js';
 import { runWithReport } from './run-report.js';
 
 interface Config {
-  backend: ConfiguredOpenSandboxBackendConfig;
+  backend: OpenSandboxBackendConfig;
   model?: string;
   rootModel?: string;
   childModel?: string;
@@ -45,12 +45,13 @@ export async function createSubagentsHarness(config: Config) {
   deadline(closeTimeoutMs, 'closeTimeoutMs');
   const services = new ServiceRegistry();
   let team: ReturnType<typeof createSubagentsController>;
-  const allowContextFork = config.backend.executor !== 'codex';
+  const backend = createOpenSandboxBackend(config.backend);
+  const { contextFork: allowContextFork } = getOpenSandboxBackendCapabilities(backend);
   services.registerService(createCollaborationService(request => team.invoke(request), () => team.exportState(), { allowContextFork }));
   const common = { image, writable: true, services: { collaboration: collaborationOperations },
     spawnProfiles: ['child'], allowContextFork };
   const runtime = await createRuntime({
-    backend: createOpenSandboxBackend(config.backend), outputDir, services, maxAgents: maxAgents,
+    backend, outputDir, services, maxAgents,
     profiles: {
       root: { ...common, model: rootModel, prompt: rootPrompt },
       child: { ...common, model: childModel, prompt: childPrompt },

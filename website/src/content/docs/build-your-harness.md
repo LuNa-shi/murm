@@ -144,18 +144,20 @@ const profiles: Record<string, Profile> = {
 ```
 
 Common optional capabilities:
-- **Let agents spawn sub-agents**: grant built-in `agent` operations (`{ agent: ['spawn', 'get', 'send', 'stop'] }`), restrict allowed roles with `spawnProfiles`, enable context inheritance via `allowContextFork: true`, or wrap them in a domain Service like [Subagents](../harnesses/subagents/).
+- **Let agents spawn sub-agents**: grant built-in `agent` operations (`{ agent: ['spawn', 'get', 'send', 'stop'] }`), restrict allowed roles with `spawnProfiles`, enable context inheritance via `allowContextFork: true` when the selected backend declares `contextFork`, or wrap them in a domain Service like [Subagents](../harnesses/subagents/).
 - **Share a repository across agents**: pass `workspace: { id: 'shared-repo', mode: 'read-write' }` in `runtime.spawn()`.
 - **Access internal services (such as Gitea)**: allow the origin in `Profile.network.allow` and pass required container credentials in `spawn({ secretEnv })`.
 
 ## 4. Write the host control loop (three standard patterns)
 
+For source builds with executor selection, `config.backend.executor` selects `pi` or `codex`. Omitting it selects Pi.
+
 ```ts
 import { createRuntime } from '@murm/core';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
 
 const runtime = await createRuntime({
-  backend: createPiOpenSandboxBackend(config.backend),
+  backend: createOpenSandboxBackend(config.backend),
   services,
   profiles,
   maxAgents: 4,

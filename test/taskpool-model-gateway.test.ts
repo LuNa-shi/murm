@@ -9,6 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { TaskService } from '../src/task/task-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { createCoreModelAccess } from '../src/core/model-access.js';
+import { selectExecutorDriver } from '../src/core/executor-driver.js';
 import { createTaskPoolModelAccessPolicy } from '../src/harnesses/taskpool/model-access-policy.js';
 
 async function fixture(t, { held = false } = {}) {
@@ -30,7 +31,7 @@ async function fixture(t, { held = false } = {}) {
   const policy = createTaskPoolModelAccessPolicy({ runtimeId: 'r', taskService: tasks, missionId: 'm', deadline: () => deadlineAt });
   const access = await createCoreModelAccess({ runtimeId: 'r', outputDir, modelAccessPolicy: policy,
     getAgent: id => id === 'b' ? { profile: 'readonly', model: 'default', status: 'idle' } : null,
-    config: { modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs: 5000, maxOutputTokens: 32 },
+    config: { driver: selectExecutorDriver(), modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs: 5000, maxOutputTokens: 32 },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `http://127.0.0.1:${upstream.address().port}/v1/responses`, headers: {} } } } } });
   const credentials = access.credentialsForAgent('b', 'default');
   t.after(async () => { await access.close(); upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); tasks.close(); await rm(outputDir, { recursive: true, force: true }); });

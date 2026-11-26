@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createRuntime } from '@murm/core';
-import { createCodexOpenSandboxBackend } from '@murm/core/backends/codex-opensandbox';
+import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
 import { ServiceRegistry } from '@murm/core/services';
 
 const configuration = {
@@ -19,7 +19,7 @@ test('Codex Runtime accepts an explicitly configured model and rejects Context F
   const outputDir = await mkdtemp(join(tmpdir(), 'core-codex-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const runtime = await createRuntime({
-    backend: createCodexOpenSandboxBackend(configuration),
+    backend: createOpenSandboxBackend({ ...configuration, executor: 'codex' }),
     profiles: { worker: { model: 'default', image: 'codex-test', writable: true, services: {} } },
     services: new ServiceRegistry(), maxAgents: 1, outputDir,
   });
@@ -37,7 +37,7 @@ test('Codex Runtime accepts an explicitly configured model and rejects Context F
 test('Codex rejects executor configuration through ordinary Profile environment before opening a listener', async () => {
   for (const key of ['CODEX_HOME', 'CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'OPENAI_BASE_URL', 'OPENAI_API_KEY']) {
     await assert.rejects(createRuntime({
-      backend: createCodexOpenSandboxBackend(configuration),
+      backend: createOpenSandboxBackend({ ...configuration, executor: 'codex' }),
       profiles: { worker: { model: 'default', image: 'codex-test', writable: true, services: {}, env: { [key]: 'override' } } },
       services: new ServiceRegistry(), maxAgents: 1, outputDir: '/unallocated-codex-runtime',
     }), { code: 'INVALID_CONTRACT', cleanup: 'complete' });
@@ -47,7 +47,7 @@ test('Codex rejects executor configuration through ordinary Profile environment 
 
 test('Codex rejects a Profile granting unsupported Context Fork before assembly', async () => {
   await assert.rejects(createRuntime({
-    backend: createCodexOpenSandboxBackend(configuration),
+    backend: createOpenSandboxBackend({ ...configuration, executor: 'codex' }),
     profiles: { worker: { model: 'default', image: 'codex-test', writable: true, services: {}, allowContextFork: true } },
     services: new ServiceRegistry(), maxAgents: 1, outputDir: '/unallocated-codex-runtime',
   }), { code: 'INVALID_CONTRACT', cleanup: 'complete' });

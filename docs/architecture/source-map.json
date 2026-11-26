@@ -1345,14 +1345,6 @@
       "role": "Runtime-scoped model gateway lifecycle, credentials and policy"
     },
     {
-      "path": "src/core/pi-opensandbox-backend.ts",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Pi compatibility factory and pinned driver selection"
-    },
-    {
       "path": "src/core/opensandbox-backend.ts",
       "category": "Core runtime",
       "chapters": [
@@ -1361,14 +1353,6 @@
         "docs/architecture/08-prompts.md"
       ],
       "role": "Shared OpenSandbox lifecycle, session control, input polling and cleanup"
-    },
-    {
-      "path": "src/core/codex-opensandbox-backend.ts",
-      "category": "Core runtime",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Pinned Codex backend assembly and gateway defaults"
     },
     {
       "path": "src/core/executor-driver.ts",
@@ -1394,14 +1378,6 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Public configuration-based selection of the OpenSandbox execution driver"
-    },
-    {
-      "path": "src/core/backends/codex-opensandbox.ts",
-      "category": "Core API",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Dedicated public Codex/OpenSandbox factory and configuration types"
     },
     {
       "path": "src/agent/model-catalog.ts",
