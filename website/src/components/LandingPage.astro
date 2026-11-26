@@ -22,58 +22,58 @@ const switchHref = alternateHref(lang);
 const copy = isZh
   ? {
       pageTitle: 'murm · 构建你自己的多智能体 Harness',
-      pageDesc: '一个用于构建多智能体 Harness 的精简 Runtime，提供隔离沙箱、可定制共享 Services 与完整运行追踪。',
+      pageDesc: '用于构建多智能体 Harness 的 TypeScript SDK，提供隔离执行、协作 Services、运行观察与产物收集。',
       docsLink: '文档',
       flockAria: '切换鸟群动画',
       flockTitle: '暂停 / 恢复鸟群动画',
       heroPrefix: '构建你自己的 ',
       heroCircled: '多智能体 Harness',
       ctaPrimary: '快速开始 →',
-      ctaDocs: '阅读文档',
+      ctaDocs: '使用 SDK',
       handNote: '一个 Runtime，自由切换任意协作拓扑！',
       scrollCue: '向下探索',
       m2Eyebrow: '02 · 心智模型',
       m2Title: '一个集群如何在 murm 上运行',
       m2DescPre: '你只需编写 ',
       m2DescHighlight: 'Harness',
-      m2DescPost: '（控制循环与规则），由它调度 Runtime 沙盘中的多个隔离沙箱；Agent 通过外部 Gateway 访问共享 Services，同时所有运行轨迹实时流入 Trace 显示器。',
+      m2DescPost: '（控制循环与规则），通过 SDK 控制隔离沙箱中的 Agents，以 Services 组织协作，并观察执行、验证产物和完成资源清理。',
       m2Link: '深入阅读心智模型 →',
       m3Eyebrow: '03 · 一个 RUNTIME，五种 HARNESS',
       m3Title: '同一底座，驱动五种协作拓扑',
-      m3DescPre: '点击任意卡片切换实时执行泳道，或点击图例 ',
+      m3DescPre: '点击任意卡片切换协作流程示意，或点击图例 ',
       m3DescHighlight: '放大查看',
       m3DescPost: '。五种拓扑共用同一套 Runtime，零引擎修改。',
       m3Link: '对比全部五种拓扑 →',
       footerQuickstart: '快速上手',
-      footerBuild: '构建 Harness',
+      footerBuild: 'SDK 指南',
       footerApi: 'API 参考',
     }
   : {
       pageTitle: 'murm · Build your own multi-agent harness',
-      pageDesc: 'A minimal runtime for building multi-agent harnesses with composable coordination services.',
+      pageDesc: 'A TypeScript SDK for multi-agent harnesses with isolated execution, coordination services, observation, and artifact collection.',
       docsLink: 'Docs',
       flockAria: 'Toggle flock animation',
       flockTitle: 'Pause flock',
       heroPrefix: 'Build your own ',
       heroCircled: 'multi-agent harness',
       ctaPrimary: 'Get Started →',
-      ctaDocs: 'Read the Docs',
+      ctaDocs: 'Use the SDK',
       handNote: 'one runtime, swap any coordination topology!',
       scrollCue: 'SCROLL',
       m2Eyebrow: '02 · MENTAL MODEL',
       m2Title: 'How a swarm runs on murm',
       m2DescPre: 'You write a ',
       m2DescHighlight: 'Harness',
-      m2DescPost: ' (control loop & rules). It steers a Runtime arena of isolated Sandboxes, where Agents share Services through an external Gateway while every Run streams to a Trace monitor.',
+      m2DescPost: ' (control loop & rules). The SDK controls isolated Agents, connects coordination Services, exposes execution updates, and collects artifacts before cleanup.',
       m2Link: 'Read concepts →',
       m3Eyebrow: '03 · ONE RUNTIME, FIVE HARNESSES',
       m3Title: 'Five coordination topologies on one core',
-      m3DescPre: 'Select any card to switch the live execution flow, or click the diagram to ',
+      m3DescPre: 'Select any card to switch the illustrated execution flow, or click the diagram to ',
       m3DescHighlight: 'zoom in',
       m3DescPost: '. Zero Runtime edits across all five.',
       m3Link: 'Compare all five →',
       footerQuickstart: 'Quickstart',
-      footerBuild: 'Build a Harness',
+      footerBuild: 'SDK Guide',
       footerApi: 'API Reference',
     };
 ---
@@ -133,7 +133,7 @@ const copy = isZh
         <div class="hero-cta-wrap">
           <div class="hero-cta">
             <a class="btn btn-tactile" href={docHref(lang, 'quickstart')}>{copy.ctaPrimary}</a>
-            <a class="btn btn-outline" href={docHref(lang, 'overview')}>{copy.ctaDocs}</a>
+            <a class="btn btn-outline" href={docHref(lang, 'sdk')}>{copy.ctaDocs}</a>
             <a class="btn btn-outline" href="https://github.com/LuNa-shi/murm" target="_blank" rel="noreferrer">GitHub</a>
           </div>
           <span class="hero-hand-note" aria-hidden="true">{copy.handNote}</span>
@@ -195,10 +195,10 @@ const copy = isZh
     <DomainStrip lang={lang} />
 
     <footer class="landing-footer" data-reveal>
-      <span class="footer-brand">MURM · <code>@murm/core</code> 0.2.0 (<code>f98eb71d</code>)</span>
+      <span class="footer-brand">MURM · TypeScript SDK · <code>@murm/core</code></span>
       <div class="footer-links">
         <a href={docHref(lang, 'quickstart')}>{copy.footerQuickstart}</a>
-        <a href={docHref(lang, 'build-your-harness')}>{copy.footerBuild}</a>
+        <a href={docHref(lang, 'sdk')}>{copy.footerBuild}</a>
         <a href={docHref(lang, 'reference/api')}>{copy.footerApi}</a>
         <a href="https://github.com/LuNa-shi/murm" target="_blank" rel="noreferrer">GitHub</a>
       </div>

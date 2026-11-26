@@ -37,7 +37,7 @@ JavaScript. Image operators still control the service configuration, mounts,
 deployment locks and startup deadlines described below.
 
 For the pinned source and retained-format inventory, see
-[Issue #204 source inventory](../workflows/typescript-migration-inventory.md).
+[current source inventory](12-code-coverage.md).
 
 ## Distribution file boundary
 
@@ -137,7 +137,7 @@ The [CI workflow](../../.github/workflows/ci.yml) runs three parallel jobs on Ub
 
 Core CI checks a PR's test merge commit against its first parent for whitespace errors. It installs locked dependencies into a fresh runner-local npm cache and runs the type check. It then packs Core through the normal build and installs the tarball outside the checkout with production dependencies and lifecycle scripts disabled for that installation. This seeds npm registry metadata and tarballs in the same cache that the offline package tests use. The step removes its temporary tarball and install directory. `npm test` rebuilds, checks the generated architecture references and runs the default suite, including the offline package regressions. Opt-in native and model tests stay disabled. Trace Viewer CI runs the standalone package suite. [Website CI](22-website.md#build-and-render) checks the static site.
 
-A failing command fails its job and reports the result on the commit or PR. Core has a 30-minute limit. Trace Viewer and Website each have a 10-minute limit. Job output and the three named checks are available in GitHub Actions. Run the same commands locally to reproduce a failure. [Local CI commands](../workflows/development.md#required-github-checks)
+A failing command fails its job and reports the result on the commit or PR. Core has a 30-minute limit. Trace Viewer and Website each have a 10-minute limit. Job output and the three named checks are available in GitHub Actions. Run the same commands locally to reproduce a failure. [Local CI commands](../workflows/development.md#repository-ci-checks)
 
 ## Final-tree acceptance configuration
 

@@ -4,7 +4,7 @@ The shipped package contains the ordinary TaskPool, PeerMesh, Notes, Subagents, 
 
 ## Retained original evidence
 
-Phase Harness §10.2 requires each acceptance record to retain its actual prompts, Profile/manifest versions, model configuration, input provenance, Service operations, results and cleanup evidence. Removing an experimental runner does not alter or rerun those records. The authoritative five-run record remains [Issue #185](https://github.com/LuNa-shi/SwarmEnv/issues/185), with per-attempt receipts and independent checks. The original source remains available at these exact Git commits:
+The evidence contract for these historical runs included actual prompts, Profile/manifest versions, model configuration, input provenance, Service operations, results and cleanup evidence. Removing an experimental runner does not alter or rerun those records. The authoritative five-run record remains [Issue #185](https://github.com/LuNa-shi/SwarmEnv/issues/185), with per-attempt receipts and independent checks. The original source remains available at these exact Git commits:
 
 | Original direction | Exact original source | Existing evidence |
 | --- | --- | --- |

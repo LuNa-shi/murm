@@ -1,71 +1,83 @@
-# 00. Overview
+# 00. System overview
 
-murm runs Agent lifecycles against a Mission through authenticated services. The components below divide process lifecycle, durable domain authority, public research evidence and discovery:
+murm separates the collaboration policy from Agent execution. A host program, called a Harness, decides who works, how work is shared and what counts as success. It uses the public Core SDK to create a Runtime, connect Services and run Agents. The Runtime handles isolation, authenticated calls, input delivery, execution records and resource cleanup.
 
-```text
-Agent Core / Pi session
-        │ native tools and CLI contract
-        ▼
-Services Bridge + Capability Profile
-        │ authenticated, task-scoped calls
-        ├── Task Service       Mission, Task, Execution facts
-        ├── Context Service    Material and consumption facts
-        ├── Judge Service      checker execution and CheckResult facts
-        ├── Workspace/Runtime  public revisions, guest worktrees, fencing, Sandbox
-        └── Catalog/Registry   manifests, tools, documentation and hashes
+A Runtime can run a single Agent, a parent with children, a fixed peer pool or a task-driven team. It does not require a Mission, Task pool, shared Git branch or leader. Those are choices made by the Harness and its Services. Start with the [SDK guide](../en/sdk.md) for a runnable application; this chapter explains the implementation boundaries behind it.
+
+## Components and ownership
+
+```mermaid
+flowchart TD
+    H["Harness host"] --> R["Core Runtime"]
+    H --> S["Service registry and adapters"]
+    R --> B["OpenSandbox backend"]
+    B --> A["Agent Sandbox: Pi or Codex"]
+    A --> C["Service Bridge"]
+    C --> S
+    A --> G["Model gateway"]
+    G --> P["Configured model endpoint"]
+    R --> E["Run records and exports"]
 ```
 
-The Harness host owns its collaboration policy, capacity and finalization. The programmable Core owns Agent resources and input delivery. TaskPool adds Mission, Task and Execution authority through its Service adapters. For a registered Agent, Bridge resolves Judge input from a saved numeric revision in the public Mission Workspace. File checks select a path; project checks export the complete revision. Unsaved guest edits are not checker input. Judge persists a CheckResult and the Service records its operation result before the fenced response is delivered to the Agent. Task finish, main merge and fixed-input Mission acceptance are separate decisions. Runtime owns process/session lifecycle and cleanup. Task, Context and Judge own their respective durable facts. Agents choose research actions; Runtime does not choose a mathematical route.
+| Component | Owns | Does not decide |
+| --- | --- | --- |
+| Harness | Team structure, work routing, Service composition, business results and run-level finalization. | The executor's internal Agent loop. |
+| Core Runtime | Agent identity and Slots, frozen Profiles, input admission, observation, Bridge access, file controls and cleanup. | Which research task or collaboration strategy is valuable. |
+| OpenSandbox backend | Sandbox allocation and guest transport, executor capability checks, Session archives, file collection and destruction receipts. | A universal task or messaging protocol. |
+| Pi or Codex executor | The conversation, model/tool loop and native input processing inside an Agent. | Host Service credentials or host authority. |
+| Service adapter | The named operation's implementation and domain state, in process or behind a configured external endpoint. | Agent resource lifecycle unless explicitly delegated by a Harness. |
+| Model gateway | Host-owned model routing, credentials, access policy and traces. | Service manifests or task completion. |
 
-## The three boundaries a reader must keep separate
+The package has three primary public entries: `@murm/core`, `@murm/core/services` and `@murm/core/backends/opensandbox`. The Pi-only `backends/pi-opensandbox` subpath remains for compatibility. Internal folders such as `src/sdk/` and `src/harnesses/` do not create additional public package exports. The [Core chapter](15-core-runtime.md) describes the exact interfaces.
 
-**Mission and Task** describe responsibility. Mission is a shared objective
-and is never taken. A Task represents a separable responsibility and has at
-most one effective Execution at a time; a Mission may legally have no Tasks.
-Creating a Task does not give the creating Agent management authority.
+## One complete Run
 
-**Agent, Execution and Session** describe authorization and a running process.
-An Execution is durable domain state. A Session is a Pi conversation attached
-to an Agent/Core lane. An Agent starts a fresh Sandbox/Pi and performs zero or one
-Execution. After finish, handoff or timeout Runtime stops the Agent and destroys
-its Sandbox; a later Agent continues only through public Task, Material and
-Workspace revision records.
+### 1. The host assembles the application
 
-**Material and Workspace** describe different forms of progress. Material is
-versioned shared evidence with producer provenance. The Mission Workspace is a
-persistent Runtime-owned Git repository; each Execution receives a separate
-materialized directory and public revisions are referenced as
-`(workspace_id, revision, path)`. A Material count or a Workspace write is
-activity evidence, not proof of useful research.
+The host registers Service manifests and adapters, chooses named Profiles, supplies the model and OpenSandbox configuration, and creates a backend handle. `createRuntime` claims that handle and captures the Profiles and Service registry. The host also specifies capacity and an output root. There is no public hot-registration or Service-operation grant/revoke API in the current Runtime.
 
-## Normal flow
+A Service can be a local function, an HTTP JSON v2 endpoint, or a custom adapter for an existing application. The adapter keeps its remote credential on the host. Agent Profiles name the operations each Agent may call. These permissions are enforced by the Bridge, not by instructions in a prompt. [Services](04-services.md) explains validation, caller identity, cancellation and commit guards.
 
-```text
-Agent starts unbound with an empty protected guest project
-  → reads capabilities and public Mission/Task/Material/Workspace state
-  → prefers suitable existing work; otherwise proposes a bounded Task
-  → task_take reserves one Execution in its Core
-  → Runtime pins public inputs, prepares the guest, activates E, grants access
-  → Agent reads/publishes/consumes Material and edits the guest project
-  → Agent explicitly saves a public revision
-  → Agent may check that fixed revision through Judge
-  → Judge persists the result and its fixed input identity
-  → Agent may merge a fixed public revision into main under Runtime guards
-  → an authorized live Agent may separately submit fixed main and selected Materials
-    for trusted Mission acceptance (independent of Task completion)
-  → Agent explicitly finishes done, incomplete, blocked or cancelled
-  → Runtime confirms process/Sandbox isolation, then releases E and Core
-  → a fresh Agent may continue from public state
-```
+### 2. The Runtime prepares each Agent
 
-The **Mission Task contract** defines TaskPool domain responsibilities. The Agent/SDK surface exposes Mission Tasks, relations, Materials and Runtime-owned Execution lifecycle facts without Root/Child structure operations. Agents use the read, write, edit and bash tools, with the typed `swarm` CLI routed through their authenticated Bridge to Task, Material, Judge and Workspace operations. They do not receive a second set of domain-native tools.
+`spawn` validates a named Profile and a request ID, reserves a Slot, then asks the backend to allocate the Sandbox and initialize the executor. Host-supplied files or workspace settings are applied through controlled paths. Startup prepares the Service CLI, model route and selected executor's instructions. The current backend supports the local Docker-backed OpenSandbox deployment; Pi and Codex have different capabilities.
 
-The Phase 0005 TaskPool controller owns discovery, continuation and directed feedback while the public Core owns Agent allocation and stop. The legacy domain Runtime remains directly callable. The old TaskController, IdentityTaskLoop and benchmark composition have been removed; TaskPool owns dependency repair and discovery. The [Core Runtime](15-core-runtime.md), [TaskPool integration](02-execution.md), and [Harness host](17-harness-reporting.md#foreground-harness-control) describe the current paths.
+A successful spawn receipt identifies a ready Agent. Startup can have an uncertain outcome if the host's wait expires after work began. The original Runtime retains the request and resource identity for reconciliation. Retrying with a fresh identity may create another Agent. [Backend](16-pi-opensandbox-backend.md) covers allocation, guest startup and failure cleanup.
 
-## Current implementation versus acceptance
+### 3. The Harness submits work and observes activity
 
-This guide describes the code shape at the pinned reviewed implementation commit, not automatically every subsequent `main` tree. It does not turn
-the target rules in `AGENTS.md` into claims that the code has passed every real
-experiment. The implementation matrix and each registered experiment must say
-which behavior is deterministic-only, real-probe evidence, natural-run
-evidence, or still unknown.
+Establish `runtime.observe()` before submitting work when the application needs a consistent view of state and subsequent events. The call returns a snapshot and a cursor-based stream. Resumption is bounded by retained history in the same Runtime process; a gap requires an explicit recovery decision.
+
+`send` submits text with a request ID and a delivery mode. Its receipt reports whether the input was accepted, not whether the task is finished. The default mode is `steer`; `followUp` requests a later execution opportunity. Several inputs can contribute to an execution, so an execution-settled event is not a general one-to-one input completion receipt.
+
+Agents use tools in their private working directories and invoke named Service operations through `swarm`. The Bridge authenticates the Agent, checks the Profile and input schema, and calls the adapter with trusted caller context. The model loop and Service calls have separate records. The Harness can join these observations to its own operation IDs and domain results. [Runtime evidence](17-harness-reporting.md) describes the records and runnable handoff examples.
+
+### 4. The Harness checks the result
+
+An Agent can settle and remain idle with the same Session and files. It still occupies its Slot. The Harness may send more work, inspect or publish artifacts, consult Service state, or decide to finish. Its business checks determine success.
+
+In the Messages SDK example, the host observes a successful write and read, then verifies the reader's exported file against the value it seeded. In TaskPool, task ownership, public revisions and Mission acceptance add different checks. The Core does not turn a settled execution, a Service call or an artifact count into a successful research result.
+
+### 5. Finalization records results and resource state
+
+`finalizeRun` captures the business outcome, invokes Core close with a separate cleanup deadline, optionally verifies exported artifacts, and writes `run-finalization.json`. These results remain separate so a completed job with pending cleanup is visible.
+
+Core close stops admission and tracks in-flight work. Agent cleanup and endpoint shutdown can proceed concurrently; each Agent's cleanup confirms execution stop before archiving its Session, collecting configured files and deleting the Sandbox. Required export failures retain the Sandbox. Backend closure waits for Agent cleanup, and report/trace failures remain explicit in the receipt. The timeout of a host wait never establishes physical deletion. [Core Runtime](15-core-runtime.md), [backend cleanup](16-pi-opensandbox-backend.md) and [finalization](17-harness-reporting.md) describe the full failure paths.
+
+## Where the five Harnesses add policy
+
+| Harness | Policy added above Core | Implementation explanation |
+| --- | --- | --- |
+| Subagents | Parent-scoped creation and routing, context fork where supported, input/mailbox behavior. | [Runtime evidence and host examples](17-harness-reporting.md) |
+| TaskPool | Exclusive Task take, Execution ownership, Materials, versioned Workspace and final Mission checks. | [Execution](02-execution.md), [Mission/Task](03-mission-task.md), [Workspace](05-workspace-continuity.md) |
+| PeerMesh | Peer identities, Board, communication and Git integration. | [PeerMesh](18-peermesh-harness.md) |
+| Substrate | Fixed peers, contribution publication, search, reading and reuse evidence. | [Substrate](19-substrate-harness.md) |
+| Lead-Worker | A fixed lead/helper team, Board transactions, feedback and Git deliveries. | [Lead-Worker](20-lead-worker-harness.md) |
+
+The retained domain Runtime and TaskPool-specific mechanisms are documented in chapters 01–07. They remain callable implementation paths and must not be confused with mandatory Core objects. Historical timestamp resume, old benchmark assembly and removed schemas are described only where needed to explain retained records; they are not current SDK features.
+
+## Current implementation and evidence
+
+This manual follows the source inventory in [source-map.json](source-map.json). Generated references reproduce prompt, Service, storage and type declarations; they do not prove every branch has been executed. Issues and PRs preserve acceptance evidence, while [experiments](../experiments/INDEX.md) retain the settings and results of their own revisions.
+
+The [known boundaries](09-known-boundaries.md) belong to the current contract. The [dynamic Lead-Worker design](../designs/dynamic-lead-worker.md) remains a future extension tracked by its Issue; its registration and access APIs are not available in this Runtime.

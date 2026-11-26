@@ -1,6 +1,8 @@
 # Run PeerMesh from an installed package
 
-Repository TypeScript sources compile with `npm run build` into `dist/`. `npm pack` builds the distributable JavaScript and declarations before archiving.
+This example composes Core with a peer router, Board, chat and Git Services. The team and router factories are repository modules; they are not extra `@murm/core` package exports. See the [mechanism guide](../../docs/en/harnesses/peermesh.md) and [SDK guide](../../docs/en/sdk.md) to adapt the policy.
+
+TypeScript sources compile with `npm run build` into `dist/`. The package is currently private and consumed as a checkout-built tarball; `npm pack` builds the JavaScript and declarations before archiving.
 
 The foreground CLI gives every peer the same project issue. The peers start automatically after the Harness prepares their separate Pi Sessions, accounts, event subscriptions and shared Board. Peers choose work and their own Git branches, send private messages, share findings and request verified PR merges into a protected `main`. While a peer is working, its router can deliver a DM or a new Board entry through Core steer at Pi's next execution boundary.
 
@@ -14,7 +16,7 @@ The foreground CLI gives every peer the same project issue. The peers start auto
 
 ## Install and configure
 
-Install the verified candidate tarball in a fresh directory outside the source checkout. Replace the archive path with the actual candidate you are using.
+Build a tarball with `npm pack` after installing dependencies in the checkout, then install it in a fresh directory. Replace the archive path below with the archive you built.
 
 ```sh
 archive=/absolute/path/to/murm-core-0.2.0.tgz

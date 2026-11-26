@@ -1,5 +1,9 @@
 # Connect existing Services through Bridge
 
+This is the smallest end-to-end SDK example: two Agents exchange a value through a Service, the host observes both Service completion and Agent settlement, and finalization verifies the exported file. It imports only the public `@murm/core`, `@murm/core/services` and `@murm/core/backends/opensandbox` entries. See the [SDK guide](../../docs/en/sdk.md) for the full lifecycle.
+
+## Define and grant a Service
+
 Copy the example adapters into a TypeScript Harness that depends on `@murm/core`. Register them before calling `createRuntime` and grant each Profile only the operations it needs.
 
 ```ts
@@ -54,7 +58,7 @@ npm run build
 node dist/examples/bridge-services/handoff.js
 ```
 
-In a fresh directory outside the checkout, use an absolute path to the `@murm/core` tarball and copy the three TypeScript source files and compiler configuration from the installed package. `murm init` is optional.
+The package is currently marked `private: true`; create its tarball with `npm pack` in the prepared checkout. In a fresh directory, install that archive and copy the three TypeScript source files and compiler configuration below. This consumer program does not require a generated project:
 
 ```sh
 npm init -y
@@ -67,5 +71,9 @@ node build/handoff.js
 ```
 
 The default Service is in-process. Set `MURM_SDK_MESSAGE_URL` and `MURM_SDK_MESSAGE_TOKEN` for an already-running HTTP JSON v2 Messages Service. The host owns its bearer token, and the Service stays running after the Harness exits.
+
+## Observe completion and inspect the result
+
+The host calls `runtime.observe()` before submitting work, then checks a successful Messages operation and a completed Agent execution separately. `send()` returning an accepted receipt only confirms input admission. The host calls `finalizeRun()` to close the Runtime, verify the collected `received.txt` bytes, and save the final report. A custom Service remains responsible for its own external resources and idempotency.
 
 The CLI emits cursor and event kind on stderr and the final JSON record on stdout. Find the saved report under `./handoff-runs/<runtime-id>/run-finalization.json` or override the root with `MURM_SDK_OUTPUT`. The artifact verification field records whether the host verified the exported file. A failed or cancelled handoff, unverified artifact, pending Core close, or report save failure yields a nonzero exit. The report contains the original cleanup receipt when available. Keep the attempted send request ID if you investigate an uncertain submission.

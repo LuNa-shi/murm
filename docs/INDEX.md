@@ -1,47 +1,42 @@
-# murm documentation index
+# murm documentation
 
-> Status: Active · Authority routing updated 2026-11-23
+Start with the user guides to run a Harness or build your own. The English and Chinese Markdown files are the website's content source: editing a guide here updates the corresponding published page when the site is rebuilt.
 
-This is the entry point to current maintained documentation. Historical design documents and experiment reports remain available from pinned Git history, not a live archive.
+## Start using murm
 
-## Where to look
+| Goal | English | 中文 |
+| --- | --- | --- |
+| Understand what murm provides | [Overview](en/overview.md) | [文档总览](zh/overview.md) |
+| Run your first Harness | [Quickstart](en/quickstart.md) | [快速上手](zh/quickstart.md) |
+| Understand Runtime, Agent, Profile and Service | [How murm works](en/concepts.md) | [工作原理](zh/concepts.md) |
+| Embed murm in a TypeScript application | [Use the SDK](en/sdk.md) | [使用 SDK](zh/sdk.md) |
+| Add a Service and choose a control loop | [Build your Harness](en/build-your-harness.md) | [构建自己的 Harness](zh/build-your-harness.md) |
+| Compare the five collaboration mechanisms | [Harnesses](en/harnesses/index.md) | [协作机制](zh/harnesses/index.md) |
+| Follow input, execution and cleanup | [Run lifecycle](en/run-lifecycle.md) | [运行生命周期](zh/run-lifecycle.md) |
+| Look up public calls and types | [API](en/reference/api.md) · [Types](en/reference/types.md) | [API](zh/reference/api.md) · [类型](zh/reference/types.md) |
 
-| Question | Source | Responsibility |
-|---|---|---|
-| Why research murm? | [PROJECT.md](PROJECT.md) | Research motivation and open problems |
-| What governs the current Core / Harness stage? | **[Phase 0005 design on main](phases/0005-core-harness/README.md)** | Sole authority for this stage’s target requirements, decisions, scope and acceptance; Issues derive their tasks and checks from it |
-| What must be built or observed in other stages? | **Human-approved GitHub Issue / accepted Agent Brief in its comments** | Requirements, hypotheses, scope and acceptance outside the Phase 0005 exception |
-| How is a substantial next stage designed? | [phases/INDEX.md](phases/INDEX.md) | Phase 0005 is authoritative target design; other entries are versioned Issue attachments. Progress and evidence remain in Issue/PR |
-| Which engineering workflow applies? | **Installed Matt Pocock engineering skills** + [AGENTS.md](../AGENTS.md) | `/to-spec`, optional `/to-tickets`, `/implement`, `/implement-spec`, `/tdd`, `/code-review`, `/pr` |
-| Where is Matt skills configuration? | [agents/issue-tracker.md](agents/issue-tracker.md), [agents/domain.md](agents/domain.md), [agents/triage-labels.md](agents/triage-labels.md) | Issue tracker, domain and triage setup |
-| How are Phase 0005 contracts and migration regressions verified? | [Core / Harness verification contract](workflows/core-environment-verification.md) | Pinned baseline observations, public seams and requirements-to-ticket cross-reference; execution evidence stays on Issue/PR |
-| How does the current system run in detail? | [architecture/INDEX.md](architecture/INDEX.md) | Complete implementation manual, full prompts, interfaces, state and source coverage |
-| What are the murm-specific working rules? | [workflows/development.md](workflows/development.md), [workflows/experiment.md](workflows/experiment.md), [TypeScript migration inventory](workflows/typescript-migration-inventory.md) | Repo conventions, verification and experiment boundaries |
-| Where are formal experiments? | [experiments/INDEX.md](experiments/INDEX.md) | Run IDs, evidence and report template |
-| Why was a major design decision made? | [adr/INDEX.md](adr/INDEX.md) | Decision rationale |
-| How are tools operated? | [Trace Viewer](operations/trace-viewer.md) | Operational references |
+## Understand or change the implementation
 
-Root [GLOSSARY.md](../GLOSSARY.md) defines the Mission/Task/Agent/Execution/Material/Workspace vocabulary shared by the approved [Phase 02 design](phases/0002-task-material-workspace/01-model-and-runtime.md) and current implementation. Architecture explains the registered Agent path and explicitly labels retained compatibility APIs. Historical experimental reconstruction guidance is preserved in the [research tree](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/.codex/skills/experiment-analysis/SKILL.md).
+[Architecture](architecture/INDEX.md) is the current implementation manual. It explains the SDK, backend, Harnesses, domain Services and retained compatibility paths, including errors, storage, prompts and cleanup. Start with the [system overview](architecture/00-overview.md), then follow the chapter for the behavior you need. [GLOSSARY.md](../GLOSSARY.md) keeps general SDK terms separate from TaskPool-specific terms.
 
-## Authority and lifecycle
+| Reference | Purpose |
+| --- | --- |
+| [Development](workflows/development.md) | Build, validate and contribute changes. |
+| [Coding Agent instructions](../AGENTS.md) | Project-specific work rules, permissions and documentation requirements. |
+| [Agent configuration](agents/domain.md) · [Issue tracker](agents/issue-tracker.md) | Domain and execution-record conventions. |
+| [Trace Viewer](operations/trace-viewer.md) | Inspect saved and active Run records. |
+| [Website implementation](architecture/22-website.md) | Content loading, links, bilingual build and deployment. |
+| [Research context](PROJECT.md) · [Experiment workflow](workflows/experiment.md) | Research questions, resources and evidence standards. |
+| [Third-party notices](third-party-notices.md) | Attribution and licenses. |
 
-**Phase 0005: authoritative design on main → derived Issue/ticket graph → implementation/review → Issue/PR evidence → implemented Architecture.**
+## Current behavior and planned changes
 
-The owner requested this stage-specific authority on 2026-11-23. The full Core, Harness and delivery documents are the contract; Notion is migration source material. Issues cite an exact document revision and cannot independently override it. Change requirements through a reviewed design PR and synchronize affected tickets. Design publication does not establish implementation or verification.
+The user guides describe the supported public surface. The architecture manual describes how the current tree implements it. Source code and generated references establish exact fields and defaults; tests and experiments establish what was verified. Changes to this baseline need corresponding documentation in their implementation PR.
 
-**Other stages: approved GitHub Issue → Matt engineering implementation/review → Issue/PR evidence → accepted Architecture.**
+Human-approved Issues and explicit user instructions define the intended next change and its acceptance. An Issue can link a reviewed design, but a target design is not an implemented API. The [dynamic Lead-Worker extension](designs/dynamic-lead-worker.md), tracked in [#235](https://github.com/LuNa-shi/murm/issues/235), is one such pending design; current Profiles and Service access remain fixed when a Runtime is created.
 
-For other stages, the Issue (including explicitly approved Agent Briefs and changes in its comments) defines requirements and acceptance. Matt engineering skills determine *how engineering work is carried out*. Architecture is the baseline to preserve outside an approved Issue's changes; ADRs explain durable tradeoffs. Code shows the current implementation; tests and experiments establish what was observed. Keep implementation progress, test results, unresolved gaps and decisions in the originating GitHub Issue/PR, linking formal experiment reports when appropriate.
+Earlier numbered phase plans, migration inventories and superseded ADRs have been retired from the working documentation. Their exact versions remain in [Git history before this cleanup](https://github.com/LuNa-shi/murm/tree/fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02/docs). This does not change the acceptance or resource permissions of an ongoing Issue.
 
-Keep approvals, dependencies, progress, handoff notes and discussion in the Issue/PR. A substantial design may be maintained under numbered `phases/` entries, with its exact accepted revision linked from the Issue. Except for the explicit Phase 0005 authority above, these documents are reviewable target attachments rather than another requirements authority. No phase document is a progress ledger. Update Architecture in the same PR as its implementation so both can be reviewed together. At Issue/stage closeout, reconcile the manual, generated references, source fingerprints, final code and Issue/PR acceptance evidence. See AGENTS.md for human/Agent approval boundaries.
+## Historical evidence
 
-## Why experiments and ADRs remain
-
-`experiments/` holds version-bound observations: what was run, with which inputs and resources, what occurred, and which conclusions the evidence supports. Architecture explains how the current implementation works and cannot replace a past result. The registry, report template and cited R16 retrospective therefore remain.
-
-`adr/` retains the rationale for durable decisions. ADR 0017 explains shared Missions and independent responsibilities; ADR 0018 explains Issue-led development and the documentation contract; [ADR 0019](adr/0019-direct-judge-workspace-submission.md) explains direct Workspace-file submission to Judge and the separate Task completion decision. ADRs do not introduce a parallel phase plan, need not be created for each stage, and do not override later approved Issue decisions. Superseded details belong in pinned Git history.
-
-## Historical records
-
-The [pre-cleanup `docs/` tree at `02adbb43`](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs) retains earlier tracked documents. Ignored raw experiment evidence may not be in Git. Do not recreate `archive/`, old redirects, `STATUS.md`, or `CONTEXT.md` for versioning. The restored phase directory contains new Issue-linked designs, not copies of the retired phase ledger.
-
+[Experiment reports](experiments/INDEX.md) remain because they record what a particular run actually did. Keep their original implementation, model, inputs, failed attempts and limitations intact. Links to retired designs point to fixed Git revisions. Historical observations and old acceptance targets do not override the current SDK contract.

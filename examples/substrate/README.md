@@ -1,6 +1,8 @@
 # Editable Substrate host
 
-Repository TypeScript sources compile with `npm run build` into `dist/`. `npm pack` builds the distributable JavaScript and declarations before archiving.
+See the [mechanism guide](../../docs/en/harnesses/substrate.md) for the coordination policy and the [SDK guide](../../docs/en/sdk.md) for public imports and Runtime ownership. This example uses `@murm/core`, `@murm/core/services` and `@murm/core/backends/opensandbox`; its Harness runners remain editable repository modules.
+
+The package is currently private and distributed as a checkout-built tarball. Install checkout dependencies with `npm ci` first. TypeScript sources compile with `npm run build` into `dist/`; `npm pack` builds JavaScript and declarations before archiving.
 
 This example runs the existing fixed peer pool through the public Core and Pi/OpenSandbox backend. Three peers publish, search and visit immutable content through the substrate Service, with independent Sessions and private directories. It creates no Task records. Successful turns and citations do not establish that the generated content is correct.
 
@@ -49,6 +51,10 @@ node node_modules/@murm/core/dist/examples/substrate/main.js \
 
 Inspection exits 0 when both matching reports were readable, including recorded failures, and 1 for missing or invalid reports. It summarizes receipts and artifact availability, not business acceptance. Inspect the Harness's `substrate.contents`, references and read records, and compare collected files when judging whether another peer's contribution was actually adopted. The installed-package deterministic test covers launch/import, pre-start cancellation and saved inspection. Separate native tests remain version-bound evidence for the mechanism; this wrapper introduces no new native acceptance claim.
 
+## FATE publication and checking protocol
+
+A configuration with `fate` selects `fate-run.ts` instead of the generic fixed-round runner. It adds the `fate` Service (`search_mathlib`, `check_lean`, `submit`) and uses `src/harnesses/substrate/paper-substrate.ts` for publication. Publish requests contain `sub_task`, `artifact`, `rationale` and `refs`; visits take an `addresses` array; retrieval combines normalized BM25 with citation weights. The generic example uses `content`, `references` and a single `address` with a simpler ranking rule. Inspect `swarm service view substrate` in the run you started before composing a request.
+
 ## FATE-M with K3
 
 The FATE-M configuration uses the same installed host entry. It freezes problem 1, gives each of four peers the original Lean and natural-language statements, and independently checks every final submission. Shared library, private library and no library are the three conditions. Each group starts after its peers are ready and runs for at most 30 minutes. No host request count, token or cost quota is imposed on K3. The task Service still limits each peer to ten working Lean checks.
@@ -74,7 +80,7 @@ node "$example/main.js" --fate-rescore "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" \
 
 For a single condition, set `MURM_FATE_MODE` to `shared`, `private` or `none`, then pass the configuration file directly. The matrix uses an independent directory for each condition, in that order, and stops launching groups if a prior group's cleanup is pending. A run ID cannot overwrite earlier evidence. Preparation and rescoring make no model calls. Formal runs require the repository's frozen experiment registration.
 
-`fate-result.json` records task/peer state, score, end reasons, model usage, Core Trace and cleanup, and points to the frozen candidate bundle. A final candidate is a Lean term such as a `by` proof, with any helper lemmas declared locally inside the proof. Sources, candidate contents, peer journals and raw tool results are private run evidence. See the [architecture chapter](../../docs/architecture/19-substrate-harness.md#fate-paper-alignment-configurations) for the contracts and the [Phase 0005 design](../../docs/phases/0005-core-harness/05-substrate-fate.md) for acceptance.
+`fate-result.json` records task/peer state, score, end reasons, model usage, Core Trace and cleanup, and points to the frozen candidate bundle. A final candidate is a Lean term such as a `by` proof, with any helper lemmas declared locally inside the proof. Sources, candidate contents, peer journals and raw tool results are private run evidence. See the [architecture chapter](../../docs/architecture/19-substrate-harness.md#fate-paper-alignment-configurations) for the current checker, publication and scoring contracts. Experiment reports pin the implementation and evidence for a particular run.
 
 ## FATE-H with K3
 

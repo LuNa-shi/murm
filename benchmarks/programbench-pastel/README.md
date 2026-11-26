@@ -2,7 +2,7 @@
 
 Rebuild the Pastel color CLI for ProgramBench instance `sharkdp__pastel.b60e899`. Subagents, TaskPool and PeerMesh receive the same task and reference executable. Each has its own workspace and delivery mechanism. The case checks whether multiple Agents can hand off source, incorporate a contribution and freeze a buildable submission within a fixed window.
 
-This is a development benchmark run explicitly from a source checkout. [Repository tests](../../test/README.md) and [Harness examples](../../README.md#environments) have their usual entry points. Benchmark output goes under the ignored `experiments/programbench-pastel/` directory. The npm package, application CLI and default test command do not include the benchmark.
+This is a development benchmark run explicitly from a source checkout. [Repository tests](../../test/README.md) and [Harness examples](../../README.md#choose-a-collaboration-mechanism) have their usual entry points. Benchmark output goes under the ignored `experiments/programbench-pastel/` directory. The npm package, application CLI and default test command do not include the benchmark.
 
 ## Case and results
 

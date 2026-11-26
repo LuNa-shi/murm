@@ -6,12 +6,11 @@
 
 ## Reading and writing
 
-- **Phase 0005 exception:** the [Core / Harness design on main](../phases/0005-core-harness/README.md) is the sole requirements and acceptance authority for this stage. `/to-spec` and `/to-tickets` publish derived execution summaries, cite the exact design revision and sections, and track dependencies/progress/evidence. An Issue or Agent Brief cannot independently override this design; update requirements through a reviewed design PR, then synchronize the tickets. For other stages, use the Issue-led conventions below.
-- Read an Issue's **body, comments, labels, and linked tickets** before starting. Outside the Phase 0005 exception, the `/to-spec` Issue body is the spec; when `/triage` provides an accepted **Agent Brief** comment, use that brief and any later approved updates as the execution contract.
+- Read an Issue's **body, comments, labels, and linked tickets** before starting. The `/to-spec` Issue body is the spec; when `/triage` provides an accepted **Agent Brief** comment, use that brief and any later approved updates as the execution contract.
 - `/to-spec` publishes a spec Issue, generally using the `ready-for-agent` label. Publishing an Issue or adding that label describes readiness; a human instruction or approval is still required before **executing a new research hypothesis** or spending unapproved resources.
 - `/to-tickets` publishes complete vertical-slice GitHub Issues only after its proposed split and blocking relationships have been reviewed. Prefer GitHub sub-Issues and native blocked-by relationships; when unavailable, use explicit `Parent: #N` and `Blocked by: #N` links.
 - A one-Issue implementation with multiple PRs is also valid; do not force `/to-tickets`.
-- A design Issue may link a numbered [phase design](../phases/INDEX.md) and a documentation PR. Treat the explicitly approved revision as part of that Issue's contract. A review draft is not an implementation assignment; preserve pending decisions and report acceptance/progress on GitHub.
+- A design Issue may link an active design under `docs/designs/` and a documentation PR. Treat the explicitly approved revision as part of that Issue's contract. A review draft is not an implementation assignment; preserve pending decisions and report acceptance/progress on GitHub.
 - An explicit user request to use `/implement-spec` may authorize the ticket and branch state changes defined by that skill. Outside such authorization, do not merge PRs, close Issues, or change their labels/state unilaterally.
 
 ## GitHub CLI references

@@ -1,8 +1,8 @@
 # Experiment workflow
 
-> Type: Workflow · Status: Active · Updated: 2026-11-11
+> Type: Workflow · Status: Active · Updated: 2026-11-26
 
-**GitHub Issues organize research and engineering intent.** A human-approved Issue decides why the next work is valuable, what the system should do and which phenomena matter for acceptance. Research permission and testing scope must be explicit in that Issue or a linked human-approved decision. A numbered phase design may be a versioned attachment, but cannot independently approve research, change acceptance or authorize resources.
+**GitHub Issues organize research and engineering intent.** A human-approved Issue decides why the next work is valuable, what the system should do and which phenomena matter for acceptance. Research permission and testing scope must be explicit in that Issue or a linked human-approved decision. A reviewed target design may be a versioned attachment, but cannot independently approve research, change acceptance or authorize resources.
 
 Distinguish implementation diagnostics from formal research or acceptance experiments.
 
@@ -26,17 +26,17 @@ An umbrella research program may contain several linked Issues; each approved Is
 
 ### 2. Register the run
 
-Before each formal run allocate `EXP-YYYYMMDD-NN` (UTC) in [the experiment index](../experiments/INDEX.md). Record the parent Issue, clean code commit, baseline/comparison, fixture/Lean/Mathlib, provider/model, prompt/profile/schema hashes, Core/timebox/budget, main observations and stop conditions. A rerun receives a new ID linked to the previous one.
+Before each formal run allocate `EXP-YYYYMMDD-NN` (UTC) in [the experiment index](../experiments/INDEX.md). Record the parent Issue, clean code commit and candidate archive, Harness and executor, task/checker inputs, relevant toolchain versions, provider/model, prompt/Profile/Service-schema hashes, Agent capacity, work and cleanup deadlines, resource budget, main observations and stop conditions. For a Lean task, include Lean and Mathlib revisions; other tasks record their own language, build and evaluator versions. A rerun receives a new ID linked to the previous one.
 
 A formal registration is for experimental traceability, **not a request for per-run approval**. Runs within the Issue's authorized matrix and spending cap can proceed autonomously. Changes outside it return to the human owner before execution.
 
 ### 3. Execute and analyze
 
-Measure the configured research window from the project report’s `run.started_at` or the matching `experiment_started` event. Record `setup_elapsed_ms` separately. For Pass@K use the common group start. Track settlement after the deadline separately when comparing experiments. Historical runs retain the timing convention of their tested commit.
+Declare the runner's working-window timestamps before execution and use the same convention across comparison conditions. For example, the current ProgramBench driver records `window.startedAt` through [run-window.ts](../../benchmarks/shared/run-window.ts). Keep setup, active work and post-deadline finalization separate; Core startup and an accepted input receipt are not interchangeable work-window boundaries. Group comparisons use an explicitly shared start. Historical reports retain their own recorded convention, including older `run.started_at` and `experiment_started` fields.
 
-Raw Agent transcripts, Workspace, checker/candidate source, credentials and private state remain in ignored local `experiments/`. Preserve Task/Execution/Session/Core/Material/Judge/Workspace identities and source revisions; mark unavailable inputs or tools as BLOCKED rather than silently substituting.
+Raw Agent transcripts, working files, checker/candidate source, credentials and private state remain in ignored local `experiments/`. Preserve Harness, Runtime, Agent, input/request and Service operation identities together with source revisions. Add the domain identifiers actually used by the Harness: TaskPool needs Mission/Task/Execution/Material/Workspace and Judge identities; a Git-based team needs repository, commit and delivery identities. Mark unavailable inputs or tools as BLOCKED rather than silently substituting.
 
-Follow the [report template](../experiments/TEMPLATE.md). **Results** describe facts, **Analysis** evaluates evidence and competing explanations, and **Next steps** distinguish delegated fixes from pending human decisions. Unknown evidence is not zero, protocol validity is not Mission success, and busy Cores or large Material counts do not prove meaningful collaboration.
+Follow the [report template](../experiments/TEMPLATE.md). **Results** describe facts, **Analysis** evaluates evidence and competing explanations, and **Next steps** distinguish delegated fixes from pending human decisions. Unknown evidence is not zero. Input admission, execution settlement, checked business success and cleanup are distinct results; high Agent activity or many shared artifacts do not prove meaningful collaboration.
 
 ### 4. Sync decisions and evidence
 

@@ -1,19 +1,16 @@
 # Development workflow — Matt engineering skills adapter
 
-> Type: Project-specific workflow · Status: Active · Updated: 2026-11-12
+> Project-specific workflow · Updated: 2026-11-26
 
 The default engineering procedure is defined by the [installed Matt Pocock engineering skills](https://github.com/mattpocock/skills/tree/main/skills/engineering). This file adds only murm-specific context and verification boundaries. [AGENTS.md](../../AGENTS.md) defines human/Agent autonomy and permissions.
 
-## Phase 0005: design first, Issues track execution
+## Current baseline and intended changes
 
-For the Core / Harness stage, the owner’s 2026-11-23 instruction makes the [complete design on main](../phases/0005-core-harness/README.md) the sole authority for target requirements, scope, decisions and acceptance. First merge the documentation through a reviewed PR, then derive the spec Issue and independently verifiable tickets from that exact version. Issues track dependencies, implementation and evidence. If a ticket summary differs from the design, reconcile the ticket; requirement changes go through the authoritative design PR and then update affected tickets. Notion is source material for the migration. This exception does not alter resource/research/publication permissions or declare the proposed API implemented.
+Read the [architecture manual](../architecture/INDEX.md), [SDK guide](../en/sdk.md) and [GLOSSARY](../../GLOSSARY.md) for the current implementation. Explicit user instructions and human-approved Issues define intended changes, acceptance and resources. Read the relevant Issue's full discussion and linked design before implementing it.
 
-## Issue-first development for other stages
+Keep approvals, dependencies, progress and evidence on the Issue/PR. A large change may use a reviewed design in `docs/designs/`, with its exact revision linked from the Issue. Mark future behavior explicitly. Once implemented, reconcile the behavior into Architecture and retire superseded requirements through Git history.
 
-- **GitHub Issue is the sole requirements and acceptance source.** Use `/to-spec` to convert a design discussion into a GitHub spec Issue. Read the complete Issue, its comments, accepted Agent Brief and later human decisions.
-- **`/to-tickets` is optional.** For large work, propose independently verifiable vertical slices and blocking dependencies for human review, then publish them to GitHub. An umbrella Issue with several PRs is also valid.
-- Keep the ticket graph, approvals, progress and cross-session handoff pointers on GitHub Issues/PRs. Substantial stage designs may use numbered [phase documents](../phases/INDEX.md) as versioned Issue attachments, reviewed through a corresponding PR. Link the exact approved revision in the Issue; distinguish confirmed direction, proposed detail, implemented behavior and verified outcomes.
-- Review the [accepted Architecture](../architecture/INDEX.md), [GLOSSARY](../../GLOSSARY.md), and relevant ADRs before modifying code. Current source behavior is not independent permission to change approved requirements.
+Use `/to-spec` and optional `/to-tickets` when those installed skills fit the requested workflow. One Issue with multiple implementation PRs is also valid. The [pending dynamic Lead-Worker design](../designs/dynamic-lead-worker.md) illustrates the boundary between a reviewed target and current SDK behavior.
 
 ## Implementation and review
 
@@ -29,13 +26,13 @@ the compiled entry points under `dist/scripts/`. See
 - Run relevant tests, full suite when available, and `git diff --check`. Run `/code-review` with separate **Spec** and **Standards** findings. Use `/pr` for a concise Summary, before/after Evidence and Merge Danger.
 - If a skill is unavailable, report that limitation and follow the applicable documented engineering requirements without claiming the skill ran.
 
-## Required GitHub checks
+## Repository CI checks
 
 [CI](../../.github/workflows/ci.yml) runs on PRs targeting `main` and pushes to
 `main`. It uses Linux and Node.js 24. A newer push to a PR cancels the previous
-run for that PR. The `main` ruleset is configured in GitHub after the checks
-pass on Actions. It requires a PR and the `Core CI`, `Trace Viewer CI` and
-`Website CI` checks. The owner approves merges.
+run for that PR. Its jobs are `Core CI`, `Trace Viewer CI` and `Website CI`. Branch protection
+is configured separately in GitHub; the workflow itself does not establish
+those settings. The owner approves merges.
 
 **Core CI** checks the PR's whitespace, installs locked dependencies, runs
 `npm run typecheck` and runs `npm test`, including the architecture check. To
@@ -67,11 +64,11 @@ run `npm ci` inside `website/`, then
 checks for both `dist/index.html` and `dist/zh/index.html`. The Pages workflow
 deploys the merged site separately.
 
-## Design-stage documentation
+## Documentation changes
 
-For Phase 0005, apply the design-first authority and sequence above. For other stages, create a design Issue plus a documentation PR when the owner requests a new stage. The Issue states the problem, scope, user outcomes, decisions and acceptance. Its phase attachment explains the full target model, workflows, permissions, prompts/skills, failure behavior, verification plan and migration in reviewable chapters. Do not label a design as ready for runtime implementation merely because its documentation has been published.
+The website renders `docs/en/` and `docs/zh/` directly. Write relative Markdown file links so a guide works in GitHub; the site's Markdown transform converts them to routes at build time. Update both locales, navigation and any affected example README when changing a public entry point.
 
-During design review, keep current Architecture accurate to current code and link the target design. After implementation begins, each runtime PR updates the affected manual and references. Keep pending choices and evidence in the Issue/PR; do not maintain a duplicate local progress ledger. A change to a reviewed requirement must be made visible in the Issue and the document revision together.
+Keep the current architecture explanation beside its implementation. The SDK guide introduces a runnable workflow; API pages describe public exports; architecture chapters explain ownership, call order, state, failures and cleanup. Source links support these explanations. Avoid importing an internal helper in an example advertised as an installed SDK consumer.
 
 ## murm verification and synchronization
 

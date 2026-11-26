@@ -1,6 +1,6 @@
 # Fixed Substrate peer pool
 
-`runSubstrate` in `src/harnesses/substrate/index.ts` is a host Harness using only the public Core and Service APIs. It creates a fixed pool of equal peers and a Harness-owned content Service. This mode has no Task, Mission, Execution, Judge or peer-spawn operation. The target is Phase 0005 design revision `c790fe1`, Harness §7, sliced by Issue #190. The ranking below is a local adaptation, not a reproduction of a paper's retrieval results.
+`runSubstrate` in `src/harnesses/substrate/index.ts` is a host Harness using only the public Core and Service APIs. It creates a fixed pool of equal peers and a Harness-owned content Service. This mode has no Task, Mission, Execution, Judge or peer-spawn operation. Implementation and verification evidence is tracked in Issue #190 and its follow-up work. The ranking below is a local adaptation, not a reproduction of a paper's retrieval results.
 
 ## Host entry and ownership
 

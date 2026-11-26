@@ -1,6 +1,6 @@
 # Fixed Lead-Worker Harness
 
-The entry point is [`runLeadWorker`](../../src/harnesses/lead-worker/index.ts), with the editable CLI in [`examples/lead-worker/main.ts`](../../examples/lead-worker/main.ts). This is a local Harness and Service implementation of Phase 0005 §9: one host-created lead and a preconfigured set of helpers, a durable public Board and a retained Git project. It imports public Core and ServiceRegistry, defines no Core role and grants no Agent control operations. It does not expand a team after startup, automatic replacement, claim expiry, recovery, arbitrary SQL, or upstream-scale operation.
+The entry point is [`runLeadWorker`](../../src/harnesses/lead-worker/index.ts), with the editable CLI in [`examples/lead-worker/main.ts`](../../examples/lead-worker/main.ts). This is a local Harness and Service implementation: one host-created lead and a preconfigured set of helpers, a durable public Board and a retained Git project. It imports public Core and ServiceRegistry, defines no Core role and grants no Agent control operations. It does not expand a team after startup, automatic replacement, claim expiry, recovery, arbitrary SQL, or upstream-scale operation.
 
 ## Configuration, identities and startup
 
@@ -87,4 +87,4 @@ Every corrective input uses the original absolute cutoff and shared abort signal
 
 ## Dynamic mode acceptance fixture
 
-The [Phase 0005 extension](../phases/0005-core-harness/06-lead-worker-dynamic.md) specifies the target dynamic mode. Its [host-side oracle](../../examples/lead-worker/fixtures/oracle.mjs) has two frozen public inputs and nine transcript checks. A caller supplies an execution callback that receives stdin, file contents, or explicit arguments for each case. The oracle checks the exit status and parses the captured streams against independently specified objects. It reports each case and returns failure for a mismatch or execution error. The callback owns commit selection, execution isolation, resource limits, and stream capture. Dynamic runtime wiring and its verification are tracked in #235.
+The [pending dynamic extension](../designs/dynamic-lead-worker.md) specifies the target dynamic mode. Its [host-side oracle](../../examples/lead-worker/fixtures/oracle.mjs) has two frozen public inputs and nine transcript checks. A caller supplies an execution callback that receives stdin, file contents, or explicit arguments for each case. The oracle checks the exit status and parses the captured streams against independently specified objects. It reports each case and returns failure for a mismatch or execution error. The callback owns commit selection, execution isolation, resource limits, and stream capture. Dynamic runtime wiring and its verification are tracked in #235.
