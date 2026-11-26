@@ -72,12 +72,6 @@ The [GitHub Issue](https://github.com/LuNa-shi/SwarmEnv/issues/204) defines acce
 | `src/judge/lean-final-tree-verifier.js` | `src/judge/lean-final-tree-verifier.ts` |
 | `src/judge/lean-module-checker.js` | `src/judge/lean-module-checker.ts` |
 | `src/judge/lean-source-policy.js` | `src/judge/lean-source-policy.ts` |
-| `src/observability/durable-event-log.js` | `src/observability/durable-event-log.ts` |
-| `src/observability/format.js` | `src/observability/format.ts` |
-| `src/observability/observability-server.js` | `src/observability/observability-server.ts` |
-| `src/observability/observation-projection.js` | `src/observability/observation-projection.ts` |
-| `src/observability/observation-store.js` | `src/observability/observation-store.ts` |
-| `src/observability/workspace-provider.js` | `src/observability/workspace-provider.ts` |
 | `src/replay/service-history.js` | `src/replay/service-history.ts` |
 | `src/runtime/docker-agent-disk.js` | `src/runtime/docker-agent-disk.ts` |
 | `src/runtime/docker-agent-network.js` | `src/runtime/docker-agent-network.ts` |
@@ -121,7 +115,6 @@ The [GitHub Issue](https://github.com/LuNa-shi/SwarmEnv/issues/204) defines acce
 | `scripts/review-mission.mjs` | `scripts/review-mission.ts` |
 | `scripts/run-environment.mjs` | `scripts/run-environment.ts` |
 | `scripts/sandbox-project.mjs` | `scripts/sandbox-project.ts` |
-| `scripts/serve-observability.mjs` | `scripts/serve-observability.ts` |
 | `scripts/service-host.mjs` | `scripts/service-host.ts` |
 | `scripts/swarm.mjs` | `scripts/swarm.ts` |
 | `src/environments/agensh/board-process.js` | `src/environments/agensh/board-process.ts` |
@@ -268,7 +261,6 @@ The [GitHub Issue](https://github.com/LuNa-shi/SwarmEnv/issues/204) defines acce
 | `test/core-worker-rpc-real.test.js` | `test/core-worker-rpc-real.test.ts` |
 | `test/docker-agent-disk.test.js` | `test/docker-agent-disk.test.ts` |
 | `test/docker-agent-network.test.js` | `test/docker-agent-network.test.ts` |
-| `test/durable-event-log-private.test.js` | `test/durable-event-log-private.test.ts` |
 | `test/harness-run-input.test.js` | `test/harness-run-input.test.ts` |
 | `test/harness-run-report.test.js` | `test/harness-run-report.test.ts` |
 | `test/execution-closeout.test.js` | `test/execution-closeout.test.ts` |
@@ -379,11 +371,6 @@ The [GitHub Issue](https://github.com/LuNa-shi/SwarmEnv/issues/204) defines acce
 | `test/notes-harness-real.test.js` | `test/notes-harness-real.test.ts` |
 | `test/notes-host-entry.test.js` | `test/notes-host-entry.test.ts` |
 | `test/notes-installed-package.test.js` | `test/notes-installed-package.test.ts` |
-| `test/observability-server.test.js` | `test/observability-server.test.ts` |
-| `test/observability-workspace.test.js` | `test/observability-workspace.test.ts` |
-| `test/observability-worktree-discovery.test.js` | `test/observability-worktree-discovery.test.ts` |
-| `test/observation-projection.test.js` | `test/observation-projection.test.ts` |
-| `test/observation-store.test.js` | `test/observation-store.test.ts` |
 | `test/opensandbox-image-contract.test.js` | `test/opensandbox-image-contract.test.ts` |
 | `test/opensandbox-manager.test.js` | `test/opensandbox-manager.test.ts` |
 | `test/package-archive-selection.test.js` | `test/package-archive-selection.test.ts` |

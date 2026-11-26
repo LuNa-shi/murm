@@ -10,6 +10,8 @@ The existing private `spawn/allocation-dispatched` evidence records the value ac
 
 The optional host `modelGateway.maxOutputTokens` accepts either a safe integer of at least 16 or explicit null. The factory rejects other supplied values before resource allocation and snapshots this policy with the rest of the configuration. Null requests natural output forwarding; omitted values retain the numeric gateway default. Runtime configuration evidence records null distinctly so an operator can verify that a synthetic output clamp was not selected. Profile and Agent input cannot override this host policy. Request and authority timeouts still apply.
 
+The [Native Trace contract](17-harness-reporting.md#native-trace-and-bridge-attempts) describes the internal callback at the Worker history consumer and how Core persists the evidence. Worker prep and execution can proceed independently of a running Trace Viewer.
+
 ## Startup and ownership
 
 The Runtime opens the backend with its own identity, Bridge and model access. The backend keeps one provider manager per Agent, allowing the selected Profile to supply its image. Spawn registers the manager before its first provider request. The provider metadata contains hashed Runtime, Agent and resource identities. The internal manager argument named `executionId` carries the Agent resource key on this path. It does not create a TaskPool Execution.

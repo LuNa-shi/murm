@@ -4,13 +4,13 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **280 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **278 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/subagents/`, `website/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes/.npmignore`, `examples/subagents/.npmignore`, `examples/lead-worker/.npmignore`, `examples/substrate/.npmignore`, `examples/peermesh/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`, `examples/substrate/FateProofGuard.lean`, `examples/substrate/VerifyFateProof.lean`, `.github/workflows/deploy-website.yml`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/subagents/`, `website/`, `trace-viewer/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes/.npmignore`, `examples/subagents/.npmignore`, `examples/lead-worker/.npmignore`, `examples/substrate/.npmignore`, `examples/peermesh/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`, `examples/substrate/FateProofGuard.lean`, `examples/substrate/VerifyFateProof.lean`, `.github/workflows/deploy-website.yml`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -196,6 +196,16 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [scripts/core-work-dir.ts](../../scripts/core-work-dir.ts) | Trusted Worker FileSeed installation, readback, versioned write grant and close coordination | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `8089e1f0d1e47d7f125afc7e5d8faa577d2666c4a68af19b9205b2228f8975c7` |
 | [scripts/pi-rpc-submissions.ts](../../scripts/pi-rpc-submissions.ts) | Worker lifetime Pi RPC submission identities, shared in-flight waits and receipt-only queries | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `232c831fa5e9526e8da21ea5ec76d9788269d8e03907a7f9fb5b7208b4274ab1` |
 
+### Trace Viewer (5)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [trace-viewer/murm.mjs](../../trace-viewer/murm.mjs) | Thin host command and trace server startup | [06-observability-experiments](06-observability-experiments.md) | `46891256c747b0b14621e19205db9cd4bfeb5168f901d45423256186c5c386de` |
+| [trace-viewer/package.json](../../trace-viewer/package.json) | Independent package and host command declaration | [06-observability-experiments](06-observability-experiments.md) | `00463a83036c48526ff6ef3fe314ae3ec4097f862d4652176801f539c13e1d82` |
+| [trace-viewer/README.md](../../trace-viewer/README.md) | Candidate package and remote viewing instructions | [06-observability-experiments](06-observability-experiments.md) | `8f91d1516ba3aa46484d49716a172ea44c1b3090a59bccd78800315776daa2c2` |
+| [trace-viewer/server.mjs](../../trace-viewer/server.mjs) | Loopback static assets, read-only API and resumable SSE | [06-observability-experiments](06-observability-experiments.md) | `1f0c554e981cca8c59fdf3ddfe68e5bed4be51bff4ddad0f2c819a1773582966` |
+| [trace-viewer/server.test.mjs](../../trace-viewer/server.test.mjs) | Standalone CLI and HTTP/SSE verification | [06-observability-experiments](06-observability-experiments.md) | `61a305e9dcc7c1349df98487f7cbe1d7c1c6d41951c6d9b0916412242d34d17e` |
+
 ### Workspace and Sandbox (2)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
@@ -233,7 +243,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/check-architecture.ts](../../scripts/check-architecture.ts) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `0df92907ec29c96b93503d09ffbe8902732676ed040dba3546a9d7205c4e25da` |
-| [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `63e10512f292e45af9b503810b680b53de6076fb31358459936e6f06763959bf` |
+| [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `6fe6383c101eb7f8bd6c03990715bd67d5ba3dd964214e36e8fa9c509c99699b` |
 | [scripts/generate-architecture-coverage.ts](../../scripts/generate-architecture-coverage.ts) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `228407cc3420e01ca2f7e4a6d82043fa8e318167e268868f56ca5737606015c4` |
 | [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `09de809b1b8d57484c756b301ce3da88711dbc49ae75ac7ffca12e5a9c019d28` |
 
@@ -276,23 +286,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [src/core/model-trace.ts](../../src/core/model-trace.ts) | Full private model request and response trace writer | [17-harness-reporting](17-harness-reporting.md) | `19e20723b90496a3f7bebee1961bacf2d8482ba772b089e42826cfd594d0ff3d` |
 | [src/core/service-trace.ts](../../src/core/service-trace.ts) | Full Bridge operation trace and optional Service state snapshots | [17-harness-reporting](17-harness-reporting.md) | `4c8cb8b818a958bb4e15226206b82c399eccda9f197ba2c8a45d10a4aeab729b` |
 
-### observability and reporting (2)
-
-| Source | Responsibility | Architecture chapters | SHA-256 |
-|---|---|---|---|
-| [src/observability/format.ts](../../src/observability/format.ts) | Human-facing time, IDs, state and value formatting | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `83200c4656f4e509e4466fdad547ad3c353e1272595f38db0c4c2a1872dc5d42` |
-| [src/observability/observation-projection.ts](../../src/observability/observation-projection.ts) | Shared observation projection for events, timelines and derived views | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `eb648c2f5e172366e5a177c3f5205cac2e0876368639d2820b0c154a786085ba` |
-
-### observation and analysis (5)
-
-| Source | Responsibility | Architecture chapters | SHA-256 |
-|---|---|---|---|
-| [scripts/serve-observability.ts](../../scripts/serve-observability.ts) | Persistent observer, root/worktree/database discovery and metadata lifecycle | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `d6765ac9f4309ba508671fb4eee842a7e4fd8aec6986cf8d7319db5ff0fdf87e` |
-| [src/observability/durable-event-log.ts](../../src/observability/durable-event-log.ts) | Append component NDJSON with raw/sanitized logging modes | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `59871d704517679589fa745e6f7c1859c2e1f2452c4219b84c97afefb49dc062` |
-| [src/observability/observability-server.ts](../../src/observability/observability-server.ts) | HTTP routes, SSE, multi-store queries, reports and bounded operator reads | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `2cfedc2b95505947f4dbd16f6cac4db2eff10d432fbd077b8223f3cf2ad3236e` |
-| [src/observability/observation-store.ts](../../src/observability/observation-store.ts) | SQLite event/projection schema, visibility and multi-database collections | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `a4247af39e55b8146a85d0689ecb5a7397d83376daa2a757cf0b2082de7ec206` |
-| [src/observability/workspace-provider.ts](../../src/observability/workspace-provider.ts) | Workspace inspection adapter for observation routes | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `0780c1b9314b09c2eada1db936dadde75aa4cac41ce3105e2c123396585725ba` |
-
 ### private history (1)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
@@ -308,15 +301,15 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [src/core/agent-service.ts](../../src/core/agent-service.ts) | Built-in Agent Service v2 schema, trusted direct-child authorization and convenience-spawn receipt ledger | [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `b096c74532f64916168e8d60acab127e4acc265cb36782eb6a1deb91f2566884` |
 | [src/core/artifact-collection.ts](../../src/core/artifact-collection.ts) | Host artifact stream validation, private staging and manifest publication | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `8279193fa515c63c4a51819dd806172e8ba7b8b6edd5170b33833b7dd27611bf` |
 | [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | Public opaque Pi/OpenSandbox backend factory export | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `f8167e4c39facba00538c3ebc97cd7c54ad3164bb138303917896aac72c1539b` |
-| [src/core/bridge.ts](../../src/core/bridge.ts) | Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `a8c872112b7e059bb3a36758c4d5a1ce0ea80f694cd0ffff640357e9d4c1ac98` |
+| [src/core/bridge.ts](../../src/core/bridge.ts) | Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `ba92a8c29e06d5bbe59670d1be49d580bda17bd54b2807d204138d5689f661ef` |
 | [src/core/config.ts](../../src/core/config.ts) | Profile snapshot, spawn request and environment validation | [15-core-runtime](15-core-runtime.md) | `b5109ddd1f08e6e8202050b9ab3f4d1694c4115af8e812c0c3524ae7265a05ac` |
 | [src/core/file-controls.ts](../../src/core/file-controls.ts) | Agent file-operation identity, preparation receipts, write authority and pending grant fences | [15-core-runtime](15-core-runtime.md) | `31ce77b2051152caadadaa3e98b26cd63f8492e1a8bb7cb5dc871bffb9b509f4` |
-| [src/core/index.ts](../../src/core/index.ts) | Runtime assembly, Agent admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `24658498abfe7af71dcf97dd5263100283facc11f71bb0040bbd6f71a7ea3254` |
+| [src/core/index.ts](../../src/core/index.ts) | Runtime assembly, Agent admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `6e6ef598d8f41bbec723ba91edd84203245e3a11992615e43e0b851bc301775b` |
 | [src/core/input-ledger.ts](../../src/core/input-ledger.ts) | Runtime/caller/operation/target/request input identity and parameter conflict ledger | [15-core-runtime](15-core-runtime.md) | `44e6dd8b015fb8ee2fcc2100aa22638e7e66e511ede570510dc0eb30bb85f626` |
 | [src/core/model-access.ts](../../src/core/model-access.ts) | Runtime-scoped model gateway lifecycle, credentials and policy | [15-core-runtime](15-core-runtime.md) | `260fae7cdf556c319c5ecafd97d42a5fb0c227ba94cf099f601f110d8034338d` |
-| [src/core/pi-opensandbox-backend.ts](../../src/core/pi-opensandbox-backend.ts) | Core backend lifecycle, Worker transport and confirmed cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `691a2447cd4c10b17b59165f9a41e32518853b0bd176568a75eca7284d54273d` |
+| [src/core/pi-opensandbox-backend.ts](../../src/core/pi-opensandbox-backend.ts) | Core backend lifecycle, Worker transport and confirmed cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `34546c69ce5e7f9184d50efdde56043b9a0449ff5e703a8525219787605d5c73` |
 | [src/core/run-records.ts](../../src/core/run-records.ts) | Private Runtime summary configuration, ordered evidence writing and credential redaction | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `9403ad034b1ac893ef3e8586b601daf8290b3151242e82a1ee0fe7266d7a6547` |
-| [src/core/services.ts](../../src/core/services.ts) | Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `fe9840ec2a5d25e05ac7546c2f236ca72c858d5128a1d8f464c26dd8cb5b5e9c` |
+| [src/core/services.ts](../../src/core/services.ts) | Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `8c1d64489bd31ab3cec3b3b295a36ebaa2e8a9982f0a4aa059a05c405f41b6d1` |
 | [src/core/startup-prompt.ts](../../src/core/startup-prompt.ts) | Core sandbox startup system prompt, authorized Service directory and optional Added System Prompt | [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `6d8cdea9ed793d3eb22637d5811b450c65f68ef83e055bc389588be34d799151` |
 
 ### provider deployment and instructions (8)
@@ -394,7 +387,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [scripts/core-session-fork.ts](../../scripts/core-session-fork.ts) | Native Pi Session prefix, tool pairing and credential removal | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `49a2a8a09d437d92b4ed371ff7b54b356df481ad6bae9660fe3283d245544c59` |
 | [scripts/mount-agent-workspace.py](../../scripts/mount-agent-workspace.py) | Pin and mount a bounded tmpfs in a verified Docker namespace | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `13a94b8ad0499835395d4b6e3e93f2dc8966b744e4fef2179c4b940c09339778` |
 | [scripts/mount-shared-workspace.py](../../scripts/mount-shared-workspace.py) | Trusted local Docker project mounts and shared tmpfs cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `1c84a323aa7f43756f524ad879acaaf1f958e2c85d9c84f48ee4ab27d9510b32` |
-| [scripts/opensandbox-agent-worker.ts](../../scripts/opensandbox-agent-worker.ts) | Sandbox-resident Pi worker and authenticated RPC, file collection and lifecycle HTTP surface | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `a0bd275313438826134862912fd9a60774f11e0d2ade4a5de450a8ce07ce5052` |
+| [scripts/opensandbox-agent-worker.ts](../../scripts/opensandbox-agent-worker.ts) | Sandbox-resident Pi worker and authenticated RPC, file collection and lifecycle HTTP surface | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `4d671a3f2068ad3bdb9cb3756e6117d0e17cec3efda911f3cb8720891bf65eda` |
 | [scripts/project-install.ts](../../scripts/project-install.ts) | Worker private write-ahead install receipts, exact rollback and held acknowledgement | [05-workspace-continuity](05-workspace-continuity.md) | `c7cbc585db3b3418a2843dcd641768cebf237e99533c77b37dc988cddc7923a9` |
 | [scripts/project-processes.ts](../../scripts/project-processes.ts) | Immutable same-UID process inspection before changing paused project paths | [05-workspace-continuity](05-workspace-continuity.md) | `8f0868e3c557ad09f2f713dfb7117489458a59dbb7d4545e399e9f6333060965` |
 | [scripts/sandbox-project.ts](../../scripts/sandbox-project.ts) | Trusted worker-owned project directory preparation, manifest validation, grant and revocation | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md) | `5de0b956006c59f2924a7d7fe35496ac065f99268cf45b40d19b59ce8d84cf78` |
