@@ -338,7 +338,7 @@ export async function openOpenSandboxBackend(config: OpenSandboxBackendConfig, {
       const model = config.models[profile.model];
       const startup = await manager.startAgent({ executionId: agentId,
         ...driver.start({ model, baseUrl: credentials.baseUrl, forkSession: Boolean(forkSession) }),
-        systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt),
+        systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt, driver.kind),
         systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
         writable: options.writable ?? profile.writable,
         files: options.files, forkSession, workspace,

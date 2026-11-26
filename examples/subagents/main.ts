@@ -4,14 +4,14 @@ import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { createRuntime, type CollectionSpec, type FileSeed, type SpawnOptions } from '@murm/core';
 import { ServiceRegistry } from '@murm/core/services';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { createOpenSandboxBackend, type ConfiguredOpenSandboxBackendConfig } from '@murm/core/backends/opensandbox';
 import { collaborationOperations, createCollaborationService } from './collaboration-service.js';
 import { createSubagentsController } from './controller.js';
 import { childPrompt, rootPrompt } from './prompts.js';
 import { runWithReport } from './run-report.js';
 
 interface Config {
-  backend: Parameters<typeof createPiOpenSandboxBackend>[0];
+  backend: ConfiguredOpenSandboxBackendConfig;
   model?: string;
   rootModel?: string;
   childModel?: string;
@@ -47,9 +47,9 @@ export async function createSubagentsHarness(config: Config) {
   let team: ReturnType<typeof createSubagentsController>;
   services.registerService(createCollaborationService(request => team.invoke(request), () => team.exportState()));
   const common = { image, writable: true, services: { collaboration: collaborationOperations },
-    spawnProfiles: ['child'], allowContextFork: true };
+    spawnProfiles: ['child'], allowContextFork: config.backend.executor !== 'codex' };
   const runtime = await createRuntime({
-    backend: createPiOpenSandboxBackend(config.backend), outputDir, services, maxAgents: maxAgents,
+    backend: createOpenSandboxBackend(config.backend), outputDir, services, maxAgents: maxAgents,
     profiles: {
       root: { ...common, model: rootModel, prompt: rootPrompt },
       child: { ...common, model: childModel, prompt: childPrompt },
