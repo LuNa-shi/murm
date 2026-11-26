@@ -49,7 +49,7 @@ Harness 是开发者使用 murm Core 编写的协作程序。它决定哪些 Age
 
 ### 2.2 装配和启动顺序
 
-1. 为本次运行选择独立 outputDir，读取 backend、模型、镜像、预算与 Service 数据配置。
+1. 为本次运行选择独立 outputDir，读取 Sandbox、Runtime 模型与连接、镜像、预算和 Service 数据配置。
 2. 准备所需外部设施，完成 readiness；登记自己创建的连接、账户和进程。
 3. 注册 manifest + adapter，配置 Profiles；固定本次身份引用与权限。
 4. 调用 createRuntime。Core 合入内置 Agent Service、校验注册表和 Profile、装配 Bridge 与模型入口。
@@ -97,7 +97,7 @@ swarm notes put --input note.json --request-id review-note-1
 swarm notes get --input key.json
 ```
 
-附录包含完整 v2 manifest、Harness 函数和 main 的结果保存。config.backend 使用 Core 文档中的具体 backend 配置；model 是模型别名，image 是准备好所需工具的 Worker 镜像。outputDir 必须属于本次运行，避免不同实验覆盖报告。
+附录包含完整 v2 manifest、Harness 函数和 main 的结果保存。config.sandbox、config.connection 和 config.models 使用 Core 文档中的配置；model 是模型别名，image 是准备好所需工具的 Worker 镜像。outputDir 必须属于本次运行，避免不同实验覆盖报告。
 
 ## 4. 输入、异步任务与结束规则
 
@@ -113,9 +113,9 @@ Core 最低合同不提供逐 inputId 的完成关联。Harness 的多来源结�
 
 ### 4.2 事件处理与去重
 
-onEvent 的同步 handler 只做接收、筛选与入队。Harness 跟踪异步 jobs 的结果、拒绝和取消，不把 async handler 的 Promise 隐含交给 Core。每条事件先按 agentId + seq 去重；需要合并 fatal/exit 等故障通知时，再按本模式的故障状态处理。
+先订阅，再读取 Runtime 和 Agent 当前状态，再开始工作。onEvent handler 接收、筛选并入队；消费端跟踪异步 jobs 的拒绝、取消及顺序。Core 已处理重复读取的 Worker 事件。需要在同一 Harness 内重试结果转发时，入队时分配本地单调通知编号并保存请求身份；业务消息依其业务 ID 去重。fatal、exit 等通知由各 Harness 按故障状态合并。
 
-转交执行结果时读取事件快照。get 适合查询当前生命周期和 parentId 等关系；累计 latestOutput/lastError 不能代替某个历史 settled 的结果。关闭期间拒绝生成新的工作，保留已接纳输入与未送达结果的记录。
+转交执行结果时读取 settled 的事件副本；get 用于当前状态和 parentId 查询。关闭期间停止投递新的工作，保留已接纳输入和未知结果的记录。
 
 ### 4.3 关闭顺序
 
@@ -175,27 +175,27 @@ swarm agent stop --agent-id "$CHILD_ID" --request-id child-stop-1
 
 Harness 注册 Profiles、Services 与事件处理器，spawn parent，再 send 初始目标。parent 经 Agent Service 创建 child；Core 在 child 执行前登记 parentId、资源和事件。child 收束后，Harness 回传结果；parent 可追问存活 child，或整合后 stop。整体完成与预算由 Harness 判断。
 
-事件 handler 同步接收，Harness 的队列处理异步路由、顺序、去重和错误。以下是队列中的轮次结果转发；recordDelivery 是 Harness 函数：
+事件 handler 同步接收，Harness 的队列处理异步路由、顺序、去重和错误。以下是队列中的轮次结果转发。notificationId 在接收时由 Harness 分配，recordDelivery 保存原请求。
 
 ```ts
-async function forwardChildResult(event) {
+async function forwardChildResult(event: RuntimeEvent, notificationId: string) {
   if (event.type !== "settled") return;
   const child = await runtime.get(event.agentId);
   if (!child.parentId) return;
   const receipt = await runtime.send(
     child.parentId,
     JSON.stringify({
-      childId: child.id, eventSeq: event.seq,
+      childId: child.id, notificationId,
       outcome: event.outcome, output: event.output, error: event.error,
     }),
-    { requestId: "child-result:" + child.id + ":" + event.seq,
+    { requestId: "child-result:" + child.id + ":" + notificationId,
       mode: "followUp" },
   );
-  recordDelivery({ childId: child.id, eventSeq: event.seq, receipt });
+  recordDelivery({ childId: child.id, notificationId, receipt });
 }
 ```
 
-get 只读取父子关系；结果取自 settled 的本次快照，不能用 latestOutput/lastError 拼接某轮结果。队列按 agentId + seq 去重，并保持每个 child 的事件顺序。
+get 只读取父子关系；结果取自 settled 的本次快照，不能用 latestOutput/lastError 拼接某轮结果。队列以原 notificationId 核对重试并保持每个 child 的事件顺序。
 
 | 事件 | 处理 |
 | --- | --- |
@@ -239,7 +239,7 @@ TaskPool 保留当前 Task-oriented 工作流：Agent 先在只读条件下发�
 | --- | --- |
 | 团队 | 2 researcher，固定容量，前一 Agent 收尾后按现有策略补位 |
 | Profile | Mission/选工/完成 prompt，Task/Context/Workspace；科研例子可加 Judge |
-| 目录 | spawn 时 writable=false；take 后 grant 对应准备版本 |
+| 目录 | spawn 时 writable=false；确立 Execution 归属后 replace 安装并开放写入 |
 | 公共状态 | Mission、Task、Execution、Material、Workspace revision 均由 TaskPool 管理 |
 | 运行策略 | continuation、discovery、deadline、stall 与整体完成判断属于 TaskPool |
 
@@ -247,7 +247,7 @@ Core 与 TaskPool 使用同一 agentId。TaskPool 兼容层维护旧容量字段
 
 ### 6.2 Services 与命令
 
-本节的在线保存目标受 [2026-11-24 本轮范围调整](README.md#2026-11-24-owner-确认的本轮范围调整)限定：标准 Core 的生产 live capture 接线由 #197 留待后续，#196 仍为延后草稿。本轮对已有可信宿主注入和公共产物路径按实际能力验收；下列命令和流程不构成标准安装包已经具备生产 live capture 的声明，原有领域校验和失败关闭合同保持。
+#255 的迁移验证原生 Core 快照、完整交接与在线 apply。历史 #196/#197 的范围和验收在原修订下解释。可信捕获、领域校验和失败收尾继续适用。
 
 ```bash
 swarm task list --state ready
@@ -260,109 +260,18 @@ swarm task finish --input finish.json --request-id finish-1
 
 上述 `workspace save` 仅在配置可信捕获绑定时装配；无绑定的受限 TaskPool 从 Registry/Profile 和提示省略该操作及私有 status/current-diff，仍可使用公共 Workspace 读取、Material 发布和原合同允许的 finish。显式无效绑定拒绝，不将不可用命令冒充已接通能力。
 
-命令已有，沿用成果引用、revision 与 finish 合同。Bridge 注入可信 caller，TaskPool adapter 查询领域关联，检查 Task provenance、归属、事务和排他 take；不接受 JSON 伪造身份。take adapter 原子认领后调用宿主 Runtime.files，模型不直接拥有 prepare/grant。
+命令已有，沿用成果引用、revision 与 finish 合同。Bridge 注入可信 caller，TaskPool adapter 查询领域关联，检查 Task provenance、归属、事务和排他 take；不接受 JSON 伪造身份。take adapter 原子认领后调用宿主 Runtime.files，模型只能经受信 TaskPool Service 请求交接。
 
 ### 6.3 运行流程与关键接线
 
-流程为：只读 Agent 发现 Task → 原子 take → 准备固定输入 → 激活 Execution → grant → 执行和发布 → finish → 停止与收尾 → 按策略补位。
+1. 只读 Agent 发现工作。take adapter 从 Bridge 的可信 caller 取 Agent ID，从 envelope 取 requestId，在 TaskService 原子保留任务与 Execution。对同一 take 重试核对已登记的 owner 与请求，在途所有权不重新开放。
+2. TaskPool 用准备期 heartbeat 维持 reservation，通过固定 Workspace revision、Materials 和交接来源构造 FileTree。用完整 snapshot 作为当前目录基线。持久化交接计划，交接计划至少保存原 Core requestId、基线摘要、目标或可复现目标的固定输入、Execution、owner 和 fence。
+3. 核验 Mission/Agent deadline、租约、准备状态及同一 fence；停止准备期 heartbeat，使用最新领域状态调用 `start_execution` 建立可信运行中的 Execution 与期限。所有权建立后，才允许 `runtime.files.replace(agentId, { requestId, expectedDigest, files, writable: true })`。Core 负责验证、实际安装、开放权限和恢复执行控制；TaskPool 在回执后复核归属与期限。
+4. 只在文件完成且业务记录提交后返回 take 成功。准备失败、文件结果未知或后置检查失效时保留所有权并用原身份核对；需要结束时先 stop，确认执行停止后结束或开放任务。原 Bash 调用成功返回时仍使用同一 Agent 和 Session。
+5. 已执行的任务在线 apply 时，Workspace Service 固定来源版本、获取完整目录基线、执行合并，保存 pending 意图、parents/conflicts、领域 fence 和原 Core 请求，再用单步 replace 安装。Core 完成后，Service 提交自己的版本记录。应用侧 `apply` 查询、相同请求、reconcile 与关闭均读取同一 pending。pending 阻止冲突 save/apply 与依赖它的 finish。
+6. 回执丢失时用原参数与 requestId 核对。文件完成但业务提交失败时，利用已完成的原回执向前提交业务记录；期间 Agent 可能已继续修改目录，恢复不得重新安装或回滚文件。TaskPool 公共版本的文件过滤仅用于该业务路径。
 
-TaskPool 负责 Workspace revision、Materials、Execution provenance、reservation 与 deadline；Core 只接收 Agent 和确定的文件内容，返回准备回执并实际授权。take adapter 从可信 caller 取 agentId、从 envelope 取 requestId，不接受模型伪造。
-
-以下保留真实 TaskService 入口。prepareTaskPoolInputs、executionEnvelope、startPreparationHeartbeat、timing 及补偿函数都是 TaskPool 的迁移代码，不属于 Core。
-
-```ts
-const task = taskService.getTask(taskId);
-const taken = taskService.takeTask(taskId, {
-  take_key: requestId, owner_ref: agent.id, core_id: legacySlotId,
-  agent_prompt: researcherPrompt, input_material_refs: task.input_material_refs,
-}, makeEnvelope({
-  operationId: requestId + ":take", actorRef: agent.id, taskId,
-  specVersion: task.spec_version, stateVersion: task.state_version,
-}));
-
-const executionId = taken.execution.execution_id;
-const originalFence = taken.execution.fencing_version;
-let lease;
-try {
-  lease = startPreparationHeartbeat({
-    agentId: agent.id, executionId, expectedFence: originalFence,
-  });
-  const files = await prepareTaskPoolInputs(executionId);
-  lease.check();
-  const prepared = await runtime.files.prepare(agent.id, {
-    requestId: requestId + ":prepare", files,
-  });
-  lease.check();
-
-  taskService.assertMissionResearchOpen(missionId);
-  taskService.assertAgentDeadline(agent.id);
-  const owner = taskService.getAgent(agent.id);
-  let execution = taskService.getExecution(executionId);
-  if (owner?.state !== "PREPARING" || owner.execution_id !== executionId ||
-      execution?.state !== "CREATED" ||
-      execution.fencing_version !== originalFence) {
-    throw new Error("Task reservation is no longer current");
-  }
-
-  lease.stop(); // 准备期检查只接受 PREPARING/CREATED，激活前必须停。
-  execution = taskService.getExecution(executionId);
-  taskService.dispatch("start_execution",
-    { core_id: legacySlotId, ...timing },
-    executionEnvelope(execution, requestId + ":start"));
-  await runtime.files.grant({ requestId: requestId + ":grant", prepared });
-
-  taskService.assertMissionResearchOpen(missionId);
-  taskService.assertAgentDeadline(agent.id);
-  const activeOwner = taskService.getAgent(agent.id);
-  const active = taskService.getExecution(executionId);
-  if (activeOwner?.state !== "ACTIVE" || activeOwner.execution_id !== executionId ||
-      active?.state !== "RUNNING" || active.fencing_version !== originalFence) {
-    throw new Error("Task ownership changed during project grant");
-  }
-  saveFlatHandoff({ agentId: agent.id, executionId,
-    executionFence: originalFence, prepared });
-  // 返回 take 成功，原 Bash 调用与 Session 继续。
-} catch (error) {
-  let stopped;
-  try {
-    stopped = await runtime.stop(agent.id, { timeoutMs: config.stopTimeoutMs });
-  } catch (cleanupError) {
-    recordFlatFailure({ executionId, error, cleanupError });
-    throw error;
-  }
-  recordFlatFailure({ executionId, error, stopped });
-  if (stopped.execution === "stopped") finalizeFailedExecution(executionId, error);
-  // unknown 保留待核对归属，不能把同一 Task 交给另一 Agent。
-  throw error;
-} finally {
-  lease?.stop();
-}
-```
-
-这是 take 成功后的补偿；普通认领冲突不进入该 stop 路径。实现时还要捕获 stop 的意外异常，保留原错误与清理错误两条记录。
-
-| 迁移 helper | 必须保留的行为 |
-| --- | --- |
-| prepareTaskPoolInputs | 提取 #prepareWorkspace / #saveWorkspaceReference，保留 exportRevision、Materials、createWorkspace 与固定输入来源，转换为 FileSeed |
-| startPreparationHeartbeat | 立即与定期校验 reservation 并续租；留存 timer 错误；check 核验错误与归属；stop 幂等 |
-| executionEnvelope | 使用当前 task\_id、execution\_id、spec\_version、state\_version、fencing\_version |
-| timing | 保留 Task timebox、handoff/Execution deadline 与 Agent hard deadline |
-| saveFlatHandoff / finalizeFailedExecution | 保存领域 fence、Workspace revision 与 prepared 的对应；仅在执行已停后终结领域归属 |
-
-Task fencing\_version 与 PreparedFiles.version 分别证明领域认领和资源内容，不能互相替代。Core 不承担跨 Task 数据库与 sandbox 的原子事务；TaskPool 必须在 grant 前后检查，在未知或失效时先停执行再补偿。
-
-prepare 首例只用于尚未开放写入的空目录；grant 只接受 Agent 当前有效的 prepared。运行中任意替换、通用 revoke、同一 Agent 承接第二个 Execution 不在此合同中。
-
-**模型访问也需迁移。** [AgentModelAccess](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/agent/bot-model-access.js) 仍依赖 TaskService、Mission、UNBOUND/ACTIVE 和 Execution lease/deadline；只拆 Runtime/Bridge 会使无 Task mode 被 gateway 拒绝。TaskPool 在 createRuntime 配置策略端口：
-
-```ts
-modelAccessPolicy: {
-  authorize: caller => authorizeFlatModelCall(caller, taskService),
-  withCommit: commit => taskService.withServiceLifecycleWrite(commit),
-}
-```
-
-authorizeFlatModelCall 从旧 validateAgent 提取，返回 ModelPermit：phase/deadlineAt 与可选 lease；旧 executionId/fencingVersion/leaseDeadline 映射为 key/version/expiresAt。Core 先检查自身存活，再领域授权；同步提交窗口与持续 lease 复核遵循 Core 模型访问合同。无 Task mode 不配置该策略，默认 work；TaskService 不再进入通用 gateway。
+**期限控制。** TaskPool controller 根据 selection、Agent、Execution 和 Mission 期限安排停止，并用周期 reconcile 补偿。开始关闭或 Mission 结束时并行对所有受影响 Agent 发起 stop。Core 同步撤销新模型调用并取消其本地在途连接；Service 的租约、fence 和提交检查继续独立执行。执行状态 unknown 时保留原 Task owner，确认 stopped 后才能交接，确认 cleanup complete 后才能补原 Slot。
 
 ### 6.4 输入与失败收尾
 
@@ -372,7 +281,7 @@ authorizeFlatModelCall 从旧 validateAgent 提取，返回 ModelPermit：phase/
 | --- | --- |
 | take 冲突 | 返回领域冲突，Agent 可重新选工 |
 | take 成功后准备失败、租约失效 | 先 stop，执行已停后处理 Execution/Task 归属 |
-| grant 未知或后置检查失败 | 不返回 take 成功；走相同停止与补偿 |
+| replace 未知或后置检查失败 | 不返回 take 成功；走相同停止与补偿 |
 | execution stopped、导出 pending | 领域终结与资源清理分别记录 |
 | execution unknown | 保留待核对归属，不把相同工作释放给另一 Agent |
 | 全局结束 | 停 controller 派发与补位，有界 close；保留公共 Workspace、Materials 与 Service 数据 |
@@ -380,10 +289,10 @@ authorizeFlatModelCall 从旧 validateAgent 提取，返回 ModelPermit：phase/
 ### 6.5 验收
 
 - 排他 take、finish、引用、revision 和一 Agent 一 Execution 保持。
-- take 前只读；准备与 grant 版本一致；成功后可写。
-- 准备/grant/关闭失败时，旧执行未停不会把同一 Task 发给新 owner。
+- take 前只读，固定输入在可信 Execution 建立后安装并开放写入，同一 Agent 与 Session 继续。
+- 准备、替换或关闭失败时，旧执行未停不会把同一 Task 发给新 owner。在线 apply 记录失败后向前恢复，保留 Agent 后续编辑。
 - 补位、定向反馈正常；pending/unknown 清楚；其他 mode 不继承 TaskPool 的 stall/continuation。
-- TaskPool 仅用 Core 公开接口，模型 gateway 仍执行领域授权。
+- TaskPool 通过公开 Core 生命周期触发模型撤销，保留 Service 的领域授权与提交检查。
 
 ### 6.6 来源与适配差异
 
@@ -712,7 +621,7 @@ runInput、Board 验收与 controller 是 Harness 代码。controller 决定触�
 
 ```ts
 // Proposed generic Service contract v2; not accepted by the legacy v1 parser.
-import type { ServiceManifest } from "@murm/core/services";
+import type { ServiceManifest } from "@murm/core";
 
 const noteProperties = {
   key: { type: "string", minLength: 1, maxLength: 128 },
@@ -769,29 +678,31 @@ export default notesManifest;
 
 ### A.2 Harness 与结果保存
 
-config 包含 model、image、backend、独立 outputDir、turnTimeoutMs、closeTimeoutMs 和上述 notesManifest。main 的调用形态是 `await main(config, optionalAbortSignal)`；停止信号由宿主接入，例如用户取消或预算到期。示例返回并保存两类失败，调用者据报告决定退出码。
+config 包含 model 别名、image、sandbox、models、connection、独立 outputDir、turnTimeoutMs、closeTimeoutMs 和上述 notesManifest。main 的调用形态是 `await main(config, optionalAbortSignal)`；停止信号由宿主接入，例如用户取消或预算到期。示例返回并保存两类失败，调用者据报告决定退出码。
 
 ```ts
 // Proposal example: these package exports have not been implemented yet.
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createRuntime, type Runtime, type AgentInfo, type CloseReceipt,
-  type Profile, type ErrorInfo, type AgentEvent, type InputReceipt } from "@murm/core";
-import { ServiceRegistry, createInProcessAdapter }
-  from "@murm/core/services";
-import { createPiOpenSandboxBackend }
-  from "@murm/core/backends/pi-opensandbox";
+import {
+  createRuntime, createSandbox, ServiceRegistry, createInProcessAdapter,
+  type Runtime, type AgentInfo, type CloseReceipt, type Profile, type ErrorInfo,
+  type RuntimeEvent, type InputReceipt, type ModelConfig, type RuntimeConnectionOptions,
+  type SandboxConfig,
+} from "@murm/core";
 import { runInput } from "./run-input.js";
 
 type Note = { key: string; text: string; author: string };
 type Read = { agentId: string; key: string };
 type ErrorRecord = { message: string; code?: string; cleanup?: unknown;
   reportPath?: string; agentId?: string; requestId?: string; inputId?: string;
-  details?: readonly ErrorInfo[]; event?: AgentEvent; receipt?: InputReceipt };
+  details?: readonly ErrorInfo[]; event?: RuntimeEvent; receipt?: InputReceipt };
 type Config = {
   model: string; image: string; outputDir: string;
   turnTimeoutMs: number; closeTimeoutMs: number;
-  backend: Parameters<typeof createPiOpenSandboxBackend>[0];
+  sandbox: SandboxConfig;
+  models: Readonly<Record<string, ModelConfig>>;
+  connection: RuntimeConnectionOptions;
   notesManifest: Parameters<ServiceRegistry["registerService"]>[0]["manifest"];
 };
 
@@ -865,7 +776,8 @@ export async function run(config: Config, signal?: AbortSignal) {
     };
     // The factory is inside try; its ResourceError.reportPath is preserved.
     runtime = await createRuntime({
-      backend: createPiOpenSandboxBackend(config.backend), profiles, services,
+      sandbox: createSandbox(config.sandbox), models: config.models,
+      connection: config.connection, profiles, services,
       maxAgents: 2, outputDir: config.outputDir,
     });
     signal?.throwIfAborted();
@@ -935,9 +847,9 @@ export async function main(config: Config, signal?: AbortSignal) {
 
 ```ts
 // Proposal example, not an implemented @murm/core API.
-import type { Runtime, AgentEvent, InputReceipt } from "@murm/core";
+import type { Runtime, RuntimeEvent, InputReceipt } from "@murm/core";
 
-type Settled = Extract<AgentEvent, { type: "settled" }>;
+type Settled = Extract<RuntimeEvent, { type: "settled" }>;
 type Guard = { active: boolean; unresolved: boolean; used: Set<string> };
 const guards = new WeakMap<Runtime, Map<string, Guard>>();
 
@@ -996,7 +908,7 @@ export async function runInput(
       inputId: receipt?.inputId, reason: signal?.reason,
     }), true);
     const complete = () => {
-      if (receipt?.status === "accepted" && settled) finish();
+      if (receipt?.status === "accepted" && receipt.disposition === "started" && settled) finish();
     };
 
     timer = setTimeout(() => finish(error("input_timeout", {
@@ -1008,12 +920,8 @@ export async function runInput(
     void (async () => {
       try {
         if (finished) return;
-        const before = await runtime.get(agentId);
-        if (finished) return;
-        if (before.status !== "idle") throw error("wait_requires_idle_agent");
-
         unsubscribe = runtime.onEvent(event => {
-          if (finished || event.agentId !== agentId || event.seq <= before.cursor) return;
+          if (finished || !submitted || !("agentId" in event) || event.agentId !== agentId) return;
           if (event.type === "error" && event.fatal) {
             finish(error("agent_failed", { event }), true);
           } else if (event.type === "exit") {
@@ -1026,6 +934,10 @@ export async function runInput(
         });
         if (finished) { unsubscribe(); return; }
 
+        // The caller owns the exclusive input path. Check readiness at dispatch.
+        const before = await runtime.get(agentId);
+        if (finished) return;
+        if (before.status !== "idle") throw error("wait_requires_idle_agent");
         submitted = true;
         const result = await runtime.send(agentId, input, {
           requestId, mode: "followUp",
