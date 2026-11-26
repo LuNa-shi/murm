@@ -118,11 +118,18 @@ class RunIndex {
     const eventType = record.eventType ?? record.event?.type;
     const kind = overrides.kind ?? (record.type === 'native' ? (eventType?.startsWith('tool_') ? 'tool' : 'execution') : record.type ?? 'service');
     const time = record.workerAt ?? record.at ?? record.startedAt ?? record.timestamp;
+    const sessionTools = overrides.kind === 'session' && (record.message?.role === 'toolResult' ||
+      Array.isArray(record.message?.content) && record.message.content.some(item => item?.type === 'toolCall'));
     const event = { id: recordId(source), agentId, kind, type: record.type ?? kind, time,
       label: record.operation ?? eventType ?? (overrides.kind === 'session' && record.message?.role ? `Session ${record.message.role}` : record.type ?? kind),
       status: record.state ?? record.phase ?? record.event?.type ?? 'recorded', source,
       requestId: record.requestId, inputId: record.inputId, operationId: record.operationId ?? record.operation_id,
       ...overrides };
+    if (sessionTools) {
+      event.kind = 'tool';
+      event.label = record.message.toolName ?? (Array.isArray(record.message.content) ? record.message.content.filter(item => item?.type === 'toolCall').map(item => item.name).join(', ') : 'Tool result');
+      event.status = record.message.role === 'toolResult' ? (record.message.isError ? 'failed' : 'returned') : 'recorded-call';
+    }
     this.byId.set(event.id, event);
     this.sources.get(source.path).events.push(event);
     this.total++;
