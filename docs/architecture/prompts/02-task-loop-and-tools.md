@@ -186,7 +186,7 @@ Body SHA-256: `eabeb8ce88fcc39531f26ccc6278bf9f3ef880de5ed5953a847b2000d62f2142`
   }
 ]
 ````
-## services/mathlib-search/SKILL.md
+## src/services/mathlib-search/SKILL.md
 
 Available through the authorized Service documentation resource. The directory example above shows its metadata and hash.
 
@@ -245,7 +245,7 @@ source root, and no arbitrary URL is fetched. Verify every returned declaration
 in the locked project before relying on it.
 
 ````
-## services/mathlib-search/references/loogle.md
+## src/services/mathlib-search/references/loogle.md
 
 Available through the authorized Service documentation resource. The directory example above shows its metadata and hash.
 

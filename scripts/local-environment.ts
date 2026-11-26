@@ -258,7 +258,7 @@ async function ensureLocalProviderLocked(config: LocalEnvironmentConfig, { signa
   const token = randomUUID();
   const stateDir = join(homedir(), '.cache/murm/opensandbox', token);
   const name = `murm-opensandbox-${url.port || 80}`;
-  const recipe = (await readFile(join(root, 'services/opensandbox-local/config.toml'), 'utf8')).replace('port = 8080', `port = ${Number(url.port || 80)}`);
+  const recipe = (await readFile(join(root, 'deploy/opensandbox/config.toml'), 'utf8')).replace('port = 8080', `port = ${Number(url.port || 80)}`);
   try {
     await mkdir(join(stateDir, 'data'), { recursive: true, mode: 0o700 });
     await writeFile(join(stateDir, 'config.toml'), recipe, { mode: 0o600, flag: 'wx' });

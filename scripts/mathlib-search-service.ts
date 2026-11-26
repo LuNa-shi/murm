@@ -1,4 +1,4 @@
-import { createMathlibSearchService } from '../src/services/mathlib-search-service.js';
+import { createMathlibSearchService } from '../src/services/mathlib-search/service.js';
 import { createServiceHost } from '../src/sdk/service-host.js';
 
 const host = process.env.MATHLIB_SEARCH_HOST ?? '0.0.0.0';

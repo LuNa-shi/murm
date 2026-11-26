@@ -51,8 +51,8 @@ const sourcePaths = [
   'src/sdk/service-catalog.ts', 'src/sdk/builtin-registry.ts', 'src/sdk/service-bundle.ts',
   'src/sdk/service-registry.ts', 'src/sdk/service-manifest.ts', 'src/protocol/envelope.ts',
   'src/task/task-service.ts', 'src/task/task-types.ts',
-  'services/mathlib-search/service.json', 'services/mathlib-search/SKILL.md',
-  'services/mathlib-search/references/loogle.md',
+  'src/services/mathlib-search/service.json', 'src/services/mathlib-search/SKILL.md',
+  'src/services/mathlib-search/references/loogle.md',
 ];
 const sources = new Map(await Promise.all(sourcePaths.map(async path => [path, await readFile(resolve(root, path), 'utf8')] as const)));
 const extracted: {path: string; anchor: string; line: number; sha256: string}[] = [];
@@ -87,14 +87,14 @@ function output(file: string, text: string) { outputs.set(`${outputDir}/${file}`
 
 const registry = createBuiltinServiceRegistry();
 const profile = buildCapabilityProfile({ registry, role: AGENT_ROLES.BOUND });
-const mathlibBundle = await loadServiceBundle(resolve(root, 'services/mathlib-search'));
+const mathlibBundle = await loadServiceBundle(resolve(root, 'src/services/mathlib-search'));
 const extendedRegistry = createBuiltinServiceRegistry();
 extendedRegistry.registerService({ manifest: mathlibBundle.manifest, bundle: mathlibBundle, adapter: { invoke() { throw new Error('documentation never invokes services'); } } });
 const extendedProfile = buildCapabilityProfile({ registry: extendedRegistry, role: AGENT_ROLES.BOUND });
 
 let toolsDoc = header('CLI directory and optional Service documentation', 'Core selects the four native tools read/write/edit/bash. The synthetic namespace directories below illustrate the retained agentServiceDirectory projection; current startup discovery is composed by the Harness. Schemas and documentation are fetched through swarm service commands, not registered as separate Pi tools.');
 for (const [title, p] of [['Built-in Services', profile], ['With optional Mathlib Search', extendedProfile]] as const) toolsDoc += block(title, JSON.stringify(agentServiceDirectory(p), null, 2));
-for (const path of ['services/mathlib-search/SKILL.md', 'services/mathlib-search/references/loogle.md']) toolsDoc += block(path, sources.get(path), 'Available through the authorized Service documentation resource. The directory example above shows its metadata and hash.');
+for (const path of ['src/services/mathlib-search/SKILL.md', 'src/services/mathlib-search/references/loogle.md']) toolsDoc += block(path, sources.get(path), 'Available through the authorized Service documentation resource. The directory example above shows its metadata and hash.');
 output('02-task-loop-and-tools.md', toolsDoc);
 
 let turnsDoc = header('Complete TaskPool continuation messages', 'The TaskPool controller selects these repository-owned texts from the durable Execution phase after a settled turn. Host Profile and initial input composition are described in the Harness references.');

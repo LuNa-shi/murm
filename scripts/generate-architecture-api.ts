@@ -29,7 +29,7 @@ const registry = createBuiltinServiceRegistry({});
 const sourcePaths = [
   'src/sdk/service-catalog.ts', 'src/sdk/builtin-registry.ts', 'src/sdk/service-manifest.ts',
   'src/sdk/service-registry.ts', 'src/agent/capability-profile.ts', 'src/agent/services-bridge.ts',
-  'services/mathlib-search/service.json', 'src/errors.ts',
+  'src/services/mathlib-search/service.json', 'src/errors.ts',
   'src/core/index.ts', 'src/core/types.ts', 'src/core/public-services.ts', 'src/core/services.ts', 'src/core/service-types.ts',
   'src/core/backends/opensandbox.ts', 'src/core/backends/pi-opensandbox.ts', 'src/core/backend-config.ts',
 ];
@@ -46,7 +46,7 @@ for (const serviceId of ['catalog', 'task', 'context', 'judge']) {
   for (const cap of capabilities) api += `\n#### ${serviceId}.${cap.name}\n\n${cap.description}\n${json(cap)}`;
 }
 api += '\n### Optional Mathlib Search manifest\n\nExact repository bundle declaration. Loading the bundle additionally binds its documentation hashes into the normalized manifest; deployment endpoint overrides change the manifest hash. The implementation also returns `duration_ms` and, after fallback, `fallback`/`upstream_error_code`; these are not listed in this declaration\'s closed output schema.\n';
-api += fence('json', await readFile(resolve(root, 'services/mathlib-search/service.json'), 'utf8'));
+api += fence('json', await readFile(resolve(root, 'src/services/mathlib-search/service.json'), 'utf8'));
 const represented = new Set(['task', 'context', 'judge', 'catalog'].flatMap((serviceId: any) => builtInServiceManifest(serviceId)!.capabilities.map((cap: any) => `${serviceId}:${cap.operation}`)));
 const internalExtras: { service: string; operation: string; name: string }[] = listTools(null, { includeInternal: true }).filter((cap: any) => !represented.has(`${cap.service}:${cap.operation}`));
 const uniqueInternalExtras = [...new Map(internalExtras.map(cap => [`${cap.service}:${cap.operation}:${cap.name}`, cap] as const)).values()];

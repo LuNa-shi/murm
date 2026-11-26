@@ -16,7 +16,7 @@ service volume.
 Example:
 
 ```sh
-docker build -f services/mathlib-search/Dockerfile -t murm-mathlib-search .
+docker build -f deploy/mathlib-search/Dockerfile -t murm-mathlib-search .
 docker run --rm -p 8787:8787 \
   -e MATHLIB_SEARCH_UPSTREAM_URL=http://loogle:8080 \
   -e MATHLIB_SEARCH_PUBLIC_URL=http://mathlib-search:8787 \
@@ -27,4 +27,4 @@ docker run --rm -p 8787:8787 \
 
 The murm process registers the provider with a manifest and an
 `HttpJsonServiceAdapter`; it does not import Loogle or share the provider's
-process. See the maintained [Mathlib service implementation](../../docs/architecture/04-services.md#6-optional-mathlib-search) and [Loogle reference](references/loogle.md) for backend behavior and query guidance.
+process. See the maintained [Mathlib service implementation](../../../docs/architecture/04-services.md#6-optional-mathlib-search) and [Loogle reference](references/loogle.md) for backend behavior and query guidance.
