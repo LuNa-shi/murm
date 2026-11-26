@@ -14,6 +14,7 @@ const state = {
   stream: null,
   generation: 0,
   inspectorGeneration: 0,
+  pageGeneration: 0,
 };
 const colors = [
   "var(--accent)",
@@ -181,6 +182,7 @@ function renderRuns() {
 async function openRun(id) {
   const generation = ++state.generation;
   ++state.inspectorGeneration;
+  ++state.pageGeneration;
   state.stream?.close();
   const run = await api(`/api/runs/${encodeURIComponent(id)}`);
   if (generation !== state.generation) return;
@@ -257,12 +259,17 @@ function renderSummary() {
 
 async function loadPage(cursor) {
   const generation = state.generation;
+  const pageGeneration = ++state.pageGeneration;
   const params = new URLSearchParams({ limit: "250" });
   if (cursor) params.set("cursor", String(cursor));
   if ($("#agent-filter").value) params.set("agentId", $("#agent-filter").value);
   if ($("#type-filter").value) params.set("type", $("#type-filter").value);
   const result = await api(runPath(`/events?${params}`));
-  if (generation !== state.generation) return;
+  if (
+    generation !== state.generation ||
+    pageGeneration !== state.pageGeneration
+  )
+    return;
   state.events = result.events;
   state.cursor = cursor;
   state.nextCursor = result.cursor;
@@ -344,6 +351,28 @@ function renderTimeline() {
   const spans = (state.run.spans ?? []).filter(
     (span) => !selectedAgent || span.agentId === selectedAgent,
   );
+  const note = $(".timeline-note");
+  note.textContent = state.run.spansTruncated
+    ? "Showing the latest 1,000 recorded spans. Use the paginated event ledger below to inspect earlier evidence."
+    : "Execution spans use recorded boundaries. Markers show recorded timestamps where execution boundaries are unavailable.";
+  const timedAgents = new Set(spans.map((span) => span.agentId));
+  for (const event of state.events) {
+    if (
+      timedAgents.has(event.agentId) ||
+      !Number.isFinite(dateValue(event.time))
+    )
+      continue;
+    if (selectedAgent && selectedAgent !== event.agentId) continue;
+    spans.push({
+      id: event.id,
+      agentId: event.agentId,
+      kind: event.kind,
+      label: `${event.label} · recorded timestamp`,
+      startedAt: event.time,
+      status: event.status,
+      evidenceIds: [event.id],
+    });
+  }
   const times = spans
     .flatMap((span) => [dateValue(span.startedAt), dateValue(span.endedAt)])
     .filter(Number.isFinite);
@@ -632,6 +661,7 @@ function inspectAgent(agent) {
     identity,
     rawSection("Input acceptance", agent.inputs),
     rawSection("Actual execution", agent.execution),
+    rawSection("Execution outcome", agent.outcome),
     rawSection("Resource cleanup", agent.cleanup),
   );
 }
@@ -746,8 +776,9 @@ function connectLive(cursor) {
       .then(async () => {
         if (generation !== state.generation) return;
         const result = JSON.parse(message.data);
+        const pageGeneration = state.pageGeneration;
         const run = await refreshSummary();
-        if (!run) return;
+        if (!run || pageGeneration !== state.pageGeneration) return;
         if (
           state.follow &&
           result.events?.length &&
@@ -756,6 +787,7 @@ function connectLive(cursor) {
         ) {
           const byId = new Map(state.events.map((event) => [event.id, event]));
           for (const event of result.events) byId.set(event.id, event);
+          ++state.pageGeneration;
           state.events = [...byId.values()].slice(-250);
           state.total = result.total ?? run.total ?? state.total;
           state.nextCursor = result.cursor;
