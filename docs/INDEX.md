@@ -33,9 +33,9 @@ Start with the user guides to run a Harness or build your own. The English and C
 
 The user guides describe the supported public surface. The architecture manual describes how the current tree implements it. Source code and generated references establish exact fields and defaults; tests and experiments establish what was verified. Changes to this baseline need corresponding documentation in their implementation PR.
 
-Human-approved Issues and explicit user instructions define the intended next change and its acceptance. An Issue can link a reviewed design, but a target design is not an implemented API. The [dynamic Lead-Worker extension](designs/dynamic-lead-worker.md), tracked in [#235](https://github.com/LuNa-shi/murm/issues/235), is one such pending design; current Profiles and Service access remain fixed when a Runtime is created.
+The [Phase 0005 Core / Harness design](designs/core-harness/README.md) retains the stage's decisions and acceptance criteria. The design index links the approved [dynamic Lead-Worker extension](designs/dynamic-lead-worker.md) and the upcoming CLI/TUI design work in [#252](https://github.com/LuNa-shi/murm/issues/252). Human-approved Issues define scope and acceptance for other stages.
 
-Earlier numbered phase plans, migration inventories and superseded ADRs have been retired from the working documentation. Their exact versions remain in [Git history before this cleanup](https://github.com/LuNa-shi/murm/tree/fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02/docs). This does not change the acceptance or resource permissions of an ongoing Issue.
+Superseded plans from earlier phases, migration inventories and superseded ADRs remain in [Git history before this cleanup](https://github.com/LuNa-shi/murm/tree/fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02/docs).
 
 ## Historical evidence
 

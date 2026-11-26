@@ -6,7 +6,8 @@
 
 ## Reading and writing
 
-- Read an Issue's **body, comments, labels, and linked tickets** before starting. The `/to-spec` Issue body is the spec; when `/triage` provides an accepted **Agent Brief** comment, use that brief and any later approved updates as the execution contract.
+- The [Phase 0005 Core / Harness design on main](../designs/core-harness/README.md) is the authority for this stage. Derived Issues cite the exact design revision and track implementation and evidence. Update the design through review before synchronizing affected Issues.
+- Read an Issue's **body, comments, labels, and linked tickets** before starting. Outside Phase 0005, the `/to-spec` Issue body is the spec; when `/triage` provides an accepted **Agent Brief** comment, use that brief and any later approved updates as the execution contract.
 - `/to-spec` publishes a spec Issue, generally using the `ready-for-agent` label. Publishing an Issue or adding that label describes readiness; a human instruction or approval is still required before **executing a new research hypothesis** or spending unapproved resources.
 - `/to-tickets` publishes complete vertical-slice GitHub Issues only after its proposed split and blocking relationships have been reviewed. Prefer GitHub sub-Issues and native blocked-by relationships; when unavailable, use explicit `Parent: #N` and `Blocked by: #N` links.
 - A one-Issue implementation with multiple PRs is also valid; do not force `/to-tickets`.

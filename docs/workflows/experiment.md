@@ -2,7 +2,7 @@
 
 > Type: Workflow · Status: Active · Updated: 2026-11-26
 
-**GitHub Issues organize research and engineering intent.** A human-approved Issue decides why the next work is valuable, what the system should do and which phenomena matter for acceptance. Research permission and testing scope must be explicit in that Issue or a linked human-approved decision. A reviewed target design may be a versioned attachment, but cannot independently approve research, change acceptance or authorize resources.
+**GitHub Issues organize research and engineering work.** The [Phase 0005 design](../designs/core-harness/README.md) governs the Core / Harness product requirements and acceptance. Other stages use their human-approved Issues for those requirements. Research permission, testing scope and resources require explicit authorization in the applicable Issue or a linked human-approved decision.
 
 Distinguish implementation diagnostics from formal research or acceptance experiments.
 

@@ -6,9 +6,9 @@ These instructions apply to **Coding Agents developing murm**, not research Agen
 
 The [architecture manual](docs/architecture/INDEX.md) is the maintained description of the current implementation. The [SDK and user guides](docs/INDEX.md) describe its supported public surface and are also the website's content source. Current code and schemas establish exact behavior; tests and experiments establish what has been verified. Keep these sources aligned in the same PR.
 
-Explicit user instructions and human-approved GitHub Issues define the requested change, scope, acceptance and resources. Read the full relevant Issue, linked tickets, comments and accepted Agent Brief. A reviewed design linked from an Issue remains a target until implemented; identify its exact revision and keep its acceptance intact. The [dynamic Lead-Worker design](docs/designs/dynamic-lead-worker.md) is such a pending extension, not part of the current SDK.
+The [Phase 0005 Core / Harness design on main](docs/designs/core-harness/README.md) governs this stage's target requirements, scope, decisions and acceptance. Its derived Issues cite the exact design revision and track implementation, dependencies and evidence. Update requirements through a reviewed design PR and synchronize affected Issues. The design index links the [dynamic Lead-Worker extension](docs/designs/dynamic-lead-worker.md) and the open CLI/TUI design work.
 
-The owner requested retirement of superseded phase requirements on 2026-11-26. Their recorded decisions and original versions remain in Git history and linked Issues; they no longer form a second current architecture. This cleanup does not authorize changing ongoing Issue acceptance, research scope, budget, merge or publication permissions.
+Outside Phase 0005, human-approved GitHub Issues define work requirements, scope, acceptance and resources. Read the full relevant Issue, linked tickets, comments and accepted Agent Brief. Cite the exact revision of any reviewed design and preserve its acceptance. Superseded phase plans remain in Git history and linked Issues. Resource, research, merge and publication permissions follow the project rules below.
 
 An Issue may cover several PRs or dependent tickets. Keep approvals, progress, dependencies and handoffs on GitHub. When source, the current manual and the approved change disagree, identify the discrepancy and resolve it within the authorized scope. Start from [docs/INDEX.md](docs/INDEX.md), [GLOSSARY.md](GLOSSARY.md), then the relevant source and tests; do not load every document by default.
 
@@ -24,12 +24,12 @@ Return to the Issue for human review before changing intended behavior, acceptan
 
 Follow the **installed skills** when applicable; do not claim a skill ran if it is unavailable. These skills govern the engineering *procedure*, not product requirements or research approval.
 
-- **`/to-spec`**: turn an agreed discussion into a GitHub spec Issue using the current architecture and glossary. Link the exact revision of any reviewed design and distinguish confirmed direction from proposals awaiting review.
+- **`/to-spec`**: derive Phase 0005 Issues from the authoritative Core / Harness design. For other work, turn an agreed discussion into a GitHub spec Issue using the current architecture and glossary. Link the exact revision of any reviewed design and distinguish confirmed direction from proposals awaiting review.
 - **`/to-tickets`** (optional): propose complete vertical slices with blocking edges; obtain human agreement before publishing GitHub sub-Issues and dependencies. One Issue with multiple implementation PRs is also valid.
 - **`/implement`**: implement one Issue or ticket, use **`/tdd`** at pre-agreed public seams, run relevant checks, and finish with **`/code-review`**.
 - **`/implement-spec`**: implement an approved Issue/ticket graph on an integration branch with per-ticket branches/worktrees and fresh contexts where supported. Track dependencies on GitHub, not in local Markdown.
 - **`/diagnosing-bugs`**: reproduce, minimize, instrument, fix, and regression-test difficult failures.
-- **`/code-review`**: evaluate **Spec** against the explicit user request or approved Issue/Agent Brief and its reviewed design. Evaluate **Standards** (repository conventions and code quality) separately.
+- **`/code-review`**: evaluate **Spec** against the authoritative Core / Harness design and derived Issue for Phase 0005, or the approved Issue/Agent Brief and its reviewed design for other stages. Evaluate **Standards** (repository conventions and code quality) separately.
 - **`/pr`**: present a concise Summary, before/after Evidence, and Merge Danger (reversibility and blast radius).
 
 An explicit request to invoke a skill permits its normal in-scope operations; it does **not** authorize unapproved spending, new research goals, unrelated Issue changes, or merging PRs.
@@ -59,7 +59,7 @@ The owner reads `docs/architecture/` to understand the implementation **without 
 ## Agent skills configuration
 
 ### Issue tracker
-GitHub Issues and sub-Issues own execution briefs, comments, dependencies, progress and evidence. Reviewed target designs remain attached to their Issue; current implementation lives in Architecture. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+GitHub Issues and sub-Issues own execution briefs, comments, dependencies, progress and evidence. Phase 0005 requirements remain in its authoritative design. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
 
 ### Triage labels
 See [docs/agents/triage-labels.md](docs/agents/triage-labels.md).

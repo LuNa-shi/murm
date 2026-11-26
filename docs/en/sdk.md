@@ -36,7 +36,7 @@ The copied example imports only the public package entry points. You can run it 
 
 ## Run a complete handoff
 
-Prepare the local Linux/Docker/OpenSandbox setup described in [Deployment](./reference/deploy.md), including a compatible murm Worker image with `jq`. The host must be able to reach the Lifecycle API and Worker endpoints; the sandboxes must be able to reach the host's Bridge and Model Gateway.
+Follow the [Quickstart host setup](./quickstart.md#1-prepare-the-checkout-and-execution-host) to prepare Linux, Docker, OpenSandbox and a compatible murm Worker image with `jq`. The host must reach the Lifecycle API and Worker endpoints. The sandboxes must reach the host's Bridge and Model Gateway.
 
 Set the image and a full OpenAI Responses-compatible model endpoint:
 
