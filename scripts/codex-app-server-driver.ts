@@ -6,6 +6,7 @@ interface DriverOptions {
   systemPrompt: string;
   write(message: Record<string, unknown>): void;
   publish(record: Record<string, unknown>): void;
+  isInputFenced?(): boolean;
 }
 
 interface Input {
@@ -116,7 +117,7 @@ export function createCodexAppServerDriver(options: DriverOptions) {
       if (!entry) return;
       pending.delete(String(record.id));
       clearTimeout(entry.timer);
-      if (record.error) entry.reject(new Error(record.error.message ?? 'Codex request failed'));
+      if (record.error) entry.reject(Object.assign(new Error(record.error.message ?? 'Codex request failed'), { nativeRejected: true }));
       else entry.resolve(record.result);
       return;
     }
@@ -155,7 +156,7 @@ export function createCodexAppServerDriver(options: DriverOptions) {
       // dispatching a queued successor. Terminal events also release abort's
       // waiter synchronously so execution control cannot deadlock the queue.
       enqueue(async () => {
-        const next = interrupting ? undefined : followUps.shift();
+        const next = interrupting || options.isInputFenced?.() ? undefined : followUps.shift();
         if (next) await startTurn(next);
         else settle(params.turn);
       }, true);
@@ -181,6 +182,7 @@ export function createCodexAppServerDriver(options: DriverOptions) {
 
   async function dispatch(message: Input) {
     await ready;
+    let expectedTurnId: string | undefined;
     try {
       if (closed) throw uncertain(new Error('Codex App Server connection is closed'));
       if (message.steeringMode !== undefined && message.steeringMode !== 'all') {
@@ -201,6 +203,7 @@ export function createCodexAppServerDriver(options: DriverOptions) {
       if (!['prompt', 'steer', 'follow_up'].includes(message.type) || typeof message.message !== 'string') {
         throw Object.assign(new Error('Unsupported Codex command'), { code: 'NOT_ALLOWED' });
       }
+      if (options.isInputFenced?.()) throw Object.assign(new Error('Codex input is fenced by Worker execution control'), { code: 'NOT_ALLOWED' });
       const queueOnly = message.type !== 'prompt' || message.onlyWhileActive;
       if (queueOnly && !activeTurn) {
         throw Object.assign(new Error('Codex has no active execution'), { code: 'NO_ACTIVE_EXECUTION' });
@@ -217,15 +220,21 @@ export function createCodexAppServerDriver(options: DriverOptions) {
         respond(message, { disposition: 'queued' });
         return;
       }
-      await request('turn/steer', { threadId, expectedTurnId: activeTurn,
+      expectedTurnId = activeTurn;
+      const result = await request('turn/steer', { threadId, expectedTurnId,
         input: [{ type: 'text', text: message.message, text_elements: [] }], clientUserMessageId: message.id });
+      if (result?.turnId !== expectedTurnId) throw uncertain(new Error('Codex did not confirm the expected steer turn identity'));
       respond(message, { disposition: 'queued' });
     } catch (error) {
       if ((error as Error & { code?: string }).code === 'OPERATION_UNKNOWN') {
         options.publish({ type: 'worker_error', message: (error as Error).message });
         return;
       }
-      respond(message, undefined, error as Error);
+      const rejection = error as Error & { code?: string; nativeRejected?: boolean };
+      if (message.onlyWhileActive && expectedTurnId && completedTurns.has(expectedTurnId) && rejection.nativeRejected) {
+        rejection.code = 'NO_ACTIVE_EXECUTION';
+      }
+      respond(message, undefined, rejection);
     }
   }
 

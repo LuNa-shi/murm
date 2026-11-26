@@ -269,7 +269,7 @@ async function startAgent(input: any) {
     { cwd, env: agentEnvironment, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
   executorLaunched = child.pid !== undefined;
   if (executorKind === 'codex') codexDriver = createCodexAppServerDriver({ model: input.codex.model, cwd,
-    systemPrompt: input.system_prompt, write: message => child.stdin.write(`${JSON.stringify(message)}\n`), publish });
+    systemPrompt: input.system_prompt, isInputFenced: () => interrupting, write: message => child.stdin.write(`${JSON.stringify(message)}\n`), publish });
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', processStdout);
   // Drain the private stderr pipe so a noisy process cannot block on it.

@@ -23,4 +23,11 @@ MURM_CORE_TEST_IMAGE="$image_id" \
   node --test --test-concurrency=1 dist/test/{notes-harness-real,codex-harnesses-real,core-artifacts-real}.test.js
 ```
 
+The Worker control probe runs the same pinned CLI with Docker network access restricted to the container's loopback. It injects a lost reply, verifies original input receipt recovery and conflict handling, observes active steer in a native model request, discards a queued follow-up on interrupt and resumes the same thread with its earlier file.
+
+```sh
+MURM_CODEX_WORKER_REAL_TEST=1 MURM_TEST_AGENT_IMAGE="$image_id" \
+  node --test dist/test/core-codex-worker-real.test.js
+```
+
 See the [OpenSandbox implementation manual](../docs/architecture/16-pi-opensandbox-backend.md#codex-app-server) for the supported request dialect and Session export contract.
