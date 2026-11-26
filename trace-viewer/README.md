@@ -24,14 +24,16 @@ Open `http://127.0.0.1:8787`. Run the viewer on Linux, WSL, or macOS with Node.j
 
 ## Remote server viewing
 
-The HTTP listener always binds `127.0.0.1` loopback only. When `murm trace` starts inside an SSH session, it automatically prints the matching `ssh -N -L` forwarding command. You can also launch the remote viewer and local SSH tunnel in one command from your laptop:
+Install and start the Viewer on the server holding the Run files.
 
 ```bash
-murm trace --ssh user@server --root /path/to/remote/runs --port 8787 --open
+/path/to/consumer/node_modules/.bin/murm trace --root /path/to/runs --port 8787
 ```
 
-Or forward a running server manually:
+The Viewer listens on the server's loopback interface. On the browser machine, forward that port with SSH.
 
 ```bash
 ssh -N -L 8787:127.0.0.1:8787 user@server
 ```
+
+Open [the forwarded Viewer](http://127.0.0.1:8787). The browser machine needs only an SSH client and a browser.

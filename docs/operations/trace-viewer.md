@@ -28,19 +28,19 @@ Open `http://127.0.0.1:8787`. A configured root (passed via `--root <dir>` or as
 
 ## Server launch and local browser
 
-For a Run stored on a remote Linux server, launch the remote Viewer and local SSH tunnel in a single command from your laptop (use `--remote-bin "node /path/to/murm/trace-viewer/murm.mjs"` if `murm` is not on the remote `PATH`):
+Install and start the Viewer on the server that holds the Run files. From the server's Viewer installation directory, run the following command.
 
 ```bash
-murm trace --ssh user@server --root /path/to/remote/runs --port 8787 --open
+./node_modules/.bin/murm trace --root /path/to/remote/runs --port 8787
 ```
 
-Alternatively, run `murm trace` directly on the server — when `$SSH_CONNECTION` or `$SSH_CLIENT` is present, it automatically prints the ready-to-paste `ssh -N -L` command:
+On the machine where you will open the browser, use SSH to forward the server's loopback port. When the Viewer starts in an SSH session, it prints a forwarding command you can adapt to your SSH destination.
 
 ```bash
 ssh -N -L 8787:127.0.0.1:8787 user@server
 ```
 
-Open the local forwarded port in the browser (VS Code / Cursor Remote-SSH also auto-forward the loopback port). Anyone with access to the loopback listener can view the selected private traces. Use a dedicated Run root and keep the listener behind the SSH connection. Stop the Viewer with Ctrl+C. The Harness continues on its own lifecycle.
+Open [the forwarded Viewer](http://127.0.0.1:8787) in your browser. The browser machine needs only an SSH client and a browser. Anyone with access to the loopback listener can view the selected private traces. Use a dedicated Run root and keep the listener behind the SSH connection. Stop the Viewer with Ctrl+C. The Harness continues on its own lifecycle.
 
 ## Examples
 
