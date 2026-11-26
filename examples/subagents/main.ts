@@ -45,9 +45,10 @@ export async function createSubagentsHarness(config: Config) {
   deadline(closeTimeoutMs, 'closeTimeoutMs');
   const services = new ServiceRegistry();
   let team: ReturnType<typeof createSubagentsController>;
-  services.registerService(createCollaborationService(request => team.invoke(request), () => team.exportState()));
+  const allowContextFork = config.backend.executor !== 'codex';
+  services.registerService(createCollaborationService(request => team.invoke(request), () => team.exportState(), { allowContextFork }));
   const common = { image, writable: true, services: { collaboration: collaborationOperations },
-    spawnProfiles: ['child'], allowContextFork: config.backend.executor !== 'codex' };
+    spawnProfiles: ['child'], allowContextFork };
   const runtime = await createRuntime({
     backend: createOpenSandboxBackend(config.backend), outputDir, services, maxAgents: maxAgents,
     profiles: {
