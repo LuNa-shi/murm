@@ -4,13 +4,13 @@
 
 Runtime baseline: `86dfce6a1497fd1355d9d426a09c7c274ed6e389`; review date: 2026-11-25. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **325 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **326 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/subagents/`, `website/`, `trace-viewer/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes/.npmignore`, `examples/subagents/.npmignore`, `examples/lead-worker/.npmignore`, `examples/substrate/.npmignore`, `examples/peermesh/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`, `examples/substrate/FateProofGuard.lean`, `examples/substrate/VerifyFateProof.lean`, `.github/workflows/deploy-website.yml`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/subagents/`, `website/`, `trace-viewer/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes/.npmignore`, `examples/subagents/.npmignore`, `examples/lead-worker/.npmignore`, `examples/substrate/.npmignore`, `examples/peermesh/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`, `examples/substrate/FateProofGuard.lean`, `examples/substrate/VerifyFateProof.lean`, `.github/workflows/ci.yml`, `.github/workflows/deploy-website.yml`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -239,6 +239,12 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 |---|---|---|---|
 | [src/runtime/workspace-contract.ts](../../src/runtime/workspace-contract.ts) | Workspace path normalization, input/output contracts and required-input validation | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `bef4da6975cc1b782f4e390a6561b5af7c7923bd90bc572a0ce45c8d44a86a37` |
 | [src/runtime/workspace-manager.ts](../../src/runtime/workspace-manager.ts) | Execution-owned filesystem, manifests, revisions, local Git and snapshots | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `665306e1fb15e4262a189febae39d447ae6f29ea3252414d523724bd98e8f575` |
+
+### build and verification (1)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [.github/workflows/ci.yml](../../.github/workflows/ci.yml) | Run Core, Trace Viewer and website checks on pull requests and main | [07-run-configuration](07-run-configuration.md), [22-website](22-website.md) | `2f4043d33bad6b725dd939004bd7d33a3c6c44434255a8b66de96d7fb0da6464` |
 
 ### development benchmarks (20)
 
