@@ -29,13 +29,13 @@ export function fateVerifiedInput(workTimeoutMs: number) {
   return [
     fateInput,
     `You have a ${workWindow} work window from the time all peers are ready.`,
-    'Keep working until you submit a proof that passes Lean or the work window ends. If a proof fails, read the diagnostic, work on the missing subgoal or try a different approach, and continue.',
+    'Keep working while you can still get a proof checked and submit it within your allowances and work window. If a proof fails, read the diagnostic, work on the missing subgoal or try a different approach, and continue.',
     'Before ending, run swarm fate check_lean on your exact proof and wait for status passed. Then submit the same proof with swarm fate submit and finish=true.',
     'Use finish=false to save an unfinished candidate and keep working. Reserve enough Service operations for your final check and submission.',
   ].join('\n');
 }
 
-export const fateVerificationContinuation = 'Continue in this Session. No Lean-verified proof has been submitted. Work on an unresolved subgoal or try another approach. Get status passed from swarm fate check_lean for the exact proof before submitting it with finish=true.';
+export const fateVerificationContinuation = 'Continue in this Session. If swarm fate check_lean already returned passed for your exact proof, submit those same bytes with finish=true. Otherwise, work on an unresolved subgoal or try another approach. Reserve an operation to submit after your proof passes.';
 
 const modes: SharingMode[] = ['shared', 'private', 'none'];
 const submissionReceiptGraceMs = 1_000;
@@ -65,13 +65,15 @@ interface RunOptions {
   checkpointAfterMs?: number;
 }
 
+type CompletionBudget = { remainingOperations: number; remainingChecks: number; hasPassingProof: boolean };
 type Peer = {
   agentId: string; finish: AbortController; active: boolean; semanticOperations: number;
-  endReason?: 'submitted' | 'settled' | 'deadline' | 'cancelled' | 'failed';
+  endReason?: 'submitted' | 'settled' | 'deadline' | 'cancelled' | 'failed' | 'operation_limit' | 'check_limit';
   inputFailure?: { code: string; inputId?: string; receipt?: unknown }; startedAt?: string; endedAt?: string;
   inputId?: string; stop?: StopReceipt; stopFailure?: string;
   finishRequested?: boolean; finishTimer?: ReturnType<typeof setTimeout>;
   continuations?: number;
+  completionBudget?: CompletionBudget;
 };
 
 type FrozenCandidates = {
@@ -371,20 +373,56 @@ export async function runFateSubstrate({
           peer.startedAt = new Date().toISOString();
           if (verifiedCompletion) peer.continuations = 0;
           const signal = AbortSignal.any([workSignal, peer.finish.signal]);
+          const completionState = () => ({
+            remainingOperations: maxFateOperationsPerPeer - peer.semanticOperations,
+            ...task!.completionStatus(peer.agentId),
+          });
+          function nextTurn() {
+            if (peer.finishRequested) return 'submitted';
+            if (externalSignal?.aborted) return 'cancelled';
+            if (!remainingMs()) return 'deadline';
+            const { remainingOperations, remainingChecks, hasPassingProof, checkPending } = completionState();
+            if (!remainingOperations) return 'operation_limit';
+            if (hasPassingProof || (remainingOperations >= 2 && remainingChecks > 0)) return 'continue';
+            if (checkPending) return 'wait';
+            return remainingOperations < 2 ? 'operation_limit' : 'check_limit';
+          }
+          const recheck = new Error('Continuation eligibility changed before send');
+          let attempt = 0;
+          function recordAccepted(inputId: string) {
+            peer.inputId = inputId;
+            if (attempt && peer.continuations !== undefined) peer.continuations++;
+          }
           try {
-            for (let continuation = 0; ; continuation++) {
-              const receipt = await runInput(core, peer.agentId, continuation ? fateVerificationContinuation : initialInput, {
-                requestId: continuation ? `${peer.agentId}:continue:${continuation}` : `${peer.agentId}:problem`,
+            for (;; attempt++) {
+              if (attempt) {
+                const next = nextTurn();
+                if (next === 'wait') {
+                  await limited(task!.settleChecks(peer.agentId), signal);
+                  continue;
+                }
+                if (next !== 'continue') {
+                  peer.endReason = next;
+                  break;
+                }
+              }
+              const receipt = await runInput(core, peer.agentId, attempt ? fateVerificationContinuation : initialInput, {
+                requestId: attempt ? `${peer.agentId}:continue:${attempt}` : `${peer.agentId}:problem`,
                 timeoutMs: Math.max(1, remainingMs()), signal,
+                beforeSend: attempt ? () => { if (nextTurn() !== 'continue') throw recheck; } : undefined,
+              }).catch(error => {
+                if (error === recheck) return null;
+                throw error;
               });
-              peer.inputId = receipt.inputId;
-              if (!verifiedCompletion || peer.finishRequested || !remainingMs()) break;
-              peer.continuations = continuation + 1;
+              if (receipt) recordAccepted(receipt.inputId);
+              if (!verifiedCompletion) {
+                peer.endReason = peer.finishRequested ? 'submitted' : 'settled';
+                break;
+              }
             }
-            peer.endReason = peer.finishRequested ? 'submitted' : !verifiedCompletion ? 'settled' :
-              externalSignal?.aborted ? 'cancelled' : 'deadline';
           } catch (error) {
-            const detail = error as { code?: string; inputId?: string; receipt?: unknown };
+            const detail = error as { code?: string; inputId?: string; receipt?: { status: string } };
+            if (detail.inputId && detail.receipt?.status === 'accepted') recordAccepted(detail.inputId);
             peer.endReason = peer.finishRequested ? 'submitted' : externalSignal?.aborted ? 'cancelled' :
               !remainingMs() || detail.code === 'input_timeout' ? 'deadline' : 'failed';
             if (peer.endReason !== 'submitted') peer.inputFailure = {
@@ -393,6 +431,10 @@ export async function runFateSubstrate({
             };
           } finally {
             peer.active = false;
+            if (verifiedCompletion) {
+              const { remainingOperations, remainingChecks, hasPassingProof } = completionState();
+              peer.completionBudget = { remainingOperations, remainingChecks, hasPassingProof };
+            }
             clearTimeout(peer.finishTimer);
             peer.endedAt = new Date().toISOString();
             try { peer.stop = await core.stop(peer.agentId, { timeoutMs: closeTimeoutMs }); }

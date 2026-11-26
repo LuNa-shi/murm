@@ -59,7 +59,7 @@
     },
     {
       "path": "src/harnesses/shared/run-input.ts",
-      "sha256": "252f2fd6ec60f0300898081708299760df748803e415600329b6e56f81e9cee3"
+      "sha256": "e6fbda5260ae12d8e2e402923de45a4987748ba5512f0b2c84b3d3ec4b8a7643"
     },
     {
       "path": "src/harnesses/substrate/index.ts",
@@ -79,11 +79,11 @@
     },
     {
       "path": "examples/substrate/fate-run.ts",
-      "sha256": "b9ecbfc3bd5a8fcf9099039952fd0d8f12d7767fb2c1cdd0796da1eec68d538e"
+      "sha256": "83daa6f91fdfdbd01b3ebdf9b4fb42b4b1babdb183f1f5a04d33b121d06e8f6d"
     },
     {
       "path": "examples/substrate/fate-service.ts",
-      "sha256": "8e4ec0d61c0e2d4ebe5c7bacc6caef1ce3de571476e1fbb53ec3f7f4bcadae45"
+      "sha256": "3ddda9a04622cf612c3528677f9eae8da0f1d7e1d94b58a08194c5095265154f"
     },
     {
       "path": "src/harnesses/substrate/paper-substrate.ts",
@@ -611,7 +611,7 @@
     },
     {
       "path": "docs/architecture/prompts/09-substrate-harness.md",
-      "sha256": "dab1c4e58d20ccd5d77451907161c12141553d2b23b4dc0331a97d4a7b9629c1"
+      "sha256": "1418c07a2dea827d8280d1dcf208e18cd6bc56d64bf7a8be0dc0aa65bbe16620"
     },
     {
       "path": "docs/architecture/prompts/08-peermesh-harness.md",
