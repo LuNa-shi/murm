@@ -7,7 +7,7 @@ import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-pro
 import { ServicesBridge } from '../src/agent/services-bridge.js';
 import { ServiceRegistry } from '../src/sdk/service-registry.js';
 import { createHttpJsonAdapter } from '../src/sdk/service-adapter.js';
-import { createMathlibSearchManifest, createMathlibSearchService } from '../src/services/mathlib-search-service.js';
+import { createMathlibSearchManifest, createMathlibSearchService } from '../src/services/mathlib-search/service.js';
 import { createServiceManifest } from '../src/sdk/service-manifest.js';
 import { createServiceHost } from '../src/sdk/service-host.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';

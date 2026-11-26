@@ -130,7 +130,7 @@ export async function prepareSubagentsProject(options: SubagentsProjectOptions) 
     }
     await create('run-report.js', await readFile(join(packageRoot, 'dist/src/harnesses/shared/run-report.js'), 'utf8'));
     for (const filename of ['environment.js', 'config.js']) {
-      await create(filename, await readFile(join(packageRoot, 'services/local-setup', filename), 'utf8'));
+      await create(filename, await readFile(join(packageRoot, 'scripts/local-setup/templates', filename), 'utf8'));
     }
     await create('.env', environment(options), 0o600);
     await create('.gitignore', 'node_modules/\n.env\n.murm/\n.murm-setup.lock/\nsubagents-runs/\n');

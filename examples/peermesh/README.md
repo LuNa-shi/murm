@@ -61,7 +61,7 @@ For the four-peer Pandoc exercise, use the official ProgramBench task `jgm__pand
 Build the matching Worker from the source revision to be evaluated. The following image copies the reference program and the public instructions from the official v6 cleanroom.
 
 ```sh
-docker build -f services/opensandbox-agent/Dockerfile \
+docker build -f deploy/worker/Dockerfile \
   --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
   -t murm-peermesh-worker:local .
 docker build -t murm-peermesh-pandoc:local - <<'DOCKERFILE'

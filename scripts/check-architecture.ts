@@ -52,7 +52,8 @@ function anchors(text: string) {
 const files = [
   ...['AGENTS.md', 'README.md', 'GLOSSARY.md'].map((path: string) => resolve(root, path)),
   ...await markdownFiles(resolve(root, 'docs')),
-  ...await markdownFiles(resolve(root, 'services')),
+  ...await markdownFiles(resolve(root, 'deploy')),
+  ...await markdownFiles(resolve(root, 'src/services')),
   ...await markdownFiles(resolve(root, '.codex/skills')).catch((error: any) => {
     if (error.code === 'ENOENT') return [];
     throw error;
