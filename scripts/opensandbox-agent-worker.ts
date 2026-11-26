@@ -89,7 +89,7 @@ async function body(request: IncomingMessage, maxBytes = 2 * 1024 * 1024) {
 function publish(record: any) {
   if (record.type === 'agent_start') nativeExecuting = true;
   if (['agent_settled', 'worker_exit'].includes(record.type)) nativeExecuting = false;
-  const value = { ...record, worker_sequence: ++sequence };
+  const value = { ...record, worker_sequence: ++sequence, worker_at: new Date().toISOString() };
   records.push(value);
   if (records.length > MAX_RECORDS) records.splice(0, records.length - MAX_RECORDS);
   rpcSubmissions.observe(value);

@@ -28,6 +28,25 @@ test('Bridge traces full Service requests and results with trusted identity and 
   assert.equal((await stat(join(outputDir, 'service-calls.jsonl'))).mode & 0o777, 0o600);
 });
 
+test('Bridge gives repeated logical operations distinct paired call attempt identities', async t => {
+  const traces = [];
+  const evidence = [];
+  const { call } = await setup(t, { invoke() { return null; } }, { bridge: {
+    traceService: row => traces.push(row), recordService: row => evidence.push(row),
+  } });
+  await call('get', { key: 'one' });
+  await call('get', { key: 'one' });
+  const started = traces.filter(row => row.phase === 'started');
+  const settled = traces.filter(row => row.phase === 'settled');
+  assert.equal(started.length, 2);
+  assert.equal(started[0].operation_id, started[1].operation_id);
+  assert.equal(typeof started[0].attemptId, 'string');
+  assert.notEqual(started[0].attemptId, started[1].attemptId);
+  assert.deepEqual(settled.map(row => row.attemptId), started.map(row => row.attemptId));
+  assert.ok(evidence.length >= 2);
+  assert.ok(evidence.every(row => started.some(attempt => attempt.attemptId === row.attemptId)));
+});
+
 test('optional Service state hooks survive public adapter registration and expose bounded export failures', async () => {
   const { createInProcessAdapter, ServiceRegistry, snapshotServiceRegistry } = await import('../src/core/services.js');
   const { exportServiceStates } = await import('../src/core/service-trace.js');
