@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>murm · Trace Viewer</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="murm Trace Viewer"
+        ><span class="brand-flock" aria-hidden="true">⌁</span>murm<span
+          class="brand-divider"
+        ></span
+        ><span class="product-name">Trace Viewer</span></a
+      >
+      <div class="header-actions">
+        <span class="read-only">Read-only</span
+        ><button
+          id="theme"
+          class="quiet-button"
+          aria-label="Switch color theme"
+        >
+          ◐
+        </button>
+      </div>
+    </header>
+    <div class="workspace">
+      <aside class="run-sidebar" aria-label="Runs">
+        <div class="sidebar-heading">
+          <h2>Runs</h2>
+          <button
+            id="refresh"
+            class="quiet-button"
+            aria-label="Refresh Run list"
+          >
+            ↻
+          </button>
+        </div>
+        <label class="search-box"
+          ><span aria-hidden="true">⌕</span
+          ><input
+            id="run-search"
+            type="search"
+            placeholder="Find a Run…"
+            aria-label="Find a Run"
+        /></label>
+        <div id="run-count" class="sidebar-caption"></div>
+        <nav id="runs" aria-label="Choose a Run">
+          <p class="muted">Loading Runs…</p>
+        </nav>
+        <div class="sidebar-footer">
+          <span class="status-dot"></span>Local evidence<span class="muted"
+            >HTTP / SSE</span
+          >
+        </div>
+      </aside>
+      <main id="main" class="main-content">
+        <div id="welcome" class="welcome">
+          <span class="eyebrow">RUN EXPLORER</span>
+          <h1>Follow the work.<br />Inspect the evidence.</h1>
+          <p>
+            Open a Run to explore Agent activity, model requests and the
+            information passed between them.
+          </p>
+          <span class="welcome-arrow" aria-hidden="true">←</span>
+          <p id="empty-help" class="muted">Choose a Run from the sidebar.</p>
+        </div>
+        <section id="run-view" hidden>
+          <div class="run-heading">
+            <div>
+              <div class="breadcrumb">
+                Runs <span>/</span> <span id="run-harness">Run</span>
+              </div>
+              <h1 id="run-title"></h1>
+              <div id="run-subtitle" class="run-subtitle"></div>
+            </div>
+            <div class="run-actions">
+              <span id="live-state" class="live-state" role="status"></span
+              ><button id="follow" class="button" aria-pressed="true">
+                Follow live
+              </button>
+            </div>
+          </div>
+          <div id="status-strip" class="status-strip"></div>
+          <div id="gaps" class="gaps"></div>
+          <div class="view-toolbar">
+            <div class="tabs" role="tablist" aria-label="Run views">
+              <button role="tab" aria-selected="true" data-view="timeline">
+                Timeline</button
+              ><button role="tab" aria-selected="false" data-view="events">
+                Events</button
+              ><button
+                role="tab"
+                aria-selected="false"
+                data-view="collaboration"
+              >
+                Collaboration <span id="relation-count"></span></button
+              ><button role="tab" aria-selected="false" data-view="artifacts">
+                Files & results
+              </button>
+            </div>
+          </div>
+          <div class="filters">
+            <label class="filter-label"
+              >Agent<select id="agent-filter">
+                <option value="">All Agents</option>
+              </select></label
+            ><label class="filter-label"
+              >Event<select id="type-filter">
+                <option value="">All events</option>
+                <option value="model">Model</option>
+                <option value="service">Service</option>
+                <option value="tool">Tool</option>
+                <option value="lifecycle">Lifecycle</option>
+                <option value="input">Input</option>
+              </select></label
+            ><label class="event-search"
+              ><input
+                id="event-search"
+                type="search"
+                placeholder="Search this page…"
+                aria-label="Search this event page" /></label
+            ><span id="page-info" class="page-info"></span>
+          </div>
+          <section
+            id="timeline-panel"
+            class="view-panel"
+            aria-label="Agent timeline"
+          >
+            <div class="panel-heading">
+              <h2>Agent activity</h2>
+              <div class="legend">
+                <span class="legend-execution">Execution</span
+                ><span class="legend-model">Model</span
+                ><span class="legend-service">Service</span
+                ><span class="legend-tool">Tool</span>
+              </div>
+            </div>
+            <div class="timeline-scroll">
+              <div id="timeline" class="timeline"></div>
+            </div>
+            <p class="timeline-note">
+              Execution spans use recorded boundaries. Missing boundaries remain
+              visible as markers.
+            </p>
+            <div class="panel-heading event-heading">
+              <h2>Event ledger</h2>
+              <span class="muted">Select a record to inspect its source</span>
+            </div>
+            <div id="timeline-events" class="event-list"></div>
+          </section>
+          <section
+            id="events-panel"
+            class="view-panel"
+            aria-label="Event ledger"
+            hidden
+          >
+            <div id="events" class="event-list"></div>
+          </section>
+          <section
+            id="collaboration-panel"
+            class="view-panel"
+            aria-label="Collaboration evidence"
+            hidden
+          >
+            <div class="panel-heading">
+              <h2>Information handoffs</h2>
+              <span class="muted">Linked by recorded identities</span>
+            </div>
+            <div id="relations"></div>
+          </section>
+          <section
+            id="artifacts-panel"
+            class="view-panel"
+            aria-label="Files and results"
+            hidden
+          >
+            <div id="outcome"></div>
+            <div class="panel-heading"><h2>Recorded files</h2></div>
+            <div id="files"></div>
+          </section>
+          <footer class="pagination">
+            <button id="previous" class="button">← Previous page</button
+            ><span id="pagination-info" class="muted"></span
+            ><button id="next" class="button">Next page →</button>
+          </footer>
+        </section>
+        <div id="error" class="error-banner" role="alert" hidden></div>
+      </main>
+      <aside
+        id="inspector"
+        class="inspector"
+        aria-label="Evidence inspector"
+        hidden
+      >
+        <div class="inspector-header">
+          <span class="eyebrow">EVIDENCE INSPECTOR</span
+          ><button
+            id="close-inspector"
+            class="quiet-button"
+            aria-label="Close inspector"
+          >
+            ×
+          </button>
+        </div>
+        <div id="inspector-content"></div>
+      </aside>
+    </div>
+  </body>
+</html>
