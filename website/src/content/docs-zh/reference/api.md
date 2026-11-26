@@ -24,6 +24,12 @@ order: 12
 
 如果设施关闭回调在期限到期时已经发出，`lateFacilityCleanup.current()` 可查询其晚到回执，`lateFacilityReportPath` 指向回调结束后保存的独立记录。每个 Runtime 对象只接受一次收尾调用，重复调用报 `CONFLICT`。如需核对待处理工作，应调用同一 Runtime 的 `close` 并核对原来的设施句柄。
 
+## 实时观察
+
+`runtime.observe()` 一次返回当前 `snapshot` 和从同一游标开始的异步迭代器 `events`。用 `runtime.observe({ after: lastCursor })` 续读，并把增量应用到已有状态。遇到 `gap` 时重新调用 `observe()` 取得快照。Runtime 保留 256 条更新，最多允许 64 个活动订阅，每个订阅可有一个等待中的读取。调用 `cancel()`、触发 AbortSignal 或退出 `for await` 可释放订阅。
+
+输入回执、实际执行边界、Service attempt 和清理各有对应字段。Runtime 游标给实时增量排序，Agent 序号给旧版 Agent 事件排序，`recordSeq` 在可用时引用 Run 持久证据。原生执行事件缺少输入身份时，关联状态为 `unknown`。需要核对输入时使用原请求 ID。快照与持久化事件提供写入进度和丢失记录。
+
 ## `createRuntime(options)`
 
 ```ts

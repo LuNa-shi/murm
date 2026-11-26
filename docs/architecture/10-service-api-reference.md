@@ -40,8 +40,8 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `28570d9b5cfadc3ceaa8136860bb8df2238ce951a144b996e5b2d9d5f2924111` |
 | [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `cecad3a3576f675c4809842be8041de4eb26a89e7f8ed1b8ac733eec136d843c` |
-| [src/core/types.ts](../../src/core/types.ts) | `a789a8389c2c034346a745b178e79f55f25623e7cc4f51cd9b9348fe2e8e54f8` |
+| [src/core/index.ts](../../src/core/index.ts) | `3ecc1f614c9dc48087f5154cf097f2dce7e4ba3974b82a385b113797453eee3b` |
+| [src/core/types.ts](../../src/core/types.ts) | `89abb462c062ea457140c797d65f1f3ee8ec410080821fe567845ff9ddf4cddd` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `f8cea3ce6983ecd15f81ffe7a5c483f476b728a1421b40961e49073d815d7664` |
 | [src/core/services.ts](../../src/core/services.ts) | `8c1d64489bd31ab3cec3b3b295a36ebaa2e8a9982f0a4aa059a05c405f41b6d1` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
@@ -3393,6 +3393,104 @@ export interface RunFinalization<Result extends JsonValue = JsonValue> {
         readonly result: Promise<RunLateFacilityCleanup>;
     };
 }
+export interface RuntimeObservationCursor {
+    readonly runtimeId: string;
+    readonly sequence: number;
+}
+export interface RuntimeEvidenceProgress {
+    readonly recorded: number;
+    readonly lost: number;
+    readonly pending: number;
+}
+export interface AgentObservation {
+    readonly id: string;
+    readonly profile: string;
+    readonly parentId?: string;
+    readonly status: AgentStatus;
+    readonly agentSeq: number;
+    readonly execution: 'active' | 'inactive' | 'unknown';
+    readonly cleanup?: {
+        readonly status: StopReceipt['cleanup'];
+        readonly execution: StopReceipt['execution'];
+        readonly action?: PendingCleanup['action'];
+        readonly resourceKey?: string;
+        readonly sandboxId?: string;
+    };
+}
+export interface RuntimeObservationSnapshot {
+    readonly schemaVersion: 1;
+    readonly cursor: RuntimeObservationCursor;
+    readonly runtimeState: 'open' | 'closing' | 'closed';
+    readonly cleanup?: CloseReceipt['cleanup'];
+    readonly agents: readonly AgentObservation[];
+    readonly evidence: RuntimeEvidenceProgress;
+}
+export type RuntimeObservationChange = {
+    type: 'runtime';
+    runtimeState: RuntimeObservationSnapshot['runtimeState'];
+    cleanup?: CloseReceipt['cleanup'];
+} | {
+    type: 'agent';
+    agent: AgentObservation;
+    cause: 'spawn' | 'stop' | 'interrupt' | AgentEvent['type'];
+} | {
+    type: 'input';
+    agent: AgentObservation;
+    inputId: string;
+    requestId: string;
+    state: ConditionalInputReceipt['status'] | 'registered' | 'dispatched' | 'receipt-query' | 'rejected';
+    disposition?: Extract<InputReceipt, {
+        status: 'accepted';
+    }>['disposition'];
+    reason?: string;
+} | {
+    type: 'execution';
+    agent: AgentObservation;
+    phase: 'started' | 'settled';
+    association: 'unknown';
+    workerSequence?: number;
+    outcome?: Extract<AgentEvent, {
+        type: 'settled';
+    }>['outcome'];
+} | {
+    type: 'service';
+    agentId: string;
+    serviceId: string;
+    operation: string;
+    operationId: string;
+    attemptId: string;
+    state: string;
+    outcome: string;
+    errorCode?: string;
+} | {
+    type: 'trace-gap';
+    agent: AgentObservation;
+    expectedWorkerSequence?: number;
+    observedWorkerSequence?: number;
+} | {
+    type: 'persistence';
+    evidence: RuntimeEvidenceProgress;
+};
+export type RuntimeObservationUpdate = (RuntimeObservationChange & {
+    readonly schemaVersion: 1;
+    readonly cursor: RuntimeObservationCursor;
+    readonly recordSeq?: number;
+}) | {
+    readonly type: 'gap';
+    readonly schemaVersion: 1;
+    readonly cursor: RuntimeObservationCursor;
+    readonly reason: 'cursor-expired' | 'slow-consumer';
+    readonly after: RuntimeObservationCursor;
+};
+export interface RuntimeObservationOptions {
+    after?: RuntimeObservationCursor;
+    signal?: AbortSignal;
+}
+export interface RuntimeObservation {
+    readonly snapshot: RuntimeObservationSnapshot | null;
+    readonly events: AsyncIterableIterator<RuntimeObservationUpdate>;
+    cancel(): void;
+}
 export interface Runtime {
     readonly id: string;
     spawn(options: SpawnOptions): Promise<AgentInfo>;
@@ -3411,6 +3509,7 @@ export interface Runtime {
     }): Promise<InputReceipt>;
     send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
     onEvent(handler: (event: AgentEvent) => void): () => void;
+    observe(options?: RuntimeObservationOptions): RuntimeObservation;
     stop(agentId: string, options?: {
         timeoutMs?: number;
     }): Promise<StopReceipt>;

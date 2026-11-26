@@ -1240,6 +1240,14 @@
       "role": "Runtime assembly, Agent admission, input and bounded lifecycle"
     },
     {
+      "path": "src/core/runtime-observation.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Bounded Runtime observation journal, cursor replay and subscription cancellation"
+    },
+    {
       "path": "src/core/run-finalization.ts",
       "category": "programmable Core",
       "chapters": [

@@ -71,9 +71,9 @@ test('required artifacts block deletion and retain the Slot until verified host 
     await assert.rejects(spawn('blocked-capacity'), { code: 'CONFLICT' });
     await rm(agentDir);
 
-    const earlyStop = runtime.stop(agent.id, { timeoutMs: 25 });
+    const stopping = runtime.stop(agent.id);
     await collecting;
-    const early = await earlyStop;
+    const early = await runtime.stop(agent.id, { timeoutMs: 25 });
     assert.equal(early.execution, 'stopped');
     assert.equal(early.pending.action, 'collect-artifacts');
     assert.equal(JSON.parse(await readFile(early.sessionArchive, 'utf8')).agentId, agent.id);
@@ -85,7 +85,7 @@ test('required artifacts block deletion and retain the Slot until verified host 
     release();
     await provider.deletionStarted;
     provider.releaseDeletion();
-    const failedDeletion = await runtime.stop(agent.id);
+    const failedDeletion = await stopping;
     assert.equal(failedDeletion.cleanup, 'pending');
     assert.equal(failedDeletion.pending.action, 'delete-sandbox');
     const [manifestPath, treePath] = failedDeletion.artifacts;

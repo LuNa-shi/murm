@@ -1,4 +1,8 @@
-import type { AgentEvent, AgentInfo, AgentListFilter, CollectionSpec, ConditionalInputReceipt, CreateRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, Profile, Runtime, SendOptions } from './types.js';
+import type {
+  AgentEvent, AgentInfo, AgentListFilter, AgentObservation, CollectionSpec, ConditionalInputReceipt,
+  CreateRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, PendingCleanup, Profile, Runtime,
+  RuntimeObservationChange, RuntimeObservationOptions, SendOptions,
+} from './types.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -10,6 +14,8 @@ import { createInputLedger } from './input-ledger.js';
 import { createFileControls } from './file-controls.js';
 import { saveAgentArtifacts } from './artifact-collection.js';
 import { createRedactor, createRunRecords, runtimeConfiguration } from './run-records.js';
+import type { RunEvidenceRecord } from './run-records.js';
+import { createRuntimeObservation } from './runtime-observation.js';
 import { claimOpenSandboxBackend, openOpenSandboxBackend } from './opensandbox-backend.js';
 import { createAgentService } from './agent-service.js';
 import { createServiceTrace, exportServiceStates } from './service-trace.js';
@@ -43,6 +49,8 @@ interface RuntimeAgent {
   activityClaims: Set<unknown>;
   nativeExecuting: boolean;
   executionStopped: boolean;
+  cleanupAction?: PendingCleanup['action'];
+  nativeSettlement?: { recordSeq: number; workerSequence?: number };
   fatal?: boolean;
   bindings?: Readonly<Record<string, string>>;
   collect?: CollectionSpec;
@@ -119,7 +127,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const assemblyDeadline = performance.now() + defaultTimeoutMs;
   const agents = new Map<any, any>();
   const reportPath = join(outputDir, 'runtime.json');
-  const records = createRunRecords(outputDir, runtimeId);
+  const liveObservation = createRuntimeObservation(runtimeId);
+  const records = createRunRecords(outputDir, runtimeId, {
+    record: observeRunRecord,
+    loss: evidence => liveObservation.publish({ type: 'persistence', evidence }),
+  });
   const modelTrace = createModelTrace(outputDir, redactor);
   const serviceTrace = createServiceTrace(outputDir, redactor.value);
   const effectiveConfig = runtimeConfiguration({ config, profiles, registrations, maxAgents, modelAccessPolicy, defaultTimeoutMs }, redactor.text);
@@ -276,6 +288,83 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     return !agent.fatal && liveStates.has(agent.info.status);
   }
 
+  function observationAgent(agent: RuntimeAgent): AgentObservation {
+    const { id, profile, parentId, status, cursor: agentSeq } = agent.info;
+    const execution = agent.executionStopped || status === 'exited' ? 'inactive'
+      : agent.fatal ? 'unknown'
+      : agent.nativeExecuting ? 'active'
+      : agent.activityClaims.size ? 'unknown' : 'inactive';
+    const pending = agent.info.lastStop?.pending;
+    const evidenceId = (value: string | undefined) => value && value.length <= 256 ? redactor.text(value) : undefined;
+    return { id, profile, parentId, status, agentSeq, execution,
+      ...(status === 'closing' || status === 'closed' ? { cleanup: {
+        status: status === 'closed' ? 'complete' : 'pending',
+        execution: agent.executionStopped ? 'stopped' : 'unknown',
+        ...(status === 'closing' ? { action: agent.cleanupAction, resourceKey: evidenceId(pending?.resourceKey),
+          sandboxId: evidenceId(pending?.sandboxId) } : {}),
+      } } : {}) };
+  }
+
+  function observeRunRecord(row: RunEvidenceRecord) {
+    if (row.type === 'runtime' && row.state === 'closing') {
+      liveObservation.publish({ type: 'runtime', runtimeState: 'closing', cleanup: 'pending' }, row.seq);
+      return;
+    }
+    if (row.type === 'service' && typeof row.attemptId === 'string') {
+      const entry = row as RunEvidenceRecord & Extract<RuntimeObservationChange, { type: 'service' }> & { error?: { code: string } };
+      liveObservation.publish({ type: 'service', agentId: entry.agentId, serviceId: entry.serviceId,
+        operation: entry.operation, operationId: entry.operationId, attemptId: entry.attemptId,
+        state: entry.state, outcome: entry.outcome, ...(entry.error ? { errorCode: entry.error.code } : {}) }, row.seq);
+      return;
+    }
+    if (!['spawn', 'stop', 'interrupt', 'event', 'input', 'native', 'trace-gap'].includes(row.type)) return;
+    const agent: RuntimeAgent | undefined = agents.get(row.agentId);
+    if (!agent) return;
+    if (row.type === 'native') {
+      const workerSequence = typeof row.workerSequence === 'number' ? row.workerSequence : undefined;
+      if (row.eventType === 'agent_start') liveObservation.publish({
+        type: 'execution', phase: 'started', association: 'unknown', agent: observationAgent(agent), workerSequence,
+      }, row.seq);
+      if (row.eventType === 'agent_settled') agent.nativeSettlement = { recordSeq: row.seq, workerSequence };
+      return;
+    }
+    const subject = observationAgent(agent);
+    if (row.type === 'input') {
+      const input = row as RunEvidenceRecord & Extract<RuntimeObservationChange, { type: 'input' }>;
+      liveObservation.publish({ type: 'input', agent: subject, inputId: input.inputId, requestId: input.requestId,
+        state: input.state, disposition: input.disposition, reason: input.reason }, row.seq);
+    } else if (row.type === 'event') {
+      const event = row.event as AgentEvent;
+      if (event.type === 'settled') {
+        const native = agent.nativeSettlement;
+        agent.nativeSettlement = undefined;
+        liveObservation.publish({ type: 'execution', phase: 'settled', association: 'unknown', agent: subject,
+          outcome: event.outcome, ...(native ? { workerSequence: native.workerSequence } : {}) }, native?.recordSeq ?? row.seq);
+      } else {
+        liveObservation.publish({ type: 'agent', agent: subject, cause: event.type }, row.seq);
+      }
+    } else if (row.type === 'trace-gap') {
+      liveObservation.publish({ type: 'trace-gap', agent: { ...subject, execution: 'unknown' },
+        ...(typeof row.expectedWorkerSequence === 'number' ? { expectedWorkerSequence: row.expectedWorkerSequence } : {}),
+        ...(typeof row.observedWorkerSequence === 'number' ? { observedWorkerSequence: row.observedWorkerSequence } : {}),
+      }, row.seq);
+    } else {
+      liveObservation.publish({ type: 'agent', agent: subject, cause: row.type as 'spawn' | 'stop' | 'interrupt' }, row.seq);
+    }
+  }
+
+  function observeRuntime(options: RuntimeObservationOptions = {}) {
+    return liveObservation.subscribe(options, () => {
+      const { recorded, lost, pending } = records.snapshot();
+      return {
+        runtimeState: finalClose ? 'closed' : closing ? 'closing' : 'open',
+        ...(closing ? { cleanup: finalClose ? 'complete' as const : 'pending' as const } : {}),
+        agents: [...agents.values()].map(observationAgent),
+        evidence: { recorded, lost, pending },
+      };
+    });
+  }
+
   function refreshActivity(agent: any) {
     if (liveStates.has(agent.info.status)) {
       agent.info.status = agent.nativeExecuting || agent.activityClaims.size ? 'running' : 'idle';
@@ -310,9 +399,13 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         revoke(info.id, { abortServices: true });
       }
     }
-    if (event.type === 'exit' && info.status !== 'closing' && info.status !== 'closed') {
-      info.status = 'exited';
-      revoke(info.id);
+    if (event.type === 'exit') {
+      agent.nativeExecuting = false;
+      agent.activityClaims.clear();
+      if (info.status !== 'closing' && info.status !== 'closed') {
+        info.status = 'exited';
+        revoke(info.id);
+      }
     }
     records.record('event', { agentId: info.id, event });
     for (const handler of [...handlers]) {
@@ -352,6 +445,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     }) : agent.info.lastStop ?? stopReceipt(agent);
   }
 
+  function stopPhase(agent: RuntimeAgent, action: PendingCleanup['action']) {
+    agent.cleanupAction = action;
+    records.record('stop', { agentId: agent.info.id, state: 'phase', action });
+  }
+
   function beginStop(agent: any) {
     if (agent.info.status === 'closed') return Promise.resolve(agent.info.lastStop);
     if (agent.stopWork) return agent.stopWork;
@@ -365,13 +463,13 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       await agent.start?.catch(() => {});
       try {
         if (!agent.executionStopped) {
-          agent.cleanupAction = 'stop-execution';
+          stopPhase(agent, 'stop-execution');
           const { collectable } = await backend.stopExecution(info.id);
           agent.executionStopped = true;
           agent.collectable = collectable;
         }
         if (agent.collectable && !agent.sessionArchive && backend.collectSession) {
-          agent.cleanupAction = 'archive-session';
+          stopPhase(agent, 'archive-session');
           const collect = { paths: ['.'], includeGit: false, maxBytes: config.isolation.disk.bytes, required: true };
           [agent.sessionArchive] = await saveAgentArtifacts({ outputDir, agentId: info.id, collect,
             bounds: config.isolation.disk, records: () => backend.collectSession(info.id),
@@ -379,7 +477,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           records.record('session-archive', { agentId: info.id, manifestPath: agent.sessionArchive });
         }
         if (agent.collect && agent.collectable && !agent.artifacts && !agent.optionalCollectionError) {
-          agent.cleanupAction = 'collect-artifacts';
+          stopPhase(agent, 'collect-artifacts');
           try {
             agent.artifacts = await saveAgentArtifacts({ outputDir, agentId: info.id, collect: agent.collect,
               bounds: config.isolation.disk, records: () => backend.collect(info.id, agent.collect) });
@@ -388,7 +486,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
             agent.optionalCollectionError = errorInfo(error);
           }
         }
-        agent.cleanupAction = 'delete-sandbox';
+        stopPhase(agent, 'delete-sandbox');
         await backend.destroy(info.id);
         agent.cleanupError = undefined;
         info.status = 'closed';
@@ -691,13 +789,16 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           receipt = closeReceipt(agentReceipts, errors, failure);
         } finally { savingClose = false; }
         if (receipt.cleanup === 'complete') finalClose = receipt;
+        liveObservation.publish({ type: 'runtime', runtimeState: finalClose ? 'closed' : 'closing', cleanup: finalClose ? 'complete' : 'pending' });
         return receipt;
       })().finally(() => { closeWork = undefined; });
     }
     const result = await observe(closeWork, timeoutMs);
-    return result === timedOut ? closeReceipt([...agents.values()].map(currentStop), [{
+    if (result !== timedOut) return structuredClone(result);
+    liveObservation.publish({ type: 'runtime', runtimeState: 'closing', cleanup: 'pending' });
+    return closeReceipt([...agents.values()].map(currentStop), [{
       code: 'OPERATION_UNKNOWN', message: 'Runtime close is still pending', retryable: true,
-    }]) : structuredClone(result);
+    }]);
   }
 
   function hostSend(id: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
@@ -713,6 +814,6 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       requestId: options?.requestId, source: options?.source, steeringMode: options?.steeringMode, mode: 'steer',
     }, 'host', 'steer'),
     send: hostSend,
-    interrupt, onEvent, stop, close, files: fileControls.api,
+    interrupt, onEvent, observe: observeRuntime, stop, close, files: fileControls.api,
   });
 }
