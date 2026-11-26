@@ -68,7 +68,7 @@ test('Board work wakes original Agents and a ready checker on normal CLI binding
     await rm(directory, { recursive: true, force: true });
   });
   harness = await createLeadWorkerHarness({
-    runId: 'test', outputDir: directory, image: 'test', backend: {}, turnTimeoutMs: 15_000, workTimeoutMs: 25_000,
+    runId: 'test', outputDir: directory, image: 'test', backend: {}, turnTimeoutMs: null, workTimeoutMs: 1_800_000,
     prepare: () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, repositoryUrl,
       actors: { lead: actors.lead, helper1: actors.helper1, helper2: actors.helper2 }, prepareMember: () => actors.checker }),
     dynamic: {

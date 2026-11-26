@@ -11,16 +11,16 @@ const isZh = lang === 'zh';
 const copy = isZh
   ? {
       eyebrow: '01 · 为什么选择 MURM',
-      title: '只写协作逻辑，不重写基础设施',
-      descPre: '多数多智能体项目要花几周重复搭建容器、网关与日志链路，最后还锁死在单一工作流上。',
-      descPost: ' 负责跑稳整个集群，你只需专注定义协作规则。',
+      title: '在同一 SDK 上构建不同协作机制',
+      descPre: '角色、任务分配和共享状态由你的 Harness 决定。',
+      descPost: ' 提供隔离执行、Service 接入、运行观察与清理接口。',
       cards: [
         {
           title: '换拓扑，不换 Runtime',
           desc: '在子智能体树、任务池、对等工程师网格与引文图谱之间自由切换，无需改动底层引擎。',
         },
         {
-          title: '默认安全隔离',
+          title: '隔离执行与明确权限',
           desc: '每个 Agent 运行在独立容器与配额边界内，模型密钥始终留在宿主机上，绝不进入沙箱。',
         },
         {
@@ -29,22 +29,22 @@ const copy = isZh
         },
         {
           title: '每次运行，全程可检视',
-          desc: '完整会话、模型请求与工具调用自动落盘归档，方便排障回放与公平评测。',
+          desc: '会话、模型请求与工具调用保存在 Run 中，结合业务验收和清理回执检查结果。',
         },
       ],
     }
   : {
       eyebrow: '01 · WHY MURM',
-      title: 'Write the coordination, not the infrastructure',
-      descPre: 'Most multi-agent projects spend weeks rebuilding containers, gateways, and log pipelines — only to lock into one workflow. ',
-      descPost: ' runs the swarm so you only write the rules.',
+      title: 'Build different mechanisms on one SDK',
+      descPre: 'Your Harness defines roles, work allocation, and shared state. ',
+      descPost: ' supplies isolated execution, Service integration, observation, and cleanup.',
       cards: [
         {
           title: 'Swap topologies, not runtimes',
           desc: 'Switch between subagents, task pools, peer meshes, or citation graphs without touching the core engine.',
         },
         {
-          title: 'Safe isolation by default',
+          title: 'Isolated execution and explicit authority',
           desc: 'Every agent runs in its own container with strict quotas; model keys never leave the host.',
         },
         {
@@ -53,7 +53,7 @@ const copy = isZh
         },
         {
           title: 'Every run, fully inspectable',
-          desc: 'Sessions, model calls, and tool actions archive cleanly to disk for debugging and fair benchmarks.',
+          desc: 'Inspect saved sessions, model calls, and tool actions alongside artifact checks and cleanup receipts.',
         },
       ],
     };

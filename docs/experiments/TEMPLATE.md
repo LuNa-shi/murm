@@ -11,23 +11,24 @@ Repeat of / comparison to: [optional]
 | Item | Fixed value or reference |
 |---|---|
 | Approved Issue requirements, main observations and decision criteria | |
-| Clean implementation commit, Architecture baseline and implementation PR | |
+| Clean implementation commit, candidate archive, Architecture baseline and implementation PR | |
 | Baseline and treatment, or approved exploration boundary | |
 | Variables allowed to change and conditions held fixed | |
-| Problem / fixture, Lean/Mathlib and input hash | |
-| Provider/model and prompt/profile/tool schema hashes | |
-| Core, budget, timebox, exact command and stop conditions | |
+| Harness, executor, problem/checker inputs and relevant toolchain revisions | |
+| Provider/model and prompt/Profile/Service-schema hashes | |
+| Agent capacity, resource budget, work/cleanup deadlines, exact command and stop conditions | |
+| Working-window timestamp fields, setup interval and post-deadline finalization convention | |
 | Raw evidence and privacy boundary | |
 
 A formal experiment has a registered ID and is authorized by the Issue or a linked explicit decision. Implementation unit tests and bounded diagnostic probes do **not** require this template or a separate human-facing report.
 
 ## Results
 
-Report actual start/end, any input deviations, protocol and cleanup status, Task/Execution/Material/Judge/Workspace evidence, costs and whether the intended result occurred. Use authoritative records and stable IDs; **missing evidence is unknown, not zero**. Avoid causal claims in this section.
+Report actual setup/work/finalization times, input deviations, admission and execution outcomes, business checks, artifact verification, cleanup status and costs. Identify the Runtime, Agents, requests and Service operations, plus the domain identities used by this Harness (such as TaskPool Execution/Workspace revisions or a Git team's fixed commits). Use authoritative records and stable IDs; **missing evidence is unknown, not zero**. Avoid causal claims in this section.
 
 ## Analysis
 
-State what the observed results support, and which alternatives, confounds and unknowns remain. Distinguish implementation/contract failures, tools/provider/environment problems, Agent decisions and failures of the research hypothesis itself. Publication/read of Material alone does not establish useful reuse.
+State what the observed results support, and which alternatives, confounds and unknowns remain. Distinguish implementation/contract failures, tools/provider/environment problems, Agent decisions and failures of the research hypothesis itself. Publishing or reading a contribution alone does not establish useful reuse.
 
 ## Next steps
 

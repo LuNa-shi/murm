@@ -53,7 +53,7 @@ const uniqueInternalExtras = [...new Map(internalExtras.map(cap => [`${cap.servi
 api += '\n### Internal catalog entries\n\nThis section records catalog declarations used by trusted service composition but not exposed as Agent operations. It is not an authorization list for the Agent.\n';
 for (const cap of uniqueInternalExtras) api += `\n#### Catalog ${cap.service}.${cap.name} / ${cap.operation}\n${json(cap)}`;
 api += '\n### Exact shared error-code vocabulary\n' + json(ERROR_CODES);
-api += '\n### Phase 0005 Core public declarations\n\nThese are the package entrypoint declarations and the declarations they reference. [Core Runtime](15-core-runtime.md) describes the executable contracts and limits.\n';
+api += '\n### Core public declarations\n\nThese are the package entrypoint declarations and the declarations they reference. [Core Runtime](15-core-runtime.md) describes the executable contracts and limits.\n';
 for (const source of sourcePaths.filter((path: any) => path.startsWith('src/core/'))) {
   const declaration = 'dist/' + source.replace(/\.ts$/, '.d.ts');
   api += `\n#### ${declaration}\n${fence('ts', await readFile(resolve(root, declaration), 'utf8'))}`;

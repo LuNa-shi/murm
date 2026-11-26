@@ -22,7 +22,9 @@ export async function createLeadWorkerHarness(options: any) {
   const roles = leadWorkerRoles(helperCount);
   const helperRoles = roles.slice(1);
   if (typeof includeGit !== 'boolean' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir || !Number.isSafeInteger(exportLimit) || exportLimit < 1 || exportLimit > 64 * 1024 ** 2) throw new TypeError('Invalid lead-worker run configuration');
-  const turnTimeoutMs = bounded(options.turnTimeoutMs, 30_000, 300_000); const workTimeoutMs = bounded(options.workTimeoutMs, 120_000, 900_000);
+  const turnTimeoutMs = bounded(options.turnTimeoutMs, 30_000, 300_000);
+  const useRunDeadline = Boolean(dynamic && options.turnTimeoutMs === null);
+  const workTimeoutMs = bounded(options.workTimeoutMs, 120_000, dynamic ? 1_800_000 : 900_000);
   const closeTimeoutMs = bounded(options.closeTimeoutMs, 30_000, 60_000);
   const resources = createOwnedResources(); const lifetime: any = new AbortController();
   const startup = AbortSignal.any([AbortSignal.timeout(120_000), ...(options.signal ? [options.signal] : [])]);
@@ -140,9 +142,11 @@ export async function createLeadWorkerHarness(options: any) {
       async runDynamic({ signal }: { signal?: AbortSignal } = {}) {
         if (!dynamic || workflowUsed || closing) throw fail('INVALID_DYNAMIC_WORKFLOW');
         workflowUsed = true;
+        const deadlineAtMs = performance.now() + workTimeoutMs;
+        const dispatchWork: typeof dispatch = useRunDeadline ? (role, requestId, payload, signal) => dispatch(role, requestId, payload, signal, deadlineAtMs) : dispatch;
         const workSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(workTimeoutMs), ...(signal ? [signal] : [])]);
         try {
-          const submitted = await runDynamicSchedule({ board, team, goal: dynamic.goal, signal: workSignal, dispatch });
+          const submitted = await runDynamicSchedule({ board, team, goal: dynamic.goal, signal: workSignal, dispatch: dispatchWork });
           const verdict = await dynamic.verifyFinal({ repositoryUrl: facilities.repositoryUrl, token: facilities.actors.lead.token,
             commit: submitted.delivery.commit, sha256: submitted.delivery.sha256, signal: workSignal, resources });
           if (!verdict.ok) throw Object.assign(fail('ORDERS_ORACLE_FAILED'), { details: [verdict] });

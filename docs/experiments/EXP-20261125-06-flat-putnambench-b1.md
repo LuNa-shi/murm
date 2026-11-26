@@ -4,7 +4,7 @@ Status · SETTLED · benchmark acceptance failed
 
 Repeat of [EXP-20261125-05](EXP-20261125-05-flat-putnambench-b1.md) after a measured selection-window interruption. The corrected entry restores the original 300-second selection allowance and asks Bots to claim a bounded task before detailed proof search. The run starts from the same original fixture and empty Task pool.
 
-The [Phase 0005 Flat math design on main](../phases/0005-core-harness/04-taskpool-math.md) was merged in [`68eb83e`](https://github.com/LuNa-shi/SwarmEnv/commit/68eb83e0550109924c56035b4e90077deb399228). This registration precedes the first hosted request. [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200)
+The [Phase 0005 Flat math design on main](https://github.com/LuNa-shi/murm/blob/fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02/docs/phases/0005-core-harness/04-taskpool-math.md) was merged in [`68eb83e`](https://github.com/LuNa-shi/SwarmEnv/commit/68eb83e0550109924c56035b4e90077deb399228). This registration precedes the first hosted request. [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200)
 
 ## Setup
 

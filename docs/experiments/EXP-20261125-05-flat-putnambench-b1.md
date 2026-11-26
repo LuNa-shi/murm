@@ -4,7 +4,7 @@ Status · OPERATOR STOP · selection window defect
 
 Repeat of [EXP-20261125-04](EXP-20261125-04-flat-putnambench-b1.md), which stopped before model dispatch. The implementation, fixture, Worker, model, checker lock and run allowance retain their original pins. The launcher rebuilds with the file mode expected by the pinned checker.
 
-The [Phase 0005 Flat math design on main](../phases/0005-core-harness/04-taskpool-math.md) was merged in [`68eb83e`](https://github.com/LuNa-shi/SwarmEnv/commit/68eb83e0550109924c56035b4e90077deb399228). This registration precedes the first hosted request. [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200)
+The [Phase 0005 Flat math design on main](https://github.com/LuNa-shi/murm/blob/fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02/docs/phases/0005-core-harness/04-taskpool-math.md) was merged in [`68eb83e`](https://github.com/LuNa-shi/SwarmEnv/commit/68eb83e0550109924c56035b4e90077deb399228). This registration precedes the first hosted request. [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200)
 
 ## Setup
 

@@ -52,10 +52,10 @@ const HARNESS_META = isZh
         notes: {
           all: '总览：/root 按需派生隔离的子 Agent，仅向忙碌成员注入中途 steer 消息，并在“先归档再销毁”收尾前集成验证结果。',
           '1': '01 · 创建：/root 调用 collaboration.spawn_agent，Runtime 启动独立沙箱并按需挂载共享工作区或分叉父级会话上下文。',
-          '2': '02 · 并行：三个 Agent 在各自持久化 Pi 会话与隔离配额下并行工作，模型 API 密钥始终留在宿主机。',
-          '3': '03 · 转向：中途新需求通过 send({ mode: "steer", wakeIfIdle: false }) 投递——忙碌子 Agent 立即响应，空闲成员保留在邮箱不浪费调用。',
+          '2': '02 · 并行：三个 Agent 在各自持久化执行器会话与隔离配额下并行工作，模型 API 密钥始终留在宿主机。',
+          '3': '03 · 转向：中途新需求通过 send({ mode: "steer", wakeIfIdle: false }) 投递——忙碌子 Agent 在执行器支持的边界接收输入，明确空闲时由 Harness 保留到邮箱。',
           '4': '04 · 交接：子 Agent 通过 settled 事件与 send_message 回传结果，/root 运行测试套件并修复边界问题。',
-          '5': '05 · 收尾：runtime.close() 先停止 Pi 进程、归档原始会话与 collect 产物，确认落盘后再销毁容器。',
+          '5': '05 · 收尾：runtime.close() 先停止执行器进程、归档原始会话与 collect 产物，确认落盘后再销毁容器。',
         },
       },
       taskpool: {
@@ -88,7 +88,7 @@ const HARNESS_META = isZh
         notes: {
           all: '总览：无中心调度器与独占锁——成员在共享 Board 发布可重叠软认领、通过频道和私信协商分工，并在个人分支提交 PR 经宿主验证合入。',
           '1': '01 · 软认领：peer-a 与 peer-b 在共享 Board 发布可重叠的 CLAIM 条目，表明关注区域而不互相阻塞。',
-          '2': '02 · 协商：频道与私信事件进入每个成员独立的串行 Router，附带最新 Board 视图并向活跃会话实时 steer。',
+          '2': '02 · 协商：消息进入每个成员的串行 Router，并附带最新 Board 视图；project 模式可将新私信和 Board 通知 steer 到活跃会话。',
           '3': '03 · 分支开发：每个成员在各自个人分支使用原生 git 开发，隔离的 Gitea 凭证严格通过 secretEnv 注入。',
           '4': '04 · 提 PR：成员通过受控的 gitea Service 从个人分支向受保护 main 发起 Pull Request。',
           '5': '05 · 验收集成：宿主核验作者、分支与固定 head_sha 后再执行合并；collect(includeGit: true) 保留完整本地仓库。',
@@ -100,7 +100,7 @@ const HARNESS_META = isZh
         kicker: '不可变存储 · 引文 DAG',
         headline: '零任务队列与零路由——对等成员围绕单一 SQLite 不可变库发布、检索、阅读并引用',
         services: 'substrate（SQLite：publish / search / visit）',
-        primitives: 'spawn(files) · runInput · runtime.stop',
+        primitives: 'spawn(files) · send · stop',
         docHref: docHref('zh', 'harnesses/substrate'),
         phases: ['01 发布', '02 退役', '03 检索', '04 阅读', '05 引用'],
         notes: {
@@ -118,7 +118,7 @@ const HARNESS_META = isZh
         kicker: '方向定调 · 反馈闭环',
         headline: '分阶段主导定调、SQLite 事务排他认领、Git SHA-256 校验与因果阅读门控',
         services: 'board（SQLite）· gitea + 原生 git',
-        primitives: 'fixed-team spawn · onEvent fatal fence · runInput stages',
+        primitives: 'fixed-team spawn · onEvent · send',
         docHref: docHref('zh', 'harnesses/lead-worker'),
         phases: ['01 定调', '02 认领', '03 交付', '04 调向', '05 二轮'],
         notes: {
@@ -144,10 +144,10 @@ const HARNESS_META = isZh
         notes: {
           all: 'Overview: /root spawns isolated children on demand, injects mid-flight steers only into busy agents, and integrates verified test suites before archive-before-delete closeout.',
           '1': '01 · SPAWN: /root invokes collaboration.spawn_agent. The Runtime boots two isolated sandboxes and optionally mounts a shared workspace or forks parent context.',
-          '2': '02 · PARALLEL: All three agents execute concurrently in separate Pi sessions with isolated disk and network limits — API keys never leave the host.',
-          '3': '03 · STEER: Mid-flight requirements call send({ mode: "steer", wakeIfIdle: false }) so busy children react immediately while idle agents stay undisturbed in the mailbox.',
+          '2': '02 · PARALLEL: All three agents execute concurrently in separate executor sessions with isolated disk and network limits — API keys never leave the host.',
+          '3': '03 · STEER: Mid-flight requirements call send({ mode: "steer", wakeIfIdle: false }) so busy children receive input at supported execution boundaries; confirmed idle delivery is retained in the mailbox.',
           '4': '04 · HANDOFF: Children report completion via settled events and send_message; /root runs the handed-off test suite and fixes edge cases.',
-          '5': '05 · CLOSE: runtime.close() stops Pi, archives raw sessions, exports collect deliverables, and deletes containers only after archiving succeeds.',
+          '5': '05 · CLOSE: runtime.close() stops executor work, archives raw sessions, exports collect deliverables, and deletes containers only after archiving succeeds.',
         },
       },
       taskpool: {
@@ -180,7 +180,7 @@ const HARNESS_META = isZh
         notes: {
           all: 'Overview: No central dispatcher or exclusive locks — peers declare overlapping soft claims on a Board, coordinate via team chat, and open personal-branch PRs verified by the host.',
           '1': '01 · CLAIM: Both peer-a and peer-b post overlapping CLAIM entries on the shared Board to signal areas of interest without blocking each other.',
-          '2': '02 · NEGOTIATE: External chat mentions enter each peer’s dedicated serial Router, which attaches a fresh Board snapshot and delivers followUp turns into the existing session.',
+          '2': '02 · NEGOTIATE: Each peer has a serial Router with a fresh Board snapshot; project mode can steer new DMs and Board notices into active work.',
           '3': '03 · BRANCH: Each peer develops on its own WORK_BRANCH using native git with scoped Gitea credentials injected strictly via secretEnv.',
           '4': '04 · OPEN PR: Peers open pull requests from their personal branch to main through the scoped gitea Service (direct merges stay host-only).',
           '5': '05 · LAND: Host delivery checks author, branch, and pinned commit SHA before merging to main; collect(includeGit: true) preserves every local checkout.',
@@ -192,7 +192,7 @@ const HARNESS_META = isZh
         kicker: 'IMMUTABLE STORE · DAG',
         headline: 'Zero task queues and zero routing — equal peers publish, search, read, and cite immutable findings',
         services: 'substrate (SQLite: publish, search, visit)',
-        primitives: 'spawn(files) · runInput · runtime.stop',
+        primitives: 'spawn(files) · send · stop',
         docHref: docHref('en', 'harnesses/substrate'),
         phases: ['01 PUBLISH', '02 RETIRE', '03 SEARCH', '04 VISIT', '05 CITE'],
         notes: {
@@ -210,7 +210,7 @@ const HARNESS_META = isZh
         kicker: 'DIRECTION · FEEDBACK',
         headline: 'Staged lead direction, transactional worker claims, Git SHA-256 verification, and causal feedback loops',
         services: 'board (SQLite) · gitea + native git',
-        primitives: 'fixed-team spawn · onEvent fatal fence · runInput stages',
+        primitives: 'fixed-team spawn · onEvent · send',
         docHref: docHref('en', 'harnesses/lead-worker'),
         phases: ['01 DIRECT', '02 CLAIM', '03 SHIP', '04 REVISE', '05 ROUND 2'],
         notes: {

@@ -1,99 +1,65 @@
-# murm
+# murm glossary
 
-murm is a toolkit for building multi-agent Harnesses.
+These terms describe the current implementation. Read [How murm works](docs/en/concepts.md) for the relationships and the [implementation manual](docs/architecture/INDEX.md) for exact behavior. TaskPool terms apply to that Harness and its domain Services; they are not prerequisites for using the Core SDK.
 
-## Core concepts
+## Core and SDK
 
-**Agent**:
-An independent actor in one Run, with a persistent Session and working directory.
+| Term | Meaning |
+| --- | --- |
+| **Harness** | The host application that composes Profiles, Services and a collaboration policy. It chooses when to create Agents, route work, check results and finish. |
+| **Core** | The reusable library exposed through the `@murm/core` package. Its primary public entries cover Runtime, Services and the OpenSandbox backend. |
+| **Runtime** | One live Core instance managing its Agents, capacity, authenticated Service access, input delivery, observation and cleanup. |
+| **Run** | One execution of a Harness, identified and recorded through a Runtime. A Harness adds its own business outcome and evidence. |
+| **Agent** | A Runtime-owned execution identity with its own Sandbox, working directory and Session. A settled Agent can receive another input. |
+| **Profile** | A named Agent configuration containing its prompt, model, image, Service permissions and optional control/file settings. Runtime creation captures its definition. |
+| **Backend** | The execution and resource integration used by the Runtime. The public OpenSandbox factory selects the Pi or Codex executor and returns a handle claimed by one Runtime. |
+| **Executor** | The Agent implementation running inside the Sandbox: Pi or Codex. Capabilities such as context fork differ between executors. |
+| **Sandbox** | An Agent's isolated execution environment, allocated through OpenSandbox. The supported deployment uses Docker-backed OpenSandbox on the same host. |
+| **Worker** | The container image and guest-side programs that implement the murm execution protocol, tools and selected executor. |
+| **Slot** | One unit of a Runtime's configured Agent capacity. An idle or settled Agent still occupies it; confirmed cleanup releases it. |
+| **Session** | An Agent's conversation and executor context retained across input turns. A Session is distinct from the current execution activity. |
+| **Working directory** | An Agent's project files, private by default. A Harness can explicitly select a shared workspace or publish files through its Services. |
+| **Service** | A named capability with a manifest, operations and an adapter. It may hold collaboration state or connect an existing application. |
+| **Bridge** | The trusted host boundary that authenticates Agent calls, discovers permitted operations, validates requests and invokes Service adapters. |
+| **Model gateway** | The host path for configured model requests, credentials, access checks and traces. It is separate from Service routing. |
 
-**Service**:
-A shared capability with a manifest of operations and an implementation the Runtime can invoke for authorized Agents.
+## Inputs, observations and results
 
-**Harness**:
-The host program that composes Agent Profiles and Services and defines how Agents collaborate, receive inputs and finish.
-_Avoid_: Environment, Program.
+| Term | Meaning |
+| --- | --- |
+| **Request ID** | A caller-supplied identity for an operation that supports deduplication. Retry an uncertain request with the same identity and parameters. |
+| **Input receipt** | The result of submitting input: accepted, unknown, or conditionally not accepted. An accepted receipt describes admission, not task correctness. |
+| **Steer** | Input offered while the Agent is working, subject to the executor's supported steering modes. It is the default `send` mode. |
+| **Follow-up** | Input queued for a subsequent execution opportunity. The API spelling is `followUp`. |
+| **Settled** | The executor has stopped automatically continuing its current activity. The Agent, Session and Slot remain; the Harness still decides whether the task succeeded. |
+| **Observation cursor** | The Runtime-scoped sequence used to join a snapshot to live updates or resume within the retained event window. It is not durable process restart. |
+| **Business outcome** | The Harness's decision that its job completed, failed or was cancelled. It is recorded separately from cleanup and artifact verification. |
+| **Artifact verification** | A host check of exported results. `finalizeRun` records whether the configured check passed, failed, timed out or was not requested. |
+| **Cleanup receipt** | A statement of confirmed execution/resource cleanup and anything pending or retained. A timeout does not prove that a resource was destroyed. |
 
-**Runtime**:
-The host control plane for one Run. It manages Agent identity, lifecycle, input delivery and Service access.
+See the [SDK guide](docs/en/sdk.md), [Run lifecycle](docs/en/run-lifecycle.md) and [types reference](docs/en/reference/types.md) for the actual method signatures and status values.
 
-**Sandbox**:
-The isolated filesystem, network and process boundary around an Agent.
+## TaskPool domain
 
-**Run**:
-One concrete Harness execution and its durable record, including Runtime configuration, events and collected artifacts.
+TaskPool organizes work through a Mission and exclusive Task ownership. The current contracts are described in [Mission and Task](docs/architecture/03-mission-task.md), [Services](docs/architecture/04-services.md) and [Workspace](docs/architecture/05-workspace-continuity.md).
 
-## Supporting vocabulary
+| Term | Meaning |
+| --- | --- |
+| **Mission** | The shared objective, resource boundary and final acceptance scope. A Mission is not taken as a Task. |
+| **Task** | A bounded responsibility with its own objective, deliverable and completion conditions. It has at most one current executor. |
+| **Execution** | The authorized interval in which one Agent owns a taken Task, including its finalization and cleanup. This domain object differs from a Core execution observation. |
+| **Take** | Acquiring exclusive current responsibility for an eligible Task. Proposing a Task does not reserve it. |
+| **Finish** | Ending the current Execution with an explicit outcome such as done, incomplete, blocked or cancelled. |
+| **Material** | Versioned, immutable shared research content or attachments with production and use provenance. Publication alone does not establish usefulness or truth. |
+| **Workspace** | The Mission's public project repository, including current main and immutable saved revisions. It is distinct from an Agent's private directory. |
+| **Revision** | An immutable Workspace file version with explicit ancestry. Revision numbering alone does not establish ancestry. |
+| **Main** | The current shared integration revision. Saving a revision does not advance main. |
+| **Candidate** | An ordinary proposed file at a fixed Workspace revision and path, not an additional stored entity. |
+| **Judge / CheckResult** | A checker and its result tied to immutable inputs and a configured checking environment. A diagnostic pass is separate from Task completion and Mission acceptance. |
+| **Mission submission** | A fixed final delivery selected for acceptance, containing current main and an explicit Material selection. |
+| **Handoff** | Continuing through public Task state, Materials and saved files after an earlier Agent ends. |
+| **Dependency** | A genuine prerequisite for a Task, rather than a proposal-origin or management relationship. |
+| **Dispute** | A reasoned question about a particular Material claim or section. |
+| **Supersession** | Explicit replacement of a whole Material by a self-contained successor while retaining history. |
 
-**Core**:
-The importable library that provides the Runtime, Service framework and Sandbox backend integration.
-
-**Profile**:
-A named, frozen configuration of an Agent role, including its prompt, model, image and permitted Service operations.
-
-**Slot**:
-One unit of a Runtime's Agent capacity, occupied until the Agent's resource cleanup is complete.
-
-**Session**:
-The Agent's model conversation context, retained across its input turns.
-
-**Working directory**:
-An Agent's private project directory. In TaskPool, an active Execution's unsaved changes remain there until published to Workspace.
-
-## TaskPool vocabulary
-
-TaskPool's Mission, Task and public-result terms follow the approved [Issue #122 model](docs/phases/0002-task-material-workspace/01-model-and-runtime.md).
-
-**Mission**: The shared research objective, resource boundary and final acceptance scope. A Mission is not a Task to be taken.
-_Avoid_: Goal object, Mission Task, root Task.
-
-**Task**: A bounded responsibility with its own objective, deliverable and completion conditions. It has at most one current executor.
-_Avoid_: child Task, manager Task, shared Mission Task.
-
-**Execution**: An Agent's authorized interval of responsibility for one taken Task, through finish and cleanup.
-_Avoid_: permanent worker, resumed predecessor identity.
-
-**Take**: Acquiring exclusive current responsibility for an eligible Task.
-_Avoid_: scheduler assignment, manager dispatch.
-
-**Finish**: Ending the current Execution with a truthful Task outcome and bounded cleanup. Done, incomplete, blocked and cancelled express different outcomes.
-
-**Material**: Immutable readable research content or durable attachments, with production and use provenance. Its usefulness or truth is not established by its existence or source alone.
-_Avoid_: mandatory Fact, Experience, Progress or Handoff object types.
-
-**Evidence**: An explanation of what supports a specific research claim and its limitations. Evidence can be expressed naturally in Material content.
-_Avoid_: global trust score, mandatory Evidence object.
-
-**Workspace**: The Mission's public project repository, with main and immutable public file revisions, including unmerged saves.
-_Avoid_: Agent private directory, Workspace lineage.
-
-**Revision**: An immutable Workspace file version with explicit ancestry. Revision numbering alone does not establish ancestry.
-
-**Main**: The current shared Workspace integration version. Saving a revision does not by itself move main.
-
-**Candidate**: An ordinary proposed research file at a specific Workspace revision and path.
-_Avoid_: separate Candidate entity, Candidate ID, Candidate store.
-
-**Judge / CheckResult**: A checking service and its result bound to particular immutable inputs, checker and environment. A diagnostic result is separate from Task completion and Mission acceptance.
-
-**Mission submission**: A fixed final delivery selected for Mission acceptance, containing current main and an explicit Material selection.
-
-**Handoff**: Continuing useful work through public Task state, Material and saved files after the earlier Agent ends.
-_Avoid_: restoring a predecessor's private conversation or computation.
-
-**Dependency**: A genuine prerequisite that must be satisfied before a Task can proceed. Proposal origin is not a dependency or hierarchy.
-
-**Dispute**: A reasoned question about a specific claim or section of a Material. It does not itself replace the whole Material.
-
-**Supersession**: An explicit whole-Material replacement by a self-contained successor. Revocation removes the matching active relation while preserving its history.
-
-GitHub development Issues and PRs are engineering records, separate from research Tasks and Missions. The word “goal” may describe an objective inside a Mission or Task; it does not name an additional runtime object.
-
-## Task design vocabulary — Issue #137 draft
-
-These definitions capture the [Issue #137 discussion](https://github.com/LuNa-shi/SwarmEnv/issues/137); they do not describe implemented interface changes.
-
-**Mission gap**: A missing result, capability or understanding that a Task is intended to address in support of the Mission, including by solving a local problem. Its contribution may be indirect or exploratory and does not require a complete route to Mission acceptance.
-
-**Task priority**: An advisory judgment of the relative value of investing the next available computation in a Task, given the current Mission state and available evidence. It informs an Agent's choice without compelling it and can change as results, uncertainties and alternative routes change.
-
+GitHub development Issues and PRs are engineering records, separate from research Tasks and Missions. The word “goal” can describe an objective; it does not introduce another Core object. Pending design terms belong in their Issue-linked design until the corresponding API is implemented.

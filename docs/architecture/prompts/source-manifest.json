@@ -159,7 +159,7 @@
     },
     {
       "path": "src/harnesses/lead-worker/index.ts",
-      "sha256": "819c8bfeaef78ba08a05db6b9277ec5568a246fabe4f04ac9daf65b0719874b5"
+      "sha256": "3d42bb0fb625ac94cb11c4201010fc007e049a7dbee2e768e1b2bbf8a68416e7"
     },
     {
       "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",
@@ -492,7 +492,7 @@
     {
       "path": "src/harnesses/lead-worker/index.ts",
       "anchor": "                  const nextPath =",
-      "line": 235,
+      "line": 239,
       "sha256": "d899bf6da9a12ab775120db5f1068857fe565eb414938a7dc3d584039e096f28"
     },
     {

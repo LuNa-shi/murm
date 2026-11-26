@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "86dfce6a1497fd1355d9d426a09c7c274ed6e389",
-  "reviewed_date": "2026-11-25",
+  "runtime_baseline": "fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02",
+  "reviewed_date": "2026-11-26",
   "scope_roots": [
     "src",
     "scripts",
@@ -1321,7 +1321,9 @@
     {
       "path": "src/core/opensandbox-provider.ts",
       "category": "Core runtime",
-      "chapters": ["docs/architecture/16-pi-opensandbox-backend.md"],
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
       "role": "Internal OpenSandbox target, local connection, and trusted network and workspace preparation"
     },
     {
@@ -1470,31 +1472,42 @@
     {
       "path": "examples/bridge-services/messages.ts",
       "category": "Execution and control",
-      "chapters": ["docs/architecture/15-core-runtime.md"],
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
       "role": "Shared Messages manifest and in-process or already-running HTTP Service adapter selection"
     },
     {
       "path": "examples/bridge-services/handoff-config.ts",
       "category": "Execution and control",
-      "chapters": ["docs/architecture/17-harness-reporting.md"],
+      "chapters": [
+        "docs/architecture/17-harness-reporting.md"
+      ],
       "role": "Standalone handoff backend, executor, model and existing Service configuration"
     },
     {
       "path": "examples/bridge-services/handoff.ts",
       "category": "Execution and control",
-      "chapters": ["docs/architecture/08-prompts.md", "docs/architecture/17-harness-reporting.md"],
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/17-harness-reporting.md"
+      ],
       "role": "Public SDK handoff, live Service and execution observation, and verified artifact reporting"
     },
     {
       "path": "examples/bridge-services/tsconfig.handoff.json",
       "category": "Execution and control",
-      "chapters": ["docs/architecture/17-harness-reporting.md"],
+      "chapters": [
+        "docs/architecture/17-harness-reporting.md"
+      ],
       "role": "Strict build configuration for the installed handoff sample"
     },
     {
       "path": "examples/bridge-services/gh-issues.ts",
       "category": "Execution and control",
-      "chapters": ["docs/architecture/15-core-runtime.md"],
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
       "role": "Read-only GitHub CLI Service backed by an application-owned subprocess and credential"
     },
     {
@@ -2429,246 +2442,6 @@
       "role": "Documentation loader and frontmatter schema"
     },
     {
-      "path": "website/src/content/docs-zh/architecture.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for architecture"
-    },
-    {
-      "path": "website/src/content/docs-zh/build-your-harness.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for build-your-harness"
-    },
-    {
-      "path": "website/src/content/docs-zh/concepts.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for concepts"
-    },
-    {
-      "path": "website/src/content/docs-zh/harnesses/index.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for harnesses/index"
-    },
-    {
-      "path": "website/src/content/docs-zh/harnesses/lead-worker.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for harnesses/lead-worker"
-    },
-    {
-      "path": "website/src/content/docs-zh/harnesses/peermesh.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for harnesses/peermesh"
-    },
-    {
-      "path": "website/src/content/docs-zh/harnesses/subagents.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for harnesses/subagents"
-    },
-    {
-      "path": "website/src/content/docs-zh/harnesses/substrate.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for harnesses/substrate"
-    },
-    {
-      "path": "website/src/content/docs-zh/harnesses/taskpool.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for harnesses/taskpool"
-    },
-    {
-      "path": "website/src/content/docs-zh/overview.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for overview"
-    },
-    {
-      "path": "website/src/content/docs-zh/quickstart.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for quickstart"
-    },
-    {
-      "path": "website/src/content/docs-zh/reference/api.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for reference/api"
-    },
-    {
-      "path": "website/src/content/docs-zh/reference/deploy.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for reference/deploy"
-    },
-    {
-      "path": "website/src/content/docs-zh/reference/types.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for reference/types"
-    },
-    {
-      "path": "website/src/content/docs-zh/run-lifecycle.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Chinese documentation content for run-lifecycle"
-    },
-    {
-      "path": "website/src/content/docs/architecture.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for System Architecture"
-    },
-    {
-      "path": "website/src/content/docs/build-your-harness.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for Build Your Own Harness"
-    },
-    {
-      "path": "website/src/content/docs/concepts.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for Core Concepts"
-    },
-    {
-      "path": "website/src/content/docs/harnesses/index.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for Five Topologies Overview"
-    },
-    {
-      "path": "website/src/content/docs/harnesses/lead-worker.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for Lead-Worker"
-    },
-    {
-      "path": "website/src/content/docs/harnesses/peermesh.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for PeerMesh"
-    },
-    {
-      "path": "website/src/content/docs/harnesses/subagents.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for Subagents"
-    },
-    {
-      "path": "website/src/content/docs/harnesses/substrate.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for Substrate"
-    },
-    {
-      "path": "website/src/content/docs/harnesses/taskpool.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for TaskPool"
-    },
-    {
-      "path": "website/src/content/docs/overview.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation landing overview page"
-    },
-    {
-      "path": "website/src/content/docs/quickstart.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for Quick Start"
-    },
-    {
-      "path": "website/src/content/docs/reference/api.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for API & Configuration"
-    },
-    {
-      "path": "website/src/content/docs/reference/deploy.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for Deployment"
-    },
-    {
-      "path": "website/src/content/docs/reference/types.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for Types & Mapping"
-    },
-    {
-      "path": "website/src/content/docs/run-lifecycle.md",
-      "category": "public documentation website",
-      "chapters": [
-        "docs/architecture/22-website.md"
-      ],
-      "role": "Published documentation content for Anatomy of a Run"
-    },
-    {
       "path": "website/src/layouts/BaseLayout.astro",
       "category": "public documentation website",
       "chapters": [
@@ -3027,6 +2800,22 @@
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Pinned local OpenSandbox Docker deployment recipe"
+    },
+    {
+      "path": "website/src/lib/markdown-doc-links.mjs",
+      "category": "public documentation website",
+      "role": "Resolve canonical Markdown file links into locale-aware website routes and repository source links.",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ]
+    },
+    {
+      "path": "website/scripts/check-links.mjs",
+      "category": "public documentation website",
+      "role": "Verify generated local page, asset and anchor destinations and bilingual route parity after build.",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ]
     }
   ]
 }

@@ -3084,7 +3084,7 @@ This section records catalog declarations used by trusted service composition bu
 }
 ```
 
-### Phase 0005 Core public declarations
+### Core public declarations
 
 These are the package entrypoint declarations and the declarations they reference. [Core Runtime](15-core-runtime.md) describes the executable contracts and limits.
 
