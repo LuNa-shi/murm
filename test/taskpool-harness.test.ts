@@ -66,8 +66,8 @@ test('flat close retains physical cleanup and reconciles remaining Agents after 
   const finalize = stores.tasks.finalizeAgentClose.bind(stores.tasks);
   let failedAgentId;
   stores.tasks.finalizeAgentClose = agentId => {
-    if (!failedAgentId) {
-      failedAgentId = agentId;
+    failedAgentId ??= agentId;
+    if (agentId === failedAgentId) {
       throw Object.assign(new Error('Controlled domain close failure'), { code: 'DOMAIN_CLOSE_FAILED' });
     }
     return finalize(agentId);

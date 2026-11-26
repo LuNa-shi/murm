@@ -52,7 +52,8 @@ const router = createPeerMeshRouter({
   mapping: { agentId: agent.id, workerId: peer.board.workerId },
   // 成员工作期间，私信和新的 Board 条目在 Pi 下一个工具边界通过 steer 实时送达
   steerInput: (text: string, requestId: string) =>
-    runtime.steer(agent.id, text, {
+    runtime.send(agent.id, text, {
+      mode: 'steer',
       requestId,
       source: 'peermesh-peer-notice',
       steeringMode: 'all',
