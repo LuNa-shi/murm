@@ -23,7 +23,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "d517fdb35211f784dd63c397cb01857b95a81f65700e2a1313973d7aaf6a1d40"
+      "sha256": "cecad3a3576f675c4809842be8041de4eb26a89e7f8ed1b8ac733eec136d843c"
     },
     {
       "path": "src/core/bridge.ts",
@@ -35,7 +35,7 @@
     },
     {
       "path": "src/core/opensandbox-backend.ts",
-      "sha256": "b33540f4fbd04be267193efc79d432b9b125df45837d0cfce39eff788789b1a0"
+      "sha256": "743a8b277ec760eaca7e8a285cdf6a84e4eba127a6e8d607c5cc80279ba98cb2"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",

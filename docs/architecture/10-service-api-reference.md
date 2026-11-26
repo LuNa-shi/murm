@@ -40,8 +40,8 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `28570d9b5cfadc3ceaa8136860bb8df2238ce951a144b996e5b2d9d5f2924111` |
 | [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `d517fdb35211f784dd63c397cb01857b95a81f65700e2a1313973d7aaf6a1d40` |
-| [src/core/types.ts](../../src/core/types.ts) | `8bcb68cda154fe2d876261ac047f2d3945ce5baaded4cc4286b2181bf6a52cc5` |
+| [src/core/index.ts](../../src/core/index.ts) | `cecad3a3576f675c4809842be8041de4eb26a89e7f8ed1b8ac733eec136d843c` |
+| [src/core/types.ts](../../src/core/types.ts) | `a789a8389c2c034346a745b178e79f55f25623e7cc4f51cd9b9348fe2e8e54f8` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `f8cea3ce6983ecd15f81ffe7a5c483f476b728a1421b40961e49073d815d7664` |
 | [src/core/services.ts](../../src/core/services.ts) | `8c1d64489bd31ab3cec3b3b295a36ebaa2e8a9982f0a4aa059a05c405f41b6d1` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
@@ -3298,6 +3298,7 @@ export interface PendingCleanup {
     action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
     error?: ErrorInfo;
     resourceKey?: string;
+    providerId?: string;
     sandboxId?: string;
     creation?: 'created' | 'pending' | 'absent';
     executionStopped?: boolean;

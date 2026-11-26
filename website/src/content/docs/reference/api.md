@@ -125,6 +125,8 @@ runtime.close(options?: { timeoutMs?: number }): Promise<CloseReceipt>
   - `spawn` requires target role in `Profile.spawnProfiles`; `fork: true` requires `Profile.allowContextFork: true`.
   - `get` and `send` target the caller itself or a direct child; `stop` targets only a direct child.
 
+The application can attach an already-running HTTP Service or use a host adapter for an existing CLI. The Messages example exposes the same operations from an in-process or HTTP implementation. The GitHub example runs a scoped, read-only `gh issue list` on the application host under Bridge authorization. The host keeps the Service and GitHub credentials. [Bridge Service examples](https://github.com/LuNa-shi/murm/tree/main/examples/bridge-services)
+
 ## `swarm` CLI (inside containers)
 
 The `swarm` binary (`dist/scripts/swarm.js`) runs inside containers over `MURM_BRIDGE_URL`, `MURM_BRIDGE_TOKEN`, and `MURM_BRIDGE_CONTRACT_VERSION=2` (all injected and protected by Core):

@@ -11,7 +11,7 @@ import { provider } from './fixtures/core-pi-transport.js';
 
 // Controlled OpenSandbox and Docker boundary, with the actual Core adapter.
 const hooks = registerHooks({ resolve(specifier, context, next) {
-  if (context.parentURL?.endsWith('/src/core/opensandbox-backend.js') &&
+  if (context.parentURL?.endsWith('/src/core/opensandbox-provider.js') &&
       /\/runtime\/(opensandbox-manager|docker-agent-network|docker-agent-disk)\.js$/.test(specifier)) {
     return { url: new URL('./fixtures/core-pi-transport.js', import.meta.url).href, shortCircuit: true };
   }

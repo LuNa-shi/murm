@@ -125,6 +125,8 @@ runtime.close(options?: { timeoutMs?: number }): Promise<CloseReceipt>
   - `spawn` 需配合 `Profile.spawnProfiles` 白名单；`fork: true` 需配合 `Profile.allowContextFork: true`。
   - `get` 与 `send` 可操作自身或直属子 Agent；`stop` 仅可操作直属子 Agent。
 
+应用可以接入已运行的 HTTP Service，也可以用宿主 adapter 调用已有命令行。消息示例可切换进程内或 HTTP 实现，Agent 使用同样的操作。GitHub 示例经 Bridge 授权后，由应用侧执行限定仓库的只读 `gh issue list`。Service 和 GitHub 凭据由应用侧持有。 [Bridge Service 示例](https://github.com/LuNa-shi/murm/tree/main/examples/bridge-services)
+
 ## `swarm` CLI（容器内使用）
 
 `swarm` 可执行程序（`dist/scripts/swarm.js`）通过 Core 注入的受保护环境变量 `MURM_BRIDGE_URL`、`MURM_BRIDGE_TOKEN` 与 `MURM_BRIDGE_CONTRACT_VERSION=2` 与宿主通信：

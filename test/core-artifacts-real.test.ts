@@ -159,6 +159,8 @@ for (const executor of ['pi', 'codex'] as const) test(`${executor}: required art
   assert.deepEqual(pending.artifacts, []); assert.ok(pending.errors.some(error => error.code === 'ARTIFACT_WRITE_FAILED'));
   assert.equal(pending.pending.kind, 'agent'); assert.equal(pending.pending.id, agent.id);
   assert.equal(pending.pending.action, 'archive-session');
+  assert.equal(pending.pending.providerId, 'local');
+  assert.equal(pending.pending.resourceKey, agent.id);
   assert.equal(pending.pending.sandboxId, sandboxId);
   assert.equal((await runtime.get(agent.id)).status, 'closing');
   assert.deepEqual(await ownedContainers(runtime.id), active);
