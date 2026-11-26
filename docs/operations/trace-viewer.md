@@ -48,3 +48,15 @@ Use the saved `output` directory for [EXP-20261125-06](../experiments/EXP-202611
 ```
 
 This Run predates native execution tracing. Compare overlapping recorded model request intervals, then open the child handoff, corresponding Root model request, and archived result or file. The separately recorded checks concern the Pastel subtask and its seven reference cases.
+
+The saved Core format is schema 1, Core 0.2.0, with historical `bots` and `botId` fields. The viewer recovers three Agent lanes, 35 model request intervals, two spawn links, four explicit messages, two archived result returns and three Session files. The two children's captured model intervals overlap for 102.262 seconds. The first HSL child message appears in Root model request 15. The saved export includes `delivery/pastel.js` at 4,091 bytes. The independent receipt records seven reference matches and invalid-color rejection.
+
+To check the snapshot identity, calculate this manifest digest from the parent directory of the original Run.
+
+```bash
+cd "$(dirname "$PASTEL_RUN_DIR")"
+find 4ea6a746-80ee-4d24-b224-82200a55f384 -type f -print0 |
+  LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum
+```
+
+The expected SHA-256 is `b70f92951a44462efcf31ddae036fe6643474a58970c5ee10fa3ffbf8f3fd355`.

@@ -2601,6 +2601,14 @@
         "docs/architecture/06-observability-experiments.md"
       ],
       "role": "License for the bundled space-grotesk font"
+    },
+    {
+      "path": "trace-viewer/command.mjs",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Optional host trace subcommand parsing and server launch"
     }
   ]
 }
