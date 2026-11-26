@@ -16,7 +16,7 @@ import { AGENT_CONTINUATION_MESSAGE, AGENT_SOFT_CLOSEOUT_MESSAGE, AGENT_MATERIAL
 import { runSwarmCli } from '../src/cli/swarm-cli.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
-import { buildTaskPoolAutonomousDiscoveryMessage } from '../src/harnesses/taskpool/controller.js';
+import { buildTaskPoolAutonomousDiscoveryMessage } from '../examples/taskpool/controller.js';
 import { renderStartupPrompt } from '../src/core/startup-prompt.js';
 import { fateServiceManifest } from '../examples/substrate/fate-service.js';
 import { fateVerificationContinuation, fateVerifiedInput } from '../examples/substrate/fate-run.js';
@@ -37,7 +37,7 @@ const sourcePaths = [
   'scripts/local-setup-smoke.ts', 'scripts/local-setup-upstream.ts',
   'examples/bridge-services/handoff.ts',
   'examples/notes/main.ts', 'src/harnesses/shared/run-input.ts', 'src/harnesses/substrate/index.ts', 'src/harnesses/substrate/substrate.ts',
-  'src/harnesses/taskpool/controller.ts', 'src/harnesses/taskpool/harness.ts',
+  'examples/taskpool/controller.ts', 'examples/taskpool/harness.ts',
   'examples/substrate/fate-run.ts', 'examples/substrate/fate-service.ts', 'src/harnesses/substrate/paper-substrate.ts',
   'benchmarks/putnambench-taskpool/run.ts',
   'benchmarks/programbench-pastel/subagents-example.ts',
@@ -257,8 +257,8 @@ leadWorkerDoc += block('Staged corrective input composition and send', between('
 leadWorkerDoc += block('Dynamic goal and dispatch', between('src/harnesses/lead-worker/dynamic-scheduler.ts', "    send(lead, { type: 'dynamic-goal'", '\n  } finally'), 'The initial goal contains the frozen task specification and selected public JSONL data. Later inputs contain committed Board sequence numbers, member and task identities, and the current revision. Each ready recipient receives an exclusive followUp in its original Session.');
 leadWorkerDoc += block('Dynamic checker Profile composition', between('src/harnesses/lead-worker/dynamic.ts', '                model, image, writable: true, prompt:', '\n                network:'), 'The shared Worker instructions precede the Lead-authored Profile instructions. The composed string becomes the startup Profile prompt for the new Agent.');
 output('08-lead-worker-harness.md', leadWorkerDoc);
-const flatControllerPath = 'src/harnesses/taskpool/controller.ts';
-const taskPoolHarnessPath = 'src/harnesses/taskpool/harness.ts';
+const flatControllerPath = 'examples/taskpool/controller.ts';
+const taskPoolHarnessPath = 'examples/taskpool/harness.ts';
 const putnamPath = 'benchmarks/putnambench-taskpool/run.ts';
 const discoveryFields = {
   mission: { mission_id: '<MISSION_ID>', goal: '<MISSION_GOAL>', acceptance_conditions: '<MISSION_ACCEPTANCE>' },

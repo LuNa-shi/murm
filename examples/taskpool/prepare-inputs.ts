@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { stableStringify } from '../../protocol/envelope.js';
-import { snapshotFileSeed } from '../../../scripts/core-file-seed.js';
-import { MurmError } from '../../errors.js';
+import { stableStringify } from '../../src/protocol/envelope.js';
+import { snapshotFileSeed } from '../../scripts/core-file-seed.js';
+import { MurmError } from '../../src/errors.js';
 
 const deny = (message: any) => { throw new MurmError('NOT_ALLOWED', message); };
 

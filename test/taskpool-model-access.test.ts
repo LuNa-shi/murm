@@ -28,7 +28,7 @@ test('trusted Core readiness preserves returned identity and legacy capacity wit
 });
 
 test('taskpool policy returns finite selection authority only for its trusted Runtime and unbound Agent', async t => {
-  const { createTaskPoolModelAccessPolicy } = await import('../src/harnesses/taskpool/model-access-policy.js');
+  const { createTaskPoolModelAccessPolicy } = await import('../examples/taskpool/model-access-policy.js');
   const tasks = fixture(t);
   const deadline = Date.now() + 60_000;
   tasks.registerAgent({ agentId: 'agent:selection', missionId: 'mission:flat', legacySlotId: 'slot', selectionDeadline: new Date(deadline - 1000).toISOString(), hardDeadline: new Date(deadline).toISOString() });
@@ -47,7 +47,7 @@ test('taskpool policy returns finite selection authority only for its trusted Ru
 });
 
 test('trusted startup uses only Core returned Agent identity and keeps Runtime separate from legacy Slot', async t => {
-  const { createTaskPoolAgentCoordinator } = await import('../src/harnesses/taskpool/agent-coordinator.js');
+  const { createTaskPoolAgentCoordinator } = await import('../examples/taskpool/agent-coordinator.js');
   const tasks = fixture(t);
   const requests = [];
   const runtime = { id: 'runtime:host', async spawn(options) { requests.push(options); return { id: 'core:actual', profile: 'readonly', status: 'idle' }; },
@@ -71,7 +71,7 @@ function executionEnvelope(execution, actorRef = execution.owner_ref) {
 }
 
 test('real Task state maps work and closeout to the current Execution fence and renewed lease', async t => {
-  const { createTaskPoolModelAccessPolicy } = await import('../src/harnesses/taskpool/model-access-policy.js');
+  const { createTaskPoolModelAccessPolicy } = await import('../examples/taskpool/model-access-policy.js');
   const tasks = fixture(t);
   const deadlineAt = Date.now() + 60_000;
   for (const agentId of ['owner', 'other']) {
@@ -100,7 +100,7 @@ test('real Task state maps work and closeout to the current Execution fence and 
 });
 
 test('selection deadline and Mission stop invalidate real Task state before cleanup timers run', async t => {
-  const { createTaskPoolModelAccessPolicy } = await import('../src/harnesses/taskpool/model-access-policy.js');
+  const { createTaskPoolModelAccessPolicy } = await import('../examples/taskpool/model-access-policy.js');
   const tasks = fixture(t);
   const start = Date.now();
   tasks.registerAgent({ agentId: 'b', missionId: 'mission:flat', legacySlotId: 'slot', selectionDeadline: new Date(start + 1000).toISOString(), hardDeadline: new Date(start + 2000).toISOString() });

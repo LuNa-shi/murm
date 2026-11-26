@@ -1,4 +1,4 @@
-import { createWorkspaceMergeService } from '../src/harnesses/taskpool/workspace-merge.js';
+import { createWorkspaceMergeService } from '../examples/taskpool/workspace-merge.js';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
@@ -11,7 +11,8 @@ import { ACTIVE_EXECUTION_STATES } from '../src/task/task-types.js';
 import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
-import { createMissionCoordination, createMissionSubmissionAccess } from '../src/harnesses/taskpool/mission-coordination.js';
+import { createMissionCoordination } from '../examples/taskpool/mission-coordination.js';
+import { createMissionSubmissionAccess } from '../src/runtime/mission-submission-access.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { stableStringify } from '../src/protocol/envelope.js';

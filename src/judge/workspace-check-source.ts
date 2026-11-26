@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { ERROR_CODES, MurmError } from '../../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 
 /** Prepare only an immutable public revision; caller supplies its live domain guard. */
 export async function prepareWorkspaceCheckSource(input: any, { workspace, workspaceId, projectCheck = false, guard }: any) {

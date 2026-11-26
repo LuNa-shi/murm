@@ -1,9 +1,9 @@
 import { taskPoolCoordinationPermissions } from './coordination-permissions.js';
 import { createTaskPoolMissionService } from './mission-service.js';
-import { createRuntime } from '../../core/index.js';
-import { ServiceRegistry } from '../../core/services.js';
-import { MurmError } from '../../errors.js';
-import { runWithReport } from '../shared/run-report.js';
+import { createRuntime } from '../../src/core/index.js';
+import { ServiceRegistry } from '../../src/core/services.js';
+import { MurmError } from '../../src/errors.js';
+import { runWithReport } from '../../src/harnesses/shared/run-report.js';
 import { createTaskPoolTaskService, taskPoolResearcherProfile } from './task-service.js';
 import { createTaskPoolPublicationServices } from './publication-services.js';
 import { createTaskPoolController } from './controller.js';

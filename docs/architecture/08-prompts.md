@@ -65,7 +65,7 @@ The ordinary Putnam workflow asks the Agent to save a fixed revision and run the
 
 ### TaskPool take preview notice
 
-`src/harnesses/taskpool/prepare-inputs.ts` composes one additional tool-result notice only when a host-recorded Task view preview differs from the authoritative public revision selected during take:
+`examples/taskpool/prepare-inputs.ts` composes one additional tool-result notice only when a host-recorded Task view preview differs from the authoritative public revision selected during take:
 
 ```text
 Execution ${execution.execution_id} starts from ${snapshot.revision}, different from preview ${preview.revision}; reread the affected project files.
@@ -77,7 +77,7 @@ The Execution ID comes from TaskService's accepted reservation; selected revisio
 
 The [generated TaskPool reference](prompts/08-taskpool-harness.md) extracts the complete defaults from the Harness/controller sources and records their fingerprints and public send site.
 
-`src/harnesses/taskpool/controller.ts` owns its default discovery input, sent only after coordinator domain readiness through public `Runtime.send` with explicit `followUp`:
+`examples/taskpool/controller.ts` owns its default discovery input, sent only after coordinator domain readiness through public `Runtime.send` with explicit `followUp`:
 
 ```text
 Read public Tasks and take suitable work. Continue in this Session after take.
@@ -85,7 +85,7 @@ Read public Tasks and take suitable work. Continue in this Session after take.
 
 When the TaskPool host enables autonomous Tasks, the controller composes the autonomous discovery input in the same generated reference. After the Runtime availability check, it confirms the Agent is still UNBOUND within its persisted selection and hard deadlines and checks that the Mission is open. It then supplies the Mission ID, goal and acceptance conditions from TaskService, that Agent's ID and deadlines, and the effective run deadline from the host clock. This happens for initial discovery and later discovery turns. The input points to public reads and executable Task help, and describes how to choose and claim a bounded deliverable. If the selection window or binding ended, the controller records the skipped input. The PutnamBench driver keeps the Profile text empty. It sets the first-input context from the original theorem at revision `0.1` and includes its collaboration workflow in both the first input and later discovery messages.
 
-The researcher in `src/harnesses/taskpool/harness.ts` defaults to an empty Added System Prompt. Core supplies the authorized Service directory at spawn and the TaskPool controller sends discovery guidance in the first user input.
+The researcher in `examples/taskpool/harness.ts` defaults to an empty Added System Prompt. Core supplies the authorized Service directory at spawn and the TaskPool controller sends discovery guidance in the first user input.
 
 Hosts can replace the base Profile text, discovery input or ordinary continuation through the host and controller settings. Without a Core capture binding or a trusted `snapshotProject`, the host includes the [generated Profile guidance](prompts/08-taskpool-harness.md) after any supplied Profile text, omits private Workspace save and observation operations from the Profile, and selects the Material-oriented defaults for ordinary continuation, soft closeout and the handoff warning. The persisted Execution supplies the phase and the warning deadline. A host ordinary-continuation override still applies before soft closeout. The controller rechecks Task state and remaining budget before its public followUp send. Directed user text passes through the same controller with the chosen mode and request ID. For the complete default text in each case, see the generated TaskPool reference.
 

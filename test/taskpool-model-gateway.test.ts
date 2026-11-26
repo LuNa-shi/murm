@@ -10,7 +10,7 @@ import { TaskService } from '../src/task/task-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { createCoreModelAccess } from '../src/core/model-access.js';
 import { selectExecutorDriver } from '../src/core/executor-driver.js';
-import { createTaskPoolModelAccessPolicy } from '../src/harnesses/taskpool/model-access-policy.js';
+import { createTaskPoolModelAccessPolicy } from '../examples/taskpool/model-access-policy.js';
 
 async function fixture(t, { held = false } = {}) {
   const outputDir = await mkdtemp(join(tmpdir(), 'taskpool-model-'));

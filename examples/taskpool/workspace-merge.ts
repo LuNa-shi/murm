@@ -1,6 +1,6 @@
-import { ERROR_CODES, MurmError } from '../../errors.js';
-import { assertNewExecutionWork } from '../../task/execution-budget.js';
-import { publishWorkspace } from '../../runtime/workspace-publication.js';
+import { ERROR_CODES, MurmError } from '../../src/errors.js';
+import { assertNewExecutionWork } from '../../src/task/execution-budget.js';
+import { publishWorkspace } from '../../src/runtime/workspace-publication.js';
 
 /** Own the final-tree checker and publication policy for one trusted TaskPool or retained Bridge composition. */
 export function createWorkspaceMergeService({ taskService, workspace, workspaceId, assertExecutionWorkspace, checker = null }: any) {

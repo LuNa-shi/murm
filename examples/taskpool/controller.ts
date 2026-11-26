@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { buildAgentContinuationMessage, buildAgentNotification } from '../../agent/agent-contract.js';
-import { MurmError } from '../../errors.js';
-import { stableStringify } from '../../protocol/envelope.js';
+import { buildAgentContinuationMessage, buildAgentNotification } from '../../src/agent/agent-contract.js';
+import { MurmError } from '../../src/errors.js';
+import { stableStringify } from '../../src/protocol/envelope.js';
 import { createTaskPoolAgentCoordinator } from './agent-coordinator.js';
 import { executionEnvelope } from './prepare-inputs.js';
 

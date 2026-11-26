@@ -8,8 +8,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { controls, transport } from './fixtures/taskpool-controller-backend.js';
-import { createTaskPoolTaskService } from '../src/harnesses/taskpool/task-service.js';
-import { createTaskPoolPublicationServices } from '../src/harnesses/taskpool/publication-services.js';
+import { createTaskPoolTaskService } from '../examples/taskpool/task-service.js';
+import { createTaskPoolPublicationServices } from '../examples/taskpool/publication-services.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next) {
@@ -185,7 +185,7 @@ test('UNBOUND revocation repeats current grant, stop and deadline admission afte
 });
 
 test('normal TaskPool host wires explicit Material coordinator permission without adding a Task operation',async t=>{
-  const {runTaskPoolHarness}=await import('../src/harnesses/taskpool/harness.js');
+  const {runTaskPoolHarness}=await import('../examples/taskpool/harness.js');
   for(const coordinationPermissions of [[],['unsupersede']]) {
     const root=await mkdtemp(join(tmpdir(),'taskpool-material-host-')),stores=await createTaskPoolStores(root);
     t.after(async()=>{stores.close();await rm(root,{recursive:true,force:true});});

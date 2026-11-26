@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { setInterval } from 'node:timers/promises';
 import { ContextService } from '../../dist/src/context/context-service.js';
-import { runTaskPoolHarness } from '../../dist/src/harnesses/taskpool/harness.js';
+import { runTaskPoolHarness } from '../../dist/examples/taskpool/harness.js';
 import { makeEnvelope } from '../../dist/src/protocol/envelope.js';
 import { MissionWorkspace } from '../../dist/src/runtime/mission-workspace.js';
 import { WorkspaceManager } from '../../dist/src/runtime/workspace-manager.js';

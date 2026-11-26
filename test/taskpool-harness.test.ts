@@ -16,7 +16,7 @@ const hooks=registerHooks({resolve(specifier,context,next){
   if(specifier==='./opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
-const {runTaskPoolHarness}=await import('../src/harnesses/taskpool/harness.js');hooks.deregister();
+const {runTaskPoolHarness}=await import('../examples/taskpool/harness.js');hooks.deregister();
 
 test('TaskPool can finish with a public Material when no live Workspace capture is configured', async t => {
   const root=await mkdtemp(join(tmpdir(),'taskpool-environment-'));

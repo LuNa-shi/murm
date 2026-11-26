@@ -11,7 +11,7 @@
     },
     {
       "path": "src/agent/services-bridge.ts",
-      "sha256": "28570d9b5cfadc3ceaa8136860bb8df2238ce951a144b996e5b2d9d5f2924111"
+      "sha256": "af9fd45a15bdf6edceccde3558264adec75c60c8709b60bee402c0388e4bb28f"
     },
     {
       "path": "src/cli/swarm-cli.ts",
@@ -74,12 +74,12 @@
       "sha256": "0e92cc37bf2c510ce53a2f751185ea184c24f45ada73058fc2a5aae68dc582c0"
     },
     {
-      "path": "src/harnesses/taskpool/controller.ts",
-      "sha256": "060b7601b4600e2f70512a6ebc5369a63bc90001a96471d176e051106b578a26"
+      "path": "examples/taskpool/controller.ts",
+      "sha256": "4c5a5b3d98e267b463deb6821f1339c9d9d0d131608b2298350ccc6b177118d5"
     },
     {
-      "path": "src/harnesses/taskpool/harness.ts",
-      "sha256": "ea4bdf5e6ac2fb29c396a5afd721c3ce7126a25a7698372a460a9a07d9e0c8f0"
+      "path": "examples/taskpool/harness.ts",
+      "sha256": "f8034040685493aebe823b7650c94820f6bd8e16f813079fd02904110e5892a6"
     },
     {
       "path": "examples/substrate/fate-run.ts",
@@ -95,7 +95,7 @@
     },
     {
       "path": "benchmarks/putnambench-taskpool/run.ts",
-      "sha256": "9e9b6c008f233a673b8c3edef1c344283e9b8b799809d171821894a10b72adb2"
+      "sha256": "2d4835da760ae02cf9c7ea3c2cca603dc02a43c00cbad7bf957dd2c9f2058035"
     },
     {
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
@@ -191,7 +191,7 @@
     },
     {
       "path": "src/sdk/builtin-registry.ts",
-      "sha256": "c080a6cec3a3f12ed5f9b0529b46db2d2aea8c217b99b8d29b5a48b1d52249a5"
+      "sha256": "50f7a1132a0923a41174714489f7220215df9a30a3af59e3df75377d8fafe52a"
     },
     {
       "path": "src/sdk/service-bundle.ts",
@@ -526,13 +526,13 @@
       "sha256": "c236cd4fe778f55e16abfa19b269c43350dee5da9dc51ef5d48b24dd122136bf"
     },
     {
-      "path": "src/harnesses/taskpool/harness.ts",
+      "path": "examples/taskpool/harness.ts",
       "anchor": "export const TASKPOOL_WITHOUT_WORKSPACE_SAVE_PROMPT = '",
       "line": 13,
       "sha256": "5371acb1ed023ed240934f27c739c3e6f2feed68e9618378e2165db46e6e97b9"
     },
     {
-      "path": "src/harnesses/taskpool/controller.ts",
+      "path": "examples/taskpool/controller.ts",
       "anchor": "export const TASKPOOL_DISCOVERY_MESSAGE='",
       "line": 30,
       "sha256": "6d7ca4f8f3cea518e14e04e880e364dda393b6346b39942805c5939f5958e9a8"
@@ -555,7 +555,7 @@
       "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
     },
     {
-      "path": "src/harnesses/taskpool/controller.ts",
+      "path": "examples/taskpool/controller.ts",
       "line": 143,
       "expression": "const receipt=await runtime.send(row.agentId,text,{requestId,mode});"
     }

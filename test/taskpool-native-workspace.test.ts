@@ -10,7 +10,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
-import { runTaskPoolHarness } from '../src/harnesses/taskpool/harness.js';
+import { runTaskPoolHarness } from '../examples/taskpool/harness.js';
 import { TaskService } from '../src/task/task-service.js';
 import { ContextService } from '../src/context/context-service.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';

@@ -1,7 +1,7 @@
-import { isSoftCloseout } from '../../task/execution-budget.js';
+import { isSoftCloseout } from '../../src/task/execution-budget.js';
 
 /** Task-owned authority shared by the legacy host and taskpool's Core policy. */
-export function authorizeTaskPoolAgent({ taskService, missionId, agentId, deadline, closeoutDeadline = () => Infinity, isStopping = () => false }: any): import('../../core/index.js').ModelPermit | null {
+export function authorizeTaskPoolAgent({ taskService, missionId, agentId, deadline, closeoutDeadline = () => Infinity, isStopping = () => false }: any): import('../../src/core/index.js').ModelPermit | null {
   const at = Date.now();
   const agent = taskService.getAgent(agentId);
   const missionDeadline = deadline();
@@ -28,13 +28,13 @@ export function authorizeTaskPoolAgent({ taskService, missionId, agentId, deadli
 }
 
 /** Host-only adapter. Runtime identity comes from the host's Core instance. */
-export function createTaskPoolModelAccessPolicy({ runtimeId, ...authority }: any): import('../../core/index.js').ModelAccessPolicy {
+export function createTaskPoolModelAccessPolicy({ runtimeId, ...authority }: any): import('../../src/core/index.js').ModelAccessPolicy {
   if ((typeof runtimeId !== 'string' && typeof runtimeId !== 'function') || !authority.taskService ||
       typeof authority.deadline !== 'function' || typeof authority.missionId !== 'string') {
     throw new TypeError('TaskPool model policy requires trusted Runtime and Task authority');
   }
   return Object.freeze({
-    authorize(caller: any): import('../../core/index.js').ModelPermit | null {
+    authorize(caller: any): import('../../src/core/index.js').ModelPermit | null {
       const expectedRuntimeId = typeof runtimeId === 'function' ? runtimeId() : runtimeId;
       if (!expectedRuntimeId || caller?.runtimeId !== expectedRuntimeId ||
           !['agentId', 'profile', 'model'].every((key: any) => typeof caller[key] === 'string' && caller[key])) return null;

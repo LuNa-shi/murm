@@ -1,4 +1,4 @@
-import { createMissionSubmissionAccess } from '../src/harnesses/taskpool/mission-coordination.js';
+import { createMissionSubmissionAccess } from '../src/runtime/mission-submission-access.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { request as httpRequest } from 'node:http';

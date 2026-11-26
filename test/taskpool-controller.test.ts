@@ -5,11 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { request } from 'node:http';
-import { createTaskPoolPublicationServices } from '../src/harnesses/taskpool/publication-services.js';
+import { createTaskPoolPublicationServices } from '../examples/taskpool/publication-services.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { transport, controls } from './fixtures/taskpool-controller-backend.js';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
-import { createTaskPoolController } from '../src/harnesses/taskpool/controller.js';
+import { createTaskPoolController } from '../examples/taskpool/controller.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next){
   if(specifier==='./opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};

@@ -1,15 +1,15 @@
 import { createHash } from 'node:crypto';
-import { decodeFileSeed } from '../../../scripts/core-file-seed.js';
+import { decodeFileSeed } from '../../scripts/core-file-seed.js';
 import { taskPoolCoordinationPermissions } from './coordination-permissions.js';
 import { createWorkspaceMergeService } from './workspace-merge.js';
-import { MISSION_WORKSPACE_READS } from './public-workspace-reads.js';
-import { prepareWorkspaceCheckSource } from './workspace-check-source.js';
-import { agentCheckResult } from '../../judge/check-result.js';
-import { ExecutionWorkspace, WorkspaceRequestMismatchError } from '../../runtime/execution-workspace.js';
-import { MurmError } from '../../errors.js';
-import { makeEnvelope, stableStringify } from '../../protocol/envelope.js';
+import { MISSION_WORKSPACE_READS } from '../../src/runtime/workspace-public-reads.js';
+import { prepareWorkspaceCheckSource } from '../../src/judge/workspace-check-source.js';
+import { agentCheckResult } from '../../src/judge/check-result.js';
+import { ExecutionWorkspace, WorkspaceRequestMismatchError } from '../../src/runtime/execution-workspace.js';
+import { MurmError } from '../../src/errors.js';
+import { makeEnvelope, stableStringify } from '../../src/protocol/envelope.js';
 import { inputFingerprint, executionEnvelope } from './prepare-inputs.js';
-import { listTools } from '../../sdk/service-catalog.js';
+import { listTools } from '../../src/sdk/service-catalog.js';
 
 const fail = (code: any, message: any) => { throw new MurmError(code, message); };
 const publicationRequestId = (runtimeId: any, agentId: any, requestId: any) =>

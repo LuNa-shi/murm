@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { MurmError } from '../../errors.js';
+import { MurmError } from '../../src/errors.js';
 import { executionEnvelope, prepareTaskPoolInputs } from './prepare-inputs.js';
 
 const failure = (message: any) => new MurmError('NOT_ALLOWED', message);

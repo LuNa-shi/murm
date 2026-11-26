@@ -8,7 +8,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { controls } from './fixtures/taskpool-controller-backend.js';
-import { createTaskPoolTaskService } from '../src/harnesses/taskpool/task-service.js';
+import { createTaskPoolTaskService } from '../examples/taskpool/task-service.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next) {
