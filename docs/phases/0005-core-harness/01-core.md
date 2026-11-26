@@ -128,6 +128,10 @@ const runtime = await createRuntime({
 
 这些分组是对现有装配参数的包装。当前 backend 首版范围是 Pi 1.3.0、OpenSandbox 的本地 Docker 部署、现有 HTTP(S) `/v1/responses` 模型路径和时间上限模式。它依赖宿主对本地 sandbox 网络/磁盘的受控操作，不承诺任意远程 OpenSandbox、任意 Pi 协议或所有 provider 已可直接使用。模型别名必须与镜像内经过校验的 catalog 匹配；额外模型和其他预算策略按明确合同扩展。
 
+[#236](https://github.com/LuNa-shi/murm/issues/236) 在现有 backend 内交付 OpenSandbox 服务选择和资源归属合同。一次 Runtime 创建每个 Agent 前，按显式或确定性规则选定一套 OpenSandbox。派发前记录服务身份和原创建请求身份，观察到 sandbox ID 时再记录服务身份与 sandbox ID 的组合。文件与 Worker 操作、查询、删除和创建结果未知时的核对均使用原服务，避免跨服务重发。在同一 Runtime 内，各服务可返回相同的 sandbox ID。旧本地配置使用一个默认目标，Harness 的 `spawn`、输入、文件和关闭调用沿用现有接口。
+
+运行 sandbox 的一侧承担网络与文件隔离。此次实现保留现有本地 Docker 的控制口边界、byte/inode 配额、私有目录与既有共享挂载模式，以及停执行、必需导出、删除确认的顺序。普通 setup/init/doctor 继续验证同机部署。验收使用两个独立测试端点检查服务归属、相同 sandbox ID 及创建响应丢失，再用真实同机部署验证 Pi/Codex 的共同路径、工作目录及收尾。两个测试端点的结果属于接口证据。生产远程模式另行验证同一 Harness 跨两台 sandbox 主机、Bridge/模型入口双向可达、隔离及真实回收后，才纳入支持范围。千 Agent 的容量测试独立于此次接口交付。
+
 createRuntime 内部建立 Bridge、模型入口和记录目录，spawn 才分配 sandbox。模型 gateway 的 upstream headers、provider 管理凭据、内部 token 不进入 Profile.env 或 Agent 的 secretEnv。当前 manager 将 image 固定在构造器；迁移时需按 Profile 选择资源配置，不能静默让所有角色使用同一镜像。
 
 来源：[现有 runner 装配](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/benchmark/putnam-runner.js)、[OpenSandboxManager](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/runtime/opensandbox-manager.js)、[模型访问入口](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/agent/bot-model-access.js)。
