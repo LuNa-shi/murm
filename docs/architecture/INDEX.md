@@ -35,6 +35,7 @@ Read 00 first, then 07 for current entry points. Read 15–21 for the programmab
 | [19 Fixed Substrate peer pool](19-substrate-harness.md) | How does a fixed pool publish immutable content, adopt ranked references and continue its Sessions without Tasks? |
 | [20 Fixed Lead-Worker Harness](20-lead-worker-harness.md) | How do Board transactions, restricted Git identities, direction adoption and cleanup work? |
 | [21 Native acceptance evidence boundary](21-hour-matrix.md) | Where are the five original long-run proofs retained, and which ordinary workflows remain after removing experiment-only runners? |
+| [22 Public documentation website](22-website.md) | How are website pages, local search, static assets and GitHub Pages deployments built and verified? |
 
 ## What complete means here
 

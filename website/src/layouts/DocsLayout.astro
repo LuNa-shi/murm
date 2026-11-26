@@ -1,0 +1,74 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import Sidebar from '../components/Sidebar.astro';
+import { getPrevNext } from '../lib/nav';
+import { withBase } from '../lib/url';
+
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+
+interface Props {
+  title: string;
+  description: string;
+  section: string;
+  currentSlug: string;
+  headings: Heading[];
+}
+
+const { title, description, section, currentSlug, headings } = Astro.props;
+const { prev, next } = getPrevNext(currentSlug);
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
+---
+
+<BaseLayout title={`${title} · murm`} description={description} showTopNav={true} showMobileMenu={true}>
+  <div class="docs-shell">
+    <Sidebar currentSlug={currentSlug} />
+
+    <main class="docs-main">
+      <div class="docs-eyebrow">{section}</div>
+      <h1 class="docs-title">{title}</h1>
+      <p class="docs-lead">{description}</p>
+
+      <article class="prose">
+        <slot />
+      </article>
+
+      {(prev || next) && (
+        <nav class="docs-pager" aria-label="Pagination">
+          {prev && (
+            <a class="pager-link prev" href={withBase(`/docs/${prev.slug}/`)}>
+              <span class="pager-dir">← PREVIOUS</span>
+              <span class="pager-title">{prev.title}</span>
+            </a>
+          )}
+          {next && (
+            <a class="pager-link next" href={withBase(`/docs/${next.slug}/`)}>
+              <span class="pager-dir">NEXT →</span>
+              <span class="pager-title">{next.title}</span>
+            </a>
+          )}
+        </nav>
+      )}
+    </main>
+
+    <aside class="docs-toc" aria-label="On this page">
+      {toc.length > 0 && (
+        <>
+          <div class="toc-title">ON THIS PAGE</div>
+          <ul class="toc-list">
+            {toc.map((h) => (
+              <li>
+                <a class:list={['toc-link', { 'depth-3': h.depth === 3 }]} href={`#${h.slug}`}>
+                  {h.text}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </aside>
+  </div>
+</BaseLayout>

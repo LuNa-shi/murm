@@ -7,7 +7,8 @@
     "scripts",
     "services",
     "integrations",
-    "test-support/subagents"
+    "test-support/subagents",
+    "website"
   ],
   "scope_root_files": [
     "package.json",
@@ -24,7 +25,8 @@
     "tsconfig.tests.json",
     ".dockerignore",
     "examples/substrate/FateProofGuard.lean",
-    "examples/substrate/VerifyFateProof.lean"
+    "examples/substrate/VerifyFateProof.lean",
+    ".github/workflows/deploy-website.yml"
   ],
   "excluded": [
     {
@@ -50,6 +52,10 @@
     {
       "path": "dist/",
       "reason": "Generated output from TypeScript and accompanying runtime assets. The inventory fingerprints the source inputs."
+    },
+    {
+      "path": "website/node_modules/, website/.astro/ and website/dist/",
+      "reason": "External npm dependencies, generated Astro metadata and compiled static site output. The inventory tracks site inputs."
     }
   ],
   "files": [
@@ -2137,6 +2143,398 @@
         "docs/architecture/19-substrate-harness.md"
       ],
       "role": "Original target comparison, kernel replay and axiom auditing"
+    },
+    {
+      "path": "website/.gitignore",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Exclude local dependency, cache and compiled site directories"
+    },
+    {
+      "path": "website/astro.config.mjs",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Static build and Markdown rendering configuration, deployment origin and base"
+    },
+    {
+      "path": "website/package-lock.json",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Locked site build dependencies and package integrity"
+    },
+    {
+      "path": "website/package.json",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Site dependencies and local development, build and preview entry points"
+    },
+    {
+      "path": "website/public/favicon.svg",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Public site icon"
+    },
+    {
+      "path": "website/src/assets/fonts/DepartureMono-Regular.woff2",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Locally bundled Departure Mono font asset"
+    },
+    {
+      "path": "website/src/assets/images/agent-lifecycle.jpg",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Source illustration for the public architecture and Harness guides"
+    },
+    {
+      "path": "website/src/assets/images/architecture-overview.jpg",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Source illustration for the public architecture and Harness guides"
+    },
+    {
+      "path": "website/src/assets/images/five-programs-compare.jpg",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Source illustration for the public architecture and Harness guides"
+    },
+    {
+      "path": "website/src/assets/images/service-bridge-flow.jpg",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Source illustration for the public architecture and Harness guides"
+    },
+    {
+      "path": "website/src/components/CoreModelBlueprint.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Interactive diagram of the six Core concepts"
+    },
+    {
+      "path": "website/src/components/DomainStrip.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Landing page application domains"
+    },
+    {
+      "path": "website/src/components/HarnessShowcase.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Interactive selection and diagrams for the five Harnesses"
+    },
+    {
+      "path": "website/src/components/MurmLogo.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Shared murm wordmark and icon"
+    },
+    {
+      "path": "website/src/components/MurmurationCanvas.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Animated landing page canvas"
+    },
+    {
+      "path": "website/src/components/NoRebuildGrid.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Landing page examples of reusable Runtime capabilities"
+    },
+    {
+      "path": "website/src/components/PillarSchematics.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Landing page architecture diagrams"
+    },
+    {
+      "path": "website/src/components/SearchModal.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Client-side documentation search, keyboard shortcuts and result navigation"
+    },
+    {
+      "path": "website/src/components/Sidebar.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Documentation section navigation"
+    },
+    {
+      "path": "website/src/components/TopNav.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Site navigation, mobile menu, theme and search controls"
+    },
+    {
+      "path": "website/src/content.config.ts",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Documentation loader and frontmatter schema"
+    },
+    {
+      "path": "website/src/content/docs/architecture.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for System Architecture"
+    },
+    {
+      "path": "website/src/content/docs/build-your-harness.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for Build Your Own Harness"
+    },
+    {
+      "path": "website/src/content/docs/concepts.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for Core Concepts"
+    },
+    {
+      "path": "website/src/content/docs/harnesses/index.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for Five Topologies Overview"
+    },
+    {
+      "path": "website/src/content/docs/harnesses/lead-worker.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for Lead-Worker"
+    },
+    {
+      "path": "website/src/content/docs/harnesses/peermesh.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for PeerMesh"
+    },
+    {
+      "path": "website/src/content/docs/harnesses/subagents.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for Subagents"
+    },
+    {
+      "path": "website/src/content/docs/harnesses/substrate.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for Substrate"
+    },
+    {
+      "path": "website/src/content/docs/harnesses/taskpool.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for TaskPool"
+    },
+    {
+      "path": "website/src/content/docs/quickstart.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for Quick Start"
+    },
+    {
+      "path": "website/src/content/docs/reference/api.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for API & Configuration"
+    },
+    {
+      "path": "website/src/content/docs/reference/deploy.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for Deployment"
+    },
+    {
+      "path": "website/src/content/docs/reference/types.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for Types & Mapping"
+    },
+    {
+      "path": "website/src/content/docs/run-lifecycle.md",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Published documentation content for Anatomy of a Run"
+    },
+    {
+      "path": "website/src/layouts/BaseLayout.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Document shell, browser theme and shared site styles"
+    },
+    {
+      "path": "website/src/layouts/DocsLayout.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Documentation shell, section sidebar and page headings"
+    },
+    {
+      "path": "website/src/lib/nav.ts",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Public documentation navigation groups and routes"
+    },
+    {
+      "path": "website/src/lib/url.ts",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Deployment base resolution for generated site URLs"
+    },
+    {
+      "path": "website/src/pages/docs/[...slug].astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Build-time documentation route enumeration and rendering"
+    },
+    {
+      "path": "website/src/pages/index.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Public landing page assembly"
+    },
+    {
+      "path": "website/src/styles/global.css",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Responsive styles, font declarations and browser theme colors"
+    },
+    {
+      "path": "website/tsconfig.json",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Astro TypeScript source configuration"
+    },
+    {
+      "path": "website/public/licenses/caveat.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
+      "path": "website/public/licenses/departure-mono.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
+      "path": "website/public/licenses/inter.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
+      "path": "website/public/licenses/jetbrains-mono.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
+      "path": "website/public/licenses/space-grotesk.txt",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Distributed font copyright and license notice"
+    },
+    {
+      "path": ".github/workflows/deploy-website.yml",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Build, upload and deploy the static website to GitHub Pages from main"
     }
   ]
 }

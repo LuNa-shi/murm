@@ -1,0 +1,35 @@
+---
+import { DOC_NAV, normalizeSlug } from '../lib/nav';
+import { withBase } from '../lib/url';
+
+interface Props {
+  currentSlug: string;
+}
+
+const { currentSlug } = Astro.props;
+const active = normalizeSlug(currentSlug);
+---
+
+<aside class="docs-sidebar" id="docs-sidebar" aria-label="Documentation navigation">
+  {DOC_NAV.map((group) => (
+    <div class="sidebar-group">
+      <div class="sidebar-label">{group.label}</div>
+      <ul class="sidebar-list">
+        {group.items.map((item) => {
+          const isCurrent = normalizeSlug(item.slug) === active;
+          return (
+            <li>
+              <a
+                class:list={['sidebar-link', { active: isCurrent }]}
+                href={withBase(`/docs/${item.slug}/`)}
+                aria-current={isCurrent ? 'page' : undefined}
+              >
+                <span>{item.title}</span>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  ))}
+</aside>

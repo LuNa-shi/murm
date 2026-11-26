@@ -1,0 +1,172 @@
+---
+const CONCEPTS = {
+  all: {
+    tag: 'OVERVIEW',
+    code: 'createRuntime({ backend, profiles, services, maxAgents, outputDir })',
+    note: 'Author on the top plane; let murm isolate, bridge, and archive everything below the boundary.',
+  },
+  harness: {
+    tag: 'HARNESS · AUTHORING',
+    code: 'runtime.onEvent((e) => runtime.send(targetId, nextTask))  // src/harnesses/*',
+    note: 'Your host TypeScript logic deciding who spawns, how events route, and when a run finishes.',
+  },
+  agent: {
+    tag: 'AGENT · AUTHORING',
+    code: 'runtime.spawn({ requestId, profile: "worker", forkFrom? })  // AgentInfo · Profile',
+    note: 'An independent worker with a persistent Pi session, private workspace, and 4 local tools.',
+  },
+  service: {
+    tag: 'SERVICE · AUTHORING',
+    code: 'services.registerService({ manifest, adapter })  // ServiceRegistry',
+    note: 'Pluggable shared state (task pool, mailbox, board, substrate) validated by JSON Schema.',
+  },
+  runtime: {
+    tag: 'RUNTIME · EXECUTION',
+    code: 'await runtime.send(id, msg, { mode: "steer", wakeIfIdle: false })  // createRuntime()',
+    note: 'Passive control plane coordinating lifecycles, Bridge auth, Model Gateway, and cleanup.',
+  },
+  sandbox: {
+    tag: 'SANDBOX · EXECUTION',
+    code: 'runtime.files.prepare / grant / snapshot  // OpenSandbox + Worker',
+    note: 'Isolated container enforcing filesystem quotas, network allowlists, and clean file exports.',
+  },
+  run: {
+    tag: 'RUN · EXECUTION',
+    code: 'outputDir/<runtimeId>/{runtime.json, evidence.jsonl, service-calls.jsonl, <agentId>/}',
+    note: 'One concrete execution archived to disk with redacted traces, native sessions, and reports.',
+  },
+};
+---
+
+<div class="cm-shell" data-core-model>
+  <!-- Top Plane: Authoring -->
+  <div class="cm-plane">
+    <div class="cm-plane-label">
+      <span class="cm-plane-kicker">AUTHORING</span>
+      <span class="cm-plane-sub">What you write</span>
+    </div>
+
+    <div class="cm-row">
+      <button type="button" class="cm-cell cm-cell-primary" data-cm-item="harness">
+        <span class="cm-cell-head">
+          <code>Harness</code>
+          <span class="cm-pill cm-pill-author">TS</span>
+        </span>
+        <span class="cm-cell-desc">Control loop, roles &amp; stop rules</span>
+      </button>
+
+      <span class="cm-arrow" aria-hidden="true">→</span>
+
+      <button type="button" class="cm-cell" data-cm-item="agent">
+        <span class="cm-cell-head">
+          <code>Agent</code>
+          <span class="cm-pill cm-pill-author">Agent</span>
+        </span>
+        <span class="cm-cell-desc">Persistent session · 4 local tools</span>
+      </button>
+
+      <span class="cm-arrow" aria-hidden="true">→</span>
+
+      <button type="button" class="cm-cell" data-cm-item="service">
+        <span class="cm-cell-head">
+          <code>Service</code>
+          <span class="cm-pill cm-pill-author">Schema</span>
+        </span>
+        <span class="cm-cell-desc">Pluggable shared state &amp; tools</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Quiet Isolation Boundary aligned directly under the 3 columns -->
+  <div class="cm-boundary" aria-hidden="true">
+    <div class="cm-boundary-label">BOUNDARY</div>
+    <div class="cm-boundary-cols">
+      <span class="cm-down">↓ <small>spawn / send</small></span>
+      <span></span>
+      <span class="cm-down">↓ <small>runs inside</small></span>
+      <span></span>
+      <span class="cm-down">↓ <small>call log</small></span>
+    </div>
+  </div>
+
+  <!-- Bottom Plane: Execution -->
+  <div class="cm-plane">
+    <div class="cm-plane-label">
+      <span class="cm-plane-kicker cm-kicker-exec">EXECUTION</span>
+      <span class="cm-plane-sub">What murm runs</span>
+    </div>
+
+    <div class="cm-row">
+      <button type="button" class="cm-cell" data-cm-item="runtime">
+        <span class="cm-cell-head">
+          <code>Runtime</code>
+          <span class="cm-pill cm-pill-exec">Core</span>
+        </span>
+        <span class="cm-cell-desc">Lifecycle, Bridge &amp; Model Gate</span>
+      </button>
+
+      <span class="cm-arrow" aria-hidden="true">→</span>
+
+      <button type="button" class="cm-cell" data-cm-item="sandbox">
+        <span class="cm-cell-head">
+          <code>Sandbox</code>
+          <span class="cm-pill cm-pill-exec">Docker</span>
+        </span>
+        <span class="cm-cell-desc">Isolated Worker + Pi container</span>
+      </button>
+
+      <span class="cm-arrow" aria-hidden="true">→</span>
+
+      <button type="button" class="cm-cell" data-cm-item="run">
+        <span class="cm-cell-head">
+          <code>Run</code>
+          <span class="cm-pill cm-pill-exec">Archive</span>
+        </span>
+        <span class="cm-cell-desc">Redacted traces &amp; sessions</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Quiet Single-Line Primitive Inspector -->
+  <div class="cm-inspector">
+    <span class="cm-ins-tag" data-cm-tag>{CONCEPTS.all.tag}</span>
+    <span class="cm-ins-note" data-cm-note>{CONCEPTS.all.note}</span>
+    <code class="cm-ins-code" data-cm-code>{CONCEPTS.all.code}</code>
+  </div>
+</div>
+
+<script define:vars={{ CONCEPTS }}>
+  (function initCoreModel() {
+    const root = document.querySelector('[data-core-model]');
+    if (!root) return;
+
+    const items = root.querySelectorAll('[data-cm-item]');
+    const tagEl = root.querySelector('[data-cm-tag]');
+    const noteEl = root.querySelector('[data-cm-note]');
+    const codeEl = root.querySelector('[data-cm-code]');
+    let locked = 'all';
+
+    function show(key) {
+      const k = CONCEPTS[key] ? key : 'all';
+      const data = CONCEPTS[k];
+      items.forEach((btn) => {
+        const bk = btn.getAttribute('data-cm-item');
+        btn.classList.toggle('is-active', k !== 'all' && bk === k);
+        btn.classList.toggle('is-muted', k !== 'all' && bk !== k);
+      });
+      if (tagEl) tagEl.textContent = data.tag;
+      if (noteEl) noteEl.textContent = data.note;
+      if (codeEl) codeEl.textContent = data.code;
+    }
+
+    items.forEach((btn) => {
+      const k = btn.getAttribute('data-cm-item');
+      btn.addEventListener('click', () => {
+        locked = locked === k ? 'all' : k;
+        show(locked);
+      });
+      btn.addEventListener('mouseenter', () => show(k));
+      btn.addEventListener('mouseleave', () => show(locked));
+    });
+  })();
+</script>

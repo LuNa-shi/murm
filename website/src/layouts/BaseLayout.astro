@@ -1,0 +1,121 @@
+---
+import '@fontsource-variable/space-grotesk';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
+import '@fontsource/caveat/700.css';
+import '../styles/global.css';
+import TopNav from '../components/TopNav.astro';
+import SearchModal from '../components/SearchModal.astro';
+import { withBase } from '../lib/url';
+
+interface Props {
+  title: string;
+  description?: string;
+  showTopNav?: boolean;
+  showMobileMenu?: boolean;
+  paperGrid?: boolean;
+}
+
+const {
+  title,
+  description = 'A minimal runtime for building multi-agent harnesses with composable coordination services.',
+  showTopNav = true,
+  showMobileMenu = false,
+  paperGrid = false,
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href={withBase('/favicon.svg')} />
+    <script is:inline>
+      (function () {
+        const stored = localStorage.getItem('murm:theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = stored || (prefersDark ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+        const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reduced && 'IntersectionObserver' in window) {
+          document.documentElement.classList.add('reveal-ready');
+        }
+      })();
+    </script>
+  </head>
+  <body class:list={[{ 'paper-grid-bg': paperGrid }]}>
+    {!showTopNav && <div class="scroll-progress" data-scroll-progress aria-hidden="true"></div>}
+    {showTopNav && <TopNav showMobileMenu={showMobileMenu} />}
+    <slot />
+    <SearchModal />
+
+    <script is:inline>
+      (function () {
+        document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+            document.documentElement.dataset.theme = next;
+            localStorage.setItem('murm:theme', next);
+          });
+        });
+
+        const menuBtn = document.getElementById('mobile-menu-toggle');
+        const sidebar = document.getElementById('docs-sidebar');
+        menuBtn?.addEventListener('click', () => sidebar?.classList.toggle('open'));
+
+        document.querySelectorAll('.prose pre').forEach((pre) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'copy-btn';
+          btn.textContent = 'Copy';
+          btn.addEventListener('click', async () => {
+            const code = pre.querySelector('code')?.textContent || pre.textContent || '';
+            try {
+              await navigator.clipboard.writeText(code);
+              btn.textContent = 'Copied';
+              setTimeout(() => (btn.textContent = 'Copy'), 1400);
+            } catch {
+              btn.textContent = 'Error';
+            }
+          });
+          pre.appendChild(btn);
+        });
+
+        // Subtle reading progress hairline on landing
+        const progressEl = document.querySelector('[data-scroll-progress]');
+        if (progressEl) {
+          const updateBar = () => {
+            const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+            const pct = Math.max(0, Math.min(1, window.scrollY / max));
+            progressEl.style.transform = 'scaleX(' + pct.toFixed(4) + ')';
+          };
+          window.addEventListener('scroll', updateBar, { passive: true });
+          window.addEventListener('resize', updateBar, { passive: true });
+          updateBar();
+        }
+
+        // Chapter-by-chapter staged scroll reveal
+        const revealEls = document.querySelectorAll('[data-reveal], [data-reveal-line]');
+        if (revealEls.length && document.documentElement.classList.contains('reveal-ready')) {
+          const io = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add('is-visible');
+                  io.unobserve(entry.target);
+                }
+              }
+            },
+            { threshold: 0.14, rootMargin: '0px 0px -64px 0px' }
+          );
+          revealEls.forEach((el) => io.observe(el));
+        } else {
+          revealEls.forEach((el) => el.classList.add('is-visible'));
+        }
+      })();
+    </script>
+  </body>
+</html>

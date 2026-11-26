@@ -1,0 +1,125 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import MurmLogo from '../components/MurmLogo.astro';
+import MurmurationCanvas from '../components/MurmurationCanvas.astro';
+import PillarSchematics from '../components/PillarSchematics.astro';
+import NoRebuildGrid from '../components/NoRebuildGrid.astro';
+import CoreModelBlueprint from '../components/CoreModelBlueprint.astro';
+import HarnessShowcase from '../components/HarnessShowcase.astro';
+import DomainStrip from '../components/DomainStrip.astro';
+import { withBase } from '../lib/url';
+---
+
+<BaseLayout
+  title="murm · Build your own multi-agent harness"
+  description="A minimal runtime for building multi-agent harnesses with composable coordination services."
+  showTopNav={false}
+  paperGrid={true}
+>
+  <MurmurationCanvas />
+
+  <main class="landing-shell">
+    <div class="landing-corner" aria-label="Quick links">
+      <a class="corner-link" href={withBase('/docs/quickstart/')}>Docs</a>
+      <span class="corner-sep" aria-hidden="true">/</span>
+      <a class="corner-link" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
+      <button type="button" class="corner-icon-btn" data-murm-toggle aria-label="Toggle flock animation" title="Pause flock">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 14c3-4 6-4 9 0 3-4 6-4 9 0" />
+          <path d="M6 9c2-2.5 4-2.5 6 0 2-2.5 4-2.5 6 0" opacity="0.6" />
+        </svg>
+      </button>
+      <button type="button" class="corner-icon-btn" data-theme-toggle aria-label="Toggle color theme" title="Toggle light / dark theme">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Chapter 0: Full-Viewport Hero Stage (birds glide here and dissolve on scroll) -->
+    <section class="hero hero-stage">
+      <div class="hero-core">
+        <div class="hero-mark">
+          <MurmLogo variant="hero" />
+        </div>
+        <p class="hero-brand">murm</p>
+        <h1 class="hero-title">
+          Build your own <span class="circled-word">multi-agent harness<svg viewBox="0 0 420 112" preserveAspectRatio="none" aria-hidden="true"><path d="M 402 25 C 338 4, 80 4, 18 34 C 1 54, 18 96, 152 104 C 296 111, 408 92, 414 56 C 418 32, 366 14, 290 13" /></svg></span>
+        </h1>
+
+        <div class="hero-cta-wrap">
+          <div class="hero-cta">
+            <a class="btn btn-tactile" href={withBase('/docs/quickstart/')}>Get Started →</a>
+            <a class="btn btn-outline" href={withBase('/docs/concepts/')}>Read the Docs</a>
+            <a class="btn btn-outline" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
+          </div>
+          <span class="hero-hand-note" aria-hidden="true">one runtime, swap any coordination topology!</span>
+        </div>
+
+        <PillarSchematics />
+      </div>
+
+      <a class="scroll-cue" href="#why-murm" aria-label="Scroll to overview">
+        <span>SCROLL</span>
+        <span class="scroll-cue-arrow" aria-hidden="true">↓</span>
+      </a>
+    </section>
+
+    <!-- Chapter 1: 01 · WHY MURM -->
+    <div id="why-murm">
+      <NoRebuildGrid />
+    </div>
+
+    <!-- Chapter 2: 02 · CORE MODEL -->
+    <section class="chapter landing-section">
+      <div class="chapter-rule" data-reveal-line aria-hidden="true"></div>
+      <div class="section-header" data-reveal style="--reveal-delay: 40ms">
+        <div>
+          <p class="section-eyebrow">02 · CORE MODEL</p>
+          <h2 class="section-title">Six orthogonal concepts</h2>
+          <p class="section-desc">
+            Author a <span class="marker-highlight">Harness</span> on the top plane; let the Runtime isolate, bridge, and archive everything below.
+          </p>
+        </div>
+        <a class="section-link" href={withBase('/docs/concepts/')}>Explore concepts →</a>
+      </div>
+
+      <div data-reveal style="--reveal-delay: 140ms">
+        <CoreModelBlueprint />
+      </div>
+    </section>
+
+    <!-- Chapter 3: 03 · ONE RUNTIME, FIVE HARNESSES -->
+    <section class="chapter landing-section">
+      <div class="chapter-rule" data-reveal-line aria-hidden="true"></div>
+      <div class="section-header" data-reveal style="--reveal-delay: 40ms">
+        <div>
+          <p class="section-eyebrow">03 · ONE RUNTIME, FIVE HARNESSES</p>
+          <h2 class="section-title">Five coordination topologies on one core</h2>
+          <p class="section-desc">
+            Select any card to switch the live execution flow, or click the diagram to <span class="marker-highlight">zoom in</span>. Zero Runtime edits across all five.
+          </p>
+        </div>
+        <a class="section-link" href={withBase('/docs/harnesses/')}>Compare all five →</a>
+      </div>
+
+      <div data-reveal style="--reveal-delay: 140ms">
+        <HarnessShowcase />
+      </div>
+    </section>
+
+    <!-- Chapter 4: 04 · ONE UNIFORM PLATFORM -->
+    <DomainStrip />
+
+    <footer class="landing-footer" data-reveal>
+      <span class="footer-brand">MURM · <code>@murm/core</code> 0.2.0 (<code>f98eb71d</code>)</span>
+      <div class="footer-links">
+        <a href={withBase('/docs/quickstart/')}>Quick Start</a>
+        <a href={withBase('/docs/build-your-harness/')}>Build a Harness</a>
+        <a href={withBase('/docs/reference/api/')}>API Reference</a>
+        <a href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
+      </div>
+    </footer>
+  </main>
+</BaseLayout>
