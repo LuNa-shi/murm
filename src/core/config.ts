@@ -42,7 +42,7 @@ function snapshotCollection(value: CollectionSpec | undefined) {
   return snapshotCollectionSpec(value);
 }
 
-export function snapshotProfiles(profiles: Readonly<Record<string, Profile>>, models: OpenSandboxBackendConfig['models'], registrations: ReadonlyMap<string, ServiceRegistration>): Map<string, Profile> {
+export function snapshotProfiles(profiles: Readonly<Record<string, Profile>>, models: OpenSandboxBackendConfig['models'], registrations: ReadonlyMap<string, ServiceRegistration>, existing?: ReadonlyMap<string, Profile>): Map<string, Profile> {
   if (!record(profiles) || Object.keys(profiles).length === 0) throw new TypeError('At least one Profile is required');
   const snapshots = new Map<string, Profile>();
   for (const [name, input] of Object.entries(profiles)) {
@@ -74,14 +74,14 @@ export function snapshotProfiles(profiles: Readonly<Record<string, Profile>>, mo
     snapshots.set(name, { ...structuredClone(input), ...(collect === undefined ? {} : { collect }) });
   }
   for (const [name, profile] of snapshots) {
-    if (profile.spawnProfiles?.some(target => !snapshots.has(target))) {
+    if (profile.spawnProfiles?.some(target => !snapshots.has(target) && !existing?.has(target))) {
       throw new TypeError(`Profile ${name} references an unknown spawn Profile`);
     }
   }
   return snapshots;
 }
 
-export function snapshotSpawn(input: SpawnOptions, profiles: ReadonlyMap<string, Profile>, registrations: ReadonlyMap<string, ServiceRegistration>): SpawnOptions {
+export function snapshotSpawn(input: SpawnOptions, profiles: ReadonlyMap<string, Profile>, knowsService: (id: string) => boolean): SpawnOptions {
   if (!record(input) || !validId(input.requestId) || !profiles.has(input.profile) ||
       Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'files', 'bindings', 'secretEnv', 'collect', 'forkFrom', 'workspace'].includes(key)) ||
       (input.writable !== undefined && typeof input.writable !== 'boolean') ||
@@ -91,7 +91,7 @@ export function snapshotSpawn(input: SpawnOptions, profiles: ReadonlyMap<string,
   }
   validateEnvironment(input.secretEnv, 'secretEnv');
   if (input.bindings !== undefined && (!record(input.bindings) || Object.entries(input.bindings).some(([service, binding]) =>
-    !registrations.has(service) || typeof binding !== 'string' || !binding))) {
+    !knowsService(service) || typeof binding !== 'string' || !binding))) {
     throw new TypeError('Invalid Service bindings');
   }
   if (input.workspace !== undefined) {

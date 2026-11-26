@@ -4,7 +4,7 @@
 
 Runtime baseline: `fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02`; review date: 2026-11-26. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **307 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **314 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -42,10 +42,11 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [src/judge/lean-module-verify.LICENSE.txt](../../src/judge/lean-module-verify.LICENSE.txt) | Pinned third-party license or provenance attachment distributed with identified Lean material | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `8b28515ffffc5c0fe2807d8ae3735b00b324d9b7ce807dd63ff6ac8922fbce7e` |
 | [src/judge/lean-module-verify.NOTICE.md](../../src/judge/lean-module-verify.NOTICE.md) | Pinned third-party license or provenance attachment distributed with identified Lean material | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `2bdbf775ed31967cd3bc01b4186d5312a18975f237d931712a8d6e575f12391f` |
 
-### Controlled fixtures (1)
+### Controlled fixtures (2)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
+| [examples/lead-worker/fixtures/initial-project/orders.mjs](../../examples/lead-worker/fixtures/initial-project/orders.mjs) | Minimal incomplete orders CLI seeded into the dynamic acceptance project | [20-lead-worker-harness](20-lead-worker-harness.md) | `6bc88a8a1c3173b5621efb62d8ecaa04dd2ed3b7817d830094a1852cf1168f6c` |
 | [examples/lead-worker/fixtures/oracle.mjs](../../examples/lead-worker/fixtures/oracle.mjs) | Frozen host-side JSONL task cases and candidate transcript checks for #235 | [20-lead-worker-harness](20-lead-worker-harness.md) | `dc9016f63dde7013d2bf650b9f7432e3c431cb9fdd16320d1593dda8b0ed73b5` |
 
 ### Core API (1)
@@ -58,17 +59,18 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/core/backend-config.ts](../../src/core/backend-config.ts) | Published Pi/OpenSandbox Backend configuration contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `f193e6ccb9966ef40e3d8fdafaecab967ae8bbea96bf53e4a41f7d0cd7ffe797` |
-| [src/core/service-types.ts](../../src/core/service-types.ts) | Published Core Service manifest, adapter and operation contracts | [04-services](04-services.md) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
-| [src/core/types.ts](../../src/core/types.ts) | Published Core Runtime, Agent, event and receipt contracts | [15-core-runtime](15-core-runtime.md) | `89abb462c062ea457140c797d65f1f3ee8ec410080821fe567845ff9ddf4cddd` |
+| [src/core/backend-config.ts](../../src/core/backend-config.ts) | Published Pi/OpenSandbox Backend configuration contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `efcde1bb0beeb61badc16468b15ff239b790b1580f72462fea56b17ee5409be5` |
+| [src/core/service-types.ts](../../src/core/service-types.ts) | Published Core Service manifest, adapter and operation contracts | [04-services](04-services.md) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
+| [src/core/types.ts](../../src/core/types.ts) | Published Core Runtime, Agent, event and receipt contracts | [15-core-runtime](15-core-runtime.md) | `9caca7aaf9d2bea40356574ea03f0d405f5c46a1405f52288c456338dddf8881` |
 
-### Core runtime (4)
+### Core runtime (5)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | Executor startup, version, configuration checks and capability contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `7a3031d029faafbfe7b9f6226a2d5784dc1a52170c8d0ad34a6b5618596bb2a0` |
-| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | Shared OpenSandbox lifecycle, session control, input polling and cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `936eb2eff7b94a9e5c970aa79cd19b01c7988bb91a10e085f01809f433b5b6f4` |
+| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | Shared OpenSandbox lifecycle, session control, input polling and cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `b9e6919bfaa00599e9d80497e74ec77f8dcdf2b760aacb2973fca0c656d243fd` |
 | [src/core/opensandbox-provider.ts](../../src/core/opensandbox-provider.ts) | Internal OpenSandbox target, local connection, and trusted network and workspace preparation | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `ecaeb7559e8455bbfdc3ceefb90c60fd4284536cd9823f5c2c39f4391a706af3` |
+| [src/core/runtime-management.ts](../../src/core/runtime-management.ts) | Run-owned Profile and Service registration, retirement, access generations and management receipts | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `0fd679d6d1799bdea1f9edb5bf6e60ccbfaa2f48ae68fc9f598a3bfbea8111ee` |
 | [src/core/worker-event-poll.ts](../../src/core/worker-event-poll.ts) | Interruptible bounded polling schedule for a single Worker | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `29fc386edca85dfdaa448de4b14313ab2bfc3b051d2e77a598debbbc4b96517f` |
 
 ### Delivery and configuration (4)
@@ -123,7 +125,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [examples/subagents/controller.ts](../../examples/subagents/controller.ts) | Tree directory, trusted authorization, message routing, waits, continuation and result snapshots | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `db972be60e1cc8800862aa6634e06e3436969b536049912efe29d5ab939830e1` |
 | [examples/subagents/main.ts](../../examples/subagents/main.ts) | Subagents host Profiles, live user input, one-shot or interactive execution and whole-tree reporting | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `0c721b66f8c1a8f25a98e6688fe26762221f8502fbcdda60efae5f465af1cf9e` |
 | [examples/subagents/prompts.ts](../../examples/subagents/prompts.ts) | Production Root and Child instructions for the discovered collaboration Service | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `76fdca19d7bf342d53a0bd57f98c939e39913d3df3316c9aab6c6bcf5f7d4bb4` |
-| [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts) | Runtime-owned time-bounded Responses forwarding, request receipts, and observed usage | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [11-storage-reference](11-storage-reference.md), [15-core-runtime](15-core-runtime.md) | `32cbedaa66c5c92d762d7b02af402b72f5bbd2fba1526531cd398dd8e40fd338` |
+| [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts) | Runtime-owned time-bounded Responses forwarding, request receipts, and observed usage | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [11-storage-reference](11-storage-reference.md), [15-core-runtime](15-core-runtime.md) | `906b3ff3b8a64cca19e9630a9576b66d82f667a6b6cd0443296d5f83e2622b3e` |
 | [src/harnesses/shared/run-input.ts](../../src/harnesses/shared/run-input.ts) | Harness-owned exclusive idle Agent input wait and uncertain submission guard | [15-core-runtime](15-core-runtime.md) | `e6fbda5260ae12d8e2e402923de45a4987748ba5512f0b2c84b3d3ec4b8a7643` |
 | [src/harnesses/shared/run-report.ts](../../src/harnesses/shared/run-report.ts) | Compatibility Harness reporting and shared atomic persistence for application outcome reports | [17-harness-reporting](17-harness-reporting.md) | `5f41914b89a7ed65cc4b35e3e2cadd1f4f4a6275b6b351d45df9e888a4b01217` |
 | [src/harnesses/taskpool/agent-coordinator.ts](../../src/harnesses/taskpool/agent-coordinator.ts) | Trusted Core-returned flat Agent identity registration and readiness | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `bdab99a87b90b4417f90732dbce094f79f03d0abf59c95d94185a1e501670250` |
@@ -158,17 +160,22 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 |---|---|---|---|
 | [src/harnesses/shared/input-admission.ts](../../src/harnesses/shared/input-admission.ts) | Optional bounded FIFO actual-input admission shared across peer routers; cancellation and unknown-outcome queue fence | [18-peermesh-harness](18-peermesh-harness.md), [19-substrate-harness](19-substrate-harness.md) | `ac0f437672f4d5e3c9f7a4bd77286cac6727956bf24006a32203fbf42c04f8d4` |
 
-### Harness integration (19)
+### Harness integration (24)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [examples/lead-worker/config.ts](../../examples/lead-worker/config.ts) | Kimi K3 fixed-team sample configuration and finite resource bounds | [20-lead-worker-harness](20-lead-worker-harness.md) | `400313bec32ac28df8b3c3fcd876e753b8fd8a49d5708daafa6b5bce171d5dbe` |
-| [examples/lead-worker/main.ts](../../examples/lead-worker/main.ts) | Editable Lead-Worker CLI with public backend assembly and report output | [20-lead-worker-harness](20-lead-worker-harness.md) | `00c6c22f64f72aa3105dccfe8ce21c953a2abe247a6375941f91bedaae4c4af3` |
+| [examples/lead-worker/dynamic-container.ts](../../examples/lead-worker/dynamic-container.ts) | Bounded local Docker deployment, loopback Service adapter and owned resource cleanup | [20-lead-worker-harness](20-lead-worker-harness.md) | `e1dcc18cf5ab4bcdc9e2a4ef2a788a3106937527529560fe898f425b701efe04` |
+| [examples/lead-worker/dynamic-orders.ts](../../examples/lead-worker/dynamic-orders.ts) | Frozen orders task, pinned Git tree extraction and host-side candidate execution | [20-lead-worker-harness](20-lead-worker-harness.md) | `7ac538fa430b128f3daf3ac7952576b5ebf12c7ae582b3012a73b8c5e9b1e9cd` |
+| [examples/lead-worker/main.ts](../../examples/lead-worker/main.ts) | Editable Lead-Worker CLI with public backend assembly and report output | [20-lead-worker-harness](20-lead-worker-harness.md) | `fd76ea9aeb089f7c9119dfe578d061cf369fcc8bb711c648359a8bc3bc5dfbd0` |
+| [examples/lead-worker/verify-orders.ts](../../examples/lead-worker/verify-orders.ts) | Offline orders oracle and retained Run receipt validation | [20-lead-worker-harness](20-lead-worker-harness.md) | `18b962811e7a3f5ffd30ca1be1bd44ff0fcf1e636af599fc343d55b79b2de6fe` |
 | [scripts/git-credential-peermesh.ts](../../scripts/git-credential-peermesh.ts) | Single-peer PeerMesh ownership, trusted facility identity and Git integration | [18-peermesh-harness](18-peermesh-harness.md) | `6aeed7b20e3e77f5828e4a5e6261dfec2f08f5f53987132214a4a763e296b23c` |
-| [src/harnesses/lead-worker/board.ts](../../src/harnesses/lead-worker/board.ts) | Transactional durable Board, trusted caller ownership and proof acceptance | [20-lead-worker-harness](20-lead-worker-harness.md) | `dfc6984f85b71fe3894230a6f405efd45fb1ddf36b1204a51316e5acae5af148` |
-| [src/harnesses/lead-worker/git.ts](../../src/harnesses/lead-worker/git.ts) | Run-scoped fixed-team Git provisioning, PR authorization, head and pinned byte verification | [20-lead-worker-harness](20-lead-worker-harness.md) | `c926ec705f7da30c9281c1a5582a0fb8021abb429e80d188f3b179ea5d49d5fa` |
-| [src/harnesses/lead-worker/index.ts](../../src/harnesses/lead-worker/index.ts) | Public Core fixed-team Harness, exclusive short or four-stage workflow and pending cleanup ownership | [20-lead-worker-harness](20-lead-worker-harness.md) | `586b0d7c1f152dbf1d6c22ba1dbcc83a81c1829421cda2c29f55e34edcdefd13` |
-| [src/harnesses/lead-worker/prompts.ts](../../src/harnesses/lead-worker/prompts.ts) | Lead/helper role and finite continuation instructions | [20-lead-worker-harness](20-lead-worker-harness.md), [08-prompts](08-prompts.md) | `edce33888bcb30b073c9d947014592de5f92b5c5dc07c70f3f3803ee91d43cc8` |
+| [src/harnesses/lead-worker/board.ts](../../src/harnesses/lead-worker/board.ts) | Transactional durable Board, trusted caller ownership and proof acceptance | [20-lead-worker-harness](20-lead-worker-harness.md) | `413afedbde3c72993f8d6cb93850b4e469beffc8469e53da1aa182ae0ebd0732` |
+| [src/harnesses/lead-worker/dynamic-scheduler.ts](../../src/harnesses/lead-worker/dynamic-scheduler.ts) | Board-triggered exclusive input scheduling with ready-member gating | [20-lead-worker-harness](20-lead-worker-harness.md) | `729596347dab0e824fc9373dbb678108d086d56215a3dd865329af948f832625` |
+| [src/harnesses/lead-worker/dynamic.ts](../../src/harnesses/lead-worker/dynamic.ts) | Lead delegation, source and deployment receipts, and four-Agent membership admission | [20-lead-worker-harness](20-lead-worker-harness.md) | `8b8397549ce3fe2587b3909118f0f6d8c2879a0ff6db6cad9042ecebd0995a29` |
+| [src/harnesses/lead-worker/git.ts](../../src/harnesses/lead-worker/git.ts) | Run-scoped fixed-team Git provisioning, PR authorization, head and pinned byte verification | [20-lead-worker-harness](20-lead-worker-harness.md) | `f5bd5b2fc90d32b24c5e599e6c5715b292b6f6f2d3265529c83b198aedb49969` |
+| [src/harnesses/lead-worker/index.ts](../../src/harnesses/lead-worker/index.ts) | Public Core fixed-team Harness, exclusive short or four-stage workflow and pending cleanup ownership | [20-lead-worker-harness](20-lead-worker-harness.md) | `3d42bb0fb625ac94cb11c4201010fc007e049a7dbee2e768e1b2bbf8a68416e7` |
+| [src/harnesses/lead-worker/prompts.ts](../../src/harnesses/lead-worker/prompts.ts) | Lead/helper role and finite continuation instructions | [20-lead-worker-harness](20-lead-worker-harness.md), [08-prompts](08-prompts.md) | `22ffe10d66454452ec90fd9492f1c1483af64d6e9cfe4b98ee7e7a201c026969` |
 | [src/harnesses/lead-worker/team.ts](../../src/harnesses/lead-worker/team.ts) | Validates fixed Lead-Worker configuration and exact trusted team identity | [20-lead-worker-harness](20-lead-worker-harness.md) | `eb835e2f38b932c863ee027c37090c3a0c99f803feda8633891ebb00b4de5618` |
 | [src/harnesses/peermesh/board-process.ts](../../src/harnesses/peermesh/board-process.ts) | Single-peer PeerMesh ownership, trusted facility identity and Git integration | [18-peermesh-harness](18-peermesh-harness.md) | `a6a8e31d87cd0f06e2927c6e914822511b50d82bf76db2fa590fa7d80b7e3c4d` |
 | [src/harnesses/peermesh/delivery.ts](../../src/harnesses/peermesh/delivery.ts) | Trusted scoped fixed-head merge receipts and immutable main-file verification | [18-peermesh-harness](18-peermesh-harness.md) | `c9564d18727d679b1d8213e4e30a3e41bc8db52bc5edcffdaadb73270b461e2d` |
@@ -290,7 +297,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [scripts/check-architecture.ts](../../scripts/check-architecture.ts) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `24abef3d73ce4ca2a81197c1c9e9c7bbb5cb8d7e1363ac3a52d3da7bf46d395f` |
 | [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `20eccdf29e4b8976cdf20a3b2b4617fe900afe98962dfa04038639619bee7a4b` |
 | [scripts/generate-architecture-coverage.ts](../../scripts/generate-architecture-coverage.ts) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `228407cc3420e01ca2f7e4a6d82043fa8e318167e268868f56ca5737606015c4` |
-| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `14b49b537f4be91a5c97060321be49ceb66f57968b2c200a2fa7ae7bd309d108` |
+| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `2e6b72560f2324137c77d40253c08546d724f44302fc65e6afbf2628fd10605d` |
 
 ### durable storage (3)
 
@@ -358,19 +365,19 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 |---|---|---|---|
 | [scripts/core-file-seed.ts](../../scripts/core-file-seed.ts) | Shared FileSeed validation, portable byte representation and canonical digest | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `93a99d2d55aaf9bff17413871b741e5745dba80cc83eaa8dc144a02f4bda9853` |
 | [src/agent/model-catalog.ts](../../src/agent/model-catalog.ts) | Shared pinned Pi Responses model and image catalog validation | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `716e7486b626ad32e955dfebb2530a16e98bad4cd19c8d7f8a35ac6f466b1b69` |
-| [src/core/agent-service.ts](../../src/core/agent-service.ts) | Built-in Agent Service v2 schema, trusted direct-child authorization and convenience-spawn receipt ledger | [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `b096c74532f64916168e8d60acab127e4acc265cb36782eb6a1deb91f2566884` |
+| [src/core/agent-service.ts](../../src/core/agent-service.ts) | Built-in Agent Service v2 schema, trusted direct-child authorization and convenience-spawn receipt ledger | [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `eab5f870504b17d806c6d036e5ff2ca720bba8d655fc64c7a334d7541e82e6e1` |
 | [src/core/artifact-collection.ts](../../src/core/artifact-collection.ts) | Host artifact stream validation, private staging and manifest publication | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `8279193fa515c63c4a51819dd806172e8ba7b8b6edd5170b33833b7dd27611bf` |
 | [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | Public opaque Pi/OpenSandbox backend factory export | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `f6b1d4d2bb9b30253195adfecda5abb24f17e0971c710c0007d6baac23d84734` |
-| [src/core/bridge.ts](../../src/core/bridge.ts) | Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `ba92a8c29e06d5bbe59670d1be49d580bda17bd54b2807d204138d5689f661ef` |
-| [src/core/config.ts](../../src/core/config.ts) | Profile snapshot, spawn request and environment validation | [15-core-runtime](15-core-runtime.md) | `f7fe421a16593ebc34d323bcb11aa0b64525d2b3b87a0a7ac708178de8a585f7` |
+| [src/core/bridge.ts](../../src/core/bridge.ts) | Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `003d80596d23c02543bd09db964a2bccc2e8739f9a269d62c047cf0d8a817538` |
+| [src/core/config.ts](../../src/core/config.ts) | Profile snapshot, spawn request and environment validation | [15-core-runtime](15-core-runtime.md) | `061f81d9c6cab55aaf252d53e6fdea3628329646e644e5426357728429739092` |
 | [src/core/file-controls.ts](../../src/core/file-controls.ts) | Agent file-operation identity, preparation receipts, write authority and pending grant fences | [15-core-runtime](15-core-runtime.md) | `31ce77b2051152caadadaa3e98b26cd63f8492e1a8bb7cb5dc871bffb9b509f4` |
-| [src/core/index.ts](../../src/core/index.ts) | Runtime assembly, Agent admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `3ecc1f614c9dc48087f5154cf097f2dce7e4ba3974b82a385b113797453eee3b` |
+| [src/core/index.ts](../../src/core/index.ts) | Runtime assembly, Agent admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `6ef0a8789c86b3a3a023b73fb3baa59a28b2d378abe0ea6a7d83f15032f776e3` |
 | [src/core/input-ledger.ts](../../src/core/input-ledger.ts) | Runtime/caller/operation/target/request input identity and parameter conflict ledger | [15-core-runtime](15-core-runtime.md) | `44e6dd8b015fb8ee2fcc2100aa22638e7e66e511ede570510dc0eb30bb85f626` |
 | [src/core/model-access.ts](../../src/core/model-access.ts) | Runtime-scoped model gateway lifecycle, credentials and policy | [15-core-runtime](15-core-runtime.md) | `2ab9f0b09166dadf3430b32d6a427c14ff94e543c2d82200ab36c45b42a1e259` |
 | [src/core/run-finalization.ts](../../src/core/run-finalization.ts) | Public Run finalization, bounded cleanup and late facility receipts | [17-harness-reporting](17-harness-reporting.md) | `1b955aa639ba71765c1684439ee38002d1e17f44f9a73239f8d712ef40667373` |
-| [src/core/run-records.ts](../../src/core/run-records.ts) | Private Runtime summary configuration, ordered evidence writing and credential redaction | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `50e2c2b26d89be8243e3a147a0fbae9a50247be7329b4d47ca7d8788c88aea7b` |
+| [src/core/run-records.ts](../../src/core/run-records.ts) | Private Runtime summary configuration, ordered evidence writing and credential redaction | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `35b8682d6b58f7360ded8eb7eae400a00e96add79df00218f3e3c2348e79ff04` |
 | [src/core/runtime-observation.ts](../../src/core/runtime-observation.ts) | Bounded Runtime observation journal, cursor replay and subscription cancellation | [15-core-runtime](15-core-runtime.md) | `b0c6179c9df47ddd7b09cf7cc34389c4147a0af8ba7208cbf19f7746fe8faeff` |
-| [src/core/services.ts](../../src/core/services.ts) | Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `8c1d64489bd31ab3cec3b3b295a36ebaa2e8a9982f0a4aa059a05c405f41b6d1` |
+| [src/core/services.ts](../../src/core/services.ts) | Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter | [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `39502f6ef28ab44b8dc9db76bd5ad44e10c70cf0911731894efcfa4d12dbd5f2` |
 | [src/core/startup-prompt.ts](../../src/core/startup-prompt.ts) | Core sandbox startup system prompt, authorized Service directory and optional Added System Prompt | [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `a0a07d64d49ec8effab76dddb84e7be77c340a173bc6370374b27c743fada761` |
 
 ### provider deployment and instructions (13)
@@ -462,8 +469,8 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/swarm.ts](../../scripts/swarm.ts) | Executable swarm CLI entry point and exit-code boundary | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `f238e4f144b40f5c414e2a1e70daa5767f0ca6e1bdc30f67d8af45636cf13410` |
-| [src/cli/service-command.ts](../../src/cli/service-command.ts) | Shared mapping between registered Service operations and model-visible CLI commands | [04-services](04-services.md), [08-prompts](08-prompts.md) | `bd669d56c16c6aaedbb562ada531be3f78de4ebc5b0954ea9d5b6115afe49089` |
-| [src/cli/swarm-cli.ts](../../src/cli/swarm-cli.ts) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md) | `0dbf151c53f43d98ccd87a10e4be9cddabd49b28a05bfb559f61d5ceda16cf7a` |
+| [src/cli/service-command.ts](../../src/cli/service-command.ts) | Shared mapping between registered Service operations and model-visible CLI commands | [04-services](04-services.md), [08-prompts](08-prompts.md) | `1954ef06963181523cb4caed8becd4d1611eccf348b8407bbc609e46518f341b` |
+| [src/cli/swarm-cli.ts](../../src/cli/swarm-cli.ts) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md) | `49f36777848ed576ee314f93eb609e7125e08ca83e2a8b2e092862f8d9cf1c5c` |
 | [src/protocol/http-request.ts](../../src/protocol/http-request.ts) | Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `6efc0ed8d79ec86ab74b84cf9c63a744f575b9ffe579740738ca7f4079c82d2d` |
 
 ### service deployment (16)

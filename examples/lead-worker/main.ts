@@ -2,12 +2,14 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
 import { runLeadWorker } from '../../src/harnesses/lead-worker/index.js';
+import { dynamicOrders } from './dynamic-orders.js';
 
-export function runLeadWorkerExample(config: any, signal: any) {
+export async function runLeadWorkerExample(config: any, signal: any) {
   const backend = createOpenSandboxBackend(config.backend);
   const secretValues = [config.backend?.sandbox?.apiKey, config.backend?.sandbox?.execdToken,
     ...Object.values((config.backend?.models ?? {} as Record<string, any>)).flatMap((model: any) => Object.values((model.upstream?.headers ?? {} as Record<string, any>)))].filter((value: any) => typeof value === 'string' && value);
-  return runLeadWorker({ ...config, backend, signal, secretValues }, { goal: config.goal, supplement: config.supplement, signal });
+  const dynamic = config.dynamic ? await dynamicOrders(config.dynamic) : undefined;
+  return runLeadWorker({ ...config, backend, signal, secretValues, dynamic }, { goal: config.goal, supplement: config.supplement, signal });
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const lifetime: any = new AbortController();

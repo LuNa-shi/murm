@@ -162,14 +162,16 @@ function upstreamPolicy(upstream: any) {
 export const defaultTimedResponsesLimits = Object.freeze({ maxOutputTokens: 32_768, requestTimeoutMs: 120_000 });
 
 function timedPolicy(upstream: any, { maxOutputTokens = defaultTimedResponsesLimits.maxOutputTokens,
-  requestTimeoutMs = defaultTimedResponsesLimits.requestTimeoutMs, selectionReasoningEffort }: any) {
+  requestTimeoutMs = defaultTimedResponsesLimits.requestTimeoutMs, maxRequests, selectionReasoningEffort }: any) {
   if ((maxOutputTokens !== null && !integer(maxOutputTokens, 16)) || !integer(requestTimeoutMs, 1) || requestTimeoutMs > 2_147_483_647) {
     throw new TypeError('Timed Responses gateway requires a finite request timeout and a valid output-token policy');
   }
   if (selectionReasoningEffort !== undefined && selectionReasoningEffort !== 'low') {
     throw new TypeError('Selection reasoning effort must be low when configured');
   }
+  if (maxRequests !== undefined && !integer(maxRequests, 1)) throw new TypeError('A configured model request cap must be a positive safe integer');
   return { ...upstreamPolicy(upstream), mode: 'time_bounded', maxOutputTokens, requestTimeoutMs,
+    ...(maxRequests === undefined ? {} : { maxRequests }),
     ...(selectionReasoningEffort === undefined ? {} : { selectionReasoningEffort }) };
 }
 
@@ -373,6 +375,8 @@ export class ResponsesBudgetGateway {
         this.db.exec('COMMIT');
         return { ...binding, receipt: prior.receipt };
       }
+      if (this.policy.maxRequests !== undefined && this.db.prepare('SELECT COUNT(*) AS attempts FROM runtime_model_attempts WHERE runtime_id = ?')
+        .get(runtimeId).attempts >= this.policy.maxRequests) throw new GatewayError(429, 'runtime_request_limit');
       const startedAt = Date.now();
       const deadline = Math.min(authorityDeadline, startedAt + this.policy.requestTimeoutMs);
       this.db.prepare(`INSERT INTO runtime_model_attempts

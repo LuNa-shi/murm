@@ -7,23 +7,31 @@ import { runInput } from '../shared/run-input.js';
 import { runWithReport } from '../shared/run-report.js';
 import { createBoard, boardPermissions } from './board.js';
 import { leadWorkerRoles } from './team.js';
+import { createDynamicLeadWorker, dynamicServices, type DynamicLeadWorkerOptions } from './dynamic.js';
+import { runDynamicSchedule } from './dynamic-scheduler.js';
 import { prepareLeadWorkerGit, createLeadWorkerGit } from './git.js';
-import { leadPrompt, helperPrompt, initializeInstruction, helperInitialInstruction, leadAdjustmentInstruction, helperFollowupInstruction } from './prompts.js';
+import { leadPrompt, helperPrompt, dynamicLeadPrompt, dynamicWorkerPrompt, initializeInstruction, helperInitialInstruction, leadAdjustmentInstruction, helperFollowupInstruction } from './prompts.js';
 
 const fail = (code: any) => Object.assign(new Error(code), { code });
 const bounded = (value: any, fallback: any, maximum: any) => { const result = value ?? fallback; if (!Number.isSafeInteger(result) || result < 1 || result > maximum) throw new TypeError('Invalid lead-worker wait bound'); return result; };
 export async function createLeadWorkerHarness(options: any) {
   const { runId, image, model = 'default', outputDir, backend, exportLimit = 64 * 1024 ** 2, helperCount = 2, includeGit = true } = options;
+  const dynamic: DynamicLeadWorkerOptions | undefined = options.dynamic;
+  if (dynamic && (helperCount !== 2 || typeof dynamic.deploy !== 'function' || typeof dynamic.verifyFinal !== 'function' ||
+    typeof dynamic.goal !== 'string' || !dynamic.goal.trim())) throw new TypeError('Invalid dynamic Lead-Worker options');
   const roles = leadWorkerRoles(helperCount);
   const helperRoles = roles.slice(1);
   if (typeof includeGit !== 'boolean' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir || !Number.isSafeInteger(exportLimit) || exportLimit < 1 || exportLimit > 64 * 1024 ** 2) throw new TypeError('Invalid lead-worker run configuration');
-  const turnTimeoutMs = bounded(options.turnTimeoutMs, 30_000, 300_000); const workTimeoutMs = bounded(options.workTimeoutMs, 120_000, 900_000);
+  const turnTimeoutMs = bounded(options.turnTimeoutMs, 30_000, 300_000);
+  const useRunDeadline = Boolean(dynamic && options.turnTimeoutMs === null);
+  const workTimeoutMs = bounded(options.workTimeoutMs, 120_000, dynamic ? 1_800_000 : 900_000);
   const closeTimeoutMs = bounded(options.closeTimeoutMs, 30_000, 60_000);
   const resources = createOwnedResources(); const lifetime: any = new AbortController();
   const startup = AbortSignal.any([AbortSignal.timeout(120_000), ...(options.signal ? [options.signal] : [])]);
   const directory = join(resolve(outputDir), `lead-worker-${runId}`); await mkdir(directory, { recursive: true, mode: 0o700 });
   const boardPath = join(directory, 'board.sqlite');
   const secrets = [options.gitea?.adminToken, ...(options.secretValues ?? [])].filter((value: any) => typeof value === 'string' && value);
+  let dynamicControl: ReturnType<typeof createDynamicLeadWorker> | undefined;
   let runtime: any; let board: any; let git: any; let unsubscribe: any; let closing = false; let closeWork: any; let complete: any; let workflowUsed = false; let boardFenceFailure: any;
   const pendingFences: any = new Map(); const activeInputs: any = new Set();
   const team: any = {}; const inputs: any[] = []; const events: any[] = [];
@@ -34,7 +42,8 @@ export async function createLeadWorkerHarness(options: any) {
     try { publicBoard = board?.snapshot(); } catch { boardReadFailure = { code: 'BOARD_READ_FAILED' }; }
     return { runId, runtimeId: runtime?.id, boardPath, team: { ...team }, stages: structuredClone(stages), rejections: structuredClone(rejections), preparation: structuredClone(preparedStages ?? null), git: git?.identities(), board: publicBoard, ...(boardReadFailure ? { boardReadFailure } : {}), inputs: structuredClone(inputs), events: structuredClone(events),
       delivered: publicBoard?.subtasks.filter((row: any) => row.delivery?.verified) ?? [], unfinished: publicBoard?.subtasks.filter((row: any) => row.state !== 'complete') ?? [], inputUnknown: inputs.filter((row: any) => row.uncertain).map((row: any) => ({ agentId: row.agentId, requestId: row.requestId, inputId: row.inputId, code: row.code })), resources: resources.snapshot(),
-      ...(boardFenceFailure ? { boardFenceFailure, pendingBoardFailures: [...pendingFences.values()] } : {}), limitations: ['Local SQLite Board and exclusive turn controller', 'Fixed preconfigured team; no replacement or claim reclamation', 'Upstream scale and performance not verified'] };
+      ...(boardFenceFailure ? { boardFenceFailure, pendingBoardFailures: [...pendingFences.values()] } : {}), ...(dynamicControl ? { dynamic: dynamicControl.snapshot() } : {}),
+      limitations: ['Local SQLite Board and exclusive turn controller', dynamic ? 'One dynamic member and no claim reclamation' : 'Fixed preconfigured team; no replacement or claim reclamation', 'Upstream scale and performance not verified'] };
   };
   function recordFence(record?: any) {
     if (record?.agentId) pendingFences.set(record.agentId, record);
@@ -61,6 +70,10 @@ export async function createLeadWorkerHarness(options: any) {
         if (boardFenceFailure) recordFence();
         if (boardReadFailed || boardFenceFailure || pendingFences.size) return { ...core, cleanup: 'pending', harness: { cleanup: 'pending', pending: [{ kind: 'board-evidence', id: boardPath, action: 'persist-failure', error: { code: 'BOARD_FENCE_FAILED' } }], resources: resources.snapshot() } };
         if (core.cleanup !== 'complete' || core.agents.some((row: any) => row.execution !== 'stopped' || row.cleanup !== 'complete')) return { ...core, harness: { cleanup: 'pending', pending: resources.snapshot().filter((row: any) => !['closed', 'retained'].includes(row.state)) } };
+        if (dynamicControl && !await dynamicControl.settled(timeoutMs)) {
+          return { ...core, cleanup: 'pending', harness: { cleanup: 'pending', resources: resources.snapshot(),
+            pending: [{ kind: 'management', id: runtime?.id, action: 'close' }] } };
+        }
         unsubscribe?.(); const harness = await resources.close(); const receipt: any = { ...core, cleanup: harness.cleanup, harness }; if (harness.cleanup === 'complete') complete = receipt; return receipt;
       })().finally(() => { closeWork = undefined; });
     }
@@ -70,36 +83,49 @@ export async function createLeadWorkerHarness(options: any) {
     if (workSignal.aborted || closing) throw fail('WORKFLOW_STOPPED');
     const timeoutMs = deadlineAtMs === undefined ? turnTimeoutMs : Math.ceil(deadlineAtMs - performance.now());
     if (timeoutMs < 1) throw fail('WORKFLOW_STOPPED');
-    const row: any = { role, agentId: team[role], requestId, source: payload.type }; inputs.push(row); activeInputs.add(team[role]);
+    const row: any = { role, agentId: team[role], requestId, source: payload.type,
+      ...(dynamic && payload.type === 'board-updates' ? { boardRevision: payload.revision, updates: structuredClone(payload.updates) } : {}) };
+    inputs.push(row); activeInputs.add(team[role]);
     try {
       const result = await runInput(runtime, team[role], JSON.stringify(payload), { requestId, timeoutMs, signal: workSignal }); Object.assign(row, { inputId: result.inputId, receipt: result.receipt, state: 'completed', settledSeq: result.settled.seq, settled: { agentId: result.settled.agentId, seq: result.settled.seq, outcome: result.settled.outcome } }); return result;
-    } catch (error: any) { Object.assign(row, { inputId: error.inputId, receipt: error.receipt, state: 'failed', code: error.code ?? 'INPUT_FAILED', uncertain: !['input_failed', 'input_aborted'].includes(error.code) }); recordFence({ agentId: team[role], code: row.code }); lifetime.abort(); throw error; }
+    } catch (error: any) { Object.assign(row, { inputId: error.inputId, receipt: error.receipt, state: 'failed', code: error.code ?? 'INPUT_FAILED', uncertain: !['input_failed', 'input_aborted'].includes(error.code) });
+      if (dynamic && error.code === 'input_unknown') {
+        const recorded = runtime.send(team[role], JSON.stringify(payload), { requestId, mode: 'followUp' });
+        try { row.reconciledReceipt = await recorded; } catch { /* preserve original uncertainty */ }
+      }
+      recordFence({ agentId: team[role], code: row.code }); lifetime.abort(); throw error; }
     finally { activeInputs.delete(team[role]); }
   };
   const abortStartup = () => { if (runtime) void runtime.close({ timeoutMs: 1 }).catch(() => {}); };
   startup.addEventListener('abort', abortStartup, { once: true });
   try {
     if (startup.aborted) throw fail('HARNESS_START_ABORTED');
-    const facilities = await (options.prepare ?? prepareLeadWorkerGit)({ ...options, helperCount, signal: startup, resources });
+    const facilities = await (options.prepare ?? prepareLeadWorkerGit)({ ...options, helperCount, signal: startup, resources, ...(dynamic ? { initialFiles: dynamic.initialFiles } : {}) });
     for (const actor of Object.values((facilities.actors ?? {}) as Record<string, any>)) secrets.push(actor.token);
     if (facilities.runId !== runId || startup.aborted) throw fail('HARNESS_START_ABORTED');
-    git = createLeadWorkerGit(facilities, helperCount);
-    const candidate = createBoard({ path: boardPath, runId, helperCount, verifyDelivery: (value: any) => git.verifyDelivery(value) });
+    git = createLeadWorkerGit(facilities, helperCount, dynamic ? { isReady: id => board.snapshot().members[id]?.ready === true } : {});
+    const candidate = createBoard({ path: boardPath, runId, helperCount, dynamic: !!dynamic, verifyDelivery: (value: any) => git.verifyDelivery(value) });
     if (candidate.snapshot().team || candidate.snapshot().fenced) { candidate.close(); throw fail('BOARD_ALREADY_OWNED'); }
     board = candidate;
     resources.own({ kind: 'board-data', id: boardPath, retained: true }); resources.own({ kind: 'board-connection', id: boardPath, close: () => board.close() });
     const services: any = new ServiceRegistry(); board.register(services); git.register(services);
+    if (dynamic) {
+      if (typeof facilities.prepareMember !== 'function') throw fail('INVALID_DYNAMIC_GIT');
+      dynamicControl = createDynamicLeadWorker({ options: dynamic, getRuntime: () => runtime, team, runId, model, image, facilities,
+        board, git, resources, signal: lifetime.signal, addSecret: token => secrets.push(token), includeGit, exportLimit });
+      dynamicControl.register(services);
+    }
     const profiles = Object.fromEntries(roles.map((role: any) => {
       const actor = facilities.actors[role];
-      return [role, { image, model, writable: true, prompt: role === 'lead' ? leadPrompt : helperPrompt,
+      return [role, { image, model, writable: true, prompt: dynamic ? role === 'lead' ? dynamicLeadPrompt : dynamicWorkerPrompt : role === 'lead' ? leadPrompt : helperPrompt,
         env: { RUN_REPOSITORY: facilities.repositoryUrl, WORK_BRANCH: actor.branch, GITEA_USERNAME: actor.username, GIT_TERMINAL_PROMPT: '0', GIT_AUTHOR_NAME: actor.username, GIT_AUTHOR_EMAIL: `${actor.username}@murm.invalid`, GIT_COMMITTER_NAME: actor.username, GIT_COMMITTER_EMAIL: `${actor.username}@murm.invalid`, RUN_OWNER: facilities.repository.owner, RUN_REPO: facilities.repository.name },
-        network: { allow: [new URL(facilities.repositoryUrl).origin] }, services: { board: boardPermissions[role === 'lead' ? 'lead' : 'helper'], gitea: ['pull_request_write'] } }];
+        network: { allow: [new URL(facilities.repositoryUrl).origin] }, services: dynamic ? dynamicServices(role === 'lead' ? 'lead' : 'helper') : { board: boardPermissions[role === 'lead' ? 'lead' : 'helper'], gitea: ['pull_request_write'] } }];
     }));
-    runtime = await createRuntime({ backend, services, profiles, maxAgents: roles.length, outputDir });
+    runtime = await createRuntime({ backend, services, profiles, maxAgents: roles.length + (dynamic ? 1 : 0), outputDir, ...(dynamicControl ? { agentAccessPolicy: dynamicControl.agentAccessPolicy } : {}) });
     if (startup.aborted) throw fail('HARNESS_START_ABORTED');
     unsubscribe = runtime.onEvent((event: any) => {
-      if (events.length < 256) events.push({ agentId: event.agentId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
-      if (events.length >= 256 || event.type === 'error' && event.fatal || event.type === 'settled' && event.outcome !== 'completed' || event.type === 'exit' && !event.expected) {
+      if (events.length < (dynamic ? 2048 : 256)) events.push({ agentId: event.agentId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
+      if (!dynamic && events.length >= 256 || event.type === 'error' && event.fatal || event.type === 'settled' && event.outcome !== 'completed' || event.type === 'exit' && !event.expected) {
         if (!closing) { recordFence({ agentId: event.agentId, code: 'AGENT_FAILED' });
           // The exclusive helper owns terminal-event/late-receipt ordering.
           // Its catch cancels the team without replacing that original outcome.
@@ -108,13 +134,29 @@ export async function createLeadWorkerHarness(options: any) {
     });
     for (const role of roles) {
       if (startup.aborted || lifetime.signal.aborted) throw fail('HARNESS_START_ABORTED');
-      const actor = facilities.actors[role]; const agent = await runtime.spawn({ requestId: `spawn-${role}`, profile: role, bindings: { board: `${runId}:board`, gitea: actor.binding }, secretEnv: { GITEA_TOKEN: actor.token }, collect: { paths: ['.'], includeGit, maxBytes: exportLimit, required: true } }); team[role] = agent.id;
+      const actor = facilities.actors[role]; const agent = await runtime.spawn({ requestId: `spawn-${role}`, profile: role, ...(dynamic && role !== 'lead' ? { parentId: team.lead } : {}), bindings: { board: `${runId}:board`, gitea: actor.binding }, secretEnv: { GITEA_TOKEN: actor.token }, collect: { paths: ['.'], includeGit, maxBytes: exportLimit, required: true } }); team[role] = agent.id;
     }
     if (startup.aborted || lifetime.signal.aborted) throw fail('HARNESS_START_ABORTED');
     board.bindTeam(runtime.id, team); git.bindTeam(runtime.id, team);
     return Object.freeze({ id: runtime.id, snapshot, redact, close, get: (agentId: any) => runtime.get(agentId),
+      async runDynamic({ signal }: { signal?: AbortSignal } = {}) {
+        if (!dynamic || workflowUsed || closing) throw fail('INVALID_DYNAMIC_WORKFLOW');
+        workflowUsed = true;
+        const deadlineAtMs = performance.now() + workTimeoutMs;
+        const dispatchWork: typeof dispatch = useRunDeadline ? (role, requestId, payload, signal) => dispatch(role, requestId, payload, signal, deadlineAtMs) : dispatch;
+        const workSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(workTimeoutMs), ...(signal ? [signal] : [])]);
+        try {
+          const submitted = await runDynamicSchedule({ board, team, goal: dynamic.goal, signal: workSignal, dispatch: dispatchWork });
+          const verdict = await dynamic.verifyFinal({ repositoryUrl: facilities.repositoryUrl, token: facilities.actors.lead.token,
+            commit: submitted.delivery.commit, sha256: submitted.delivery.sha256, signal: workSignal, resources });
+          if (!verdict.ok) throw Object.assign(fail('ORDERS_ORACLE_FAILED'), { details: [verdict] });
+          return { submitted, verdict, harness: snapshot() };
+        } catch (error: any) {
+          stop(); error.details = [...(error.details ?? []), snapshot()]; throw error;
+        }
+      },
       async prepareStages({ signal }: any = {}) {
-        if (closing || workflowUsed || stageActive || helperCount !== 3 ||
+        if (dynamic || closing || workflowUsed || stageActive || helperCount !== 3 ||
             (signal !== undefined && !(signal instanceof AbortSignal))) throw fail('INVALID_STAGE_PREPARATION');
         workflowUsed = true; stageActive = true;
         const workSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(workTimeoutMs), ...(signal ? [signal] : [])]);
@@ -139,7 +181,7 @@ export async function createLeadWorkerHarness(options: any) {
         const stage = stages.length;
         const text = stage === 0 ? goal : supplement;
         const remainingMs = deadlineAtMs === undefined ? workTimeoutMs : Math.ceil(deadlineAtMs - performance.now());
-        if ((deadlineAtMs !== undefined && (!Number.isFinite(deadlineAtMs) || remainingMs < 1 || remainingMs > 900_000)) || closing || stageActive || stage >= 4 || helperCount !== 3 || workflowUsed && stage === 0 && !preparedStages ||
+        if (dynamic || (deadlineAtMs !== undefined && (!Number.isFinite(deadlineAtMs) || remainingMs < 1 || remainingMs > 900_000)) || closing || stageActive || stage >= 4 || helperCount !== 3 || workflowUsed && stage === 0 && !preparedStages ||
             (verifyCandidate !== undefined && (typeof verifyCandidate !== 'function' || deadlineAtMs === undefined)) ||
             typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 8192 ||
             (signal !== undefined && !(signal instanceof AbortSignal)) ||
@@ -234,7 +276,7 @@ export async function createLeadWorkerHarness(options: any) {
         finally { stageActive = false; }
       },
       async runWorkflow({ goal, supplement, signal }: any = {}) {
-        if (closing || workflowUsed || ![goal, supplement].every((value: any) => typeof value === 'string' && value.trim() && Buffer.byteLength(value) <= 8192)) throw fail('INVALID_WORKFLOW'); workflowUsed = true;
+        if (dynamic || closing || workflowUsed || ![goal, supplement].every((value: any) => typeof value === 'string' && value.trim() && Buffer.byteLength(value) <= 8192)) throw fail('INVALID_WORKFLOW'); workflowUsed = true;
         const workSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(workTimeoutMs), ...(signal ? [signal] : [])]);
         const send = (role: any, requestId: any, payload: any) => dispatch(role, requestId, payload, workSignal);
         const helpers = Object.fromEntries(helperRoles.map((role: any) => [role, team[role]]));
@@ -269,5 +311,5 @@ export function runLeadWorker(options: any, input: any) {
   let owned: any;
   return runWithReport({ outputDir: options.outputDir, closeTimeoutMs: options.closeTimeoutMs ?? 30_000,
     createRuntime: async () => { owned = await createLeadWorkerHarness(options); return owned; },
-    run: (harness: any) => harness.runWorkflow(input), redact: (report: any) => owned ? owned.redact(report) : report });
+    run: (harness: any) => options.dynamic ? harness.runDynamic(input) : harness.runWorkflow(input), redact: (report: any) => owned ? owned.redact(report) : report });
 }

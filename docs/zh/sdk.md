@@ -116,7 +116,7 @@ const runtime = await createRuntime({
 
 这段只展示装配。完整的 `handoff.ts` 还设置工作期限、处理取消、观察结果，并在成功和失败路径中调用 `finalizeRun`。改造示例时应一并保留收尾流程。
 
-`createRuntime` 对 Profile 和 Service 注册取快照、校验引用，创建 Run 目录并打开宿主入口，此时不分配 Agent 沙箱。之后修改原配置对象或 Registry，不会改变这个 Runtime。应在装配前声明 Harness 所需的角色和操作；当前公共 API 没有运行时新增 Profile 或 Service 的方法。
+`createRuntime` 对 Profile 和 Service 注册取快照、校验引用，创建 Run 目录并打开宿主入口，此时不分配 Agent 沙箱。之后修改原配置对象或 Registry，不会改变这个 Runtime。在装配前声明初始角色和操作。运行期间可以用 `runtime.profiles` 登记 Profile、用 `runtime.services` 登记或退役 Service，并通过 `runtime.access` 管理单个 Agent 的 Service 操作权限。[API 参考](reference/api.md#runtime-管理)
 
 `spawn({ requestId, profile })` 才会分配沙箱并初始化空闲会话，不会自动触发模型执行。先保存新的 Agent ID，接好 Harness 的路由或所有权状态，再发送第一条输入。空闲会话仍占用 Slot，直到清理确认沙箱已删除才释放。
 

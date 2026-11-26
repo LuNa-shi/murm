@@ -47,6 +47,7 @@ const sourcePaths = [
   'src/harnesses/peermesh/index.ts', 'src/harnesses/peermesh/router.ts', 'src/harnesses/peermesh/routed.ts', 'src/harnesses/peermesh/team.ts',
   'test/fixtures/peermesh-team-kimi.ts', 'test/peermesh-team-kimi-real.test.ts',
   'src/harnesses/lead-worker/prompts.ts', 'src/harnesses/lead-worker/index.ts',
+  'src/harnesses/lead-worker/dynamic-scheduler.ts', 'src/harnesses/lead-worker/dynamic.ts', 'examples/lead-worker/dynamic-orders.ts',
   'src/runtime/runtime.ts',
   'src/runtime/workspace-contract.ts', 'src/runtime/mission-workspace.ts',
   'src/sdk/service-catalog.ts', 'src/sdk/builtin-registry.ts', 'src/sdk/service-bundle.ts',
@@ -142,6 +143,7 @@ for (const path of await listSourceFiles('src')) {
     const value = evaluate(match[2]);
     assert.equal(typeof value, 'string', `non-static instruction field requires explicit documentation: ${path}`);
     if (key === 'action' && nonInstructionActions.has(value)) continue;
+    if (key === 'action' && path === 'src/core/runtime-management.ts' && value === 'retire-service') continue;
     if (key === 'action' && ['src/core/index.ts', 'src/core/model-access.ts', 'src/harnesses/lead-worker/index.ts'].includes(path) && cleanupActions.has(value)) continue;
     if (key === 'action') assert.ok(instructionActions.has(value), `review new literal action field for prompt delivery: ${path}: ${value}`);
     assert.ok(sourcePaths.includes(path), `new instruction-field source requires documented ownership: ${path}`);
@@ -243,8 +245,8 @@ output('08-peermesh-harness.md', header('PeerMesh peer, batch and notice prompts
   + block('Exact hosted initial composition', between('test/fixtures/peermesh-team-kimi.ts', '  return [`', '];'),
     'The host supplies two distinct provisioned peer usernames and a fresh 24-character seed. Only A receives the seed. The user comment names only A and appends liveAUser. Negotiation and agreement text are actual model-authored Mattermost posts, delivered by the normal authenticated subscription. The fixture injects no model tool program or terminal response.'));
 const leadWorkerPath = 'src/harnesses/lead-worker/prompts.ts';
-let leadWorkerDoc = header('Fixed Lead-Worker role and turn instructions', 'Profiles stage lead/helper roles. The Harness serializes each round instruction with trusted host fields before exclusive followUp delivery; these are source templates, not a native transcript.');
-for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'helperInitialInstruction', 'leadAdjustmentInstruction', 'helperFollowupInstruction']) {
+let leadWorkerDoc = header('Lead-Worker role and turn instructions', 'The Harness serializes the selected instruction or Board update before exclusive followUp delivery. The output quotes source templates and composition paths.');
+for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'helperInitialInstruction', 'leadAdjustmentInstruction', 'helperFollowupInstruction', 'dynamicLeadPrompt', 'dynamicWorkerPrompt']) {
   const source = sources.get(leadWorkerPath)!;
   const start = `export const ${name} = `;
   const from = source.indexOf(start);
@@ -252,6 +254,8 @@ for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'help
   leadWorkerDoc += block(name, between(leadWorkerPath, start + delimiter, delimiter + ';'));
 }
 leadWorkerDoc += block('Staged corrective input composition and send', between('src/harnesses/lead-worker/index.ts', '                  const nextPath =', '\n                  final = board.snapshot();'), 'The trusted host checker must explicitly return STAGE_CANDIDATE_REJECTED. Actual stage, helper role and attempt derive the fresh path and request ID; the original task and monotonic deadline remain fixed. No reference answer or new permission is supplied.');
+leadWorkerDoc += block('Dynamic goal and dispatch', between('src/harnesses/lead-worker/dynamic-scheduler.ts', "    send(lead, { type: 'dynamic-goal'", '\n  } finally'), 'The initial goal contains the frozen task specification and selected public JSONL data. Later inputs contain committed Board sequence numbers, member and task identities, and the current revision. Each ready recipient receives an exclusive followUp in its original Session.');
+leadWorkerDoc += block('Dynamic checker Profile composition', between('src/harnesses/lead-worker/dynamic.ts', '                model, image, writable: true, prompt:', '\n                network:'), 'The shared Worker instructions precede the Lead-authored Profile instructions. The composed string becomes the startup Profile prompt for the new Agent.');
 output('08-lead-worker-harness.md', leadWorkerDoc);
 const flatControllerPath = 'src/harnesses/taskpool/controller.ts';
 const taskPoolHarnessPath = 'src/harnesses/taskpool/harness.ts';

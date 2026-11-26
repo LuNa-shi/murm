@@ -8,17 +8,17 @@ import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/
 
 async function setup(t, options = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'lead-worker-board-')); t.after(() => rm(directory, { recursive: true, force: true }));
-  const board = createBoard({ path: join(directory, 'board.sqlite'), runId: 'test', verifyDelivery: options.verifyDelivery ?? (async ({ delivery }) => ({ ...delivery, verified: true })) });
+  const board = createBoard({ path: join(directory, 'board.sqlite'), runId: 'test', dynamic: options.dynamic, verifyDelivery: options.verifyDelivery ?? (async ({ delivery }) => ({ ...delivery, verified: true })) });
   t.after(() => board.close());
   const services = new ServiceRegistry(); board.register(services);
   board.bindTeam('runtime', { lead: 'lead', helper1: 'one', helper2: 'two' });
   const registration = snapshotServiceRegistry(services).get('board');
   let serial = 0;
-  const call = (agentId, operation, input = {}, operationId = `op-${++serial}`) => invokeService(registration, { operation, input, envelope: { operation_id: operationId }, caller: { runtimeId: 'runtime', agentId, profile: agentId === 'lead' ? 'lead' : agentId === 'one' ? 'helper1' : 'helper2', binding: 'test:board' } });
+  const call = (agentId, operation, input = {}, operationId = `op-${++serial}`) => invokeService(registration, { operation, input, envelope: { operation_id: operationId }, caller: { runtimeId: 'runtime', agentId, profile: agentId === 'lead' ? 'lead' : agentId === 'one' ? 'helper1' : agentId === 'checker' ? 'review-orders' : 'helper2', binding: 'test:board' } });
   await call('lead', 'announce', { text: 'Initial direction', feedback_ids: [] });
   await call('lead', 'assign', { helper_id: 'one', text: 'Validate inputs' });
   await call('lead', 'assign', { helper_id: 'two', text: 'Authenticate callers' });
-  await call('lead', 'create_subtask', { id: 'task', title: 'Implement', path: 'result.txt' });
+  await call('lead', 'create_subtask', { id: 'task', title: 'Implement', path: 'result.txt', ...(options.dynamic ? { assignee_ids: ['one', 'two'] } : {}) });
   return { board, call, directory };
 }
 
@@ -87,4 +87,21 @@ test('proof reads outside transaction cannot commit over a newer owner revision'
   const rejected = assert.rejects(pending, { code: 'CONFLICT' });
   await entered; await call('one', 'update_subtask', { subtask_id: 'task', expected_revision: 1, text: 'new owner revision' }); resume(); await rejected;
   assert.equal(board.snapshot().subtasks[0].revision, 2); assert.equal(board.snapshot().subtasks[0].state, 'claimed');
+});
+
+
+test('a late member can be assigned work during preparation and claim only after the shared Board confirms readiness', async t => {
+  const { board, call } = await setup(t, { dynamic: true });
+  const original = await call('one', 'claim', { subtask_id: 'task', expected_revision: 0 });
+  await assert.rejects(call('checker', 'read'), { code: 'NOT_ALLOWED' });
+  board.prepareMember({ agentId: 'checker', profile: 'review-orders', requestId: 'join' });
+  await call('lead', 'create_subtask', { id: 'check', title: 'Check orders', path: 'check.json', assignee_ids: ['checker'] });
+  await assert.rejects(call('checker', 'claim', { subtask_id: 'check', expected_revision: 0 }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(call('two', 'claim', { subtask_id: 'check', expected_revision: 0 }), { code: 'NOT_ALLOWED' });
+  board.readyMember('checker');
+  assert.equal((await call('checker', 'claim', { subtask_id: 'check', expected_revision: 0 })).owner, 'checker');
+  const snapshot = await call('checker', 'read');
+  assert.equal(snapshot.members.checker.profile, 'review-orders');
+  assert.equal(snapshot.members.checker.ready, true);
+  assert.deepEqual(snapshot.subtasks[0], original);
 });

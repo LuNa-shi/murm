@@ -116,7 +116,7 @@ const runtime = await createRuntime({
 
 This is an assembly excerpt; the complete `handoff.ts` also bounds the work, handles cancellation, observes results and calls `finalizeRun` on success and failure. Keep that closeout when adapting the example.
 
-`createRuntime` snapshots Profiles and Service registrations, validates their references, creates the Run directory, and opens host entry points. It allocates no Agent sandbox. Later changes to your configuration object or Registry do not change this Runtime. Define the roles and operations your Harness will need before assembly; the current public API has no Profile or Service hot-registration method.
+`createRuntime` snapshots Profiles and Service registrations, validates their references, creates the Run directory, and opens host entry points. It allocates no Agent sandbox. Later changes to your configuration object or Registry do not change this Runtime. Define the startup roles and operations before assembly. For later changes, use `runtime.profiles` to register Profiles, `runtime.services` to register or retire Services, and `runtime.access` to manage Service permissions for an Agent. [API reference](reference/api.md#runtime-management)
 
 `spawn({ requestId, profile })` allocates a sandbox and initializes an idle session. It starts no model work. Send the first input after you have recorded the new Agent ID and connected any Harness routing or ownership state. Idle sessions continue to occupy a Slot until cleanup confirms sandbox deletion.
 

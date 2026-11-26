@@ -29,6 +29,8 @@ export interface OpenSandboxBackendConfig {
     host: string;
     advertiseHost: string;
     requestTimeoutMs?: number;
+    /** Cap new upstream attempts per Runtime and model alias, including unknown outcomes. */
+    maxRequests?: number;
     /** null preserves executor output parameters without a host token clamp. */
     maxOutputTokens?: number | null;
     /** Sets upstream reasoning effort for requests admitted in the selection phase. */

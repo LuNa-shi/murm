@@ -88,6 +88,22 @@ test('time-bounded Responses uses Runtime credentials and replays only observed 
   assert.equal((await call(token, 'three')).status, 401);
 });
 
+test('a request cap applies across Agents and counts attempts of unknown outcome', async t => {
+  const { gateway, call, requests } = await fixture(t, (_, response) => {
+    response.end(requests.length === 1 ? completion() : 'event: unrecognized\ndata: {}\n\n');
+  }, { timeBounds: { requestTimeoutMs: 2000, maxOutputTokens: 20, maxRequests: 2 } });
+  const first = gateway.issueToken({ runtimeId: 'r', agentId: 'first' });
+  const second = gateway.issueToken({ runtimeId: 'r', agentId: 'second' });
+  assert.equal(await (await call(first, 'one')).text(), completion());
+  await (await call(second, 'two')).text();
+  assert.equal(await (await call(first, 'one')).text(), completion());
+  const denied = await call(second, 'three');
+  assert.equal(denied.status, 429);
+  assert.equal((await denied.json()).error.code, 'runtime_request_limit');
+  assert.equal(requests.length, 2);
+  assert.equal(gateway.observedUsage('r').unknown_requests, 1);
+});
+
 test('validates actual Pi Responses item shapes, forwards only configured credentials, and replays receipt', async t => {
   const { gateway, call, requests } = await fixture(t);
   const token = gateway.issueToken({ runtimeId: 'r', agentId: 'b' });

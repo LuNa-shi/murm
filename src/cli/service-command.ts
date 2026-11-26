@@ -8,6 +8,8 @@ export const COMMAND_OPERATIONS = Object.freeze({
   judge: { check: 'workspace_check', result: 'get_check_result' },
 });
 
+export const CORE_AGENT_OPERATIONS = Object.freeze(['spawn', 'get', 'send', 'stop', 'access_get', 'grant', 'revoke']);
+
 export function transportService(service: string) { return service === 'material' ? 'context' : service === 'agent' ? 'task' : service; }
 
 const commands: Readonly<Record<string, Readonly<Record<string, string>>>> = COMMAND_OPERATIONS;

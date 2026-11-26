@@ -117,7 +117,7 @@ export function handoffProfiles(image: string): Record<string, Profile> {
 }
 ```
 
-角色提示词解释如何使用已有操作，Runtime 与 Bridge 执行 Profile 权限。Profile 在 Runtime 创建时被保存，因此之后修改原始对象不会改变运行中 Agent 的配置。
+角色提示词解释如何使用已有操作，Profile 设置 Agent 的初始权限。Bridge 按当前授权检查调用，宿主可以通过 [Runtime 管理 API](reference/api.md#runtime-管理) 更新授权。
 
 需要委派时，内置 `agent` Service 提供 `spawn`、`get`、`send`、`stop`，`spawnProfiles` 限制可创建的子角色。只有后端支持时才启用 `allowContextFork`。也可以像 [Subagents](harnesses/subagents.md) 一样，用领域 Service 增加所有权与邮箱规则。
 

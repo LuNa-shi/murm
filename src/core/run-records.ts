@@ -148,6 +148,7 @@ export function runtimeConfiguration({ config, profiles, registrations, maxAgent
     models: Object.fromEntries(Object.entries(models).map(([alias, model]) => [alias, {
       provider: model.provider, model: model.model,
       maxOutputTokens: modelGateway.maxOutputTokens === undefined ? defaultTimedResponsesLimits.maxOutputTokens : modelGateway.maxOutputTokens,
+      ...(modelGateway.maxRequests === undefined ? {} : { maxRequests: modelGateway.maxRequests }),
       requestTimeoutMs: modelGateway.requestTimeoutMs ?? defaultTimedResponsesLimits.requestTimeoutMs,
     }])),
     profiles: Object.fromEntries([...profiles].map(([id, profile]) => [id, {

@@ -1,7 +1,7 @@
 import type {
   AgentEvent, AgentInfo, AgentListFilter, AgentObservation, CollectionSpec, ConditionalInputReceipt,
   CreateRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, PendingCleanup, Profile, Runtime,
-  RuntimeObservationChange, RuntimeObservationOptions, SendOptions,
+  RuntimeManagementChange, RuntimeObservationChange, RuntimeObservationOptions, SendOptions,
 } from './types.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
@@ -16,10 +16,11 @@ import { saveAgentArtifacts } from './artifact-collection.js';
 import { createRedactor, createRunRecords, runtimeConfiguration } from './run-records.js';
 import type { RunEvidenceRecord } from './run-records.js';
 import { createRuntimeObservation } from './runtime-observation.js';
+import { createRuntimeManagement } from './runtime-management.js';
 import { claimOpenSandboxBackend, openOpenSandboxBackend } from './opensandbox-backend.js';
 import { createAgentService } from './agent-service.js';
 import { createServiceTrace, exportServiceStates } from './service-trace.js';
-import { registerServicePrivateValues, snapshotServiceRegistry } from './services.js';
+import { registerServicePrivateValues, snapshotServiceRegistry, type ServiceRegistration } from './services.js';
 
 export { finalizeRun } from './run-finalization.js';
 export type * from './types.js';
@@ -52,7 +53,6 @@ interface RuntimeAgent {
   cleanupAction?: PendingCleanup['action'];
   nativeSettlement?: { recordSeq: number; workerSequence?: number };
   fatal?: boolean;
-  bindings?: Readonly<Record<string, string>>;
   collect?: CollectionSpec;
   start?: Promise<AgentInfo>;
 }
@@ -95,7 +95,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const redactor = createRedactor([process.env.OPEN_SANDBOX_API_KEY, process.env.MURM_EXECD_ACCESS_TOKEN]);
   const errorInfo = redactor.error;
   let config: ReturnType<typeof claimOpenSandboxBackend>;
-  let registrations: any, profiles: any, modelAccessPolicy, outputDir: any;
+  function validateProfileExecution(profile: Profile) {
+    config.driver.assertEnvironment?.(profile.env);
+    if (profile.allowContextFork && !config.driver.capabilities.contextFork) throw new TypeError('Backend does not support Profile Context Fork authority');
+  }
+  let registrations: Map<string, ServiceRegistration>, profiles: Map<string, Profile>, modelAccessPolicy, outputDir: string;
   try {
     if (!Number.isSafeInteger(options?.maxAgents) || options.maxAgents < 1 ||
         typeof options.outputDir !== 'string' || !options.outputDir.trim()) {
@@ -105,18 +109,20 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         typeof options.modelAccessPolicy?.withCommit !== 'function')) {
       throw new TypeError('modelAccessPolicy must provide synchronous authorize and withCommit');
     }
+    if (options.agentAccessPolicy !== undefined && typeof options.agentAccessPolicy !== 'function') {
+      throw new TypeError('agentAccessPolicy must be a synchronous function');
+    }
     config = claimOpenSandboxBackend(options.backend);
     redactor.add([config.sandbox.apiKey, config.sandbox.execdToken,
       ...Object.values(config.models).flatMap((model) => Object.values(model.upstream.headers))]);
     registrations = snapshotServiceRegistry(options.services);
     registerServicePrivateValues(registrations, redactor.add);
     registrations.set('agent', createAgentService({ runtimeId, getAgent: id => getAgent(id),
-      spawn: (input, caller) => spawn(input, caller), get, send, stop }));
+      spawn: (input, caller) => spawn(input, caller), get, send, stop,
+      accessPolicy: options.agentAccessPolicy, getAccess: id => management.access.get(id),
+      mutateAccess: (kind, input, caller) => management.mutateAccess(kind, input, caller) }));
     profiles = snapshotProfiles(options.profiles, config.models, registrations);
-    for (const profile of profiles.values()) {
-      config.driver.assertEnvironment?.(profile.env);
-      if (profile.allowContextFork && !config.driver.capabilities.contextFork) throw new TypeError('Backend does not support Profile Context Fork authority');
-    }
+    for (const profile of profiles.values()) validateProfileExecution(profile);
     modelAccessPolicy = options.modelAccessPolicy;
     outputDir = join(resolve(options.outputDir), runtimeId);
   } catch (error: any) {
@@ -144,11 +150,31 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     return agent && {
       profile: agent.info.profile, model: agent.profile.model, status: agent.info.status,
       unavailable: agent.fatal === true,
-      services: agent.profile.services, bindings: agent.bindings, parentId: agent.info.parentId, spawnProfiles: agent.profile.spawnProfiles, allowContextFork: agent.profile.allowContextFork,
+      ...management.bridgeAccess(agentId), parentId: agent.info.parentId, spawnProfiles: agent.profile.spawnProfiles, allowContextFork: agent.profile.allowContextFork,
     };
   };
   let bridge: any, modelAccess: any, backend: any;
   let closing = false;
+  const management = createRuntimeManagement({
+    profiles, registrations,
+    validateProfile(id, profile) {
+      const snapshot = snapshotProfiles({ [id]: profile }, config.models, registrations, profiles).get(id)!;
+      validateProfileExecution(snapshot);
+      return snapshot;
+    },
+    isClosing: () => closing,
+    isAgentLive: id => agents.has(id) && isLive(agents.get(id)),
+    cancelAccess: (agentId, serviceId, operations) => bridge.cancelAccess(agentId, serviceId, operations),
+    redact: redactor.value,
+    addSecrets: redactor.add,
+    drainService: id => bridge.drainService(id),
+    hasUncertainWrites: id => bridge.hasUncertainWrites(id),
+    async exportService(registration) {
+      const [result] = await exportServiceStates(new Map([[registration.manifest.id, registration]]), outputDir, redactor.value);
+      return result as { path?: string; error?: ErrorInfo } | undefined;
+    },
+    changed: change => records.record('management', redactor.value(change) as Record<string, unknown>),
+  });
   let recordsReady = false;
   let reportSaved = false;
   const assertAssembling = () => {
@@ -310,6 +336,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       liveObservation.publish({ type: 'runtime', runtimeState: 'closing', cleanup: 'pending' }, row.seq);
       return;
     }
+    if (row.type === 'management') {
+      const { type, runtimeId, at, seq, ...change } = row;
+      liveObservation.publish({ type: 'management', change: change as unknown as RuntimeManagementChange }, seq);
+      return;
+    }
     if (row.type === 'service' && typeof row.attemptId === 'string') {
       const entry = row as RunEvidenceRecord & Extract<RuntimeObservationChange, { type: 'service' }> & { error?: { code: string } };
       liveObservation.publish({ type: 'service', agentId: entry.agentId, serviceId: entry.serviceId,
@@ -360,6 +391,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         runtimeState: finalClose ? 'closed' : closing ? 'closing' : 'open',
         ...(closing ? { cleanup: finalClose ? 'complete' as const : 'pending' as const } : {}),
         agents: [...agents.values()].map(observationAgent),
+        management: management.snapshot(),
         evidence: { recorded, lost, pending },
       };
     });
@@ -504,7 +536,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     const requestId = input?.requestId;
     let parameters;
     try {
-      parameters = snapshotSpawn(input, profiles, registrations);
+      parameters = snapshotSpawn(input, profiles, management.knowsService);
       config.driver.assertEnvironment?.(parameters.secretEnv);
     }
     catch (error) { throw problem('INVALID_CONTRACT', (error as Error).message, 'spawn', undefined, requestId); }
@@ -528,20 +560,25 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       if ([...agents.values()].filter(agent => agent.info.status !== 'closed').length >= maxAgents) {
         throw problem('CONFLICT', 'Runtime has no free Agent Slot', 'spawn', undefined, requestId);
       }
+      const profile = profiles.get(parameters.profile)!;
+      if ([...Object.keys(profile.services), ...Object.keys(parameters.bindings ?? {})].some(id => !registrations.has(id))) {
+        throw problem('NOT_ALLOWED', 'Profile requires an unavailable Service', 'spawn', undefined, requestId);
+      }
       const info: AgentInfo = { id: randomUUID(), profile: parameters.profile, status: 'starting', cursor: 0,
         ...(parameters.parentId ? { parentId: parameters.parentId } : {}) };
       redactor.add(Object.values(parameters.secretEnv ?? {}));
       const agent: RuntimeAgent = {
-        info, profile: profiles.get(parameters.profile), controller: new AbortController(),
-        activityClaims: new Set(), nativeExecuting: false, executionStopped: false, bindings: parameters.bindings, collect: parameters.collect,
+        info, profile, controller: new AbortController(),
+        activityClaims: new Set(), nativeExecuting: false, executionStopped: false, collect: parameters.collect,
         executionEpoch: 0, interruptRequests: new Map(),
       };
       fileControls.register(agent, { writable: parameters.writable ?? agent.profile.writable,
         seeded: parameters.files !== undefined });
       request = { fingerprint, agent };
+      management.initAccess(info.id, profile.services, parameters.bindings);
       agents.set(info.id, agent);
       spawnRequests.set(requestKey, request);
-      records.record('spawn', { state: 'registered', agentId: info.id, parentId: info.parentId, profile: info.profile,
+      records.record('spawn', { state: 'registered', agentId: info.id, parentId: info.parentId, profile: info.profile, profileDigest: management.profileDigest(info.profile),
         ...(parameters.forkFrom ? { forkFrom: parameters.forkFrom } : {}),
         requestId: redactor.text(requestId), source: caller, collect: parameters.collect, writable: parameters.writable ?? agent.profile.writable });
       agent.start = Promise.resolve().then(async () => {
@@ -738,7 +775,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   let savingClose = false;
   let serviceStates: Awaited<ReturnType<typeof exportServiceStates>> | undefined;
   function closeReceipt(agentReceipts: any[], errors: ErrorInfo[], reportError?: ErrorInfo) {
-    const pending = [...agentReceipts.flatMap(agent => agent.pending ? [agent.pending] : []), ...pendingEndpoints()];
+    const pending = [...agentReceipts.flatMap(agent => agent.pending ? [agent.pending] : []), ...pendingEndpoints(), ...management.pendingServices()];
     if (reportError || savingClose) pending.push({ kind: 'report', id: runtimeId, action: 'save', ...(reportError ? { error: reportError } : {}) });
     const evidence = records.snapshot();
     if (evidence.lost) pending.push({ kind: 'report', id: runtimeId, action: 'save',
@@ -759,7 +796,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         records.record('runtime', { state: 'closing', timeoutMs });
         const stopping = Promise.all([...agents.values()].map(beginStop));
         await closeEndpoints();
-        if (endpointCleanup.bridge.done) serviceStates ??= await exportServiceStates(registrations, outputDir, redactor.value);
+        if (endpointCleanup.bridge.done) {
+          await management.retireAll(timeoutMs);
+          serviceStates ??= await exportServiceStates(registrations, outputDir, redactor.value);
+        }
         const agentReceipts = await stopping;
         if (agentReceipts.every((agent: any) => agent.cleanup === 'complete')) {
           await closeEndpoint('backend', backend);
@@ -779,7 +819,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         try {
           receipt.reportPath = reportPath;
           await saveSummary(receipt.cleanup === 'complete' ? 'closed' : 'closing', {
-            ...receipt, serviceStates, handlerErrors, handlerErrorCount,
+            ...receipt, serviceStates: [...(serviceStates ?? []), ...management.retiredExports()], handlerErrors, handlerErrorCount,
           });
           reportSaved = true;
         } catch (error: any) {
@@ -808,7 +848,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   }
 
   return Object.freeze<Runtime>({
-    id: runtimeId, spawn: input => spawn(input), get, list,
+    id: runtimeId, profiles: management.profiles, services: management.services, access: management.access, spawn: input => spawn(input), get, list,
     start: (id, input, options) => send(id, input, { requestId: options?.requestId, mode: 'followUp' }, 'host', 'start'),
     steer: (id, input, options) => send(id, input, {
       requestId: options?.requestId, source: options?.source, steeringMode: options?.steeringMode, mode: 'steer',

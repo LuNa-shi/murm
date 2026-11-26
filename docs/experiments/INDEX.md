@@ -7,7 +7,13 @@ Formal experiments performed under a **human-approved GitHub Issue** use `EXP-YY
 Implementation unit tests, bounded debugging probes and failure reproductions are different: they may run and repeat within an approved Issue and resource allowance **without a formal EXP ID**. Keep reproducible evidence and summarize at meaningful milestones. See [experiment workflow](../workflows/experiment.md).
 
 | ID | Parent Issue / context | Type and status | Code | Report |
-|---|---|---|---|---|
+|---|---|---|---|
+| `EXP-20261126-05` | [Issue #235](https://github.com/LuNa-shi/murm/issues/235) | **STOPPED · GPT-6.1 Sol · orders-a · workload change** | `cbcb790f` | [Dynamic Lead–Worker time-bounded acceptance](EXP-20261126-05-06-lead-worker-dynamic.md) |
+| `EXP-20261126-06` | [Issue #235](https://github.com/LuNa-shi/murm/issues/235) | **STOPPED IN SETUP · GPT-6.1 Sol · orders-b · workload change** | `cbcb790f` | [Dynamic Lead–Worker time-bounded acceptance](EXP-20261126-05-06-lead-worker-dynamic.md) |
+| `EXP-20261126-03` | [Issue #235](https://github.com/LuNa-shi/murm/issues/235) | **SETTLED · GPT-6.1 Sol · orders-a · request cap, partial acceptance** | `df459980` | [Dynamic Lead–Worker recovery](EXP-20261126-03-04-lead-worker-dynamic.md) |
+| `EXP-20261126-04` | [Issue #235](https://github.com/LuNa-shi/murm/issues/235) | **SETTLED · GPT-6.1 Sol · orders-b · request cap, partial acceptance** | `df459980` | [Dynamic Lead–Worker recovery](EXP-20261126-03-04-lead-worker-dynamic.md) |
+| `EXP-20261126-01` | [Issue #235](https://github.com/LuNa-shi/murm/issues/235) | **STOPPED · GPT-6.1 Sol · orders-a · deployment permission failure** | `0ec6770e` | [Dynamic Lead–Worker acceptance](EXP-20261126-01-02-lead-worker-dynamic.md) |
+| `EXP-20261126-02` | [Issue #235](https://github.com/LuNa-shi/murm/issues/235) | **STOPPED · GPT-6.1 Sol · orders-b · recovery before deployment** | `0ec6770e` | [Dynamic Lead–Worker acceptance](EXP-20261126-01-02-lead-worker-dynamic.md) |
 | `EXP-20261125-35` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) | **COMPLETE · ScaleMAS · FATE-M #1 · none · 4 proofs passed, 151.551 s work** | `c1a3480` | [ScaleMAS FATE-M one-problem acceptance](EXP-20261125-scalemas-fate.md) (recorded as `EXP-20261125-09`) |
 | `EXP-20261125-34` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) | **COMPLETE · ScaleMAS · FATE-M #1 · private · 4 proofs passed, 187.900 s work** | `c1a3480` | [ScaleMAS FATE-M one-problem acceptance](EXP-20261125-scalemas-fate.md) (recorded as `EXP-20261125-08`) |
 | `EXP-20261125-33` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) | **COMPLETE · ScaleMAS · FATE-M #1 · shared · 4 proofs passed, 131.351 s work** | `c1a3480` | [ScaleMAS FATE-M one-problem acceptance](EXP-20261125-scalemas-fate.md) (recorded as `EXP-20261125-07`) |

@@ -1,5 +1,5 @@
-import type { ServiceRegistry } from './services.js';
-import type { JsonValue } from './service-types.js';
+import type { ServiceRegistration, ServiceRegistry } from './services.js';
+import type { JsonValue, ServiceManifest } from './service-types.js';
 
 export {};
 
@@ -48,6 +48,7 @@ export interface CreateRuntimeOptions {
   maxAgents: number;
   outputDir: string;
   modelAccessPolicy?: ModelAccessPolicy;
+  agentAccessPolicy?: AgentAccessPolicy;
 }
 
 export interface FileEntry {
@@ -187,9 +188,9 @@ export type AgentEvent = { agentId: string; seq: number } & (
 );
 
 export interface PendingCleanup {
-  kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report';
+  kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report' | 'service';
   id: string;
-  action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+  action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save' | 'retire-service';
   error?: ErrorInfo;
   resourceKey?: string;
   providerId?: string;
@@ -299,12 +300,99 @@ export interface AgentObservation {
   };
 }
 
+export interface ProfileRegistration {
+  readonly actorId?: string;
+  readonly id: string;
+  readonly requestId: string;
+  readonly profile: Profile;
+}
+
+export interface ProfileDefinition {
+  readonly actorId?: string;
+  readonly id: string;
+  readonly digest: string;
+  readonly sequence: number;
+  readonly profile: Profile;
+}
+
+export interface RuntimeServiceRegistration {
+  readonly actorId?: string;
+  readonly requestId: string;
+  readonly registration: ServiceRegistration;
+  readonly deploymentRef: string;
+  readonly implementationId: string;
+  readonly ownership: 'run' | 'external';
+}
+
+export interface ServiceRetirement {
+  readonly actorId?: string;
+  readonly serviceId: string;
+  readonly requestId: string;
+  readonly timeoutMs?: number;
+}
+
+export interface RuntimeServiceDefinition {
+  readonly actorId?: string;
+  readonly id: string;
+  readonly manifest: ServiceManifest;
+  readonly sequence: number;
+  readonly state: 'ready' | 'retiring' | 'retired';
+  readonly deploymentRef?: string;
+  readonly implementationId?: string;
+  readonly ownership?: RuntimeServiceRegistration['ownership'];
+  readonly error?: ErrorInfo;
+}
+
+export type AgentAccessRequest = {
+  readonly runtimeId: string;
+  readonly callerId: string;
+  readonly agentId: string;
+} & (
+  | { readonly operation: 'access_get' }
+  | { readonly operation: 'grant' | 'revoke'; readonly serviceId: string; readonly operations: readonly string[] }
+);
+
+export type AgentAccessPolicy = (request: AgentAccessRequest) => boolean;
+
+export interface AgentAccess {
+  readonly agentId: string;
+  readonly version: number;
+  readonly services: Readonly<Record<string, readonly string[]>>;
+}
+
+export interface AgentAccessMutation {
+  readonly agentId: string;
+  readonly serviceId: string;
+  readonly operations: readonly string[];
+  readonly requestId: string;
+}
+
+export type AgentAccessGrant = AgentAccessMutation & { readonly binding?: string };
+
+export interface RuntimeManagementSnapshot {
+  readonly sequence: number;
+  readonly profiles: readonly ProfileDefinition[];
+  readonly services: readonly RuntimeServiceDefinition[];
+  readonly access: readonly AgentAccess[];
+}
+
+export type RuntimeManagementChange = {
+  readonly sequence: number;
+  readonly caller: string;
+  readonly requestId: string;
+} & (
+  | { readonly operation: 'profile.register'; readonly definition: ProfileDefinition }
+  | { readonly operation: 'service.register' | 'service.retire'; readonly definition: RuntimeServiceDefinition }
+  | { readonly operation: 'access.grant' | 'access.revoke'; readonly access: AgentAccess; readonly serviceId: string; readonly operations: readonly string[] }
+);
+
 export interface RuntimeObservationSnapshot {
   readonly schemaVersion: 1;
   readonly cursor: RuntimeObservationCursor;
   readonly runtimeState: 'open' | 'closing' | 'closed';
   readonly cleanup?: CloseReceipt['cleanup'];
   readonly agents: readonly AgentObservation[];
+  readonly management: RuntimeManagementSnapshot;
   readonly evidence: RuntimeEvidenceProgress;
 }
 
@@ -319,7 +407,8 @@ export type RuntimeObservationChange =
   | { type: 'service'; agentId: string; serviceId: string; operation: string; operationId: string;
       attemptId: string; state: string; outcome: string; errorCode?: string }
   | { type: 'trace-gap'; agent: AgentObservation; expectedWorkerSequence?: number; observedWorkerSequence?: number }
-  | { type: 'persistence'; evidence: RuntimeEvidenceProgress };
+  | { type: 'persistence'; evidence: RuntimeEvidenceProgress }
+  | { type: 'management'; change: RuntimeManagementChange };
 
 export type RuntimeObservationUpdate =
   | (RuntimeObservationChange & { readonly schemaVersion: 1; readonly cursor: RuntimeObservationCursor; readonly recordSeq?: number })
@@ -349,6 +438,22 @@ export interface Runtime {
   send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
   onEvent(handler: (event: AgentEvent) => void): () => void;
   observe(options?: RuntimeObservationOptions): RuntimeObservation;
+  readonly profiles: {
+    register(input: ProfileRegistration): Promise<ProfileDefinition>;
+    get(id: string): ProfileDefinition | null;
+    list(): readonly ProfileDefinition[];
+  };
+  readonly access: {
+    get(agentId: string): AgentAccess | null;
+    grant(input: AgentAccessGrant): Promise<AgentAccess>;
+    revoke(input: AgentAccessMutation): Promise<AgentAccess>;
+  };
+  readonly services: {
+    register(input: RuntimeServiceRegistration): Promise<RuntimeServiceDefinition>;
+    get(id: string): RuntimeServiceDefinition | null;
+    list(): readonly RuntimeServiceDefinition[];
+    retire(input: ServiceRetirement): Promise<RuntimeServiceDefinition>;
+  };
   stop(agentId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
   readonly files: {

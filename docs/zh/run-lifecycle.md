@@ -13,7 +13,7 @@ Harness 创建 Runtime 后，一场 Run 就开始了；它要在确定业务结�
 
 宿主先选择 OpenSandbox 后端、注册 Service、定义 Profile。writer 的 Profile 允许 `messages.put`，reader 允许 `messages.get`，并把 `received.txt` 声明为必需导出的产物。`createRuntime` 校验并快照化这些配置，创建 `outputDir/<runtime.id>/`，再打开 Model Gateway 和 Service Bridge。
 
-此时还没有 Agent 沙箱。Runtime 已经拥有监听器和运行记录，也负责初始化失败后的清理。一个 backend 句柄只能被一个 Runtime 认领。Profile 与 Service 注册在该 Runtime 生命周期中保持固定；Harness 可以在这些已配置的 Profile 中选择，创建不同角色的 Agent。
+此时还没有 Agent 沙箱。Runtime 已经拥有监听器和运行记录，也负责初始化失败后的清理。一个 backend 句柄只能被一个 Runtime 认领。Harness 创建 Agent 时，可以选择初始 Profile 或运行中登记的新 Profile。也可以通过 [Runtime 管理 API](reference/api.md#runtime-管理) 登记或退役 Service，并更新单个 Agent 的操作授权。
 
 ## 2. 派发工作前开始观察
 

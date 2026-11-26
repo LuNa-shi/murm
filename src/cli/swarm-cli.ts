@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { requestHttp } from '../protocol/http-request.js';
-import { COMMAND_OPERATIONS, operationForCommand, transportService } from './service-command.js';
+import { CORE_AGENT_OPERATIONS, COMMAND_OPERATIONS, operationForCommand, transportService } from './service-command.js';
 
 const SERVICE_NAMES = ['task', 'agent', 'material', 'workspace', 'mission', 'judge', 'catalog'];
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -304,7 +304,7 @@ function commandInput(service: any, command: any, options: any, args: any, input
 }
 
 async function invoke(service: any, commandName: any, options: any, args: any = []) {
-  if (process.env.MURM_BRIDGE_URL && service === 'agent' && ['spawn', 'get', 'send', 'stop'].includes(commandName)) {
+  if (process.env.MURM_BRIDGE_URL && service === 'agent' && CORE_AGENT_OPERATIONS.includes(commandName)) {
     const metadata = await manifest('agent');
     if (metadata.id !== 'agent' || !metadata.capabilities.some((item: any) => item.operation === commandName)) throw new Error(`service agent does not advertise capability ${commandName}`);
     const input = { ...(await inputFrom(options)), ...flagInput(options) };
