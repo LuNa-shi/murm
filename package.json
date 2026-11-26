@@ -38,7 +38,7 @@
     ".dockerignore",
     "src/",
     "scripts/",
-    "services/",
+    "deploy/",
     "examples/",
     "docs/",
     "test/",

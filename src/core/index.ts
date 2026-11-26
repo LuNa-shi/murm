@@ -559,7 +559,8 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         if (agent.fatal || info.status !== 'starting') throw new Error('Agent stopped before becoming idle');
         info.status = 'idle';
         records.record('spawn', { state: 'ready', agentId: info.id, requestId: redactor.text(requestId),
-          sandboxId: resource.sandboxId, versions: resource.versions, ...(resource.backend ? { backend: resource.backend } : {}) });
+          providerId: resource.providerId, resourceKey: resource.resourceKey, sandboxId: redactor.text(resource.sandboxId),
+          versions: resource.versions, ...(resource.backend ? { backend: resource.backend } : {}) });
         return structuredClone(info);
       });
       request.result = agent.start.catch((error: any) => {

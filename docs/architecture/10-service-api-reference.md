@@ -38,10 +38,10 @@ This section is generated from executable exports and checked against the source
 | [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `ee72fba940f1e45926b4f8c04a13c355868e6d15b84df6cade45f2371b4db770` |
 | [src/agent/capability-profile.ts](../../src/agent/capability-profile.ts) | `53a57335eb59af29119a889b12044d94d838c5df9d138cc86e2d0da5bd01f0c5` |
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `28570d9b5cfadc3ceaa8136860bb8df2238ce951a144b996e5b2d9d5f2924111` |
-| [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
+| [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `f900a62f23efd60bea8c7a84836ae3213e1438a57b725dc3fc0f8572f95021ec` |
-| [src/core/types.ts](../../src/core/types.ts) | `2b40ec307f9e18651238ce6258997d6b7b069c01a120f89a2435c2b3f6471840` |
+| [src/core/index.ts](../../src/core/index.ts) | `3ecc1f614c9dc48087f5154cf097f2dce7e4ba3974b82a385b113797453eee3b` |
+| [src/core/types.ts](../../src/core/types.ts) | `89abb462c062ea457140c797d65f1f3ee8ec410080821fe567845ff9ddf4cddd` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `f8cea3ce6983ecd15f81ffe7a5c483f476b728a1421b40961e49073d815d7664` |
 | [src/core/services.ts](../../src/core/services.ts) | `8c1d64489bd31ab3cec3b3b295a36ebaa2e8a9982f0a4aa059a05c405f41b6d1` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
@@ -3298,6 +3298,7 @@ export interface PendingCleanup {
     action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
     error?: ErrorInfo;
     resourceKey?: string;
+    providerId?: string;
     sandboxId?: string;
     creation?: 'created' | 'pending' | 'absent';
     executionStopped?: boolean;

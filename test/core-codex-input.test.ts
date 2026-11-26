@@ -7,7 +7,7 @@ import test from 'node:test';
 import { provider } from './fixtures/core-pi-transport.js';
 
 const hooks = registerHooks({ resolve(specifier, context, next) {
-  if (context.parentURL?.endsWith('/src/core/opensandbox-backend.js') &&
+  if (context.parentURL?.endsWith('/src/core/opensandbox-provider.js') &&
       /\/runtime\/(opensandbox-manager|docker-agent-network|docker-agent-disk)\.js$/.test(specifier)) {
     return { url: new URL('./fixtures/core-pi-transport.js', import.meta.url).href, shortCircuit: true };
   }

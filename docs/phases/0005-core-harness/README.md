@@ -21,6 +21,7 @@ GitHub issues 负责实施切片、真实阻塞关系、进度、PR 和验收证
 | [推进、验收与发布](03-delivery-and-validation.md) | 开发、本人的使用验收、条件启动的外部试用与发布、时间窗口和收尾检查 |
 | [TaskPool 数学形式化](04-taskpool-math.md) | #200 后续范围、实时文件接续和真实数学题验收 |
 | [ScaleMAS 论文机制与 FATE](05-substrate-fate.md) | #202 后续范围、成果库、原题与三组单题验收 |
+| [动态 Core 与 Lead–Worker](06-lead-worker-dynamic.md) | #235 的 Q2 后续扩展、可选动态团队模式与真实模型验收 |
 
 Core 文档定义公共接口及其最低保证；Harness 文档在此保证内定义各模式。推进计划安排交付顺序，不改变技术合同。单次宿主等待的 60 秒是建议默认值，具体配置需要有界且可检验，不是整个项目的耗时承诺。
 
@@ -29,7 +30,7 @@ Core 文档定义公共接口及其最低保证；Harness 文档在此保证内�
 | 决策 | 本阶段采用的选择 |
 | --- | --- |
 | Q1 | 首版仅 Pi 1.3.0 + OpenSandbox；保留内部 backend 边界，不公开通用多执行器插件接口 |
-| Q2 | Profile 与 ServiceRegistry 启动前装配并冻结；可按既有 Profile 动态 spawn |
+| Q2 | 首版启动前装配并冻结，可按已登记 Profile spawn。#235 按[后续扩展](06-lead-worker-dynamic.md)增加受控动态登记、Service 退役和实例授权。 |
 | Q3 | 各 Agent 有独立 Session、sandbox、workDir；经 Git、Service 或显式 artifact 交接，不共享私有目录 |
 | Q4 | `send` 默认 `steer`；显式 `followUp` 可用；PeerMesh 串行 router 与一次性等待 helper 明确使用 `followUp` |
 | Q5 | idle 继续持有 Session、workDir 与 Slot；`settled` 不代表业务完成或资源释放 |
