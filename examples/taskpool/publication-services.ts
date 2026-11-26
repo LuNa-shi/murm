@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
-import { decodeFileSeed } from '../../scripts/core-file-seed.js';
+import { completeDigest, decodeFileSeed } from '../../scripts/core-file-seed.js';
 import { taskPoolCoordinationPermissions } from './coordination-permissions.js';
 import { createWorkspaceMergeService } from './workspace-merge.js';
 import { MISSION_WORKSPACE_READS } from '../../src/runtime/workspace-public-reads.js';
 import { prepareWorkspaceCheckSource } from '../../src/judge/workspace-check-source.js';
 import { agentCheckResult } from '../../src/judge/check-result.js';
-import { ExecutionWorkspace, WorkspaceRequestMismatchError } from '../../src/runtime/execution-workspace.js';
+import { ExecutionWorkspace, isPublishedProjectPath, WorkspaceRequestMismatchError } from '../../src/runtime/execution-workspace.js';
 import { MurmError } from '../../src/errors.js';
 import { makeEnvelope, stableStringify } from '../../src/protocol/envelope.js';
 import { inputFingerprint, executionEnvelope } from './prepare-inputs.js';
@@ -33,8 +33,6 @@ const purposes: Record<string, string> = {
   judge: 'Check saved Lean source and retrieve diagnostic results.',
   task: 'Link Materials and report the outcome of owned work.',
 };
-const coreFileSeed = (files: Record<string, string>) =>
-  Object.fromEntries(Object.entries(files).map(([path, data]) => [path, { encoding: 'base64', data }]));
 const liveWorkspaceOperations: any = new Set(['workspace_save','workspace_apply','workspace_status','workspace_current_diff']);
 const definitions: any = {
   workspace:[
@@ -110,18 +108,6 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
     }
     return {core,agent,execution};
   }
-  function installReceipt(input: any, execution: any, receipt: any) {
-    if (receipt) {
-      const files = coreFileSeed(input.files);
-      if (receipt.agentId !== execution.owner_ref || receipt.requestId !== input.request_id ||
-          receipt.digest !== decodeFileSeed(files).digest || !['installed', 'committed'].includes(receipt.phase)) {
-        fail('INVALID_CONTRACT', 'Core install receipt differs from the fixed apply tree');
-      }
-    }
-    return { request_id: input.request_id, execution_id: execution.execution_id, binding_version: execution.fencing_version,
-      phase: receipt?.phase ?? 'not_found', content_hash: input.content_hash,
-      fingerprint: inputFingerprint({ expected_content_hash: input.expected_content_hash, content_hash: input.content_hash }) };
-  }
   const applyRecovery = new Map<string, { attempts: number; timer?: ReturnType<typeof setTimeout> }>();
   function recoverApply(executionId: string, kind?: string) {
     if (kind !== 'apply' || closing || applyRecovery.has(executionId)) return;
@@ -153,36 +139,30 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
   }
   const workspace: any = new ExecutionWorkspace({taskService,contextService,workspace:missionWorkspace,
     sandboxManager:{
-      async queryAgentProjectInstall(input: any) {
-        const execution = taskService.getExecution(input.executionId);
-        const receipt = await getRuntime().files.installStatus(execution.owner_ref, { requestId: input.request_id });
-        return installReceipt(input, execution, receipt);
-      },
-      async installAgentProject(input: any) {
-        const execution = taskService.getExecution(input.executionId);
-        const core = getRuntime();
-        const expected = await core.files.snapshot(execution.owner_ref, { requestId: input.snapshot_request_id, paths: ['.'], includeGit: false, maxBytes: 16 * 1024 * 1024 });
-        const files = coreFileSeed(input.files);
-        const receipt = await core.files.install(execution.owner_ref, { requestId: input.request_id, expected, files });
-        return installReceipt(input, execution, receipt);
-      },
-      async confirmAgentProjectInstall(input: any) {
-        const execution = taskService.getExecution(input.executionId);
-        return installReceipt(input, execution, await getRuntime().files.confirm(execution.owner_ref, { requestId: input.request_id }));
+      async replaceAgentProject({ executionId, ...input }: any) {
+        const execution = taskService.getExecution(executionId);
+        const receipt = await getRuntime().files.replace(execution.owner_ref, input);
+        if (receipt.agentId !== execution.owner_ref || receipt.requestId !== input.requestId ||
+            (receipt.status === 'completed' && receipt.digest !== completeDigest(decodeFileSeed(input.files).digest))) {
+          fail('OPERATION_UNKNOWN', 'Core replacement receipt differs from the captured apply tree');
+        }
+        return receipt;
       },
       recoverSnapshot: workspaceCapture === 'core', async snapshotAgentProject({executionId,requestId}: any) {
       const execution=taskService.getExecution(executionId);
       if (workspaceCapture === 'core') {
         const core = getRuntime();
         if (typeof core?.files?.snapshot !== 'function') fail('SERVICE_NOT_READY', 'Core file snapshot capability is unavailable');
-        const snapshot = await core.files.snapshot(execution.owner_ref, { requestId, paths: ['.'], includeGit: false, maxBytes: 16 * 1024 * 1024 });
+        const snapshot = await core.files.snapshot(execution.owner_ref, { requestId, paths: ['.'] });
         if (snapshot.agentId !== execution.owner_ref || snapshot.requestId !== requestId || !Number.isSafeInteger(snapshot.version) || snapshot.version < 1) fail('INVALID_CONTRACT', 'Core snapshot receipt has a different identity');
         const decoded = decodeFileSeed(snapshot.files);
-        if (decoded.digest !== snapshot.digest) fail('INVALID_CONTRACT', 'Core snapshot bytes differ from its digest');
+        if (snapshot.scope !== 'complete' || completeDigest(decoded.digest) !== snapshot.digest) fail('INVALID_CONTRACT', 'Core snapshot bytes differ from its digest');
         const digest = (bytes: any) => createHash('sha256').update(bytes).digest('hex');
-        const files = Object.fromEntries(decoded.entries.map(({ path, bytes }) => [path, bytes.toString('base64')]));
-        const manifest = Object.fromEntries(decoded.entries.map(({ path, bytes }) => [path, { bytes: bytes.length, content_hash: digest(bytes) }]));
-        return { execution_id: executionId, binding_version: execution.fencing_version, state: 'ACTIVE', files, manifest, content_hash: digest(stableStringify(manifest)) };
+        const published = decoded.entries.filter(({ path }) => isPublishedProjectPath(path));
+        const files = Object.fromEntries(published.map(({ path, bytes }) => [path, bytes.toString('base64')]));
+        const manifest = Object.fromEntries(published.map(({ path, bytes }) => [path, { bytes: bytes.length, content_hash: digest(bytes) }]));
+        return { execution_id: executionId, binding_version: execution.fencing_version, state: 'ACTIVE', files, manifest, content_hash: digest(stableStringify(manifest)),
+          core: { digest: snapshot.digest, files: snapshot.files } };
       }
       if(typeof snapshotProject!=='function') fail('SERVICE_NOT_READY','No supported trusted live Core snapshot binding is configured');
       return snapshotProject({agentId:execution.owner_ref,executionId,fencingVersion:execution.fencing_version,requestId});

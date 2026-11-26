@@ -140,18 +140,19 @@ test('installed normal Subagents adopts a Service handoff through two overlappin
   const config = { image, outputDir, goal: 'ROOT_TASK_225', maxAgents: 2, maxDepth: 1,
     workTimeoutMs: 90000, closeTimeoutMs: 25000,
     collect: { paths: ['delivery.txt'], includeGit: false, maxBytes: 4096, required: true },
-    backend: { executor: 'codex',
-      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-        endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20000 },
+    executor: 'codex',
+    sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20000,
+      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } },
+    connection: {
       bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
       modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: null, requestTimeoutMs: 30000 },
-      models: { default: { provider: 'openai', model: 'gpt-5.4',
-        upstream: { url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {} } } },
-      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
     },
+    models: { default: { provider: 'openai', model: 'gpt-5.4',
+      upstream: { url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {} } } },
   };
   await writeFile(join(evidenceDir, 'config.mjs'), `const config = ${JSON.stringify(config)};
-config.backend.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
+config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;\n`, { mode: 0o600 });
   const proof = { package: installed.metadata, image, executor: 'codex', failure: true };
   t.after(async () => {

@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { invokeService, ServiceRegistry, snapshotServiceRegistry } from '@murm/core/services';
+import { invokeService, ServiceRegistry, snapshotServiceRegistry } from '../src/core/services.js';
 import { createPaperSubstrate } from '../src/harnesses/substrate/paper-substrate.js';
 
 async function fixture(t, mode = 'shared') {

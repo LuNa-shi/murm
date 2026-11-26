@@ -1,3 +1,4 @@
+import type { CreateRuntimeOptions } from '@murm/core';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -37,7 +38,7 @@ ${source.trimEnd()}
 type Problem = Awaited<ReturnType<typeof loadPutnamB1>>;
 type Checks = Awaited<ReturnType<typeof preparePutnamChecks>>;
 type Window = Awaited<ReturnType<typeof createRunWindow>>;
-type BackendFactory = (upstream: Window['upstream']) => Parameters<typeof runTaskPoolHarness>[0]['backend'];
+type RuntimeSettings = (upstream: Window['upstream']) => Pick<CreateRuntimeOptions, 'sandbox' | 'executor' | 'models' | 'connection'>;
 
 async function usage(directory: string, runtimeId: string) {
   const path = join(directory, runtimeId, 'runtime.json');
@@ -53,18 +54,17 @@ async function usage(directory: string, runtimeId: string) {
   });
 }
 
-export async function runPutnamTaskPool({ problem, checks, directory, backend, image, upstream, signal,
-  durationMs = problem.durationMs, selectionMs = putnamSelectionMs(durationMs), selectionReasoningEffort }: {
+export async function runPutnamTaskPool({ problem, checks, directory, runtimeSettings, image, upstream, signal,
+  durationMs = problem.durationMs, selectionMs = putnamSelectionMs(durationMs) }: {
   problem: Problem;
   checks: Checks;
   directory: string;
-  backend: BackendFactory;
+  runtimeSettings: RuntimeSettings;
   image: string;
   upstream: { url: string; headers: Record<string, string> };
   signal: AbortSignal;
   durationMs?: number;
   selectionMs?: number;
-  selectionReasoningEffort?: 'low';
 }) {
   const setupStarted = performance.now();
   await mkdir(directory, { mode: 0o700 });
@@ -107,7 +107,7 @@ export async function runPutnamTaskPool({ problem, checks, directory, backend, i
     });
     const runSignal = AbortSignal.any([signal, ownDeadline.signal, window.signal]);
     const report = await runTaskPoolHarness({
-      backend: backend(window.upstream), model: 'default', image, outputDir: directory, signal: runSignal,
+      ...runtimeSettings(window.upstream), model: 'default', image, outputDir: directory, signal: runSignal,
       prompt: '', taskService, contextService, missionWorkspace, workspaceManager, missionId, workspaceId,
       deadlineAt: initialDeadline, activeDeadline: deadline, capacity: problem.capacity,
       autonomousTasks: true, completionPolicy: 'mission', workspaceCapture: 'core', mathlibSearch,
@@ -146,7 +146,6 @@ export async function runPutnamTaskPool({ problem, checks, directory, backend, i
     const modelUsage = report.runtimeId ? await usage(directory, report.runtimeId).catch(() => null) : null;
     const receipt = {
       startedAt, setupElapsedMs, researchDeadline, selectionMs, problem: problem.id, sourceSha256: problem.source_hash,
-      selectionReasoningEffort: selectionReasoningEffort ?? null,
       image, provider: problem.provider, model: problem.model, checker: checks.evidence,
       window: window.receipt(), modelUsage, runtimeId: report.runtimeId, environmentReport: report.reportPath,
       completion: report.result?.completion ?? report.businessFailure?.details?.[0]?.completion ?? null,

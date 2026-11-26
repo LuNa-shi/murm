@@ -2,16 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
-import { createRuntime, type CollectionSpec, type FileSeed, type SpawnOptions } from '@murm/core';
-import { ServiceRegistry } from '@murm/core/services';
-import { createOpenSandboxBackend, getOpenSandboxBackendCapabilities, type OpenSandboxBackendConfig } from '@murm/core/backends/opensandbox';
+import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry, type CollectionSpec,
+  type CreateRuntimeOptions, type FileTree, type SandboxConfig, type SpawnOptions } from '@murm/core';
 import { collaborationOperations, createCollaborationService } from './collaboration-service.js';
 import { createSubagentsController } from './controller.js';
 import { childPrompt, rootPrompt } from './prompts.js';
 import { runWithReport } from './run-report.js';
 
-interface Config {
-  backend: OpenSandboxBackendConfig;
+interface Config extends Pick<CreateRuntimeOptions, 'connection' | 'executor' | 'models'> {
+  sandbox: SandboxConfig;
   model?: string;
   rootModel?: string;
   childModel?: string;
@@ -22,7 +21,7 @@ interface Config {
   maxDepth?: number;
   workTimeoutMs?: number;
   closeTimeoutMs?: number;
-  files?: FileSeed;
+  files?: FileTree;
   collect?: CollectionSpec;
   workspace?: { root: SpawnOptions['workspace']; child: SpawnOptions['workspace'] };
   interactive?: boolean;
@@ -45,13 +44,13 @@ export async function createSubagentsHarness(config: Config) {
   deadline(closeTimeoutMs, 'closeTimeoutMs');
   const services = new ServiceRegistry();
   let team: ReturnType<typeof createSubagentsController>;
-  const backend = createOpenSandboxBackend(config.backend);
-  const { contextFork: allowContextFork } = getOpenSandboxBackendCapabilities(backend);
+  const { contextFork: allowContextFork } = getExecutorCapabilities(config.executor ?? 'pi');
   services.registerService(createCollaborationService(request => team.invoke(request), () => team.exportState(), { allowContextFork }));
   const common = { image, writable: true, services: { collaboration: collaborationOperations },
     spawnProfiles: ['child'], allowContextFork };
   const runtime = await createRuntime({
-    backend, outputDir, services, maxAgents,
+    sandbox: createSandbox(config.sandbox), executor: config.executor, models: config.models,
+    connection: config.connection, outputDir, services, maxAgents,
     profiles: {
       root: { ...common, model: rootModel, prompt: rootPrompt },
       child: { ...common, model: childModel, prompt: childPrompt },
@@ -129,9 +128,9 @@ export async function createSubagentsHarness(config: Config) {
   };
 }
 
-function reportRedactor(backend: Config['backend']) {
-  const secrets = [backend?.sandbox?.apiKey, backend?.sandbox?.execdToken,
-    ...Object.values(backend?.models ?? {}).flatMap(model => Object.values(model?.upstream?.headers ?? {}))]
+function reportRedactor(config: Config) {
+  const secrets = [config?.sandbox?.apiKey, config?.sandbox?.execdToken,
+    ...Object.values(config?.models ?? {}).flatMap(model => Object.values(model?.upstream?.headers ?? {}))]
     .filter((value): value is string => typeof value === 'string' && value.length > 0)
     .flatMap(value => [value, value.replace(/^(?:Bearer|Basic)\s+/i, '')])
     .filter(Boolean).sort((left, right) => right.length - left.length);
@@ -146,7 +145,7 @@ export async function runSubagentsHarness(config: Config, signal?: AbortSignal,
   const timeout = AbortSignal.timeout(deadline(config.workTimeoutMs ?? 120_000, 'workTimeoutMs'));
   const work = signal ? AbortSignal.any([signal, timeout]) : timeout;
   let harness: Harness | undefined;
-  const redact = reportRedactor(config.backend);
+  const redact = reportRedactor(config);
   return runWithReport({
     outputDir: config.outputDir, closeTimeoutMs: config.closeTimeoutMs ?? 30_000,
     redact: (report: object) => redact({ ...report, collaboration: harness?.collaborationState() ?? null }),

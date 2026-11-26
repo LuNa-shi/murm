@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core/services';
+import { ServiceRegistry } from '@murm/core';
 import { createOwnedResources } from '../peermesh/resources.js';
 import { runInput } from '../shared/run-input.js';
 import { runWithReport } from '../shared/run-report.js';
@@ -15,7 +15,7 @@ import { leadPrompt, helperPrompt, dynamicLeadPrompt, dynamicWorkerPrompt, initi
 const fail = (code: any) => Object.assign(new Error(code), { code });
 const bounded = (value: any, fallback: any, maximum: any) => { const result = value ?? fallback; if (!Number.isSafeInteger(result) || result < 1 || result > maximum) throw new TypeError('Invalid lead-worker wait bound'); return result; };
 export async function createLeadWorkerHarness(options: any) {
-  const { runId, image, model = 'default', outputDir, backend, exportLimit = 64 * 1024 ** 2, helperCount = 2, includeGit = true } = options;
+  const { runId, image, model = 'default', outputDir, sandbox, executor, models, connection, exportLimit = 64 * 1024 ** 2, helperCount = 2, includeGit = true } = options;
   const dynamic: DynamicLeadWorkerOptions | undefined = options.dynamic;
   if (dynamic && (helperCount !== 2 || typeof dynamic.deploy !== 'function' || typeof dynamic.verifyFinal !== 'function' ||
     typeof dynamic.goal !== 'string' || !dynamic.goal.trim())) throw new TypeError('Invalid dynamic Lead-Worker options');
@@ -87,7 +87,7 @@ export async function createLeadWorkerHarness(options: any) {
       ...(dynamic && payload.type === 'board-updates' ? { boardRevision: payload.revision, updates: structuredClone(payload.updates) } : {}) };
     inputs.push(row); activeInputs.add(team[role]);
     try {
-      const result = await runInput(runtime, team[role], JSON.stringify(payload), { requestId, timeoutMs, signal: workSignal }); Object.assign(row, { inputId: result.inputId, receipt: result.receipt, state: 'completed', settledSeq: result.settled.seq, settled: { agentId: result.settled.agentId, seq: result.settled.seq, outcome: result.settled.outcome } }); return result;
+      const result = await runInput(runtime, team[role], JSON.stringify(payload), { requestId, timeoutMs, signal: workSignal }); Object.assign(row, { inputId: result.inputId, receipt: result.receipt, state: 'completed', settled: { agentId: result.settled.agentId, outcome: result.settled.outcome } }); return result;
     } catch (error: any) { Object.assign(row, { inputId: error.inputId, receipt: error.receipt, state: 'failed', code: error.code ?? 'INPUT_FAILED', uncertain: !['input_failed', 'input_aborted'].includes(error.code) });
       if (dynamic && error.code === 'input_unknown') {
         const recorded = runtime.send(team[role], JSON.stringify(payload), { requestId, mode: 'followUp' });
@@ -121,10 +121,10 @@ export async function createLeadWorkerHarness(options: any) {
         env: { RUN_REPOSITORY: facilities.repositoryUrl, WORK_BRANCH: actor.branch, GITEA_USERNAME: actor.username, GIT_TERMINAL_PROMPT: '0', GIT_AUTHOR_NAME: actor.username, GIT_AUTHOR_EMAIL: `${actor.username}@murm.invalid`, GIT_COMMITTER_NAME: actor.username, GIT_COMMITTER_EMAIL: `${actor.username}@murm.invalid`, RUN_OWNER: facilities.repository.owner, RUN_REPO: facilities.repository.name },
         network: { allow: [new URL(facilities.repositoryUrl).origin] }, services: dynamic ? dynamicServices(role === 'lead' ? 'lead' : 'helper') : { board: boardPermissions[role === 'lead' ? 'lead' : 'helper'], gitea: ['pull_request_write'] } }];
     }));
-    runtime = await createRuntime({ backend, services, profiles, maxAgents: roles.length + (dynamic ? 1 : 0), outputDir, ...(dynamicControl ? { agentAccessPolicy: dynamicControl.agentAccessPolicy } : {}) });
+    runtime = await createRuntime({ sandbox, executor, models, connection, services, profiles, maxAgents: roles.length + (dynamic ? 1 : 0), outputDir, ...(dynamicControl ? { agentAccessPolicy: dynamicControl.agentAccessPolicy } : {}) });
     if (startup.aborted) throw fail('HARNESS_START_ABORTED');
     unsubscribe = runtime.onEvent((event: any) => {
-      if (events.length < (dynamic ? 2048 : 256)) events.push({ agentId: event.agentId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
+      if (events.length < (dynamic ? 2048 : 256)) events.push({ agentId: event.agentId, seq: events.length + 1, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
       if (!dynamic && events.length >= 256 || event.type === 'error' && event.fatal || event.type === 'settled' && event.outcome !== 'completed' || event.type === 'exit' && !event.expected) {
         if (!closing) { recordFence({ agentId: event.agentId, code: 'AGENT_FAILED' });
           // The exclusive helper owns terminal-event/late-receipt ordering.

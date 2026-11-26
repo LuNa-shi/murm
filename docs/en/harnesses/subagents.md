@@ -7,7 +7,7 @@ order: 7
 
 **Subagents** models a lead agent (`/root`) that breaks down a task, spawns named child agents recursively (up to `maxDepth`), exchanges messages in real time, and integrates results. Source: [examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents).
 
-The host uses all three public SDK entries: `@murm/core`, `@murm/core/services` and `@murm/core/backends/opensandbox`. `createSubagentsHarness` belongs to the example; import it from a copied or checkout-local module, not from the package root. See the [SDK guide](../sdk.md) for installation and Runtime ownership.
+The host imports the public SDK from `@murm/core`. `createSubagentsHarness` belongs to the example source. See the [SDK guide](../sdk.md) for installation.
 
 ## 1. Registered Service (`collaboration`)
 

@@ -25,7 +25,7 @@ export function substratePeerProfile({ image, model = 'default' }: any) {
 }
 
 /** Fixed no-Task pool. Harness owns content and drivers; Core owns all Agents. */
-export async function runSubstrate({ backend, runId, image, outputDir, question, model = 'default', poolSize = 3, maxRounds = 2,
+export async function runSubstrate({ sandbox, executor, models, connection, runId, image, outputDir, question, model = 'default', poolSize = 3, maxRounds = 2,
   workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle, maxConcurrentInputs }: any, signal: any) {
   if (typeof outputDir !== 'string' || !outputDir || typeof question !== 'string' || !question.trim() || Buffer.byteLength(question) > 8192 ||
       typeof image !== 'string' || !image || !Number.isSafeInteger(maxRounds) || maxRounds < 2 || maxRounds > 32 ||
@@ -55,14 +55,14 @@ export async function runSubstrate({ backend, runId, image, outputDir, question,
           ranking: 'token occurrences descending, incoming references descending, stable address ascending', maxSearchResults: 8 } }),
       createRuntime: async () => {
         remaining();
-        runtime = await createRuntime({ backend, outputDir, services: substrate.services, maxAgents: poolSize, profiles: {
+        runtime = await createRuntime({ sandbox, executor, models, connection, outputDir, services: substrate.services, maxAgents: poolSize, profiles: {
           peer: substratePeerProfile({ image, model }),
         } });
         return runtime;
       },
       async run(core: any) {
         substrate.bindRuntime(core.id);
-        const unsubscribe = core.onEvent((event: any) => events.push({ agentId: event.agentId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) }));
+        const unsubscribe = core.onEvent((event: any) => events.push({ agentId: event.agentId, seq: events.length + 1, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) }));
         try {
           for (let index = 0; index < poolSize; index++) {
             remaining();
@@ -107,8 +107,8 @@ export async function runSubstrate({ backend, runId, image, outputDir, question,
                   };
                   const receipt = await (admission ? admission.run(sendInput) : sendInput());
                   const observed: any = { requestId: currentRequestId, inputId: receipt.inputId,
-                    outcome: receipt.settled.outcome, seq: receipt.settled.seq, attempt };
-                  turn.attempts.push(observed); Object.assign(turn, { inputId: observed.inputId, outcome: observed.outcome, seq: observed.seq });
+                    outcome: receipt.settled.outcome, attempt };
+                  turn.attempts.push(observed); Object.assign(turn, { inputId: observed.inputId, outcome: observed.outcome });
                   const decision = onCycle ? await waitFor(Promise.resolve().then(() => onCycle({ peerIndex: peer.index,
                     agentId: peer.agentId, round, attempt, requestId: currentRequestId, result: receipt, beforeSnapshot, snapshot: substrate.snapshot(), signal: workSignal, deadlineAtMs: turnDeadline })), workSignal) : undefined;
                   if (decision?.correction === undefined) break;

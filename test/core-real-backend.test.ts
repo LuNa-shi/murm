@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,8 +14,8 @@ test('real Pi receives the permitted Service directory and Bash can call its adv
   timeout: 180_000,
 }, async t => {
   const { createRuntime } = await import('@murm/core');
-  const { ServiceRegistry } = await import('@murm/core/services');
-  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
+  const { ServiceRegistry } = await import('@murm/core');
+
   const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.ok(image, 'MURM_CORE_TEST_IMAGE must identify a verified Pi/OpenSandbox image');
   const upstream = await createControlledUpstream({ listServices: true });
@@ -28,7 +29,7 @@ test('real Pi receives the permitted Service directory and Bash can call its adv
     }
   });
   const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-smoke-'));
-  const backend = createPiOpenSandboxBackend({
+  const backend = runtimeSettings({
     sandbox: {
       lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
@@ -49,7 +50,7 @@ test('real Pi receives the permitted Service directory and Bash can call its adv
     manifest.capabilities = [{ ...manifest.capabilities[1], name: 'list', description: 'List permitted entries', operation }];
     services.registerService({ manifest, adapter: { invoke: () => null } });
   }
-  runtime = await createRuntime({ backend, profiles: {
+  runtime = await createRuntime({ ...backend, profiles: {
     worker: { prompt: 'Perform the requested local file operation and return its verified result.', model: 'default', image,
       writable: true, services: { notes: ['get'], task: ['task_list'], context: ['read_materials'] } },
   }, services, maxAgents: 1, outputDir });

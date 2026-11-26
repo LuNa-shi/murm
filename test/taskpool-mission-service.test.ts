@@ -35,7 +35,7 @@ async function fixture(t,{permissions=['mission_submit'],registered=permissions,
   const discovery=createTaskPoolTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
     missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000});
   const services=new ServiceRegistry();services.registerService(mission);services.registerService(discovery);
-  runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Submit only fixed public results',model:'default',image:'fixture',writable:false,
+  runtime=await createRuntime({sandbox: {},profiles:{researcher:{prompt:'Submit only fixed public results',model:'default',image:'fixture',writable:false,
     services:{task:discovery.manifest.capabilities.map(cap=>cap.operation),mission:mission.manifest.capabilities.filter(cap=>profileAllows||cap.operation!=='mission_submit').map(cap=>cap.operation)}}},services,maxAgents:1,outputDir:root});
   const coordinator=createTaskPoolAgentCoordinator({runtime,taskService:stores.tasks,missionId:stores.missionId,coordinationPermissions:registered});
   const agent=await coordinator.spawn({profile:'researcher',requestId:'coordinator',legacySlotId:'taskpool-slot',selectionDeadline:new Date(Date.now()+60000).toISOString()});
@@ -128,7 +128,7 @@ test('normal TaskPool host keeps the explicit Mission checker caller-owned after
     const accept=id=>{transport.confirm(id,'started');transport.next=accept;};transport.next=accept;
     let submissionId;
     const report=await runTaskPoolHarness({taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
-      missionId:stores.missionId,workspaceId:stores.workspaceId,outputDir:root,deadlineAt:Date.now()+30000,backend:{},model:'default',image:'fixture',capacity:1,
+      missionId:stores.missionId,workspaceId:stores.workspaceId,outputDir:root,deadlineAt:Date.now()+30000,sandbox: {},model:'default',image:'fixture',capacity:1,
       missionCoordination:enabled?store:null,coordinationPermissions,snapshotProject:async()=>{throw new Error('No live capture required');},
       async drive(controller) {
         const agentId=controller.snapshot().agents[0].agentId;
@@ -165,7 +165,7 @@ test('normal math TaskPool reports a trusted accepted Mission as business succes
   transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
   const accept = id => { transport.confirm(id, 'started'); transport.next = accept; }; transport.next = accept;
   const report = await runTaskPoolHarness({ taskService: stores.tasks, contextService: stores.context, missionWorkspace: stores.workspace, workspaceManager: stores.manager,
-    missionId: stores.missionId, workspaceId: stores.workspaceId, outputDir: root, deadlineAt: Date.now()+30000, backend: {}, model: 'default', image: 'fixture', capacity: 1,
+    missionId: stores.missionId, workspaceId: stores.workspaceId, outputDir: root, deadlineAt: Date.now()+30000, sandbox: {}, model: 'default', image: 'fixture', capacity: 1,
     completionPolicy: 'mission', autonomousTasks: true, missionCoordination: store, coordinationPermissions: ['mission_submit'],
     async drive(controller) {
       const agentId = controller.snapshot().agents[0].agentId;

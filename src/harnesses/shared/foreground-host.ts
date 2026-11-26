@@ -5,8 +5,8 @@ import { runTaskPoolHarness } from '../../../examples/taskpool/harness.js';
 const fail = (code: any) => Object.assign(new Error(code), { code });
 const finite = (value: any) => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
 const receipt = (row: any) => Object.fromEntries(['batchId', 'requestId', 'inputId', 'state', 'status', 'code', 'taskId', 'taskState', 'reason'].filter((key: any) => row[key] !== undefined).map((key: any) => [key, row[key]]));
-function agentState({ status, cursor, lastError, lastStop }: any) {
-  return { status, cursor,
+function agentState({ status, lastError, lastStop }: any) {
+  return { status,
     ...(lastError ? { lastErrorCode: typeof lastError.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(lastError.code) ? lastError.code : 'AGENT_ERROR' } : {}),
     ...(lastStop ? { lastStop: { execution: lastStop.execution, cleanup: lastStop.cleanup } } : {}),
   };

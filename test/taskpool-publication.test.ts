@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { createTaskPoolPublicationServices } from '../examples/taskpool/publication-services.js';
 import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/core/services.js';
-import { decodeFileSeed } from '../scripts/core-file-seed.js';
+import { completeDigest, decodeFileSeed } from '../scripts/core-file-seed.js';
 import { createHash } from 'node:crypto';
 import { prepareTaskPoolInputs } from '../examples/taskpool/prepare-inputs.js';
 import { MurmError } from '../src/errors.js';
@@ -68,6 +68,7 @@ test('flat Workspace save captures trusted bytes once and keeps immutable revisi
     captures++; assert.equal(agentId,f.agentId);
     return {execution_id:executionId,binding_version:fencingVersion,state:'ACTIVE',files:Object.fromEntries(Object.entries(files).map(([p,b])=>[p,b.toString('base64')])),manifest,content_hash:hash(stableStringify(manifest))};
   }});
+  await assert.rejects(f.call('workspace','workspace_apply',{ from:'0.1' },'injected-apply'),{code:'NOT_FOUND'});
   const saved=await f.call('workspace','workspace_save',{},'save');
   assert.notEqual(saved.revision,'0.1');
   const published=await f.workspace.exportRevision({workspaceId:f.workspaceId,revision:saved.revision});
@@ -317,7 +318,7 @@ test('Core snapshot save recovers the original bytes after a lost reply and adap
     ids.push(options.requestId);
     if (!receipts.has(options.requestId)) {
       const files = { 'proof.bin': { encoding: 'base64', data: bytes.toString('base64'), mode: 0o644 } };
-      receipts.set(options.requestId, { agentId, requestId: options.requestId, version: 73, files, digest: decodeFileSeed(files).digest });
+      receipts.set(options.requestId, { agentId, requestId: options.requestId, version: 73, files, scope: 'complete', digest: completeDigest(decodeFileSeed(files).digest) });
     }
     if (lose) { lose = false; throw new MurmError('OUTCOME_UNKNOWN', 'lost snapshot reply'); }
     return receipts.get(options.requestId);
@@ -339,28 +340,23 @@ test('Core snapshot save recovers the original bytes after a lost reply and adap
 test('TaskPool apply keeps the original owner and records both proof parents before subsequent save', async t => {
   let files = { 'input.txt': { encoding: 'utf8', data: 'fixed λ\n' }, 'own.lean': { encoding: 'utf8', data: 'my progress\n' } };
   const snapshots = new Map();
-  const installs = new Map();
-  let confirmations = 0;
-  let loseConfirmation = true;
+  const replacements = new Map();
+  let writes = 0;
   const runtime = { id: 'runtime:apply', async get(id) { return { id, profile: 'researcher', status: 'running' }; }, files: {
     async snapshot(agentId, input) {
       if (!snapshots.has(input.requestId)) snapshots.set(input.requestId, { agentId, requestId: input.requestId, version: snapshots.size + 1,
-        files: structuredClone(files), digest: decodeFileSeed(files).digest });
+        files: structuredClone(files), scope: 'complete', digest: completeDigest(decodeFileSeed(files).digest) });
       return snapshots.get(input.requestId);
     },
-    async installStatus(agentId, input) { return installs.get(input.requestId) ?? null; },
-    async install(agentId, input) {
-      assert.equal(input.expected.digest, decodeFileSeed(files).digest);
+    async replace(agentId, input) {
+      const previous = replacements.get(input.requestId);
+      if (previous) return previous;
+      assert.equal(input.expectedDigest, completeDigest(decodeFileSeed(files).digest));
       files = structuredClone(input.files);
-      const receipt = { agentId, requestId: input.requestId, digest: decodeFileSeed(files).digest, version: 2, phase: 'installed' };
-      installs.set(input.requestId, receipt); return receipt;
-    },
-    async confirm(agentId, input) {
-      confirmations++;
-      const receipt = { ...installs.get(input.requestId), phase: 'committed' };
-      installs.set(input.requestId, receipt);
-      if (loseConfirmation) { loseConfirmation = false; throw Object.assign(new Error('lost committed response'), { code: 'OPERATION_UNKNOWN' }); }
-      return receipt;
+      const receipt = { agentId, requestId: input.requestId, digest: completeDigest(decodeFileSeed(files).digest), status: 'completed', writable: true };
+      replacements.set(input.requestId, receipt);
+      writes++;
+      return { agentId, requestId: input.requestId, status: 'unknown' };
     },
   } };
   const f = await fixture(t, { runtime, workspaceCapture: 'core' });
@@ -374,7 +370,7 @@ test('TaskPool apply keeps the original owner and records both proof parents bef
   assert.equal(applied.conflicts.length, 0);
   assert.equal(f.tasks.getExecution(f.execution.execution_id).owner_ref, f.agentId);
   assert.equal(f.tasks.getExecution(f.execution.execution_id).state, 'RUNNING');
-  assert.equal(confirmations, 1);
+  assert.equal(writes, 1);
   const saved = await f.call('workspace', 'workspace_save', {}, 'combined');
   const exported = await f.workspace.exportRevision({ workspaceId: f.workspaceId, revision: saved.revision });
   assert.equal(Buffer.from(exported.files['own.lean']).toString(), 'my progress\n');

@@ -2,7 +2,8 @@
 export function createSubagentsController(runtime: any, parentId: any, { maxChildren = 2 }: any = {}) {
   if (!Number.isSafeInteger(maxChildren) || maxChildren < 2 || maxChildren > 7) throw new TypeError('Subagents controller requires two to seven children');
   const waiters: any = new Set(); const children: any = new Set();
-  const seen: any = new Set(); const failures: any = new Set(); const users: any = new Set();
+  const agentEventSequences = new Map<string, number>();
+  let observedEvents = 0; const failures: any = new Set(); const users: any = new Set();
   const deliveries: any[] = []; const parentTurns: any[] = []; const turnEvidence: any = new Map(); const lifecycle: any[] = []; const errors: any[] = [];
   let pendingJobs = 0; let observationOrder = 0;
   let accepting = true; let fenced = false; let parentClosed = false; let work = Promise.resolve();
@@ -32,13 +33,14 @@ export function createSubagentsController(runtime: any, parentId: any, { maxChil
     }
     return entry;
   }
-  const unsubscribe = runtime.onEvent((event: any) => {
-    const key = `${event.agentId}:${event.seq}`;
-    if (seen.has(key)) return;
-    if (seen.size >= 256 || Buffer.byteLength(JSON.stringify(event)) > 64 * 1024) {
+  const unsubscribe = runtime.onEvent((value: any) => {
+    if (!value.agentId || value.type === 'agentChanged') return;
+    const seq = (agentEventSequences.get(value.agentId) ?? 0) + 1;
+    const event = { ...value, seq };
+    if (++observedEvents > 256 || Buffer.byteLength(JSON.stringify(event)) > 64 * 1024) {
       accepting = false; if (errors.length < 8 && !errors.some((error: any) => error.code === 'EVENT_LIMIT')) errors.push({ code: 'EVENT_LIMIT' }); notify(); return;
     }
-    seen.add(key);
+    agentEventSequences.set(value.agentId, seq);
     const snapshot = structuredClone(event);
     const observedOrder = ++observationOrder;
     if (snapshot.agentId === parentId && snapshot.type === 'settled') {

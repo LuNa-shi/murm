@@ -32,7 +32,7 @@ async function fixture(t, { corrections = true, revokeAllowed = true, coordinati
   allowed.task.push(...discovery.manifest.capabilities.map(cap=>cap.operation));
   if (!corrections) allowed.context = allowed.context.filter(operation => !['material_dispute','material_supersede','material_unsupersede'].includes(operation));
   if (!revokeAllowed) allowed.context=allowed.context.filter(operation=>operation!=='material_unsupersede');
-  runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Correct public Materials with current Task authority',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:2,outputDir:root});
+  runtime=await createRuntime({sandbox: {},profiles:{researcher:{prompt:'Correct public Materials with current Task authority',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:2,outputDir:root});
   t.after(async()=>{publication.close();await discovery.close();await runtime.close({timeoutMs:1000});await publication.waitForMerges?.({timeoutMs:1000});stores.close();await rm(root,{recursive:true,force:true});});
   const cli=async(agent,...args)=>{
     const credentials=controls.credentials.get(agent.id);assert.ok(credentials);
@@ -192,7 +192,7 @@ test('normal TaskPool host wires explicit Material coordinator permission withou
     transport.reset();controls.credentials.clear();controls.stopError=null;controls.destroyError=null;
     const accept=id=>{transport.confirm(id,'started');transport.next=accept;};transport.next=accept;
     const report=await runTaskPoolHarness({taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
-      missionId:stores.missionId,workspaceId:stores.workspaceId,outputDir:root,deadlineAt:Date.now()+30000,backend:{},model:'default',image:'fixture',capacity:2,
+      missionId:stores.missionId,workspaceId:stores.workspaceId,outputDir:root,deadlineAt:Date.now()+30000,sandbox: {},model:'default',image:'fixture',capacity:2,
       coordinationPermissions,snapshotProject:async()=>{throw new Error('No capture required');},
       async drive(controller) {
         const agents=controller.snapshot().agents;

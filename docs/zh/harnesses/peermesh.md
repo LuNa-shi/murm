@@ -52,14 +52,15 @@ const router = createPeerMeshRouter({
   mapping: { agentId: agent.id, workerId: peer.board.workerId },
   // 成员工作期间，私信和新的 Board 条目在 Pi 下一个工具边界通过 steer 实时送达
   steerInput: (text: string, requestId: string) =>
-    runtime.steer(agent.id, text, {
+    runtime.send(agent.id, text, {
+      mode: 'steer',
       requestId,
       source: 'peermesh-peer-notice',
       steeringMode: 'all',
     }),
   // 完整工作批次串行执行，每次自动前置最新的 Board 渲染快照
   runInput: (text, wait) =>
-    runInput(runtime, agent.id, text, { ...wait, operation: 'start', signal }),
+    runInput(runtime, agent.id, text, { ...wait, signal }),
   readContext: async ({ signal }) =>
     (await board('GET', `/board/${boardId}/read?viewer=${peer.board.workerId}`, undefined, { signal })).rendered,
 });

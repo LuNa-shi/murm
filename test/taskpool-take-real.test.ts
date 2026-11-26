@@ -1,13 +1,13 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createRuntime } from '@murm/core';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
-import { ServiceRegistry } from '@murm/core/services';
+
+import { ServiceRegistry } from '@murm/core';
 import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../examples/taskpool/task-service.js';
 import { createTaskPoolAgentCoordinator } from '../examples/taskpool/agent-coordinator.js';
-import { createTaskPoolModelAccessPolicy } from '../examples/taskpool/model-access-policy.js';
 import { executionEnvelope } from '../examples/taskpool/prepare-inputs.js';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { createTaskPoolTakeUpstream } from './fixtures/taskpool-task-upstream.js';
@@ -77,15 +77,14 @@ test('actual flat readonly discovery competes for one Task and continues the sam
     }
     return service.adapter.invoke(request);
   } } });
-  const policy = createTaskPoolModelAccessPolicy({ runtimeId: () => runtime?.id, taskService: stores.tasks, missionId: stores.missionId, deadline: () => deadlineAt });
-  runtime = await createRuntime({ backend: createPiOpenSandboxBackend({ sandbox: {
+  runtime = await createRuntime({ ...runtimeSettings({ sandbox: {
     lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
     apiKey: process.env.MURM_CORE_TEST_API_KEY, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
     bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 30_000, maxOutputTokens: 2048 },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } }),
     profiles: { researcher: taskPoolResearcherProfile({ prompt: 'Execute the fixed discovery and take check.', model: 'default', image }) },
-    services, maxAgents: 2, outputDir, modelAccessPolicy: policy });
+    services, maxAgents: 2, outputDir });
   report.runtimeId = runtime.id;
   assert.deepEqual(await ownedContainers(runtime.id), []);
   const coordinator = createTaskPoolAgentCoordinator({ runtime, taskService: stores.tasks, missionId: stores.missionId });

@@ -44,7 +44,7 @@ function adoptedMaterials(context, candidate, files, producerTaskIds) {
   return adoption;
 }
 
-export async function runOpenTaskPool({ state, task, outputDir, backend, image, window, start, deadline, durationMs, capacity }) {
+export async function runOpenTaskPool({ state, task, outputDir, runtimeSettings, image, window, start, deadline, durationMs, capacity }) {
   const table = new TaskService(join(outputDir, 'tasks.sqlite'));
   const context = new ContextService(join(outputDir, 'context.sqlite'), { taskService: table });
   const workspace = new MissionWorkspace({ rootDir: join(outputDir, 'public') });
@@ -86,7 +86,7 @@ export async function runOpenTaskPool({ state, task, outputDir, backend, image, 
       }
     };
     let started = false;
-    const result = await runTaskPoolHarness({ backend, model: 'default', image, outputDir,
+    const result = await runTaskPoolHarness({ ...runtimeSettings, model: 'default', image, outputDir,
       taskService: table, contextService: context, missionWorkspace: workspace, workspaceManager: manager,
       missionId, workspaceId, capacity, signal: window.signal, deadlineAt: Date.now() + durationMs + 120_000,
       handoff: { executionTimeoutMs: durationMs },

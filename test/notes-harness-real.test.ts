@@ -37,19 +37,19 @@ test(`installed Notes ${executor} exchanges a native fact and retains the reader
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const config = {
     image, outputDir, turnTimeoutMs: 35_000, closeTimeoutMs: 25_000,
-    backend: {
-      executor,
-      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-        endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
-        resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
+    executor,
+    sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
+      resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000,
+      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } },
+    connection: {
       bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
       modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: executor === 'codex' ? null : 128, requestTimeoutMs: 30_000 },
-      models: { default: { provider: executor === 'codex' ? 'openai' : 'kimi_proxy', model: executor === 'codex' ? 'gpt-5.4' : 'k3', upstream: { url: upstream.url, headers: {} } } },
-      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
     },
+    models: { default: { provider: executor === 'codex' ? 'openai' : 'kimi_proxy', model: executor === 'codex' ? 'gpt-5.4' : 'k3', upstream: { url: upstream.url, headers: {} } } },
   };
   await writeFile(join(evidenceDir, 'config.mjs'), `const config = ${JSON.stringify(config)};
-config.backend.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
+config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;\n`, { mode: 0o600 });
   const proof = { package: installed.metadata, externalDirectory: installed.directory, image, executor, failure: true };
   let stdout = ''; let stderr = ''; let expired = false;

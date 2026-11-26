@@ -1,7 +1,7 @@
 import type {
-  AgentEvent, AgentInfo, AgentListFilter, AgentObservation, CollectionSpec, ConditionalInputReceipt,
+  AgentInfo, AgentListFilter, CollectionSpec, ConditionalInputReceipt,
   CreateRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, PendingCleanup, Profile, Runtime,
-  RuntimeManagementChange, RuntimeObservationChange, RuntimeObservationOptions, SendOptions,
+  RuntimeEvent, SendOptions,
 } from './types.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
@@ -14,16 +14,29 @@ import { createInputLedger } from './input-ledger.js';
 import { createFileControls } from './file-controls.js';
 import { saveAgentArtifacts } from './artifact-collection.js';
 import { createRedactor, createRunRecords, runtimeConfiguration } from './run-records.js';
-import type { RunEvidenceRecord } from './run-records.js';
-import { createRuntimeObservation } from './runtime-observation.js';
 import { createRuntimeManagement } from './runtime-management.js';
 import { claimOpenSandboxBackend, openOpenSandboxBackend } from './opensandbox-backend.js';
 import { createAgentService } from './agent-service.js';
 import { createServiceTrace, exportServiceStates } from './service-trace.js';
 import { registerServicePrivateValues, snapshotServiceRegistry, type ServiceRegistration } from './services.js';
 
-export { finalizeRun } from './run-finalization.js';
-export type * from './types.js';
+export { createSandbox } from './opensandbox-backend.js';
+export { getExecutorCapabilities } from './executor-driver.js';
+export { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from './services.js';
+export type { ExecutorCapabilities, ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SandboxConfig, SteeringMode } from './backend-config.js';
+export type { HttpJsonAdapterOptions, ServiceRegistration } from './services.js';
+export type { JsonValue, ServiceAdapter, ServiceCaller, ServiceCapability, ServiceManifest, ServiceRequest } from './service-types.js';
+export type {
+  AgentAccess, AgentAccessGrant, AgentAccessMutation, AgentAccessPolicy, AgentAccessRequest,
+  AgentInfo, AgentInitialInputResult, AgentListFilter, AgentSpawnReceipt, AgentStatus, CloseOptions, CloseReceipt,
+  CollectionSpec, CompleteFileDigest, CompleteFileSnapshot, CompleteFileSnapshotOptions, ConditionalInputReceipt,
+  CreateRuntimeOptions, ErrorInfo, FileEntry, FileReplaceOptions, FileReplaceReceipt, FileSnapshot, FileSnapshotOptions,
+  FileTree, InputMode, InputReceipt, InterruptOptions, InterruptReceipt, PartialFileDigest, PartialFileSnapshot,
+  PendingCleanup, Profile, ProfileDefinition, ProfileRegistration, ResourceError, Runtime, RuntimeEvent, RuntimeFiles,
+  RuntimeManagementChange, RuntimeManagementSnapshot, RuntimeServiceDefinition, RuntimeServiceRegistration,
+  RuntimeState, SendOptions, ServiceRetirement, SpawnOptions,
+  StopOptions, StopReceipt, WorkspaceOptions,
+} from './types.js';
 
 interface InterruptRequest {
   interruptId: string;
@@ -51,7 +64,7 @@ interface RuntimeAgent {
   nativeExecuting: boolean;
   executionStopped: boolean;
   cleanupAction?: PendingCleanup['action'];
-  nativeSettlement?: { recordSeq: number; workerSequence?: number };
+  eventSequence: number;
   fatal?: boolean;
   collect?: CollectionSpec;
   start?: Promise<AgentInfo>;
@@ -99,20 +112,16 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     config.driver.assertEnvironment?.(profile.env);
     if (profile.allowContextFork && !config.driver.capabilities.contextFork) throw new TypeError('Backend does not support Profile Context Fork authority');
   }
-  let registrations: Map<string, ServiceRegistration>, profiles: Map<string, Profile>, modelAccessPolicy, outputDir: string;
+  let registrations: Map<string, ServiceRegistration>, profiles: Map<string, Profile>, outputDir: string;
   try {
     if (!Number.isSafeInteger(options?.maxAgents) || options.maxAgents < 1 ||
         typeof options.outputDir !== 'string' || !options.outputDir.trim()) {
       throw new TypeError('A positive maxAgents and outputDir are required');
     }
-    if (options.modelAccessPolicy !== undefined && (typeof options.modelAccessPolicy?.authorize !== 'function' ||
-        typeof options.modelAccessPolicy?.withCommit !== 'function')) {
-      throw new TypeError('modelAccessPolicy must provide synchronous authorize and withCommit');
-    }
     if (options.agentAccessPolicy !== undefined && typeof options.agentAccessPolicy !== 'function') {
       throw new TypeError('agentAccessPolicy must be a synchronous function');
     }
-    config = claimOpenSandboxBackend(options.backend);
+    config = claimOpenSandboxBackend(options.sandbox, options);
     redactor.add([config.sandbox.apiKey, config.sandbox.execdToken,
       ...Object.values(config.models).flatMap((model) => Object.values(model.upstream.headers))]);
     registrations = snapshotServiceRegistry(options.services);
@@ -123,7 +132,6 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       mutateAccess: (kind, input, caller) => management.mutateAccess(kind, input, caller) }));
     profiles = snapshotProfiles(options.profiles, config.models, registrations);
     for (const profile of profiles.values()) validateProfileExecution(profile);
-    modelAccessPolicy = options.modelAccessPolicy;
     outputDir = join(resolve(options.outputDir), runtimeId);
   } catch (error: any) {
     throw resourceError('INVALID_CONTRACT', redactor.text(error.message), context, { details: [errorInfo(error, 'INVALID_CONTRACT')] });
@@ -133,14 +141,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const assemblyDeadline = performance.now() + defaultTimeoutMs;
   const agents = new Map<any, any>();
   const reportPath = join(outputDir, 'runtime.json');
-  const liveObservation = createRuntimeObservation(runtimeId);
-  const records = createRunRecords(outputDir, runtimeId, {
-    record: observeRunRecord,
-    loss: evidence => liveObservation.publish({ type: 'persistence', evidence }),
-  });
+  const records = createRunRecords(outputDir, runtimeId);
   const modelTrace = createModelTrace(outputDir, redactor);
   const serviceTrace = createServiceTrace(outputDir, redactor.value);
-  const effectiveConfig = runtimeConfiguration({ config, profiles, registrations, maxAgents, modelAccessPolicy, defaultTimeoutMs }, redactor.text);
+  const effectiveConfig = runtimeConfiguration({ config, profiles, registrations, maxAgents, defaultTimeoutMs }, redactor.text);
   const saveSummary = (status: any, data: any = {}) => writeRecord(reportPath, {
     runtimeId, status, maxAgents, config: effectiveConfig, evidence: records.snapshot(),
     modelLedgers: modelAccess?.ledgerPaths?.() ?? [], modelTrace: modelTrace.snapshot(), ...data,
@@ -173,7 +177,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       const [result] = await exportServiceStates(new Map([[registration.manifest.id, registration]]), outputDir, redactor.value);
       return result as { path?: string; error?: ErrorInfo } | undefined;
     },
-    changed: change => records.record('management', redactor.value(change) as Record<string, unknown>),
+    changed(change) {
+      const safe = redactor.value(change) as typeof change;
+      records.record('management', safe);
+      publish({ type: 'management', change: safe });
+    },
   });
   let recordsReady = false;
   let reportSaved = false;
@@ -214,7 +222,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     await saveSummary('starting');
     reportSaved = true;
     assertAssembling();
-    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getAgent, modelAccessPolicy, modelTrace,
+    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getAgent, modelTrace,
       onOwned: owner => { modelAccess = owner; } });
     assertAssembling();
     bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getAgent, registrations,
@@ -271,7 +279,9 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     });
   }
 
-  const handlers = new Set<(event: AgentEvent) => void>();
+  const handlers = new Set<{ handler: Parameters<Runtime['onEvent']>[0] }>();
+  const notifications: { event: RuntimeEvent; seq?: number }[] = [];
+  let notifying = false;
   const spawnRequests = new Map<any, any>();
   const inputRequests = createInputLedger<InputRequest>(runtimeId);
   const fileControls = createFileControls({ backend, findAgent, problem, observe, timedOut,
@@ -314,99 +324,58 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     return !agent.fatal && liveStates.has(agent.info.status);
   }
 
-  function observationAgent(agent: RuntimeAgent): AgentObservation {
-    const { id, profile, parentId, status, cursor: agentSeq } = agent.info;
-    const execution = agent.executionStopped || status === 'exited' ? 'inactive'
-      : agent.fatal ? 'unknown'
-      : agent.nativeExecuting ? 'active'
-      : agent.activityClaims.size ? 'unknown' : 'inactive';
-    const pending = agent.info.lastStop?.pending;
-    const evidenceId = (value: string | undefined) => value && value.length <= 256 ? redactor.text(value) : undefined;
-    return { id, profile, parentId, status, agentSeq, execution,
-      ...(status === 'closing' || status === 'closed' ? { cleanup: {
-        status: status === 'closed' ? 'complete' : 'pending',
-        execution: agent.executionStopped ? 'stopped' : 'unknown',
-        ...(status === 'closing' ? { action: agent.cleanupAction, resourceKey: evidenceId(pending?.resourceKey),
-          sandboxId: evidenceId(pending?.sandboxId) } : {}),
-      } } : {}) };
-  }
-
-  function observeRunRecord(row: RunEvidenceRecord) {
-    if (row.type === 'runtime' && row.state === 'closing') {
-      liveObservation.publish({ type: 'runtime', runtimeState: 'closing', cleanup: 'pending' }, row.seq);
-      return;
+  function publish(event: RuntimeEvent, seq?: number, statusChanged = false) {
+    notifications.push({ event, seq });
+    if (statusChanged && 'agentId' in event) {
+      notifications.push({ event: { type: 'agentChanged', agentId: event.agentId } });
     }
-    if (row.type === 'management') {
-      const { type, runtimeId, at, seq, ...change } = row;
-      liveObservation.publish({ type: 'management', change: change as unknown as RuntimeManagementChange }, seq);
-      return;
-    }
-    if (row.type === 'service' && typeof row.attemptId === 'string') {
-      const entry = row as RunEvidenceRecord & Extract<RuntimeObservationChange, { type: 'service' }> & { error?: { code: string } };
-      liveObservation.publish({ type: 'service', agentId: entry.agentId, serviceId: entry.serviceId,
-        operation: entry.operation, operationId: entry.operationId, attemptId: entry.attemptId,
-        state: entry.state, outcome: entry.outcome, ...(entry.error ? { errorCode: entry.error.code } : {}) }, row.seq);
-      return;
-    }
-    if (!['spawn', 'stop', 'interrupt', 'event', 'input', 'native', 'trace-gap'].includes(row.type)) return;
-    const agent: RuntimeAgent | undefined = agents.get(row.agentId);
-    if (!agent) return;
-    if (row.type === 'native') {
-      const workerSequence = typeof row.workerSequence === 'number' ? row.workerSequence : undefined;
-      if (row.eventType === 'agent_start') liveObservation.publish({
-        type: 'execution', phase: 'started', association: 'unknown', agent: observationAgent(agent), workerSequence,
-      }, row.seq);
-      if (row.eventType === 'agent_settled') agent.nativeSettlement = { recordSeq: row.seq, workerSequence };
-      return;
-    }
-    const subject = observationAgent(agent);
-    if (row.type === 'input') {
-      const input = row as RunEvidenceRecord & Extract<RuntimeObservationChange, { type: 'input' }>;
-      liveObservation.publish({ type: 'input', agent: subject, inputId: input.inputId, requestId: input.requestId,
-        state: input.state, disposition: input.disposition, reason: input.reason }, row.seq);
-    } else if (row.type === 'event') {
-      const event = row.event as AgentEvent;
-      if (event.type === 'settled') {
-        const native = agent.nativeSettlement;
-        agent.nativeSettlement = undefined;
-        liveObservation.publish({ type: 'execution', phase: 'settled', association: 'unknown', agent: subject,
-          outcome: event.outcome, ...(native ? { workerSequence: native.workerSequence } : {}) }, native?.recordSeq ?? row.seq);
-      } else {
-        liveObservation.publish({ type: 'agent', agent: subject, cause: event.type }, row.seq);
+    if (notifying) return;
+    notifying = true;
+    try {
+      for (let index = 0; index < notifications.length; index++) {
+        const queued = notifications[index];
+        const recordFailure = (error: unknown) => {
+          let name = 'Error';
+          try {
+            const candidate = (error as Error | undefined)?.name;
+            if (typeof candidate === 'string') name = redactor.text(candidate);
+          } catch { /* Uninspectable subscriber rejection */ }
+          const entry = { ...('agentId' in queued.event ? { agentId: queued.event.agentId } : {}),
+            eventSeq: queued.seq, type: queued.event.type, name };
+          handlerErrorCount++;
+          if (handlerErrors.length < 32) handlerErrors.push(entry);
+          records.record('subscriber-error', entry);
+        };
+        for (const subscription of [...handlers]) {
+          if (!handlers.has(subscription)) continue;
+          try { Promise.resolve(subscription.handler(structuredClone(queued.event))).catch(recordFailure); }
+          catch (error) { recordFailure(error); }
+        }
       }
-    } else if (row.type === 'trace-gap') {
-      liveObservation.publish({ type: 'trace-gap', agent: { ...subject, execution: 'unknown' },
-        ...(typeof row.expectedWorkerSequence === 'number' ? { expectedWorkerSequence: row.expectedWorkerSequence } : {}),
-        ...(typeof row.observedWorkerSequence === 'number' ? { observedWorkerSequence: row.observedWorkerSequence } : {}),
-      }, row.seq);
-    } else {
-      liveObservation.publish({ type: 'agent', agent: subject, cause: row.type as 'spawn' | 'stop' | 'interrupt' }, row.seq);
+    } finally {
+      notifications.length = 0;
+      notifying = false;
     }
   }
 
-  function observeRuntime(options: RuntimeObservationOptions = {}) {
-    return liveObservation.subscribe(options, () => {
-      const { recorded, lost, pending } = records.snapshot();
-      return {
-        runtimeState: finalClose ? 'closed' : closing ? 'closing' : 'open',
-        ...(closing ? { cleanup: finalClose ? 'complete' as const : 'pending' as const } : {}),
-        agents: [...agents.values()].map(observationAgent),
-        management: management.snapshot(),
-        evidence: { recorded, lost, pending },
-      };
-    });
+  function agentChanged(agent: RuntimeAgent) {
+    publish({ type: 'agentChanged', agentId: agent.info.id });
   }
 
-  function refreshActivity(agent: any) {
-    if (liveStates.has(agent.info.status)) {
-      agent.info.status = agent.nativeExecuting || agent.activityClaims.size ? 'running' : 'idle';
-    }
+  function refreshActivity(agent: RuntimeAgent, notify = true) {
+    if (!liveStates.has(agent.info.status)) return;
+    const status = agent.nativeExecuting || agent.activityClaims.size ? 'running' : 'idle';
+    if (agent.info.status === status) return;
+    agent.info.status = status;
+    if (notify) agentChanged(agent);
   }
 
   function emit(agent: any, payload: any) {
     const { info } = agent;
+    const previousStatus = info.status;
     const { type, ...values } = payload;
-    const event = structuredClone({ ...values, type, agentId: info.id, seq: ++info.cursor });
+    const event = structuredClone({ ...values, type, agentId: info.id });
+    const seq = ++agent.eventSequence;
     if (event.text !== undefined) event.text = redactor.text(event.text);
     if (event.output !== undefined) event.output = redactor.text(event.output);
     if (event.reason !== undefined) event.reason = redactor.text(event.reason);
@@ -417,7 +386,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       // This execution no longer owns running. Input receipts remain intact:
       // a settled event does not establish which queued inputs were consumed.
       agent.activityClaims.clear();
-      refreshActivity(agent);
+      refreshActivity(agent, false);
       info.latestOutput = event.output;
       info.lastError = event.error;
     }
@@ -439,22 +408,8 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         revoke(info.id);
       }
     }
-    records.record('event', { agentId: info.id, event });
-    for (const handler of [...handlers]) {
-      const recordFailure = (error: any) => {
-        let name = 'Error';
-        try {
-          const candidate = error?.name;
-          if (typeof candidate === 'string') name = redactor.text(candidate);
-        } catch { /* Uninspectable subscriber rejection */ }
-        const entry = { agentId: info.id, eventSeq: event.seq, name };
-        handlerErrorCount++;
-        if (handlerErrors.length < 32) handlerErrors.push(entry);
-        records.record('subscriber-error', entry);
-      };
-      try { Promise.resolve(handler(structuredClone(event))).catch(recordFailure); }
-      catch (error: any) { recordFailure(error); }
-    }
+    records.record('event', { agentId: info.id, event: { ...event, seq } });
+    publish(event, seq, previousStatus !== info.status);
   }
 
   function stopReceipt(agent: any, pendingError?: ErrorInfo) {
@@ -480,6 +435,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   function stopPhase(agent: RuntimeAgent, action: PendingCleanup['action']) {
     agent.cleanupAction = action;
     records.record('stop', { agentId: agent.info.id, state: 'phase', action });
+    agentChanged(agent);
   }
 
   function beginStop(agent: any) {
@@ -527,8 +483,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       }
       info.lastStop = stopReceipt(agent);
       records.record('stop', { agentId: info.id, state: 'observed', receipt: info.lastStop });
+      agentChanged(agent);
       return info.lastStop;
     })().finally(() => { agent.stopWork = undefined; });
+    agentChanged(agent);
     return agent.stopWork;
   }
 
@@ -564,16 +522,15 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       if ([...Object.keys(profile.services), ...Object.keys(parameters.bindings ?? {})].some(id => !registrations.has(id))) {
         throw problem('NOT_ALLOWED', 'Profile requires an unavailable Service', 'spawn', undefined, requestId);
       }
-      const info: AgentInfo = { id: randomUUID(), profile: parameters.profile, status: 'starting', cursor: 0,
+      const info: AgentInfo = { id: randomUUID(), profile: parameters.profile, status: 'starting',
         ...(parameters.parentId ? { parentId: parameters.parentId } : {}) };
       redactor.add(Object.values(parameters.secretEnv ?? {}));
       const agent: RuntimeAgent = {
         info, profile, controller: new AbortController(),
         activityClaims: new Set(), nativeExecuting: false, executionStopped: false, collect: parameters.collect,
-        executionEpoch: 0, interruptRequests: new Map(),
+        executionEpoch: 0, interruptRequests: new Map(), eventSequence: 0,
       };
-      fileControls.register(agent, { writable: parameters.writable ?? agent.profile.writable,
-        seeded: parameters.files !== undefined });
+      fileControls.register(agent, { writable: parameters.writable ?? agent.profile.writable, shared: !!parameters.workspace });
       request = { fingerprint, agent };
       management.initAccess(info.id, profile.services, parameters.bindings);
       agents.set(info.id, agent);
@@ -598,6 +555,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         records.record('spawn', { state: 'ready', agentId: info.id, requestId: redactor.text(requestId),
           providerId: resource.providerId, resourceKey: resource.resourceKey, sandboxId: redactor.text(resource.sandboxId),
           versions: resource.versions, ...(resource.backend ? { backend: resource.backend } : {}) });
+        agentChanged(agent);
         return structuredClone(info);
       });
       request.result = agent.start.catch((error: any) => {
@@ -606,6 +564,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         throw problem(error.code ?? 'START_FAILED', 'Agent startup failed', 'spawn', info.id, requestId,
           'pending', [info.lastError]);
       });
+      agentChanged(agent);
     }
     const result = await observe(request.result);
     if (result === timedOut) {
@@ -637,9 +596,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       (status === undefined || statuses.includes(info.status))).map(agentSnapshot);
   }
 
-  function send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }, caller?: string, operation?: string): Promise<InputReceipt>;
-  function send(agentId: string, input: string, options: SendOptions, caller?: string, operation?: string): Promise<ConditionalInputReceipt>;
-  async function send(agentId: string, input: string, options: SendOptions, caller = 'host', operation = 'send'): Promise<ConditionalInputReceipt> {
+  function send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }, caller?: string): Promise<InputReceipt>;
+  function send(agentId: string, input: string, options: SendOptions, caller?: string): Promise<ConditionalInputReceipt>;
+  async function send(agentId: string, input: string, options: SendOptions, caller = 'host'): Promise<ConditionalInputReceipt> {
+    const operation = 'send';
     const requestId = options?.requestId;
     const mode = options?.mode === undefined ? 'steer' : options.mode;
     const { source, steeringMode, wakeIfIdle = true } = options ?? {};
@@ -684,7 +644,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           if (wakeIfIdle && receipt.status === 'not-accepted') throw new Error('Backend declined an input with waking enabled');
           if (receipt.status === 'not-accepted' || (receipt.status === 'accepted' && receipt.disposition === 'handled')) releaseActivity();
           records.record('input', { ...identity, state: receipt.status,
-            ...(receipt.status === 'accepted' ? { disposition: receipt.disposition } : { reason: receipt.reason }), cursor: agent.info.cursor });
+            ...(receipt.status === 'accepted' ? { disposition: receipt.disposition } : { reason: receipt.reason }), cursor: agent.eventSequence });
           return receipt.status === 'unknown' ? { inputId, status: 'unknown' } : { inputId, ...receipt };
         } catch (error: any) {
           if (knownInputRejections.has(error.code) && (!querying || error.inputRejected)) {
@@ -698,8 +658,8 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       } };
       request = entry;
       if (wakeIfIdle) agent.activityClaims.add(request);
-      refreshActivity(agent);
       inputRequests.reserve(caller, agentId, requestId, parameters, () => entry);
+      refreshActivity(agent);
     }
     const entry = request;
     if (!entry.result) {
@@ -758,10 +718,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     return receipt();
   }
 
-  function onEvent(handler: (event: AgentEvent) => void) {
+  function onEvent(handler: Parameters<Runtime['onEvent']>[0]) {
     if (typeof handler !== 'function') throw problem('INVALID_CONTRACT', 'Event handler must be a function', 'onEvent');
-    handlers.add(handler);
-    return () => { handlers.delete(handler); };
+    const subscription = { handler };
+    handlers.add(subscription);
+    return () => { handlers.delete(subscription); };
   }
 
   async function stop(agentId: string, options?: { timeoutMs?: number }) {
@@ -790,9 +751,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   async function close(options?: { timeoutMs?: number }) {
     const timeoutMs = bound(options, 'close');
     if (finalClose) return structuredClone(finalClose);
+    const wasClosing = closing;
     closing = true;
     if (!closeWork) {
-      closeWork = (async () => {
+      for (const agent of agents.values()) revoke(agent.info.id);
+      closeWork = Promise.resolve().then(async () => {
         records.record('runtime', { state: 'closing', timeoutMs });
         const stopping = Promise.all([...agents.values()].map(beginStop));
         await closeEndpoints();
@@ -828,14 +791,16 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           reportSaved = false;
           receipt = closeReceipt(agentReceipts, errors, failure);
         } finally { savingClose = false; }
-        if (receipt.cleanup === 'complete') finalClose = receipt;
-        liveObservation.publish({ type: 'runtime', runtimeState: finalClose ? 'closed' : 'closing', cleanup: finalClose ? 'complete' : 'pending' });
+        if (receipt.cleanup === 'complete') {
+          finalClose = receipt;
+          publish({ type: 'runtimeChanged' });
+        }
         return receipt;
-      })().finally(() => { closeWork = undefined; });
+      }).finally(() => { closeWork = undefined; });
     }
+    if (!wasClosing) publish({ type: 'runtimeChanged' });
     const result = await observe(closeWork, timeoutMs);
     if (result !== timedOut) return structuredClone(result);
-    liveObservation.publish({ type: 'runtime', runtimeState: 'closing', cleanup: 'pending' });
     return closeReceipt([...agents.values()].map(currentStop), [{
       code: 'OPERATION_UNKNOWN', message: 'Runtime close is still pending', retryable: true,
     }]);
@@ -848,12 +813,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   }
 
   return Object.freeze<Runtime>({
-    id: runtimeId, profiles: management.profiles, services: management.services, access: management.access, spawn: input => spawn(input), get, list,
-    start: (id, input, options) => send(id, input, { requestId: options?.requestId, mode: 'followUp' }, 'host', 'start'),
-    steer: (id, input, options) => send(id, input, {
-      requestId: options?.requestId, source: options?.source, steeringMode: options?.steeringMode, mode: 'steer',
-    }, 'host', 'steer'),
-    send: hostSend,
-    interrupt, onEvent, observe: observeRuntime, stop, close, files: fileControls.api,
+    id: runtimeId,
+    get state() { return finalClose ? 'closed' : closing ? 'closing' : 'open'; },
+    profiles: management.profiles, services: management.services, access: management.access,
+    management: Object.freeze({ get: management.snapshot }),
+    spawn: input => spawn(input), get, list, send: hostSend,
+    interrupt, onEvent, stop, close, files: fileControls.api,
   });
 }

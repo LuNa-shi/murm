@@ -1,113 +1,84 @@
-import type { FileInstall, FileSeed, FileSnapshot, GrantReceipt, PreparedFiles, Runtime } from './types.js';
+import type {
+  CompleteFileSnapshot, CompleteFileSnapshotOptions, FileReplaceOptions, FileReplaceReceipt, FileSnapshot,
+  FileSnapshotOptions, Runtime,
+} from './types.js';
+import { completeDigest, fileSnapshotSelection, partialDigest, snapshotFileSeed } from '../../scripts/core-file-seed.js';
+import { validId } from './config.js';
 
-interface FileAgent {
-  info: { id: string };
-}
+type WorkerReply<T> = T extends { agentId: string } ? Omit<T, 'agentId'> : never;
+export type WorkerFileSnapshot = WorkerReply<FileSnapshot>;
+export type WorkerFileReplace = WorkerReply<FileReplaceReceipt>;
 
-interface WorkerFileReply {
-  version: number;
-  digest: string;
-  writable?: boolean;
-}
+interface FileAgent { info: { id: string } }
 
-interface FileRequest<Receipt> {
-  type: string;
-  id: string;
-  receipt?: Receipt;
+interface Operation<T> {
+  identity: string;
+  work?: Promise<T>;
+  receipt?: T;
   rejection?: Error;
-  work?: Promise<Receipt>;
   uncertain?: boolean;
 }
 
-interface PrepareRequest extends FileRequest<PreparedFiles> {
-  digest: string;
-  version?: number;
-}
-
-interface GrantRequest extends FileRequest<GrantReceipt> {
-  prepared: PreparedFiles;
-}
-
-type SnapshotOptions = Parameters<Runtime['files']['snapshot']>[1];
-type SnapshotReply = Omit<FileSnapshot, 'agentId'>;
-interface SnapshotRequest extends FileRequest<FileSnapshot> {
-  identity: string;
-}
-
-interface InstallRequest extends FileRequest<FileInstall> {
-  expected: FileSnapshot;
-  files: FileSeed;
-  digest: string;
-  version: number;
-  confirmation?: FileRequest<FileInstall>;
-}
-
-interface FileState {
+interface AgentFileState {
   writable: boolean;
-  version: number;
-  prepares: Map<string, PrepareRequest>;
-  grants: Map<string, GrantRequest>;
-  snapshots: Map<string, SnapshotRequest>;
-  installs: Map<string, InstallRequest>;
-  operation?: FileRequest<unknown>;
-  prepared?: PreparedFiles;
+  shared: boolean;
+  snapshots: Map<string, Operation<FileSnapshot>>;
+  active?: Operation<unknown>;
+  replacing: boolean;
 }
 
-interface FileControlsOptions<Agent extends FileAgent, Timeout extends symbol> {
+interface Options<Agent extends FileAgent, Timeout extends symbol> {
   backend: {
-    prepareFiles(agentId: string, input: { version: number; files: FileSeed }): Promise<WorkerFileReply>;
-    snapshotFiles(agentId: string, input: SnapshotOptions): Promise<SnapshotReply>;
-    installFiles(agentId: string, input: { requestId: string; expectedDigest: string; files: FileSeed; version: number }): Promise<Omit<FileInstall, 'agentId'>>;
-    confirmFiles(agentId: string, input: { requestId: string; digest: string; version: number }): Promise<Omit<FileInstall, 'agentId'>>;
-    grantFiles(agentId: string, input: { version: number; digest: string }): Promise<WorkerFileReply>;
+    snapshotFiles(agentId: string, input: FileSnapshotOptions): Promise<WorkerFileSnapshot>;
+    replaceFiles(agentId: string, input: FileReplaceOptions): Promise<WorkerFileReplace>;
   };
   findAgent(agentId: string, operation: string, requestId: string): Agent;
   isLive(agent: Agent): boolean;
   problem(code: string, message: string, operation: string, agentId: string, requestId: string | undefined, cleanup?: string): Error;
-  observe<Result>(work: Promise<Result>): Promise<Result | Timeout>;
+  observe<T>(work: Promise<T>): Promise<T | Timeout>;
   timedOut: Timeout;
 }
 
-import { snapshotFileSeed } from '../../scripts/core-file-seed.js';
-import { snapshotCollectionSpec } from '../../scripts/core-collection.js';
-import { validId } from './config.js';
-
 const knownRejections = new Set(['CONFLICT', 'INVALID_CONTRACT', 'NOT_ALLOWED', 'WORKSPACE_BUSY']);
 
-export function createFileControls<Agent extends FileAgent, Timeout extends symbol>({ backend, findAgent, isLive, problem, observe, timedOut }: FileControlsOptions<Agent, Timeout>) {
-  const states = new WeakMap<Agent, FileState>();
+export function createFileControls<Agent extends FileAgent, Timeout extends symbol>({
+  backend, findAgent, isLive, problem, observe, timedOut,
+}: Options<Agent, Timeout>) {
+  const states = new WeakMap<Agent, AgentFileState>();
+  const replacements = new Map<string, Operation<FileReplaceReceipt>>();
 
-  function register(agent: Agent, { writable, seeded }: { writable: boolean; seeded: boolean }) {
-    states.set(agent, { writable, version: writable || seeded ? 1 : 0, prepares: new Map(), grants: new Map(), snapshots: new Map(), installs: new Map() });
+  function register(agent: Agent, { writable, shared }: { writable: boolean; shared: boolean }) {
+    states.set(agent, { writable, shared, snapshots: new Map(), replacing: false });
   }
 
-  function admit(agent: Agent, state: FileState, request: FileRequest<unknown>) {
-    if (!isLive(agent)) throw problem('NOT_ALLOWED', 'Agent is unavailable for file control', request.type, agent.info.id, request.id);
-    if (state.operation) throw problem('CONFLICT', 'The Agent has another pending file operation', request.type, agent.info.id, request.id);
-    if (state.writable) throw problem('CONFLICT', 'The Agent workDir is already writable', request.type, agent.info.id, request.id);
-    state.operation = request;
+  function binding(agentId: string, operation: string, requestId: string) {
+    const agent = findAgent(agentId, operation, requestId);
+    return { agent, state: states.get(agent)! };
   }
 
-  async function run<Receipt, Reply extends WorkerFileReply>(agent: Agent, state: FileState, request: FileRequest<Receipt>, invoke: () => Promise<Reply>, accept: (reply: Reply, unknown: () => Error) => Receipt): Promise<Receipt> {
-    const { id: agentId } = agent.info;
-    const { type, id } = request;
-    const unknown = () => problem('OPERATION_UNKNOWN', 'Worker has not confirmed the file operation', type, agentId, id, 'pending');
+  async function run<T>(agent: Agent, state: AgentFileState, request: Operation<T>, operation: string, requestId: string, invoke: () => Promise<T>) {
+    const agentId = agent.info.id;
+    const reject = (code: string, message: string, cleanup?: string) =>
+      problem(code, message, operation, agentId, requestId, cleanup);
+    const unknown = () => reject('OPERATION_UNKNOWN', 'Worker has not confirmed the file operation', 'pending');
     if (request.receipt) return request.receipt;
     if (request.rejection) throw request.rejection;
     if (!request.work) {
       request.work = Promise.resolve().then(async () => {
         try {
-          if (!isLive(agent)) throw problem('NOT_ALLOWED', 'Agent closed before file control', type, agentId, id);
-          const result = await invoke();
+          if (!isLive(agent)) throw reject('NOT_ALLOWED', 'Agent is unavailable for file control');
+          const receipt = await invoke();
           if (!isLive(agent)) throw unknown();
-          request.receipt = accept(result, unknown);
-          if (request.type !== 'files.install') state.operation = undefined;
-          return request.receipt;
+          request.receipt = receipt;
+          state.active = undefined;
+          state.replacing = false;
+          return receipt;
         } catch (caught) {
           const error = caught as Error & { code: string };
           if (!request.uncertain && knownRejections.has(error.code)) {
-            request.rejection = problem(error.code, error.message, type, agentId, id);
-            if (request.type !== 'files.confirm') state.operation = undefined;
+            request.rejection = reject(error.code, error.message);
+            state.active = undefined;
+            state.replacing = false;
             throw request.rejection;
           }
           request.uncertain = true;
@@ -120,154 +91,101 @@ export function createFileControls<Agent extends FileAgent, Timeout extends symb
       request.uncertain = true;
       throw unknown();
     }
-    return result as Receipt;
+    return result as T;
   }
 
-  async function prepare(agentId: string, options: Parameters<Runtime['files']['prepare']>[1]): Promise<PreparedFiles> {
-    const type = 'files.prepare';
-    const id = options?.requestId;
-    if (!validId(id)) throw problem('INVALID_CONTRACT', 'File preparation requires a requestId', type, agentId, id);
-    const agent = findAgent(agentId, type, id);
-    let seed;
-    try { seed = snapshotFileSeed(options.files); }
-    catch (caught) {
-          const error = caught as Error & { code: string }; throw problem('INVALID_CONTRACT', error.message, type, agentId, id); }
-    const state = states.get(agent)!;
-    let request = state.prepares.get(id);
-    if (request && request.digest !== seed.digest) {
-      throw problem('CONFLICT', 'File preparation requestId already has different bytes, paths or modes', type, agentId, id);
-    }
-    if (!request) {
-      request = { type, id, digest: seed.digest };
-      admit(agent, state, request);
-      request.version = ++state.version;
-      state.prepares.set(id, request);
-    }
-    return run(agent, state, request, () => backend.prepareFiles(agentId, { version: request!.version!, files: seed.files as FileSeed }),
-      (reply, unknown) => {
-        if (reply?.version !== request!.version || reply.digest !== request!.digest) throw unknown();
-        state.prepared = Object.freeze({ agentId, version: reply.version, digest: reply.digest });
-        return state.prepared;
-      });
-  }
-
-  async function grant(options: Parameters<Runtime['files']['grant']>[0]): Promise<GrantReceipt> {
-    const type = 'files.grant';
-    const { requestId: id, prepared } = options ?? {};
-    const agentId = prepared?.agentId;
-    if (!validId(id) || !validId(agentId)) throw problem('INVALID_CONTRACT', 'Write grant requires a requestId and PreparedFiles', type, agentId, id);
-    const agent = findAgent(agentId, type, id);
-    const state = states.get(agent)!;
-    let request = state.grants.get(id);
-    if (request && request.prepared !== prepared) {
-      throw problem('CONFLICT', 'Write grant requestId already has a different PreparedFiles receipt', type, agentId, id);
-    }
-    if (!request) {
-      if (state.prepared !== prepared) throw problem('CONFLICT', 'Write grant requires the current Runtime-issued PreparedFiles receipt', type, agentId, id);
-      request = { type, id, prepared };
-      admit(agent, state, request);
-      state.grants.set(id, request);
-    }
-    return run(agent, state, request, () => backend.grantFiles(agentId, { version: prepared.version, digest: prepared.digest }),
-      (reply, unknown) => {
-        if (reply?.writable !== true || reply.version !== prepared.version || reply.digest !== prepared.digest) throw unknown();
-        state.writable = true;
-        return Object.freeze({ agentId, version: reply.version, writable: true });
-      });
-  }
-
-  async function snapshot(agentId: string, options: SnapshotOptions): Promise<FileSnapshot> {
-    const type = 'files.snapshot';
-    const id = options?.requestId;
-    if (!validId(id)) throw problem('INVALID_CONTRACT', 'File snapshot requires a requestId', type, agentId, id);
-    let selection;
+  function snapshot(agentId: string, options: CompleteFileSnapshotOptions): Promise<CompleteFileSnapshot>;
+  function snapshot(agentId: string, options: FileSnapshotOptions): Promise<FileSnapshot>;
+  async function snapshot(agentId: string, options: FileSnapshotOptions): Promise<FileSnapshot> {
+    const operation = 'files.snapshot';
+    const requestId = options?.requestId;
+    const reject = (code: string, message: string) => problem(code, message, operation, agentId, requestId);
+    if (!validId(requestId)) throw reject('INVALID_CONTRACT', 'File snapshot requires a requestId');
+    let spec;
     try {
-      if (Object.keys(options).some(key => !['requestId', 'paths', 'includeGit', 'maxBytes'].includes(key))) throw new TypeError('Unsupported snapshot options');
-      selection = snapshotCollectionSpec({ paths: options.paths, includeGit: options.includeGit ?? false,
-        maxBytes: options.maxBytes ?? 16 * 1024 ** 2, required: true });
-      if (selection.maxBytes > 16 * 1024 ** 2) throw new TypeError('Snapshot maxBytes exceeds 16 MiB');
-    } catch (error) { throw problem('INVALID_CONTRACT', (error as Error).message, type, agentId, id); }
-    const agent = findAgent(agentId, type, id);
-    const state = states.get(agent)!;
-    const identity = JSON.stringify(selection);
-    let request = state.snapshots.get(id);
-    if (request && request.identity !== identity) throw problem('CONFLICT', 'Snapshot requestId has a different selection', type, agentId, id);
+      if (Object.keys(options).some(key => !['requestId', 'paths', 'maxBytes'].includes(key))) {
+        throw new TypeError('Unsupported snapshot options');
+      }
+      spec = fileSnapshotSelection(options);
+    } catch (error) { throw reject('INVALID_CONTRACT', (error as Error).message); }
+
+    const { agent, state } = binding(agentId, operation, requestId);
+    const identity = JSON.stringify(spec);
+    let request = state.snapshots.get(requestId);
+    if (request && request.identity !== identity) throw reject('CONFLICT', 'Snapshot requestId has a different selection');
     if (!request) {
-      if (!isLive(agent)) throw problem('NOT_ALLOWED', 'Agent is unavailable for file snapshot', type, agentId, id);
-      if (state.operation) throw problem('CONFLICT', 'The Agent has another pending file operation', type, agentId, id);
-      request = { type, id, identity };
-      state.operation = request;
-      state.snapshots.set(id, request);
+      if (!isLive(agent)) throw reject('NOT_ALLOWED', 'Agent is unavailable for file control');
+      if (state.active) throw reject('CONFLICT', 'The Agent has another pending file operation');
+      request = { identity };
+      state.active = request;
+      state.snapshots.set(requestId, request);
     }
-    return run(agent, state, request, () => backend.snapshotFiles(agentId, { requestId: id, ...selection }),
-      (reply, unknown) => {
-        if (reply?.requestId !== id || !Number.isSafeInteger(reply.version) || reply.version < 1) throw unknown();
-        const seed = snapshotFileSeed(reply.files);
-        if (seed.digest !== reply.digest) throw unknown();
-        for (const file of Object.values(seed.files)) Object.freeze(file);
-        return Object.freeze({ agentId, requestId: id, version: reply.version, digest: seed.digest, files: Object.freeze(seed.files) });
+    return run(agent, state, request, operation, requestId, async () => {
+      const reply = await backend.snapshotFiles(agentId, { requestId, paths: spec.paths, maxBytes: spec.maxBytes });
+      const scope = spec.paths[0] === '.' ? 'complete' : 'partial';
+      const { files, digest } = snapshotFileSeed(reply.files);
+      if (reply.requestId !== requestId || !Number.isSafeInteger(reply.version) || reply.version < 1 ||
+          reply.scope !== scope || reply.digest !== (scope === 'complete' ? completeDigest(digest) : partialDigest(digest))) {
+        throw new Error('Worker snapshot receipt did not match the request and file digest');
+      }
+      Object.values(files).forEach(Object.freeze);
+      return Object.freeze({ ...reply, agentId, files: Object.freeze(files) });
+    });
+  }
+
+  async function replace(agentId: string, options: FileReplaceOptions): Promise<FileReplaceReceipt> {
+    const operation = 'files.replace';
+    const requestId = options?.requestId;
+    const reject = (code: string, message: string) => problem(code, message, operation, agentId, requestId);
+    if (!validId(requestId) || !/^complete:sha256:[a-f0-9]{64}$/.test(options.expectedDigest) ||
+        (options.writable !== undefined && options.writable !== true) ||
+        Object.keys(options).some(key => !['requestId', 'expectedDigest', 'files', 'writable'].includes(key))) {
+      throw reject('INVALID_CONTRACT', 'File replacement requires requestId, a complete digest and optional writable: true');
+    }
+    let target;
+    try { target = snapshotFileSeed(options.files); }
+    catch (error) { throw reject('INVALID_CONTRACT', (error as Error).message); }
+
+    const { expectedDigest, writable } = options;
+    const digest = completeDigest(target.digest);
+    const identity = JSON.stringify([agentId, expectedDigest, digest, writable ?? null]);
+    let request = replacements.get(requestId);
+    if (request && request.identity !== identity) throw reject('CONFLICT', 'Replacement requestId already has different input');
+    if (request?.receipt) return request.receipt;
+    if (request?.rejection) throw request.rejection;
+    const { agent, state } = binding(agentId, operation, requestId);
+    if (!request) {
+      if (!isLive(agent)) throw reject('NOT_ALLOWED', 'Agent is unavailable for file control');
+      if (state.shared) throw reject('NOT_ALLOWED', 'File replacement requires a private workDir');
+      if (state.active) throw reject('CONFLICT', 'The Agent has another pending file operation');
+      request = { identity };
+      state.active = request;
+      state.replacing = true;
+      replacements.set(requestId, request);
+    }
+    try {
+      return await run(agent, state, request, operation, requestId, async () => {
+        const reply = await backend.replaceFiles(agentId, { requestId, expectedDigest, files: target.files, writable });
+        if (reply.requestId !== requestId) throw new Error('Worker replacement receipt did not match the request');
+        if (reply.status === 'completed' && reply.digest === digest && reply.writable === (state.writable || writable === true)) {
+          state.writable = reply.writable;
+          return Object.freeze({ agentId, requestId, status: 'completed', digest, writable: reply.writable });
+        }
+        if (reply.status === 'failed' && typeof reply.error?.code === 'string' &&
+            typeof reply.error.message === 'string' && typeof reply.error.retryable === 'boolean') {
+          const error = reject(reply.error.code, reply.error.message);
+          return Object.freeze({ agentId, requestId, status: 'failed', error: Object.freeze({
+            code: reply.error.code, message: error.message, retryable: reply.error.retryable,
+          }) });
+        }
+        throw new Error('Worker did not confirm the file replacement');
       });
-  }
-
-  async function installStatus(agentId: string, options: { requestId: string }): Promise<FileInstall | null> {
-    const id = options?.requestId;
-    if (!validId(id)) throw problem('INVALID_CONTRACT', 'Installation query requires a requestId', 'files.installStatus', agentId, id);
-    const agent = findAgent(agentId, 'files.installStatus', id);
-    const request = states.get(agent)!.installs.get(id);
-    return request?.confirmation?.receipt ?? request?.receipt ?? null;
-  }
-
-  async function install(agentId: string, options: Parameters<Runtime['files']['install']>[1]): Promise<FileInstall> {
-    const type = 'files.install';
-    const id = options?.requestId;
-    if (!validId(id)) throw problem('INVALID_CONTRACT', 'File installation requires a requestId', type, agentId, id);
-    const agent = findAgent(agentId, type, id);
-    const state = states.get(agent)!;
-    let seed;
-    try { seed = snapshotFileSeed(options.files); }
-    catch (error) { throw problem('INVALID_CONTRACT', (error as Error).message, type, agentId, id); }
-    let request = state.installs.get(id);
-    if (request && (request.expected !== options.expected || request.digest !== seed.digest)) {
-      throw problem('CONFLICT', 'File install requestId has different input or expected snapshot', type, agentId, id);
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'OPERATION_UNKNOWN') throw error;
+      return { agentId, requestId, status: 'unknown' };
     }
-    if (!request) {
-      if (![...state.snapshots.values()].some(snapshot => snapshot.receipt === options.expected) ||
-          options.expected.agentId !== agentId) throw problem('CONFLICT', 'Installation requires a Runtime-issued snapshot of this Agent', type, agentId, id);
-      if (!isLive(agent) || !state.writable) throw problem('NOT_ALLOWED', 'Installation requires a live writable private workDir', type, agentId, id);
-      if (state.operation) throw problem('CONFLICT', 'The Agent has another pending file operation', type, agentId, id);
-      request = { type, id, expected: options.expected, files: seed.files, digest: seed.digest, version: ++state.version };
-      state.installs.set(id, request);
-      state.operation = request;
-    }
-    return run(agent, state, request, () => backend.installFiles(agentId, {
-      requestId: id, version: request!.version, expectedDigest: request!.expected.digest, files: request!.files,
-    }), (reply, unknown) => {
-      if (reply?.requestId !== id || reply.version !== request!.version || reply.digest !== request!.digest ||
-          !['installed', 'committed'].includes(reply.phase)) throw unknown();
-      return Object.freeze({ agentId, requestId: id, version: reply.version, digest: reply.digest, phase: reply.phase });
-    });
   }
 
-  async function confirm(agentId: string, options: Parameters<Runtime['files']['confirm']>[1]): Promise<FileInstall> {
-    const type = 'files.confirm';
-    const id = options?.requestId;
-    if (!validId(id)) throw problem('INVALID_CONTRACT', 'Installation confirmation requires a requestId', type, agentId, id);
-    const agent = findAgent(agentId, type, id);
-    const state = states.get(agent)!;
-    const installed = state.installs.get(id);
-    if (!installed?.receipt) throw problem('CONFLICT', 'Installation has no issued receipt to confirm', type, agentId, id);
-    installed.confirmation ??= { type, id };
-    return run(agent, state, installed.confirmation, () => backend.confirmFiles(agentId, {
-      requestId: id, version: installed.version, digest: installed.digest,
-    }), (reply, unknown) => {
-      if (reply?.requestId !== id || reply.version !== installed.version || reply.digest !== installed.digest || reply.phase !== 'committed') throw unknown();
-      return Object.freeze({ agentId, requestId: id, version: reply.version, digest: reply.digest, phase: 'committed' });
-    });
-  }
-
-  return {
-    register,
-    canSend(agent: Agent) { return !['files.grant', 'files.install', 'files.confirm'].includes(states.get(agent)!.operation?.type ?? ''); },
-    api: Object.freeze({ prepare, grant, snapshot, install, installStatus, confirm }),
-  };
+  const api: Runtime['files'] = Object.freeze({ snapshot, replace });
+  return { register, canSend: (agent: Agent) => !states.get(agent)!.replacing, api };
 }

@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core/services';
+import { ServiceRegistry } from '@murm/core';
 import { agentControlBackend, createAgentControlUpstream, parentCommand } from './fixtures/core-agent-service-upstream.js';
 
 const request = (url, input = []) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'k3', input }) });
@@ -33,7 +33,7 @@ test('both controlled model aliases assemble the real Core gateway without creat
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const profile = { prompt: 'Fixed', image: 'unused', writable: false, services: {} };
   const runtime = await createRuntime({
-    backend: agentControlBackend(upstream, { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' }, { listen: '127.0.0.1' }),
+    ...agentControlBackend(upstream, { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' }, { listen: '127.0.0.1' }),
     profiles: { parent: { ...profile, model: 'default' }, child: { ...profile, model: 'child' } },
     services: new ServiceRegistry(), maxAgents: 2, outputDir,
   });

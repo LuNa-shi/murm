@@ -1,4 +1,4 @@
-import type { CollectionSpec, FileSeed, Profile, SpawnOptions } from './types.js';
+import type { CollectionSpec, Profile, SpawnOptions } from './types.js';
 import type { OpenSandboxBackendConfig } from './backend-config.js';
 import type { ServiceRegistration } from './services.js';
 
@@ -97,21 +97,17 @@ export function snapshotSpawn(input: SpawnOptions, profiles: ReadonlyMap<string,
   if (input.workspace !== undefined) {
     const workspace = input.workspace;
     if (!record(workspace) || input.files !== undefined) throw new TypeError('workspace requires an explicit configuration without files');
-    if (workspace.mode === 'frozen-copy') {
-      if (Object.keys(workspace).some(key => !['mode', 'files'].includes(key))) throw new TypeError('Invalid frozen-copy workspace');
-      snapshotFileSeed(workspace.files);
-    } else if (!['read-only', 'read-write'].includes(workspace.mode) || !validId(workspace.id) ||
+    if (!['read-only', 'read-write'].includes(workspace.mode) || !validId(workspace.id) ||
         Object.keys(workspace).some(key => !['mode', 'id'].includes(key)) ||
         (input.writable !== undefined && input.writable !== (workspace.mode === 'read-write'))) {
       throw new TypeError('Shared workspace requires an id and read-only or read-write mode');
     }
   }
   const snapshot = structuredClone(input);
-  if (input.workspace?.mode === 'frozen-copy') snapshot.files = snapshotFileSeed(input.workspace.files).files;
-  if (input.workspace && input.workspace.mode !== 'frozen-copy') snapshot.writable = input.workspace.mode === 'read-write';
+  if (input.workspace) snapshot.writable = input.workspace.mode === 'read-write';
   const collect = snapshotCollection(input.collect) ?? profiles.get(input.profile)!.collect;
   if (collect !== undefined) snapshot.collect = collect;
-  if (input.files !== undefined) snapshot.files = snapshotFileSeed(input.files).files as FileSeed;
+  if (input.files !== undefined) snapshot.files = snapshotFileSeed(input.files).files;
   if (snapshot.secretEnv) snapshot.secretEnv = Object.fromEntries(Object.entries(snapshot.secretEnv).sort());
   if (snapshot.bindings) snapshot.bindings = Object.fromEntries(Object.entries(snapshot.bindings).sort());
   return snapshot;

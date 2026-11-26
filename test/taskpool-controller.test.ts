@@ -29,7 +29,7 @@ async function fixture(t,options={}) {
       onFinish(receipt) { options.onFinish(receipt); controller.notify(); } });
     for (const registration of publication.registrations) services.registerService(registration);
   }
-  runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Fixed',model:'default',image:'fixture',writable:false,services:publication?{task:['task_finish']}:{}}},services,maxAgents:options.capacity??2,outputDir:root});
+  runtime=await createRuntime({sandbox: {},profiles:{researcher:{prompt:'Fixed',model:'default',image:'fixture',writable:false,services:publication?{task:['task_finish']}:{}}},services,maxAgents:options.capacity??2,outputDir:root});
   const accepted=id=>{transport.confirm(id,'started');transport.next=accepted;}; transport.next=accepted;
   const reads={beforeGet:null};
   controller=createTaskPoolController({runtime:{...runtime,async get(id){await reads.beforeGet?.();return runtime.get(id);}},taskService:stores.tasks,missionId:stores.missionId,capacity:1,deadlineAt:Date.now()+60000,heartbeatMs:10000,stallMs:30000,...options});
@@ -358,7 +358,8 @@ test('host close records intent for a still-unbound discovery Agent before final
 
 test('host close with unknown execution retains its active Task owner until a stopped receipt is reconciled',async t=>{
   const f=await fixture(t);const execution=f.take();
-  f.controller.halt();controls.stopError=Object.assign(new Error('Fixed host close uncertainty'),{code:'OPERATION_UNKNOWN'});
+  controls.stopError=Object.assign(new Error('Fixed host close uncertainty'),{code:'OPERATION_UNKNOWN'});
+  f.controller.halt();
   const unknown=await f.runtime.close({timeoutMs:100});
   await f.controller.reconcileClose(unknown);
   assert.equal(f.tasks.getAgent(f.agent.agentId).state,'CLOSING');assert.equal(f.tasks.getTask(f.task.task_id).state,'RUNNING');

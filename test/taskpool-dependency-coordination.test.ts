@@ -29,7 +29,7 @@ async function fixture(t, { coordinationPermissions = ['task_dependency_replace'
   services.registerService(discovery);
   const allowed = { task: discovery.manifest.capabilities.map(capability => capability.operation) };
   if (!profileAllows) allowed.task=allowed.task.filter(operation=>operation!=='task_dependency_replace');
-  runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Revise unowned public Task responsibilities',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:2,outputDir:root});
+  runtime=await createRuntime({sandbox: {},profiles:{researcher:{prompt:'Revise unowned public Task responsibilities',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:2,outputDir:root});
   t.after(async()=>{await discovery.close();await runtime.close({timeoutMs:1000});stores.close();await rm(root,{recursive:true,force:true});});
   const cli=async(agent,...args)=>{
     const credentials=controls.credentials.get(agent.id);assert.ok(credentials);
@@ -138,7 +138,7 @@ test('actual TaskPool host threads only explicit grants into frozen Profile, Ser
     transport.reset();controls.credentials.clear();controls.stopError=null;controls.destroyError=null;
     const accept=id=>{transport.confirm(id,'started');transport.next=accept;};transport.next=accept;
     const report=await runTaskPoolHarness({taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
-      missionId:stores.missionId,workspaceId:stores.workspaceId,outputDir:root,deadlineAt:Date.now()+30000,backend:{},model:'default',image:'fixture',capacity:1,
+      missionId:stores.missionId,workspaceId:stores.workspaceId,outputDir:root,deadlineAt:Date.now()+30000,sandbox: {},model:'default',image:'fixture',capacity:1,
       coordinationPermissions,snapshotProject:async()=>{throw new Error('No capture required');},
       async drive(controller) {
         const agentId=controller.snapshot().agents[0].agentId;

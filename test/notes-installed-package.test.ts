@@ -192,7 +192,7 @@ test('candidate package admits only declared distribution roots and retains exec
   await writeFile(join(root, '.gitignore'), await readFile(new URL('../../.gitignore', import.meta.url)));
   const resources = [
     'dist/src/core/index.js', 'dist/src/core/index.d.ts', 'dist/src/core/services.js', 'dist/src/core/services.d.ts',
-    'dist/src/core/backends/pi-opensandbox.js', 'dist/src/core/backends/pi-opensandbox.d.ts',
+    'dist/src/core/opensandbox-backend.js', 'dist/src/core/backend-config.d.ts',
     'dist/scripts/swarm.js', 'dist/scripts/opensandbox-agent-worker.js',
     'deploy/worker/pi-models.json', 'dist/src/harnesses/shared/run-report.js',
     'dist/examples/substrate/main.js', 'dist/examples/substrate/config.js',

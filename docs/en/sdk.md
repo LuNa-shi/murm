@@ -34,6 +34,8 @@ cp node_modules/@murm/core/examples/bridge-services/{handoff.ts,handoff-config.t
 
 The copied example imports only the public package entry points. You can run it without `murm init` or a repository-relative import into `src/`.
 
+The [management API](reference/api.md#runtime-management) can extend the Profile and Service directory and change Service permissions during the Run.
+
 ## Run a complete handoff
 
 Follow the [Quickstart host setup](./quickstart.md#1-prepare-the-checkout-and-execution-host) to prepare Linux, Docker, OpenSandbox and a compatible murm Worker image with `jq`. The host must reach the Lifecycle API and Worker endpoints. The sandboxes must reach the host's Bridge and Model Gateway.
@@ -62,63 +64,36 @@ The executable follows this order:
 5. Start the reader, which retrieves the value and writes `received.txt` in its own directory.
 6. Finalize the Runtime, export the reader's file, compare its bytes with the original value, and save the report.
 
-Cursor and event kind appear on stderr; stdout contains a JSON result. The saved report is `handoff-runs/<runtime-id>/run-finalization.json` unless `MURM_SDK_OUTPUT` selects another root. Check `business`, `artifactVerification`, `coreClose` and `reportSaveFailure` together. The example exits unsuccessfully if the handoff fails, the file is unverified, Core cleanup is pending, or saving the report fails.
+Event kinds appear on stderr; stdout contains a JSON result. The saved report is `handoff-runs/<runtime-id>/handoff-report.json` unless `MURM_SDK_OUTPUT` selects another root. Check `business`, `artifactVerification`, `coreClose` and `reportSaveFailure` together. The example exits unsuccessfully if the handoff fails, the file is unverified, Core cleanup is pending, or saving the report fails.
 
 For a checkout-based run, `npm run build` followed by `node dist/examples/bridge-services/handoff.js` runs the same implementation. The [Quickstart](./quickstart.md) covers that path.
 
 ## Public entry points
 
-These are import paths in **one npm package**:
-
-| Import path | Use it for |
-| --- | --- |
-| `@murm/core` | `createRuntime`, `finalizeRun`, and Runtime, Profile, observation and result types |
-| `@murm/core/services` | `ServiceRegistry`, in-process and HTTP JSON adapters, Service contracts and validation helpers |
-| `@murm/core/backends/opensandbox` | `createOpenSandboxBackend`, executor capabilities and backend configuration |
-| `@murm/core/backends/pi-opensandbox` | Deprecated Pi-specific convenience factory; use the general OpenSandbox entry point |
-
-The first three are the usual imports for a new Harness. The backend handle is opaque and belongs to one Runtime. Create a fresh handle for another Run.
+Import every public value or type from `@murm/core`. The six runtime exports are `createSandbox`, `createRuntime`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`. When migrating, pass deployment settings to `createSandbox` and supply the executor, model routes and host connection settings to the Runtime. The optional capability query takes an executor name and has no network or allocation work.
 
 ## Create the Runtime your Harness needs
 
-This assembly is the central part of the runnable handoff. `handoffConfig` and `createMessageService` are the files copied above:
-
 ```ts
-import { createRuntime } from '@murm/core';
-import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
-import { ServiceRegistry } from '@murm/core/services';
-import { handoffConfig } from './handoff-config.js';
-import { createMessageService } from './messages.js';
-
-const config = handoffConfig();
-const services = new ServiceRegistry();
-services.registerService(createMessageService(config.externalMessages));
-const profile = { model: 'default', image: config.image, writable: true };
+import { createRuntime, createSandbox, ServiceRegistry } from '@murm/core';
 
 const runtime = await createRuntime({
-  backend: createOpenSandboxBackend(config.backend),
-  services,
-  maxAgents: 2,
-  outputDir: config.outputDir,
-  profiles: {
-    writer: { ...profile, services: { messages: ['put'] } },
-    reader: {
-      ...profile,
-      services: { messages: ['get'] },
-      collect: {
-        paths: ['received.txt'], includeGit: false,
-        maxBytes: 4096, required: true,
-      },
-    },
+  sandbox: createSandbox({
+    lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
+    isolation: { disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+  }),
+  connection: { advertiseHost: '172.17.0.1' },
+  models: {
+    default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: modelUrl, headers: modelHeaders } },
   },
+  services: new ServiceRegistry(),
+  profiles: { reader: { model: 'default', image, writable: false, services: {} } },
+  maxAgents: 2,
+  outputDir,
 });
 ```
 
-This is an assembly excerpt; the complete `handoff.ts` also bounds the work, handles cancellation, observes results and calls `finalizeRun` on success and failure. Keep that closeout when adapting the example.
-
-`createRuntime` snapshots Profiles and Service registrations, validates their references, creates the Run directory, and opens host entry points. It allocates no Agent sandbox. Later changes to your configuration object or Registry do not change this Runtime. Define the startup roles and operations before assembly. For later changes, use `runtime.profiles` to register Profiles, `runtime.services` to register or retire Services, and `runtime.access` to manage Service permissions for an Agent. [API reference](reference/api.md#runtime-management)
-
-`spawn({ requestId, profile })` allocates a sandbox and initializes an idle session. It starts no model work. Send the first input after you have recorded the new Agent ID and connected any Harness routing or ownership state. Idle sessions continue to occupy a Slot until cleanup confirms sandbox deletion.
+Supply `modelUrl` ending in `/v1/responses` and host-owned `modelHeaders`. OpenSandbox and Pi are the Sandbox and executor defaults. Runtime assembly snapshots Profiles, model settings and Service registrations and opens host endpoints. `spawn` allocates each Agent sandbox. The same Sandbox configuration handle can configure multiple independently owned Runtimes.
 
 ## Submit inputs and decide when work is complete
 
@@ -138,70 +113,30 @@ Use the default `mode: 'steer'` to direct active work, or `followUp` to queue wo
 
 Retain the Agent ID, request ID, text and options for each submission. If the receipt is `unknown`, repeat the exact call to reconcile that submission. Changing its arguments under the same request ID is a conflict. An application timeout or cancellation ends your wait; it does not prove the submitted input was cancelled. Use `interrupt` or `stop` for that lifecycle action.
 
-The handoff can wait for one Agent's settlement because it exclusively controls that Agent's inputs and also verifies the matching Service operation and exported file. A general multi-source Harness must keep its own task and result identities: current execution events report `association: 'unknown'` because native boundaries do not identify the inputs they consumed.
+The handoff can wait for one Agent's settlement because it exclusively controls that Agent's inputs and also verifies the matching Service operation and exported file. A general multi-source Harness must keep its own task and result identities: executor boundaries do not identify the inputs they consumed.
 
-## Observe state without a snapshot/subscribe race
+## Subscribe before dispatching work
 
 ```ts
-const observation = runtime.observe({ signal: shutdownSignal });
-console.log(observation.snapshot);
-
+const unsubscribe = runtime.onEvent(event => {
+  if (event.type === 'output') process.stdout.write(event.text);
+  if (event.type === 'runtimeChanged') console.log(runtime.state);
+});
 try {
-  for await (const update of observation.events) {
-    if (update.type === 'gap') {
-      // Reopen observe() and rebuild the view from its fresh snapshot.
-      break;
-    }
-    console.log(update.cursor, update.type);
-  }
+  const agents = await runtime.list();
+  // Dispatch work while the listener is active.
 } finally {
-  observation.cancel();
+  unsubscribe();
 }
 ```
 
-`observe()` returns a current snapshot and the stream immediately after that snapshot's cursor. Open it before dispatching work and consume it concurrently with your Harness. `observe({ after: cursor })` returns `snapshot: null` and replays cached updates after that cursor. Keep the previous view when resuming; request a fresh snapshot after a gap.
+Register `onEvent` before `spawn` or `send`. Use `get/list` and `runtime.state` to read current state. `output` contains assistant text, `settled` marks an executor execution boundary, and `agentChanged` and `runtimeChanged` tell the host to refresh its view. Early events can arrive before the send receipt. Read business results from your adapter, domain store or artifacts. A Harness that shares an Agent among input sources needs its own task receipts.
 
-The Runtime retains 256 updates and permits 64 active subscriptions. A cursor belongs to the current Runtime instance; it is not a persisted restart token. Observation continues until the caller cancels it, even after Runtime close. `onEvent` remains useful for output text and the four Agent event kinds; `observe` adds Runtime, input, Service and cleanup state. [API reference](./reference/api.md#live-observation) defines the sequence fields and limits.
+## Close and inspect each result
 
-## Finalize and inspect each result
+Stop delivering work, then call `runtime.close({ timeoutMs })`. Find the reader's export directory in `receipt.agents` and compare the bytes of `received.txt`. A required export failure retains the sandbox for recovery. Retry cleanup on the original Runtime after removing the obstacle. The existing HTTP Service keeps its own owner.
 
-The handoff first classifies its business outcome, then uses the public finalizer:
-
-```ts
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { finalizeRun } from '@murm/core';
-
-const report = await finalizeRun({
-  runtime,
-  outputDir: config.outputDir,
-  business,
-  cleanupTimeoutMs: 30_000,
-  ...(readerId === undefined ? {} : {
-    async verifyArtifacts(receipt, signal) {
-      const reader = receipt.agents.find(agent => agent.agentId === readerId);
-      const files = reader?.artifacts.find(path => path.endsWith('/artifacts/files'));
-      if (!files || await readFile(join(files, 'received.txt'), {
-        encoding: 'utf8', signal,
-      }) !== `${expected}\n`) {
-        throw new Error('HANDOFF_ARTIFACT_MISMATCH');
-      }
-    },
-  }),
-});
-```
-
-Here `business` is the typed `RunBusinessOutcome`, while `readerId` and `expected` are state retained by the handoff. Verification is requested once a reader was created; the complete success, failure and cancellation paths are in `handoff.ts`. The finalizer calls `runtime.close`, runs your artifact check when a close receipt is available, then closes only the facilities you explicitly listed in `ownedFacilities` and only after confirmed Core cleanup.
-
-| Report field | Question it answers |
-| --- | --- |
-| `business` | Did the Harness achieve its declared outcome, fail, or get cancelled? |
-| `coreClose` | Is Core cleanup confirmed complete, pending, or unknown? |
-| `artifactVerification` | Did the application check exported results, fail that check, defer it, or omit it? |
-| `facilities` | Were application-owned facilities closed? |
-| `reportSaveFailure` | Was the report itself saved successfully? |
-
-A required export failure retains the sandbox and appears in the pending cleanup receipt. Keep external facilities available while Core still needs them. The finalizer accepts one call per Runtime object; reconcile pending cleanup with the original `runtime.close()` and facility handles. A timed-out facility callback can produce a separate late receipt through `lateFacilityCleanup`.
+The handoff writes independent business, artifact verification, Core close and report-save outcomes to `handoff-report.json`.
 
 ## Extend the collaboration mechanism
 

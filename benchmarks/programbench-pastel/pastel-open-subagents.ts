@@ -40,7 +40,7 @@ function publishService(publish: ServiceRegistration['adapter']['invoke']): Serv
     adapter: { invoke: publish } };
 }
 
-export async function runOpenSubagents({ state, task, window, start, deadline, image, backend, outputDir, capacity }) {
+export async function runOpenSubagents({ state, task, window, start, deadline, image, runtimeSettings, outputDir, capacity }) {
   if (capacity < 3) throw new Error('Subagents requires one parent and two child slots');
   const services = new ServiceRegistry();
   const operations = new Map();
@@ -82,7 +82,7 @@ export async function runOpenSubagents({ state, task, window, start, deadline, i
   try {
     state.stage = 'subagents-startup';
     const common = { image, writable: true, model: 'default' };
-    runtime = await createRuntime({ backend, outputDir, maxAgents: capacity, services, profiles: {
+    runtime = await createRuntime({ ...runtimeSettings, outputDir, maxAgents: capacity, services, profiles: {
       parent: { ...common, services: { agent: ['spawn', 'get', 'send', 'stop'], candidate: ['publish'] }, spawnProfiles: ['child'] },
       child: { ...common, prompt: childInstructions, services: {} },
     } });

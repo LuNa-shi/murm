@@ -1,9 +1,9 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createSubstrateService } from '../src/harnesses/substrate/substrate.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
@@ -13,17 +13,23 @@ const execute = promisify(execFile);
 test('host checkpoints verify durable search, visit, citation and reads after confirmed publisher stop', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'scalemas-evidence-'));
   let runtime;
-  const substrate = createSubstrateService({ databasePath: join(directory, 'substrate.sqlite'), runId: 'evidence' });
-  t.after(async () => { if (runtime) await runtime.close({ timeoutMs: 1000 }); substrate.close(); await rm(directory, { recursive: true, force: true }); });
+  let substrate;
+  t.after(async () => {
+    if (runtime) assert.equal((await runtime.close({ timeoutMs: 1000 })).cleanup, 'complete');
+    substrate?.close();
+    await rm(directory, { recursive: true, force: true });
+  });
   const starts = [];
   const provider = await createLifecycleProvider(t, { onStart: body => starts.push(body) }); provider.allowDeletion();
   const { createRuntime } = await import('@murm/core');
-  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
-  const backend = createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: provider.url },
+  const { createSubstrateService } = await import('../src/harnesses/substrate/substrate.js');
+  substrate = createSubstrateService({ databasePath: join(directory, 'substrate.sqlite'), runId: 'evidence' });
+
+  const backend = runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url },
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } });
-  runtime = await createRuntime({ backend, outputDir: directory, maxAgents: 2, services: substrate.services,
+  runtime = await createRuntime({ ...backend, outputDir: directory, maxAgents: 2, services: substrate.services,
     profiles: { peer: { image: 'fixture', model: 'default', prompt: 'Fixed peer', writable: true, services: { substrate: ['publish', 'search', 'visit'] } } } });
   substrate.bindRuntime(runtime.id);
   const publisher = await runtime.spawn({ requestId: 'publisher', profile: 'peer' }); substrate.bindPeer(publisher.id);

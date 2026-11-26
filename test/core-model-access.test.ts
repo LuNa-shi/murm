@@ -15,7 +15,7 @@ function completion(model = 'k3') {
     response: { status: 'completed', model, usage: { input_tokens: 3, output_tokens: 2 } } })}\n\n`;
 }
 
-async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, maxOutputTokens = 64, selectionReasoningEffort, models, provider = 'kimi_proxy', model = 'k3' } = {}) {
+async function fixture(t, { reply, requestTimeoutMs = 2000, maxOutputTokens = 64, models, provider = 'kimi_proxy', model = 'k3' } = {}) {
   const outputDir = await mkdtemp(join(tmpdir(), 'core-model-'));
   const requests = [];
   const upstream = createServer(async (request, response) => {
@@ -40,12 +40,12 @@ async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, m
   });
   const config = {
     driver: selectExecutorDriver(),
-    modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs, maxOutputTokens, selectionReasoningEffort },
+    modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs, maxOutputTokens },
     models: models ?? { default: { provider, model,
       upstream: { url: upstreamUrl, headers: { authorization: 'Bearer upstream-private' } } } },
   };
   access = await createCoreModelAccess({ runtimeId: 'runtime-a', outputDir, config,
-    getAgent: agentId => agents.get(agentId) ?? null, modelAccessPolicy });
+    getAgent: agentId => agents.get(agentId) ?? null });
   const credentials = access.credentialsForAgent('agent-a', 'default');
   const call = async (requestId = 'request-a', body = { model, input: 'Return a small result.' }) => {
     const response = await fetch(`${credentials.baseUrl}/responses`, {
@@ -65,27 +65,7 @@ test('Runtime model access propagates explicit natural output policy while retai
   assert.ok(access);
 });
 
-test('configured low reasoning reaches upstream only for newly admitted selection requests', async t => {
-  let phase = 'selection';
-  const f = await fixture(t, {
-    selectionReasoningEffort: 'low', maxOutputTokens: null,
-    modelAccessPolicy: { authorize: () => ({ phase, deadlineAt: Date.now() + 2000 }), withCommit: commit => commit() },
-  });
-  const body = { model: 'k3', input: 'Use the current phase to select or advance work.',
-    reasoning: { effort: 'medium', summary: 'auto' }, max_output_tokens: 128000 };
-  assert.equal((await f.call('select', body)).status, 200);
-  phase = 'work';
-  assert.equal((await f.call('select', body)).status, 200);
-  assert.equal((await f.call('work', body)).status, 200);
-  phase = 'closeout';
-  assert.equal((await f.call('closeout', body)).status, 200);
-  assert.deepEqual(f.requests.map(row => row.body.reasoning), [
-    { effort: 'low', summary: 'auto' }, body.reasoning, body.reasoning,
-  ]);
-  assert.ok(f.requests.every(row => row.body.model === 'k3' && row.body.max_output_tokens === 128000));
-});
-
-test('a generic Runtime Agent calls the shipped model with private upstream credentials and a work receipt', async t => {
+test('a generic Runtime Agent calls the shipped model with private upstream credentials and a model receipt', async t => {
   const f = await fixture(t);
   assert.equal(f.requests.length, 0);
   assert.equal((await f.call()).body, completion());
@@ -102,7 +82,7 @@ test('a generic Runtime Agent calls the shipped model with private upstream cred
   const ledger = new DatabaseSync(join(f.outputDir, 'model-access', filename), { readOnly: true });
   t.after(() => ledger.close());
   assert.deepEqual({ ...ledger.prepare('SELECT runtime_id, agent_id, request_id, phase, state, input_tokens, output_tokens FROM runtime_model_attempts').get() },
-    { runtime_id: 'runtime-a', agent_id: 'agent-a', request_id: 'request-a', phase: 'work', state: 'completed', input_tokens: 3, output_tokens: 2 });
+    { runtime_id: 'runtime-a', agent_id: 'agent-a', request_id: 'request-a', phase: 'runtime', state: 'completed', input_tokens: 3, output_tokens: 2 });
   assert.equal(ledger.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE name LIKE '%mission%' OR name LIKE '%task%' OR name LIKE '%execution%'").get().count, 0);
 });
 
@@ -191,44 +171,6 @@ test('model credentials reject unknown identities and requests fail before effec
   assert.equal(f.requests.length, 1);
 });
 
-test('optional model policy receives trusted generic identity within one synchronous commit', async t => {
-  let inCommit = false;
-  let commitCount = 0;
-  const callers = [];
-  const f = await fixture(t, { modelAccessPolicy: {
-    withCommit(commit) {
-      inCommit = true;
-      commitCount++;
-      try { return commit(); }
-      finally { inCommit = false; }
-    },
-    authorize(caller) {
-      assert.equal(inCommit, true);
-      callers.push(caller);
-      return { phase: 'work', deadlineAt: Date.now() + 1000,
-        lease: { key: 'allocation-a', version: 7, expiresAt: Date.now() + 1000 } };
-    },
-  } });
-  assert.equal((await f.call()).status, 200);
-  assert.equal(commitCount, 1);
-  assert.deepEqual(callers, [{ runtimeId: 'runtime-a', agentId: 'agent-a', profile: 'writer', model: 'default' }]);
-});
-
-test('invalid model permits deny requests before upstream effects', async t => {
-  let permit;
-  const f = await fixture(t, { modelAccessPolicy: { withCommit: commit => commit(), authorize: () => permit } });
-  const valid = { phase: 'work', deadlineAt: Date.now() + 1000 };
-  const cases = [null, {}, { ...valid, phase: 'unknown' }, { ...valid, deadlineAt: Infinity },
-    { ...valid, deadlineAt: Date.now() - 1 }, { ...valid, lease: null }, { ...valid, lease: false },
-    { ...valid, lease: { key: 'allocation', version: -1, expiresAt: Date.now() + 1000 } },
-    { ...valid, lease: { key: 'allocation', version: 1, expiresAt: Date.now() - 1 } }];
-  for (const [index, value] of cases.entries()) {
-    permit = value;
-    assert.equal((await f.call(`invalid-${index}`)).status, 403);
-  }
-  assert.equal(f.requests.length, 0);
-});
-
 test('revoking a live Agent aborts its model stream and prevents replacement credentials', async t => {
   const dispatched = Promise.withResolvers();
   const upstreamClosed = Promise.withResolvers();
@@ -258,38 +200,6 @@ test('the configured request deadline bounds a held upstream and retains an unkn
   assert.equal(f.requests.length, 1);
 });
 
-test('stream authority follows renewal of the same generic lease and aborts changed ownership', async t => {
-  for (const outcome of ['renewed', 'version-changed', 'key-changed', 'expired', 'denied']) {
-    await t.test(outcome, { timeout: 3000 }, async t => {
-      const dispatched = Promise.withResolvers();
-      let finish;
-      let permit;
-      const f = await fixture(t, { reply: (_request, response) => {
-        finish = () => response.end(completion());
-        dispatched.resolve();
-      }, modelAccessPolicy: { withCommit: commit => commit(), authorize: () => permit } });
-      const firstExpiry = Date.now() + 120;
-      permit = { phase: 'work', deadlineAt: Date.now() + 1800,
-        lease: { key: 'allocation-a', version: 1, expiresAt: firstExpiry } };
-      const call = f.call();
-      await dispatched.promise;
-      if (outcome === 'denied') permit = null;
-      else if (outcome !== 'expired') permit.lease.expiresAt = Date.now() + 1500;
-      if (outcome === 'version-changed') permit.lease.version = 2;
-      if (outcome === 'key-changed') permit.lease.key = 'allocation-b';
-      if (outcome === 'renewed') {
-        await delay(Math.max(0, firstExpiry - Date.now()) + 40);
-        finish();
-        assert.equal((await call).status, 200);
-      } else {
-        assert.equal((await call).status, 502);
-        assert.ok(Date.now() < firstExpiry + 1000);
-      }
-      assert.equal(f.requests.length, 1);
-    });
-  }
-});
-
 test('unsupported catalog entries, malformed endpoints and nonfinite limits fail before Agent allocation', async t => {
   const cases = [
     { models: { default: { provider: 'openai', model: 'k3', upstream: { url: 'http://127.0.0.1/v1/responses' } } } },
@@ -298,8 +208,6 @@ test('unsupported catalog entries, malformed endpoints and nonfinite limits fail
     { models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'https://host.test/v1/chat/completions' } } } },
     { requestTimeoutMs: Infinity },
     { requestTimeoutMs: -1 },
-    { modelAccessPolicy: { async authorize() {}, withCommit: commit => commit() } },
-    { modelAccessPolicy: { authorize: () => null, async withCommit(commit) { return commit(); } } },
   ];
   for (const options of cases) await assert.rejects(fixture(t, options), { code: 'INVALID_CONFIG' });
 });
@@ -314,23 +222,4 @@ test('close aborts live model requests, revokes credentials and is idempotent', 
   await closing;
   await call;
   assert.throws(() => f.access.credentialsForAgent('agent-a', 'default'), { code: 'NOT_ALLOWED' });
-});
-
-test('a deferred model commit cannot dispatch after its synchronous admission window closes', async t => {
-  const f = await fixture(t, { modelAccessPolicy: {
-    authorize: () => ({ phase: 'work', deadlineAt: Date.now() + 1000 }),
-    withCommit(commit) { queueMicrotask(commit); },
-  } });
-  assert.equal((await f.call()).status, 502);
-  await delay(10);
-  assert.equal(f.requests.length, 0);
-});
-
-test('an asynchronous permit returned by an ordinary function is denied without unhandled rejection', async t => {
-  const f = await fixture(t, { modelAccessPolicy: {
-    authorize() { return Promise.reject(new Error('invalid asynchronous authority')); },
-    withCommit: commit => commit(),
-  } });
-  assert.equal((await f.call()).status, 403);
-  assert.equal(f.requests.length, 0);
 });

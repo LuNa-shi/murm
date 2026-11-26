@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -17,11 +18,11 @@ test('Core close stops a ready sibling while a late allocation keeps its origina
     onStart(body) { starts.push(body); },
   });
   const { createRuntime } = await import('@murm/core');
-  const { ServiceRegistry } = await import('@murm/core/services');
-  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
+  const { ServiceRegistry } = await import('@murm/core');
+
   const outputDir = await mkdtemp(join(tmpdir(), 'core-startup-slots-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
-  const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
+  const runtime = await createRuntime({ ...runtimeSettings({
     sandbox: { lifecycleBaseUrl: provider.url }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
     modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },

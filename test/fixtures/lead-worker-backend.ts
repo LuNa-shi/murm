@@ -1,3 +1,4 @@
+export { createSandbox } from './core-input-backend.js';
 // Only the native transport/collection is simulated; Core, Bridge and Services
 // run normally. Actual Git/CLI subprocesses live in the public-seam test.
 import { openOpenSandboxBackend as open } from './core-agent-service-backend.js';

@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
@@ -7,11 +8,13 @@ import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { fixedExecutionInputHash } from '../src/task/task-service.js';
 import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
-import { decodeFileSeed } from '../scripts/core-file-seed.js';
+import { completeDigest, decodeFileSeed } from '../scripts/core-file-seed.js';
 import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../examples/taskpool/task-service.js';
 import { createTaskPoolAgentCoordinator } from '../examples/taskpool/agent-coordinator.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+const emptySnapshot = input => ({ requestId: input.requestId, version: 1, scope: 'complete', digest: completeDigest(decodeFileSeed({}).digest), files: {} });
+const replaced = input => ({ requestId: input.requestId, status: 'completed', digest: completeDigest(decodeFileSeed(input.files).digest), writable: true });
 const runProcess = promisify(execFile);
 
 async function fixture(t, hooks = {}, config = {}) {
@@ -19,17 +22,17 @@ async function fixture(t, hooks = {}, config = {}) {
   const { tasks, context, workspace, manager, task, material, missionId, workspaceId } = await createTaskPoolStores(root);
   let runtime, service, provider;
   t.after(async () => { await service?.close(); provider?.allowDeletion(); await runtime?.close({ timeoutMs: 1000 }); context.close(); tasks.close(); await rm(root, { recursive: true, force: true }); });
-  provider = await createLifecycleProvider(t, { fileOperation(action, input) { return { body: { result: action === 'prepare' ? { version: input.version, digest: decodeFileSeed(input.files).digest } : { ...input, writable: true } } }; }, ...hooks, allowHostGit: true }); provider.allowDeletion();
+  provider = await createLifecycleProvider(t, { fileOperation(action, input) { return { body: { result: action === 'snapshot' ? emptySnapshot(input) : replaced(input) } }; }, ...hooks, allowHostGit: true }); provider.allowDeletion();
   const { createRuntime } = await import('@murm/core');
-  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
-  const { ServiceRegistry } = await import('@murm/core/services');
+
+  const { ServiceRegistry } = await import('@murm/core');
   const { collect, stop, ...serviceConfig } = config;
   service = createTaskPoolTaskService({ runtime: () => stop ? { ...runtime, stop: (...args) => stop(runtime, ...args) } : runtime,
     taskService: tasks, missionId, missionWorkspace: workspace,
     workspaceId, workspaceManager: manager, contextService: context,
     missionDeadline: () => Date.now() + 60_000, executionTimeoutMs: 60_000, ...serviceConfig });
   const services = new ServiceRegistry(); services.registerService(service);
-  runtime = await createRuntime({ backend: createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: provider.url },
+  runtime = await createRuntime({ ...runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url },
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } } }),
@@ -45,8 +48,9 @@ async function fixture(t, hooks = {}, config = {}) {
 test('public flat take joins one handoff and preserves pinned Workspace/Material bytes and independent resource version', async t => {
   let seed;
   const f = await fixture(t, { fileOperation(action, input) {
-    if (action === 'prepare') { seed = input.files; return { body: { result: { version: input.version, digest: decodeFileSeed(input.files).digest } } }; }
-    return { body: { result: { ...input, writable: true } } };
+    if (action === 'snapshot') return { body: { result: emptySnapshot(input) } };
+    seed = input.files;
+    return { body: { result: replaced(input) } };
   } });
   const agent = await f.spawn('first');
   const listing = await f.call(agent, 'task_list'); assert.ok(listing.tasks.some(task => task.task_id === f.task.task_id));
@@ -54,7 +58,7 @@ test('public flat take joins one handoff and preserves pinned Workspace/Material
   assert.deepEqual(replay, taken);
   assert.equal(taken.execution.state, 'RUNNING');
   assert.equal(taken.handoff.executionFence, taken.execution.fencing_version);
-  assert.equal(taken.handoff.prepared.agentId, agent.id);
+  assert.equal(taken.handoff.replacement.agentId, agent.id);
   assert.equal(Buffer.from(seed['input.txt'].data, 'base64').toString(), 'fixed λ\n');
   assert.deepEqual(taken.materials[0].content, { text: 'fixed material bytes' });
   assert.equal(taken.execution.workspace_input.revision, '0.1');
@@ -151,10 +155,8 @@ for (const { reason, invalidate, agentState } of [
 test('public Core CLI take pins verified Material and warns when main advances after a trusted preview', async t => {
   let startup, seed;
   const f = await fixture(t, { onStart(body) { startup = body; }, fileOperation(action, input) {
-    if (action === 'prepare') seed = input.files;
-    return { body: { result: action === 'prepare'
-      ? { version: input.version, digest: decodeFileSeed(input.files).digest }
-      : { ...input, writable: true } } };
+    if (action === 'replace') seed = input.files;
+    return { body: { result: action === 'snapshot' ? emptySnapshot(input) : replaced(input) } };
   } });
   const task = f.tasks.createTask({ mission_id: f.task.mission_id, gap: 'Read current public inputs after preview', priority: 'medium',
     summary: 'Current main and pinned Material', expected_output: 'Independent note', acceptance_conditions: ['Uses fixed inputs'],
@@ -199,8 +201,9 @@ test('public Core CLI take pins verified Material and warns when main advances a
 test('public take preserves binary Buffer bytes from the pinned Workspace through the host tree and Core FileSeed', async t => {
   let seed;
   const f = await fixture(t, { fileOperation(action, input) {
-    if (action === 'prepare') { seed = input.files; return { body: { result: { version: input.version, digest: decodeFileSeed(input.files).digest } } }; }
-    return { body: { result: { ...input, writable: true } } };
+    if (action === 'snapshot') return { body: { result: emptySnapshot(input) } };
+    seed = input.files;
+    return { body: { result: replaced(input) } };
   } });
   const binary = Buffer.from([0, 255, 65, 10]);
   const revision = await f.workspace.save({ workspaceId: f.task.workspace.workspace_id, files: { 'input.txt': 'fixed λ\n', 'binary.dat': binary } });
@@ -247,10 +250,10 @@ test('two Core Agents compete for one Task and ordinary conflict leaves the losi
     caller: { runtimeId: 'foreign-runtime', agentId: loser.id, profile: 'researcher' }, envelope: { operation_id: 'foreign' } }), { code: 'NOT_ALLOWED' });
 });
 
-test('unknown grant stops through Core and retains Task ownership until execution stop is confirmed', async t => {
+test('unknown replacement stops through Core and retains Task ownership until execution stop is confirmed', async t => {
   let stopConfirmed = false;
   const f = await fixture(t, { onStop: () => ({ stopped: stopConfirmed }), fileOperation(action, input) {
-    if (action === 'prepare') return { body: { result: { version: input.version, digest: decodeFileSeed(input.files).digest } } };
+    if (action === 'snapshot') return { body: { result: emptySnapshot(input) } };
     return { body: { code: 'OPERATION_UNKNOWN', error: 'Fixed lost grant reply' }, status: 400 };
   } });
   const agent = await f.spawn('unknown'), peer = await f.spawn('peer');
@@ -274,7 +277,7 @@ test('unknown grant stops through Core and retains Task ownership until executio
 
 test('required artifact failure retains Core Slot while stopped execution permits domain compensation', async t => {
   const f = await fixture(t, { onCollect: () => ({ error: { code: 'INVALID_CONTRACT', error: 'Fixed required archive failure' } }), fileOperation(action, input) {
-    if (action === 'prepare') return { body: { result: { version: input.version, digest: decodeFileSeed(input.files).digest } } };
+    if (action === 'snapshot') return { body: { result: emptySnapshot(input) } };
     return { body: { code: 'OPERATION_UNKNOWN', error: 'Fixed uncertain grant' }, status: 400 };
   } }, { collect: { paths: ['.'], includeGit: false, maxBytes: 100, required: true } });
   const agent = await f.spawn('required');
@@ -290,7 +293,7 @@ test('required artifact failure retains Core Slot while stopped execution permit
 test('preparation heartbeat retains timer failure even if Mission appears open again before prepare returns', async t => {
   const reached = Promise.withResolvers(), release = Promise.withResolvers();
   const f = await fixture(t, { async fileOperation(action, input) {
-    if (action === 'prepare') { reached.resolve(); await release.promise; return { body: { result: { version: input.version, digest: decodeFileSeed(input.files).digest } } }; }
+    if (action === 'snapshot') { reached.resolve(); await release.promise; return { body: { result: emptySnapshot(input) } }; }
     throw new Error('Grant must not run after heartbeat failure');
   } }, { heartbeatMs: 5 });
   const agent = await f.spawn('heartbeat');
@@ -306,12 +309,12 @@ test('preparation heartbeat retains timer failure even if Mission appears open a
   assert.equal(f.tasks.getExecution(row.executionId).state, 'FAILED');
 });
 
-test('a Core close racing grant never returns successful take and compensation uses the completed stop receipt', async t => {
+test('a Core close racing replacement never returns successful take and compensation uses the completed stop receipt', async t => {
   const reached = Promise.withResolvers(), release = Promise.withResolvers();
   const f = await fixture(t, { async fileOperation(action, input) {
-    if (action === 'prepare') return { body: { result: { version: input.version, digest: decodeFileSeed(input.files).digest } } };
+    if (action === 'snapshot') return { body: { result: emptySnapshot(input) } };
     reached.resolve(); await release.promise;
-    return { body: { result: { ...input, writable: true } } };
+    return { body: { result: replaced(input) } };
   } });
   const agent = await f.spawn('closing');
   const pending = assert.rejects(f.call(agent, 'task_take', { task_id: f.task.task_id }, 'take'), { code: 'OPERATION_UNKNOWN' });
@@ -325,14 +328,14 @@ test('a Core close racing grant never returns successful take and compensation u
   assert.equal(f.tasks.getExecution(row.executionId).state, 'FAILED');
 });
 
-test('a stale Execution fence after grant cannot produce successful handoff', async t => {
+test('a stale Execution fence after replacement cannot produce successful handoff', async t => {
   let f, agent;
   f = await fixture(t, { fileOperation(action, input) {
-    if (action === 'prepare') return { body: { result: { version: input.version, digest: decodeFileSeed(input.files).digest } } };
+    if (action === 'snapshot') return { body: { result: emptySnapshot(input) } };
     const execution = f.tasks.getExecution(f.tasks.getAgent(agent.id).execution_id);
     f.tasks.dispatch('fence_execution', { reason: 'fixed concurrent fencing' }, makeEnvelope({ actorRef: 'host', taskId: execution.task_id,
       executionId: execution.execution_id, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
-    return { body: { result: { ...input, writable: true } } };
+    return { body: { result: replaced(input) } };
   } });
   agent = await f.spawn('stale');
   await assert.rejects(f.call(agent, 'task_take', { task_id: f.task.task_id }, 'take'), { code: 'NOT_ALLOWED' });
@@ -386,7 +389,7 @@ test('thrown Core stop preserves the preparation error and original owner until 
 test('finite preparation timeout owns the late Core result and never grants or reports take success', async t => {
   const reached = Promise.withResolvers(), release = Promise.withResolvers();
   const f = await fixture(t, { async fileOperation(action, input) {
-    if (action === 'prepare') { reached.resolve(); await release.promise; return { body: { result: { version: input.version, digest: decodeFileSeed(input.files).digest } } }; }
+    if (action === 'snapshot') { reached.resolve(); await release.promise; return { body: { result: emptySnapshot(input) } }; }
     throw new Error('Late prepare cannot grant');
   } }, { preparationTimeoutMs: 4000 });
   const agent = await f.spawn('timeout');

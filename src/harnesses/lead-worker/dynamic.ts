@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { AgentAccessPolicy, FileSeed, Profile, Runtime } from '@murm/core';
-import { ServiceRegistry, type JsonValue, type ServiceManifest, type ServiceRegistration } from '@murm/core/services';
+import type { AgentAccessPolicy, FileTree, Profile, Runtime } from '@murm/core';
+import { ServiceRegistry, type JsonValue, type ServiceManifest, type ServiceRegistration } from '@murm/core';
 import { dynamicBoardPermissions, type createBoard } from './board.js';
 import type { createLeadWorkerGit, prepareLeadWorkerGit } from './git.js';
 import type { createOwnedResources } from '../peermesh/resources.js';
@@ -192,7 +192,7 @@ export function createDynamicLeadWorker({
       const snapshot = await known().files.snapshot(caller, {
         requestId: `service-${createHash('sha256').update(key).digest('hex')}`, paths: [input.source_path], maxBytes: maxSourceBytes,
       });
-      const entry = (snapshot.files as FileSeed)[input.source_path];
+      const entry = (snapshot.files as FileTree)[input.source_path];
       if (!entry || Object.keys(snapshot.files).length !== 1) throw fail('INVALID_CONTRACT', 'Service requires one source file');
       const source = Buffer.from(entry.data, entry.encoding);
       current.sourceDigest = createHash('sha256').update(source).digest('hex');

@@ -9,147 +9,80 @@ This reference describes the public interfaces of **`@murm/core` `0.2.0`** in th
 
 ## Package entry points
 
-These are four export paths in one package. The manifest is currently `private: true`; build and install a tarball as shown in the SDK guide.
+Import all public types and the six runtime values from `@murm/core`. The values are `createSandbox`, `createRuntime`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`.
 
-| Entry point | Public exports | Purpose |
-| --- | --- | --- |
-| `@murm/core` | `createRuntime`, `finalizeRun` (plus all Core types) | Create, control and finalize a Run |
-| `@murm/core/services` | `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`, `builtinAgentRegistration`, `getAdapterMetadata`, `invokeService`, `isJson`, `snapshotServiceRegistry` | Define, validate, and register v2 Services |
-| `@murm/core/backends/opensandbox` | `createOpenSandboxBackend`, `getOpenSandboxBackendCapabilities` (plus `OpenSandboxBackendConfig`, `BackendCapabilities`, `ExecutorKind`) | Configure Pi or Codex on OpenSandbox and inspect executor capabilities |
-| `@murm/core/backends/pi-opensandbox` | `createPiOpenSandboxBackend` (plus `PiOpenSandboxBackendConfig`) | Deprecated Pi-specific factory; use the general entry point with `executor: 'pi'` |
+## Runtime management
 
-## Finalize a Run
+Use `runtime.profiles.register/get/list` for immutable Profiles and `runtime.services.register/get/list/retire` for the Service directory. Use `runtime.access.get/grant/revoke` to change an existing Agent's operation permissions. Mutations use stable request IDs. Service retirement closes admission, waits for authorized work to drain, and reports its current state. The application owns deployment and external facility cleanup.
 
-Import `finalizeRun` from `@murm/core` after classifying the application outcome. Pass the Runtime, the base output directory and a typed `business` outcome. Use `status: 'completed'` with a JSON value, or `status: 'failed'` or `'cancelled'` with an application error code and message. The returned report separately contains `coreClose`, `artifactVerification`, `facilities` and `reportSaveFailure`.
-
-`verifyArtifacts` receives the available Core close receipt, including a pending receipt; it must check the artifact paths it needs. If Core close is unknown, verification remains pending. Supply `ownedFacilities` only for facilities this application owns. Their close callbacks run after the verification attempt and only when Core cleanup is complete; an artifact verification failure is recorded independently. If Core returns a pending receipt, the report carries its pending resource identities and retains the facilities. The cleanup wait has its own `cleanupTimeoutMs` (default 60,000 ms) and the callbacks receive its AbortSignal. If the host wait ends before Core returns a receipt, the close status is `unknown`. Confirmed save returns the path to `outputDir/<runtime.id>/run-finalization.json`.
-
-If an owned facility's close callback is still in flight at the deadline, `lateFacilityCleanup.current()` can read its eventual receipt. `lateFacilityReportPath` identifies where that separate receipt will be saved when the invocation settles. One call finalizes a Runtime object. A second call fails with `CONFLICT`. For pending work, query the same Runtime using `close` and reconcile the original facility handles.
-
-## Live observation
-
-```ts
-runtime.observe(options?: RuntimeObservationOptions): RuntimeObservation
-```
-
-`runtime.observe()` returns a current `snapshot` and an async iterable `events` immediately after the same cursor. Resume with `runtime.observe({ after: lastCursor })`, which returns `snapshot: null`, and apply its updates to your previous state. On `gap`, call `observe()` for a fresh snapshot. The Runtime retains 256 updates, supports 64 active subscriptions and permits one pending read per subscription. Use `cancel()`, an AbortSignal or a `for await` exit to release the subscription. Runtime close does not end subscriptions. A cursor is valid only for the same live Runtime instance; this API does not restore a process after restart.
-
-Updates have types `runtime`, `agent`, `input`, `execution`, `service`, `management`, `trace-gap`, `persistence` and `gap`. Input receipt events, actual execution boundaries, Service attempts and cleanup all have separate fields. The stream contains status and identities; use `onEvent` for output text and the saved traces for payloads. Runtime cursor sequence orders the live stream, Agent sequence orders the Agent's legacy events, and a present `recordSeq` refers to the durable Run evidence row. Execution events report `association: 'unknown'` while native records lack an input ID. Use the same request identity for reconciliation. The snapshot and persistence updates report storage progress and evidence loss.
+Subscribe with `onEvent` before reading `runtime.management.get()`. Buffer management changes during the read, then apply the changes newer than the returned management `sequence`. Re-read if a sequence is missing. The same root entry exports the management request, receipt, snapshot and event types. See [Runtime management](../../architecture/15-core-runtime.md#runtime-management).
 
 ## `createRuntime(options)`
 
 ```ts
-createRuntime(options: CreateRuntimeOptions): Promise<Runtime>
+import { createRuntime, createSandbox, ServiceRegistry } from '@murm/core';
+
+const runtime = await createRuntime({
+  sandbox: createSandbox({
+    lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
+    isolation: { disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+  }),
+  connection: { advertiseHost: '172.17.0.1' },
+  models: {
+    default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: modelUrl, headers: modelHeaders } },
+  },
+  services: new ServiceRegistry(),
+  profiles: { reader: { model: 'default', image, writable: false, services: {} } },
+  maxAgents: 2,
+  outputDir,
+});
 ```
 
-| Field | Required | Behavior |
-| --- | --- | --- |
-| `backend` | Yes | Single-use opaque handle from `createOpenSandboxBackend()`; claiming it binds it exclusively to this Runtime |
-| `profiles` | Yes | Record of role name → `Profile`, deep-copied and frozen at assembly; invalid model aliases, unknown Service operations, or nonexistent names in `spawnProfiles` fail with `INVALID_CONTRACT` |
-| `services` | Yes | Populated `ServiceRegistry` (the ID `agent` is reserved for the built-in Agent Service) |
-| `maxAgents` | Yes | Positive safe integer bounding concurrent Agent Slots |
-| `outputDir` | Yes | Base output directory; Core writes all run data under `outputDir/<runtime.id>/` |
-| `modelAccessPolicy` | No | Synchronous Model Gateway gate (`authorize(caller): ModelPermit \| null`, `withCommit(commit)`) for lease-bounded harnesses like [TaskPool](../harnesses/taskpool.md) |
-| `agentAccessPolicy` | No | Synchronous gate for Agent-originated access queries, grants and revocations. Defaults to denying these operations |
+`createSandbox` captures OpenSandbox deployment settings. Its `kind` defaults to `opensandbox`. Supply the Lifecycle URL and explicit disk byte and inode limits. The optional `timeoutSeconds` defaults to 3600 and is a safe integer of at least 60. `connection.advertiseHost` supplies a container-reachable non-loopback host IPv4 address for both endpoints. Use `connection.bridge` or `connection.modelGateway` for explicit overrides. Provider credentials stay on the trusted host.
 
-Assembly uses a fixed 60-second host wait. It snapshots the supplied Profiles and Service registry and leaves Agent allocation to `spawn()`. The backend and executor selected at assembly apply for the life of the Runtime.
+Runtime owns `executor` (Pi by default), `models`, `connection`, `profiles`, `services`, `maxAgents`, and `outputDir`. `getExecutorCapabilities('pi' | 'codex')` is static. Both executors support steer, followUp, conditional input, queued input cancellation and explicit `all`. Pi also supports Context Fork and `one-at-a-time`. Use model URLs ending in `/v1/responses`. Set `connection.modelGateway.maxOutputTokens: null` to preserve the executor's parameters.
 
-## Runtime management
+## Agent lifecycle
 
-| Surface | Operations |
-| --- | --- |
-| `runtime.profiles` | `register({ id, requestId, profile })`, `get(id)`, `list()` |
-| `runtime.services` | `register({ requestId, registration, deploymentRef, implementationId, ownership })`, `get(id)`, `list()`, `retire({ serviceId, requestId, timeoutMs? })` |
-| `runtime.access` | `get(agentId)`, `grant({ agentId, serviceId, operations, requestId, binding? })`, `revoke({ agentId, serviceId, operations, requestId })` |
+`spawn({ requestId, profile, parentId?, forkFrom?, writable?, files?, workspace?, secretEnv? })` initializes an idle Agent. Seed a private directory with `files`, or attach a shared directory with `workspace: { id, mode: 'read-only' | 'read-write' }`. With a supported executor, `forkFrom` copies Session context from a live Agent in the same Runtime. Capability checks precede allocation. Idle Agents occupy a Slot. `get(agentId)` and `list({ parentId?, status? })` return current snapshots. `runtime.state` is `open`, `closing`, or `closed`.
 
-A registered Profile can be selected by later spawns. It must reference supported models, executor features and available Service operations. Service registration publishes an already-ready v2 Service. The host or Harness manages the deployment and passes its reference, stable implementation ID and ownership (`run` or `external`). Profile and Service IDs cannot be replaced. Retirement removes the Service from discovery and new admissions before draining admitted work and exporting optional state. If the wait expires, its state can remain `retiring`.
+## Input delivery and events
 
-Profiles seed each Agent’s access. Grant and revoke update that Agent’s operation map and increment its access version on effective changes. The Agent ID, Session and working directory stay in place. The trusted host can supply a binding when granting a Service for the first time. An Agent uses `swarm agent access_get`, `swarm agent grant` or `swarm agent revoke` through Bridge. It needs the corresponding operation grant and explicit authorization from `agentAccessPolicy` for the target and requested operations. Agent requests cannot grant or revoke their own permissions and carry no binding.
+`runtime.send(agentId, text, { requestId, mode?, wakeIfIdle?, source?, steeringMode? })` defaults to `steer` and `wakeIfIdle: true`. Use `followUp` to deliver after current work. Conditional delivery may return `not-accepted/idle`. An accepted input is `started`, `queued`, or `handled`. Reconcile unknown admission by retrying the original arguments under the original ID. Changed arguments conflict. The receipt describes admission.
 
-Replay a mutation with its original request ID and arguments to recover its receipt. Service-registration replay also requires the original adapter. A conflicting replay returns `CONFLICT`. Use the management snapshot and updates from `runtime.observe()` to follow registrations, retirements and access changes. [Core Runtime architecture](../../architecture/15-core-runtime.md#runtime-management)
+### Live observation
 
-## Agent lifecycle: `spawn`, `get`, `list`
-
-```ts
-runtime.spawn(options: SpawnOptions): Promise<AgentInfo>
-runtime.get(agentId: string): Promise<AgentInfo>
-runtime.list(filter?: AgentListFilter): Promise<AgentInfo[]>
-```
-
-- **`spawn(options)`**: reserves an `agentId` and capacity Slot, creates the container and selected executor session, verifies readiness, and resolves in `status: 'idle'` with no initial inference. Replaying the exact same `requestId` and parameters returns the original result; changed parameters throw `CONFLICT`.
-  - Supported fields: `requestId`, `profile`, `parentId`, `forkFrom` (live agent in same Runtime), `writable` (overrides `Profile.writable`), `files` (`FileSeed`, max 10,000 files / 2 MiB per file / 16 MiB total), `workspace` (`{ id, mode: 'read-only' | 'read-write' }` or `{ mode: 'frozen-copy', files }`), `bindings`, `secretEnv`, `collect`.
-- **`get(agentId)`**: returns an independent `AgentInfo` snapshot (`id`, `profile`, `parentId?`, `status`, `cursor`, `latestOutput?`, `lastError?`, `lastStop?`). Remains readable after `closed`.
-- **`list(filter?)`**: returns snapshots in creation order. Filter by `parentId` (`null` for root agents, or a specific parent ID) and/or `status` (single status or array).
-- **Lifecycle states**: `starting` → `idle` ⇄ `running` → `closing` → `closed` (unexpected crash: `exited`). Capacity Slots remain occupied until container deletion confirms `closed`.
-
-## Input delivery & events: `send`, `start`, `steer`, `onEvent`
-
-```ts
-runtime.send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>
-runtime.send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>
-
-// Convenience aliases over the same host ledger (prefer runtime.send in new Harnesses)
-runtime.start(agentId: string, input: string, options: { requestId: string }): Promise<InputReceipt>
-runtime.steer(agentId: string, input: string, options: SteerOptions): Promise<InputReceipt>
-
-runtime.onEvent(handler: (event: AgentEvent) => void): () => void
-```
-
-| Option | Default | Behavior |
-| --- | --- | --- |
-| `requestId` | *(required)* | 1–128 identifier chars (`[A-Za-z0-9_.:-]`); deduplicates replays and reconciles `unknown` receipts |
-| `mode` | `'steer'` | Steer directs active execution; followUp queues for after it. Pi injects steer after a tool batch; Codex steers its active native turn |
-| `wakeIfIdle` | `true` | `true` wakes an `idle` agent; `false` requests delivery only when the Worker observes active execution, returning `{ inputId, status: 'not-accepted', reason: 'idle' }` if idle |
-| `source` | `'host'` | Optional audit label (1–256 chars) recorded separately from authenticated caller identity |
-| `steeringMode` | Executor policy | Valid only with `mode: 'steer'`. Pi initially uses `'one-at-a-time'` and supports persistent selection of `'all'`; Codex supports explicit `'all'` only. Query backend capabilities before choosing |
-
-- **Receipts**:
-  - `{ inputId, status: 'accepted', disposition: 'started' | 'queued' | 'handled' }`
-  - `{ inputId, status: 'not-accepted', reason: 'idle' }` *(only when `wakeIfIdle: false`)*
-  - `{ inputId, status: 'unknown' }` — reconcile by repeating the exact same `requestId` and payload; Core queries the Worker's saved RPC ledger instead of injecting a duplicate prompt.
-
-If an application timeout or AbortSignal ends the host wait after submission, keep the submitted request ID and arguments. Poll the original receipt with the same `send` call when its result is unknown. Use `interrupt` to interrupt a running turn and `stop` for Agent shutdown. An uncorrelated `settled` event describes the Agent execution. The application verifies business completion separately.
-
-- **Events (`AgentEvent`)** — every event carries `agentId` and monotonic `seq`:
-  - `{ type: 'output', text }`
-  - `{ type: 'settled', outcome: 'completed' | 'failed' | 'aborted', output?, error? }`
-  - `{ type: 'error', error, fatal }` — when `fatal: true`, Core revokes Bridge/model credentials and fences fresh admissions synchronously before subscribers fire.
-  - `{ type: 'exit', reason, expected }`
+`onEvent(listener)` returns a function that removes that listener. Register before lifecycle operations, and read `get/list/state` for the current view. The subscription delivers `output`, `settled`, `error`, `exit`, `agentChanged` and `runtimeChanged`. On either state notification, query the current state. Events may arrive before operation receipts. Listener failures are isolated. A settlement marks one observed executor execution as completed, failed or aborted. Establish business completion through application-owned evidence.
 
 ## Controlled file primitives (`runtime.files`)
 
 ```ts
-runtime.files.prepare(agentId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>
-runtime.files.grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>
-runtime.files.snapshot(agentId: string, options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }): Promise<FileSnapshot>
-runtime.files.install(agentId: string, options: { requestId: string; expected: FileSnapshot; files: FileSeed }): Promise<FileInstall>
-runtime.files.installStatus(agentId: string, options: { requestId: string }): Promise<FileInstall | null>
-runtime.files.confirm(agentId: string, options: { requestId: string }): Promise<FileInstall>
+const original = await runtime.files.snapshot(agentId, { requestId: 'capture-1', paths: ['.'] });
+const receipt = await runtime.files.replace(agentId, {
+  requestId: 'replace-1',
+  expectedDigest: original.digest,
+  files: nextTree,
+  writable: true,
+});
 ```
 
-- **`prepare` + `grant`**: installs an immutable `FileSeed` into an empty read-only workspace and returns a frozen `PreparedFiles` handle (`agentId`, `version`, `digest`). Passing that exact in-memory object to `grant()` unlocks write access.
-- **`snapshot`**: Worker pauses project writers (all owners for shared mounts) and returns `{ agentId, requestId, version, digest, files }` up to 16 MiB (`includeGit` is opt-in).
-- **`install` + `confirm`**: replaces a live writable private workspace only if full-tree bytes and modes still match `expected: FileSnapshot`, holding writers paused until `confirm()` commits and resumes them. Use `installStatus()` to check a cached receipt without starting a new operation.
-- **`collect`**: configured on `Profile.collect` or overridden at `spawn({ collect })`: `{ paths, includeGit, allowMissingGit?, maxBytes, required }`. When `required: true`, failed export keeps the sandbox alive and returns `cleanup: 'pending'`.
+A `FileTree` maps project-relative paths to UTF-8 or base64 regular files with optional `0644` or `0755` mode. Parent directories are implicit. Use `paths: ['.']` for a complete snapshot. Explicit file or directory paths produce a partial digest. The limits are 10,000 files, 2 MiB per file and 16 MiB total, with an optional lower snapshot `maxBytes`. Protected paths and links are outside the tree.
+
+`replace` checks a complete digest and installs the whole target tree in the same private directory, including deletions and mode changes. Omitting `writable` preserves access. Passing `true` can grant writing after installation. The Agent and Session continue. Digest conflicts and shared replacement are rejected. The Worker resumes writers before issuing a completed receipt. A proven rollback returns `failed`. Reconcile an unknown outcome using the original request arguments. A retry of completed work preserves the Agent's later edits.
 
 ## Interrupt, stop, and close
 
-```ts
-runtime.interrupt(agentId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>
-runtime.stop(agentId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>
-runtime.close(options?: { timeoutMs?: number }): Promise<CloseReceipt>
-```
+`interrupt(agentId, { requestId, timeoutMs? })` clears queued work and interrupts execution while retaining Session, files and Slot. If unconfirmed, retry the original ID.
 
-- **`interrupt`**: advances the execution epoch, cancels pending Bridge calls for that agent, asks the executor Worker to clear queued inputs and abort active execution, and returns `{ interruptId, status: 'interrupted' | 'unknown', discardedInputHashes? }` while keeping the container, session, files, and Slot intact.
-- **`stop` / `close`**: runs strictly in order — **stop executor execution → archive native session → export `collect` files → delete sandbox & free Slot** (`close()` also shuts down Bridge/Gateway, runs optional `exportState()`, flushes logs, and atomically writes `runtime.json`). The order applies inside each Agent cleanup; `close()` starts Agent cleanup and endpoint shutdown concurrently. Both default to `timeoutMs: 60_000`. Retries skip completed stages. A pending receipt describes unconfirmed work while the original cleanup may still be running.
+`stop(agentId, { timeoutMs? })` revokes model and Bridge access on entry. After confirming execution stop, it archives Session, collects files, deletes the sandbox and frees the Slot. `close({ timeoutMs? })` handles all Agents, host endpoints and the Runtime report. The default timeout is 60 seconds. Receipts separate `stopped/unknown` execution from `complete/pending` cleanup. Required export failures retain the sandbox. Repeating cleanup joins active work or retries an unfinished stage. Existing external Services retain their owners.
 
 ## Service protocol v2 & built-in `agent` Service
 
 - **Registration (`ServiceRegistry.registerService`)**: requires `contract_version: '2'`, unique `id` (not reserved `'agent'`), `title`, `purpose`, `provider_version`, `endpoint` (`{ transport: 'in-process' }` or `{ transport: 'http-json', url }`), and non-empty `capabilities`. Schemas compile strictly with Ajv `8.20.0` draft-07 (synchronous, no coercion, no defaults).
 - **Invocation (`ServiceAdapter.invoke`)**: receives `{ manifest, capability, input, envelope: { operation_id }, caller: { runtimeId, agentId, profile, binding? }, signal, assertAuthorized }`. Default per-call timeout is `30_000` ms (configurable per capability via `timeout_ms`: `1..86_400_000`).
-- **Optional state export (`ServiceAdapter.exportState({ signal })`)**: runs during explicit Service retirement or Runtime close and writes `service-state.<id>.json`. Each attempt has a 30-second cap. Core reuses successful exports and can retry failed ones.
+- **Optional state export (`ServiceAdapter.exportState({ signal })`)**: called once during `runtime.close()` (30-second cap) and written to `service-state.<id>.json`.
 - **HTTP JSON wire contract (`createHttpJsonAdapter`)**: POSTs `{ input, envelope, caller }` to `endpoint.url + (capability.path ?? '/v2/' + capability.operation)` with headers `Content-Type: application/json`, `Idempotency-Key: <operation_id>`, and optional host `Authorization: Bearer <token>`. Must return `{ "ok": true, "result": <json> }` (2 MiB max, redirects disabled).
-- **Built-in `agent` Service**: seed control operations (`spawn`, `get`, `send`, `stop`) through `Profile.services.agent`. Access management operations have additional policy checks. [Runtime management](#runtime-management)
+- **Built-in `agent` Service**: grant operations explicitly via `Profile.services.agent` (`['spawn', 'get', 'send', 'stop']`).
   - `spawn` requires target role in `Profile.spawnProfiles`; `fork: true` requires `Profile.allowContextFork: true`.
   - `get` and `send` target the caller itself or a direct child; `stop` targets only a direct child.
 
@@ -180,7 +113,7 @@ swarm agent stop <agent-id> --request-id stop-1
 
 ## Repository helpers & foreground CLI
 
-The following helpers are source used by bundled Harnesses, not additional package exports. External consumers should use the public Runtime methods and `finalizeRun`, or implement their own policy using the runnable SDK example.
+The following helpers are source used by bundled Harnesses, not additional package exports. External consumers should use the public Runtime methods, or implement their own policy using the runnable SDK example.
 
 - **`src/harnesses/shared/run-input.ts`** (`runInput`): single-source exclusive turn helper (verifies `idle`, subscribes before sending, resolves on `'started'` + matching `settled`).
 - **`src/harnesses/shared/run-report.ts`** (`runWithReport`): runs `createRuntime` → `run` → bounded `close` → optional `afterClose`, preserving independent `businessFailure`, `cleanupFailure`, and `reportSaveFailure` slots in `harness-report.json`.
@@ -190,58 +123,6 @@ The following helpers are source used by bundled Harnesses, not additional packa
 node dist/scripts/run-harness.js --config <host-config.mjs>
 node dist/scripts/read-harness-result.js --run-directory <dir> --runtime-id <id>
 ```
-
-## OpenSandbox backend configuration
-
-```ts
-import { createOpenSandboxBackend, getOpenSandboxBackendCapabilities } from '@murm/core/backends/opensandbox';
-
-const backend = createOpenSandboxBackend({
-  executor: 'pi',
-  sandbox: {
-    lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
-    endpointHost: '127.0.0.1',
-    apiKey: process.env.OPEN_SANDBOX_API_KEY,
-    resourceLimits: { cpu: '1', memory: '1Gi' },
-    commandTimeoutMs: 20_000,
-    timeoutSeconds: 3600, // optional; safe integer >= 60, default 3600
-  },
-  bridge: {
-    host: '0.0.0.0',
-    publicUrl: 'http://172.17.0.1:{port}', // non-loopback IPv4 reachable from containers
-  },
-  modelGateway: {
-    host: '0.0.0.0',
-    advertiseHost: '172.17.0.1',
-    requestTimeoutMs: 120_000, // default 120_000
-    maxOutputTokens: null,     // preserve executor parameters without a host token clamp
-    selectionReasoningEffort: 'low', // optional; applies during selection phase permits
-  },
-  models: {
-    default: {
-      provider: 'kimi_proxy',
-      model: 'k3',
-      upstream: {
-        url: 'https://your-model-endpoint/v1/responses',
-        headers: { authorization: `Bearer ${process.env.MODEL_TOKEN}` },
-      },
-    },
-  },
-  isolation: {
-    network: 'local-docker',
-    disk: { bytes: 64 * 1024 ** 2, inodes: 4096 },
-  },
-});
-```
-
-The backend currently uses local Docker isolation with OpenSandbox allocation. `executor` defaults to `'pi'`; the shipped drivers are Pi `1.3.0` and Codex `0.172.0`. Model upstream URLs must end in `/v1/responses`. Omitted output limits use the selected driver policy (Pi's gateway default is 32,768; Codex leaves executor parameters unchanged).
-
-```ts
-const capabilities = getOpenSandboxBackendCapabilities(backend);
-console.log(capabilities.contextFork, capabilities.steeringModes);
-```
-
-Both drivers support active steer, follow-up, conditional input, queue cancellation, model request authorization and raw request tracing. Context Fork is currently supported by Pi only. The public backend handle does not expose provider registration or direct sandbox allocation.
 
 ## Error codes & recovery
 

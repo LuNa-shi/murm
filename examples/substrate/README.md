@@ -1,6 +1,6 @@
 # Editable Substrate host
 
-See the [mechanism guide](../../docs/en/harnesses/substrate.md) for the coordination policy and the [SDK guide](../../docs/en/sdk.md) for public imports and Runtime ownership. This example uses `@murm/core`, `@murm/core/services` and `@murm/core/backends/opensandbox`; its Harness runners remain editable repository modules.
+The host imports only from `@murm/core` for Runtime, Sandbox and Service author APIs. See the [SDK guide](../../docs/en/sdk.md) for configuration and resource ownership.
 
 The package is currently private and distributed as a checkout-built tarball. Install checkout dependencies with `npm ci` first. TypeScript sources compile with `npm run build` into `dist/`; `npm pack` builds JavaScript and declarations before archiving.
 

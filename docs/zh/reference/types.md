@@ -7,52 +7,13 @@ order: 13
 
 下面列出 `@murm/core` `0.2.0` 的主要公共类型。完整声明分别位于 [Core types](https://github.com/LuNa-shi/murm/blob/main/src/core/types.ts)、[Service types](https://github.com/LuNa-shi/murm/blob/main/src/core/service-types.ts) 与[后端配置](https://github.com/LuNa-shi/murm/blob/main/src/core/backend-config.ts)。完整可运行程序请从 [SDK 指南](../sdk.md)开始。
 
-## 概念与源码映射
+公开类型从 `@murm/core` 导入。以下声明覆盖 Runtime、文件、回执、Sandbox 与 Service 作者边界。
 
-| 概念 | 包导出符号 / 目录 | 源文件 |
-| --- | --- | --- |
-| **Runtime** | `createRuntime`、`Runtime` | [src/core/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/index.ts) · [src/core/types.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/types.ts) |
-| **Runtime 观察** | `RuntimeObservation`、`RuntimeObservationSnapshot`、`RuntimeObservationUpdate` | [src/core/runtime-observation.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/runtime-observation.ts) |
-| **应用收尾** | `finalizeRun`、`RunFinalizationOptions`、`RunFinalization` | [src/core/run-finalization.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/run-finalization.ts) |
-| **Agent 与 Profile** | `Profile`、`AgentInfo`、`AgentStatus`、`AgentEvent` | [src/core/types.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/types.ts) · [src/core/agent-service.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/agent-service.ts) |
-| **Service** | `ServiceRegistry`、`ServiceManifest`、`ServiceAdapter`、`ServiceRequest` | [src/core/services.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/services.ts) · [src/core/service-types.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/service-types.ts) |
-| **Sandbox 后端** | `createOpenSandboxBackend`、`OpenSandboxBackendConfig` | [src/core/backend-config.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/backend-config.ts) · [src/core/opensandbox-backend.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/opensandbox-backend.ts) |
-| **Harnesses** | TaskPool、PeerMesh、Substrate、Lead-Worker、Subagents、Notes | [src/harnesses/](https://github.com/LuNa-shi/murm/tree/main/src/harnesses) · [examples/](https://github.com/LuNa-shi/murm/tree/main/examples) |
-| **Run 与 Traces** | `runtime.id`、`outputDir/<runtimeId>/`、`CloseReceipt` | [src/core/run-records.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/run-records.ts) · [src/core/model-trace.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/model-trace.ts) · [src/core/service-trace.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/service-trace.ts) |
-| **`swarm` CLI** | `runSwarmCli` | [src/cli/swarm-cli.ts](https://github.com/LuNa-shi/murm/blob/main/src/cli/swarm-cli.ts) |
-
-## Runtime 控制面（`@murm/core`）
-
-```ts
-export interface Runtime {
-  readonly id: string;
-  spawn(options: SpawnOptions): Promise<AgentInfo>;
-  get(agentId: string): Promise<AgentInfo>;
-  list(filter?: AgentListFilter): Promise<AgentInfo[]>;
-  start(agentId: string, input: string, options: { requestId: string }): Promise<InputReceipt>;
-  steer(agentId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
-  interrupt(agentId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>;
-  send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
-  send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
-  onEvent(handler: (event: AgentEvent) => void): () => void;
-  observe(options?: RuntimeObservationOptions): RuntimeObservation;
-  stop(agentId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
-  close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
-  readonly files: {
-    snapshot(agentId: string, options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }): Promise<FileSnapshot>;
-    installStatus(agentId: string, options: { requestId: string }): Promise<FileInstall | null>;
-    install(agentId: string, options: { requestId: string; expected: FileSnapshot; files: FileSeed }): Promise<FileInstall>;
-    confirm(agentId: string, options: { requestId: string }): Promise<FileInstall>;
-    prepare(agentId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
-    grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
-  };
-}
-```
-
-## Profile、Spawn、受控文件与状态
+## Runtime, Profile, FileTree and events
 
 ```ts
 export interface Profile {
+  /** Optional Harness instructions added to the standard startup prompt. */
   prompt?: string;
   model: string;
   image: string;
@@ -66,21 +27,66 @@ export interface Profile {
 }
 
 export interface CreateRuntimeOptions {
-  backend: Backend;
+  sandbox: Sandbox;
+  executor?: ExecutorKind;
+  models: Readonly<Record<string, ModelConfig>>;
+  connection?: RuntimeConnectionOptions;
   profiles: Readonly<Record<string, Profile>>;
   services: ServiceRegistry;
   maxAgents: number;
   outputDir: string;
-  modelAccessPolicy?: ModelAccessPolicy;
+  agentAccessPolicy?: AgentAccessPolicy;
 }
 
 export interface FileEntry {
-  encoding: 'utf8' | 'base64';
-  data: string;
-  mode?: 0o644 | 0o755;
+  readonly encoding: 'utf8' | 'base64';
+  readonly data: string;
+  readonly mode?: 0o644 | 0o755;
 }
+export type FileTree = Readonly<Record<string, FileEntry>>;
+export type CompleteFileDigest = `complete:sha256:${string}`;
+export type PartialFileDigest = `partial:sha256:${string}`;
 
-export type FileSeed = Readonly<Record<string, FileEntry>>;
+export interface FileSnapshotOptions {
+  requestId: string;
+  paths: readonly string[];
+  maxBytes?: number;
+}
+export interface CompleteFileSnapshotOptions extends FileSnapshotOptions {
+  paths: readonly ['.'];
+}
+export interface CompleteFileSnapshot {
+  readonly agentId: string;
+  readonly requestId: string;
+  readonly version: number;
+  readonly files: FileTree;
+  readonly scope: 'complete';
+  readonly digest: CompleteFileDigest;
+}
+export interface PartialFileSnapshot {
+  readonly agentId: string;
+  readonly requestId: string;
+  readonly version: number;
+  readonly files: FileTree;
+  readonly scope: 'partial';
+  readonly digest: PartialFileDigest;
+}
+export type FileSnapshot = CompleteFileSnapshot | PartialFileSnapshot;
+
+export interface FileReplaceOptions {
+  requestId: string;
+  expectedDigest: CompleteFileDigest;
+  files: FileTree;
+  writable?: true;
+}
+export type FileReplaceReceipt = {
+  readonly agentId: string;
+  readonly requestId: string;
+} & (
+  | { readonly status: 'completed'; readonly digest: CompleteFileDigest; readonly writable: boolean }
+  | { readonly status: 'failed'; readonly error: ErrorInfo }
+  | { readonly status: 'unknown' }
+);
 
 export interface CollectionSpec {
   paths: readonly string[];
@@ -90,9 +96,7 @@ export interface CollectionSpec {
   required: boolean;
 }
 
-export type WorkspaceOptions =
-  | { id: string; mode: 'read-only' | 'read-write' }
-  | { mode: 'frozen-copy'; files: FileSeed };
+export type WorkspaceOptions = { id: string; mode: 'read-only' | 'read-write' };
 
 export interface SpawnOptions {
   forkFrom?: string;
@@ -100,103 +104,12 @@ export interface SpawnOptions {
   profile: string;
   parentId?: string;
   writable?: boolean;
-  files?: FileSeed;
+  files?: FileTree;
   bindings?: Readonly<Record<string, string>>;
   secretEnv?: Readonly<Record<string, string>>;
   workspace?: WorkspaceOptions;
   collect?: CollectionSpec;
 }
-
-export interface PreparedFiles {
-  readonly agentId: string;
-  readonly version: number;
-  readonly digest: string;
-}
-
-export interface FileSnapshot {
-  readonly agentId: string;
-  readonly requestId: string;
-  readonly version: number;
-  readonly digest: string;
-  readonly files: FileSeed;
-}
-
-export interface FileInstall {
-  readonly agentId: string;
-  readonly requestId: string;
-  readonly version: number;
-  readonly digest: string;
-  readonly phase: 'installed' | 'committed';
-}
-
-export interface GrantReceipt {
-  readonly agentId: string;
-  readonly version: number;
-  readonly writable: true;
-}
-
-export type AgentStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
-
-export interface AgentListFilter {
-  parentId?: string | null;
-  status?: AgentStatus | readonly AgentStatus[];
-}
-
-export interface AgentInfo {
-  id: string;
-  profile: string;
-  parentId?: string;
-  status: AgentStatus;
-  cursor: number;
-  latestOutput?: string;
-  lastError?: ErrorInfo;
-  lastStop?: StopReceipt;
-}
-```
-
-## 输入、事件、回执与错误
-
-```ts
-export type InputMode = 'steer' | 'followUp';
-
-export interface SteerOptions {
-  requestId: string;
-  source?: string;
-  steeringMode?: 'all' | 'one-at-a-time';
-}
-
-export interface SendOptions extends SteerOptions {
-  mode?: InputMode;
-  wakeIfIdle?: boolean;
-}
-
-export type InputReceipt =
-  | { inputId: string; status: 'accepted'; disposition: 'started' | 'queued' | 'handled' }
-  | { inputId: string; status: 'unknown' };
-
-export type ConditionalInputReceipt =
-  | InputReceipt
-  | { inputId: string; status: 'not-accepted'; reason: 'idle' };
-
-export interface InterruptReceipt {
-  interruptId: string;
-  status: 'interrupted' | 'unknown';
-  discardedInputHashes?: readonly string[];
-}
-
-export type AgentInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
-
-export interface AgentSpawnReceipt {
-  agent: AgentInfo;
-  initialInput: AgentInitialInputResult;
-}
-
-export type AgentEvent = { agentId: string; seq: number } & (
-  | { type: 'output'; text: string }
-  | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
-  | { type: 'error'; error: ErrorInfo; fatal: boolean }
-  | { type: 'exit'; reason: string; expected: boolean }
-);
 
 export interface ErrorInfo {
   code: string;
@@ -215,12 +128,82 @@ export interface ResourceError extends Error {
   details: readonly ErrorInfo[];
 }
 
-export interface PendingCleanup {
-  kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report';
+export type AgentStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+
+export interface AgentListFilter {
+  parentId?: string | null;
+  status?: AgentStatus | readonly AgentStatus[];
+}
+
+export interface AgentInfo {
   id: string;
-  action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+  profile: string;
+  parentId?: string;
+  status: AgentStatus;
+  latestOutput?: string;
+  lastError?: ErrorInfo;
+  lastStop?: StopReceipt;
+}
+
+export type InputMode = 'steer' | 'followUp';
+
+export interface SendOptions {
+  requestId: string;
+  mode?: InputMode;
+  source?: string;
+  steeringMode?: SteeringMode;
+  wakeIfIdle?: boolean;
+}
+
+export type InputReceipt =
+  | { inputId: string; status: 'accepted'; disposition: 'started' | 'queued' | 'handled' }
+  | { inputId: string; status: 'unknown' };
+
+export type ConditionalInputReceipt = InputReceipt | { inputId: string; status: 'not-accepted'; reason: 'idle' };
+
+export interface InterruptReceipt {
+  interruptId: string;
+  status: 'interrupted' | 'unknown';
+  discardedInputHashes?: readonly string[];
+}
+
+export type AgentInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
+
+/** Built-in agent.spawn Service result, distinct from host Runtime.spawn. */
+export interface AgentSpawnReceipt {
+  agent: AgentInfo;
+  initialInput: AgentInitialInputResult;
+}
+
+type AgentEvent = { agentId: string } & (
+  | { type: 'output'; text: string }
+  | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
+  | { type: 'error'; error: ErrorInfo; fatal: boolean }
+  | { type: 'exit'; reason: string; expected: boolean }
+);
+
+export type RuntimeEvent = AgentEvent
+  | { type: 'agentChanged'; agentId: string }
+  | { type: 'runtimeChanged' }
+  | { type: 'management'; change: RuntimeManagementChange };
+
+export type RuntimeState = 'open' | 'closing' | 'closed';
+
+export interface InterruptOptions {
+  requestId: string;
+  timeoutMs?: number;
+}
+
+export interface StopOptions { timeoutMs?: number }
+export interface CloseOptions { timeoutMs?: number }
+
+export interface PendingCleanup {
+  kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report' | 'service';
+  id: string;
+  action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save' | 'retire-service';
   error?: ErrorInfo;
   resourceKey?: string;
+  providerId?: string;
   sandboxId?: string;
   creation?: 'created' | 'pending' | 'absent';
   executionStopped?: boolean;
@@ -245,144 +228,191 @@ export interface CloseReceipt {
   reportPath?: string;
   evidence: { path?: string; recorded: number; lost: number; pending: number };
 }
-```
 
-## Run 收尾
-
-`finalizeRun` 是从 `@murm/core` 导出的公共函数。其输入与报告分别记录业务结果、产物检查、Core 清理、设施清理及报告保存情况。`JsonValue` 从 `@murm/core/services` 导出。
-
-```ts
-export type RunBusinessOutcome<Result extends JsonValue = JsonValue> =
-  | { status: 'completed'; value: Result }
-  | { status: 'failed' | 'cancelled'; error: { code: string; message: string } };
-
-export interface RunFinalizationError {
-  code: string;
-  message: string;
-  details?: readonly unknown[];
+export interface ProfileRegistration {
+  readonly actorId?: string;
+  readonly id: string;
+  readonly requestId: string;
+  readonly profile: Profile;
 }
 
-export type RunCoreClose =
-  | { status: 'complete' | 'pending'; receipt: CloseReceipt }
-  | { status: 'unknown'; error: RunFinalizationError };
+export interface ProfileDefinition {
+  readonly actorId?: string;
+  readonly id: string;
+  readonly digest: string;
+  readonly sequence: number;
+  readonly profile: Profile;
+}
 
-export type RunArtifactVerification =
-  | { status: 'not-requested' | 'passed' }
-  | { status: 'pending' | 'failed'; error: RunFinalizationError };
+export interface RuntimeServiceRegistration {
+  readonly actorId?: string;
+  readonly requestId: string;
+  readonly registration: ServiceRegistration;
+  readonly deploymentRef: string;
+  readonly implementationId: string;
+  readonly ownership: 'run' | 'external';
+}
 
-export type RunFacilityCleanup = { id: string } & (
-  | { status: 'complete' }
-  | { status: 'pending'; error: RunFinalizationError }
+export interface ServiceRetirement {
+  readonly actorId?: string;
+  readonly serviceId: string;
+  readonly requestId: string;
+  readonly timeoutMs?: number;
+}
+
+export interface RuntimeServiceDefinition {
+  readonly actorId?: string;
+  readonly id: string;
+  readonly manifest: ServiceManifest;
+  readonly sequence: number;
+  readonly state: 'ready' | 'retiring' | 'retired';
+  readonly deploymentRef?: string;
+  readonly implementationId?: string;
+  readonly ownership?: RuntimeServiceRegistration['ownership'];
+  readonly error?: ErrorInfo;
+}
+
+export type AgentAccessRequest = {
+  readonly runtimeId: string;
+  readonly callerId: string;
+  readonly agentId: string;
+} & (
+  | { readonly operation: 'access_get' }
+  | { readonly operation: 'grant' | 'revoke'; readonly serviceId: string; readonly operations: readonly string[] }
 );
 
-export interface RunFinalizationOptions<Result extends JsonValue = JsonValue> {
-  runtime: Pick<Runtime, 'id' | 'close'>;
-  outputDir: string;
-  business: RunBusinessOutcome<Result>;
-  cleanupTimeoutMs?: number;
-  verifyArtifacts?(receipt: CloseReceipt, signal: AbortSignal): void | Promise<void>;
-  ownedFacilities?: readonly { id: string; close(signal: AbortSignal): void | Promise<void> }[];
+export type AgentAccessPolicy = (request: AgentAccessRequest) => boolean;
+
+export interface AgentAccess {
+  readonly agentId: string;
+  readonly version: number;
+  readonly services: Readonly<Record<string, readonly string[]>>;
 }
 
-export interface RunLateFacilityCleanup {
-  runtimeId: string;
-  facility: RunFacilityCleanup;
-  reportSaveFailure: RunFinalizationError | null;
-  reportPath?: string;
+export interface AgentAccessMutation {
+  readonly agentId: string;
+  readonly serviceId: string;
+  readonly operations: readonly string[];
+  readonly requestId: string;
 }
 
-export interface RunFinalization<Result extends JsonValue = JsonValue> {
-  runtimeId: string;
-  business: RunBusinessOutcome<Result>;
-  coreClose: RunCoreClose;
-  artifactVerification: RunArtifactVerification;
-  facilities: readonly RunFacilityCleanup[];
-  reportSaveFailure: RunFinalizationError | null;
-  reportPath?: string;
-  lateFacilityReportPath?: string;
-  lateFacilityCleanup?: {
-    current(): RunLateFacilityCleanup | undefined;
-    readonly result: Promise<RunLateFacilityCleanup>;
-  };
-}
-```
+export type AgentAccessGrant = AgentAccessMutation & { readonly binding?: string };
 
-## Runtime 状态观察
-
-新观察订阅返回快照及后续更新；指定 `after` 续读时不返回快照。游标只属于存活的 Runtime 实例。缓存、gap 与取消规则见[观察契约](./api.md#实时观察)。
-
-```ts
-export interface RuntimeObservationCursor {
-  readonly runtimeId: string;
+export interface RuntimeManagementSnapshot {
   readonly sequence: number;
+  readonly profiles: readonly ProfileDefinition[];
+  readonly services: readonly RuntimeServiceDefinition[];
+  readonly access: readonly AgentAccess[];
 }
 
-export interface RuntimeEvidenceProgress {
-  readonly recorded: number;
-  readonly lost: number;
-  readonly pending: number;
-}
+export type RuntimeManagementChange = {
+  readonly sequence: number;
+  readonly caller: string;
+  readonly requestId: string;
+} & (
+  | { readonly operation: 'profile.register'; readonly definition: ProfileDefinition }
+  | { readonly operation: 'service.register' | 'service.retire'; readonly definition: RuntimeServiceDefinition }
+  | { readonly operation: 'access.grant' | 'access.revoke'; readonly access: AgentAccess; readonly serviceId: string; readonly operations: readonly string[] }
+);
 
-export interface AgentObservation {
+export interface Runtime {
   readonly id: string;
-  readonly profile: string;
-  readonly parentId?: string;
-  readonly status: AgentStatus;
-  readonly agentSeq: number;
-  readonly execution: 'active' | 'inactive' | 'unknown';
-  readonly cleanup?: {
-    readonly status: StopReceipt['cleanup'];
-    readonly execution: StopReceipt['execution'];
-    readonly action?: PendingCleanup['action'];
-    readonly resourceKey?: string;
-    readonly sandboxId?: string;
+  readonly state: RuntimeState;
+  spawn(options: SpawnOptions): Promise<AgentInfo>;
+  get(agentId: string): Promise<AgentInfo>;
+  list(filter?: AgentListFilter): Promise<AgentInfo[]>;
+  interrupt(agentId: string, options: InterruptOptions): Promise<InterruptReceipt>;
+  send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
+  send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
+  onEvent(handler: (event: RuntimeEvent) => void | Promise<void>): () => void;
+  stop(agentId: string, options?: StopOptions): Promise<StopReceipt>;
+  close(options?: CloseOptions): Promise<CloseReceipt>;
+  readonly profiles: {
+    register(input: ProfileRegistration): Promise<ProfileDefinition>;
+    get(id: string): ProfileDefinition | null;
+    list(): readonly ProfileDefinition[];
   };
+  readonly access: {
+    get(agentId: string): AgentAccess | null;
+    grant(input: AgentAccessGrant): Promise<AgentAccess>;
+    revoke(input: AgentAccessMutation): Promise<AgentAccess>;
+  };
+  readonly services: {
+    register(input: RuntimeServiceRegistration): Promise<RuntimeServiceDefinition>;
+    get(id: string): RuntimeServiceDefinition | null;
+    list(): readonly RuntimeServiceDefinition[];
+    retire(input: ServiceRetirement): Promise<RuntimeServiceDefinition>;
+  };
+  readonly management: { get(): RuntimeManagementSnapshot };
+  readonly files: RuntimeFiles;
 }
 
-export interface RuntimeObservationSnapshot {
-  readonly schemaVersion: 1;
-  readonly cursor: RuntimeObservationCursor;
-  readonly runtimeState: 'open' | 'closing' | 'closed';
-  readonly cleanup?: CloseReceipt['cleanup'];
-  readonly agents: readonly AgentObservation[];
-  readonly evidence: RuntimeEvidenceProgress;
-}
-
-export type RuntimeObservationChange =
-  | { type: 'runtime'; runtimeState: RuntimeObservationSnapshot['runtimeState']; cleanup?: CloseReceipt['cleanup'] }
-  | { type: 'agent'; agent: AgentObservation; cause: 'spawn' | 'stop' | 'interrupt' | AgentEvent['type'] }
-  | { type: 'input'; agent: AgentObservation; inputId: string; requestId: string;
-      state: ConditionalInputReceipt['status'] | 'registered' | 'dispatched' | 'receipt-query' | 'rejected';
-      disposition?: Extract<InputReceipt, { status: 'accepted' }>['disposition']; reason?: string }
-  | { type: 'execution'; agent: AgentObservation; phase: 'started' | 'settled'; association: 'unknown';
-      workerSequence?: number; outcome?: Extract<AgentEvent, { type: 'settled' }>['outcome'] }
-  | { type: 'service'; agentId: string; serviceId: string; operation: string; operationId: string;
-      attemptId: string; state: string; outcome: string; errorCode?: string }
-  | { type: 'trace-gap'; agent: AgentObservation; expectedWorkerSequence?: number; observedWorkerSequence?: number }
-  | { type: 'persistence'; evidence: RuntimeEvidenceProgress };
-
-export type RuntimeObservationUpdate =
-  | (RuntimeObservationChange & { readonly schemaVersion: 1; readonly cursor: RuntimeObservationCursor; readonly recordSeq?: number })
-  | { readonly type: 'gap'; readonly schemaVersion: 1; readonly cursor: RuntimeObservationCursor;
-      readonly reason: 'cursor-expired' | 'slow-consumer'; readonly after: RuntimeObservationCursor };
-
-export interface RuntimeObservationOptions {
-  after?: RuntimeObservationCursor;
-  signal?: AbortSignal;
-}
-
-export interface RuntimeObservation {
-  readonly snapshot: RuntimeObservationSnapshot | null;
-  readonly events: AsyncIterableIterator<RuntimeObservationUpdate>;
-  cancel(): void;
+export interface RuntimeFiles {
+  snapshot(agentId: string, options: CompleteFileSnapshotOptions): Promise<CompleteFileSnapshot>;
+  snapshot(agentId: string, options: FileSnapshotOptions): Promise<FileSnapshot>;
+  replace(agentId: string, options: FileReplaceOptions): Promise<FileReplaceReceipt>;
 }
 ```
 
-## Service 协议（`@murm/core/services`）与 Model Access Policy
+## Sandbox and Runtime connection
 
 ```ts
-export type JsonValue =
-  | null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+declare const sandboxBrand: unique symbol;
+
+export interface Sandbox {
+  readonly [sandboxBrand]: true;
+}
+
+export interface SandboxConfig {
+  kind?: 'opensandbox';
+  lifecycleBaseUrl: string;
+  apiKey?: string;
+  execdToken?: string;
+  endpointHost?: string;
+  resourceLimits?: { cpu: string; memory: string };
+  commandTimeoutMs?: number;
+  timeoutSeconds?: number;
+  isolation: {
+    network?: 'local-docker';
+    disk: { bytes: number; inodes: number };
+  };
+}
+
+export type ExecutorKind = 'pi' | 'codex';
+export type SteeringMode = 'all' | 'one-at-a-time';
+
+export interface ExecutorCapabilities {
+  readonly activeSteer: boolean;
+  readonly followUp: boolean;
+  readonly conditionalInput: boolean;
+  readonly queuedInputCancellation: boolean;
+  readonly contextFork: boolean;
+  readonly steeringModes: readonly SteeringMode[];
+}
+
+export interface ModelConfig {
+  provider: string;
+  model: string;
+  upstream: { url: string; headers: Readonly<Record<string, string>> };
+}
+
+export interface RuntimeConnectionOptions {
+  advertiseHost?: string;
+  bridge?: { host?: string; publicUrl?: string };
+  modelGateway?: {
+    host?: string;
+    advertiseHost?: string;
+    requestTimeoutMs?: number;
+    maxOutputTokens?: number | null;
+    maxRequests?: number;
+  };
+}
+```
+
+## Service 作者接口
+
+```ts
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 export interface ServiceManifest {
   id: string;
@@ -405,6 +435,7 @@ export interface ServiceCapability {
   output_schema: Record<string, unknown>;
   errors: readonly { code: string; retryable: boolean }[];
   path?: string;
+  /** Host-registered invocation deadline, 1..86400000 ms. Defaults to 30000. */
   timeout_ms?: number;
 }
 
@@ -422,84 +453,26 @@ export interface ServiceRequest {
   envelope: { operation_id: string; [key: string]: unknown };
   caller: ServiceCaller;
   signal: AbortSignal;
+  /** Recheck caller authority immediately before a Service commits its side effect. */
   assertAuthorized(): void;
 }
 
 export interface ServiceAdapter {
   invoke(request: ServiceRequest): JsonValue | Promise<JsonValue>;
+  /** Optional bounded host-only snapshot called during Runtime close. */
   exportState?(options: { signal: AbortSignal }): JsonValue | Promise<JsonValue>;
 }
 
-export interface ModelCaller {
-  readonly runtimeId: string;
-  readonly agentId: string;
-  readonly profile: string;
-  readonly model: string;
+export interface ServiceRegistration {
+  manifest: ServiceManifest;
+  adapter: ServiceAdapter;
 }
 
-export interface ModelPermit {
-  phase: 'selection' | 'work' | 'closeout';
-  deadlineAt: number;
-  lease?: { key: string; version: number; expiresAt: number };
-}
-
-export interface ModelAccessPolicy {
-  authorize(caller: ModelCaller): ModelPermit | null;
-  withCommit<T>(commit: () => T): T;
+export interface HttpJsonAdapterOptions {
+  token?: string;
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
 }
 ```
 
-## OpenSandbox 后端（`@murm/core/backends/opensandbox`）
-
-```ts
-export type ExecutorKind = 'pi' | 'codex';
-
-export interface BackendCapabilities {
-  readonly activeSteer: boolean;
-  readonly followUp: boolean;
-  readonly conditionalInput: boolean;
-  readonly queuedInputCancellation: boolean;
-  readonly contextFork: boolean;
-  readonly modelRequestAuthorization: boolean;
-  readonly rawModelRequestTrace: boolean;
-  readonly steeringModes: readonly ('all' | 'one-at-a-time')[];
-}
-
-export interface OpenSandboxBackendConfig {
-  /** Defaults to Pi. The backend resolves this selection when the handle is created. */
-  executor?: ExecutorKind;
-  sandbox: {
-    lifecycleBaseUrl: string;
-    apiKey?: string;
-    execdToken?: string;
-    endpointHost?: string;
-    resourceLimits?: { cpu: string; memory: string };
-    commandTimeoutMs?: number;
-    /** Sandbox creation lifetime in seconds; safe integer >= 60, default 3600. Provider limits also apply. */
-    timeoutSeconds?: number;
-  };
-  bridge: { host: string; publicUrl: string };
-  modelGateway: {
-    host: string;
-    advertiseHost: string;
-    requestTimeoutMs?: number;
-    /** null preserves executor output parameters without a host token clamp. */
-    maxOutputTokens?: number | null;
-    /** Sets upstream reasoning effort for requests admitted in the selection phase. */
-    selectionReasoningEffort?: 'low';
-  };
-  models: Readonly<Record<string, {
-    provider: string;
-    model: string;
-    upstream: { url: string; headers: Readonly<Record<string, string>> };
-  }>>;
-  isolation: {
-    network: 'local-docker';
-    disk: { bytes: number; inodes: number };
-  };
-}
-
-export type PiOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'>;
-```
-
-`PiOpenSandboxBackendConfig` 从已弃用的 `@murm/core/backends/pi-opensandbox` 入口导出。通用后端入口导出 `ExecutorKind`、`BackendCapabilities` 与 `OpenSandboxBackendConfig`。
+[服务接口与 HTTP 传输见 API 参考。](api.md#service-v2-协议与内置-agent-service)

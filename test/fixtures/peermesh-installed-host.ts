@@ -1,4 +1,5 @@
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { runtimeSettings } from './core-runtime-settings.js';
+
 import { createLocalPeerMeshStack } from './node_modules/@murm/core/dist/test/fixtures/peermesh-local-stack.js';
 import { createCleanupBudget } from './node_modules/@murm/core/dist/test/fixtures/peermesh-deadline.js';
 import { httpClient } from './node_modules/@murm/core/dist/src/harnesses/peermesh/http.js';
@@ -112,7 +113,7 @@ export default {
       }
     },
 
-    backend: createPiOpenSandboxBackend({
+    ...runtimeSettings({
       sandbox: {
         lifecycleBaseUrl: input.lifecycle,
         endpointHost: input.endpointHost,

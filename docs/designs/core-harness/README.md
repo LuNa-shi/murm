@@ -16,7 +16,7 @@ GitHub Issue 记录实施切片、依赖、进度、PR 和验收证据。每张�
 
 | 文档 | 内容与权威边界 |
 | --- | --- |
-| [Core 设计](01-core.md) | Core/Runtime/Agent/Slot 定义，公开 API、输入和事件、模型与 Service 授权、文件准备与成果导出、停止关闭、迁移与验收；包含完整公共类型附录 |
+| [Core 设计](01-core.md) | Core/Runtime/Agent/Slot 定义，公开 API、输入和事件、模型与 Service 授权、文件替换与成果导出、停止关闭、迁移与验收；包含完整公共类型附录 |
 | [Harness 设计](02-harness.md) | 普通宿主模块装配，TaskPool、PeerMesh 和后续三种模式的协作、输入、结束与验收；包含完整 Notes 示例与 runInput helper |
 | [推进、验收与发布](03-delivery-and-validation.md) | 开发、本人的使用验收、条件启动的外部试用与发布、时间窗口和收尾检查 |
 | [TaskPool 数学形式化](04-taskpool-math.md) | #200 后续范围、实时文件接续和真实数学题验收 |
@@ -43,6 +43,8 @@ Core 文档定义公共接口及其最低保证；Harness 文档在此保证内�
 
 ## 2026-11-24 owner 确认的本轮范围调整
 
+以下记录首版的验收边界。后续 #255 在既有 Core 文件捕获上增加单步替换及 TaskPool 的原生交接/在线更新回归。
+
 本轮按 owner 的明确指示，将以下工作延后；本节在经评审合入 `main` 后，作为下述章节的范围限定，并由原有执行票引用固定修订同步，不能将延后事项记为已经实现或验收。
 
 - [#197](https://github.com/LuNa-shi/SwarmEnv/issues/197) 所记录的标准 Core 到 TaskPool 的生产 live capture 接线留待后续处理。本轮不要求新增在线读取私有 workDir 的公共 API，或将运行中的 Agent 文件经该接线保存为 Workspace revision。[#196](https://github.com/LuNa-shi/SwarmEnv/pull/196) 的相关接口与重试方案仍为延后草稿，不因本次范围调整成为已批准实现。
@@ -63,15 +65,15 @@ TaskPool 现有宿主注入 `snapshotProject` 和已支持的公共 Workspace、
 
 ## 后续扩展 · Codex App Server
 
-[#225](https://github.com/LuNa-shi/SwarmEnv/issues/225) 沿用首版的 Runtime、Service、Sandbox 和验收合同，扩展同一 OpenSandbox 组合中的内层执行者。一次 Runtime 通过 `createOpenSandboxBackend` 的 `executor` 配置选用 Pi 或 Codex。现有 Pi 工厂保留为兼容入口。Harness 在 Runtime 装配前可从同一 Backend 句柄读取能力。Codex 范围包括持久 thread、输入与中断、受控模型网关、原生 Session 导出，以及 Notes 和一个现有 Harness 的安装后验证。跨 Sandbox Context Fork、Claude Code 与混用执行者留待后续。Q1 记录首版 Pi-only 范围。扩展的实施细节和证据分别维护在 [Architecture](../../architecture/16-pi-opensandbox-backend.md) 与 #225 的 PR。
+[#225](https://github.com/LuNa-shi/SwarmEnv/issues/225) 将 Codex 扩展至同一 OpenSandbox 支持范围。原配置与验收按原候选解释。#255 的目标接口由 Runtime 选择执行器，Pi 为默认，Codex 可显式选择。静态能力查询、持久 thread、受控模型网关和原生 Session 归档见 [Core 设计](01-core.md#33-配置与资源归属)。当前实现见 [Architecture](../../architecture/16-pi-opensandbox-backend.md)。
 
 ## 后续扩展 · 公共 SDK
 
-[#237](https://github.com/LuNa-shi/murm/issues/237) 补齐同一个 `@murm/core` 包的公共开发路径。开发者用公开入口定义 Service 和 Harness、运行和观察 Agent、验证产物并处理收尾。[外部应用的合同和验收](03-delivery-and-validation.md#公共-sdk-的外部应用验收)规定本轮的交付范围。串行等待仍是 Harness 内部工具，部署接入沿用 [#236](https://github.com/LuNa-shi/murm/issues/236) 的单一实现。
+[#237](https://github.com/LuNa-shi/murm/issues/237) 完成仓库外的初版 SDK 消费。其证据对应原候选。[#255](https://github.com/LuNa-shi/murm/issues/255) 以 `main@ea400e2dc020022f94426d328644c6cca87aa03c` 为首次核查基线，规定六个根导出、Sandbox 与 Runtime 配置职责、唯一 send/事件入口、单步文件替换和应用内收尾。[Core 设计](01-core.md) 与 [Harness 设计](02-harness.md) 规定行为，[交付与验收](03-delivery-and-validation.md#公共-sdk-的外部应用验收) 规定 M0–M6、A1–A16 和两条 E2E。M0 评审合入后，实施票引用固定修订。验证和部署继续复用 [#236](https://github.com/LuNa-shi/murm/issues/236) 已交付的设施边界。
 
 ## 后续扩展 · CLI / TUI
 
-[#252](https://github.com/LuNa-shi/murm/issues/252) 跟踪在用户项目目录运行 Harness。其 M0 设计 PR 以本设计为入口，补充项目输入、团队交付、成果应用、控制和 Harness 接入合同，供后续实施使用。工作范围和验收见 #252。详细设计待该 PR 评审。
+[#252](https://github.com/LuNa-shi/murm/issues/252) 跟踪用户项目目录中的前台、后续宿主和 attach/detach。其设计与实施消费新版 Core 的 `onEvent`、`get/list`、`runtime.state` 和操作回执。客户端一致快照、增量、断线重同步及 attach 由应用宿主提供；应用在 Core close 回执之上自行组织交付及收尾。原票引用的 observe/finalizeRun 按该边界迁移，交付候选与本地 apply 仍属于 #252。
 
 ## 文档迁移与版本来源
 

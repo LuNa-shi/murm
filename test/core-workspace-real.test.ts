@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -7,8 +8,8 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
 import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core/services';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { ServiceRegistry } from '@murm/core';
+
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 
@@ -112,7 +113,7 @@ pathlib.Path('shared').write_text('visible')`)],
   });
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   async function runtime() {
-    const result = await createRuntime({ backend: createPiOpenSandboxBackend({
+    const result = await createRuntime({ ...runtimeSettings({
       sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
       bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
       modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 30_000, maxOutputTokens: 128 },
@@ -156,7 +157,7 @@ pathlib.Path('shared').write_text('visible')`)],
   assert.deepEqual(await a.files.snapshot(reader.id, { requestId: capture.requestId, paths: ['ready', 'random.bin', 'text.txt'] }), capture);
   await running;
   await turn(a, reader, 'read');
-  const frozen = await a.spawn({ requestId: 'frozen', profile: 'worker', workspace: { mode: 'frozen-copy', files: capture.files } });
+  const frozen = await a.spawn({ requestId: 'frozen', profile: 'worker', files: capture.files });
   await a.stop(reader.id); await turn(a, writer, 'continue'); await turn(a, frozen, 'frozen');
   const lost = { requestId: 'lost-response', paths: ['only-frozen'] };
   await assert.rejects(a.files.snapshot(frozen.id, lost), { code: 'OPERATION_UNKNOWN' });

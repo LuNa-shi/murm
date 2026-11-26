@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -48,8 +49,8 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
   };
   try {
     const { createRuntime } = await import('@murm/core');
-    const { ServiceRegistry } = await import('@murm/core/services');
-    const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
+    const { ServiceRegistry } = await import('@murm/core');
+
     let upstreamHeaders;
     try { upstreamHeaders = JSON.parse(process.env.MURM_CORE_LIVE_UPSTREAM_HEADERS_JSON ?? '{}'); }
     catch { throw new Error('LIVE_HEADERS_INVALID'); }
@@ -59,7 +60,7 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
       upstreamUrl: process.env.MURM_CORE_LIVE_UPSTREAM_URL,
       upstreamHeaders, deadlineAt, maxRequests: 8, maxOutputTokens: 4096, filename, marker,
     });
-    const backend = createPiOpenSandboxBackend({
+    const backend = runtimeSettings({
       sandbox: {
         lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
         endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
@@ -72,7 +73,7 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 * 1024, inodes: 4096 } },
     });
     phase = 'runtime_create';
-    runtime = await createRuntime({ backend, profiles: {
+    runtime = await createRuntime({ ...backend, profiles: {
       worker: { prompt: 'Use the requested Bash and read tools directly. Verify the file contents before reporting completion. Keep the response brief.',
         model: 'default', image, writable: true, services: {} },
     }, services: new ServiceRegistry(), maxAgents: 1, outputDir });
@@ -89,7 +90,7 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
     assert.equal(resources.spawnOne, true);
     if (Date.now() >= deadlineAt) throw new Error('LIVE_DEADLINE');
     runtime.onEvent(event => {
-      events.push({ type: event.type, agentId: event.agentId, seq: event.seq,
+      events.push({ type: event.type, agentId: event.agentId,
         outcome: event.outcome, expected: event.expected, errorCode: event.error?.code });
       if (event.agentId === agentId && event.type === 'settled') resolveSettled({ outcome: event.outcome, output: event.output });
     });

@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,15 +15,15 @@ async function fixture(t, hooks, { registrations = [], grants = {}, sandbox = {}
   const provider = await createLifecycleProvider(t, hooks);
   provider.allowDeletion();
   const { createRuntime } = await import('@murm/core');
-  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
-  const { ServiceRegistry } = await import('@murm/core/services');
+
+  const { ServiceRegistry } = await import('@murm/core');
   const outputDir = await mkdtemp(join(tmpdir(), 'core-report-evidence-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   function makeOptions(directory = outputDir) {
     const services = new ServiceRegistry();
     for (const registration of registrations) services.registerService(registration);
     return {
-      backend: createPiOpenSandboxBackend({
+      ...runtimeSettings({
         sandbox: { lifecycleBaseUrl: provider.url, resourceLimits: { cpu: '1', memory: '1Gi' }, ...sandbox },
         bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
         modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1', requestTimeoutMs: 8000, maxOutputTokens: 256, ...modelGateway },
@@ -141,7 +142,7 @@ test('Runtime records identity, unknown input reconciliation, sanitised settled 
 });
 
 test('Runtime report joins a rejected Service write to its trusted caller and effective adapter timeout', async t => {
-  const { createHttpJsonAdapter } = await import('@murm/core/services');
+  const { createHttpJsonAdapter } = await import('@murm/core');
   const manifest = notesManifest();
   manifest.endpoint = { transport: 'http-json', url: 'https://example.invalid' };
   const serviceToken = 'fixture-adapter-credential';

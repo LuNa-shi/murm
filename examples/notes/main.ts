@@ -1,9 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createRuntime } from '@murm/core';
-import { ServiceRegistry, createInProcessAdapter } from '@murm/core/services';
-import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
+import { createRuntime, createSandbox, createInProcessAdapter, ServiceRegistry } from '@murm/core';
 import { runInput } from './run-input.js';
 import { runWithReport } from './run-report.js';
 
@@ -60,9 +58,9 @@ export function reviewText(fact: any) {
   return `# Source review\n\nBaseline: ${fact.baseline}\nSource: ${fact.source}\nFinding: ${fact.finding}\n`;
 }
 
-function reportRedactor(backend: any) {
-  const secrets = [backend?.sandbox?.apiKey, backend?.sandbox?.execdToken,
-    ...Object.values((backend?.models ?? {} as Record<string, any>)).flatMap((model: any) => Object.values((model.upstream?.headers ?? {} as Record<string, any>)))]
+function reportRedactor(sandbox: any, models: any) {
+  const secrets = [sandbox?.apiKey, sandbox?.execdToken,
+    ...Object.values((models ?? {} as Record<string, any>)).flatMap((model: any) => Object.values((model.upstream?.headers ?? {} as Record<string, any>)))]
     .filter((value: any) => typeof value === 'string' && value.length)
     .flatMap((value: any) => [value, value.replace(/^(?:Bearer|Basic)\s+/i, '')]).filter(Boolean)
     .sort((left: any, right: any) => right.length - left.length);
@@ -76,10 +74,10 @@ const inputText = Object.freeze({
   follow: 'Use Bash to read the existing review.md from the previous turn and copy it unchanged to followup.md.',
 });
 
-export async function runNotesHarness({ backend, model = 'default', image, outputDir, fact = fixedFact,
+export async function runNotesHarness({ sandbox, executor, models, connection, model = 'default', image, outputDir, fact = fixedFact,
   turnTimeoutMs = 30_000, closeTimeoutMs = 30_000 }: any, signal: any) {
   const notes = createNotes();
-  const redact = reportRedactor(backend);
+  const redact = reportRedactor(sandbox, models);
   const completed: any[] = [];
   let original: any;
   return runWithReport({ outputDir, closeTimeoutMs,
@@ -91,7 +89,7 @@ export async function runNotesHarness({ backend, model = 'default', image, outpu
     createRuntime: async () => {
       signal?.throwIfAborted();
       const common: any = { model, image, writable: true };
-      return createRuntime({ backend: createOpenSandboxBackend(backend), services: notes.services, maxAgents: 2, outputDir,
+      return createRuntime({ sandbox: createSandbox(sandbox), executor, models, connection, services: notes.services, maxAgents: 2, outputDir,
         profiles: {
           writer: { ...common, services: { notes: ['put'] } },
           reader: { ...common, services: { notes: ['get'] },
@@ -103,7 +101,7 @@ export async function runNotesHarness({ backend, model = 'default', image, outpu
       function checkCancelled() { signal?.throwIfAborted(); }
       async function turn(agent: any, requestId: any, input: any) {
         const { inputId, settled } = await runInput(runtime, agent.id, input, { requestId, timeoutMs: turnTimeoutMs, signal });
-        completed.push({ agentId: agent.id, requestId, inputId, seq: settled.seq, outcome: settled.outcome });
+        completed.push({ agentId: agent.id, requestId, inputId, outcome: settled.outcome });
       }
       checkCancelled();
       if (!['baseline', 'source', 'finding'].every((field: any) => typeof fact?.[field] === 'string' && fact[field])) {

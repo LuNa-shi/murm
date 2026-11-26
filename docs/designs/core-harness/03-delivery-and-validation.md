@@ -43,7 +43,7 @@
 | 接好 environment | 接入执行器、独立 workDir/sandbox、services 和 prompt/config | 新结构能真实启动 Agent、调用服务并正常结束 |
 | 跑通协作方式 | 迁移 TaskPool 的 Task/Material，接入 PeerMesh 核心协作闭环，并完成无 Task 的自定义 Service 接入示例 | TaskPool、PeerMesh 与最小示例实际复用同一个 Core；PeerMesh 通过双 peer 验收 |
 | 整理使用入口和代码 | 做首版必需的薄终端入口；保留运行记录和结果读取；按迁移清单清理旧入口、重复逻辑和 React 前端 | 自己能启动、查看状态、取得结果和停止，旧代码不再妨碍使用 |
-| 整理安装与文档 | 按公开模块边界打包，验证仓库外安装，补 README、最小示例和扩展说明；首版允许单 npm 包的多个 exports | 按说明可以从安装走到结果；修改协作方式时知道该改哪里 |
+| 整理安装与文档 | 按公开模块边界打包，验证仓库外安装，补 README、最小示例和扩展说明；首版的导出按原候选留证，SDK 破坏性升级统一根入口 | 按说明可以从安装走到结果；修改协作方式时知道该改哪里 |
 
 **基本版本先由文翔验收：**按说明安装，用自己的项目输入目录与 mission 跑任务，看到状态、拿到结果、正常停止；再检查约定的协作例子和扩展入口。实际用过并认为可以交给别人试，才进入用户验证。
 
@@ -66,14 +66,42 @@
 
 ## 公共 SDK 的外部应用验收
 
-本节记录 [#237](https://github.com/LuNa-shi/murm/issues/237) 的目标合同。开发者将版本化的 `@murm/core` 安装到自己的 TypeScript 项目，从公开入口装配 Runtime、Service 和 Sandbox 后端。应用负责协作规则、业务完成条件和产物验证。现有 OpenSandbox 路径需要同机 Linux 宿主上的 Docker、可用的 OpenSandbox、兼容 Worker 镜像和模型端点。准备运行环境与安装 npm 包是两步，Harness 通过配置接入这些设施。
+[#237](https://github.com/LuNa-shi/murm/issues/237) 的已完成验收适用于其原候选。[#255](https://github.com/LuNa-shi/murm/issues/255) 按新版公共合同在同机 Linux、Docker、OpenSandbox 与受控 Responses 上重新验证。目标 API 和精确类型见 [Core 设计](01-core.md#附录-a公共类型清单)。
 
-- **输入与观察。** `send` 返回接纳回执。公开观察一次取得 Runtime 快照及同一时点的游标，并支持有界增量、取消和续读。观察区分接纳、执行器实际开始、执行收束、Service 调用和清理状态。按已有身份关联事件，缺少关联证据或游标过期时显式报告未知或缺口。慢消费者可以重新取快照，其队列不阻塞 Runtime 或其他订阅者。以现有生命周期、原生 Trace、Service attempt 和 Run 记录为事实来源，说明实时观测与持久记录的差别。保留 `onEvent` 及独立 Viewer 的离线读取能力。
-- **等待与收尾。** `runInput` 保留为 [Harness 内部的串行 helper](02-harness.md#41-输入与执行收束)，沿用空闲、独占、无排队及提交前检查的约束。当提交或执行状态不确定时，保留原请求身份并说明如何核对、接管或结束 Agent。通过类型完整的公共合同表达业务结果、产物验证、Core 关闭、设施清理和报告保存结果。清理使用独立的有界时间，保留待处理回执。是否增加宿主组合入口与串行 helper，由仓库外应用证据支持后另行确定。
-- **示例入口。** 在 `examples/` 提供可直接运行、可复制到外部项目的最小 TypeScript Harness，沿用现有可选的 `murm init`。按实际 tarball 在全新目录安装、以 strict TypeScript 编译，并使用公开入口在两个真实 Sandbox 中经自定义 Service 交接信息、检查产物和收尾。用受控 Responses 覆盖失败、中断、超时及清理未完成场景。可编辑部分包括业务逻辑、提示和配置，通用功能通过包入口使用。
-- **部署接入。** [#236](https://github.com/LuNa-shi/murm/issues/236) 负责 Sandbox Provider、资源所有权和已有外部 Service 的 adapter 实现。基础 SDK 验收走现有同机 OpenSandbox 和进程内 Service，可先行。后续用同一 Harness 协作逻辑接入 #236 的已运行外部消息服务，检查权限、失败回执和外部服务保留。#236 的应用侧只读 `gh` 示例沿用同一 Bridge 授权模式。自动启动临时 HTTP 服务、Gitea 同场验证及跨主机部署各自留待对应工作。
+| 里程碑 | 实施与验证 |
+| --- | --- |
+| M0 | 在同一个 Issue、同一个 PR 内先固定并评审设计提交，再叠加实现与验收证据。首次核查基线为 `ea400e2dc020022f94426d328644c6cca87aa03c`，实施以实际 main 基线与已评审设计提交为依据。核对 #235、#252 的接口契约。 |
+| M1 | 根 exports、Sandbox/Runtime 配置、静态执行器能力和 Service 作者入口，迁移仓内导入。验 A1、A2、A12 的入口与配置。 |
+| M2 | send、interrupt、实时 state、六类事件、get/list/lastStop；迁移各 Harness 与内部 runInput。验 A3–A6，保留 A14 诊断。 |
+| M3 | 接入期限触发及并行撤销后移除模型 policy 和 phase。验 A7 与停止/清理竞争。 |
+| M4 | Core/Worker 共同实现统一 FileTree、完整替换和权限转换；迁移 TaskPool handoff、在线 apply、pending/reconcile/finish。验 A8–A11。 |
+| M5 | 应用内收尾、生产消费者、Messages/HTTP、Notes、Subagents 与安装模板；验证产物和资源归属。验 A12–A14。 |
+| M6 | 候选包与配套 Worker 上两条 E2E，检查 Architecture 和 source-map、生成引用、中英文指南、网站与 CLI 帮助。绑定证据并交 [#206](https://github.com/LuNa-shi/murm/issues/206)。 |
 
-实际导出、类型声明和中英文说明按最终验收结果同步。#237 将固定安装包与证据交给 [#206](https://github.com/LuNa-shi/murm/issues/206)，发布仍由分发票处理。
+| 验收 | 证据 |
+| --- | --- |
+| A1 根入口 | `npm pack` 后在仓库外全新 TypeScript 项目安装，strict 编译与实际运行。验证六个值导出、声明一致、旧子路径与名称导入失败；没有 NODE_PATH、symlink、深层导入及内部 helper 复制。 |
+| A2 配置 | OpenSandbox/Pi 默认、显式 Codex、模型/执行器唯一来源；静态查询零网络和零分配；无效能力提前拒绝，查凭据脱敏。 |
+| A3 send | 默认 steer、显式 followUp、条件输入和 steeringMode；同请求单次注入、变参冲突，准确接纳、queued、未知与迟到结果。 |
+| A4 快速事件 | 在创建、订阅、执行、关闭交界核对实时 state/list；先订阅可捕获早于 send 回执的 output/settled。 |
+| A5 监听器 | 两监听者获得独立副本；同步异常、异步拒绝与取消互相隔离。取消后 Agent 继续工作；展示避免重复最终输出。 |
+| A6 输入边界 | 多来源/queued 下不把 settled 唯一绑定某个请求。内部 runInput 验证 idle、独占、派发前核对、显式 followUp、started 和未知后的保护。 |
+| A7 停止 | 新模型请求拒绝、在途本地连接取消。未知执行保留任务归属；stopped 后才交接，cleanup complete 后才释放 Slot；慢清理不阻塞其他 Agent 的撤销。 |
+| A8 文件范围 | 用 [文件 fixture](01-core.md#71-受管文件树) 验证初始与在线统一范围、增删改和模式；部分摘要、陈旧基线、共享目录拒绝且无修改。 |
+| A9 实际权限 | 真实 Agent 检查私有目录保持只读或在安装后允许写入，身份与 Session 连续；类型和运行时均拒绝 `writable: false`。 |
+| A10 幂等 | 完成后 Agent 编辑，重复原请求不覆盖；变参含 writable 冲突。注入回执丢失、安装失败并确认回滚，以及回滚未知并保留控制。 |
+| A11 业务恢复 | Core 完成、业务提交失败，检查 pending 与 save/apply/finish/关闭互锁，再按原回执向前提交，目录保留 Agent 后续编辑。 |
+| A12 Service | 同一应用分别用进程内和已有 HTTP adapter；校验可信 caller/授权、坏参数和远端未知。去掉交接，独立产物检查必须失败。 |
+| A13 收尾 | 注入 required 文件/Session 归档失败、停止未知、关闭超时和删除失败。保留 Sandbox/Slot，解除阻塞后重试恢复；已有设施及数据保留。 |
+| A14 诊断 | Worker 去重、缺口检测、内部持久 Trace 可核对，Runtime 退出后离线 Viewer 可读同一 Run。记录不虚构输入因果关联。 |
+| A15 迁移 | 核对实际 exports/对象/声明、Architecture 与 source-map、README、中英文 API、网站、模板、CLI；扫描生产调用避免遗留依赖。 |
+| A16 候选 | 固定源码、tarball 摘要、Worker 镜像与协议、环境、执行器、命令、产物和清理回执，逐项记通过、失败、跳过或未测。 |
+
+**包外两 Agent 消息交接。** 生产者接到本次生成且消费者初始未知的内容，经自定义 Service 转交。两种 adapter 分别运行真实 Agent、Worker、CLI 和 Bridge；宿主从可信 Service 状态核对原 operationId，再从停止导出的文件独立比对精确字节。缺少交接时检查失败。用 onEvent/get/list 和 close 状态收尾，核对自有资源回收与已有 HTTP Service 保留。
+
+**同一 Agent 的只读交接和在线更新。** Agent 在私有只读目录运行；上层确立任务归属后 replace 完整输入并开放写入。Workspace Service 再计算另一固定版本的合并树并在线替换，确认原 Agent ID 与 Session 持续。注入一次回执丢失与一次业务提交失败，使用同一身份恢复。核对互锁、后续编辑、最终文件导出与资源回收。以确定性故障回归和真实 Worker 验证未知停止、required 导出失败、冲突、回滚未知、取消与远端写入结果未知。
+
+验证包括 build/typecheck、聚焦回归、`npm test`、`npm run docs:generate`、`npm run docs:check`、网站构建、`git diff --check` 与包外实装。候选须记录真实 Pi/Codex 和兼容 Worker 的证据。受控 Responses 证明工程链路；本票的运行范围到受控模型，研究 benchmark、付费模型实验、公开 npm/镜像发布各自沿用所属 Issue 的流程。
 
 ## 二、用户验证与反馈
 

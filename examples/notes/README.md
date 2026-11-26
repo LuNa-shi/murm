@@ -1,6 +1,6 @@
 # Notes Harness
 
-This editable example uses the public SDK entries `@murm/core`, `@murm/core/services` and `@murm/core/backends/opensandbox`. See the [SDK guide](../../docs/en/sdk.md) for Runtime inputs, observation and finalization. For a smaller example that uses `runtime.observe()` and `finalizeRun()`, start with the [Messages handoff](../bridge-services/README.md).
+The host imports only from `@murm/core` for Runtime, Sandbox and Service author APIs. See the [SDK guide](../../docs/en/sdk.md) for configuration and resource ownership.
 
 The package is currently distributed from a checkout as a tarball (`private: true`). Install the checkout dependencies with `npm ci` first. TypeScript sources compile with `npm run build` into `dist/`; `npm pack` builds JavaScript and declarations before archiving.
 

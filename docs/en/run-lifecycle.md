@@ -15,18 +15,17 @@ The host first chooses an OpenSandbox backend, registers Services and defines Pr
 
 No Agent sandbox exists at this point. The Runtime owns its listeners and records, including cleanup if initialization fails. A backend handle can be claimed by only one Runtime. The Harness can choose a startup Profile or register a new one before creating an Agent. It can also register or retire Services and update per-Agent grants through the [Runtime management API](reference/api.md#runtime-management).
 
-## 2. Observe before dispatching work
+## 2. Subscribe before dispatching work
 
-The handoff opens `runtime.observe({ signal })` before spawning or sending. A fresh observation contains a current snapshot and an event stream starting immediately after that snapshot's cursor. This avoids a gap between reading the current state and subscribing to later changes.
+Call `runtime.onEvent(listener)` before querying `runtime.state` and `list()`, creating Agents or sending input. Refresh `get/list` after `agentChanged` and read `runtime.state` after `runtimeChanged`. `output` and `settled` can arrive before the send receipt. Get business receipts from your application's Services.
 
 ```ts
-const observation = runtime.observe({ signal });
-const initialState = observation.snapshot;
+const unsubscribe = runtime.onEvent(event => {
+  if (event.type === 'output') process.stdout.write(event.text);
+});
+// After observation is finished:
+unsubscribe();
 ```
-
-The host consumes `observation.events` while work proceeds. It can observe new Agent registrations, readiness, input admission, native execution boundaries, Service attempts and cleanup. The stream carries compact status and identity information. Use `onEvent` when you need Agent output text; it exposes `output`, `settled`, `error` and `exit`.
-
-Save the last cursor to resume within the same Runtime using `observe({ after: cursor })`. A resumed subscription returns `snapshot: null`. The Runtime retains 256 updates; if a consumer falls behind, it receives `gap` and the iterator ends. Reopen `observe()` and rebuild the view from a fresh snapshot. The cursor does not survive Runtime recreation. Cancel subscriptions explicitly when they are no longer needed, including after Core closes.
 
 ## 3. Create an idle Agent, then send its input
 
@@ -74,11 +73,11 @@ The handoff waits for the input admission and the relevant observations. It conf
 | `accepted` with `started`, `queued` or `handled` | The executor admitted the input in that way |
 | `not-accepted` with `idle` | A conditional input did not wake an idle Agent |
 | `unknown` input receipt | Admission cannot yet be confirmed; retain the original call for reconciliation |
-| `execution` / `settled` | The Agent's observed execution finished, failed or was aborted |
+| `settled` | The Agent's observed execution finished, failed or was aborted |
 | Successful Service operation | That identified operation returned successfully through Bridge |
 | Exported file matches the expected bytes | The handoff's application result passed its host check |
 
-A settlement does not identify which of several inputs were consumed. Current execution updates use `association: 'unknown'`; input events retain their separate request IDs. The handoff can use settlement as one condition because it exclusively controls each Agent's inputs and checks the specific Service operation and final file. A Harness with multiple input sources must maintain its own task/result protocol.
+A settlement does not identify which of several inputs were consumed. The handoff can use settlement as one condition because it exclusively controls each Agent's inputs and checks the specific Service operation and final file. A Harness with multiple input sources must maintain its own task/result protocol.
 
 An accepted or unknown input can keep Agent status at `running` while observed native execution remains `unknown`. A later settlement releases the execution's activity claims and usually returns the Agent to idle. It leaves the session, files and Slot available for further work.
 
@@ -94,35 +93,15 @@ A confirmed interrupt may include `discardedInputHashes`, the SHA-256 digests of
 
 ## 6. Use the file boundary your collaboration requires
 
-The handoff uses private workspaces and a Service for sharing. Other Harnesses can choose different file policies without changing the Runtime's ownership model:
+Seed a private directory with `spawn({ files })`. You can also create another private directory from a complete `files.snapshot` tree. Attach a shared directory with `spawn({ workspace: { id, mode } })`. Capturing a shared workspace requires quiescing the relevant writers.
 
-| Pattern | Runtime API | Behavior |
-| --- | --- | --- |
-| Private directory | `spawn({ files })` | Seeds an isolated project directory; default without an explicit workspace selection |
-| Shared live directory | `spawn({ workspace: { id, mode } })` | Attaches a Runtime-scoped project with `read-only` or `read-write` access |
-| Frozen copy | `spawn({ workspace: { mode: 'frozen-copy', files } })` | Creates a private directory from a fixed `FileSeed` |
-| Read-only discovery followed by task ownership | `files.prepare()` then `files.grant()` | Stages an empty read-only workspace, then grants write access with the exact prepared handle |
-| Consistent capture | `files.snapshot()` | Pauses project writers for a bounded capture; shared mounts require all writers to be fenced |
-| Guarded replacement | `files.install()` then `files.confirm()` | Replaces a writable private directory only when it still matches the expected snapshot, and keeps writers paused until confirmation |
+For a handoff in the same Agent, the Harness establishes domain ownership, captures the complete directory digest and calls `files.replace` once. The same operation can enable writes after successful installation. Writers resume before completion is reported. Reconcile uncertain delivery under the original request identity. If a Workspace Service knows the files changed and its business commit fails, it completes the business commit without replacing the files again.
 
-The file APIs operate on trusted workspace access. They do not decide who owns a task or whether a result should be published; the Harness or Service commits that domain decision. See [API reference](./reference/api.md#controlled-file-primitives-runtimefiles) for limits and replay behavior.
+## 7. Check the result and close the Run
 
-## 7. Classify the result and finalize the Run
+Stop dispatching work and call `runtime.close({ timeoutMs })`. For each Agent, Core confirms execution stop, archives the Session, collects declared files and deletes the sandbox. Failed required exports keep the sandbox and Slot. Retrying `stop` or `close` on the same Runtime can recover unfinished cleanup.
 
-The handoff stops its observer, classifies `business` as completed, failed or cancelled, and calls `finalizeRun`. The finalizer calls `runtime.close` and receives the cleanup evidence used by the artifact verifier. The verifier locates the reader's exported directory through `receipt.agents` and compares `received.txt` with the original bytes.
-
-Before starting closeout, stop Harness timers and external feeds that could dispatch new work. If Agents share a writable directory, establish a consistent export point by stopping the other writers and checking their `execution: 'stopped'` receipts before collecting from the remaining owner.
-
-Core cleanup has these ordering guarantees:
-
-1. `close` rejects fresh work and starts cleanup for every registered Agent, including startup still in flight. Endpoint shutdown proceeds concurrently with Agent cleanup.
-2. Each Agent follows **confirm execution stopped → archive native session → export declared artifacts → delete sandbox**. Required archive or export failures prevent sandbox deletion.
-3. Core closes the backend after all Agent cleanup is complete, flushes evidence and traces, and writes `runtime.json`. The receipt records anything still pending.
-4. `finalizeRun` attempts application artifact verification when a Core receipt is available. It closes application-owned facilities only after Core cleanup is complete, then saves `run-finalization.json`.
-
-A `StopReceipt` separates `execution: 'stopped' | 'unknown'` from `cleanup: 'complete' | 'pending'`. A `CloseReceipt` aggregates those per-Agent receipts under `agents`, and includes overall cleanup, pending resources and evidence progress. There is no top-level `execution` field on `CloseReceipt`.
-
-A required export failure keeps the sandbox available for recovery. Repeating `stop` or `close` joins ongoing work or retries unfinished stages. A pending receipt can also refer to a listener, trace or report, so inspect `pending[].kind` and `action`. It does not always mean a sandbox still exists. `finalizeRun` itself is called once per Runtime object; use the original Runtime and facility handles to reconcile pending work.
+A `StopReceipt` separates `execution: 'stopped' | 'unknown'` from `cleanup: 'complete' | 'pending'`. A `CloseReceipt` aggregates Agent receipts and identifies unfinished Runtime endpoints and reports. The application uses the receipt to locate exported files, verifies the handoff bytes and closes any facilities it owns.
 
 ## Agent lifecycle and capacity
 

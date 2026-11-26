@@ -27,10 +27,13 @@ test('installed subagents parent delegates natively and adopts two child results
   } }); t.after(() => upstream.close());
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const config = { image, outputDir, goal: 'SUBAGENTS_PARENT', workTimeoutMs: 120_000, closeTimeoutMs: 25_000,
-    backend: { sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
-      bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 512, requestTimeoutMs: 30_000 },
-      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } } };
-  await writeFile(join(evidenceDir, 'config.mjs'), `const config=${JSON.stringify(config)};config.backend.sandbox.apiKey=process.env.MURM_CORE_TEST_API_KEY;export default config;\n`, { mode: 0o600 });
+    sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000,
+      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } },
+    connection: { bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
+      modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 512, requestTimeoutMs: 30_000 } },
+    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
+  };
+  await writeFile(join(evidenceDir, 'config.mjs'), `const config=${JSON.stringify(config)};config.sandbox.apiKey=process.env.MURM_CORE_TEST_API_KEY;export default config;\n`, { mode: 0o600 });
   const proof = { package: installed.metadata, image, externalDirectory: installed.directory, failure: true };
   let stdout = ''; let stderrBytes = 0; let expired = false;
   t.after(async () => {

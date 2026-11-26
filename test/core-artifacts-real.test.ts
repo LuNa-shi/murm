@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -7,8 +8,8 @@ import { promisify } from 'node:util';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { createRuntime } from '@murm/core';
-import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
-import { ServiceRegistry } from '@murm/core/services';
+
+import { ServiceRegistry } from '@murm/core';
 import { createArtifactsUpstream } from './fixtures/core-artifacts-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
@@ -113,7 +114,7 @@ for (const executor of ['pi', 'codex'] as const) test(`${executor}: required art
     assert.ok(Object.values(resources).every(row => row.empty));
   });
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-  const runtime = await createRuntime({ backend: createOpenSandboxBackend({ executor,
+  const runtime = await createRuntime({ ...runtimeSettings({ executor,
     sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
       resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },

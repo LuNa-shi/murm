@@ -59,7 +59,7 @@ test(`native fixed ${poolSize}-peer substrate adopts immutable producer content 
     const backend = substrateBackendConfiguration({ host, upstreamUrl: upstream.url,
       lifecycleUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY });
-    report = await runSubstrateExample({ backend, runId: `native-${Date.now()}`, image, outputDir: directory, question: 'Verify the fixed ARITHMETIC_SEED contribution through publish, search, visit and adoption.', poolSize, maxRounds: 2,
+    report = await runSubstrateExample({ ...backend, runId: `native-${Date.now()}`, image, outputDir: directory, question: 'Verify the fixed ARITHMETIC_SEED contribution through publish, search, visit and adoption.', poolSize, maxRounds: 2,
       workTimeoutMs: Math.max(1, deadlineAt - Date.now()), turnTimeoutMs: 40_000, closeTimeoutMs: 30_000 }, controller.signal);
     clearTimeout(timer);
     assert.equal(report.businessFailure, null); assert.equal(report.cleanupFailure, null); assert.equal(report.reportSaveFailure, null);

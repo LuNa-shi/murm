@@ -1,8 +1,6 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core/services';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { createRuntime, createSandbox, ServiceRegistry } from '@murm/core';
 import { runWithReport } from '../../src/harnesses/shared/run-report.js';
 import { createSubagentsController } from './communication-fixture-controller.js';
 import { parentPromptFor, childPrompt, initialGoalFor } from './communication-fixture-prompts.js';
@@ -26,13 +24,13 @@ export function checkDelivery(output: any, deliveries: any, childCount: any = 2)
   return final;
 }
 
-export async function runSubagentsHarness({ backend, model = 'default', image, outputDir,
+export async function runSubagentsHarness({ sandbox, models, connection, model = 'default', image, outputDir,
   childCount = 2, goal = initialGoalFor(childCount), supplements = [], workTimeoutMs = 120_000, closeTimeoutMs = 30_000 }: any, signal: any) {
   if (!Number.isSafeInteger(childCount) || childCount < 2 || childCount > 7 || typeof goal !== 'string' || !goal || Buffer.byteLength(goal) > 64 * 1024 || !Array.isArray(supplements) || supplements.length > 4 || supplements.some((input: any) => typeof input !== 'string' || Buffer.byteLength(input) > 64 * 1024) ||
       !Number.isSafeInteger(workTimeoutMs) || workTimeoutMs < 1 || workTimeoutMs > 2147483647) throw new TypeError('Provide two to seven children, a text goal, at most four supplements and a finite work deadline');
   let controller: any; let final: any;
-  const secrets = [backend?.sandbox?.apiKey, backend?.sandbox?.execdToken,
-    ...Object.values((backend?.models ?? {} as Record<string, any>)).flatMap((value: any) => Object.values((value.upstream?.headers ?? {} as Record<string, any>)))]
+  const secrets = [sandbox?.apiKey, sandbox?.execdToken,
+    ...Object.values((models ?? {} as Record<string, any>)).flatMap((value: any) => Object.values((value.upstream?.headers ?? {} as Record<string, any>)))]
     .filter((value: any) => typeof value === 'string' && value.length).flatMap((value: any) => [value, value.replace(/^(?:Bearer|Basic)\s+/i, '')]).filter(Boolean);
   const redact = (value: any) => JSON.parse(JSON.stringify(value, (_key: any, item: any) => typeof item === 'string'
     ? secrets.reduce((text: any, secret: any) => text.replaceAll(secret, '[redacted]'), item) : item));
@@ -41,7 +39,7 @@ export async function runSubagentsHarness({ backend, model = 'default', image, o
     createRuntime: async () => {
       signal?.throwIfAborted();
       const common: any = { model, image, writable: true };
-      const runtime = await createRuntime({ backend: createPiOpenSandboxBackend(backend), outputDir, services: new ServiceRegistry(), maxAgents: childCount + 1, profiles: {
+      const runtime = await createRuntime({ sandbox: createSandbox(sandbox), models, connection, outputDir, services: new ServiceRegistry(), maxAgents: childCount + 1, profiles: {
         parent: { ...common, prompt: parentPromptFor(childCount), services: { agent: ['spawn', 'get', 'send', 'stop'] }, spawnProfiles: ['child'] },
         child: { ...common, prompt: childPrompt, services: {} },
       } });

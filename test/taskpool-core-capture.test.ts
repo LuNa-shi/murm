@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -6,20 +7,19 @@ import { tmpdir } from 'node:os';
 
 test('TaskPool recovers exact binary workDir bytes through Core after a lost snapshot response', { timeout: 15000 }, async t => {
   const { createLifecycleProvider } = await import('./fixtures/core-lifecycle-provider.js');
-  const { decodeFileSeed } = await import('../scripts/core-file-seed.js');
+  const { completeDigest, decodeFileSeed } = await import('../scripts/core-file-seed.js');
   const seed = { 'lemma.lean': { encoding: 'utf8', data: '-- actual guest λ\n' }, 'sample.bin': { encoding: 'base64', data: 'AP+A' } };
   let snapshotRequests = 0;
   let receipt;
   const provider = await createLifecycleProvider(t, { async fileOperation(action, input) {
     assert.equal(action, 'snapshot');
     snapshotRequests++;
-    receipt ??= { requestId: input.requestId, version: 91, digest: decodeFileSeed(seed).digest, files: structuredClone(seed) };
+    receipt ??= { requestId: input.requestId, version: 91, scope: 'complete', digest: completeDigest(decodeFileSeed(seed).digest), files: structuredClone(seed) };
     if (snapshotRequests === 1) return { disconnect: true };
     assert.equal(input.requestId, receipt.requestId);
     return { body: { result: receipt } };
   }, allowHostGit: true });
   const { createRuntime } = await import('../src/core/index.js');
-  const { createPiOpenSandboxBackend } = await import('../src/core/backends/pi-opensandbox.js');
   const { ServiceRegistry, snapshotServiceRegistry, invokeService } = await import('../src/core/services.js');
   const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
   const { prepareTaskPoolInputs } = await import('../examples/taskpool/prepare-inputs.js');
@@ -27,7 +27,7 @@ test('TaskPool recovers exact binary workDir bytes through Core after a lost sna
   const { makeEnvelope } = await import('../src/protocol/envelope.js');
   provider.allowDeletion();
   const outputDir = await mkdtemp(join(tmpdir(), 'taskpool-core-capture-'));
-  const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
+  const runtime = await createRuntime({ ...runtimeSettings({
     sandbox: { lifecycleBaseUrl: provider.url },
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
     modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },

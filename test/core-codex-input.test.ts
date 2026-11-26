@@ -14,15 +14,16 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   return next(specifier, context);
 } });
 const { createRuntime } = await import('@murm/core');
-const { createOpenSandboxBackend } = await import('@murm/core/backends/opensandbox');
-const { ServiceRegistry } = await import('@murm/core/services');
+const { runtimeSettings } = await import('./fixtures/core-runtime-settings.js');
+
+const { ServiceRegistry } = await import('@murm/core');
 hooks.deregister();
 
 test('Codex uses an Agent gateway token and retains one executor across inputs while rejecting unsupported steering before dispatch', async t => {
   provider.reset();
   const outputDir = await mkdtemp(join(tmpdir(), 'core-codex-input-'));
   const runtime = await createRuntime({
-    backend: createOpenSandboxBackend({
+    ...runtimeSettings({
       executor: 'codex',
       sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },

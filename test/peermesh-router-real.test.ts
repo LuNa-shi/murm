@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -8,7 +9,6 @@ import { once } from 'node:events';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createPeerMeshRouterHarness } from '../src/harnesses/peermesh/routed.js';
-import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
 import { httpClient } from '../src/harnesses/peermesh/http.js';
 import { createLocalPeerMeshStack } from './fixtures/peermesh-local-stack.js';
 import { createRouterUpstream, routerInputs } from './fixtures/peermesh-router-upstream.js';
@@ -38,7 +38,7 @@ test('actual Agensh PR comment and targeted user input cross one serial router i
     upstream = await createRouterUpstream({ deadlineAt: work.deadlineAt, deniedOrigin: `http://${host}:${denied.address().port}`, onFailure: () => work.abort() });
     harness = await work.create(() => createPeerMeshRouterHarness({ ...configuration, runId, image, signal: work.signal, exportLimit: 8 * 1024 ** 2, outputDir: join(directory, 'core'),
       router: { workTimeoutMs: work.remaining(), turnTimeoutMs: 75_000, maxNudges: 0, maxBatches: 8, events: { pollIntervalMs: 1000, maxPolls: 120 } },
-      backend: createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
+      ...runtimeSettings({ sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 128, requestTimeoutMs: 80_000 },
         models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 128 * 1024 ** 2, inodes: 8192 } } }) }));
     report.runtimeId = harness.id; report.agentId = harness.peer.id; report.initial = harness.snapshot();

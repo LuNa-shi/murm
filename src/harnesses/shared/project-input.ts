@@ -3,7 +3,7 @@ import { constants, type BigIntStats } from 'node:fs';
 import { lstat, open, opendir, realpath, type FileHandle } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify, TextDecoder } from 'node:util';
-import { fileSeedLimits, snapshotFileSeed } from '../../../scripts/core-file-seed.js';
+import { completeDigest, isFileTreePath, isGitPath, maxFileBytes, maxFiles, maxTotalBytes, snapshotFileSeed } from '../../../scripts/core-file-seed.js';
 import type { FileEntry } from '../../core/types.js';
 
 const git = promisify(execFile);
@@ -36,8 +36,7 @@ export function isInside(directory: string, path: string) {
 
 function normalizedPath(path: string) {
   const parts = path.split('/');
-  if (Buffer.byteLength(path) > maxPathBytes || /^[a-z]:\//i.test(path) || /[\\\0]/.test(path) ||
-      parts.some(part => ['', '.', '..'].includes(part) || Buffer.byteLength(part) > 255)) {
+  if (!isFileTreePath(path)) {
     throw projectError('PROJECT_PATH_INVALID', `Invalid relative project path ${JSON.stringify(path)}`);
   }
   return parts;
@@ -69,7 +68,7 @@ async function gitFiles(cwd: string, signal: AbortSignal) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
   const options = {
     cwd, signal, timeout: 10_000, env: { ...env, LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0' },
-    encoding: 'buffer' as const, maxBuffer: (maxPathBytes + 128) * fileSeedLimits.count,
+    encoding: 'buffer' as const, maxBuffer: (maxPathBytes + 128) * maxFiles,
   };
   let workTree: string;
   try {
@@ -119,7 +118,7 @@ export async function resolveProjectDirectory(cwd: string) {
 export async function captureProject(cwd: string, outputDir: string, signal: AbortSignal) {
   const excluded = isInside(cwd, outputDir) ? relative(cwd, outputDir) : null;
   const entries: Record<string, FileEntry> = Object.create(null);
-  const skip = (path: string) => path.split('/').includes('.git') ||
+  const skip = (path: string) => isGitPath(path) ||
     (excluded !== null && (path === excluded || path.startsWith(excluded + '/')));
   let bytes = 0;
   let count = 0;
@@ -140,8 +139,8 @@ export async function captureProject(cwd: string, outputDir: string, signal: Abo
     if (!info.isFile() || info.nlink !== 1n) {
       throw projectError('PROJECT_FILE_UNSUPPORTED', `Project path is not a supported ordinary file: ${JSON.stringify(path)}`);
     }
-    if (++count > fileSeedLimits.count || info.size > BigInt(fileSeedLimits.entryBytes) ||
-        info.size > BigInt(fileSeedLimits.treeBytes - bytes)) {
+    if (++count > maxFiles || info.size > BigInt(maxFileBytes) ||
+        info.size > BigInt(maxTotalBytes - bytes)) {
       throw projectError('PROJECT_FILE_LIMIT', `Project exceeds the file count or byte limit at ${JSON.stringify(path)}`);
     }
     const location = accessPath(parent, name);
@@ -251,7 +250,7 @@ export async function captureProject(cwd: string, outputDir: string, signal: Abo
   for (const file of Object.values(snapshot.files)) Object.freeze(file);
   return Object.freeze({
     files: Object.freeze(snapshot.files),
-    digest: `complete:sha256:${snapshot.digest}` as const,
+    digest: completeDigest(snapshot.digest),
     selection, fileCount: count, bytes, excludedOutputDirectory: excluded,
   });
 }
