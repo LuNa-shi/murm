@@ -15,6 +15,7 @@ import { createAgentService } from './agent-service.js';
 import { createServiceTrace, exportServiceStates } from './service-trace.js';
 import { registerServicePrivateValues, snapshotServiceRegistry } from './services.js';
 
+export { finalizeRun } from './run-finalization.js';
 export type * from './types.js';
 
 interface InterruptRequest {

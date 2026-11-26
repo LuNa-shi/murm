@@ -5,7 +5,7 @@
   "scope_roots": [
     "src",
     "scripts",
-    "services",
+    "deploy",
     "integrations",
     "test-support/subagents",
     "website",
@@ -462,7 +462,7 @@
       "role": "Executable swarm CLI entry point and exit-code boundary"
     },
     {
-      "path": "services/builtin/compose.yaml",
+      "path": "deploy/builtin-services/compose.yaml",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -471,7 +471,7 @@
       "role": "Four-process isolated service deployment with independent persistent volumes"
     },
     {
-      "path": "services/builtin/Dockerfile",
+      "path": "deploy/builtin-services/Dockerfile",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -482,7 +482,7 @@
       "role": "Built-in service image recipe and persisted database mount"
     },
     {
-      "path": "services/builtin/judge-peer-entrypoint.sh",
+      "path": "deploy/builtin-services/judge-peer-entrypoint.sh",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -492,7 +492,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "services/builtin/README.md",
+      "path": "deploy/builtin-services/README.md",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -503,7 +503,7 @@
       "role": "Built-in provider deployment configuration"
     },
     {
-      "path": "services/mathlib-search/Dockerfile",
+      "path": "deploy/mathlib-search/Dockerfile",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -514,7 +514,7 @@
       "role": "Mathlib provider image recipe"
     },
     {
-      "path": "services/mathlib-search/README.md",
+      "path": "src/services/mathlib-search/README.md",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -525,7 +525,7 @@
       "role": "Mathlib provider configuration and operation notes"
     },
     {
-      "path": "services/mathlib-search/references/loogle.md",
+      "path": "src/services/mathlib-search/references/loogle.md",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -536,7 +536,7 @@
       "role": "Repository-owned query guidance loaded by bundle"
     },
     {
-      "path": "services/mathlib-search/service.json",
+      "path": "src/services/mathlib-search/service.json",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -547,7 +547,7 @@
       "role": "Optional provider manifest, schemas, help and documentation declarations"
     },
     {
-      "path": "services/mathlib-search/SKILL.md",
+      "path": "src/services/mathlib-search/SKILL.md",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -558,7 +558,7 @@
       "role": "Repository-owned full Mathlib tool usage instructions loaded by bundle"
     },
     {
-      "path": "services/opensandbox-agent/Dockerfile",
+      "path": "deploy/worker/Dockerfile",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/01-agent-core.md",
@@ -569,7 +569,7 @@
       "role": "OpenSandbox agent image recipe containing the worker, Pi package and native shell tools"
     },
     {
-      "path": "services/opensandbox-agent/pi-models.json",
+      "path": "deploy/worker/pi-models.json",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/01-agent-core.md",
@@ -1135,7 +1135,7 @@
       "role": "Provider registration, profile projection, readiness cache and invocation"
     },
     {
-      "path": "src/services/mathlib-search-service.ts",
+      "path": "src/services/mathlib-search/service.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1238,6 +1238,14 @@
         "docs/architecture/15-core-runtime.md"
       ],
       "role": "Runtime assembly, Agent admission, input and bounded lifecycle"
+    },
+    {
+      "path": "src/core/run-finalization.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "Public Run finalization, bounded cleanup and late facility receipts"
     },
     {
       "path": "src/core/config.ts",
@@ -1468,7 +1476,7 @@
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Harness host reporting with independent business, cleanup and save failures"
+      "role": "Compatibility Harness reporting and shared atomic persistence for application outcome reports"
     },
     {
       "path": "src/harnesses/taskpool/coordination-permissions.ts",
@@ -1750,6 +1758,14 @@
         "docs/architecture/20-lead-worker-harness.md"
       ],
       "role": "Kimi K3 fixed-team sample configuration and finite resource bounds"
+    },
+    {
+      "path": "examples/lead-worker/fixtures/oracle.mjs",
+      "category": "Controlled fixtures",
+      "chapters": [
+        "docs/architecture/20-lead-worker-harness.md"
+      ],
+      "role": "Frozen host-side JSONL task cases and candidate transcript checks for #235"
     },
     {
       "path": "src/harnesses/peermesh/team.ts",
@@ -2905,7 +2921,7 @@
       "role": "Independent Subagents project initialization, archive installation and preservation of existing files"
     },
     {
-      "path": "services/local-setup/config.js",
+      "path": "scripts/local-setup/templates/config.js",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/07-run-configuration.md"
@@ -2913,7 +2929,7 @@
       "role": "Editable generated Subagents configuration"
     },
     {
-      "path": "services/local-setup/environment.js",
+      "path": "scripts/local-setup/templates/environment.js",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/07-run-configuration.md"
@@ -2921,7 +2937,7 @@
       "role": "Generated project environment loader"
     },
     {
-      "path": "services/opensandbox-local/config.toml",
+      "path": "deploy/opensandbox/config.toml",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/07-run-configuration.md",

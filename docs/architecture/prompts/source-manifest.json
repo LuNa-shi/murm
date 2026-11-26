@@ -23,7 +23,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "d79e0714b8539867613da42ad867502f9369038714094da39ad81459cadde8ad"
+      "sha256": "cecad3a3576f675c4809842be8041de4eb26a89e7f8ed1b8ac733eec136d843c"
     },
     {
       "path": "src/core/bridge.ts",
@@ -79,7 +79,7 @@
     },
     {
       "path": "examples/substrate/fate-run.ts",
-      "sha256": "83daa6f91fdfdbd01b3ebdf9b4fb42b4b1babdb183f1f5a04d33b121d06e8f6d"
+      "sha256": "c2055a4d4dd9011b4ab82d0eaac9c0591be1485ed1ec263cc0297a63049a2b91"
     },
     {
       "path": "examples/substrate/fate-service.ts",
@@ -202,15 +202,15 @@
       "sha256": "fe71c025f6236adde42d949cf7cc70b788a76dbf2a152384e4d6520d771dd722"
     },
     {
-      "path": "services/mathlib-search/service.json",
+      "path": "src/services/mathlib-search/service.json",
       "sha256": "c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f"
     },
     {
-      "path": "services/mathlib-search/SKILL.md",
+      "path": "src/services/mathlib-search/SKILL.md",
       "sha256": "e7f79c40eed183b5a5bb0568923ec5575d450016dba41ff5a7cef94414e6f27c"
     },
     {
-      "path": "services/mathlib-search/references/loogle.md",
+      "path": "src/services/mathlib-search/references/loogle.md",
       "sha256": "3aff1ebba86327de5465c0b44b37cb5ec57f5bac6b07c90ed211a0b2f02376bd"
     }
   ],
@@ -579,7 +579,7 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "555145401e7ad2c216a85ccbf23940b5a17f0d9d0f07e8af2d7fc23377ab4a08"
+      "sha256": "2659fd9f13256e062025898c3dce7e50df4c1140488e19cbfbd907a3cb33d2e1"
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",

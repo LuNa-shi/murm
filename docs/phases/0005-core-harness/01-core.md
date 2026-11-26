@@ -112,7 +112,9 @@ const runtime = await createRuntime({
 
 `createRuntime` 完成以下装配后返回：取得注册表与 Profile 的不可变快照；合入内置 Agent Service 并拒绝保留 ID `agent` 被覆盖；校验 Profile 引用的操作和可 spawn 的角色；校验 backend 能力、模型与部署配置；创建本次记录目录、Bridge 和模型访问入口。它尚未分配 Agent sandbox。
 
-**Q2 已确认：ServiceRegistry 和 Profile 在 `createRuntime` 前装配，运行中不可增删/修改，Runtime 使用冻结快照。** 运行时仍可按已注册 Profile 动态 spawn Agent，并由宿主向具体 Agent 提供 spawn 允许的初始输入、文件、bindings 或 secretEnv；这不等于修改 Profile 或注册表。动态轮换已存活 Agent 的凭据不在首版范围。
+**Q2 首版：ServiceRegistry 和 Profile 在 `createRuntime` 前装配，运行中不可增删/修改，Runtime 使用冻结快照。** 运行时仍可按已注册 Profile 动态 spawn Agent，并由宿主向具体 Agent 提供 spawn 允许的初始输入、文件、bindings 或 secretEnv；这不等于修改 Profile 或注册表。动态轮换已存活 Agent 的凭据不在首版范围。
+
+[#235 的 Q2 后续扩展](06-lead-worker-dynamic.md)规定运行中的受控 Profile/Service 新增、Service 退役与实例级授权。静态装配仍使用独立快照，新增与退役经公开 Runtime 接口提交。
 
 ### 3.3 当前 backend 的部署与模型配置
 

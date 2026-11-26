@@ -36,7 +36,7 @@ cleanroom_digest=sha256:e75597f4307bf02746598d2b7eb8ae136b9978f0c2551e04b065b14e
 docker pull "$cleanroom@$cleanroom_digest"
 docker tag "$cleanroom@$cleanroom_digest" "$cleanroom:task_cleanroom_v6"
 
-docker build -f services/opensandbox-agent/Dockerfile \
+docker build -f deploy/worker/Dockerfile \
   --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
   -t murm-programbench-base:local .
 docker build -t murm-programbench-pastel:local benchmarks/programbench-pastel

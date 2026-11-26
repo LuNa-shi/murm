@@ -13,7 +13,7 @@ const docker = (...args: any) => exec('docker', args, { timeout: 20_000 });
 const sandboxId = `disk-probe-${randomUUID()}`;
 const name = `sandbox-${sandboxId}`;
 const agent: any = { mission_id: 'mission:disk', agent_id: 'agent:disk', resource_key: 'agent:disk-resource' };
-const catalog = JSON.parse((await readFile(new URL('../services/opensandbox-agent/pi-models.json', import.meta.url))) as unknown as string);
+const catalog = JSON.parse((await readFile(new URL('../deploy/worker/pi-models.json', import.meta.url))) as unknown as string);
 const { assertShippedModelPair } = await import('../src/agent/model-catalog.js');
 const modelCatalogResource = await assertShippedModelPair({ provider: 'gpt_proxy', model: catalog.providers.gpt_proxy.models[0].id });
 const request = async (route: any, payload?: unknown) => JSON.parse((await docker('exec', name, 'node', '-e', `

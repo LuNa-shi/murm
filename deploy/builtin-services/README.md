@@ -87,7 +87,7 @@ The checked-in [Compose file](compose.yaml) selects isolated mode, separate
 Task/Context/Judge volumes and a stateless Catalog. Its host ports default to
 8781–8784; override with `MURM_{TASK,CONTEXT,JUDGE,CATALOG}_PORT`.
 Per-service principal arrays use `MURM_<SERVICE>_SERVICE_PRINCIPALS`.
-`docker compose -f services/builtin/compose.yaml up --build -d` starts those
+`docker compose -f deploy/builtin-services/compose.yaml up --build -d` starts those
 hosts with the limitations above. The generic Compose recipe does not use the
 repository-owned independent peer protocol described above. The dedicated
 benchmark launcher has been retired; a consuming host owns peer composition.

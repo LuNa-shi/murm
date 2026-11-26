@@ -38,10 +38,10 @@ This section is generated from executable exports and checked against the source
 | [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `ee72fba940f1e45926b4f8c04a13c355868e6d15b84df6cade45f2371b4db770` |
 | [src/agent/capability-profile.ts](../../src/agent/capability-profile.ts) | `53a57335eb59af29119a889b12044d94d838c5df9d138cc86e2d0da5bd01f0c5` |
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `28570d9b5cfadc3ceaa8136860bb8df2238ce951a144b996e5b2d9d5f2924111` |
-| [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
+| [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `d79e0714b8539867613da42ad867502f9369038714094da39ad81459cadde8ad` |
-| [src/core/types.ts](../../src/core/types.ts) | `b238029927c87fb489912fb3c833124cdefc5fe8118166b9f8ee65b68c811709` |
+| [src/core/index.ts](../../src/core/index.ts) | `cecad3a3576f675c4809842be8041de4eb26a89e7f8ed1b8ac733eec136d843c` |
+| [src/core/types.ts](../../src/core/types.ts) | `a789a8389c2c034346a745b178e79f55f25623e7cc4f51cd9b9348fe2e8e54f8` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `f8cea3ce6983ecd15f81ffe7a5c483f476b728a1421b40961e49073d815d7664` |
 | [src/core/services.ts](../../src/core/services.ts) | `8c1d64489bd31ab3cec3b3b295a36ebaa2e8a9982f0a4aa059a05c405f41b6d1` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
@@ -3092,6 +3092,7 @@ These are the package entrypoint declarations and the declarations they referenc
 
 ```ts
 import type { CreateRuntimeOptions, Runtime } from './types.js';
+export { finalizeRun } from './run-finalization.js';
 export type * from './types.js';
 export declare function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
 ```
@@ -3100,6 +3101,7 @@ export declare function createRuntime(options: CreateRuntimeOptions): Promise<Ru
 
 ```ts
 import type { ServiceRegistry } from './services.js';
+import type { JsonValue } from './service-types.js';
 export {};
 declare const backendBrand: unique symbol;
 export interface Backend {
@@ -3322,6 +3324,73 @@ export interface CloseReceipt {
         recorded: number;
         lost: number;
         pending: number;
+    };
+}
+export type RunBusinessOutcome<Result extends JsonValue = JsonValue> = {
+    status: 'completed';
+    value: Result;
+} | {
+    status: 'failed' | 'cancelled';
+    error: {
+        code: string;
+        message: string;
+    };
+};
+export interface RunFinalizationError {
+    code: string;
+    message: string;
+    details?: readonly unknown[];
+}
+export type RunCoreClose = {
+    status: 'complete' | 'pending';
+    receipt: CloseReceipt;
+} | {
+    status: 'unknown';
+    error: RunFinalizationError;
+};
+export type RunArtifactVerification = {
+    status: 'not-requested' | 'passed';
+} | {
+    status: 'pending' | 'failed';
+    error: RunFinalizationError;
+};
+export type RunFacilityCleanup = {
+    id: string;
+} & ({
+    status: 'complete';
+} | {
+    status: 'pending';
+    error: RunFinalizationError;
+});
+export interface RunFinalizationOptions<Result extends JsonValue = JsonValue> {
+    runtime: Pick<Runtime, 'id' | 'close'>;
+    outputDir: string;
+    business: RunBusinessOutcome<Result>;
+    cleanupTimeoutMs?: number;
+    verifyArtifacts?(receipt: CloseReceipt, signal: AbortSignal): void | Promise<void>;
+    ownedFacilities?: readonly {
+        id: string;
+        close(signal: AbortSignal): void | Promise<void>;
+    }[];
+}
+export interface RunLateFacilityCleanup {
+    runtimeId: string;
+    facility: RunFacilityCleanup;
+    reportSaveFailure: RunFinalizationError | null;
+    reportPath?: string;
+}
+export interface RunFinalization<Result extends JsonValue = JsonValue> {
+    runtimeId: string;
+    business: RunBusinessOutcome<Result>;
+    coreClose: RunCoreClose;
+    artifactVerification: RunArtifactVerification;
+    facilities: readonly RunFacilityCleanup[];
+    reportSaveFailure: RunFinalizationError | null;
+    reportPath?: string;
+    lateFacilityReportPath?: string;
+    lateFacilityCleanup?: {
+        current(): RunLateFacilityCleanup | undefined;
+        readonly result: Promise<RunLateFacilityCleanup>;
     };
 }
 export interface Runtime {
