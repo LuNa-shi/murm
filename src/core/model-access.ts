@@ -211,7 +211,12 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
     throw error;
   }
   return {
-    credentialsForAgent(agentId: string, alias: string) {
+    credentialsForAgent(agentId: string, alias: string): {
+      environment: Record<string, string>;
+      secretEnvironment: Record<string, string>;
+      baseUrl: string;
+      catalogResource?: Readonly<{ path: string; sha256: string }>;
+    } {
       const entry = aliases.get(alias);
       if (!entry || !liveAgent(agentId, alias) || tokens.has(agentId)) {
         throw Object.assign(new Error('Model credentials require a fresh live Agent and its configured model'),
@@ -220,7 +225,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
       const token = entry.gateway!.issueToken({ runtimeId, agentId });
       tokens.set(agentId, { token, gateway: entry.gateway! });
       const prefix = `PI_${entry.model.provider.toUpperCase().replaceAll('-', '_')}`;
-      return { environment: config.executor?.kind === 'codex' ? {} : { [`${prefix}_BASE_URL`]: entry.baseUrl },
+      return { environment: config.executor?.kind === 'codex' ? {} : { [`${prefix}_BASE_URL`]: entry.baseUrl! },
         secretEnvironment: config.executor?.kind === 'codex' ? { OPENAI_API_KEY: token } : { [`${prefix}_API_KEY`]: token },
         baseUrl: entry.baseUrl!, catalogResource: entry.catalogResource };
     },
