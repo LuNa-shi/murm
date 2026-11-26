@@ -1,4 +1,4 @@
-import { setTimeout as delay } from 'node:timers/promises';
+import timers from 'node:timers/promises';
 
 const activeIntervalMs = 100;
 const maxIdleIntervalMs = 1000;
@@ -25,7 +25,7 @@ export function createWorkerEventPoll() {
         if (before !== revision) continue;
         intervalMs = quiet ? Math.min(maxIdleIntervalMs, intervalMs * 2) : activeIntervalMs;
         sleep = new AbortController();
-        await delay(intervalMs, undefined, { signal: AbortSignal.any([signal, sleep.signal]) }).catch(() => {});
+        await timers.setTimeout(intervalMs, undefined, { signal: AbortSignal.any([signal, sleep.signal]) }).catch(() => {});
         sleep = undefined;
       }
     },

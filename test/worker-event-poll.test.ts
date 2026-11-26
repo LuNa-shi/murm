@@ -6,6 +6,7 @@ import { createWorkerEventPoll } from '../src/core/worker-event-poll.js';
 test('quiet reads back off, fresh work wakes immediately, and active reads stay fast', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const poll = createWorkerEventPoll();
+  t.after(() => poll.stop());
   const reads: number[] = [];
   let quiet = true;
   let time = 0;
