@@ -29,8 +29,10 @@ async function setup(t) {
   return { runtime, agent, outputDir };
 }
 
-test('unknown input receipt can gain evidence without a second submission', async t => {
+test('unknown input receipt can gain public evidence without a second submission', { timeout: 5000 }, async t => {
   const { runtime, agent } = await setup(t);
+  const observation = runtime.observe();
+  t.after(() => observation.cancel());
   const first = await runtime.send(agent.id, 'fixed', { requestId: 'one' });
   assert.equal(first.status, 'unknown');
   transport.confirm(first.inputId, 'started');
@@ -38,6 +40,13 @@ test('unknown input receipt can gain evidence without a second submission', asyn
   assert.deepEqual(resolved, { inputId: first.inputId, status: 'accepted', disposition: 'started' });
   assert.equal(transport.submissions.size, 1);
   await assert.rejects(runtime.send(agent.id, 'different', { requestId: 'one' }), { code: 'CONFLICT' });
+  for (const state of ['registered', 'dispatched', 'unknown', 'receipt-query', 'accepted']) {
+    const { value } = await observation.events.next();
+    assert.equal(value.type, 'input');
+    assert.equal(value.state, state);
+    assert.equal(value.requestId, 'one');
+    assert.equal(value.inputId, first.inputId);
+  }
 });
 
 test('concurrent inputs preserve scope, default mode and pre-receipt settled snapshots', async t => {
@@ -72,8 +81,10 @@ test('concurrent inputs preserve scope, default mode and pre-receipt settled sna
   assert.equal(final.cursor, 2);
 });
 
-test('host send wait is bounded while its original submission stays in flight', async t => {
+test('host send wait is bounded while its original submission stays in flight', { timeout: 5000 }, async t => {
   const { runtime, agent } = await setup(t);
+  const observation = runtime.observe();
+  t.after(() => observation.cancel());
   let release;
   transport.next = id => new Promise(resolve => { release = () => { transport.confirm(id, 'started'); resolve(); }; });
   t.mock.timers.enable({ apis: ['setTimeout'] });
@@ -89,6 +100,16 @@ test('host send wait is bounded while its original submission stays in flight', 
   assert.equal(confirmed.inputId, first.inputId);
   assert.equal(transport.submissions.size, 1);
   t.mock.timers.reset();
+  const states = [];
+  for await (const update of observation.events) {
+    assert.equal(update.type, 'input');
+    assert.equal(update.requestId, 'bounded');
+    assert.equal(update.inputId, first.inputId);
+    states.push([update.state, update.reason]);
+    if (update.state === 'accepted') break;
+  }
+  assert.deepEqual(states, [['registered', undefined], ['dispatched', undefined],
+    ['unknown', 'host-wait-expired'], ['accepted', undefined]]);
 });
 
 test('handled receipts do not imply execution and fresh sends reject exited and closed Agents', async t => {
@@ -209,7 +230,7 @@ test('lists every registered Agent and filters by parent and observed status', a
   }
 });
 
-test('send independently selects timing and waking, and audits the trusted host source', async t => {
+test('send independently selects timing and waking, and audits the trusted host source', { timeout: 5000 }, async t => {
   const { runtime, agent, outputDir } = await setup(t);
   transport.next = async id => transport.confirm(id, 'started');
   const started = await runtime.start(agent.id, 'first phase', { requestId: 'start' });
@@ -221,8 +242,18 @@ test('send independently selects timing and waking, and audits the trusted host 
   assert.deepEqual(await runtime.send(agent.id, 'steer as before', legacy), legacySteer);
   transport.next = async id => transport.confirm(id, 'queued');
   const options = { requestId: 'push', source: 'external-message-service', steeringMode: 'all', wakeIfIdle: false };
+  const observation = runtime.observe();
+  t.after(() => observation.cancel());
   const steered = await runtime.send(agent.id, 'push now', options);
   assert.equal(steered.disposition, 'queued');
+  for (const state of ['registered', 'dispatched', 'accepted']) {
+    const { value } = await observation.events.next();
+    assert.equal(value.type, 'input');
+    assert.equal(value.state, state);
+    assert.equal(value.inputId, steered.inputId);
+    assert.equal(value.requestId, options.requestId);
+    assert.equal(value.disposition, state === 'accepted' ? 'queued' : undefined);
+  }
   assert.equal(transport.submissions.get(steered.inputId).wakeIfIdle, false);
   assert.equal(transport.submissions.get(steered.inputId).steeringMode, 'all');
   assert.deepEqual(await runtime.send(agent.id, 'push now', { ...options, mode: 'steer' }), steered);
