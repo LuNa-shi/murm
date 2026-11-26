@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -20,4 +22,54 @@ test('murm rejects an invalid argument before loading developer configuration', 
   const result = spawnSync(process.execPath, [cli, 'doctor', '--config', '/does-not-exist', '--unknown'], { encoding: 'utf8' });
   assert.equal(result.status, 2);
   assert.match(result.stderr, /Usage: murm doctor/);
+});
+
+
+test('doctor rejects invalid editable backend settings before infrastructure work', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-doctor-config-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const backend = {
+    sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
+    bridge: { host: '0.0.0.0', publicUrl: 'http://172.17.0.1:{port}' },
+    modelGateway: { host: '0.0.0.0', advertiseHost: '172.17.0.1' },
+    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: '', headers: {} } } },
+    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+  };
+  const filename = join(directory, 'config.mjs');
+  for (const changed of [
+    { ...backend, bridge: { ...backend.bridge, publicUrl: 'http://127.0.0.1:{port}' } },
+    { ...backend, isolation: { ...backend.isolation, disk: { bytes: 1, inodes: 4096 } } },
+  ]) {
+    await writeFile(filename, 'export default ' + JSON.stringify({ image: 'unused', backend: changed }));
+    const result = spawnSync(process.execPath, [cli, 'doctor', '--config', filename, '--smoke'], { encoding: 'utf8' });
+    assert.equal(result.status, 1, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.ok(report.checks.some(check => check.id === 'config.backend' && !check.ok), result.stdout);
+    assert.equal(report.smoke, undefined);
+    assert.deepEqual(report.timings, []);
+  }
+});
+
+test('doctor classifies invalid active model routes before allocation', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-doctor-model-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const filename = join(directory, 'config.mjs');
+  await writeFile(filename, `export default {
+    image: 'unused', model: 'default', childModel: 'child', backend: {
+      sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
+      bridge: { host: '0.0.0.0', publicUrl: 'http://172.17.0.1:{port}' },
+      modelGateway: { host: '0.0.0.0', advertiseHost: '172.17.0.1' },
+      models: {
+        default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'https://example.com/v1/responses', headers: {} } },
+        child: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'https://example.com/', headers: {} } },
+      },
+      isolation: { network: 'local-docker', disk: { bytes: 67108864, inodes: 4096 } },
+    }
+  }`);
+  const result = spawnSync(process.execPath, [cli, 'doctor', '--config', filename], { encoding: 'utf8' });
+  assert.equal(result.status, 1);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.model.configuration, 'invalid');
+  assert.ok(report.checks.some(check => check.id === 'config.models' && !check.ok));
+  assert.deepEqual(report.timings, []);
 });

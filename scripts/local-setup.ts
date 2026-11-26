@@ -8,6 +8,7 @@ import {
 import { runLocalSmoke } from './local-setup-smoke.js';
 import { loadLocalProjectConfig, prepareSubagentsProject } from './local-setup-template.js';
 import { prepareWorkerImage } from './local-setup-worker.js';
+import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
 import type { LocalCommand } from './murm-arguments.js';
 
 const packageRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -18,18 +19,41 @@ type Timing = { id: string; elapsedMs: number; cached?: boolean };
 type Model = { configuration: 'complete' | 'missing' | 'invalid'; verification: 'not-verified' };
 
 function modelState(config?: ProjectConfig): Model {
-  const route = config?.backend.models[config.model ?? 'default'];
-  const upstream = config ? route?.upstream.url : process.env.MURM_SUBAGENTS_MODEL_URL;
-  let configuration: Model['configuration'] = 'missing';
-  if (upstream) {
+  const aliases = config ? new Set([config.rootModel ?? config.model ?? 'default', config.childModel ?? config.model ?? 'default']) : undefined;
+  const routes = aliases ? [...aliases].map(alias => config!.backend.models?.[alias]) : undefined;
+  const upstreams = routes ? routes.map(route => route?.upstream?.url) : [process.env.MURM_SUBAGENTS_MODEL_URL];
+  let configuration: Model['configuration'] = 'complete';
+  if (routes?.some(route => !route)) configuration = 'invalid';
+  for (const upstream of upstreams) {
+    if (!upstream) {
+      if (configuration !== 'invalid') configuration = 'missing';
+      continue;
+    }
     try {
       const parsed = new URL(upstream);
-      configuration = ['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password ? 'complete' : 'invalid';
+      if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || !parsed.pathname.endsWith('/v1/responses')) configuration = 'invalid';
     } catch {
       configuration = 'invalid';
     }
   }
   return { configuration, verification: 'not-verified' };
+}
+
+function checkProjectBackend(config: ProjectConfig): DiagnosticCheck {
+  try {
+    // The real backend validates every infrastructure field without allocating.
+    // Missing model endpoints are reported separately while preparing the host.
+    createPiOpenSandboxBackend({
+      ...config.backend,
+      models: Object.fromEntries(Object.entries(config.backend.models).map(([alias, route]) => [alias, {
+        ...route, upstream: { ...route.upstream, url: 'http://127.0.0.1/v1/responses' },
+      }])),
+    });
+    return { id: 'config.backend', ok: true, detail: 'The editable backend configuration satisfies the Core startup contract.' };
+  } catch {
+    return { id: 'config.backend', ok: false, detail: 'The editable backend configuration violates the Core startup contract.',
+      remedy: 'Check Bridge and Gateway addresses, sandbox settings, model aliases and explicit disk quotas in config.js.' };
+  }
 }
 
 async function configExists(path: string) {
@@ -92,6 +116,12 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     const configPath = command.command === 'doctor' ? resolve(command.configPath) : join(resolve(command.directory), 'config.js');
     const config = command.command === 'doctor' || await configExists(configPath) ? await loadLocalProjectConfig(configPath) : undefined;
     report.model = modelState(config);
+    if (config) checks.push(checkProjectBackend(config));
+    if (report.model.configuration === 'invalid') checks.push({
+      id: 'config.models', ok: false, detail: 'An active model alias or Responses endpoint is invalid.',
+      remedy: 'Configure every Root and Child model alias with an HTTP(S) endpoint ending in /v1/responses, without embedded credentials.',
+    });
+    if (checks.some(check => !check.ok)) return report;
     const environment = await resolveLocalEnvironment({
       lifecycleBaseUrl: config?.backend.sandbox.lifecycleBaseUrl ?? process.env.MURM_SUBAGENTS_LIFECYCLE_URL,
       endpointHost: config?.backend.sandbox.endpointHost ?? process.env.MURM_SUBAGENTS_ENDPOINT_HOST,
@@ -121,7 +151,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
 
     if (command.command === 'setup' || command.smoke) {
       stage = 'smoke';
-      report.smoke = await timed('smoke', () => runLocalSmoke({ ...environment, image: worker.image!.id, signal }));
+      report.smoke = await timed('smoke', () => runLocalSmoke({ ...environment, image: worker.image!.id, backend: config?.backend, signal }));
       if (!report.smoke.ok) {
         report.infrastructure = 'failed';
         return report;
@@ -165,7 +195,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     }
     if (provider) {
       try {
-        if (report.ok || report.smoke?.cleanup === 'pending') await provider.release();
+        if (report.ok || report.smoke?.cleanup === 'pending') await provider.retain();
         else report.providerCleanup = await provider.cleanup();
       } catch {
         report.providerCleanup = { id: provider.id, status: 'pending' };
