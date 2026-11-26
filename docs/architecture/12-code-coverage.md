@@ -214,10 +214,10 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [trace-viewer/public/licenses/space-grotesk.txt](../../trace-viewer/public/licenses/space-grotesk.txt) | License for the bundled space-grotesk font | [06-observability-experiments](06-observability-experiments.md) | `18a4de52385f6b988782639d5d0cc1326e5a8c2de9a7f01d7b20d9aedcc60943` |
 | [trace-viewer/public/style.css](../../trace-viewer/public/style.css) | Responsive layout, timeline layers and murm color themes | [06-observability-experiments](06-observability-experiments.md) | `ee484d0697ce017031392a2f6bf0c1e5e4fcb73d12407a09d71162631cb2fbd4` |
 | [trace-viewer/reader.mjs](../../trace-viewer/reader.mjs) | Versioned evidence discovery, indexing, projection and bounded raw reads | [06-observability-experiments](06-observability-experiments.md) | `83da798ae87429fa22ba746c392124795ce94584c77d15110c928d269b3877b6` |
-| [trace-viewer/README.md](../../trace-viewer/README.md) | Candidate package and remote viewing instructions | [06-observability-experiments](06-observability-experiments.md) | `8e36eee2c25c3e96353ae5d4dac73b03862124733b8b17885c05472981a22264` |
+| [trace-viewer/README.md](../../trace-viewer/README.md) | Candidate package and remote viewing instructions | [06-observability-experiments](06-observability-experiments.md) | `2c42dbfe41db684042b5e420e60fc45fd00b38fb963360b4a9333ab07401e0d5` |
 | [trace-viewer/server.mjs](../../trace-viewer/server.mjs) | Loopback static assets, read-only API and resumable SSE | [06-observability-experiments](06-observability-experiments.md) | `639a9bf8675df6bff2d36bd1fcf9310db4baded9f14d6e6a4156725f4beeedbd` |
 | [trace-viewer/server.test.mjs](../../trace-viewer/server.test.mjs) | Standalone CLI and HTTP/SSE verification | [06-observability-experiments](06-observability-experiments.md) | `569b399d2300c96ce5b5937652aaf40c87379f7157a93b848878036ecc233451` |
-| [trace-viewer/test/reader.test.mjs](../../trace-viewer/test/reader.test.mjs) | Reader contract verification with synthetic saved and live Core Runs | [06-observability-experiments](06-observability-experiments.md) | `75a77795c77092f1afacb9f2c7030d05021e7189489f5949881101d6555517d9` |
+| [trace-viewer/test/reader.test.mjs](../../trace-viewer/test/reader.test.mjs) | Reader contract verification with synthetic saved and live Core Runs | [06-observability-experiments](06-observability-experiments.md) | `5ede071bc9c646f5daabd0688b7c71da254b285fbb5db846342c1fbd57bd5402` |
 
 ### Workspace and Sandbox (2)
 

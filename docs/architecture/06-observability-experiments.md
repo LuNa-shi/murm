@@ -33,6 +33,8 @@ The execution layer uses native `agent_start` and `agent_settled` observations f
 
 Subagents links use authenticated caller and parent or destination identities, and matching request, input, operation or message IDs where the records supply them. For a returned child result, the reader matches the archived destination Session envelope to the original accepted Core input and the child's original event sequence. This relationship becomes available when the destination Session archive is readable. A message receipt is independent of evidence that its payload entered the recipient's model context. Selecting the handoff checks structured message identities in the recipient's saved model inputs and links the original requests. This lookup reads at most 8 MiB per candidate request and skips unavailable or larger bodies. Inspect the model request and final artifact or checker result separately to assess adoption. All other Service operations remain inspectable as generic calls.
 
+The [offline demo](../operations/trace-viewer.md#replay-the-included-demo) exercises this path with a synthetic Subagents Run. The same reader opens the fixture's Core ledger, Service calls, raw model exchanges, Session archives and final file directly from disk.
+
 ## Historical research tooling
 
 The research tree at `dc011003fa0354a881b7a3ba9ba901fe36cbcac9` preserves benchmark report construction, parallelism accounting, offline research analysis, historical importer and their tests. Historical report fields and results retain the semantics of their recorded source revision.

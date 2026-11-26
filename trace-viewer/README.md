@@ -2,6 +2,18 @@
 
 Open a saved or active Core Run in a local browser.
 
+## Try the offline demo
+
+From the repository root on Linux or WSL with Node.js 22.19 or later, start the Viewer with the [included synthetic Run](../test/fixtures/trace-viewer/runs/release-notes/).
+
+```bash
+node trace-viewer/murm.mjs trace --root test/fixtures/trace-viewer/runs --port 8787
+```
+
+Open [the demo Run](http://127.0.0.1:8787/#run=release-notes). The [replay guide](../docs/operations/trace-viewer.md#replay-the-included-demo) shows how to follow the handoff into the Root's model request and final file.
+
+## Install the package
+
 ```bash
 npm pack ./trace-viewer
 npm install --prefix /path/to/consumer ./murm-trace-viewer-0.2.0.tgz

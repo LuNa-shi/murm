@@ -1,0 +1,71 @@
+{
+  "closeTimeoutMs": 30000,
+  "result": {
+    "rootId": "10000000-0000-4000-8000-000000000002",
+    "eventSeq": 2,
+    "output": "Wrote release-note.md with the verified CSV export behavior."
+  },
+  "businessFailure": null,
+  "cleanup": {
+    "runtimeId": "10000000-0000-4000-8000-000000000001",
+    "agents": [
+      {
+        "agentId": "10000000-0000-4000-8000-000000000002",
+        "execution": "stopped",
+        "cleanup": "complete",
+        "sessionArchive": "10000000-0000-4000-8000-000000000002/session/manifest.json",
+        "artifacts": [
+          "10000000-0000-4000-8000-000000000002/artifacts/manifest.json",
+          "10000000-0000-4000-8000-000000000002/artifacts/files"
+        ],
+        "errors": []
+      },
+      {
+        "agentId": "10000000-0000-4000-8000-000000000003",
+        "execution": "stopped",
+        "cleanup": "complete",
+        "sessionArchive": "10000000-0000-4000-8000-000000000003/session/manifest.json",
+        "artifacts": [],
+        "errors": []
+      }
+    ],
+    "cleanup": "complete",
+    "errors": [],
+    "pending": [],
+    "outputDir": ".",
+    "evidence": {
+      "path": "evidence.jsonl",
+      "recorded": 44,
+      "lost": 0,
+      "pending": 0
+    },
+    "reportPath": "runtime.json"
+  },
+  "cleanupFailure": null,
+  "reportSaveFailure": null,
+  "collaboration": {
+    "accepting": false,
+    "members": [
+      {
+        "path": "/root",
+        "agentId": "10000000-0000-4000-8000-000000000002",
+        "parent": null,
+        "lastOutcome": "completed",
+        "waiting": false,
+        "nativeQueuedAdmissions": 0,
+        "pending": []
+      },
+      {
+        "path": "/root/check-notes",
+        "agentId": "10000000-0000-4000-8000-000000000003",
+        "parent": "/root",
+        "lastOutcome": "completed",
+        "waiting": false,
+        "nativeQueuedAdmissions": 0,
+        "pending": []
+      }
+    ],
+    "operations": 1,
+    "deliveryFailures": []
+  }
+}

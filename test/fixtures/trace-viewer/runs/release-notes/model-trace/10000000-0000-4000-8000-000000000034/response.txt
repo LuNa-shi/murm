@@ -1,0 +1,16 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_demo_4","object":"response","status":"in_progress","model":"demo-model","output":[],"usage":null}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg_demo_4","status":"in_progress","role":"assistant","content":[]}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"msg_demo_4","output_index":0,"content_index":0,"delta":"CSV export includes the active filters. src/export.ts passes applyFilters(rows, filters) to writeCsv."}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"msg_demo_4","status":"completed","role":"assistant","content":[{"type":"output_text","text":"CSV export includes the active filters. src/export.ts passes applyFilters(rows, filters) to writeCsv.","annotations":[]}]}}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_demo_4","object":"response","status":"completed","model":"demo-model","output":[{"type":"message","id":"msg_demo_4","status":"completed","role":"assistant","content":[{"type":"output_text","text":"CSV export includes the active filters. src/export.ts passes applyFilters(rows, filters) to writeCsv.","annotations":[]}]}],"usage":{"input_tokens":162,"output_tokens":27,"total_tokens":189}}}
+
+: stream closed

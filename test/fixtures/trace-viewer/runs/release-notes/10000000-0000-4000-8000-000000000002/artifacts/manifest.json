@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "agentId": "10000000-0000-4000-8000-000000000002",
+  "collect": {
+    "paths": [
+      "release-note.md"
+    ],
+    "includeGit": false,
+    "maxBytes": 1024,
+    "required": true
+  },
+  "totalBytes": 56,
+  "files": [
+    {
+      "path": "release-note.md",
+      "mode": 384,
+      "bytes": 56,
+      "sha256": "e78a6129f7bf0593c78c1db4794486606c47fbc0033b1d9c7623ff0f07134196"
+    }
+  ],
+  "directories": []
+}

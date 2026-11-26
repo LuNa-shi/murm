@@ -1,0 +1,19 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_demo_1","object":"response","status":"in_progress","model":"demo-model","output":[],"usage":null}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_spawn","call_id":"call_spawn","name":"bash","arguments":""}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","item_id":"fc_spawn","output_index":0,"delta":"{\"command\":\"swarm collaboration spawn_agent --task-name check-notes --message 'Check src/export.ts and report which rows are exported to CSV.' --fork-turns none --request-id check-notes-start\"}"}
+
+event: response.function_call_arguments.done
+data: {"type":"response.function_call_arguments.done","item_id":"fc_spawn","output_index":0,"arguments":"{\"command\":\"swarm collaboration spawn_agent --task-name check-notes --message 'Check src/export.ts and report which rows are exported to CSV.' --fork-turns none --request-id check-notes-start\"}"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_spawn","call_id":"call_spawn","name":"bash","arguments":"{\"command\":\"swarm collaboration spawn_agent --task-name check-notes --message 'Check src/export.ts and report which rows are exported to CSV.' --fork-turns none --request-id check-notes-start\"}"}}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_demo_1","object":"response","status":"completed","model":"demo-model","output":[{"type":"function_call","id":"fc_spawn","call_id":"call_spawn","name":"bash","arguments":"{\"command\":\"swarm collaboration spawn_agent --task-name check-notes --message 'Check src/export.ts and report which rows are exported to CSV.' --fork-turns none --request-id check-notes-start\"}"}],"usage":{"input_tokens":274,"output_tokens":58,"total_tokens":332}}}
+
+: stream closed

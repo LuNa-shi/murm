@@ -12,7 +12,49 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createTraceReader } from "../reader.mjs";
+
+test("the offline demo links a child result to the Root request and exported note", async () => {
+  const root = fileURLToPath(new URL("../../test/fixtures/trace-viewer/runs/", import.meta.url));
+  const reader = await createTraceReader({ root });
+  const runs = await reader.listRuns();
+  assert.deepEqual(runs.map((run) => run.id), ["release-notes"]);
+  const [{ id }] = runs;
+  const summary = await reader.summary(id);
+  assert.equal(summary.status, "closed");
+  assert.equal(summary.cleanup, "complete");
+  assert.equal(summary.agents.length, 2);
+  assert.deepEqual(summary.gaps, []);
+  assert.equal(
+    summary.files.filter((file) => file.kind === "session" && file.path.endsWith(".jsonl")).length,
+    2,
+  );
+
+  const executions = summary.spans.filter((span) => span.kind === "execution");
+  assert.equal(executions.length, 2);
+  const [first, second] = executions;
+  assert.ok(first.startedAt < second.endedAt && second.startedAt < first.endedAt);
+  assert.ok(summary.spans.some((span) => span.kind === "tool"));
+  assert.equal(summary.spans.filter((span) => span.kind === "model").length, 6);
+
+  assert.ok(summary.relations.some((relation) => relation.kind === "spawn"));
+  const result = summary.relations.find((relation) => relation.kind === "result");
+  assert.ok(result);
+  assert.equal(result.evidenceIds.length, 3);
+  const handoff = await reader.detail(id, result.id);
+  assert.ok(handoff.contextMatches.length > 0);
+  const request = await reader.detail(id, handoff.contextMatches[0].recordId);
+  assert.equal(request.record.agentId, result.toAgentId);
+  assert.equal(request.record.seq, 5);
+  const response = request.files.find((file) => file.path.endsWith("/response.txt"));
+  assert.ok(response);
+  assert.match((await reader.file(id, response.path)).text, /event: response\.completed/);
+
+  const note = summary.files.find((file) => file.path.endsWith("/release-note.md"));
+  assert.ok(note);
+  assert.match((await reader.file(id, note.path)).text, /CSV export includes the active filters/);
+});
 
 test("historical Core Run preserves Agent identity, evidence and separate status", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "murm-reader-"));
