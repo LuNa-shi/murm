@@ -22,6 +22,11 @@ export function executorDriver(config: OpenSandboxBackendConfig) {
   });
   return {
     kind, version, name: kind === 'pi' ? 'Pi' : 'Codex', capabilities,
+    assertEnvironment(environment: Readonly<Record<string, string>> | undefined) {
+      if (kind === 'codex' && Object.keys(environment ?? {}).some(key => /^(?:CODEX_|OPENAI_)/.test(key))) {
+        throw Object.assign(new Error('Codex configuration and model credentials must be supplied through the backend'), { code: 'INVALID_CONTRACT' });
+      }
+    },
     assertVersion(versions: Record<string, unknown>) {
       if (versions[`${kind}Version`] !== version) throw Object.assign(new Error(`Backend requires ${kind} ${version}`), { code: 'INVALID_CONTRACT' });
     },
