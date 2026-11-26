@@ -108,10 +108,11 @@ test('a clean external project typechecks and runs the same public handoff on Pi
   const pins = { sourceCommit: packed.sourceCommit, packageSha256, image, typeScriptVersion, nodeTypesVersion,
     hostNodeVersion: process.version };
   const results = [];
-  for (const [executor, mode] of [
+  for (const [executor, mode, source = 'installed'] of [
     ['pi', 'in-process'], ['codex', 'in-process'], ['pi', 'external'], ['pi', 'without-handoff'], ['pi', 'cancelled'],
+    ['pi', 'in-process', 'checkout'],
   ] as const) {
-    await t.test(`${executor} ${mode}`, async scenario => {
+    await t.test(`${executor} ${mode} (${source})`, async scenario => {
       let external: { url: string; token: string } | undefined;
       if (mode === 'external') {
         const token = randomBytes(24).toString('hex');
@@ -123,8 +124,8 @@ test('a clean external project typechecks and runs the same public handoff on Pi
         external = { url: `http://127.0.0.1:${port}`, token };
       }
       const upstream = await scriptedResponses(scenario, executor, mode);
-      const output = join(evidence, `${executor}-${mode}`);
-      let entry = 'build/handoff.js';
+      const output = join(evidence, `${executor}-${mode}-${source}`);
+      let entry = source === 'installed' ? 'build/handoff.js' : 'dist/examples/bridge-services/handoff.js';
       if (mode === 'without-handoff' || mode === 'cancelled') {
         entry = 'fixture.mjs';
         await writeFile(join(project, entry), `
@@ -139,7 +140,8 @@ const result = await runMessageHandoff(config, abort.signal, update => {
 process.stdout.write(JSON.stringify(result));
 `);
       }
-      const { stdout, stderr } = await execute(process.execPath, [entry], { cwd: project, timeout: 95_000, env: {
+      const { stdout, stderr } = await execute(process.execPath, [entry], {
+        cwd: source === 'installed' ? project : root, timeout: 95_000, env: {
         ...env,
         MURM_SDK_IMAGE: image,
         MURM_SDK_EXECUTOR: executor,
@@ -200,7 +202,7 @@ process.stdout.write(JSON.stringify(result));
           assert.doesNotMatch(JSON.stringify(trace), new RegExp(external.token));
         }
       }
-      results.push({ executor, mode, runtimeId: report.runtimeId, business: report.business.status,
+      results.push({ executor, mode, source, runtimeId: report.runtimeId, business: report.business.status,
         report: relative(evidence, report.reportPath), artifact: report.artifactVerification.status,
         submissions: submissions.length, cleanup: report.coreClose.status, sandboxes: sandboxes.map(row => row.versions) });
     });
