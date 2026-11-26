@@ -72,7 +72,7 @@ test('exact PeerMesh Profile and Services assemble actual Runtime/Bridge/gateway
   const closed = await runtime.close(); assert.equal(closed.cleanup, 'complete'); assert.deepEqual(closed.agents, []);
   const configuration = JSON.parse(await readFile(join(outputDir, runtime.id, 'runtime.json'), 'utf8')).config;
   assert.equal(configuration.models.default.model, 'k3'); assert.equal(configuration.profiles.peer.services['peermesh-context'].length, 4);
-  assert.deepEqual(configuration.services.map(service => service.id).sort(), ['peermesh-context', 'agent', 'gitea', 'message']);
+  assert.deepEqual(configuration.services.map(service => service.id).sort(), ['agent', 'gitea', 'message', 'peermesh-context']);
   assert.equal(configuration.profiles.peer.services.agent, undefined);
   assert.equal(typeof createBoardLauncher({ sourceDirectory: '/unused-pinned-native-board', mysqlDsn: 'mysql://agensh:private@127.0.0.1/board', origin: 'http://127.0.0.1:8660' }), 'function');
   assert.throws(() => createBoardLauncher({ sourceDirectory: '/unused', mysqlDsn: 'private', origin: 'http://user:private@127.0.0.1:8660' }));

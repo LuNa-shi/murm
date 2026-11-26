@@ -3,7 +3,7 @@ Copyright (c) 2023 Kim Morrison. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Kim Morrison, Sebastian Ullrich
 
-Modified in SwarmEnv: the import/replay sequence is adapted from
+Modified in murm: the import/replay sequence is adapted from
 LeanChecker.replayFromImports in Lean v4.33.1. This driver adds explicit input
 paths, frontend completion binding verification and JSON/axiom reporting.
 The exact upstream license is in lean-module-verify.LICENSE.txt; pinned source
