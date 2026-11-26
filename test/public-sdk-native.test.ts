@@ -218,9 +218,10 @@ const config = handoffConfig();
 const backend = createOpenSandboxBackend(config.backend);
 assert.equal(getOpenSandboxBackendCapabilities(backend).contextFork, false);
 await assert.rejects(createRuntime({ backend, services: new ServiceRegistry(), maxAgents: 1, outputDir: config.outputDir,
-  profiles: { worker: { model: 'default', image: config.image, allowContextFork: true } } }), error => {
+  profiles: { worker: { model: 'default', image: config.image, writable: true, services: {}, allowContextFork: true } } }), error => {
   assert.equal(error.code, 'INVALID_CONTRACT');
   assert.equal(error.cleanup, 'complete');
+  assert.match(error.message, /does not support Profile Context Fork authority/);
   process.stdout.write(error.runtimeId);
   return true;
 });
