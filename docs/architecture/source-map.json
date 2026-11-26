@@ -1450,7 +1450,7 @@
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Harness host reporting with independent business, cleanup and save failures"
+      "role": "Public Run finalization and compatibility Harness reporting with independent outcome, cleanup and save receipts"
     },
     {
       "path": "src/harnesses/taskpool/coordination-permissions.ts",

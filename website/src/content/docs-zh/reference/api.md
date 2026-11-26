@@ -11,9 +11,18 @@ order: 12
 
 | 入口路径 | 公开导出 | 用途 |
 | --- | --- | --- |
-| `@murm/core` | `createRuntime`（及全部 Core 类型） | 创建并控制单次 Run 的 `Runtime` |
+| `@murm/core` | `createRuntime`、`finalizeRun`（及全部 Core 类型） | 创建、控制并结束一次 Run |
 | `@murm/core/services` | `ServiceRegistry`、`createInProcessAdapter`、`createHttpJsonAdapter`、`builtinAgentRegistration`、`getAdapterMetadata`、`invokeService`、`isJson`、`snapshotServiceRegistry` | 定义、校验并注册 v2 Services |
+| `@murm/core/backends/opensandbox` | `createOpenSandboxBackend`、`getOpenSandboxBackendCapabilities`（及 `OpenSandboxBackendConfig`、`BackendCapabilities`、`ExecutorKind`） | 配置 OpenSandbox 内的 Pi 或 Codex 并查询执行器能力 |
 | `@murm/core/backends/pi-opensandbox` | `createPiOpenSandboxBackend`（及 `PiOpenSandboxBackendConfig`） | 配置 Pi `1.3.0` / OpenSandbox 容器后端 |
+
+## Run 收尾
+
+应用确定业务结果后，从 `@murm/core` 导入 `finalizeRun`。传入已创建的 Runtime、输出根目录和 `business` 结果。成功用 `status: 'completed'` 和 JSON 值，失败或取消用 `status: 'failed'` 或 `'cancelled'` 和应用错误码及消息。返回值分别包含 `coreClose`、`artifactVerification`、`facilities` 和 `reportSaveFailure`。
+
+可选的 `verifyArtifacts` 读取 Core 关闭回执并检查导出文件。只把本次应用拥有的设施登记到 `ownedFacilities`。确认 Core 清理完成后，收尾先验证产物，再调用这些设施的关闭回调。Core 返回 pending 时，报告保留待处理资源身份和相关设施。收尾有独立的 `cleanupTimeoutMs`，默认 60,000 ms，回调会收到对应 AbortSignal。宿主等待到期时若尚无 Core 回执，关闭状态为 `unknown`。报告保存成功时返回 `outputDir/<runtime.id>/run-finalization.json` 的路径。
+
+每个 Runtime 对象只接受一次收尾调用，重复调用报 `CONFLICT`。如需核对待处理工作，应调用同一 Runtime 的 `close` 并核对原来的设施句柄。
 
 ## `createRuntime(options)`
 
@@ -71,6 +80,8 @@ runtime.onEvent(handler: (event: AgentEvent) => void): () => void
   - `{ inputId, status: 'accepted', disposition: 'started' | 'queued' | 'handled' }`
   - `{ inputId, status: 'not-accepted', reason: 'idle' }` *(仅当 `wakeIfIdle: false`)*
   - `{ inputId, status: 'unknown' }` —— 用**完全相同的 `requestId` 和参数**重试即可向 Worker 查询原 RPC 账本，不会重复注入。
+提交后若应用超时或 AbortSignal 结束宿主等待，请保留原 request ID 和参数。结果未知时，用同样的 `send` 调用核对原回执。需要中断当前轮次时调用 `interrupt`，关闭 Agent 时调用 `stop`。缺少输入关联的 `settled` 只提供 Agent 执行收束信息，应用自行检查业务是否完成。
+
 - **事件流（`AgentEvent`）** —— 每条事件均带 `agentId` 与单调递增 `seq`：
   - `{ type: 'output', text }`
   - `{ type: 'settled', outcome: 'completed' | 'failed' | 'aborted', output?, error? }`
