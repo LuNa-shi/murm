@@ -15,7 +15,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
 const { runForegroundHarness } = await import('../src/harnesses/shared/foreground-host.js'); hooks.deregister();
 
 test('flat foreground input uses the current controller Task binding and stops with domain reconciliation', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'foreground-flat-'));
+  const root = await mkdtemp(join(tmpdir(), 'foreground-taskpool-'));
   const stores = await createTaskPoolStores(root);
   t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
   transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;

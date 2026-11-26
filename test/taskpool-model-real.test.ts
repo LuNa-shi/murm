@@ -22,10 +22,10 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
   timeout: 160_000,
 }, async t => {
   const startedAt = Date.now(), deadlineAt = startedAt + 120_000;
-  const outputDir = join(process.cwd(), 'experiments', `flat-model-${live ? 'live' : 'local'}-${startedAt}`);
+  const outputDir = join(process.cwd(), 'experiments', `taskpool-model-${live ? 'live' : 'local'}-${startedAt}`);
   await mkdir(outputDir, { recursive: true, mode: 0o700 });
   const tasks = new TaskService();
-  tasks.createMission({ mission_id: 'flat:model-acceptance', goal: 'Verify flat selection model authority' }, makeEnvelope({ actorRef: 'trusted-host' }));
+  tasks.createMission({ mission_id: 'taskpool:model-acceptance', goal: 'Verify flat selection model authority' }, makeEnvelope({ actorRef: 'trusted-host' }));
   let runtime, proxy, upstream, agent, unsubscribe;
   let localArrivals = 0, localAccepted = 0, heldResolve, heldSocket, heldClosedResolve;
   const heldSocketClosed = new Promise(resolve => { heldClosedResolve = resolve; });
@@ -96,7 +96,7 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
   if (typeof image !== 'string' || !/(?:^sha256:|@sha256:)[a-f0-9]{64}$/.test(image)) throw new Error('TASKPOOL_PINNED_IMAGE_REQUIRED');
   report.image = image;
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-  const policy = createTaskPoolModelAccessPolicy({ taskService: tasks, missionId: 'flat:model-acceptance', runtimeId: () => runtime?.id, deadline: () => deadlineAt });
+  const policy = createTaskPoolModelAccessPolicy({ taskService: tasks, missionId: 'taskpool:model-acceptance', runtimeId: () => runtime?.id, deadline: () => deadlineAt });
   runtime = await createRuntime({ backend: createPiOpenSandboxBackend({ sandbox: {
     lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
     apiKey: process.env.MURM_CORE_TEST_API_KEY, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
@@ -107,14 +107,14 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
     services: new ServiceRegistry(), modelAccessPolicy: policy, maxAgents: 1, outputDir });
   report.runtimeId = runtime.id;
   report.resources[runtime.id] = { initialEmpty: (await ownedContainers(runtime.id)).length === 0 };
-  const coordinator = createTaskPoolAgentCoordinator({ runtime, taskService: tasks, missionId: 'flat:model-acceptance' });
-  agent = await coordinator.spawn({ requestId: 'flat-model-spawn', profile: 'readonly', legacySlotId: 'legacy-slot:acceptance', selectionDeadline: new Date(deadlineAt).toISOString() });
+  const coordinator = createTaskPoolAgentCoordinator({ runtime, taskService: tasks, missionId: 'taskpool:model-acceptance' });
+  agent = await coordinator.spawn({ requestId: 'taskpool-model-spawn', profile: 'readonly', legacySlotId: 'legacy-slot:acceptance', selectionDeadline: new Date(deadlineAt).toISOString() });
   report.agentId = agent.id; report.legacySlotId = tasks.getAgent(agent.id).core_id; report.initialDomainState = tasks.getAgent(agent.id).state;
   assert.equal(report.initialDomainState, 'UNBOUND'); assert.equal(tasks.getAgent(agent.id).sandbox_id, null);
   assert.equal((await ownedContainers(runtime.id)).length, 1);
   unsubscribe = runtime.onEvent(event => { if (event.agentId === agent.id) { events.push(event); if (event.type === 'settled') waiters.shift()?.(event); } });
   const first = settled();
-  report.input = await runtime.send(agent.id, 'Reply with exactly TASKPOOL_SELECTION_OK. Do not call tools.', { requestId: 'flat-fixed-selection', mode: 'followUp' });
+  report.input = await runtime.send(agent.id, 'Reply with exactly TASKPOOL_SELECTION_OK. Do not call tools.', { requestId: 'taskpool-fixed-selection', mode: 'followUp' });
   assert.equal(report.input.status, 'accepted');
   const completed = await first;
   if (completed.outcome !== 'completed' || completed.output?.trim() !== 'TASKPOOL_SELECTION_OK') throw new Error('TASKPOOL_SELECTION_RESULT_INVALID');
@@ -129,7 +129,7 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
     const interrupted = settled();
     const heldInputStartedMonotonic = performance.now();
     report.revocation = { heldInputAt: Date.now(), requestTimeoutMs: 60_000 };
-    await runtime.send(agent.id, 'Reply with exactly TASKPOOL_SELECTION_OK. Do not call tools.', { requestId: 'flat-held-selection', mode: 'followUp' });
+    await runtime.send(agent.id, 'Reply with exactly TASKPOOL_SELECTION_OK. Do not call tools.', { requestId: 'taskpool-held-selection', mode: 'followUp' });
     await Promise.race([held, new Promise((_, reject) => { const timeout = setTimeout(() => reject(new Error('Held upstream not observed')), 20_000); timeout.unref(); held.finally(() => clearTimeout(timeout)); })]);
     Object.assign(report.revocation, { heldBeforeTransition: Boolean(heldSocket && !heldSocket.destroyed), maxElapsedMs: 5000 });
     if (!report.revocation.heldBeforeTransition) throw new Error('TASKPOOL_HELD_SOCKET_CLOSED_BEFORE_REVOKE');
@@ -151,7 +151,7 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
     if (!promptRevocationVerified(report.revocation)) throw new Error('TASKPOOL_DOMAIN_REVOCATION_EVIDENCE_INVALID');
     report.streamRevoked = true;
     const denied = settled();
-    await runtime.send(agent.id, 'Reply with exactly TASKPOOL_SELECTION_OK.', { requestId: 'flat-denied-selection', mode: 'followUp' });
+    await runtime.send(agent.id, 'Reply with exactly TASKPOOL_SELECTION_OK.', { requestId: 'taskpool-denied-selection', mode: 'followUp' });
     assert.equal((await denied).outcome, 'failed');
     assert.equal(localArrivals, 2); assert.equal(localAccepted, 2); report.deniedBeforeUpstream = true;
   } else tasks.requestAgentStop(agent.id, 'hosted-selection-complete');

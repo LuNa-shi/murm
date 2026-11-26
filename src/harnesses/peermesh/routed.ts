@@ -72,7 +72,7 @@ export async function createPeerMeshRouterHarness(options: any) {
       } catch { cleanup = { cleanup: 'pending' }; }
     }
     await router?.finishClose(cleanup);
-    throw Object.assign(new Error('Agensh router initialization failed'), { code: ['ROUTER_SUBSCRIPTION_TIMEOUT', 'ROUTER_SUBSCRIPTION_NOT_READY', 'ROUTER_SOURCE_NOT_READY', 'ROUTER_SOURCE_DM_SCOPE', 'ROUTER_READINESS_INVALID', 'HARNESS_START_ABORTED'].includes(error.code) ? error.code : 'ROUTER_START_FAILED',
+    throw Object.assign(new Error('PeerMesh router initialization failed'), { code: ['ROUTER_SUBSCRIPTION_TIMEOUT', 'ROUTER_SUBSCRIPTION_NOT_READY', 'ROUTER_SOURCE_NOT_READY', 'ROUTER_SOURCE_DM_SCOPE', 'ROUTER_READINESS_INVALID', 'HARNESS_START_ABORTED'].includes(error.code) ? error.code : 'ROUTER_START_FAILED',
       runtimeId: harness?.id ?? error.runtimeId, cleanup: cleanup.cleanup, ...(error.reportPath ? { reportPath: error.reportPath } : {}), details: harness ? [harness.redact({ cleanup, harness: harness.snapshot(), router: router?.snapshot() })] : error.details });
   }
 }

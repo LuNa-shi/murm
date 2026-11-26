@@ -200,7 +200,7 @@ test('candidate package admits only declared distribution roots and retains exec
     'dist/examples/peermesh/config.js', 'examples/peermesh/README.md',
     'docs/architecture/source-map.json', 'dist/test/fixtures/foreground-host-configuration.js',
   ];
-  const exampleRuns = { notes: 'notes-runs', subagents: 'subagents-runs', 'lead-worker': 'lead-helper-runs',
+  const exampleRuns = { notes: 'notes-runs', subagents: 'subagents-runs', 'lead-worker': 'lead-worker-runs',
     substrate: 'substrate-runs', peermesh: 'peermesh-runs' };
   const privatePaths = ['.env.production', 'local-credentials.json', 'runtime.json', 'notes-runs/run/secret.txt',
     'local-artifacts/run/private.bin', 'experiments/run/private.bin', 'reports/run/private.bin', '.worktree/other/private.txt',

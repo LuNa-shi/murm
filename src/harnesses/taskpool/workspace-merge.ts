@@ -2,7 +2,7 @@ import { ERROR_CODES, MurmError } from '../../errors.js';
 import { assertNewExecutionWork } from '../../task/execution-budget.js';
 import { publishWorkspace } from '../../runtime/workspace-publication.js';
 
-/** Own the final-tree checker and publication policy for one trusted Flat or retained Bridge composition. */
+/** Own the final-tree checker and publication policy for one trusted TaskPool or retained Bridge composition. */
 export function createWorkspaceMergeService({ taskService, workspace, workspaceId, assertExecutionWorkspace, checker = null }: any) {
   if (!taskService || !workspace || typeof assertExecutionWorkspace !== 'function') throw new TypeError('Workspace merge requires trusted Task, Workspace and binding authority');
   if (checker && (typeof checker.check !== 'function' ||

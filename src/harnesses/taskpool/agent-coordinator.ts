@@ -4,7 +4,7 @@ function invalid(message: any) { return Object.assign(new Error(message), { code
 /** Host-only startup composition; no model-facing method can mark readiness. */
 export function createTaskPoolAgentCoordinator({ runtime, taskService, missionId, coordinationPermissions = [] }: any) {
   if (!runtime?.id || typeof runtime.spawn !== 'function' || typeof runtime.stop !== 'function' ||
-      !taskService || typeof missionId !== 'string' || !missionId) throw invalid('Trusted Core Runtime and flat Mission are required');
+      !taskService || typeof missionId !== 'string' || !missionId) throw invalid('Trusted Core Runtime and taskpool Mission are required');
   const permissions = taskPoolCoordinationPermissions(coordinationPermissions);
   const requests: any = new Map();
   return Object.freeze({
@@ -12,17 +12,17 @@ export function createTaskPoolAgentCoordinator({ runtime, taskService, missionId
       if (typeof legacySlotId !== 'string' || !legacySlotId || legacySlotId === runtime.id ||
           !options.requestId || !options.profile || ![selectionDeadline, hardDeadline].every((value: any) =>
             typeof value === 'string' && Number.isFinite(Date.parse(value))) || Date.parse(selectionDeadline) > Date.parse(hardDeadline)) {
-        throw invalid('Flat startup requires a distinct legacy Slot and finite ordered deadlines');
+        throw invalid('TaskPool startup requires a distinct legacy Slot and finite ordered deadlines');
       }
       const fingerprint = JSON.stringify({ legacySlotId, selectionDeadline, hardDeadline, options });
       const previous = requests.get(options.requestId);
       if (previous) {
-        if (previous.fingerprint !== fingerprint) throw Object.assign(new Error('Flat spawn request parameters conflict'), { code: 'CONFLICT' });
+        if (previous.fingerprint !== fingerprint) throw Object.assign(new Error('TaskPool spawn request parameters conflict'), { code: 'CONFLICT' });
         return structuredClone(await previous.result);
       }
       const result = (async () => {
         taskService.assertMissionResearchOpen(missionId);
-        if (Date.now() >= Math.min(Date.parse(selectionDeadline), Date.parse(hardDeadline))) throw invalid('Flat startup deadline elapsed');
+        if (Date.now() >= Math.min(Date.parse(selectionDeadline), Date.parse(hardDeadline))) throw invalid('TaskPool startup deadline elapsed');
         const agent = await runtime.spawn(options);
         try {
           if (agent?.status !== 'idle' || typeof agent.id !== 'string' || !agent.id || agent.profile !== options.profile) throw invalid('Core spawn did not return the requested ready Agent');

@@ -14,7 +14,7 @@ import { MurmError } from '../src/errors.js';
 import { stableStringify, makeEnvelope } from '../src/protocol/envelope.js';
 
 async function fixture(t, options = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'flat-publication-'));
+  const root = await mkdtemp(join(tmpdir(), 'taskpool-publication-'));
   const stores = await createTaskPoolStores(root);
   stores.tasks.contextService = stores.context;
   t.after(async () => { stores.close(); await rm(root, { recursive:true, force:true }); });
@@ -81,7 +81,7 @@ test('flat Workspace save captures trusted bytes once and keeps immutable revisi
   await assert.rejects(f.call('workspace','workspace_save',{files:{'fake.txt':'fake'}},'forged'),{code:'SERVICE_INPUT_INVALID'});
 });
 
-test('Flat registers only public Workspace reads without a trusted snapshot binding', async t => {
+test('TaskPool registers only public Workspace reads without a trusted snapshot binding', async t => {
   const fixtureState = await fixture(t);
   const workspace = await fixtureState.call('workspace', 'workspace_public_view');
   assert.equal(workspace.workspace_id, fixtureState.workspaceId);
@@ -91,7 +91,7 @@ test('Flat registers only public Workspace reads without a trusted snapshot bind
   assert.equal((await fixtureState.workspace.listRevisions({ workspaceId: fixtureState.workspaceId })).length, 1);
 });
 
-test('Flat advertises enough transport time for a trusted project checker', t => {
+test('TaskPool advertises enough transport time for a trusted project checker', t => {
   const db = new DatabaseSync(':memory:');
   t.after(() => db.close());
   const taskService = { db, setWorkspaceDeliveryReader() {} };
@@ -336,7 +336,7 @@ test('Core snapshot save recovers the original bytes after a lost reply and adap
   assert.deepEqual(await f.call('workspace', 'workspace_save', {}, 'same-save'), saved);
 });
 
-test('Flat apply keeps the original owner and records both proof parents before subsequent save', async t => {
+test('TaskPool apply keeps the original owner and records both proof parents before subsequent save', async t => {
   let files = { 'input.txt': { encoding: 'utf8', data: 'fixed λ\n' }, 'own.lean': { encoding: 'utf8', data: 'my progress\n' } };
   const snapshots = new Map();
   const installs = new Map();

@@ -106,13 +106,13 @@ Common options:
 
 The CLI returns this help to native Bash on request without contacting the Bridge or a Service.
 
-Body SHA-256: `ab8ce338998a16dc6a12e1e02c212abd1b31e3cf5d3c96aa00498198b12261ef`
+Body SHA-256: `e80408d691b07a61fd3cfeadbb780a9f3e72c7179d9e9c2cfe9f25db79e2c350`
 
 ````text
 Usage: swarm task link [options]
 
 Link a published Material during an active Execution. The role determines which Task ID to use.
-To send your published Material to another Task, use the receiving Task's ID in --task-id and choose --role response. The authenticated Execution supplies the producer. Omit --receiving-task-id, or give it the same ID as --task-id. Flat queues a notice for the receiving Task.
+To send your published Material to another Task, use the receiving Task's ID in --task-id and choose --role response. The authenticated Execution supplies the producer. Omit --receiving-task-id, or give it the same ID as --task-id. TaskPool queues a notice for the receiving Task.
   swarm task link --task-id RECEIVING_TASK_ID --material-id MATERIAL_ID --role response --request-id send-m1-to-recipient
 To attach Material as input to your own work, use --role input and your current Task's ID. To cite your own published Material when finishing, link it to your current Task with --role experience.
   swarm task link --task-id CURRENT_TASK_ID --material-id MATERIAL_ID --role experience --request-id link-m1-to-current

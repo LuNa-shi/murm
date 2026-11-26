@@ -19,7 +19,7 @@ const hooks=registerHooks({resolve(specifier,context,next) {
 const {createRuntime}=await import('@murm/core');hooks.deregister();
 const execute=promisify(execFile);
 async function fixture(t, { coordinationPermissions = ['task_dependency_replace'], registeredPermissions = coordinationPermissions, profileAllows = true } = {}) {
-  const root=await mkdtemp(join(tmpdir(),'flat-coordination-'));
+  const root=await mkdtemp(join(tmpdir(),'taskpool-coordination-'));
   const stores=await createTaskPoolStores(root);
   stores.tasks.contextService=stores.context;
   let runtime;
@@ -41,7 +41,7 @@ async function fixture(t, { coordinationPermissions = ['task_dependency_replace'
   const agents=[];
   for(let i=0;i<2;i++) {
 
-    const agent=await coordinator.spawn({profile:'researcher',requestId:`contributor-${i}`,legacySlotId:`flat-slot:${i}`,selectionDeadline:new Date(Date.now()+60000).toISOString()});agents.push(agent);
+    const agent=await coordinator.spawn({profile:'researcher',requestId:`contributor-${i}`,legacySlotId:`taskpool-slot:${i}`,selectionDeadline:new Date(Date.now()+60000).toISOString()});agents.push(agent);
     if (i === 0) await cli(agent,'task','take',stores.task.task_id,'--request-id',`take-${i}`);
   }
   return {...stores,root,runtime,agents,lookup,cli:(...args)=>cli(agents[0],...args),cliFor:cli};
@@ -129,10 +129,10 @@ test('dependency repair keeps Mission, target ownership and latest execution fen
   assert.equal(f.tasks.getTask(dependent.task_id).relations.dependency_replacements.length,0);
 });
 
-test('actual Flat host threads only explicit grants into frozen Profile, Service and registered Agents',async t=>{
+test('actual TaskPool host threads only explicit grants into frozen Profile, Service and registered Agents',async t=>{
   const {runTaskPoolHarness}=await import('../src/harnesses/taskpool/harness.js');
   for(const coordinationPermissions of [[],['task_dependency_replace']]) {
-    const root=await mkdtemp(join(tmpdir(),'flat-host-coordination-'));
+    const root=await mkdtemp(join(tmpdir(),'taskpool-host-coordination-'));
     const stores=await createTaskPoolStores(root);
     t.after(async()=>{stores.close();await rm(root,{recursive:true,force:true});});
     transport.reset();controls.credentials.clear();controls.stopError=null;controls.destroyError=null;

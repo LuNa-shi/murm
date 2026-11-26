@@ -14,6 +14,6 @@ export function httpClient(origin: string, authorization?: string) {
       const chunks: Uint8Array[] = []; let bytes = 0;
       for await (const chunk of response.body ?? []) { bytes += chunk.length; if (bytes > 2 * 1024 ** 2) throw new Error('limit'); chunks.push(chunk); }
       return bytes ? JSON.parse(Buffer.concat(chunks).toString()) : null;
-    } catch { throw Object.assign(new Error('Agensh facility request failed'), { code: 'FACILITY_REQUEST_UNKNOWN', ...(status === undefined ? {} : { status }) }); }
+    } catch { throw Object.assign(new Error('PeerMesh facility request failed'), { code: 'FACILITY_REQUEST_UNKNOWN', ...(status === undefined ? {} : { status }) }); }
   };
 }

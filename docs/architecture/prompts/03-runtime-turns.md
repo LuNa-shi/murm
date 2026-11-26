@@ -5,7 +5,7 @@
 The TaskPool controller selects these repository-owned texts from the durable Execution phase after a settled turn. Host Profile and initial input composition are described in the Harness references.
 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
-## Flat bound continuation
+## TaskPool bound continuation
 
 Body SHA-256: `11354c574ae63980d2af9af6aa7730b36a000e71daa5e404789a3a856448295d`
 

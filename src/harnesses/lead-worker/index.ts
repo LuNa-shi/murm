@@ -11,17 +11,17 @@ import { prepareLeadWorkerGit, createLeadWorkerGit } from './git.js';
 import { leadPrompt, helperPrompt, initializeInstruction, helperInitialInstruction, leadAdjustmentInstruction, helperFollowupInstruction } from './prompts.js';
 
 const fail = (code: any) => Object.assign(new Error(code), { code });
-const bounded = (value: any, fallback: any, maximum: any) => { const result = value ?? fallback; if (!Number.isSafeInteger(result) || result < 1 || result > maximum) throw new TypeError('Invalid lead-helper wait bound'); return result; };
+const bounded = (value: any, fallback: any, maximum: any) => { const result = value ?? fallback; if (!Number.isSafeInteger(result) || result < 1 || result > maximum) throw new TypeError('Invalid lead-worker wait bound'); return result; };
 export async function createLeadWorkerHarness(options: any) {
   const { runId, image, model = 'default', outputDir, backend, exportLimit = 64 * 1024 ** 2, helperCount = 2, includeGit = true } = options;
   const roles = leadWorkerRoles(helperCount);
   const helperRoles = roles.slice(1);
-  if (typeof includeGit !== 'boolean' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir || !Number.isSafeInteger(exportLimit) || exportLimit < 1 || exportLimit > 64 * 1024 ** 2) throw new TypeError('Invalid lead-helper run configuration');
+  if (typeof includeGit !== 'boolean' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir || !Number.isSafeInteger(exportLimit) || exportLimit < 1 || exportLimit > 64 * 1024 ** 2) throw new TypeError('Invalid lead-worker run configuration');
   const turnTimeoutMs = bounded(options.turnTimeoutMs, 30_000, 300_000); const workTimeoutMs = bounded(options.workTimeoutMs, 120_000, 900_000);
   const closeTimeoutMs = bounded(options.closeTimeoutMs, 30_000, 60_000);
   const resources = createOwnedResources(); const lifetime: any = new AbortController();
   const startup = AbortSignal.any([AbortSignal.timeout(120_000), ...(options.signal ? [options.signal] : [])]);
-  const directory = join(resolve(outputDir), `lead-helper-${runId}`); await mkdir(directory, { recursive: true, mode: 0o700 });
+  const directory = join(resolve(outputDir), `lead-worker-${runId}`); await mkdir(directory, { recursive: true, mode: 0o700 });
   const boardPath = join(directory, 'board.sqlite');
   const secrets = [options.gitea?.adminToken, ...(options.secretValues ?? [])].filter((value: any) => typeof value === 'string' && value);
   let runtime: any; let board: any; let git: any; let unsubscribe: any; let closing = false; let closeWork: any; let complete: any; let workflowUsed = false; let boardFenceFailure: any;
@@ -261,7 +261,7 @@ export async function createLeadWorkerHarness(options: any) {
     });
   } catch (error: any) {
     let receipt: any; if (!runtime && error.cleanup === 'pending') receipt = { cleanup: 'pending' }; else { try { receipt = await close(); } catch { receipt = { cleanup: 'pending' }; } }
-    throw Object.assign(new Error('Lead-helper startup failed'), { code: startup.aborted ? 'HARNESS_START_ABORTED' : error.code ?? 'HARNESS_START_FAILED', runtimeId: runtime?.id ?? error.runtimeId, cleanup: receipt.cleanup, details: [snapshot(), receipt, ...(error.name === 'ResourceError' ? redact(error.details ?? []) : [])] });
+    throw Object.assign(new Error('Lead-Worker startup failed'), { code: startup.aborted ? 'HARNESS_START_ABORTED' : error.code ?? 'HARNESS_START_FAILED', runtimeId: runtime?.id ?? error.runtimeId, cleanup: receipt.cleanup, details: [snapshot(), receipt, ...(error.name === 'ResourceError' ? redact(error.details ?? []) : [])] });
   } finally { startup.removeEventListener('abort', abortStartup); }
 }
 

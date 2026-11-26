@@ -121,7 +121,7 @@ node benchmarks/programbench-pastel/pastel-matrix.ts pins "$worker" \
   > experiments/programbench-pastel/pins.json
 ```
 
-The private manifest takes `pins` as the JSON object printed above, `issue` as the approved issue URL, `experiments` as an object keyed by `subagents`, `flat` and `agensh` with registered EXP IDs, and `catalogPath` and `registryPath` as paths to the private catalog and registry with those IDs. Use absolute paths or run from the directory to which those paths are relative.
+The private manifest takes `pins` as the JSON object printed above, `issue` as the approved issue URL, `experiments` as an object keyed by `subagents`, `taskpool` and `peermesh` with registered EXP IDs, and `catalogPath` and `registryPath` as paths to the private catalog and registry with those IDs. Use absolute paths or run from the directory to which those paths are relative.
 
 ```sh
 node benchmarks/programbench-pastel/pastel-matrix.ts hosted "$manifest"

@@ -100,7 +100,7 @@ export class ExecutionWorkspace {
 
   async #capture(execution: any, identity: any) {
     this.guard(identity);
-    const snapshot = await this.sandbox.snapshotAgentProject({ executionId: execution.execution_id, requestId: `flat:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}` });
+    const snapshot = await this.sandbox.snapshotAgentProject({ executionId: execution.execution_id, requestId: `taskpool:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}` });
     this.guard(identity);
     return this.#decodeSnapshot(snapshot, execution);
   }
@@ -209,7 +209,7 @@ export class ExecutionWorkspace {
           const plan = await this.workspace.planApply({ workspaceId: current.workspace_id, baseRevision: captured.base_revision, fromRevision: input.from, requestId });
           if (plan.expected_content_hash !== snapshot.content_hash) throw invalid('Apply base differs from the current saved project');
           captured = { kind: 'apply', state_version: current.version, source: captured.source, ...plan,
-            snapshot_request_id: `flat:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}`,
+            snapshot_request_id: `taskpool:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}`,
             files: Object.fromEntries(Object.entries(plan.files).map(([path, bytes]: any) => [path, Buffer.from(bytes).toString('base64')])) };
         } else if (input.resolved) captured.conflicts = this.#resolveConflicts(current.conflicts, snapshot.files);
         this.db.exec('BEGIN IMMEDIATE');

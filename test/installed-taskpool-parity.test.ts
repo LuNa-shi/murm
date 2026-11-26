@@ -11,7 +11,7 @@ import { execute, installNotesExample } from './fixtures/notes-installed-package
 
 const feedback = taskId => ({ taskId, input: 'PRIVATE_FIXED_DIRECTION', requestId: 'fixed-direction', mode: 'steer' });
 
-test('installed Flat CLI and headless host preserve the same directed Task binding and close receipts', { timeout: 180_000 }, async t => {
+test('installed TaskPool CLI and headless host preserve the same directed Task binding and close receipts', { timeout: 180_000 }, async t => {
   const installed = await installNotesExample();
   t.after(() => installed.close());
   const root = join(installed.directory, 'node_modules/@murm/core');
@@ -107,11 +107,11 @@ console.log(JSON.stringify({records,reportPath:report.reportPath,runtimeId:repor
     assert.equal(reader.runtimeId, ready.runtimeId);
     assert.equal(saved.businessFailure.code, 'TASKPOOL_BUSINESS_FAILED');
     assert.equal(saved.cleanupFailure, null); assert.equal(saved.reportSaveFailure, null);
-    for (const receipt of [reader.environment, reader.core]) {
+    for (const receipt of [reader.harness, reader.core]) {
       assert.equal(receipt.state, 'read'); assert.equal(receipt.cleanup, 'complete'); assert.equal(receipt.pendingCount, 0);
       assert.deepEqual(receipt.agents.map(agent => [agent.agentId, agent.execution, agent.cleanup]), [[binding.agentId, 'stopped', 'complete']]);
     }
-    assert.equal(reader.environment.acceptance, 'not-interpreted');
+    assert.equal(reader.harness.acceptance, 'not-interpreted');
     assert.doesNotMatch(JSON.stringify({ rows, reader }), /PRIVATE_/);
     return { config: core.config, runtimeId: ready.runtimeId, binding, direction, reader };
   }

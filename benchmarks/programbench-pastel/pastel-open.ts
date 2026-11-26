@@ -21,7 +21,7 @@ interface PastelRunOptions {
   maxConcurrent?: number;
   maxOutputTokens?: number | null;
   upstreamKind: 'scripted_loopback' | 'hosted_k3';
-  agenshImages?: Awaited<ReturnType<typeof import('./pastel-open-peermesh.ts').resolvePeerMeshImages>>;
+  peerMeshImages?: Awaited<ReturnType<typeof import('./pastel-open-peermesh.ts').resolvePeerMeshImages>>;
   onStart?: (event: { startedAt: string; runtimeId?: string }) => void | Promise<void>;
 }
 
@@ -51,7 +51,7 @@ async function modelUsage(directory, runtimeId) {
 
 /** Private orchestration. Its caller owns upstream selection and formal authorization. */
 export async function runPastel({ mode, image, upstream, durationMs = 1_800_000,
-  maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, upstreamKind, agenshImages, onStart }: PastelRunOptions) {
+  maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, upstreamKind, peerMeshImages, onStart }: PastelRunOptions) {
   if (durationMs > 1_800_000 || maxConcurrent > 3 || !Object.hasOwn(drivers, mode) || !/^sha256:[a-f0-9]{64}$/.test(image ?? '') ||
       !['scripted_loopback', 'hosted_k3'].includes(upstreamKind)) throw new Error('Invalid Pastel run input');
   const target = new URL(upstream.url);
@@ -79,7 +79,7 @@ export async function runPastel({ mode, image, upstream, durationMs = 1_800_000,
     const backend = localBackend(window.upstream, 128, { timeoutSeconds: Math.ceil(durationMs / 1000) + 180,
       maxOutputTokens, requestTimeoutMs: durationMs, ...(upstreamKind === 'hosted_k3' ? { resourceLimits: null } : {}) });
     await drivers[mode]({ state, task, window, start, deadline, image, backend, outputDir, durationMs,
-      capacity: Math.min(3, maxConcurrent), agenshImages });
+      capacity: Math.min(3, maxConcurrent), peerMeshImages });
   } catch (error) {
     const expectedDeadline = window.signal.reason?.code === 'deadline' &&
       ['deadline', 'ROUTER_WAIT_ABORTED', 'ROUTER_WAIT_TIMEOUT'].includes(error.code);

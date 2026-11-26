@@ -534,7 +534,7 @@ export class Runtime {
   /**
    * Reconcile durable Execution deadlines. The sweep is intentionally
    * idempotent: timeout is a durable Agent stop. Handoff warnings are owned by
-   * the Flat controller. Maintenance may call this on every poll.
+   * the TaskPool controller. Maintenance may call this on every poll.
    */
   async sweepExecutionTimeouts(at: any = new Date(this.clock()), { executionIds = null }: any = {}) {
     const atDate = at instanceof Date ? at : new Date(at);

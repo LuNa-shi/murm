@@ -4,9 +4,9 @@ import { once } from 'node:events';
 import { streamResponse } from './core-controlled-upstream.js';
 
 export const adjustedDirection = 'Add explicit evidence and explain authorization as a separate check.';
-export function leadHelperCommand(kind, { sessionDirectory = '/workspace/runtime/pi-session' } = {}) {
+export function leadWorkerCommand(kind, { sessionDirectory = '/workspace/runtime/pi-session' } = {}) {
   assert.ok(['initialize', 'helper-initial', 'user-and-feedback', 'helper-followup'].includes(kind));
-  return `python3 - <<'LEAD_HELPER'
+  return `python3 - <<'LEAD_WORKER'
 import hashlib,json,os,pathlib,subprocess
 kind=${JSON.stringify(kind)}
 def cli(operation,payload,expected=None):
@@ -94,7 +94,7 @@ else:
  note=cli('note',{'subtask_id':taskId,'text':'Adopted changed direction in new verified report' if kind=='helper-followup' else 'Please require explicit evidence and a separate authorization check'})
  result.update({'subtaskId':taskId,'directionId':complete['directionId'],'delivery':complete['delivery'],'noteSeq':note['seq']})
 print(json.dumps(result))
-LEAD_HELPER`;
+LEAD_WORKER`;
 }
 const userTexts = input => input.filter(row => row.role === 'user' && Array.isArray(row.content)).flatMap(row => row.content.filter(block => block.type === 'input_text').map(block => block.text));
 export async function createLeadWorkerUpstream({ onFailure = () => {}, observeSessions = async () => {} } = {}) {
@@ -130,7 +130,7 @@ export async function createLeadWorkerUpstream({ onFailure = () => {}, observeSe
         const sameKindPending = [...pending.values()].filter(row => row.kind === kind).length;
         assert.ok(sameKindPending < (kind.startsWith('helper-') ? 2 : 1));
         const callId = `lead_helper_${ordinal}`; pending.set(callId, { kind, settled: false });
-        item = { type: 'function_call', id: `fc_${callId}`, call_id: callId, name: 'bash', arguments: JSON.stringify({ command: leadHelperCommand(kind), timeout: 45 }) };
+        item = { type: 'function_call', id: `fc_${callId}`, call_id: callId, name: 'bash', arguments: JSON.stringify({ command: leadWorkerCommand(kind), timeout: 45 }) };
       }
       assert.ok(!failure); accepted++; response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse('k3', ordinal, item));
     } catch {

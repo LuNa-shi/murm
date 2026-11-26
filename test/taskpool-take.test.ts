@@ -15,7 +15,7 @@ import { promisify } from 'node:util';
 const runProcess = promisify(execFile);
 
 async function fixture(t, hooks = {}, config = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'flat-take-'));
+  const root = await mkdtemp(join(tmpdir(), 'taskpool-take-'));
   const { tasks, context, workspace, manager, task, material, missionId, workspaceId } = await createTaskPoolStores(root);
   let runtime, service, provider;
   t.after(async () => { await service?.close(); provider?.allowDeletion(); await runtime?.close({ timeoutMs: 1000 }); context.close(); tasks.close(); await rm(root, { recursive: true, force: true }); });

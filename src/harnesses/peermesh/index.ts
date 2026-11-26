@@ -27,9 +27,9 @@ export function createPeerProfile({ image, model = 'default', facilities }: any)
 /** A single input owner. Core owns the Agent; Environment owns facilities. */
 export async function createPeerMeshHarness(options: any) {
   const { runId, image, model = 'default', exportLimit, outputDir, backend } = options;
-  if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId) || typeof image !== 'string' || !image || !Number.isSafeInteger(exportLimit) || exportLimit < 1) throw new TypeError('Agensh Environment requires run, image and actual export limit');
-  if (options.signal !== undefined && !(options.signal instanceof AbortSignal)) throw new TypeError('Agensh startup signal must be an AbortSignal');
-  const checkStartup = () => { if (options.signal?.aborted) throw Object.assign(new Error('Agensh startup aborted'), { code: 'HARNESS_START_ABORTED' }); };
+  if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId) || typeof image !== 'string' || !image || !Number.isSafeInteger(exportLimit) || exportLimit < 1) throw new TypeError('PeerMesh Harness requires run, image and actual export limit');
+  if (options.signal !== undefined && !(options.signal instanceof AbortSignal)) throw new TypeError('PeerMesh startup signal must be an AbortSignal');
+  const checkStartup = () => { if (options.signal?.aborted) throw Object.assign(new Error('PeerMesh startup aborted'), { code: 'HARNESS_START_ABORTED' }); };
   const resources = createOwnedResources();
   const lifetime: any = new AbortController();
   const secrets = [options.gitea?.adminToken, options.mattermost?.adminToken, ...(options.secretValues ?? [])].filter((value: any) => typeof value === 'string' && value);
@@ -103,7 +103,7 @@ export async function createPeerMeshHarness(options: any) {
     else {
       try { cleanup = await close(); } catch { cleanup = { cleanup: 'pending', pending: resources.snapshot() }; }
     }
-    throw Object.assign(new Error('Agensh Environment initialization failed'), { code, runtimeId: runtime?.id ?? error.runtimeId,
+    throw Object.assign(new Error('PeerMesh Harness initialization failed'), { code, runtimeId: runtime?.id ?? error.runtimeId,
       cleanup: cleanup.cleanup, ...(error.reportPath ? { reportPath: error.reportPath } : {}), details: [{ code, cleanup }, snapshot()] });
   } finally { options.signal?.removeEventListener('abort', abortStartup); }
 }

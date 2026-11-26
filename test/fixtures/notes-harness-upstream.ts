@@ -6,7 +6,7 @@ import { streamResponse } from './core-controlled-upstream.js';
 // Pinned pi-coding-agent 1.3.0 cli/setup.js uses APP_NAME=pi; rpc-entry.js uses pi-rpc.
 // Linux stat comm and starttime survive its process.title rewrite; original argv does not.
 export function notesHarnessCommand(role) {
-  return `python3 - <<'NOTES_ENVIRONMENT'
+  return `python3 - <<'NOTES_HARNESS'
 import json,os,pathlib,re,subprocess
 key='core-service-boundary'
 def cli(*args):
@@ -56,7 +56,7 @@ content=pathlib.Path('review.md').read_bytes()
 pathlib.Path('followup.md').write_bytes(content)
 evidence.update(continuity=True,bytes=len(content))`}
 print(json.dumps(evidence))
-NOTES_ENVIRONMENT`;
+NOTES_HARNESS`;
 }
 
 export async function createNotesHarnessUpstream({ onFailure = () => {}, observeSessions = async () => {}, verifyStartup = false } = {}) {
@@ -111,7 +111,7 @@ export async function createNotesHarnessUpstream({ onFailure = () => {}, observe
       response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse('k3', ordinal, item));
     } catch {
       const first = !failure;
-      failure ??= { code: 'CONTROLLED_NOTES_ENVIRONMENT_FAILED', stage, ordinal };
+      failure ??= { code: 'CONTROLLED_NOTES_HARNESS_FAILED', stage, ordinal };
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       const terminal = { type: 'response.failed', response: { id: `notes_rejected_${ordinal}`, object: 'response', model: 'k3',
         status: 'failed', output: [], error: { code: failure.code, message: failure.code },

@@ -29,7 +29,7 @@ Candidate summaries include gap and priority; inspect their relevance and choose
     view: 'Required: <task-id> (or --task-id). Read a Task contract, gap, priority, versions, dependencies, Materials and Executions. Use --contract-history-after-version and --contract-history-limit (1-100) to continue contract_history_page.next_after_version.',
     take: 'Take an eligible Task by its positional ID. Example: swarm task take T1 --request-id take-t1 (replace T1 with the returned task_id). The result includes the Execution and pinned inputs. If the response is unknown, reuse the same request ID with the same Task.',
     link: `Link a published Material during an active Execution. The role determines which Task ID to use.
-To send your published Material to another Task, use the receiving Task's ID in --task-id and choose --role response. The authenticated Execution supplies the producer. Omit --receiving-task-id, or give it the same ID as --task-id. Flat queues a notice for the receiving Task.
+To send your published Material to another Task, use the receiving Task's ID in --task-id and choose --role response. The authenticated Execution supplies the producer. Omit --receiving-task-id, or give it the same ID as --task-id. TaskPool queues a notice for the receiving Task.
   swarm task link --task-id RECEIVING_TASK_ID --material-id MATERIAL_ID --role response --request-id send-m1-to-recipient
 To attach Material as input to your own work, use --role input and your current Task's ID. To cite your own published Material when finishing, link it to your current Task with --role experience.
   swarm task link --task-id CURRENT_TASK_ID --material-id MATERIAL_ID --role experience --request-id link-m1-to-current

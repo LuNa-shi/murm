@@ -21,23 +21,23 @@ interface BoardEntry {
 export function createPeerMeshServices(configuration: any, delivery?: { merge(input: any): Promise<unknown> }, onBoardEntry?: (entry: BoardEntry) => void) {
   const { runId, repository, channelId, boardId } = structuredClone(configuration);
   const peers = structuredClone(configuration.peers ?? [{ ...configuration.peer, key: 'peer' }]);
-  if (!Array.isArray(peers) || peers.length < 1 || peers.length > 8 || new Set(peers.map((peer: any) => peer.key)).size !== peers.length) throw new TypeError('Agensh requires a bounded distinct peer list');
+  if (!Array.isArray(peers) || peers.length < 1 || peers.length > 8 || new Set(peers.map((peer: any) => peer.key)).size !== peers.length) throw new TypeError('PeerMesh requires a bounded distinct peer list');
   const peer = peers[0];
   for (const field of ['gitea', 'message', 'board']) for (const identity of ['binding', field === 'board' ? 'workerId' : 'accountId']) {
-    if (new Set(peers.map((peer: any) => peer[field]?.[identity])).size !== peers.length) throw new TypeError('Agensh peer identities must be distinct');
+    if (new Set(peers.map((peer: any) => peer[field]?.[identity])).size !== peers.length) throw new TypeError('PeerMesh peer identities must be distinct');
   }
   const endpoints: any = { ...configuration.endpoints };
   for (const endpoint of Object.values((endpoints as Record<string, any>))) {
     const url: any = new URL(endpoint);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new TypeError('Agensh endpoints must be credential-free HTTP(S) origins');
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new TypeError('PeerMesh endpoints must be credential-free HTTP(S) origins');
   }
   for (const peer of peers) if (![runId, repository?.owner, repository?.name, channelId, boardId, peer.gitea?.accountId, peer.message?.accountId, peer.board?.workerId,
     peer.gitea?.token, peer.message?.token, peer.gitea?.binding, peer.message?.binding, peer.board?.binding].every((value: any) => typeof value === 'string' && value.length > 0)) {
-    throw new TypeError('Agensh Services require complete run and peer identities');
+    throw new TypeError('PeerMesh Services require complete run and peer identities');
   }
   const agents: any = new Map();
   const bindings = Object.freeze({ gitea: peer.gitea.binding, message: peer.message.binding, 'peermesh-context': peer.board.binding });
-  for (const field of ['gitea', 'message']) if (new Set(peers.map((peer: any) => peer[field].token)).size !== peers.length) throw new TypeError('Agensh peers require separate credentials');
+  for (const field of ['gitea', 'message']) if (new Set(peers.map((peer: any) => peer[field].token)).size !== peers.length) throw new TypeError('PeerMesh peers require separate credentials');
   const services: any = new ServiceRegistry();
   const repo: any = { owner: fixed(repository.owner), repo: fixed(repository.name) };
   const scope = `/api/v1/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}`;
@@ -125,7 +125,7 @@ export function createPeerMeshServices(configuration: any, delivery?: { merge(in
   const readOperation = (operation: string) => /read|list|grep|unfold/.test(operation);
   for (const [id, rules] of Object.entries((operations as Record<string, any>))) {
     services.registerService({
-      manifest: { id, title: id, purpose: 'One run Agensh peer access', provider_version: 'agensh-2dae4e14-rest-1', contract_version: '2', endpoint: { transport: 'in-process' },
+      manifest: { id, title: id, purpose: 'One run PeerMesh peer access', provider_version: 'peermesh-rest-1', contract_version: '2', endpoint: { transport: 'in-process' },
         capabilities: Object.entries((rules as Record<string, any>)).map(([operation, rule]: any) => ({ name: operation, operation, description: `Run-scoped ${operation}`, help: { when: `Use ${operation} for this run's shared data` },
           side_effect: readOperation(operation) ? 'read' : 'write', idempotent: readOperation(operation) || operation === 'pull_request_merge', input_schema: rule.schema,
           output_schema: outputs[operation], errors: ['NOT_ALLOWED', 'INVALID_CONTRACT', 'SERVICE_UNAVAILABLE',

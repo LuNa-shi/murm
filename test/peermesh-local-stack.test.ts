@@ -132,8 +132,8 @@ for (const [error, errorClass] of [
   await stack.close();
 });
 
-test('lead-helper Gitea-only stack caches and allocates no unrelated facilities', async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-git-stack-')); t.after(() => rm(directory, { recursive: true, force: true }));
+test('lead-worker Gitea-only stack caches and allocates no unrelated facilities', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'lead-worker-git-stack-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const server = createServer((request, response) => { request.resume(); response.end('{}'); }); server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const calls = []; let owned;

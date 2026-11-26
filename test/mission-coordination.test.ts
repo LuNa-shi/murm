@@ -215,7 +215,7 @@ test('Mission coordination pins current main and explicit empty Materials and en
 });
 
 
-test('retained Bridge uses host-owned Flat submission and observes stop changes without Runtime forwarding', async t => {
+test('retained Bridge uses host-owned TaskPool submission and observes stop changes without Runtime forwarding', async t => {
   const { taskService, contextService, store, calls } = await fixture(t);
   const start = async (bridge, id) => {
     await bridge.start();
@@ -234,7 +234,7 @@ test('retained Bridge uses host-owned Flat submission and observes stop changes 
     } }),
   });
   await start(bridge, 'coordinator');
-  const receipt = await bridge.call({ operation: 'mission_submit', operation_id: 'flat-host-submission', payload: { material_ids: [] } });
+  const receipt = await bridge.call({ operation: 'mission_submit', operation_id: 'taskpool-host-submission', payload: { material_ids: [] } });
   assert.equal(receipt.state, 'pending');
   assert.equal(receipt.workspace_id, workspaceId);
   assert.equal(receipt.current.mission_state, 'open');

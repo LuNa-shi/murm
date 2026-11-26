@@ -83,7 +83,7 @@ const {createCoreBridge}=await import('./node_modules/@murm/core/dist/src/core/b
 const {snapshotServiceRegistry}=await import('./node_modules/@murm/core/dist/src/core/services.js');
 const notes=createNotes();
 const agents={writer:{profile:'writer',status:'idle',services:{notes:['put']}},reader:{profile:'reader',status:'idle',services:{notes:['get']}}};
-const bridge=await createCoreBridge({runtimeId:'notes-package',configuration:{host:'127.0.0.1',publicUrl:'http://127.0.0.1:{port}'},getBot:id=>agents[id]??null,registrations:snapshotServiceRegistry(notes.services)});
+const bridge=await createCoreBridge({runtimeId:'notes-package',configuration:{host:'127.0.0.1',publicUrl:'http://127.0.0.1:{port}'},getAgent:id=>agents[id]??null,registrations:snapshotServiceRegistry(notes.services)});
 try {
  const run=promisify(execFile);
  const cli=async(agent,...args)=>{
@@ -213,7 +213,7 @@ await runtime.close();
 
 test('fixed Notes scripts parse and response budget is sticky across malformed arrivals', async t => {
   for (const role of ['writer', 'reader', 'followup']) {
-    const program = notesHarnessCommand(role).split("<<'NOTES_ENVIRONMENT'\n")[1].split('\nNOTES_ENVIRONMENT')[0];
+    const program = notesHarnessCommand(role).split("<<'NOTES_HARNESS'\n")[1].split('\nNOTES_HARNESS')[0];
     await execute('python3', ['-c', 'import ast,sys; ast.parse(sys.argv[1])', program]);
   }
   const upstream = await createNotesHarnessUpstream(); t.after(() => upstream.close());
@@ -221,10 +221,10 @@ test('fixed Notes scripts parse and response budget is sticky across malformed a
   assert.equal((await send({ model: 'k3', input: [] })).status, 200);
   const rejected = await send({ model: 'k3', input: [] });
   assert.equal(rejected.status, 200);
-  assert.match(await rejected.text(), /CONTROLLED_NOTES_ENVIRONMENT_FAILED/);
+  assert.match(await rejected.text(), /CONTROLLED_NOTES_HARNESS_FAILED/);
   for (let index = 0; index < 5; index++) await send({ model: 'k3', input: [] });
   assert.equal(upstream.receipt().arrivals, 7); assert.equal(upstream.receipt().accepted, 1);
-  assert.deepEqual(upstream.receipt().failure, { code: 'CONTROLLED_NOTES_ENVIRONMENT_FAILED', stage: 'writer-tool-evidence', ordinal: 2 });
+  assert.deepEqual(upstream.receipt().failure, { code: 'CONTROLLED_NOTES_HARNESS_FAILED', stage: 'writer-tool-evidence', ordinal: 2 });
 });
 
 test('the loopback fixture requires six uniquely correlated writer/reader/followup responses', async t => {
@@ -242,7 +242,7 @@ test('the loopback fixture requires six uniquely correlated writer/reader/follow
   }
   assert.deepEqual(observations, ['before-followup', 'after-followup']);
   assert.deepEqual(upstream.receipt(), { arrivals: 6, accepted: 6, failure: undefined, evidence: rows });
-  assert.match(await (await send([])).text(), /CONTROLLED_NOTES_ENVIRONMENT_FAILED/);
+  assert.match(await (await send([])).text(), /CONTROLLED_NOTES_HARNESS_FAILED/);
   assert.equal(upstream.receipt().accepted, 6);
 });
 
@@ -293,7 +293,7 @@ test('Notes terminal failure is an error with no native Pi retry classification'
   await fetch(upstream.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
   const failed = await completeSimple(model, { messages: [{ role: 'user', content: 'fixed', timestamp: 0 }] },
     { apiKey: 'local-only', maxTokens: 128 });
-  assert.equal(failed.stopReason, 'error'); assert.match(failed.errorMessage, /CONTROLLED_NOTES_ENVIRONMENT_FAILED/);
+  assert.equal(failed.stopReason, 'error'); assert.match(failed.errorMessage, /CONTROLLED_NOTES_HARNESS_FAILED/);
   assert.equal(isRetryableAssistantError(failed), false);
   assert.equal(upstream.receipt().arrivals, 2);
 });

@@ -95,10 +95,10 @@ for (const path of ['services/mathlib-search/SKILL.md', 'services/mathlib-search
 output('02-task-loop-and-tools.md', toolsDoc);
 
 let turnsDoc = header('Complete TaskPool continuation messages', 'The TaskPool controller selects these repository-owned texts from the durable Execution phase after a settled turn. Host Profile and initial input composition are described in the Harness references.');
-turnsDoc += block('Flat bound continuation', AGENT_CONTINUATION_MESSAGE);
+turnsDoc += block('TaskPool bound continuation', AGENT_CONTINUATION_MESSAGE);
 turnsDoc += block('Soft closeout continuation', `${buildAgentSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${AGENT_SOFT_CLOSEOUT_MESSAGE}`);
 output('03-runtime-turns.md', turnsDoc);
-let runtimeDoc = header('Complete Runtime notification messages', 'The Flat controller composes durable handoff warnings and eligible Material/dependency notices using buildAgentNotification from agent-contract.js. Serialized admission uses followUp by default. PutnamBench selects steer for Material notices so Pi can include them at a tool continuation. The retained Runtime no longer sends notification inputs. The controller records eligibility and input admission. Synthetic identifiers below illustrate the exact current body. Confirm model visibility from the actual provider input.');
+let runtimeDoc = header('Complete Runtime notification messages', 'The TaskPool controller composes durable handoff warnings and eligible Material/dependency notices using buildAgentNotification from agent-contract.js. Serialized admission uses followUp by default. PutnamBench selects steer for Material notices so Pi can include them at a tool continuation. The retained Runtime no longer sends notification inputs. The controller records eligibility and input admission. Synthetic identifiers below illustrate the exact current body. Confirm model visibility from the actual provider input.');
 for (const notification_type of ['handoff_warning', 'material_available', 'dependency_satisfied']) runtimeDoc += block(notification_type, buildAgentNotification({ notification_type, notification_id: '<NOTIFICATION_ID>', material_id: '<MATERIAL_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', recipient_task_id: '<TASK_ID>', payload: { execution_id: '<EXECUTION_ID>', deadline: '2099-01-01T00:00:00.000Z' } }, { at: Date.parse('2098-12-31T23:59:30.000Z') }));
 output('04-runtime-messages.md', runtimeDoc);
 
@@ -221,17 +221,17 @@ output('08-peermesh-harness.md', header('PeerMesh peer, batch and notice prompts
   + block('Opt-in hosted A external comment instructions', between('test/fixtures/peermesh-team-kimi.ts', 'export const liveAUser = `', '`;'))
   + block('Exact hosted initial composition', between('test/fixtures/peermesh-team-kimi.ts', '  return [`', '];'),
     'The host supplies two distinct provisioned peer usernames and a fresh 24-character seed. Only A receives the seed. The user comment names only A and appends liveAUser. Negotiation and agreement text are actual model-authored Mattermost posts, delivered by the normal authenticated subscription. The fixture injects no model tool program or terminal response.'));
-const leadHelperPath = 'src/harnesses/lead-worker/prompts.ts';
-let leadHelperDoc = header('Fixed Lead-Worker role and turn instructions', 'Profiles stage lead/helper roles. The Harness serializes each round instruction with trusted host fields before exclusive followUp delivery; these are source templates, not a native transcript.');
+const leadWorkerPath = 'src/harnesses/lead-worker/prompts.ts';
+let leadWorkerDoc = header('Fixed Lead-Worker role and turn instructions', 'Profiles stage lead/helper roles. The Harness serializes each round instruction with trusted host fields before exclusive followUp delivery; these are source templates, not a native transcript.');
 for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'helperInitialInstruction', 'leadAdjustmentInstruction', 'helperFollowupInstruction']) {
-  const source = sources.get(leadHelperPath)!;
+  const source = sources.get(leadWorkerPath)!;
   const start = `export const ${name} = `;
   const from = source.indexOf(start);
   const delimiter = source[from + start.length];
-  leadHelperDoc += block(name, between(leadHelperPath, start + delimiter, delimiter + ';'));
+  leadWorkerDoc += block(name, between(leadWorkerPath, start + delimiter, delimiter + ';'));
 }
-leadHelperDoc += block('Staged corrective input composition and send', between('src/harnesses/lead-worker/index.ts', '                  const nextPath =', '\n                  final = board.snapshot();'), 'The trusted host checker must explicitly return STAGE_CANDIDATE_REJECTED. Actual stage, helper role and attempt derive the fresh path and request ID; the original task and monotonic deadline remain fixed. No reference answer or new permission is supplied.');
-output('08-lead-worker-harness.md', leadHelperDoc);
+leadWorkerDoc += block('Staged corrective input composition and send', between('src/harnesses/lead-worker/index.ts', '                  const nextPath =', '\n                  final = board.snapshot();'), 'The trusted host checker must explicitly return STAGE_CANDIDATE_REJECTED. Actual stage, helper role and attempt derive the fresh path and request ID; the original task and monotonic deadline remain fixed. No reference answer or new permission is supplied.');
+output('08-lead-worker-harness.md', leadWorkerDoc);
 const flatControllerPath = 'src/harnesses/taskpool/controller.ts';
 const taskPoolHarnessPath = 'src/harnesses/taskpool/harness.ts';
 const putnamPath = 'benchmarks/putnambench-taskpool/run.ts';

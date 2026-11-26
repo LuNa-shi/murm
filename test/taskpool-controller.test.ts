@@ -17,7 +17,7 @@ const hooks=registerHooks({resolve(specifier,context,next){
 }});
 const {createRuntime}=await import('../src/core/index.js'); hooks.deregister();
 async function fixture(t,options={}) {
-  const root=await mkdtemp(join(tmpdir(),'flat-controller-'));
+  const root=await mkdtemp(join(tmpdir(),'taskpool-controller-'));
   const stores=await createTaskPoolStores(root); transport.reset();controls.stopError=null;controls.destroyError=null;
   let runtime, controller;
   const services = new ServiceRegistry();
@@ -59,7 +59,7 @@ test('flat settled continues an unfinished owned Execution without declaring Tas
   assert.ok(snapshot.decisions.at(-1).remainingMs>0);
 });
 
-test('Flat owns one durable handoff warning at the persisted threshold without completing work',async t=>{
+test('TaskPool owns one durable handoff warning at the persisted threshold without completing work',async t=>{
   const f=await fixture(t);const execution=f.take();
   let enqueues=0,signals=0;const enqueue=f.tasks.enqueueNotification.bind(f.tasks);
   f.tasks.enqueueNotification=(...args)=>{enqueues++;return enqueue(...args);};
@@ -224,7 +224,7 @@ test('accepted finish is finalized after public stop and replacement starts a fr
 });
 
 
-test('accepted Bridge finish survives a disconnected caller and closes through the Flat controller', { timeout: 8000 }, async t => {
+test('accepted Bridge finish survives a disconnected caller and closes through the TaskPool controller', { timeout: 8000 }, async t => {
   let client, finishReceipt;
   const f = await fixture(t, { onFinish(receipt) {
     finishReceipt = receipt;
@@ -526,7 +526,7 @@ test('flat halt during the final asynchronous discovery lookup prevents late inp
 });
 
 for (const source of ['discovery', 'continuation', 'user']) {
-  test(`flat Mission stop during the final Core lookup fences ${source} input`, async t => {
+  test(`taskpool Mission stop during the final Core lookup fences ${source} input`, async t => {
     const f = await fixture(t);
     if (source !== 'discovery') f.take();
     const before = transport.submissions.size;
@@ -554,7 +554,7 @@ for (const source of ['discovery', 'continuation', 'user']) {
   });
 }
 
-test('flat Mission stop during discovery prevents allocation of the next slot', async t => {
+test('taskpool Mission stop during discovery prevents allocation of the next slot', async t => {
   const f = await fixture(t, {
     capacity: 2,
     beforeStart({ tasks, missionId }) {
@@ -656,7 +656,7 @@ test('failed pre-discovery host admission sends no model input', async t => {
 });
 
 
-test('closing Flat cancels a held pre-discovery admission and never sends late inputs', async t => {
+test('closing TaskPool cancels a held pre-discovery admission and never sends late inputs', async t => {
   const entered=Promise.withResolvers(),release=Promise.withResolvers(); let controller;
   const starting=fixture(t,{capacity:4,captureController:value=>{controller=value;},
     beforeInitialDispatch({signal}) {entered.resolve(signal);return release.promise;},
@@ -668,7 +668,7 @@ test('closing Flat cancels a held pre-discovery admission and never sends late i
   assert.equal(transport.submissions.size,0);
 });
 
-test('host-controlled Flat keeps the same running Execution after settle and accepts explicit followUp', async t => {
+test('host-controlled TaskPool keeps the same running Execution after settle and accepts explicit followUp', async t => {
   const f=await fixture(t,{automaticContinuation:false}); const execution=f.take();
   f.settle();await f.controller.flush();
   assert.equal(f.controller.snapshot().inputs.length,1);
@@ -730,8 +730,8 @@ test('configured material notifications steer while dependency notices and conti
   const notices = sent.filter(row => row.source === 'notification');
   assert.equal(notices.length, 2);
   assert.deepEqual(new Map(notices.map(row => [row.requestId, [row.mode, row.executionId, row.status]])), new Map([
-    [`flat:notification:${execution.execution_id}:${material.notification_id}`, ['steer', execution.execution_id, 'accepted']],
-    [`flat:notification:${execution.execution_id}:${dependency.notification_id}`, ['followUp', execution.execution_id, 'accepted']],
+    [`taskpool:notification:${execution.execution_id}:${material.notification_id}`, ['steer', execution.execution_id, 'accepted']],
+    [`taskpool:notification:${execution.execution_id}:${dependency.notification_id}`, ['followUp', execution.execution_id, 'accepted']],
   ]));
   assert.equal(sent.at(-1).source, 'continuation');
   assert.equal(sent.at(-1).mode, 'followUp');

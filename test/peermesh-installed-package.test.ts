@@ -5,7 +5,7 @@ import { access, readFile, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { installNotesExample, execute } from './fixtures/notes-installed-package.js';
 
-test('offline archive ships the native Agensh host configuration and declared foreground entries', {
+test('offline archive ships the native PeerMesh host configuration and declared foreground entries', {
   timeout: 180_000
 }, async t => {
   const installed = await installNotesExample();
@@ -36,7 +36,7 @@ test('offline archive ships the native Agensh host configuration and declared fo
   assert.match(help.stdout, /--config <host-module.mjs>/);
   assert.match(help.stdout, /status, kickoff, input, wait or stop/);
 
-  for (const entry of ['run-harness', 'read-harness-result']) {
+  for (const entry of ['run-environment', 'read-environment-result']) {
     await assert.rejects(access(join(root, 'dist/scripts', entry + '.js')), { code: 'ENOENT' });
   }
 

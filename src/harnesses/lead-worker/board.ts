@@ -62,7 +62,7 @@ export function createBoard({ path: databasePath, runId, helperCount, verifyDeli
     if (state.directions.at(-1)?.seq !== input.direction_id || !state.reads.some((read: any) => read.actor === caller.agentId && read.directionId === input.direction_id)) throw error('DIRECTION_NOT_READ');
     return row;
   }
-  const registration: any = { manifest: { id: 'board', title: 'Lead-helper Board', purpose: 'Durable direction, exclusive ownership and verified delivery', provider_version: 'lead-helper-board-1', contract_version: '2', endpoint: { transport: 'in-process' },
+  const registration: any = { manifest: { id: 'board', title: 'Lead-Worker Board', purpose: 'Durable direction, exclusive ownership and verified delivery', provider_version: 'lead-worker-board-1', contract_version: '2', endpoint: { transport: 'in-process' },
     capabilities: Object.entries((schemas as Record<string, any>)).map(([operation, input_schema]: any) => ({ name: operation, operation, description: `Public Board ${operation}`, help: { when: 'Read direction before claiming or completing work; never reclaim an owner' }, side_effect: ['read', 'list_subtasks'].includes(operation) ? 'read' : 'write', idempotent: true, input_schema,
       output_schema: { type: 'object', additionalProperties: true }, errors: ['NOT_ALLOWED', 'CONFLICT', 'NOT_FOUND', 'BOARD_FENCED', 'BOARD_LIMIT', 'FEEDBACK_NOT_READ', 'DIRECTION_NOT_READ', 'DELIVERY_INVALID'].map((code: any) => ({ code, retryable: false })) })) },
     adapter: { async invoke({ capability, input, envelope, caller, signal }: any) {

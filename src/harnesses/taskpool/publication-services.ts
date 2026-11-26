@@ -13,7 +13,7 @@ import { listTools } from '../../sdk/service-catalog.js';
 
 const fail = (code: any, message: any) => { throw new MurmError(code, message); };
 const publicationRequestId = (runtimeId: any, agentId: any, requestId: any) =>
-  `flat:publication:${inputFingerprint([runtimeId,agentId,requestId])}`;
+  `taskpool:publication:${inputFingerprint([runtimeId,agentId,requestId])}`;
 const text: any = { type:'string', minLength:1, maxLength:4000 };
 const ids: any = { type:'array', items:text, maxItems:100, uniqueItems:true };
 const object = (properties: any, required: any=[]) => ({type:'object', properties, required, additionalProperties:false});
@@ -72,11 +72,11 @@ const definitions: any = {
 export function createTaskPoolPublicationServices({ runtime, taskService, contextService, missionId, missionWorkspace, workspaceId,
   profile='researcher', deadline, coordinationPermissions=[], onFinish=()=>{}, snapshotProject, workspaceCapture, judgeService = null, workspaceProjectCheck = false, workspaceMergeChecker = null }: any) {
   if (!runtime || !taskService || !contextService || !missionWorkspace || typeof missionId!=='string' || !missionId ||
-      typeof workspaceId!=='string' || !workspaceId || typeof deadline!=='function' || typeof onFinish!=='function') fail('INVALID_CONTRACT','Flat publication requires trusted Runtime, stores and finite Mission budget');
-  if (typeof workspaceProjectCheck!=='boolean') fail('INVALID_CONTRACT','Flat Judge project mode must be boolean');
-  if (judgeService && (judgeService.taskService !== taskService || typeof judgeService.dispatch !== 'function')) fail('INVALID_CONTRACT','Flat Judge and Task authority must match');
-  if (workspaceCapture !== undefined && workspaceCapture !== 'core') fail('INVALID_CONTRACT', 'Flat workspaceCapture must select core');
-  if (workspaceCapture === 'core' && snapshotProject !== undefined) fail('INVALID_CONTRACT', 'Choose one trusted Flat capture binding');
+      typeof workspaceId!=='string' || !workspaceId || typeof deadline!=='function' || typeof onFinish!=='function') fail('INVALID_CONTRACT','TaskPool publication requires trusted Runtime, stores and finite Mission budget');
+  if (typeof workspaceProjectCheck!=='boolean') fail('INVALID_CONTRACT','TaskPool Judge project mode must be boolean');
+  if (judgeService && (judgeService.taskService !== taskService || typeof judgeService.dispatch !== 'function')) fail('INVALID_CONTRACT','TaskPool Judge and Task authority must match');
+  if (workspaceCapture !== undefined && workspaceCapture !== 'core') fail('INVALID_CONTRACT', 'TaskPool workspaceCapture must select core');
+  if (workspaceCapture === 'core' && snapshotProject !== undefined) fail('INVALID_CONTRACT', 'Choose one trusted TaskPool capture binding');
   const captureAvailable = workspaceCapture === 'core' || typeof snapshotProject === 'function';
   const permissions=taskPoolCoordinationPermissions(coordinationPermissions);
   const getRuntime=()=>typeof runtime==='function'?runtime():runtime;
@@ -87,18 +87,18 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
   let closing=false;
   function binding(caller: any, {write=true,allowUnboundRevocation=false,feedbackId}: any={}) {
     const core=getRuntime();
-    if (closing || caller?.runtimeId!==core?.id || caller.profile!==profile || typeof caller.agentId!=='string') fail('NOT_ALLOWED','Flat publication caller is outside this Runtime');
+    if (closing || caller?.runtimeId!==core?.id || caller.profile!==profile || typeof caller.agentId!=='string') fail('NOT_ALLOWED','TaskPool publication caller is outside this Runtime');
     const agent=taskService.getAgent(caller.agentId);
-    if (!agent || agent.mission_id!==missionId || agent.sandbox_id || agent.core_id===core.id || !['UNBOUND','ACTIVE'].includes(agent.state) || (write && agent.state!=='ACTIVE' && !(allowUnboundRevocation && agent.state==='UNBOUND'))) fail('NOT_ALLOWED','Flat publication requires its actual current Agent owner');
+    if (!agent || agent.mission_id!==missionId || agent.sandbox_id || agent.core_id===core.id || !['UNBOUND','ACTIVE'].includes(agent.state) || (write && agent.state!=='ACTIVE' && !(allowUnboundRevocation && agent.state==='UNBOUND'))) fail('NOT_ALLOWED','TaskPool publication requires its actual current Agent owner');
     const until=deadline();
-    if (!Number.isFinite(until) || Date.now()>=until) fail('NOT_ALLOWED','Flat Mission budget elapsed');
+    if (!Number.isFinite(until) || Date.now()>=until) fail('NOT_ALLOWED','TaskPool Mission budget elapsed');
     taskService.assertMissionResearchOpen(missionId); taskService.assertAgentDeadline(agent.agent_id);
     if (write && agent.state === 'UNBOUND') {
       // This is the original narrow domain exception; recheck it before replay.
       taskService.assertMissionCoordination(makeEnvelope({actorRef:agent.agent_id}), 'unsupersede');
     }
     const execution=agent.execution_id ? taskService.getExecution(agent.execution_id):null;
-    if (execution && (execution.owner_ref!==agent.agent_id || execution.state!=='RUNNING' || Date.now()>=Date.parse(execution.lease_expires_at) || taskService.getTask(execution.task_id)?.spec_version!==execution.spec_version)) fail('NOT_ALLOWED','Flat Execution ownership or lease changed');
+    if (execution && (execution.owner_ref!==agent.agent_id || execution.state!=='RUNNING' || Date.now()>=Date.parse(execution.lease_expires_at) || taskService.getTask(execution.task_id)?.spec_version!==execution.spec_version)) fail('NOT_ALLOWED','TaskPool Execution ownership or lease changed');
     if(feedbackId!==undefined) {
       const notification=execution&&taskService.listNotifications({missionId,recipientTaskId:execution.task_id})
         .find((row: any)=>row.notification_id===feedbackId);
@@ -211,13 +211,13 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
   async function workspaceOperation(operation: any,input: any,current: any,id: any,signal: any,assertAuthorized: any) {
     if (['workspace_public_view', 'workspace_public_read', 'workspace_public_files', 'workspace_public_diff'].includes(operation)) {
       const metadata = await missionWorkspace.get({ workspaceId, signal });
-      if (metadata.mission_id !== missionId) fail('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
+      if (metadata.mission_id !== missionId) fail('NOT_ALLOWED', 'TaskPool Workspace belongs to another Mission');
       if (operation === 'workspace_public_view') return metadata;
       return (MISSION_WORKSPACE_READS as Record<string, any>)[operation](missionWorkspace, { ...input, workspace_id: workspaceId }, signal);
     }
     if(!current.execution) fail('NOT_ALLOWED','Private Workspace operation requires an active Execution');
     if(operation==='workspace_merge') {
-      if(!merge) fail('SERVICE_NOT_READY','Flat checked merge is not configured');
+      if(!merge) fail('SERVICE_NOT_READY','TaskPool checked merge is not configured');
       return merge.merge(input,{actorRef:current.agent.agent_id,taskId:current.execution.task_id,executionId:current.execution.execution_id,
         fencingVersion:current.execution.fencing_version,requestId:id,signal,assertAuthorized});
     }
@@ -231,8 +231,8 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
       assertAuthorized?.();
       signal?.throwIfAborted();
       const latest=binding(caller,{write:operation==='workspace_check'});
-      if(operation==='workspace_check' && (latest.execution?.workspace_input?.workspace_id!==workspaceId || taskService.getTask(latest.execution?.task_id)?.mission_id!==missionId)) fail('NOT_ALLOWED','Judge source is outside the current Flat Workspace binding');
-      if(latest.execution?.execution_id!==execution?.execution_id || latest.execution?.fencing_version!==execution?.fencing_version) fail('FENCED','Flat Judge binding changed');
+      if(operation==='workspace_check' && (latest.execution?.workspace_input?.workspace_id!==workspaceId || taskService.getTask(latest.execution?.task_id)?.mission_id!==missionId)) fail('NOT_ALLOWED','Judge source is outside the current TaskPool Workspace binding');
+      if(latest.execution?.execution_id!==execution?.execution_id || latest.execution?.fencing_version!==execution?.fencing_version) fail('FENCED','TaskPool Judge binding changed');
       return latest;
     };
     const guard=async()=>{
@@ -272,17 +272,17 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
   async function invoke(service: any,{capability:cap,input,caller,envelope,signal,assertAuthorized}: any) {
     const operation=cap.operation;
     const guardedReplay=service==='judge'||operation==='workspace_merge'||operation==='task_feedback'||['material_dispute','material_supersede','material_unsupersede'].includes(operation);
-    if (!definitions[service]?.some((row: any)=>row.operation===operation)) fail('INVALID_CONTRACT','Unknown flat publication operation');
-    if (!input || typeof input!=='object' || Array.isArray(input) || ['actor_ref','owner_ref','agent_id','execution_id','fencing_version','spec_version','state_version'].some((key: any)=>Object.hasOwn(input,key))) fail('INVALID_CONTRACT','Flat publication cannot supply trusted identity');
-    if (typeof envelope?.operation_id!=='string' || !envelope.operation_id) fail('INVALID_CONTRACT','Flat publication needs stable request identity');
+    if (!definitions[service]?.some((row: any)=>row.operation===operation)) fail('INVALID_CONTRACT','Unknown taskpool publication operation');
+    if (!input || typeof input!=='object' || Array.isArray(input) || ['actor_ref','owner_ref','agent_id','execution_id','fencing_version','spec_version','state_version'].some((key: any)=>Object.hasOwn(input,key))) fail('INVALID_CONTRACT','TaskPool publication cannot supply trusted identity');
+    if (typeof envelope?.operation_id!=='string' || !envelope.operation_id) fail('INVALID_CONTRACT','TaskPool publication needs stable request identity');
     const core=getRuntime();
-    if (caller?.runtimeId!==core?.id || caller.profile!==profile || typeof caller.agentId!=='string') fail('NOT_ALLOWED','Foreign flat caller');
+    if (caller?.runtimeId!==core?.id || caller.profile!==profile || typeof caller.agentId!=='string') fail('NOT_ALLOWED','Foreign taskpool caller');
     const key=stableStringify([core.id,caller.agentId,envelope.operation_id]);
     const fingerprint=stableStringify({service,operation,input});
     const previous=requests.get(key);
     if (previous) {
       // Judge owns durable replay; its caller must still pass current authority.
-      if(previous.fingerprint!==fingerprint) fail('CONFLICT','Flat publication request has different parameters');
+      if(previous.fingerprint!==fingerprint) fail('CONFLICT','TaskPool publication request has different parameters');
       if(previous.work && !guardedReplay) return structuredClone(await previous.work);
     }
     const read=cap.side_effect==='read';
@@ -292,15 +292,15 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
     if (!['idle','running'].includes(live.status) || live.profile!==profile) fail('NOT_ALLOWED','Core Agent is unavailable');
     signal?.throwIfAborted();
     const current=binding(caller,access);
-    if (current.execution?.execution_id!==original.execution?.execution_id || current.execution?.fencing_version!==original.execution?.fencing_version) fail('FENCED','Flat binding changed during admission');
+    if (current.execution?.execution_id!==original.execution?.execution_id || current.execution?.fencing_version!==original.execution?.fencing_version) fail('FENCED','TaskPool binding changed during admission');
     const reauthorize=(expected: any)=>{
       assertAuthorized?.();signal?.throwIfAborted();
       const latest=binding(caller,access);
-      if(latest.execution?.execution_id!==expected.executionId || latest.execution?.fencing_version!==expected.fencingVersion) fail('FENCED','Flat publication replay binding changed');
+      if(latest.execution?.execution_id!==expected.executionId || latest.execution?.fencing_version!==expected.fencingVersion) fail('FENCED','TaskPool publication replay binding changed');
     };
     const joined=requests.get(key);
     if (joined) {
-      if(joined.fingerprint!==fingerprint) fail('CONFLICT','Flat publication request has different parameters');
+      if(joined.fingerprint!==fingerprint) fail('CONFLICT','TaskPool publication request has different parameters');
       if(joined.work && !guardedReplay) return structuredClone(await joined.work);
       if(guardedReplay && joined.work && (operation==='workspace_merge'||joined.pending)) {
         reauthorize(joined);
@@ -314,7 +314,7 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
     const work=Promise.resolve().then(()=>{
       signal?.throwIfAborted();
       const latest=binding(caller,access);
-      if(latest.execution?.execution_id!==current.execution?.execution_id || latest.execution?.fencing_version!==current.execution?.fencing_version) fail('FENCED','Flat binding changed before publication');
+      if(latest.execution?.execution_id!==current.execution?.execution_id || latest.execution?.fencing_version!==current.execution?.fencing_version) fail('FENCED','TaskPool binding changed before publication');
       const domainEnvelope=latest.execution ? {...executionEnvelope(latest.execution,id),actor_ref:caller.agentId}:makeEnvelope({actorRef:caller.agentId,operationId:id});
       const result=service==='judge'?judgeOperation(operation,input,latest,id,caller,signal,assertAuthorized,call):service==='workspace'?workspaceOperation(operation,input,latest,id,signal,assertAuthorized):service==='context'?contextService.dispatch(operation,input,domainEnvelope):taskService.dispatch(operation,input,domainEnvelope);
       if(operation==='task_finish') onFinish({agentId:caller.agentId,executionId:latest.execution.execution_id,requestId:envelope.operation_id});
@@ -358,7 +358,7 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
     workspace_merge: workspaceMergeChecker?.timeoutMs ?? 0,
   };
   const registrations=Object.entries((definitions as Record<string, any>)).filter(([id]: any)=>id!=='judge'||judgeService).map(([id,capabilities]: any)=>({
-    manifest:{id,title:`Flat ${id}`,purpose:purposes[id],provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},capabilities:capabilities.filter(({operation}: any)=>
+    manifest:{id,title:`TaskPool ${id}`,purpose:purposes[id],provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},capabilities:capabilities.filter(({operation}: any)=>
       (operation!=='workspace_merge'||merge) && (operation!=='workspace_apply'||workspaceCapture==='core') && (!liveWorkspaceOperations.has(operation)||captureAvailable))
       .map((cap: any) => {
         const budget = checkerBudgets[cap.operation as keyof typeof checkerBudgets];

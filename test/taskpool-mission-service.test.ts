@@ -21,7 +21,7 @@ const {createRuntime}=await import('@murm/core');hooks.deregister();
 const execute=promisify(execFile);
 const checkerIdentity={checker_ref:'fixed-final',checker_version:'1',environment_ref:'controlled'};
 async function fixture(t,{permissions=['mission_submit'],registered=permissions,profileAllows=true}={}) {
-  const root=await mkdtemp(join(tmpdir(),'flat-mission-'));
+  const root=await mkdtemp(join(tmpdir(),'taskpool-mission-'));
   const stores=await createTaskPoolStores(root);
   stores.tasks.db.prepare('UPDATE missions SET acceptance_conditions_json=? WHERE mission_id=?').run(JSON.stringify({required_check:checkerIdentity}),stores.missionId);
   const calls=[];
@@ -38,7 +38,7 @@ async function fixture(t,{permissions=['mission_submit'],registered=permissions,
   runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Submit only fixed public results',model:'default',image:'fixture',writable:false,
     services:{task:discovery.manifest.capabilities.map(cap=>cap.operation),mission:mission.manifest.capabilities.filter(cap=>profileAllows||cap.operation!=='mission_submit').map(cap=>cap.operation)}}},services,maxAgents:1,outputDir:root});
   const coordinator=createTaskPoolAgentCoordinator({runtime,taskService:stores.tasks,missionId:stores.missionId,coordinationPermissions:registered});
-  const agent=await coordinator.spawn({profile:'researcher',requestId:'coordinator',legacySlotId:'flat-slot',selectionDeadline:new Date(Date.now()+60000).toISOString()});
+  const agent=await coordinator.spawn({profile:'researcher',requestId:'coordinator',legacySlotId:'taskpool-slot',selectionDeadline:new Date(Date.now()+60000).toISOString()});
   t.after(async()=>{mission.close();await discovery.close();for(const call of calls)call.resolve({verdict:'FAIL'});await store.shutdown();await runtime.close({timeoutMs:1000});stores.close();await rm(root,{recursive:true,force:true});});
   const cli=async(...args)=>{
     const credentials=controls.credentials.get(agent.id),env={...process.env,...credentials.environment,...credentials.secretEnvironment};
@@ -115,10 +115,10 @@ for(const boundary of ['stop','deadline','binding']) test(`Mission submission re
   assert.equal(f.calls.length,0);
 });
 
-test('normal Flat host keeps the explicit Mission checker caller-owned after its Agents close',async t=>{
+test('normal TaskPool host keeps the explicit Mission checker caller-owned after its Agents close',async t=>{
   const {runTaskPoolHarness}=await import('../src/harnesses/taskpool/harness.js');
   for(const {coordinationPermissions,enabled} of [{coordinationPermissions:[],enabled:false},{coordinationPermissions:[],enabled:true},{coordinationPermissions:['mission_submit'],enabled:true}]) {
-    const root=await mkdtemp(join(tmpdir(),'flat-mission-host-')),stores=await createTaskPoolStores(root);
+    const root=await mkdtemp(join(tmpdir(),'taskpool-mission-host-')),stores=await createTaskPoolStores(root);
     stores.tasks.db.prepare('UPDATE missions SET acceptance_conditions_json=? WHERE mission_id=?').run(JSON.stringify({required_check:checkerIdentity}),stores.missionId);
     const calls=[];
     const store=createMissionCoordination({taskService:stores.tasks,contextService:stores.context,workspace:stores.workspace,workspaceId:stores.workspaceId,missionId:stores.missionId,
@@ -154,9 +154,9 @@ test('normal Flat host keeps the explicit Mission checker caller-owned after its
 });
 
 
-test('normal math Flat reports a trusted accepted Mission as business success with an active Task', async t => {
+test('normal math TaskPool reports a trusted accepted Mission as business success with an active Task', async t => {
   const { runTaskPoolHarness } = await import('../src/harnesses/taskpool/harness.js');
-  const root = await mkdtemp(join(tmpdir(), 'flat-math-acceptance-'));
+  const root = await mkdtemp(join(tmpdir(), 'taskpool-math-acceptance-'));
   const stores = await createTaskPoolStores(root);
   stores.tasks.db.prepare('UPDATE missions SET acceptance_conditions_json=? WHERE mission_id=?').run(JSON.stringify({ required_check: checkerIdentity }), stores.missionId);
   const store = createMissionCoordination({ taskService: stores.tasks, contextService: stores.context, workspace: stores.workspace, workspaceId: stores.workspaceId, missionId: stores.missionId,

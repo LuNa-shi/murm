@@ -115,8 +115,8 @@ export async function runOpenTaskPool({ state, task, outputDir, backend, image, 
     state.cleanup = result.cleanup?.cleanup;
     state.completion = result.result?.completion;
     state.taskStates = Object.fromEntries(Object.entries(state.taskIds).map(([key, id]) => [key, table.getTask(id).state]));
-    if (result.cleanupFailure || result.reportSaveFailure) throw new Error('Flat closeout failed');
-    if (result.businessFailure && !window.signal.aborted) throw new Error('Flat run failed');
+    if (result.cleanupFailure || result.reportSaveFailure) throw new Error('TaskPool closeout failed');
+    if (result.businessFailure && !window.signal.aborted) throw new Error('TaskPool run failed');
   } finally {
     context.close();
     table.close();

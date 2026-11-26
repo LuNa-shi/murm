@@ -54,36 +54,36 @@ test('retains real pending cleanup independently of business failure and later C
     throw Object.assign(new Error('PRIVATE_BUSINESS_MESSAGE'), { code: 'FIXTURE_BUSINESS_FAILED' });
   });
   const pending = await readHarnessResult(input);
-  assert.equal(pending.environment.business, 'failed');
-  assert.equal(pending.environment.businessFailureCode, 'FIXTURE_BUSINESS_FAILED');
-  assert.equal(pending.environment.cleanup, 'pending');
-  assert.equal(pending.environment.cleanupFailureCode, 'CLEANUP_PENDING');
+  assert.equal(pending.harness.business, 'failed');
+  assert.equal(pending.harness.businessFailureCode, 'FIXTURE_BUSINESS_FAILED');
+  assert.equal(pending.harness.cleanup, 'pending');
+  assert.equal(pending.harness.cleanupFailureCode, 'CLEANUP_PENDING');
   assert.equal(pending.core.state, 'unreadable');
   assert.equal(JSON.stringify(pending).includes('PRIVATE_BUSINESS_MESSAGE'), false);
   await rm(join(input.runDirectory, 'runtime.json'), { recursive: true });
   await runtime.close();
   const reconciled = await readHarnessResult(input);
   assert.equal(reconciled.core.cleanup, 'complete');
-  assert.equal(reconciled.environment.cleanup, 'pending');
-  assert.equal(reconciled.environment.business, 'failed');
+  assert.equal(reconciled.harness.cleanup, 'pending');
+  assert.equal(reconciled.harness.business, 'failed');
 });
 
 test('rejects foreign or corrupt saved identities without exposing their results and does not invent missing state', async t => {
   const { readHarnessResult } = await import('../src/harnesses/shared/read-result.js');
   const input = await recordedRun(t);
   const foreign = await readHarnessResult({ ...input, runtimeId: 'another-runtime' });
-  assert.equal(foreign.environment.state, 'identity-mismatch');
+  assert.equal(foreign.harness.state, 'identity-mismatch');
   assert.equal(foreign.core.state, 'identity-mismatch');
-  assert.equal(foreign.environment.business, 'unknown');
+  assert.equal(foreign.harness.business, 'unknown');
   assert.deepEqual(foreign.artifacts, []);
   await writeFile(input.report.reportPath, '{broken');
   const invalid = await readHarnessResult(input);
-  assert.equal(invalid.environment.state, 'invalid');
+  assert.equal(invalid.harness.state, 'invalid');
   assert.equal(invalid.core.cleanup, 'complete');
   await writeFile(input.report.reportPath, JSON.stringify({ runtimeId: input.runtimeId, result: 'PRIVATE', businessFailure: null, cleanup: { agents: [null] }, cleanupFailure: null, reportSaveFailure: null }));
-  assert.equal((await readHarnessResult(input)).environment.state, 'invalid');
+  assert.equal((await readHarnessResult(input)).harness.state, 'invalid');
   await rm(input.report.reportPath);
-  assert.equal((await readHarnessResult(input)).environment.state, 'missing');
+  assert.equal((await readHarnessResult(input)).harness.state, 'missing');
   await writeFile(join(input.runDirectory, 'runtime.json'), JSON.stringify({ runtimeId: input.runtimeId, status: 'open', agents: [null] }));
   assert.equal((await readHarnessResult(input)).core.state, 'invalid');
   await writeFile(join(input.runDirectory, 'runtime.json'), JSON.stringify({ runtimeId: input.runtimeId, status: 'starting' }));
@@ -124,8 +124,8 @@ test('reads an Environment-only factory failure and checks recorded artifact loc
   });
   const artifacts = await readHarnessResult({ runDirectory: join(root, saved.runtimeId), runtimeId: saved.runtimeId });
   assert.deepEqual(artifacts.artifacts.map(row => row.availability), ['file', 'missing']);
-  assert.equal(artifacts.environment.cleanup, 'pending');
-  assert.equal(artifacts.environment.agents[0].execution, 'stopped');
+  assert.equal(artifacts.harness.cleanup, 'pending');
+  assert.equal(artifacts.harness.agents[0].execution, 'stopped');
   assert.equal(JSON.stringify(artifacts).includes('PRIVATE_'), false);
 });
 

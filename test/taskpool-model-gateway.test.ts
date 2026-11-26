@@ -12,7 +12,7 @@ import { createCoreModelAccess } from '../src/core/model-access.js';
 import { createTaskPoolModelAccessPolicy } from '../src/harnesses/taskpool/model-access-policy.js';
 
 async function fixture(t, { held = false } = {}) {
-  const outputDir = await mkdtemp(join(tmpdir(), 'flat-model-'));
+  const outputDir = await mkdtemp(join(tmpdir(), 'taskpool-model-'));
   const tasks = new TaskService();
   tasks.createMission({ mission_id: 'm', goal: 'Authorize actual flat Agent model access' }, makeEnvelope({ actorRef: 'host' }));
   const deadlineAt = Date.now() + 15_000;
@@ -90,7 +90,7 @@ test('a Agent bound to another Agent Execution is denied before ledger reservati
 });
 
 test('flat withCommit holds real SQLite lifecycle authority exactly through its synchronous callback', async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'flat-policy-lock-'));
+  const directory = await mkdtemp(join(tmpdir(), 'taskpool-policy-lock-'));
   const tasks = new TaskService(join(directory, 'tasks.sqlite'));
   const other = new TaskService(join(directory, 'tasks.sqlite'));
   other.db.exec('PRAGMA busy_timeout = 0');

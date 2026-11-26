@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-test('Flat recovers exact binary workDir bytes through Core after a lost snapshot response', { timeout: 15000 }, async t => {
+test('TaskPool recovers exact binary workDir bytes through Core after a lost snapshot response', { timeout: 15000 }, async t => {
   const { createLifecycleProvider } = await import('./fixtures/core-lifecycle-provider.js');
   const { decodeFileSeed } = await import('../scripts/core-file-seed.js');
   const seed = { 'lemma.lean': { encoding: 'utf8', data: '-- actual guest λ\n' }, 'sample.bin': { encoding: 'base64', data: 'AP+A' } };
@@ -26,7 +26,7 @@ test('Flat recovers exact binary workDir bytes through Core after a lost snapsho
   const { createTaskPoolPublicationServices } = await import('../src/harnesses/taskpool/publication-services.js');
   const { makeEnvelope } = await import('../src/protocol/envelope.js');
   provider.allowDeletion();
-  const outputDir = await mkdtemp(join(tmpdir(), 'flat-core-capture-'));
+  const outputDir = await mkdtemp(join(tmpdir(), 'taskpool-core-capture-'));
   const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
     sandbox: { lifecycleBaseUrl: provider.url },
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },

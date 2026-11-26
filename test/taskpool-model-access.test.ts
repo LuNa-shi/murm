@@ -27,7 +27,7 @@ test('trusted Core readiness preserves returned identity and legacy capacity wit
   assert.throws(() => tasks.registerAgent({ agentId: 'mixed', missionId: 'mission:flat', coreId: 'old', legacySlotId: 'different', selectionDeadline: deadline }), { code: 'INVALID_CONTRACT' });
 });
 
-test('flat policy returns finite selection authority only for its trusted Runtime and unbound Agent', async t => {
+test('taskpool policy returns finite selection authority only for its trusted Runtime and unbound Agent', async t => {
   const { createTaskPoolModelAccessPolicy } = await import('../src/harnesses/taskpool/model-access-policy.js');
   const tasks = fixture(t);
   const deadline = Date.now() + 60_000;

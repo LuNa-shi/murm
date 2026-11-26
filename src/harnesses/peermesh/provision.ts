@@ -4,13 +4,13 @@ import { httpClient } from './http.js';
 export const initialFile = 'INITIAL\n';
 export const initialIssue = 'Apply the fixed acceptance change on your private branch; preserve the second-turn private checkpoint.';
 const e = encodeURIComponent;
-const requireString = (value: any) => { if (typeof value !== 'string' || !value) throw new TypeError('Incomplete Agensh facility configuration'); return value; };
+const requireString = (value: any) => { if (typeof value !== 'string' || !value) throw new TypeError('Incomplete PeerMesh facility configuration'); return value; };
 
 /** Prepare only new run resources. Shared Git/channel/board data is retained. */
 export async function preparePeerMeshFacilities({ runId, gitea, mattermost, startBoard, resources, signal, peerKeys, project }: any) {
-  if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId) || typeof startBoard !== 'function') throw new TypeError('Invalid Agensh run or board launcher');
-  if (signal !== undefined && !(signal instanceof AbortSignal)) throw new TypeError('Agensh startup signal must be an AbortSignal');
-  const check = () => { if (signal?.aborted) throw Object.assign(new Error('Agensh startup aborted'), { code: 'HARNESS_START_ABORTED' }); };
+  if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId) || typeof startBoard !== 'function') throw new TypeError('Invalid PeerMesh run or board launcher');
+  if (signal !== undefined && !(signal instanceof AbortSignal)) throw new TypeError('PeerMesh startup signal must be an AbortSignal');
+  const check = () => { if (signal?.aborted) throw Object.assign(new Error('PeerMesh startup aborted'), { code: 'HARNESS_START_ABORTED' }); };
   check();
   const rawGit = httpClient(gitea.origin, `token ${requireString(gitea.adminToken)}`);
   const rawMm = httpClient(mattermost.origin, `Bearer ${requireString(mattermost.adminToken)}`);
@@ -25,13 +25,13 @@ export async function preparePeerMeshFacilities({ runId, gitea, mattermost, star
   const owner = requireString(gitea.owner); const teamId = requireString(mattermost.teamId);
   const keys = peerKeys ?? ['peer'];
   if (!Array.isArray(keys) || keys.length < 1 || keys.length > 8 || new Set(keys).size !== keys.length ||
-      keys.some((key: any) => typeof key !== 'string' || !/^[a-z][a-z0-9-]{0,15}$/.test(key))) throw new TypeError('Invalid Agensh peer keys');
+      keys.some((key: any) => typeof key !== 'string' || !/^[a-z][a-z0-9-]{0,15}$/.test(key))) throw new TypeError('Invalid PeerMesh peer keys');
   if (project !== undefined && (!project || typeof project.title !== 'string' || !project.title.trim() || project.title.length > 255 ||
       typeof project.body !== 'string' || !project.body.trim() || Buffer.byteLength(project.body) > 16_000 ||
       (project.seed !== undefined && (!project.seed || typeof project.seed !== 'object' || Array.isArray(project.seed) ||
         Object.keys(project.seed).length > 64 || Object.entries(project.seed).some(([path, data]) =>
           !path.split('/').every(part => /^(?!\.\.?$)(?!\.git$)[a-z0-9_.-]+$/i.test(part)) ||
-          typeof data !== 'string' || Buffer.byteLength(data) > 64 * 1024))))) throw new TypeError('Invalid Agensh project goal or seed');
+          typeof data !== 'string' || Buffer.byteLength(data) > 64 * 1024))))) throw new TypeError('Invalid PeerMesh project goal or seed');
   const repository: any = { owner, name: `run-${runId}` };
   const repo = `/api/v1/repos/${e(owner)}/${e(repository.name)}`;
   const boardId = `board-${runId}`;

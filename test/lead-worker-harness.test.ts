@@ -11,7 +11,7 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { runWithReport } from '../src/harnesses/shared/run-report.js';
-import { leadHelperCommand, adjustedDirection } from './fixtures/lead-worker-upstream.js';
+import { leadWorkerCommand, adjustedDirection } from './fixtures/lead-worker-upstream.js';
 import { transport } from './fixtures/core-agent-service-backend.js';
 import { closeLeadWorkerFixture, drainLeadWorkerFixture } from './fixtures/lead-worker-scenario-cleanup.js';
 const execute = promisify(execFile);
@@ -33,7 +33,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
     if (stopping) return Promise.reject(new Error('Fixture is stopping'));
     return execute(command, args, { timeout: 15000, ...options, signal: commands.signal });
   };
-  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-public-'));
+  const directory = await mkdtemp(join(tmpdir(), 'lead-worker-public-'));
   t.after(() => closeLeadWorkerFixture({ directory, server, drain: drainWork,
     async reconcile() {
       if (lock) { lock.exec('ROLLBACK'); lock.close(); }
@@ -107,7 +107,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
           const receive = data => { line += data; if (line.includes('\n')) { try { finish(null, JSON.parse(line.trim())); } catch (error) { finish(error); } } };
           const timer = setTimeout(() => finish(new Error('Guest test deadline')), 18000);
           guest.stdout.on('data', receive); guest.once('close', ended);
-          guest.stdin.write(JSON.stringify(leadHelperCommand(payload.type, { sessionDirectory })) + '\n');
+          guest.stdin.write(JSON.stringify(leadWorkerCommand(payload.type, { sessionDirectory })) + '\n');
         });
         assert.equal(result.ok, true, result.stderr);
         const row = JSON.parse(result.stdout); assert.equal(row.role, role); assert.equal(row.agentId, input.agentId);
@@ -141,7 +141,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
         const owned = await call(role, 'claim', { subtask_id: id, expected_revision: 0 });
         if (failure && !failure.startsWith('program-') && !['stale-feedback', 'pinned-corruption'].includes(failure) && role === 'helper1' && !next) {
           if (failure === 'unknown') { input.receipt = { status: 'unknown' }; return; }
-          if (failure === 'locked-failed') { lock = new DatabaseSync(join(directory, 'lead-helper-test', 'board.sqlite')); lock.exec('BEGIN IMMEDIATE'); }
+          if (failure === 'locked-failed') { lock = new DatabaseSync(join(directory, 'lead-worker-test', 'board.sqlite')); lock.exec('BEGIN IMMEDIATE'); }
           transport.spawns.get(input.agentId).onEvent({ type: 'settled', outcome: 'failed', error: { code: 'FIXED_FAILURE', message: 'Controlled failure' } }); return;
         }
         const other = role === 'helper1' ? 'helper2' : 'helper1';
@@ -286,18 +286,18 @@ test('SQLite write lock cannot prevent Core stop or replace a failed input; pend
 
 test('exact generated native Bash programs use actual CLI, Core Board and Git while title-mutated processes persist', t => scenario(t, undefined, true));
 
-test('four-Agent fixed lead-helper team completes both rounds with distinct authorized delivery owners', t => scenario(t, undefined, false, 3));
-test('eight-Agent fixed lead-helper team completes both rounds with distinct authorized delivery owners', t => scenario(t, undefined, false, 7));
+test('four-Agent fixed lead-worker team completes both rounds with distinct authorized delivery owners', t => scenario(t, undefined, false, 3));
+test('eight-Agent fixed lead-worker team completes both rounds with distinct authorized delivery owners', t => scenario(t, undefined, false, 7));
 test('invalid helper capacity fails before provisioning', async () => {
   for (const helperCount of [1, 8, 2.5, '3', null]) {
     await assert.rejects(createLeadWorkerHarness({ helperCount, prepare: assert.fail }), {
-      name: 'TypeError', message: 'Lead-helper requires between two and seven helpers',
+      name: 'TypeError', message: 'Lead-Worker requires between two and seven helpers',
     });
   }
 });
 
-test('lead-helper provisions the capacity captured before async startup', async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-capacity-'));
+test('lead-worker provisions the capacity captured before async startup', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'lead-worker-capacity-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const options = {
     runId: 'test', image: 'test', outputDir: directory, helperCount: 3,

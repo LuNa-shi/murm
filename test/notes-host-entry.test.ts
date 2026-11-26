@@ -36,8 +36,8 @@ isolation:{network:'local-docker',disk:{bytes:67108864,inodes:4096}}}};`);
   assert.deepEqual(JSON.parse(await readFile(report.reportPath, 'utf8')).businessFailure, report.businessFailure);
   await assert.rejects(run('--result', directory, '--runtime-id', 'other-runtime'), error => {
     assert.equal(error.code, 1); const value = JSON.parse(error.stdout);
-    assert.equal(value.environment.state, 'identity-mismatch'); assert.equal(value.core.state, 'identity-mismatch');
-    assert.equal(value.environment.business, 'unknown'); return true;
+    assert.equal(value.harness.state, 'identity-mismatch'); assert.equal(value.core.state, 'identity-mismatch');
+    assert.equal(value.harness.business, 'unknown'); return true;
   });
   for (const args of [[], ['failed-config.mjs','extra'], ['--result',directory], ['--result',directory,'--runtime-id','--help']]) {
     await assert.rejects(run(...args), error => { assert.equal(error.code, 2); assert.equal(JSON.parse(error.stderr).code,'NOTES_ARGUMENTS_INVALID'); return true; });

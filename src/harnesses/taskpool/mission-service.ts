@@ -14,7 +14,7 @@ export function createTaskPoolMissionService({runtime,taskService,missionWorkspa
     typeof workspaceId!=='string' || !workspaceId || typeof deadline!=='function' ||
     missionCoordination?.db!==taskService.db || missionCoordination?.workspace!==missionWorkspace ||
     typeof missionCoordination?.submit!=='function' || typeof missionCoordination?.describe!=='function') {
-    throw new MurmError('INVALID_CONTRACT','Flat Mission Service requires the caller-owned local Mission coordination store');
+    throw new MurmError('INVALID_CONTRACT','TaskPool Mission Service requires the caller-owned local Mission coordination store');
   }
   const permissions=taskPoolCoordinationPermissions(coordinationPermissions);
   const getRuntime=()=>typeof runtime==='function'?runtime():runtime;
@@ -27,7 +27,7 @@ export function createTaskPoolMissionService({runtime,taskService,missionWorkspa
     if(!Number.isFinite(until) || Date.now()>=until) deny('Mission host deadline elapsed');
     taskService.assertAgentDeadline(agent.agent_id);
     const execution=agent.execution_id?taskService.getExecution(agent.execution_id):null;
-    const envelope=execution?{...executionEnvelope(execution,'flat:mission:admission'),actor_ref:agent.agent_id}:makeEnvelope({actorRef:agent.agent_id});
+    const envelope=execution?{...executionEnvelope(execution,'taskpool:mission:admission'),actor_ref:agent.agent_id}:makeEnvelope({actorRef:agent.agent_id});
     if(submit) {
       if(!permissions.includes('mission_submit')) deny('Mission submission is not enabled by this host');
       const scope=taskService.assertMissionCoordination(envelope,'mission_submit');
@@ -35,7 +35,7 @@ export function createTaskPoolMissionService({runtime,taskService,missionWorkspa
     } else taskService.materialScope(envelope,{write:false});
     return {core,agent,execution};
   }
-  const manifest: any={id:'mission',title:'Flat Mission',purpose:'Inspect and explicitly submit fixed public Mission results',provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},
+  const manifest: any={id:'mission',title:'TaskPool Mission',purpose:'Inspect and explicitly submit fixed public Mission results',provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},
     capabilities:listTools('task').filter((tool: any)=>operations.includes(tool.operation)).map((tool: any)=>({
       name:tool.operation.slice(8),operation:tool.operation,description:tool.description,side_effect:tool.side_effect?'write':'read',idempotent:true,
       help:{when:'Use the configured Mission and explicit material_ids; only a host-granted coordinator may submit'},errors:[],
@@ -66,7 +66,7 @@ export function createTaskPoolMissionService({runtime,taskService,missionWorkspa
     if(submit) {
       const result=await missionCoordination.submit({missionId,workspaceId,actorRef:current.agent.agent_id,
         taskId:current.execution?.task_id??null,executionId:current.execution?.execution_id??null,fencingVersion:current.execution?.fencing_version??null,
-        materialIds:input.material_ids,requestId:`flat:mission:${key}`});
+        materialIds:input.material_ids,requestId:`taskpool:mission:${key}`});
       submissionId=result.submission_id;
     }
     const result=await missionCoordination.describe({missionId,workspaceId,submissionId,

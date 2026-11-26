@@ -19,7 +19,7 @@ test('installed native lead plus two helpers claim exclusively, push verified Gi
   skip: process.env.MURM_LEAD_WORKER_REAL_TEST !== '1' && 'Two independent exact-pin reviews required before any facilities, sandbox or model start', timeout: 600_000,
 }, async () => {
   const image = process.env.MURM_CORE_TEST_IMAGE; assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
-  const directory = await createNativeEvidenceDirectory('lead-helper');
+  const directory = await createNativeEvidenceDirectory('lead-worker');
   const installed = await installNativeNotesExample();
   const runId = `lead-${randomBytes(6).toString('hex')}`; const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const outputDir = join(directory, 'output'); await mkdir(outputDir);
@@ -41,7 +41,7 @@ test('installed native lead plus two helpers claim exclusively, push verified Gi
       gitea: config.gitea, turnTimeoutMs: 30_000, workTimeoutMs: 120_000, closeTimeoutMs: 25_000, exportLimit: 8 * 1024 ** 2,
       backend: { sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 25_000, maxOutputTokens: 512 }, models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } } };
-    const configPath = join(directory, 'lead-helper-config.mjs'); await writeFile(configPath, `const config=${JSON.stringify(configuration)};config.backend.sandbox.apiKey=process.env.MURM_CORE_TEST_API_KEY;export default config;\n`, { mode: 0o600 });
+    const configPath = join(directory, 'lead-worker-config.mjs'); await writeFile(configPath, `const config=${JSON.stringify(configuration)};config.backend.sandbox.apiKey=process.env.MURM_CORE_TEST_API_KEY;export default config;\n`, { mode: 0o600 });
     const main = join(installed.directory, 'node_modules/@murm/core/dist/examples/lead-worker/main.js');
     const outcome = await new Promise((resolve, reject) => {
       child = spawn(process.execPath, [main, configPath], { cwd: installed.directory, env: installed.env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -72,7 +72,7 @@ test('installed native lead plus two helpers claim exclusively, push verified Gi
     assert.ok(receipt.evidence.every(row => row.agentId === state.team[row.role]));
     assert.deepEqual(new Set(changed.feedback_ids.map(seq => state.notes.find(note => note.seq === seq)?.actor)), new Set([state.team.helper1, state.team.helper2]));
     const initialHelpers = receipt.evidence.filter(row => row.kind === 'helper-initial'); assert.equal(initialHelpers.filter(row => row.probeWon).length, 1); assert.ok(initialHelpers.every(row => row.probeOwner === probe.owner));
-    const git = httpClient(config.gitea.origin, `token ${config.gitea.adminToken}`); const scope = `/api/v1/repos/${config.gitea.owner}/lead-helper-${runId}`;
+    const git = httpClient(config.gitea.origin, `token ${config.gitea.adminToken}`); const scope = `/api/v1/repos/${config.gitea.owner}/lead-worker-${runId}`;
     for (const task of completed) {
       assert.equal(task.delivery.verified, true);
       const file = await cleanup.step(({ signal }) => git('GET', `${scope}/contents/${task.path}?ref=${task.delivery.commit}`, undefined, { signal }));

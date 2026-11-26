@@ -30,7 +30,7 @@ const closeFromAnotherProcess=(root,agentId)=>execute(process.execPath,['--input
 `,join(root,'state.sqlite'),agentId],{timeout:10000});
 
 async function fixture(t,installed) {
-  const root=await mkdtemp(join(tmpdir(),'flat-save-fence-'));
+  const root=await mkdtemp(join(tmpdir(),'taskpool-save-fence-'));
   const stores=await createTaskPoolStores(root,{persistent:true});
   stores.tasks.contextService=stores.context;
   let runtime,captures=0;
@@ -51,7 +51,7 @@ async function fixture(t,installed) {
   runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Publish fixed bytes',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:1,outputDir:root});
   t.after(async()=>{publication.close();await discovery.close();await runtime.close({timeoutMs:1000});stores.close();await rm(root,{recursive:true,force:true});});
   const agent=await runtime.spawn({profile:'researcher',requestId:'contributor'});
-  stores.tasks.registerAgent({agentId:agent.id,missionId:stores.missionId,legacySlotId:'flat-save-slot',selectionDeadline:new Date(Date.now()+60000).toISOString()});
+  stores.tasks.registerAgent({agentId:agent.id,missionId:stores.missionId,legacySlotId:'taskpool-save-slot',selectionDeadline:new Date(Date.now()+60000).toISOString()});
   stores.tasks.markCoreAgentReady(agent.id);
   const credentials=controls.credentials.get(agent.id);
   const env={...installed.env,...credentials.environment,...credentials.secretEnvironment};

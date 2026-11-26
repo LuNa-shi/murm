@@ -22,7 +22,7 @@ const {runTaskPoolHarness}=await import('../src/harnesses/taskpool/harness.js');
 const execute=promisify(execFile);
 
 async function fixture(t,options={}) {
-  const root=await mkdtemp(join(tmpdir(),'flat-judge-'));
+  const root=await mkdtemp(join(tmpdir(),'taskpool-judge-'));
   const stores=await createTaskPoolStores(root);
   const checked=[];
   const judge=new JudgeService(':memory:',{taskService:stores.tasks,missionBudget:options.missionBudget,
@@ -40,7 +40,7 @@ async function fixture(t,options={}) {
   runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Check a fixed public revision',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:1,outputDir:root});
   t.after(async()=>{publication.close();await discovery.close();await runtime.close({timeoutMs:1000});await judge.waitForIdle();judge.close();stores.close();await rm(root,{recursive:true,force:true});});
   const agent=await runtime.spawn({profile:'researcher',requestId:'fixed-checker'});
-  stores.tasks.registerAgent({agentId:agent.id,missionId:stores.missionId,legacySlotId:'flat-slot:checker',selectionDeadline:new Date(Date.now()+60000).toISOString()});
+  stores.tasks.registerAgent({agentId:agent.id,missionId:stores.missionId,legacySlotId:'taskpool-slot:checker',selectionDeadline:new Date(Date.now()+60000).toISOString()});
   stores.tasks.markCoreAgentReady(agent.id);
   const cli=async(...args)=>{
     const credentials=controls.credentials.get(agent.id);assert.ok(credentials);
@@ -158,7 +158,7 @@ test('Judge result lookup rechecks Mission deadline before falling back to an ex
   assert.equal(lookups,1);
 });
 
-for(const closing of ['Flat close','Core revoke']) test(`a held Judge preflight cannot launch source after ${closing}`,async t=>{
+for(const closing of ['TaskPool close','Core revoke']) test(`a held Judge preflight cannot launch source after ${closing}`,async t=>{
   const f=await fixture(t);
   const entered=Promise.withResolvers(),held=Promise.withResolvers();
   const healthy={status:'healthy',checker_process_status:'completed',evidence:{input_binding_verified:true,toolchain_version_verified:true,checker_version_verified:true}};
@@ -166,7 +166,7 @@ for(const closing of ['Flat close','Core revoke']) test(`a held Judge preflight 
   const checked=f.cli('judge','check','--revision','0.1','--path','input.txt','--request-id','held-check');
   const outcome=checked.then(result=>({result}),error=>({error}));
   await entered.promise;
-  if(closing==='Flat close') f.publication.close();
+  if(closing==='TaskPool close') f.publication.close();
   else await f.runtime.stop(f.agent.id,{timeoutMs:1000});
   held.resolve();
   await outcome;
@@ -174,7 +174,7 @@ for(const closing of ['Flat close','Core revoke']) test(`a held Judge preflight 
 });
 
 
-test('Flat reports bounded pending Judge work and never closes the shared provider',async t=>{
+test('TaskPool reports bounded pending Judge work and never closes the shared provider',async t=>{
   const f=await fixture(t);
   const entered=Promise.withResolvers(),held=Promise.withResolvers();
   f.judge.checker.check=async input=>input.startProcess(async()=>{
@@ -192,14 +192,14 @@ test('Flat reports bounded pending Judge work and never closes the shared provid
     const execution=f.tasks.getExecution(f.tasks.getAgent(f.agent.id).execution_id);
     const envelope=makeEnvelope({actorRef:f.agent.id,taskId:execution.task_id,executionId:execution.execution_id,specVersion:execution.spec_version,stateVersion:execution.state_version,fencingVersion:execution.fencing_version});
     const other=await f.judge.dispatch('workspace_check',{source:{content:'Unrelated provider work'},request_key:'unrelated-provider'},envelope);
-    assert.equal(other.verdict,'PASS','Closing Flat must leave unrelated shared Judge work usable');
+    assert.equal(other.verdict,'PASS','Closing TaskPool must leave unrelated shared Judge work usable');
   } finally {held.resolve();await own;}
   assert.deepEqual(await f.publication.waitForJudges({timeoutMs:1000}),{cleanup:'complete',pending:[]});
 });
 
 
 test('Environment saves owned pending Judge identities when an already started source exceeds close wait',async t=>{
-  const root=await mkdtemp(join(tmpdir(),'flat-judge-report-'));
+  const root=await mkdtemp(join(tmpdir(),'taskpool-judge-report-'));
   const stores=await createTaskPoolStores(root);
   const entered=Promise.withResolvers(),held=Promise.withResolvers();
   const judge=new JudgeService(':memory:',{taskService:stores.tasks,
@@ -232,7 +232,7 @@ test('Environment saves owned pending Judge identities when an already started s
   } finally {held.resolve();await checking;transport.reset();}
 });
 
-test('closing a queued Flat request releases only its reservation and leaves unrelated Judge work running',async t=>{
+test('closing a queued TaskPool request releases only its reservation and leaves unrelated Judge work running',async t=>{
   const f=await fixture(t,{missionBudget:{maxConcurrent:1,maxQueued:2,queueWaitMs:10000}});
   const entered=Promise.withResolvers(),held=Promise.withResolvers();let sourceStarts=0;
   f.judge.checker.check=async input=>input.startProcess(async()=>{

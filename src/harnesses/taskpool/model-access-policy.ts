@@ -1,6 +1,6 @@
 import { isSoftCloseout } from '../../task/execution-budget.js';
 
-/** Task-owned authority shared by the legacy host and flat's Core policy. */
+/** Task-owned authority shared by the legacy host and taskpool's Core policy. */
 export function authorizeTaskPoolAgent({ taskService, missionId, agentId, deadline, closeoutDeadline = () => Infinity, isStopping = () => false }: any): import('../../core/index.js').ModelPermit | null {
   const at = Date.now();
   const agent = taskService.getAgent(agentId);
@@ -31,7 +31,7 @@ export function authorizeTaskPoolAgent({ taskService, missionId, agentId, deadli
 export function createTaskPoolModelAccessPolicy({ runtimeId, ...authority }: any): import('../../core/index.js').ModelAccessPolicy {
   if ((typeof runtimeId !== 'string' && typeof runtimeId !== 'function') || !authority.taskService ||
       typeof authority.deadline !== 'function' || typeof authority.missionId !== 'string') {
-    throw new TypeError('Flat model policy requires trusted Runtime and Task authority');
+    throw new TypeError('TaskPool model policy requires trusted Runtime and Task authority');
   }
   return Object.freeze({
     authorize(caller: any): import('../../core/index.js').ModelPermit | null {

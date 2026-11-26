@@ -5,11 +5,11 @@ import { MurmError } from '../../errors.js';
 
 const deny = (message: any) => { throw new MurmError('NOT_ALLOWED', message); };
 
-/** Flat selects domain inputs; Core receives only their deterministic bytes. */
+/** TaskPool selects domain inputs; Core receives only their deterministic bytes. */
 export async function prepareTaskPoolInputs({ execution, taskService, missionWorkspace, workspaceId, workspaceManager, contextService, preview, check }: any) {
   check();
   const task = taskService.getTask(execution.task_id);
-  if (!task || execution.workspace_ref) deny('Flat preparation requires an unprepared Task Execution');
+  if (!task || execution.workspace_ref) deny('TaskPool preparation requires an unprepared Task Execution');
   const selectedWorkspace = task.workspace?.workspace_id ?? workspaceId;
   if (!selectedWorkspace || selectedWorkspace !== workspaceId) deny('Task Workspace must match the configured Mission Workspace');
   const snapshot = await missionWorkspace.exportRevision({ workspaceId: selectedWorkspace, revision: task.workspace?.revision ?? 'main' });
@@ -53,7 +53,7 @@ export async function prepareTaskPoolInputs({ execution, taskService, missionWor
     try {
       taskService.dispatch('save_workspace_revision', { workspace_ref: workspace.workspace_ref,
         workspace_revision: workspace.workspace_revision, workspace_content_hash: workspace.content_hash,
-        workspace_input: workspace.public_workspace_input }, executionEnvelope(current, `flat:workspace:${execution.execution_id}`));
+        workspace_input: workspace.public_workspace_input }, executionEnvelope(current, `taskpool:workspace:${execution.execution_id}`));
       break;
     } catch (error: any) { if (error.code !== 'STALE_VERSION' || attempt === 2) throw error; }
   }
@@ -61,7 +61,7 @@ export async function prepareTaskPoolInputs({ execution, taskService, missionWor
 }
 
 export function executionEnvelope(execution: any, operationId: any) {
-  return { operation_id: operationId, actor_ref: 'flat:host', task_id: execution.task_id,
+  return { operation_id: operationId, actor_ref: 'taskpool:host', task_id: execution.task_id,
     execution_id: execution.execution_id, spec_version: execution.spec_version,
     state_version: execution.state_version, fencing_version: execution.fencing_version };
 }

@@ -1,6 +1,6 @@
 export function leadWorkerRoles(helperCount: any = 2) {
   if (!Number.isSafeInteger(helperCount) || helperCount < 2 || helperCount > 7) {
-    throw new TypeError('Lead-helper requires between two and seven helpers');
+    throw new TypeError('Lead-Worker requires between two and seven helpers');
   }
   return ['lead', ...Array.from({ length: helperCount }, (_: any, index: any) => `helper${index + 1}`)];
 }

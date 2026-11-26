@@ -15,7 +15,7 @@
     },
     {
       "path": "src/cli/swarm-cli.ts",
-      "sha256": "c08e013d798c9ae40771ec135062a5fddc4e7dbc666c2eb4437790cde2dd230e"
+      "sha256": "0dbf151c53f43d98ccd87a10e4be9cddabd49b28a05bfb559f61d5ceda16cf7a"
     },
     {
       "path": "src/cli/service-command.ts",
@@ -59,11 +59,11 @@
     },
     {
       "path": "src/harnesses/taskpool/controller.ts",
-      "sha256": "abe04f7d4d61c845ca2dd5ebbe9df3232796f0c124f526e19ec4f37c93ab5709"
+      "sha256": "d668b18d1c5c31727fc7a85ec921f6654b4a33b183c4e52476f9e198334a5458"
     },
     {
       "path": "src/harnesses/taskpool/harness.ts",
-      "sha256": "8928eb1005c113ec5f9606f92d211ba712dcfe20094bdb572400bb1837a462d8"
+      "sha256": "ea4bdf5e6ac2fb29c396a5afd721c3ce7126a25a7698372a460a9a07d9e0c8f0"
     },
     {
       "path": "examples/substrate/fate-run.ts",
@@ -79,7 +79,7 @@
     },
     {
       "path": "benchmarks/putnambench-taskpool/run.ts",
-      "sha256": "f745f37ae93807c1bd6206716bfe477815d328480dc6d18dff52278af59160d7"
+      "sha256": "9e9b6c008f233a673b8c3edef1c344283e9b8b799809d171821894a10b72adb2"
     },
     {
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
@@ -115,19 +115,19 @@
     },
     {
       "path": "src/harnesses/peermesh/index.ts",
-      "sha256": "d798534b17fb000901b768d649d28bc467f0226957b945ebb84d1cdafcf42f34"
+      "sha256": "ef8e3303d58677da7379cd0212129d7907204941f92f9cbb046f990471638657"
     },
     {
       "path": "src/harnesses/peermesh/router.ts",
-      "sha256": "5b885c3e14405964060e099bb84b578b8c6d3fbc295be50d4f9eefbae1c043f2"
+      "sha256": "8cef5fa1988e203d86838c166459f87714006e4f9db6c9a201e3e0ba44391476"
     },
     {
       "path": "src/harnesses/peermesh/routed.ts",
-      "sha256": "fc783c1cf803a0f3b6be5ab36d9d1dfa59feb73c8429530e4b2ce62dd5a4815f"
+      "sha256": "a4623c4f5c68b635500701b6ea181bf5c261e8faa34ef57818d46fc8d12720ee"
     },
     {
       "path": "src/harnesses/peermesh/team.ts",
-      "sha256": "82a62dd7f686e92e070433629ea1d8873bf1248f400f05f70404b363bd59475b"
+      "sha256": "e4f73c5c9e06453c9874a9ca871e7c43c15e330238cf7a468026ecc46168be38"
     },
     {
       "path": "test/fixtures/peermesh-team-kimi.ts",
@@ -143,11 +143,11 @@
     },
     {
       "path": "src/harnesses/lead-worker/index.ts",
-      "sha256": "f2867430748346574ff1564579f1935cc345292e427d9bce6e3af7fe5c8d2cc2"
+      "sha256": "586b0d7c1f152dbf1d6c22ba1dbcc83a81c1829421cda2c29f55e34edcdefd13"
     },
     {
       "path": "src/runtime/runtime.ts",
-      "sha256": "2e9269003195949fa186bd76585abe3a8a5fcdd3ea6cf30d42edd63209c94be7"
+      "sha256": "ea670f8c4f7cbb338f8b05620bfbfa9d9eb84f0d2f1881119d3736ecf5e623bd"
     },
     {
       "path": "src/runtime/workspace-contract.ts",
@@ -159,7 +159,7 @@
     },
     {
       "path": "src/sdk/service-catalog.ts",
-      "sha256": "adbeb0d8b2057f13538732c09f30f34c59adb43292471c18d77f1075584a4b1c"
+      "sha256": "34da62ab9a42462e3a08837efa890009b1bfb4ca4bfb961319c2369cbb1df01d"
     },
     {
       "path": "src/sdk/builtin-registry.ts",
@@ -571,11 +571,11 @@
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",
-      "sha256": "6a6eff0ded5ce6a3e7993658988638a54e306d6a42db1de14f8523744ff1de81"
+      "sha256": "892e45d3d02ef3bd76712334acfe44c5754606d6803ea2ab5941331d1c0bb9b6"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
-      "sha256": "85a5d9fbe8673cb2864e1911f310b2b0fd1b7153a85ce474534d8f2b6d8774e0"
+      "sha256": "44712ef797f937035aec471b43777975581ae69f51aa4c50ed743ad1418f5df1"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
@@ -607,7 +607,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-taskpool-harness.md",
-      "sha256": "f60501e087165be8b8c49b75c873ba6a6d14aa7b2038b55bfcb3a0c7d851d13d"
+      "sha256": "e72796dcdb18909a010a0b50886dd19d4293456b27cf2c683526edc6a903e9f7"
     }
   ]
 }

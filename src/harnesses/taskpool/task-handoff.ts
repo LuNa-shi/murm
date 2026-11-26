@@ -3,7 +3,7 @@ import { MurmError } from '../../errors.js';
 import { executionEnvelope, prepareTaskPoolInputs } from './prepare-inputs.js';
 
 const failure = (message: any) => new MurmError('NOT_ALLOWED', message);
-const errorInfo = (error: any) => ({ code: error?.code ?? 'SERVICE_UNAVAILABLE', message: error?.message ?? 'Flat handoff failed' });
+const errorInfo = (error: any) => ({ code: error?.code ?? 'SERVICE_UNAVAILABLE', message: error?.message ?? 'TaskPool handoff failed' });
 
 export function startPreparationHeartbeat({ taskService, missionId, agentId, executionId, expectedFence, intervalMs, isClosing, checkSignal }: any) {
   let timer: any, error: any;
@@ -14,10 +14,10 @@ export function startPreparationHeartbeat({ taskService, missionId, agentId, exe
     taskService.assertAgentDeadline(agentId);
     const owner = taskService.getAgent(agentId), execution = taskService.getExecution(executionId);
     if (isClosing() || owner?.state !== 'PREPARING' || owner.execution_id !== executionId || execution?.state !== 'CREATED' ||
-        execution.fencing_version !== expectedFence || Date.now() >= Date.parse(execution.lease_expires_at)) throw failure('Flat Task reservation is no longer current');
+        execution.fencing_version !== expectedFence || Date.now() >= Date.parse(execution.lease_expires_at)) throw failure('TaskPool Task reservation is no longer current');
     return execution;
   };
-  const renew = () => taskService.dispatch('heartbeat', {}, executionEnvelope(check(), `flat:heartbeat:${randomUUID()}`));
+  const renew = () => taskService.dispatch('heartbeat', {}, executionEnvelope(check(), `taskpool:heartbeat:${randomUUID()}`));
   renew();
   timer = setInterval(() => { try { renew(); } catch (caught: any) { error = caught; clearInterval(timer); } }, intervalMs);
   return { check, stop() { clearInterval(timer); } };
@@ -30,7 +30,7 @@ export async function runTaskPoolHandoff({ request, runtime, taskService, missio
   let deadlineAt: any;
   const checkSignal = () => {
     signal?.throwIfAborted();
-    if (isClosing() || Date.now() >= deadlineAt) throw failure('Flat preparation closed or exceeded its deadline');
+    if (isClosing() || Date.now() >= deadlineAt) throw failure('TaskPool preparation closed or exceeded its deadline');
   };
   let lease: any;
   const bounded = async (task: any) => {
@@ -41,8 +41,8 @@ export async function runTaskPoolHandoff({ request, runtime, taskService, missio
       request.inFlight = work;
       void work.finally(() => { if (request.inFlight === work) request.inFlight = undefined; }).catch(() => {});
       return await Promise.race([work, new Promise<any>((_: any, reject: any) => {
-        timer = setTimeout(() => reject(failure('Flat preparation wait expired')), Math.max(1, deadlineAt - Date.now()));
-        abort = () => reject(failure('Flat handoff was cancelled'));
+        timer = setTimeout(() => reject(failure('TaskPool preparation wait expired')), Math.max(1, deadlineAt - Date.now()));
+        abort = () => reject(failure('TaskPool handoff was cancelled'));
         signal?.addEventListener('abort', abort, { once: true });
         if (signal?.aborted) abort();
       })]);
@@ -50,7 +50,7 @@ export async function runTaskPoolHandoff({ request, runtime, taskService, missio
   };
   try {
     deadlineAt = Math.min(Date.now() + preparationTimeoutMs, missionDeadline(), Date.parse(taskService.getAgent(agentId)?.hard_deadline));
-    if (!Number.isFinite(deadlineAt)) throw failure('No finite Flat preparation deadline');
+    if (!Number.isFinite(deadlineAt)) throw failure('No finite TaskPool preparation deadline');
     lease = startPreparationHeartbeat({ taskService, missionId, agentId, executionId, expectedFence: fence,
       intervalMs: heartbeatMs, isClosing, checkSignal });
     request.stage = 'prepare-inputs';
@@ -82,9 +82,9 @@ export async function runTaskPoolHandoff({ request, runtime, taskService, missio
     execution = taskService.getExecution(executionId);
     if (owner?.state !== 'ACTIVE' || owner.execution_id !== executionId || execution.state !== 'RUNNING' || execution.owner_ref !== agentId ||
         execution.fencing_version !== fence || taskService.getTask(execution.task_id)?.spec_version !== execution.spec_version || Date.now() >= Math.min(Date.parse(execution.execution_deadline), Date.parse(execution.lease_expires_at))) {
-      throw failure('Flat ownership changed during file grant');
+      throw failure('TaskPool ownership changed during file grant');
     }
-    if (!['idle', 'running'].includes(core.status)) throw failure('Core Agent closed during flat handoff');
+    if (!['idle', 'running'].includes(core.status)) throw failure('Core Agent closed during taskpool handoff');
     const handoff: any = { agentId, executionId, executionFence: fence, prepared: { ...prepared }, workspaceRevision: execution.workspace_input.revision };
     request.stage = 'complete';
     request.handoff = handoff;
@@ -103,7 +103,7 @@ export async function runTaskPoolHandoff({ request, runtime, taskService, missio
 /** Explicit host retry preserves the original handoff error and owned request. */
 export async function stopFailedHandoff({ request, runtime, taskService, stopTimeoutMs }: any) {
   const agentId = request.agentId, executionId = request.taken.execution.execution_id;
-  try { taskService.requestAgentStop(agentId, 'flat-handoff-failed', { terminalState: 'FAILED' }); }
+  try { taskService.requestAgentStop(agentId, 'taskpool-handoff-failed', { terminalState: 'FAILED' }); }
   catch (intentError: any) { request.intentError = errorInfo(intentError); }
   try {
     const stopped = await runtime.stop(agentId, { timeoutMs: stopTimeoutMs });
@@ -111,7 +111,7 @@ export async function stopFailedHandoff({ request, runtime, taskService, stopTim
     request.cleanupError = undefined;
     if (stopped.execution === 'stopped') {
       const current = taskService.getExecution(executionId);
-      if (['CREATED', 'RUNNING'].includes(current.state)) taskService.dispatch('stop_execution', { terminal_state: 'FAILED', terminal_reason: 'flat-handoff-failed' }, executionEnvelope(current, `${request.id}:failed`));
+      if (['CREATED', 'RUNNING'].includes(current.state)) taskService.dispatch('stop_execution', { terminal_state: 'FAILED', terminal_reason: 'taskpool-handoff-failed' }, executionEnvelope(current, `${request.id}:failed`));
       if (stopped.cleanup === 'complete') taskService.finalizeAgentClose(agentId);
     }
   } catch (cleanupError: any) { request.cleanupError = errorInfo(cleanupError); }

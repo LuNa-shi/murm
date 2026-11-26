@@ -6,7 +6,7 @@ interface OwnedResource extends ResourceRegistration {
   work?: Promise<void>;
 }
 
-/** Environment ownership only. Shared data is retained; adapters own secrets. */
+/** Harness ownership only. Shared data is retained; adapters own secrets. */
 export function createOwnedResources({ timeoutMs = 10_000 }: { timeoutMs?: number } = {}) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) throw new TypeError('Invalid resource cleanup bound');
   const rows: OwnedResource[] = [];

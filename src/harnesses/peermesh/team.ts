@@ -26,12 +26,12 @@ export async function createPeerMeshTeam(options: any) {
   const durationMs = options.project?.durationMs ?? 3_600_000;
   if (options.project !== undefined && (!finite(durationMs) || durationMs > 86_400_000 ||
       typeof options.project?.title !== 'string' || typeof options.project?.body !== 'string' ||
-      !options.project.body.trim() || Buffer.byteLength(options.project.body) > 16_000)) throw new TypeError('Agensh project requires a goal and bounded duration');
+      !options.project.body.trim() || Buffer.byteLength(options.project.body) > 16_000)) throw new TypeError('PeerMesh project requires a goal and bounded duration');
   const readinessTimeoutMs = options.router?.readinessTimeoutMs ?? 10_000;
   if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir ||
       (options.maxConcurrentInputs !== undefined && (!Number.isSafeInteger(options.maxConcurrentInputs) || options.maxConcurrentInputs < 1 || options.maxConcurrentInputs > peerKeys.length)) ||
       !finite(exportLimit) || exportLimit > 64 * 1024 ** 2 || !finite(readinessTimeoutMs) ||
-      !Array.isArray(peerKeys) || peerKeys.length < 2 || peerKeys.length > 8 || new Set(peerKeys).size !== peerKeys.length || peerKeys.some((key: any) => typeof key !== 'string' || !/^[a-z][a-z0-9-]{0,15}$/.test(key))) throw new TypeError('Agensh team needs bounded distinct peers, image, output directory and export');
+      !Array.isArray(peerKeys) || peerKeys.length < 2 || peerKeys.length > 8 || new Set(peerKeys).size !== peerKeys.length || peerKeys.some((key: any) => typeof key !== 'string' || !/^[a-z][a-z0-9-]{0,15}$/.test(key))) throw new TypeError('PeerMesh team needs bounded distinct peers, image, output directory and export');
   const resources = createOwnedResources(); const lifetime: any = new AbortController();
   if (options.signal !== undefined && !(options.signal instanceof AbortSignal)) throw new TypeError('Team signal must be an AbortSignal');
   const signal = options.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal;
@@ -63,7 +63,7 @@ export async function createPeerMeshTeam(options: any) {
     stop(fencedFailure);
   }
   async function close({ timeoutMs = 60_000 }: any = {}) {
-    if (!finite(timeoutMs)) throw new TypeError('Agensh close requires a finite wait');
+    if (!finite(timeoutMs)) throw new TypeError('PeerMesh close requires a finite wait');
     stop(); if (completed) return structuredClone(completed);
     if (!closeWork) closeWork = (async () => {
       const end = Date.now() + timeoutMs;
@@ -146,7 +146,7 @@ export async function createPeerMeshTeam(options: any) {
       const router = createPeerMeshRouter({ ...(options.project ? {
         workTimeoutMs: durationMs + 120_000, turnTimeoutMs: durationMs, maxBatches: 256, idleNudgeMs: 120_000, maxNudges: 8,
       } : {}), ...options.router, mapping, onFence: failRouting,
-        steerInput: options.project ? (text: string, requestId: string) => runtime.steer(agent.id, text, { requestId, source: 'agensh-peer-notice', steeringMode: 'all' }) : undefined,
+        steerInput: options.project ? (text: string, requestId: string) => runtime.steer(agent.id, text, { requestId, source: 'peermesh-peer-notice', steeringMode: 'all' }) : undefined,
         runInput: (text: any, wait: any) => {
           const send = () => runInput(runtime, agent.id, text, { ...wait, operation: options.project ? 'start' : 'send', signal: AbortSignal.any([signal, wait.signal]) });
           return inputAdmission ? inputAdmission.run(send) : send();
@@ -194,7 +194,7 @@ export async function createPeerMeshTeam(options: any) {
   } catch (error: any) {
     const code = fencedFailure?.code ?? hostStreamFailure() ?? error.code ?? 'TEAM_START_FAILED';
     const receipt = !runtime && error.cleanup === 'pending' ? { cleanup: 'pending' } : await close({ timeoutMs: options.closeTimeoutMs ?? 60_000 }).catch(() => ({ cleanup: 'pending' }));
-    throw Object.assign(new Error('Agensh team initialization failed'), { code, runtimeId: runtime?.id ?? error.runtimeId, cleanup: receipt.cleanup, details: [...(fencedFailure?.details ?? []), snapshot(), redact(receipt)] });
+    throw Object.assign(new Error('PeerMesh team initialization failed'), { code, runtimeId: runtime?.id ?? error.runtimeId, cleanup: receipt.cleanup, details: [...(fencedFailure?.details ?? []), snapshot(), redact(receipt)] });
   } finally { signal.removeEventListener('abort', abortStartup); }
 }
 

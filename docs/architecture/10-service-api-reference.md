@@ -32,7 +32,7 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `adbeb0d8b2057f13538732c09f30f34c59adb43292471c18d77f1075584a4b1c` |
+| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `34da62ab9a42462e3a08837efa890009b1bfb4ca4bfb961319c2369cbb1df01d` |
 | [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `c080a6cec3a3f12ed5f9b0529b46db2d2aea8c217b99b8d29b5a48b1d52249a5` |
 | [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `3759b5509820d4ee1793c802e1e5c99aee0f7095fc6d43244d1ca0a773776dd0` |
 | [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `ee72fba940f1e45926b4f8c04a13c355868e6d15b84df6cade45f2371b4db770` |
@@ -2775,7 +2775,7 @@ This section records catalog declarations used by trusted service composition bu
   "service": "task",
   "operation": "task_create",
   "version": "1.0",
-  "description": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Agent proposals require explicit Environment registration and current Mission authority. Optional base_revision pins input; otherwise take uses main.",
+  "description": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Agent proposals require explicit Harness registration and current Mission authority. Optional base_revision pins input; otherwise take uses main.",
   "scope": "task-write",
   "side_effect": true,
   "parameters": {

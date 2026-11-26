@@ -83,9 +83,9 @@ export async function resolvePeerMeshImages() {
   return { references, images: Object.fromEntries(images) };
 }
 
-export async function runOpenPeerMesh({ state, task, window, start, deadline, image, backend, outputDir, durationMs, agenshImages }) {
+export async function runOpenPeerMesh({ state, task, window, start, deadline, image, backend, outputDir, durationMs, peerMeshImages }) {
   state.stage = 'peermesh-startup';
-  const { images } = agenshImages ?? await resolvePeerMeshImages();
+  const { images } = peerMeshImages ?? await resolvePeerMeshImages();
   const stack = await createLocalPeerMeshStack({ directory: join(outputDir, 'facilities'), setupMs: 120_000,
     advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST, images });
   const runId = `pastel-${randomBytes(6).toString('hex')}`;
@@ -122,7 +122,7 @@ export async function runOpenPeerMesh({ state, task, window, start, deadline, im
       signal.throwIfAborted();
       const batch = batches[key] ?? kickoff(key);
       const turn = await team.wait(key, batch.batchId, { timeoutMs: Math.max(1, Math.ceil(window.remainingMs())), signal });
-      if (turn.state !== 'completed') throw Object.assign(new Error('Agensh work failed'), { code: turn.code ?? 'PEERMESH_WORK_FAILED' });
+      if (turn.state !== 'completed') throw Object.assign(new Error('PeerMesh work failed'), { code: turn.code ?? 'PEERMESH_WORK_FAILED' });
       const peer = facilities.peers.find(row => row.key === key);
       const pulls = await git('GET', `${repo()}/pulls?state=open`, undefined, { signal });
       const own = pulls.filter(pr => String(pr.user?.id) === peer.gitea.accountId &&

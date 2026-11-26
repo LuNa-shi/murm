@@ -12,7 +12,7 @@ test('fixed native discovery program parses without running any model or sandbox
   assert.equal(script.includes('glob.glob'), false, 'First-turn process continuity must not require an already flushed Session file');
 });
 
-test('native flat fixture keeps failed evidence sticky and counts rejected upstream arrivals', async t => {
+test('native taskpool fixture keeps failed evidence sticky and counts rejected upstream arrivals', async t => {
   const upstream = await createTaskPoolTakeUpstream('fixed-task', Date.now() + 5000); t.after(() => upstream.close());
   const send = input => fetch(upstream.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input }) });
   await (await send([{ role: 'user', content: 'TASKPOOL_T11_A' }])).text();

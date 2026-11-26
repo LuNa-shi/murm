@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { createSubstrateUpstream, scaleMASCommand } from './fixtures/substrate-upstream.js';
+import { createSubstrateUpstream, substrateCommand } from './fixtures/substrate-upstream.js';
 import { completeSimple, isRetryableAssistantError } from '@earendil-works/pi-ai/compat';
 
 for (const poolSize of [3, 6]) test(`all ${poolSize * 2} native fixed programs parse and preserve newline bytes without NUL arguments`, () => {
   for (let peer = 0; peer < poolSize; peer++) for (let cycle = 0; cycle < 2; cycle++) {
-    const command = scaleMASCommand(peer, cycle, { poolSize }); assert.equal(command.includes(String.fromCharCode(0)), false);
+    const command = substrateCommand(peer, cycle, { poolSize }); assert.equal(command.includes(String.fromCharCode(0)), false);
     const source = command.split("<<'SUBSTRATE_FIXED'\n")[1].split('\nSUBSTRATE_FIXED')[0];
     execFileSync('python3', ['-c', 'import ast,sys; ast.parse(sys.stdin.read())'], { input: source });
   }
@@ -62,6 +62,6 @@ for (const poolSize of [3, 6]) test(`the ${poolSize}-peer native fixture rejects
 test('native fixture capacity accepts only the reviewed three- and six-peer variants', async () => {
   for (const poolSize of [0, 2, 4, 5, 7, 8, 9, '6', null]) {
     await assert.rejects(createSubstrateUpstream({ deadlineAt: Date.now() + 5000, poolSize }));
-    assert.throws(() => scaleMASCommand(0, 0, { poolSize }));
+    assert.throws(() => substrateCommand(0, 0, { poolSize }));
   }
 });

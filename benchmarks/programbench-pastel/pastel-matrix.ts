@@ -131,7 +131,7 @@ export async function inspectFrozenInputs(worker) {
   const [{ assertShippedModelPair }, { resolvePeerMeshImages }] = await Promise.all([
     import('../../dist/src/agent/model-catalog.js'), import('./pastel-open-peermesh.ts'),
   ]);
-  const [localWorker, runnerFiles, catalog, evaluatorPins, agenshImages, hostDistributionSha256] = await Promise.all([
+  const [localWorker, runnerFiles, catalog, evaluatorPins, peerMeshImages, hostDistributionSha256] = await Promise.all([
     exec('docker', ['image', 'inspect', worker, '--format', '{{json .}}'], { timeout: 10_000 }),
     Promise.all(runnerNames.map(async name => [name, sha256(await readFile(join(directory, name === 'run-window.ts' ? '../shared/run-window.ts' : name)))])),
     assertShippedModelPair({ provider, model }),
@@ -146,7 +146,7 @@ export async function inspectFrozenInputs(worker) {
   requireThat(workerImage.Id === worker && labels?.['org.opencontainers.image.revision'] === code &&
     labels['org.murm.benchmark.instance'] === instance &&
     labels['org.murm.benchmark.cleanroom'] === evaluatorDigest, 'PINNED_WORKER_MISMATCH');
-  return { code, worker, instance, ...evaluatorPins, provider, model, agenshImages, hostDistributionSha256,
+  return { code, worker, instance, ...evaluatorPins, provider, model, peerMeshImages, hostDistributionSha256,
     modelCatalogSha256: catalog.sha256, taskSha256: sha256(task), runnerFiles: Object.fromEntries(runnerFiles) };
 }
 
@@ -276,7 +276,7 @@ async function runHostedMatrix({ pins, issue, experiments, catalogPath, registry
     Object.assign(row, { status: 'launching', submittedAt: new Date().toISOString() });
     console.log(JSON.stringify({ mode, experiment, stage: row.status, matrixDir }));
     try {
-      const { outputDir, receipt } = await runPastel({ ...policy, mode, image: pins.worker, upstream, upstreamKind: policy.kind, agenshImages: pins.agenshImages,
+      const { outputDir, receipt } = await runPastel({ ...policy, mode, image: pins.worker, upstream, upstreamKind: policy.kind, peerMeshImages: pins.peerMeshImages,
         async onStart({ startedAt, runtimeId }) {
           Object.assign(row, { status: 'running', startedAt, runtimeId });
           console.log(JSON.stringify({ mode, experiment, stage: row.status, startedAt, runtimeId, matrixDir }));

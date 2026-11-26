@@ -19,7 +19,7 @@ const hooks=registerHooks({resolve(specifier,context,next) {
 const {createRuntime}=await import('@murm/core');hooks.deregister();
 const execute=promisify(execFile);
 async function fixture(t, { corrections = true, revokeAllowed = true, coordinationPermissions = [], registeredPermissions = coordinationPermissions } = {}) {
-  const root=await mkdtemp(join(tmpdir(),'flat-material-'));
+  const root=await mkdtemp(join(tmpdir(),'taskpool-material-'));
   const stores=await createTaskPoolStores(root);
   stores.tasks.contextService=stores.context;
   let runtime;
@@ -44,7 +44,7 @@ async function fixture(t, { corrections = true, revokeAllowed = true, coordinati
   for(let i=0;i<2;i++) {
 
     const agent=await runtime.spawn({profile:'researcher',requestId:`contributor-${i}`});agents.push(agent);
-    stores.tasks.registerAgent({agentId:agent.id,missionId:stores.missionId,legacySlotId:`flat-slot:${i}`,coordinationPermissions:registeredPermissions,selectionDeadline:new Date(Date.now()+60000).toISOString()});stores.tasks.markCoreAgentReady(agent.id);
+    stores.tasks.registerAgent({agentId:agent.id,missionId:stores.missionId,legacySlotId:`taskpool-slot:${i}`,coordinationPermissions:registeredPermissions,selectionDeadline:new Date(Date.now()+60000).toISOString()});stores.tasks.markCoreAgentReady(agent.id);
     if (i === 0) await cli(agent,'task','take',stores.task.task_id,'--request-id',`take-${i}`);
   }
   return {...stores,root,publication,runtime,agents,policy,cli:(...args)=>cli(agents[0],...args),cliFor:cli};
@@ -184,10 +184,10 @@ test('UNBOUND revocation repeats current grant, stop and deadline admission afte
   }
 });
 
-test('normal Flat host wires explicit Material coordinator permission without adding a Task operation',async t=>{
+test('normal TaskPool host wires explicit Material coordinator permission without adding a Task operation',async t=>{
   const {runTaskPoolHarness}=await import('../src/harnesses/taskpool/harness.js');
   for(const coordinationPermissions of [[],['unsupersede']]) {
-    const root=await mkdtemp(join(tmpdir(),'flat-material-host-')),stores=await createTaskPoolStores(root);
+    const root=await mkdtemp(join(tmpdir(),'taskpool-material-host-')),stores=await createTaskPoolStores(root);
     t.after(async()=>{stores.close();await rm(root,{recursive:true,force:true});});
     transport.reset();controls.credentials.clear();controls.stopError=null;controls.destroyError=null;
     const accept=id=>{transport.confirm(id,'started');transport.next=accept;};transport.next=accept;

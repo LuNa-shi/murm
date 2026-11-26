@@ -7,7 +7,7 @@ import { createBoard } from '../src/harnesses/lead-worker/board.js';
 import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/core/services.js';
 
 async function setup(t, options = {}) {
-  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-board-')); t.after(() => rm(directory, { recursive: true, force: true }));
+  const directory = await mkdtemp(join(tmpdir(), 'lead-worker-board-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const board = createBoard({ path: join(directory, 'board.sqlite'), runId: 'test', verifyDelivery: options.verifyDelivery ?? (async ({ delivery }) => ({ ...delivery, verified: true })) });
   t.after(() => board.close());
   const services = new ServiceRegistry(); board.register(services);

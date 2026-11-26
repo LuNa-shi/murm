@@ -139,7 +139,7 @@ export async function runPutnamTaskPool({ problem, checks, directory, backend, i
     const atDeadline = window.receipt().stopReason === 'deadline';
     const late = revisions.find((row: { revision: string; created_at: string }) =>
       row.revision === candidate.revision && atDeadline && Date.parse(row.created_at) >= researchDeadline!);
-    if (late) throw new Error('Flat main advanced at or after the research deadline');
+    if (late) throw new Error('TaskPool main advanced at or after the research deadline');
     const assessment = accepted?.result ?? (startedAt
       ? await verifier.check({ files, tree: candidate.git_tree, signal, deadline: Date.now() + verifier.timeoutMs })
       : null);

@@ -29,23 +29,23 @@ export const TASKPOOL_TASK_FINISH_GUIDANCE = 'When your responsibility ends, rep
 
 export const TASKPOOL_DISCOVERY_MESSAGE='Read public Tasks and take suitable work. Continue in this Session after take.';
 
-const info=(error: any)=>({code:error?.code??'TASKPOOL_CONTROLLER_FAILED',message:error?.message??'Flat controller failed'});
+const info=(error: any)=>({code:error?.code??'TASKPOOL_CONTROLLER_FAILED',message:error?.message??'TaskPool controller failed'});
 const deny=(message: any)=>{throw new MurmError('NOT_ALLOWED',message);};
 
 /** One serialized source for discovery, continuation and directed user input.
- * Core owns resources; this controller owns only flat policy and domain cleanup. */
+ * Core owns resources; this controller owns only taskpool policy and domain cleanup. */
 export function createTaskPoolController({runtime,taskService,missionId,capacity=2,profile='researcher',deadlineAt,activeDeadline=()=>deadlineAt,coordinationPermissions=[],
   selectionMs=60_000,hardBudgetMs=300_000,heartbeatMs=10_000,stallMs=120_000,continuationLimit=20,discoveryLimit=20,
   stopTimeoutMs=30_000,autonomousTasks=false,discoveryPrompt,discoveryContext,discoveryWorkflow,
   continuationPrompt,workspaceSaveAvailable=true,completionPolicy='tasks',deliverNotifications=true,materialNotificationMode='followUp',
   afterStopped=async()=>{}, beforeInitialDispatch, automaticContinuation=true, refillWhenNoReadyTask=true }: any) {
   if ([discoveryContext, discoveryWorkflow].some(value => value !== undefined && typeof value !== 'string')) {
-    throw new TypeError('Flat discovery context and workflow must be host-supplied text');
+    throw new TypeError('TaskPool discovery context and workflow must be host-supplied text');
   }
   if(!['tasks','mission'].includes(completionPolicy) || !['steer','followUp'].includes(materialNotificationMode) || typeof deliverNotifications!=='boolean' || typeof autonomousTasks!=='boolean' || !runtime?.id || !taskService || typeof missionId!=='string' || !missionId || !Number.isSafeInteger(capacity) || capacity<1 ||
     ![deadlineAt,selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every(Number.isFinite) || deadlineAt<=Date.now() || typeof activeDeadline!=='function' ||
     ![selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every((x: any)=>x>0) || heartbeatMs>10000 ||
-    ![continuationLimit,discoveryLimit].every((x: any)=>Number.isSafeInteger(x)&&x>=1) || typeof afterStopped!=='function' || (beforeInitialDispatch!==undefined && typeof beforeInitialDispatch!=='function') || typeof automaticContinuation!=='boolean' || typeof refillWhenNoReadyTask!=='boolean') throw new TypeError('Flat controller requires finite ordered work budgets and trusted Runtime/domain stores');
+    ![continuationLimit,discoveryLimit].every((x: any)=>Number.isSafeInteger(x)&&x>=1) || typeof afterStopped!=='function' || (beforeInitialDispatch!==undefined && typeof beforeInitialDispatch!=='function') || typeof automaticContinuation!=='boolean' || typeof refillWhenNoReadyTask!=='boolean') throw new TypeError('TaskPool controller requires finite ordered work budgets and trusted Runtime/domain stores');
   const coordinator=createTaskPoolAgentCoordinator({runtime,taskService,missionId,coordinationPermissions});
   const agents: any=new Map(),feedbackRequests: any=new Map(),events: any=new Map();
   const inputs: any[]=[],decisions: any[]=[],failures: any[]=[];
@@ -92,7 +92,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       await afterStopped(execution.execution_id,{closedConfirmed:true});
       const fresh=taskService.getExecution(execution.execution_id);
       if(fresh.finish && fresh.state==='CLOSING') taskService.finalizeExecutionFinish(fresh.execution_id,{fencingVersion:fresh.fencing_version});
-      else if(['CREATED','RUNNING'].includes(fresh.state)) taskService.dispatch('stop_execution',{terminal_state:'FAILED',terminal_reason:row.stopReason??'taskpool-ended'},executionEnvelope(fresh,`flat:stop:${row.agentId}`));
+      else if(['CREATED','RUNNING'].includes(fresh.state)) taskService.dispatch('stop_execution',{terminal_state:'FAILED',terminal_reason:row.stopReason??'taskpool-ended'},executionEnvelope(fresh,`taskpool:stop:${row.agentId}`));
     }
     if(receipt.cleanup==='complete' && owner && taskService.getAgent(row.agentId).state!=='CLOSED') taskService.finalizeAgentClose(row.agentId);
     row.released=receipt.cleanup==='complete';
@@ -158,7 +158,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
     // Persist the soft boundary first. Enqueue is independently idempotent, so
     // a failed enqueue is recovered even when the reminder already exists.
     const marked=execution.handoff_reminder_sent_at?execution:taskService.dispatch('record_handoff_reminder',
-      {reminded_at:new Date(at).toISOString()},executionEnvelope(execution,`flat:handoff-reminder:${execution.execution_id}`)).execution;
+      {reminded_at:new Date(at).toISOString()},executionEnvelope(execution,`taskpool:handoff-reminder:${execution.execution_id}`)).execution;
     const notification=row.handoffNotification??=taskService.enqueueNotification({
       deliveryKey:`handoff_warning:${marked.execution_id}:${marked.execution_deadline??marked.handoff_deadline}`,
       missionId,recipientTaskId:marked.task_id,recipientExecutionId:marked.execution_id,type:'handoff_warning',
@@ -173,7 +173,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
     // Preserve exact text and request identity across admission/receipt errors.
     // Never reissue an unknown or definitively rejected input automatically.
     const delivery=row.handoffWarning??={notificationId:notification.notification_id,
-      fence:marked.fencing_version,text:buildAgentNotification(notification,{at,workspaceSaveAvailable}),requestId:`flat:handoff-warning:${marked.execution_id}:${notification.notification_id}`};
+      fence:marked.fencing_version,text:buildAgentNotification(notification,{at,workspaceSaveAvailable}),requestId:`taskpool:handoff-warning:${marked.execution_id}:${notification.notification_id}`};
     if(!delivery.input || delivery.input.status==='not_submitted') {
       delivery.input=await submit(row,delivery.text,{source:'handoff-warning',requestId:delivery.requestId,
         taskId:marked.task_id,executionId:marked.execution_id,fence:delivery.fence,notificationId:notification.notification_id});
@@ -191,7 +191,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       for(const notification of taskService.listUnprocessedNotifications(execution.task_id,execution.execution_id)) {
         if(notification.notification_type==='handoff_warning' || notification.recipient_delivery?.delivered_at) continue;
         const delivery=row.notifications[notification.notification_id] ??= {
-          requestId:`flat:notification:${execution.execution_id}:${notification.notification_id}`,
+          requestId:`taskpool:notification:${execution.execution_id}:${notification.notification_id}`,
           text:buildAgentNotification(notification,{workspaceSaveAvailable}), fence:execution.fencing_version,
           mode:notification.notification_type==='material_available'?materialNotificationMode:'followUp',
         };
@@ -236,13 +236,13 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       if(!refillWhenNoReadyTask && spawned>=ready) {record('refill-awaits-ready-task',null);break;}
       const serial=++generation,now=Date.now(),hard=Math.min(workDeadline(),now+hardBudgetMs),selection=Math.min(hard,now+selectionMs);
       if(selection<=now) return;
-      const legacySlotId=`flat:slot:${index}`,requestId=`flat:spawn:${serial}`;
+      const legacySlotId=`taskpool:slot:${index}`,requestId=`taskpool:spawn:${serial}`;
       const agent=await coordinator.spawn({legacySlotId,requestId,profile,writable:false,selectionDeadline:new Date(selection).toISOString(),hardDeadline:new Date(hard).toISOString()});
       const row: any={agentId:agent.id,legacySlotId,slot:index,generation:serial,continuations:0,discoveries:1,lastActivityAt:Date.now(),released:false};
       agents.set(agent.id,row);spawned++;record('spawn-readonly-discovery',row);
       if(closing) await stop(row,'controller-closing');
       else if(beforeInitialDispatch) awaitingDiscovery.push(row);
-      else await submit(row,discoveryPrompt,{source:'discovery',requestId:`flat:discovery:${serial}:1`});
+      else await submit(row,discoveryPrompt,{source:'discovery',requestId:`taskpool:discovery:${serial}:1`});
     }
     if(awaitingDiscovery.length && !closing) {
       const gate: any=new AbortController(); admissionController=gate;
@@ -250,7 +250,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       record('host-admission-start',null,{agentIds:[...agents.values()].filter((row: any)=>!row.released).map((row: any)=>row.agentId)});
       try {
         const cancelled=new Promise<any>((_: any,reject: any)=>{
-          aborted=()=>reject(new MurmError('NOT_ALLOWED','Flat host admission was cancelled'));
+          aborted=()=>reject(new MurmError('NOT_ALLOWED','TaskPool host admission was cancelled'));
           gate.signal.addEventListener('abort',aborted,{once:true});
           deadline=setTimeout(()=>gate.abort(),Math.max(1,remaining()));
         });
@@ -258,9 +258,9 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
           gate.signal.throwIfAborted();
           return beforeInitialDispatch({runtime,agentIds:[...agents.values()].filter((row: any)=>!row.released).map((row: any)=>row.agentId),signal:gate.signal});
         }),cancelled]);
-        if(closing || remaining()<=0 || gate.signal.aborted) deny('Flat host admission expired');
+        if(closing || remaining()<=0 || gate.signal.aborted) deny('TaskPool host admission expired');
         record('host-admission-complete',null);
-        for(const row of awaitingDiscovery) await submit(row,discoveryPrompt,{source:'discovery',requestId:`flat:discovery:${row.generation}:1`});
+        for(const row of awaitingDiscovery) await submit(row,discoveryPrompt,{source:'discovery',requestId:`taskpool:discovery:${row.generation}:1`});
       } catch(error: any) {finish('host-admission-failed');throw error;}
       finally {clearTimeout(deadline);gate.signal.removeEventListener('abort',aborted);if(admissionController===gate)admissionController=undefined;gate.abort();}
     }
@@ -277,7 +277,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       if(at-row.lastActivityAt>=stallMs) {await stop(row,'stall-budget');continue;}
       if(owner?.state==='ACTIVE' && execution?.state==='RUNNING') {
         try {
-          taskService.dispatch('heartbeat',{},executionEnvelope(execution,`flat:heartbeat:${randomUUID()}`));
+          taskService.dispatch('heartbeat',{},executionEnvelope(execution,`taskpool:heartbeat:${randomUUID()}`));
         }
         catch(error: any) {row.failure=info(error);await stop(row,'lease-failed');continue;}
         try {await handoffWarning(row);}
@@ -309,11 +309,11 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
         if(!automaticContinuation) {record('awaiting-host-followup',row);return;}
         if(row.continuations>=continuationLimit) {await stop(row,'continuation-budget');await refill();return;}
         row.continuations++;record('unfinished-execution',row,{continuation:row.continuations});
-        await submit(row,buildAgentContinuationMessage(execution,{ordinary:continuationPrompt,workspaceSaveAvailable}),{source:'continuation',requestId:`flat:continue:${row.generation}:${row.continuations}`,taskId:execution.task_id,executionId:execution.execution_id,fence:execution.fencing_version});
+        await submit(row,buildAgentContinuationMessage(execution,{ordinary:continuationPrompt,workspaceSaveAvailable}),{source:'continuation',requestId:`taskpool:continue:${row.generation}:${row.continuations}`,taskId:execution.task_id,executionId:execution.execution_id,fence:execution.fencing_version});
       } else if(owner?.state==='UNBOUND') {
         if(row.discoveries>=discoveryLimit) {await stop(row,'discovery-budget');await refill();return;}
         row.discoveries++;record('selection-still-open',row);
-        await submit(row,discoveryPrompt,{source:'discovery',requestId:`flat:discovery:${row.generation}:${row.discoveries}`});
+        await submit(row,discoveryPrompt,{source:'discovery',requestId:`taskpool:discovery:${row.generation}:${row.discoveries}`});
       } else {await stop(row,'domain-binding-ended');await refill();}
     }
   }
@@ -372,7 +372,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
         }
       }
       if(reconciliationFailures.length) {
-        const error: any=new MurmError('TASKPOOL_CLOSE_RECONCILIATION_FAILED','Flat domain cleanup remains incomplete');
+        const error: any=new MurmError('TASKPOOL_CLOSE_RECONCILIATION_FAILED','TaskPool domain cleanup remains incomplete');
         error.details=reconciliationFailures;
         throw error;
       }

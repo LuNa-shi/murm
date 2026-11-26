@@ -2,7 +2,7 @@ const required = (name: any) => { const value = process.env[name]; if (!value) t
 const host = process.env.MURM_LEAD_WORKER_HOST ?? '172.17.0.1';
 const modelToken = process.env.MURM_LEAD_WORKER_MODEL_TOKEN;
 export default {
-  runId: required('MURM_LEAD_WORKER_RUN'), image: required('MURM_LEAD_WORKER_IMAGE'), outputDir: './lead-helper-runs', model: 'default',
+  runId: required('MURM_LEAD_WORKER_RUN'), image: required('MURM_LEAD_WORKER_IMAGE'), outputDir: './lead-worker-runs', model: 'default',
   goal: 'Build two complementary text reports about input validation and caller authentication. Each initial artifact must give a concrete check and a public feedback suggestion.',
   supplement: 'Require explicit evidence and explain authorization as a separate check. Preserve earlier reports and deliver a new text report containing the full updated public direction.',
   helperCount: 2,

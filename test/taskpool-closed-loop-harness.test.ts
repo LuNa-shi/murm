@@ -23,7 +23,7 @@ const execute = promisify(execFile);
 const hash = value => createHash('sha256').update(value).digest('hex');
 
 for (const capacity of [2, 4]) test(`${capacity} flat Slots contribute distinct public results, continue and receive feedback, then replace only a retired owner and adopt its public result`, { timeout: 30_000 }, async t => {
-  const root = await mkdtemp(join(tmpdir(), 'flat-closed-loop-harness-'));
+  const root = await mkdtemp(join(tmpdir(), 'taskpool-closed-loop-harness-'));
   const stores = await createTaskPoolStores(root);
   t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
   transport.reset(); controls.credentials.clear(); controls.preparedFiles.clear(); controls.stopError = null; controls.destroyError = null;

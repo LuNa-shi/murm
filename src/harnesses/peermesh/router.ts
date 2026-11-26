@@ -44,7 +44,7 @@ export function createPeerMeshRouter({ mapping, runInput, readContext, steerInpu
     const index = queue.findIndex(row => !row.steerAttempted && ['dm', 'board-entry'].includes(row.kind));
     if (index < 0) return;
     const [row] = queue.splice(index, 1);
-    const requestId = `agensh-steer:${row.batchId}`;
+    const requestId = `peermesh-steer:${row.batchId}`;
     const notice = { batchId: row.batchId, source: row.source, eventId: row.eventId, kind: row.kind, text: row.text, ...(row.origin ? { origin: row.origin } : {}) };
     Object.assign(row, { state: 'steering', steerAttempted: true, steerRequestId: requestId, parentBatchId: active.batchId,
       dispatchOrder: ++order, dispatchedAt: new Date().toISOString() });
@@ -166,7 +166,7 @@ export function createPeerMeshRouter({ mapping, runInput, readContext, steerInpu
     const previous = rows.get(batchId);
     if (previous) { if (previous.fingerprint !== fingerprint) throw failure('BATCH_CONFLICT'); return clone(previous); }
     if (rows.size >= maxBatches) throw failure('ROUTER_BATCH_LIMIT');
-    const row: any = { ...normalized, batchId, requestId: `agensh-batch:${batchId}`, fingerprint, order: ++order, state: 'queued', receivedAt: new Date().toISOString() };
+    const row: any = { ...normalized, batchId, requestId: `peermesh-batch:${batchId}`, fingerprint, order: ++order, state: 'queued', receivedAt: new Date().toISOString() };
     rows.set(batchId, row);
     if (!accepting || fenced || event.targetWorker !== peerMapping.workerId) { row.state = 'undelivered'; row.code = event.targetWorker !== peerMapping.workerId ? 'UNKNOWN_RECIPIENT' : fenced ? 'ROUTER_FENCED' : 'ROUTER_STOPPING'; }
     else { clearTimeout(nudgeTimer); queue.push(row); steerQueuedNotice(); void pump(); }

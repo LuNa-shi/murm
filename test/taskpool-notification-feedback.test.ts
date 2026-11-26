@@ -20,7 +20,7 @@ const hooks=registerHooks({resolve(specifier,context,next) {
 const {createRuntime}=await import('@murm/core');hooks.deregister();
 const execute=promisify(execFile);
 async function fixture(t, { feedbackAllowed = true } = {}) {
-  const root=await mkdtemp(join(tmpdir(),'flat-feedback-'));
+  const root=await mkdtemp(join(tmpdir(),'taskpool-feedback-'));
   const stores=await createTaskPoolStores(root);
   stores.tasks.contextService=stores.context;
   let runtime;
@@ -44,7 +44,7 @@ async function fixture(t, { feedbackAllowed = true } = {}) {
   for(let i=0;i<2;i++) {
 
     const agent=await runtime.spawn({profile:'researcher',requestId:`contributor-${i}`});agents.push(agent);
-    stores.tasks.registerAgent({agentId:agent.id,missionId:stores.missionId,legacySlotId:`flat-slot:${i}`,selectionDeadline:new Date(Date.now()+60000).toISOString()});stores.tasks.markCoreAgentReady(agent.id);
+    stores.tasks.registerAgent({agentId:agent.id,missionId:stores.missionId,legacySlotId:`taskpool-slot:${i}`,selectionDeadline:new Date(Date.now()+60000).toISOString()});stores.tasks.markCoreAgentReady(agent.id);
     if (i === 0) await cli(agent,'task','take',stores.task.task_id,'--request-id',`take-${i}`);
   }
   return {...stores,root,publication,runtime,agents,policy,cli:(...args)=>cli(agents[0],...args),cliFor:cli};

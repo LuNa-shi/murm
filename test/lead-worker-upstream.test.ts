@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { completeSimple, isRetryableAssistantError } from '@earendil-works/pi-ai/compat';
-import { leadHelperCommand, createLeadWorkerUpstream, adjustedDirection } from './fixtures/lead-worker-upstream.js';
+import { leadWorkerCommand, createLeadWorkerUpstream, adjustedDirection } from './fixtures/lead-worker-upstream.js';
 import { execute } from './fixtures/notes-installed-package.js';
 const user = value => ({ role: 'user', content: [{ type: 'input_text', text: JSON.stringify(value) }] });
 const modelFor = upstream => ({ id: 'k3', name: 'fixed', provider: 'kimi_proxy', api: 'openai-responses', baseUrl: upstream.url.replace(/\/responses$/, ''), reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 128000, maxTokens: 512 });
 
 test('native programs parse and wrong-role input gets terminal nonretryable Pi failure once', async t => {
-  for (const kind of ['initialize', 'helper-initial', 'user-and-feedback', 'helper-followup']) await execute('python3', ['-c', 'import ast,sys;ast.parse(sys.argv[1])', leadHelperCommand(kind).split("<<'LEAD_HELPER'\n")[1].split('\nLEAD_HELPER')[0]]);
+  for (const kind of ['initialize', 'helper-initial', 'user-and-feedback', 'helper-followup']) await execute('python3', ['-c', 'import ast,sys;ast.parse(sys.argv[1])', leadWorkerCommand(kind).split("<<'LEAD_WORKER'\n")[1].split('\nLEAD_WORKER')[0]]);
   const upstream = await createLeadWorkerUpstream(); t.after(() => upstream.close());
   const result = await completeSimple(modelFor(upstream), { messages: [{ role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ type: 'initialize' }) }], api: 'openai-responses', provider: 'kimi_proxy', model: 'k3', stopReason: 'stop', usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, timestamp: 0 }] }, { apiKey: 'local-only', maxTokens: 512 });
   assert.equal(result.stopReason, 'error'); assert.equal(isRetryableAssistantError(result), false); assert.equal(upstream.receipt().arrivals, 1);

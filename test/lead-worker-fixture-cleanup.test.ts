@@ -10,7 +10,7 @@ import { closeLeadWorkerFixture } from './fixtures/lead-worker-scenario-cleanup.
 import { setTimeout as delay } from 'node:timers/promises';
 
 test('a failed reconciliation drains work and closes its listener while retaining uncertain runtime evidence', { timeout: 5000 }, async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-teardown-'));
+  const directory = await mkdtemp(join(tmpdir(), 'lead-worker-teardown-'));
   const server = createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const guest = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { detached: true, stdio: 'ignore' });
   await once(guest, 'spawn');
@@ -32,7 +32,7 @@ test('a failed reconciliation drains work and closes its listener while retainin
 });
 
 test('stopping an active simulated guest terminates its Bash and sleep descendants', { timeout: 5000 }, async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-guest-tree-'));
+  const directory = await mkdtemp(join(tmpdir(), 'lead-worker-guest-tree-'));
   const command = `trap '' TERM; sleep 60 >/dev/null 2>&1 & printf '%s %s\\n' "$$" "$!"; exec >/dev/null 2>&1; wait`;
   const program = `const {execFile}=require('node:child_process');const child=execFile('bash',['-c',${JSON.stringify(command)}],{timeout:15000},()=>{});child.stdout.pipe(process.stdout);`;
   const guest = spawn(process.execPath, ['-e', program], { detached: true, stdio: ['ignore', 'pipe', 'ignore'] });
@@ -60,7 +60,7 @@ test('stopping an active simulated guest terminates its Bash and sleep descendan
 });
 
 test('simulated sends drain before final close flushes a resumed writer in the runtime output directory', { timeout: 5000 }, async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-late-writer-'));
+  const directory = await mkdtemp(join(tmpdir(), 'lead-worker-late-writer-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const resumed = Promise.withResolvers(); let drained = false; let writer;
   const callback = resumed.promise.then(() => { drained = true; });

@@ -56,6 +56,6 @@ test('installed Substrate CLI offers help and saved inspection without loading c
   });
   await assert.rejects(execute(process.execPath, [main, '--result', installed.directory, '--runtime-id', 'missing-run'], options), error => {
     assert.equal(error.code, 1); const value = JSON.parse(error.stdout);
-    assert.equal(value.environment.state, 'missing'); assert.equal(value.core.state, 'missing'); return true;
+    assert.equal(value.harness.state, 'missing'); assert.equal(value.core.state, 'missing'); return true;
   });
 });

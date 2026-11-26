@@ -10,7 +10,7 @@ import { createNativeEvidenceDirectory, installNativeNotesExample } from './fixt
 import { createNotesHarnessUpstream } from './fixtures/notes-harness-upstream.js';
 
 test('installed Notes Environment exchanges a native fact and retains the reader Session through its second turn', {
-  skip: process.env.MURM_NOTES_ENVIRONMENT_REAL_TEST !== '1' && 'Two independent exact reviews and explicit local opt-in required',
+  skip: process.env.MURM_NOTES_HARNESS_REAL_TEST !== '1' && 'Two independent exact reviews and explicit local opt-in required',
   timeout: 340_000,
 }, async t => {
   const image = process.env.MURM_CORE_TEST_IMAGE;

@@ -21,7 +21,7 @@ export async function drainLeadWorkerFixture({ stopWork, guests, work }) {
         // final flush; waiting for the callback alone is not that boundary.
         await setImmediate();
       })(),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Lead-helper fixture work did not drain within 18 seconds')), 18_000); }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Lead-Worker fixture work did not drain within 18 seconds')), 18_000); }),
     ]);
   } finally { clearTimeout(timer); }
 }
@@ -46,5 +46,5 @@ export async function closeLeadWorkerFixture({ reconcile, stopWork, server, gues
     if (reconciled) try { await rm(directory, { recursive: true, force: true }); } catch (error) { errors.push(error); }
   }
   if (errors.length === 1) throw errors[0];
-  if (errors.length) throw new AggregateError(errors, 'Lead-helper fixture cleanup failed');
+  if (errors.length) throw new AggregateError(errors, 'Lead-Worker fixture cleanup failed');
 }

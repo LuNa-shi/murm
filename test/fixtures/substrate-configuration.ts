@@ -1,5 +1,5 @@
 // Shared exact native configuration and no-Agent assembly preflight. No I/O.
-export function scaleMASBackendConfiguration({ upstreamUrl, host = '172.17.0.1', lifecycleUrl = 'http://127.0.0.1:8080/v1', endpointHost = '127.0.0.1', apiKey }) {
+export function substrateBackendConfiguration({ upstreamUrl, host = '172.17.0.1', lifecycleUrl = 'http://127.0.0.1:8080/v1', endpointHost = '127.0.0.1', apiKey }) {
   const url = new URL(upstreamUrl);
   if (url.origin !== `http://127.0.0.1:${url.port}` || url.pathname !== '/v1/responses' || url.search || url.hash || url.username || url.password) throw new TypeError('Controlled scaleMAS requires its loopback Responses fixture');
   return { sandbox: { lifecycleBaseUrl: lifecycleUrl, endpointHost, apiKey, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },

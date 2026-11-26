@@ -1,4 +1,4 @@
-/** Public Workspace argument mapping shared by the v1 and Core Flat adapters.
+/** Public Workspace argument mapping shared by the v1 and Core TaskPool adapters.
  * Callers own admission, Mission scope, cancellation and replay policy. */
 export const MISSION_WORKSPACE_READS = Object.freeze({
   workspace_public_view: (workspace: any, input: any, signal: any) => workspace.get({ signal, workspaceId: input.workspace_id }),

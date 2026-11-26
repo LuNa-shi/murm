@@ -14,8 +14,8 @@ const objectSchema = (properties: any) => ({ type: 'object', properties, additio
 const taskId: any = { type: 'string', minLength: 1, maxLength: 256 };
 
 export function taskPoolResearcherProfile({ prompt, model, image, coordinationPermissions = [], autonomousTasks = false, ...options }: any) {
-  if (typeof autonomousTasks !== 'boolean') invalid('Flat autonomous Task configuration must be boolean');
-  if (Object.keys(options).some((key: any) => !['env', 'network', 'collect'].includes(key))) invalid('Flat researcher only accepts readonly discovery resource defaults');
+  if (typeof autonomousTasks !== 'boolean') invalid('TaskPool autonomous Task configuration must be boolean');
+  if (Object.keys(options).some((key: any) => !['env', 'network', 'collect'].includes(key))) invalid('TaskPool researcher only accepts readonly discovery resource defaults');
   return { ...options, prompt, model, image, writable: false, services: { task: [...operations, ...(autonomousTasks ? ['task_create'] : []), ...taskPoolCoordinationPermissions(coordinationPermissions).filter((permission: any) => permission === 'task_dependency_replace')] } };
 }
 
@@ -27,7 +27,7 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
       typeof missionId !== 'string' || !missionId || typeof workspaceId !== 'string' || !workspaceId ||
       typeof profile !== 'string' || !profile || typeof researcherPrompt !== 'string' || typeof missionDeadline !== 'function' ||
       ![executionTimeoutMs, handoffLeadMs, heartbeatMs, preparationTimeoutMs, stopTimeoutMs].every((value: any) => Number.isFinite(value) && value > 0) || heartbeatMs > 10_000) {
-    invalid('Flat Task Service requires trusted domain stores, Core, ordered finite budgets and a Mission deadline');
+    invalid('TaskPool Task Service requires trusted domain stores, Core, ordered finite budgets and a Mission deadline');
   }
   const permissions = taskPoolCoordinationPermissions(coordinationPermissions).filter((permission: any) => permission === 'task_dependency_replace');
   const enabledCoordination = [...coordinationOperations, ...permissions];
@@ -47,7 +47,7 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
   const viewProperties = { task_id: taskId, contract_history_after_version: { type: 'integer', minimum: 0 },
     contract_history_limit: { type: 'integer', minimum: 1, maximum: 100 } };
   const createProperties = Object.fromEntries(Object.entries(createTool.parameters.properties).filter(([key]) => !['mission_id', 'workspace', 'timebox_ms'].includes(key)));
-  const manifest: any = { id: 'task', title: 'Flat Tasks', purpose: 'Discover and exclusively take fixed Mission work with controlled file handoff',
+  const manifest: any = { id: 'task', title: 'TaskPool Tasks', purpose: 'Discover and exclusively take fixed Mission work with controlled file handoff',
     provider_version: '1', contract_version: '2', endpoint: { transport: 'in-process' }, capabilities: [
       ...(autonomousTasks ? [{ name: 'create', operation: 'task_create', description: 'Propose one concrete Task. You may call it repeatedly during discovery or while executing your current Task.', side_effect: 'write', idempotent: true, help: { when: 'Discover a missing lemma or other useful independent responsibility' }, errors: [], input_schema: { ...createTool.parameters, properties: createProperties }, output_schema: { type: 'object' } }] : []),
       ...enabledTools.map((tool: any) => ({ name: tool.operation.slice(5), operation: tool.operation, description: tool.description, side_effect: 'write', idempotent: true, help: { when: tool.operation === 'task_dependency_replace' ? 'An explicitly granted Agent may repair an unowned blocked Task using observed versions' : 'An UNBOUND Agent may correct unowned Mission work using observed versions' }, errors: [], input_schema: tool.parameters, output_schema: { type: 'object' } })),
@@ -59,9 +59,9 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
         help: { when: 'Take selected work; retry an unknown result using the same request ID' }, errors: [{ code: 'CONFLICT', retryable: false }, { code: 'NOT_ALLOWED', retryable: false }], input_schema: { ...objectSchema({ task_id: taskId }), required: ['task_id'] }, output_schema: { type: 'object' } },
     ] };
   function eligibleAgent(agentId: any, runtimeId: any) {
-    if (closing) denied('Flat Task Service is closing');
+    if (closing) denied('TaskPool Task Service is closing');
     const agent = taskService.getAgent(agentId);
-    if (!agent || agent.mission_id !== missionId || agent.core_id === runtimeId || agent.sandbox_id || !['UNBOUND', 'ACTIVE'].includes(agent.state)) denied('Flat caller has no eligible registered Agent');
+    if (!agent || agent.mission_id !== missionId || agent.core_id === runtimeId || agent.sandbox_id || !['UNBOUND', 'ACTIVE'].includes(agent.state)) denied('TaskPool caller has no eligible registered Agent');
     taskService.assertMissionResearchOpen(missionId);
     taskService.assertAgentDeadline(agentId);
     return agent;
@@ -74,30 +74,30 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
     const replacement = operation === 'task_dependency_replace';
     const allowed = creating ? Object.keys(createProperties) : coordination ? Object.keys(capability.input_schema.properties) : operation === 'task_list' ? ['state', 'states', 'query', 'limit', 'cursor', 'available_only']
       : operation === 'task_view' ? Object.keys(viewProperties) : ['task_id'];
-    if (Object.keys(input).some((key: any) => !allowed.includes(key)) || (!creating && operation !== 'task_list' && (typeof input.task_id !== 'string' || !input.task_id))) invalid('Flat Task payload cannot supply actor, owner, Execution or resource identity');
+    if (Object.keys(input).some((key: any) => !allowed.includes(key)) || (!creating && operation !== 'task_list' && (typeof input.task_id !== 'string' || !input.task_id))) invalid('TaskPool Task payload cannot supply actor, owner, Execution or resource identity');
     const core = getRuntime();
     if (!core?.id || caller?.runtimeId !== core.id || caller.profile !== profile || typeof caller.agentId !== 'string' ||
-        typeof envelope?.operation_id !== 'string' || !envelope.operation_id || envelope.operation_id.length > 256) denied('Flat caller is not this Runtime researcher');
+        typeof envelope?.operation_id !== 'string' || !envelope.operation_id || envelope.operation_id.length > 256) denied('TaskPool caller is not this Runtime researcher');
     const key = stableStringify([core.id, caller.agentId, envelope.operation_id]);
     const fingerprint = stableStringify({ operation, input, profile: caller.profile });
     const coordinated = coordinationRequests.get(key);
-    if (coordinated && coordinated !== fingerprint) throw new MurmError('CONFLICT', 'Flat request ID has different parameters');
+    if (coordinated && coordinated !== fingerprint) throw new MurmError('CONFLICT', 'TaskPool request ID has different parameters');
     const previous = requests.get(key);
     if (previous) {
-      if (previous.fingerprint !== fingerprint) throw new MurmError('CONFLICT', 'Flat request ID has different parameters');
+      if (previous.fingerprint !== fingerprint) throw new MurmError('CONFLICT', 'TaskPool request ID has different parameters');
       return structuredClone(await previous.work);
     }
-    if (closing) denied('Flat Task Service is closing');
+    if (closing) denied('TaskPool Task Service is closing');
     signal?.throwIfAborted();
     const agent = eligibleAgent(caller.agentId, core.id);
     const admittedExecution = (replacement || creating) && agent.execution_id ? taskService.getExecution(agent.execution_id) : null;
     const live = await core.get(agent.agent_id);
     if (!['idle', 'running'].includes(live.status) || live.profile !== profile || closing || signal?.aborted) denied('Core researcher is unavailable');
     const coordinatedAfterAdmission = coordinationRequests.get(key);
-    if (coordinatedAfterAdmission && coordinatedAfterAdmission !== fingerprint) throw new MurmError('CONFLICT', 'Flat request ID has different parameters');
+    if (coordinatedAfterAdmission && coordinatedAfterAdmission !== fingerprint) throw new MurmError('CONFLICT', 'TaskPool request ID has different parameters');
     const joined = requests.get(key);
     if (joined) {
-      if (joined.fingerprint !== fingerprint) throw new MurmError('CONFLICT', 'Flat request ID has different parameters');
+      if (joined.fingerprint !== fingerprint) throw new MurmError('CONFLICT', 'TaskPool request ID has different parameters');
       return structuredClone(await joined.work);
     }
     eligibleAgent(agent.agent_id, core.id);
@@ -106,10 +106,10 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
       assertAuthorized?.(); signal?.throwIfAborted();
       const current = eligibleAgent(agent.agent_id, core.id);
       const execution = current.execution_id ? taskService.getExecution(current.execution_id) : null;
-      if (current.execution_id !== agent.execution_id || execution?.fencing_version !== admittedExecution?.fencing_version) throw new MurmError('FENCED', 'Flat proposal binding changed during admission');
+      if (current.execution_id !== agent.execution_id || execution?.fencing_version !== admittedExecution?.fencing_version) throw new MurmError('FENCED', 'TaskPool proposal binding changed during admission');
       const until = missionDeadline();
       if (!Number.isFinite(until) || Date.now() >= until) denied('Task proposal requires the current Mission budget');
-      const id = `flat:proposal:${inputFingerprint([core.id, agent.agent_id, envelope.operation_id])}`;
+      const id = `taskpool:proposal:${inputFingerprint([core.id, agent.agent_id, envelope.operation_id])}`;
       const domainEnvelope = execution ? { ...executionEnvelope(execution, id), actor_ref: agent.agent_id } : makeEnvelope({ operationId: id, actorRef: agent.agent_id });
       const result = taskService.dispatch(operation, { ...input, mission_id: missionId, workspace: { workspace_id: workspaceId } }, domainEnvelope);
       coordinationRequests.set(key, fingerprint);
@@ -125,8 +125,8 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
       if (!replacement && (current.state !== 'UNBOUND' || current.execution_id)) denied('Task revision and cancellation require an UNBOUND Agent');
       if (replacement && !current.coordination_permissions.includes(operation)) denied('Agent lacks the registered dependency-replacement grant');
       const execution = current.execution_id ? taskService.getExecution(current.execution_id) : null;
-      if (replacement && (current.execution_id !== agent.execution_id || execution?.fencing_version !== admittedExecution?.fencing_version)) throw new MurmError('FENCED', 'Flat coordination binding changed during admission');
-      const id = `flat:coordination:${inputFingerprint([core.id, agent.agent_id, envelope.operation_id])}`;
+      if (replacement && (current.execution_id !== agent.execution_id || execution?.fencing_version !== admittedExecution?.fencing_version)) throw new MurmError('FENCED', 'TaskPool coordination binding changed during admission');
+      const id = `taskpool:coordination:${inputFingerprint([core.id, agent.agent_id, envelope.operation_id])}`;
       // The target is input; ACTIVE authority is the caller's own Execution.
       // The domain owns durable replay, CAS and history. Replays repeat admission.
       const domainEnvelope = execution ? { ...executionEnvelope(execution, id), actor_ref: agent.agent_id } : makeEnvelope({ operationId: id, actorRef: agent.agent_id });
@@ -144,7 +144,7 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
       previews.set(agent.agent_id, { revision: snapshot.revision, workspace_id: workspaceId });
       return taskService.dispatch(operation, input, makeEnvelope({ actorRef: agent.agent_id, taskId: task.task_id }));
     }
-    const id = `flat:${inputFingerprint([core.id, agent.agent_id, envelope.operation_id])}`;
+    const id = `taskpool:${inputFingerprint([core.id, agent.agent_id, envelope.operation_id])}`;
     // Claim conflicts never enter compensation. No Core stop is issued for a
     // Agent that simply lost an ordinary race for someone else's ready Task.
     const taken = taskService.takeTask(task.task_id, { take_key: `${id}:take`, owner_ref: agent.agent_id, core_id: agent.core_id,
@@ -169,12 +169,12 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
     async reconcile(agentId: any, requestId: any) {
       const core = getRuntime();
       const request = requests.get(stableStringify([core?.id, agentId, requestId]));
-      if (!request || request.stage !== 'failed') denied('Only an owned failed flat handoff can be reconciled');
+      if (!request || request.stage !== 'failed') denied('Only an owned failed taskpool handoff can be reconciled');
       await stopFailedHandoff({ request, runtime: core, taskService, stopTimeoutMs });
       return structuredClone(inspectRequest(request));
     },
     async close({ timeoutMs = stopTimeoutMs }: any = {}) {
-      if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) invalid('Flat close timeout must be positive and finite');
+      if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) invalid('TaskPool close timeout must be positive and finite');
       closing = true;
       let timer: any;
       try { await Promise.race([Promise.allSettled([...active]), new Promise<any>((resolve: any) => { timer = setTimeout(resolve, timeoutMs); })]); }

@@ -21,7 +21,7 @@ const {createRuntime}=await import('@murm/core');hooks.deregister();
 const execute=promisify(execFile);
 const identity={checker_ref:'fixed-tree',checker_version:'1',environment_ref:'controlled'};
 async function fixture(t,options={}) {
-  const root=await mkdtemp(join(tmpdir(),'flat-merge-'));
+  const root=await mkdtemp(join(tmpdir(),'taskpool-merge-'));
   const stores=await createTaskPoolStores(root,{mergeRequiredCheck:identity,persistent:options.persistent});
   stores.tasks.contextService=stores.context;
   let runtime;
@@ -49,7 +49,7 @@ async function fixture(t,options={}) {
   for(let i=0;i<2;i++) {
     const task=i===0?stores.task:stores.tasks.createTask({mission_id:stores.missionId,gap:'Second independent contribution',priority:'medium',summary:'Second file',expected_output:'File',acceptance_conditions:['Fixed artifact'],workspace:{workspace_id:stores.workspaceId,revision:'0.1'}},makeEnvelope({actorRef:'host'})).task;
     const agent=await runtime.spawn({profile:'researcher',requestId:`contributor-${i}`});agents.push(agent);
-    stores.tasks.registerAgent({agentId:agent.id,missionId:stores.missionId,legacySlotId:`flat-slot:${i}`,selectionDeadline:new Date(Date.now()+60000).toISOString()});stores.tasks.markCoreAgentReady(agent.id);
+    stores.tasks.registerAgent({agentId:agent.id,missionId:stores.missionId,legacySlotId:`taskpool-slot:${i}`,selectionDeadline:new Date(Date.now()+60000).toISOString()});stores.tasks.markCoreAgentReady(agent.id);
     await cli(agent,'task','take',task.task_id,'--request-id',`take-${i}`);
   }
   // The host supplies immutable public contributions. No live Core snapshot is installed.
@@ -83,15 +83,15 @@ test('Core Bridge CLI checked merge integrates two fixed public contributors and
   await assert.rejects(f.cli('workspace','merge','--from',f.revisions[0].revision,'--request-id','merge-a'));
 });
 
-for(const closing of ['Flat close','Core stop']) test(`checked merge retains pending cleanup and cannot publish after ${closing}`,async t=>{
+for(const closing of ['TaskPool close','Core stop']) test(`checked merge retains pending cleanup and cannot publish after ${closing}`,async t=>{
   const entered=Promise.withResolvers(),release=Promise.withResolvers();
   let checkerSignal;
   const f=await fixture(t,{async check(plan) {checkerSignal=plan.signal;entered.resolve();await release.promise;}});
   const request=f.cli('workspace','merge','--from',f.revisions[0].revision,'--request-id','held-merge').then(()=>({ok:true}),error=>({error}));
   await entered.promise;
   try {
-    if(closing==='Flat close') f.publication.close();else await f.runtime.stop(f.agents[0].id,{timeoutMs:1000});
-    if(closing==='Flat close') assert.equal(checkerSignal.aborted,true);
+    if(closing==='TaskPool close') f.publication.close();else await f.runtime.stop(f.agents[0].id,{timeoutMs:1000});
+    if(closing==='TaskPool close') assert.equal(checkerSignal.aborted,true);
     if(closing==='Core stop') assert.throws(()=>f.checked[0].startProcess(()=>assert.fail('revoked caller cannot start checker work')),{code:'NOT_ALLOWED'});
     const pending=await f.publication.waitForMerges({timeoutMs:10});
     assert.equal(pending.cleanup,'pending');assert.equal(pending.pending_checks,1);
@@ -239,7 +239,7 @@ test('a timed-out checker retains ownership across fresh requests and cannot pub
 });
 
 
-for(const authority of ['Execution fence','Bridge revoke','Flat close']) test(`durable replay cannot return an old PASS after ${authority} during repository lock wait`,async t=>{
+for(const authority of ['Execution fence','Bridge revoke','TaskPool close']) test(`durable replay cannot return an old PASS after ${authority} during repository lock wait`,async t=>{
   const f=await fixture(t);
   const requestId='durable-replay';
   const published=await f.cli('workspace','merge','--from',f.revisions[0].revision,'--request-id',requestId);

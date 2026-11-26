@@ -145,7 +145,7 @@ const publicTaskTools = [
   },
   {
     name: 'task_create', service: 'task', operation: 'task_create', version: '1.0',
-    description: 'Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Agent proposals require explicit Environment registration and current Mission authority. Optional base_revision pins input; otherwise take uses main.',
+    description: 'Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Agent proposals require explicit Harness registration and current Mission authority. Optional base_revision pins input; otherwise take uses main.',
     scope: 'task-write', side_effect: true,
     parameters: {
       type: 'object',

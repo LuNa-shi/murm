@@ -18,8 +18,8 @@ const hooks=registerHooks({resolve(specifier,context,next){
 }});
 const {runTaskPoolHarness}=await import('../src/harnesses/taskpool/harness.js');hooks.deregister();
 
-test('Flat can finish with a public Material when no live Workspace capture is configured', async t => {
-  const root=await mkdtemp(join(tmpdir(),'flat-environment-'));
+test('TaskPool can finish with a public Material when no live Workspace capture is configured', async t => {
+  const root=await mkdtemp(join(tmpdir(),'taskpool-environment-'));
   const stores=await createTaskPoolStores(root);
   t.after(async()=>{stores.close();await rm(root,{recursive:true,force:true});});
   transport.reset(); controls.credentials.clear(); controls.stopError=null; controls.destroyError=null;
@@ -57,7 +57,7 @@ test('Flat can finish with a public Material when no live Workspace capture is c
 });
 
 test('flat close retains physical cleanup and reconciles remaining Agents after one domain write fails', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'flat-close-reconciliation-'));
+  const root = await mkdtemp(join(tmpdir(), 'taskpool-close-reconciliation-'));
   const stores = await createTaskPoolStores(root);
   t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
   transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
@@ -100,7 +100,7 @@ test('flat close retains physical cleanup and reconciles remaining Agents after 
 
 
 test('flat host composes public Bash publication and controller finish with durable public results after close',async t=>{
-  const root=await mkdtemp(join(tmpdir(),'flat-closed-loop-'));
+  const root=await mkdtemp(join(tmpdir(),'taskpool-closed-loop-'));
   const stores=await createTaskPoolStores(root);
   t.after(async()=>{stores.close();await rm(root,{recursive:true,force:true});});
   transport.reset();controls.credentials.clear();controls.stopError=null;controls.destroyError=null;
@@ -172,7 +172,7 @@ test('flat host composes public Bash publication and controller finish with dura
 });
 
 async function runPublicationProbe(t, snapshotProject, probe) {
-  const root = await mkdtemp(join(tmpdir(), 'flat-publication-admission-'));
+  const root = await mkdtemp(join(tmpdir(), 'taskpool-publication-admission-'));
   const stores = await createTaskPoolStores(root);
   t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
   transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
@@ -367,7 +367,7 @@ test('fatal Core revocation prevents a held flat capture from publishing before 
 });
 
 test('flat rejects a configured Workspace from another Mission before allocating Core resources', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'flat-read-authority-'));
+  const root = await mkdtemp(join(tmpdir(), 'taskpool-read-authority-'));
   const stores = await createTaskPoolStores(root);
   t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
   const foreign = await stores.workspace.create({ missionId: 'mission:foreign', workspaceId: 'foreign-workspace',
@@ -403,7 +403,7 @@ for (const [operation, method, payload] of [
 ]) test(`flat ${operation} Core revocation cancels its actual queued read while another Agent and a write retain lock order`, {
   timeout: 20_000,
 }, async t => {
-  const root = await mkdtemp(join(tmpdir(), 'flat-read-cancellation-'));
+  const root = await mkdtemp(join(tmpdir(), 'taskpool-read-cancellation-'));
   const stores = await createTaskPoolStores(root);
   t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
   transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
@@ -500,7 +500,7 @@ for (const [operation, method, payload] of [
 test('flat metadata admission preserves host cancellation when an already admitted read drains', {
   timeout: 15_000,
 }, async t => {
-  const root = await mkdtemp(join(tmpdir(), 'flat-read-admission-cancel-'));
+  const root = await mkdtemp(join(tmpdir(), 'taskpool-read-admission-cancel-'));
   const stores = await createTaskPoolStores(root);
   t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
   transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
@@ -546,7 +546,7 @@ test('flat metadata admission preserves host cancellation when an already admitt
 });
 
 test('four current CLI discovery Agents take exclusive work and reuse only a physically closed Slot', { timeout: 25_000 }, async t => {
-  const root = await mkdtemp(join(tmpdir(), 'flat-cli-slot-lifecycle-'));
+  const root = await mkdtemp(join(tmpdir(), 'taskpool-cli-slot-lifecycle-'));
   const stores = await createTaskPoolStores(root);
   t.after(async () => { controls.destroyError = null; stores.close(); await rm(root, { recursive: true, force: true }); });
   const missionId = 'mission:empty-slots';
@@ -630,8 +630,8 @@ test('four current CLI discovery Agents take exclusive work and reuse only a phy
   assert.deepEqual(saved.agents, report.cleanup.agents);
 });
 
-test('the ordinary Flat host exposes Mathlib search only to its current researcher Execution', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'flat-mathlib-'));
+test('the ordinary TaskPool host exposes Mathlib search only to its current researcher Execution', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'taskpool-mathlib-'));
   const stores = await createTaskPoolStores(root);
   t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
   transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;

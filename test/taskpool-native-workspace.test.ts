@@ -91,22 +91,22 @@ result={'feedback':feedback,'role':'B-apply','revision':saved['revision'],'text'
 const nativeOptions = {
   skip: process.env.MURM_TASKPOOL_NATIVE_WORKSPACE_TEST !== '1', timeout: 270_000,
 };
-test('native Flat saves and applies exact guest bytes in the original Session then replaces its finished Agent', nativeOptions,
+test('native TaskPool saves and applies exact guest bytes in the original Session then replaces its finished Agent', nativeOptions,
   t => checkNativeAdoption(t, 'followUp'));
-test('native Flat delivers a configured Material notice in a live tool loop and keeps the original Session', nativeOptions,
+test('native TaskPool delivers a configured Material notice in a live tool loop and keeps the original Session', nativeOptions,
   t => checkNativeAdoption(t, 'steer'));
 
 async function checkNativeAdoption(t, materialNotificationMode) {
   const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.match(image ?? '', /(?:^sha256:|@sha256:)[a-f0-9]{64}$/);
-  const outputDir = join(process.cwd(), 'experiments', `flat-native-workspace-${Date.now()}`);
+  const outputDir = join(process.cwd(), 'experiments', `taskpool-native-workspace-${Date.now()}`);
   await mkdir(outputDir, { recursive: true, mode: 0o700 });
   const deadlineAt = Date.now() + 210_000;
   const tasks = new TaskService(join(outputDir, 'tasks.sqlite'));
   const context = new ContextService(join(outputDir, 'context.sqlite'), { taskService: tasks });
   const workspace = new MissionWorkspace({ rootDir: join(outputDir, 'public') });
   const manager = new WorkspaceManager({ rootDir: join(outputDir, 'private') });
-  const missionId = 'flat:native-workspace';
+  const missionId = 'taskpool:native-workspace';
   tasks.createMission({ mission_id: missionId, goal: 'Controlled native save and adoption check' }, makeEnvelope({ actorRef: 'host' }));
   const initial = await workspace.create({ missionId, workspaceId: 'native-workspace', initialFiles: { 'input.txt': 'fixed input\n' } });
   assert.equal(tasks.listTasks({ missionId, availableOnly: false }).length, 0);
@@ -176,7 +176,7 @@ async function checkNativeAdoption(t, materialNotificationMode) {
           assert.deepEqual(body.tools.map(tool => tool.name), ['read', 'write', 'edit', 'bash']);
           assert.match(system, /<services>/);
           assert.doesNotMatch(system, /<(docs|added_system_prompt)>/);
-          assert.match(text, /Mission: flat:native-workspace/);
+          assert.match(text, /Mission: taskpool:native-workspace/);
           assert.match(text, /FIXED_NATIVE_ORIGINAL_PROBLEM/);
           assert.match(text, /multiple Tasks during discovery and during your Execution/);
           firstPrompts.set(next, system);
@@ -234,7 +234,7 @@ async function checkNativeAdoption(t, materialNotificationMode) {
         adoptionNotification ??= findNotice();
         assert.ok(adoptionNotification, 'A response link must create a durable notice for B');
         await controller.tick();
-        const admitted = controller.snapshot().inputs.find(row => row.requestId === `flat:notification:${b.execution}:${adoptionNotification.notification_id}`);
+        const admitted = controller.snapshot().inputs.find(row => row.requestId === `taskpool:notification:${b.execution}:${adoptionNotification.notification_id}`);
         assert.equal(admitted?.receipt.disposition, materialNotificationMode === 'steer' ? 'queued' : 'started');
         continueB.resolve();
         const integrated = await evidenceFor('B-apply');
@@ -246,7 +246,7 @@ async function checkNativeAdoption(t, materialNotificationMode) {
         assert.equal(integrated.feedback.receipt.handling_decision, 'adopted');
         assert.equal(tasks.listUnprocessedNotifications(b.task, b.execution).some(row => row.notification_id === adoptionNotification.notification_id), false);
         await controller.tick(); await controller.tick();
-        const notificationInputsRecorded = controller.snapshot().inputs.filter(row => row.source === 'notification' && row.requestId === `flat:notification:${b.execution}:${adoptionNotification.notification_id}`);
+        const notificationInputsRecorded = controller.snapshot().inputs.filter(row => row.source === 'notification' && row.requestId === `taskpool:notification:${b.execution}:${adoptionNotification.notification_id}`);
         assert.equal(notificationInputsRecorded.length, 1);
         assert.equal(notificationInputsRecorded[0].mode, materialNotificationMode);
         assert.equal(notificationInputsRecorded[0].agentId, bAgent);

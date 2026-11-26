@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { streamResponse } from './core-controlled-upstream.js';
 
 export const sourceContent = 'ARITHMETIC_SEED: 7+5=12.\n';
-export function scaleMASCommand(peer, cycle, { poolSize = 3 } = {}) {
+export function substrateCommand(peer, cycle, { poolSize = 3 } = {}) {
   assert.ok([3, 6].includes(poolSize));
   assert.ok(Number.isSafeInteger(peer) && peer >= 0 && peer < poolSize && [0, 1].includes(cycle));
   return `python3 - <<'SUBSTRATE_FIXED'
@@ -98,7 +98,7 @@ export async function createSubstrateUpstream({ deadlineAt, poolSize = 3, observ
           }
         }
         if (cycle === 1) await observe({ phase: 'before', peer, previous: evidence.find(row => row.peer === peer && row.cycle === 0) });
-        item = { type: 'function_call', id: `fc_${callId}`, call_id: callId, name: 'bash', arguments: JSON.stringify({ command: scaleMASCommand(peer, cycle, { poolSize }), timeout: 40 }) };
+        item = { type: 'function_call', id: `fc_${callId}`, call_id: callId, name: 'bash', arguments: JSON.stringify({ command: substrateCommand(peer, cycle, { poolSize }), timeout: 40 }) };
       } else {
         stage = 'tool-result';
         const outputs = body.input.filter(row => row.type === 'function_call_output' && row.call_id === callId); assert.equal(outputs.length, 1);

@@ -22,7 +22,7 @@ test('actual flat readonly discovery competes for one Task and continues the sam
   skip: process.env.MURM_TASKPOOL_TAKE_REAL_TEST !== '1' && 'Exact pin and bounded local harness require two independent reviews', timeout: 220_000,
 }, async t => {
   const startedAt = Date.now(), deadlineAt = startedAt + 180_000;
-  const outputDir = join(process.cwd(), 'experiments', `flat-take-${startedAt}`);
+  const outputDir = join(process.cwd(), 'experiments', `taskpool-take-${startedAt}`);
   await mkdir(outputDir, { recursive: true, mode: 0o700 });
   const stores = await createTaskPoolStores(outputDir);
   let runtime, service, upstream;
