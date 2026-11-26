@@ -103,6 +103,12 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       void stop(row, 'task-finish');
       return;
     }
+    if (!owner || !['UNBOUND', 'ACTIVE'].includes(owner.state) ||
+        (owner.state === 'ACTIVE' && (!execution || execution.owner_ref !== row.agentId ||
+          !['CREATED', 'RUNNING'].includes(execution.state)))) {
+      void stop(row, 'domain-binding-ended');
+      return;
+    }
     const deadline = domainDeadline(owner, execution);
     if (!Number.isFinite(deadline)) return;
     if (deadline <= Date.now()) {
@@ -319,6 +325,8 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       if(row.released) continue;
       const {owner,execution}=current(row),at=Date.now();
       if(owner?.state==='CLOSING' || execution?.state==='CLOSING' || row.stopReason) {await stop(row,row.stopReason??'task-finish');continue;}
+      armAgent(row);
+      if(row.stopReason) {await stop(row,row.stopReason);continue;}
       if(expired(owner,execution)) {await stop(row,'domain-deadline');continue;}
       if(at-row.lastActivityAt>=stallMs) {await stop(row,'stall-budget');continue;}
       if(owner?.state==='ACTIVE' && execution?.state==='RUNNING') {

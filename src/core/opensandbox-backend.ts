@@ -223,6 +223,10 @@ export function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRun
     }
   }
   const gateway = connection?.modelGateway;
+  const requestLimit = gateway?.maxRequests;
+  if (requestLimit !== undefined && (!Number.isSafeInteger(requestLimit) || requestLimit < 1)) {
+    throw invalid('modelGateway.maxRequests must be a positive safe integer');
+  }
   const outputPolicy = gateway?.maxOutputTokens === undefined ? driver.defaultMaxOutputTokens : gateway.maxOutputTokens;
   if (outputPolicy !== undefined && outputPolicy !== null && (!Number.isSafeInteger(outputPolicy) || outputPolicy < 16)) {
     throw invalid('modelGateway.maxOutputTokens must be null or a safe integer of at least 16');
@@ -237,7 +241,7 @@ export function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRun
   }
   const snapshot = freeze(structuredClone({
     bridge: { host: connection?.bridge?.host ?? '0.0.0.0', publicUrl },
-    modelGateway: { requestTimeoutMs: gateway?.requestTimeoutMs, host: gateway?.host ?? '0.0.0.0', advertiseHost, maxOutputTokens: outputPolicy },
+    modelGateway: { requestTimeoutMs: gateway?.requestTimeoutMs, host: gateway?.host ?? '0.0.0.0', advertiseHost, maxOutputTokens: outputPolicy, maxRequests: requestLimit },
     models,
   }));
   return Object.freeze({ ...settings, ...snapshot, driver });

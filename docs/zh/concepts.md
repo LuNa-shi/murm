@@ -102,7 +102,7 @@ Harness 确认预期 Service 操作与 Agent 执行都已完成，再推进下�
 
 ## Profile 同时提供指令和权限
 
-`Profile.prompt` 向模型描述角色，`Profile.services` 决定这个角色可以调用哪些共享操作。工作区、网络、子 Agent 创建和产物收集设置，则约束相应的 Runtime 或后端行为。
+`Profile.prompt` 向模型描述角色，`Profile.services` 为每个 Agent 设置初始操作权限。Bridge 按当前授权检查调用，宿主可以通过 `runtime.access` 更新授权。工作区、网络、子 Agent 创建和产物收集设置，则约束相应的 Runtime 或后端行为。
 
 Runtime 创建时会保存 Profiles 和注册 Service manifests 的快照。之后修改原始配置对象，或继续在原 registry 上注册 Service，都不会重新配置这个 Runtime。Service 的共享业务状态仍可变化，例如任务池可以持续创建和认领 Task，而它对外提供的操作契约保持不变。
 

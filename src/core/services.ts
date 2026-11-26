@@ -22,11 +22,13 @@ export interface ServiceInvocation {
   signal?: AbortSignal;
   recordService?: (record: ServiceInvocationRecord) => void;
   assertAuthorized?: () => void;
+  trackCompletion?: (completion: Promise<void>) => void;
 }
 
 export interface ServiceInvocationRecord {
   /** One Bridge HTTP attempt, independent of the logical operation identity. */
   attemptId?: string;
+  accessVersion?: number;
   runtimeId: string;
   agentId: string;
   profile: string;
@@ -170,27 +172,37 @@ export function createInProcessAdapter(implementation: ServiceAdapter): ServiceA
   if (!implementation || typeof implementation.invoke !== 'function') invalid('In-process Service requires invoke(request)');
   if (implementation.exportState !== undefined && typeof implementation.exportState !== 'function') invalid('Service exportState must be a function');
   return Object.freeze({ invoke: implementation.invoke.bind(implementation),
-    ...(implementation.exportState ? { exportState: implementation.exportState.bind(implementation) } : {}) });
+    ...(implementation.exportState ? { exportState: implementation.exportState.bind(implementation) } : {}),
+    ...(implementation.confirmQuiescent ? { confirmQuiescent: implementation.confirmQuiescent.bind(implementation) } : {}) });
+}
+
+function captureRegistration({ manifest, adapter }: ServiceRegistration): Readonly<ServiceRegistration> {
+  if (typeof adapter.invoke !== 'function') invalid('Service adapter requires invoke(request)');
+  if (adapter.exportState !== undefined && typeof adapter.exportState !== 'function') invalid('Service exportState must be a function');
+  if (adapter.confirmQuiescent !== undefined && typeof adapter.confirmQuiescent !== 'function') invalid('Service confirmQuiescent must be a function');
+  const captured = Object.freeze({ invoke: adapter.invoke.bind(adapter),
+    ...(adapter.exportState ? { exportState: adapter.exportState.bind(adapter) } : {}),
+    ...(adapter.confirmQuiescent ? { confirmQuiescent: adapter.confirmQuiescent.bind(adapter) } : {}) });
+  const metadata = getAdapterMetadata(adapter);
+  if (metadata) adapterMetadata.set(captured, metadata);
+  const privateValues = adapterPrivateValues.get(adapter);
+  if (privateValues) adapterPrivateValues.set(captured, privateValues);
+  return Object.freeze({ manifest, adapter: captured });
+}
+
+export function snapshotServiceRegistration(registration: ServiceRegistration): Readonly<ServiceRegistration> {
+  const registry = new ServiceRegistry();
+  registry.registerService(registration);
+  return captureRegistration(registryEntries.get(registry)!.values().next().value!);
 }
 
 export function snapshotServiceRegistry(services: ServiceRegistry): Map<string, Readonly<ServiceRegistration>> {
   if (!registryEntries.has(services)) invalid('services must be a ServiceRegistry');
-  return new Map([...registryEntries.get(services)!].map(([id, registration]) => {
-    const { manifest, adapter } = registration;
-    if (typeof adapter.invoke !== 'function') invalid('Service adapter requires invoke(request)');
-    if (adapter.exportState !== undefined && typeof adapter.exportState !== 'function') invalid('Service exportState must be a function');
-    const captured = Object.freeze({ invoke: adapter.invoke.bind(adapter),
-      ...(adapter.exportState ? { exportState: adapter.exportState.bind(adapter) } : {}) });
-    const metadata = getAdapterMetadata(adapter);
-    if (metadata) adapterMetadata.set(captured, metadata);
-    const privateValues = adapterPrivateValues.get(adapter);
-    if (privateValues) adapterPrivateValues.set(captured, privateValues);
-    return [id, Object.freeze({ manifest, adapter: captured })];
-  }));
+  return new Map([...registryEntries.get(services)!].map(([id, registration]) => [id, captureRegistration(registration)]));
 }
 
 // One invocation only. Service business logic owns idempotency and retries.
-export async function invokeService(registration: ServiceRegistration, { operation, input, envelope, caller, signal, recordService, assertAuthorized }: ServiceInvocation, timeoutMs = 30_000): Promise<JsonValue> {
+export async function invokeService(registration: ServiceRegistration, { operation, input, envelope, caller, signal, recordService, assertAuthorized, trackCompletion }: ServiceInvocation, timeoutMs = 30_000): Promise<JsonValue> {
   const { manifest, adapter } = registration;
   const capability = manifest.capabilities.find(item => item.operation === operation);
   const identity = { service_id: manifest.id, operation, operation_id: envelope.operation_id };
@@ -220,11 +232,13 @@ export async function invokeService(registration: ServiceRegistration, { operati
     });
     invoked = true;
     record('invocation', 'pending');
-    const result = await Promise.race([Promise.resolve().then(() => {
+    const invocation = Promise.resolve().then(() => {
       controller.signal.throwIfAborted();
       return adapter.invoke({ manifest, capability, input: structuredClone(input), envelope: Object.freeze({ operation_id: envelope.operation_id }), caller: Object.freeze({ ...caller }), signal: controller.signal,
         assertAuthorized: () => { if(controller.signal.aborted) throw new MurmError('NOT_ALLOWED','Service caller authority was revoked'); assertAuthorized?.(); } });
-    }), timeout]);
+    });
+    trackCompletion?.(invocation.then(() => {}, () => {}));
+    const result = await Promise.race([invocation, timeout]);
     if (!isJson(result) || !rules.output(result)) throw new MurmError('SERVICE_OUTPUT_INVALID', 'Service output violates its schema', { ...identity, request_outcome: capability.side_effect === 'write' ? 'unknown' : 'invalid_output' });
     record('settled', 'succeeded');
     return result;

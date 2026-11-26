@@ -11,6 +11,12 @@ order: 12
 
 所有类型和六个运行时值从 `@murm/core` 导入。运行时值为 `createSandbox`, `createRuntime`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`。
 
+## Runtime 管理
+
+用 `runtime.profiles.register/get/list` 管理不可变 Profile，用 `runtime.services.register/get/list/retire` 管理 Service 目录，用 `runtime.access.get/grant/revoke` 调整现有 Agent 的操作授权。变更请求使用稳定的请求 ID。Service 退役关闭新调用接纳，等待已获准的工作收敛，并返回当前状态。应用负责部署和外部设施清理。
+
+先调用 `onEvent` 订阅，再读取 `runtime.management.get()`。缓冲读取期间的管理事件，并应用其中编号大于快照 `sequence` 的事件。发现编号跳跃时重新读取。管理请求、结果、快照和事件类型均从根入口导入。见 [Runtime 管理](../../architecture/15-core-runtime.md#runtime-management)。
+
 ## `createRuntime(options)`
 
 ```ts

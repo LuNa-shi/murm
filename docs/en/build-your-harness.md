@@ -117,7 +117,7 @@ export function handoffProfiles(image: string): Record<string, Profile> {
 }
 ```
 
-The role prompt explains how to use the available operations. Runtime and Bridge enforce the Profile's permissions. Profiles are captured at Runtime creation, so changing the original object later does not change a running Agent.
+The role prompt explains how to use the available operations. The Profile seeds the Agent’s permissions. The Bridge enforces the current grants, which the host can update through [Runtime management](reference/api.md#runtime-management).
 
 For delegation, the built-in `agent` Service provides `spawn`, `get`, `send`, and `stop`; `spawnProfiles` restricts which child roles an Agent may create. Enable `allowContextFork` only when the selected backend supports it. A domain-specific delegation Service can add ownership and mailbox rules, as [Subagents](harnesses/subagents.md) does.
 

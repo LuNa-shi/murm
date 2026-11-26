@@ -45,6 +45,8 @@ export interface RuntimeConnectionOptions {
     advertiseHost?: string;
     requestTimeoutMs?: number;
     maxOutputTokens?: number | null;
+    /** Maximum new upstream attempts per Runtime and model alias, including unknown outcomes. */
+    maxRequests?: number;
   };
 }
 
@@ -66,6 +68,8 @@ export interface OpenSandboxBackendConfig {
     host: string;
     advertiseHost: string;
     requestTimeoutMs?: number;
+    /** Cap new upstream attempts per Runtime and model alias, including unknown outcomes. */
+    maxRequests?: number;
     /** null preserves executor output parameters without a host token clamp. */
     maxOutputTokens?: number | null;
   };

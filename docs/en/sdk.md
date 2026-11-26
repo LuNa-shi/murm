@@ -34,6 +34,8 @@ cp node_modules/@murm/core/examples/bridge-services/{handoff.ts,handoff-config.t
 
 The copied example imports only the public package entry points. You can run it without `murm init` or a repository-relative import into `src/`.
 
+The [management API](reference/api.md#runtime-management) can extend the Profile and Service directory and change Service permissions during the Run.
+
 ## Run a complete handoff
 
 Follow the [Quickstart host setup](./quickstart.md#1-prepare-the-checkout-and-execution-host) to prepare Linux, Docker, OpenSandbox and a compatible murm Worker image with `jq`. The host must reach the Lifecycle API and Worker endpoints. The sandboxes must reach the host's Bridge and Model Gateway.

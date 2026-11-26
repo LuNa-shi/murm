@@ -8,7 +8,7 @@ const requireString = (value: any) => { if (typeof value !== 'string' || !value)
 
 /** Agensh's bounded HTTP, restricted accounts/token scopes and cleanup ownership;
  * one retained project with separate account identities for the fixed team. */
-export async function prepareLeadWorkerGit({ runId, gitea, resources, signal, helperCount }: any) {
+export async function prepareLeadWorkerGit({ runId, gitea, resources, signal, helperCount, initialFiles }: any) {
   const roles = leadWorkerRoles(helperCount);
   if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '')) throw new TypeError('Invalid lead-worker run');
   const raw = httpClient(gitea.origin, `token ${requireString(gitea.adminToken)}`);
@@ -19,9 +19,15 @@ export async function prepareLeadWorkerGit({ runId, gitea, resources, signal, he
   resources.own({ kind: 'repository-create-intent', id: `${owner}/${repository.name}`, retained: true });
   await request('POST', `/api/v1/admin/users/${e(owner)}/repos`, { name: repository.name, private: true, auto_init: true, default_branch: 'main' });
   resources.own({ kind: 'repository', id: `${owner}/${repository.name}`, retained: true });
+  for (const [path, content] of Object.entries((initialFiles ?? {}) as Record<string, string>)) {
+    await request('POST', `${repo}/contents/${path.split('/').map(e).join('/')}`, {
+      branch: 'main', message: 'Seed the orders project', content: Buffer.from(content, 'utf8').toString('base64'),
+    });
+  }
   const actors: any = {};
-  for (const role of roles) {
+  async function prepareActor(role: string, signal?: AbortSignal) {
     if (signal?.aborted) throw fail('HARNESS_START_ABORTED');
+    const prepare = (method: string, path: string, body?: unknown) => raw(method, path, body, { signal });
     const username = `lh-${role}-${createHash('sha256').update(runId).digest('hex').slice(0, 16)}`; const email = `${username}-${randomBytes(8).toString('hex')}@murm.invalid`;
     const password = randomBytes(32).toString('base64url'); const tokenName = `murm-${runId}-${role}`;
     const accountHttp = httpClient(gitea.origin, `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`);
@@ -39,40 +45,53 @@ export async function prepareLeadWorkerGit({ runId, gitea, resources, signal, he
       }
       await raw('PATCH', `/api/v1/admin/users/${e(username)}`, { login_name: username, email, prohibit_login: true });
     } });
-    const result = await request('POST', '/api/v1/admin/users', { username, login_name: username, email, password, must_change_password: false, restricted: true, max_repo_creation: 0, allow_create_organization: false });
+    const result = await prepare('POST', '/api/v1/admin/users', { username, login_name: username, email, password, must_change_password: false, restricted: true, max_repo_creation: 0, allow_create_organization: false });
     createUnknown = false;
     if (!Number.isSafeInteger(result?.id)) throw fail('ACCOUNT_IDENTITY_INVALID'); account = { ...result, email };
-    await request('PUT', `${repo}/collaborators/${e(username)}`, { permission: 'write' });
+    await prepare('PUT', `${repo}/collaborators/${e(username)}`, { permission: 'write' });
     tokenUnknown = true;
     const token = await accountHttp('POST', `/api/v1/users/${e(username)}/tokens`, { name: tokenName, scopes: ['read:user', 'write:repository', 'write:issue'] }, { signal }); tokenUnknown = false;
     const secret = requireString(token?.sha1);
     await httpClient(gitea.origin, `token ${secret}`)('GET', repo, undefined, { signal });
-    actors[role] = { accountId: String(result.id), username, token: secret, branch: `${role}-${runId}`, binding: `${runId}:git:${role}` };
+    return { accountId: String(result.id), username, token: secret, branch: `${role}-${runId}`, binding: `${runId}:git:${role}` };
   }
-  return { runId, origin: gitea.origin, repository, repositoryUrl: `${gitea.origin.replace(/\/$/, '')}/${e(owner)}/${e(repository.name)}.git`, actors };
+  for (const role of roles) actors[role] = await prepareActor(role, signal);
+  async function prepareMember(memberSignal: AbortSignal) {
+    const actor = await prepareActor('checker', memberSignal);
+    await raw('POST', `${repo}/branches`, { new_branch_name: actor.branch, old_branch_name: 'main' }, { signal: memberSignal });
+    return actor;
+  }
+  return { runId, origin: gitea.origin, repository, repositoryUrl: `${gitea.origin.replace(/\/$/, '')}/${e(owner)}/${e(repository.name)}.git`, actors, prepareMember };
 }
 
 /** Tokens remain in the host adapter; native Git receives only its own token. */
-export function createLeadWorkerGit(facilities: any, helperCount: any) {
+export function createLeadWorkerGit(facilities: any, helperCount: any, { isReady }: { isReady?: (id: string) => boolean } = {}) {
   const roles = leadWorkerRoles(helperCount);
-  const value = structuredClone(facilities); const { actors, repository, origin } = value;
-  const url: any = new URL(value.repositoryUrl); const base: any = new URL(origin);
+  const { actors, repository, origin, repositoryUrl } = structuredClone({
+    actors: facilities.actors, repository: facilities.repository, origin: facilities.origin, repositoryUrl: facilities.repositoryUrl,
+  });
+  const url: any = new URL(repositoryUrl); const base: any = new URL(origin);
   if (url.origin !== base.origin || url.username || url.password || url.search || url.hash || url.pathname !== `/${e(repository.owner)}/${e(repository.name)}.git`) throw new TypeError('Git URL must identify the retained scoped project');
   const accounts = Object.values((actors ?? {}) as Record<string, any>);
   if (!matchesRoles(roles, actors) || ['accountId', 'username', 'token', 'branch', 'binding'].some((key: any) => accounts.some((account: any) => typeof account?.[key] !== 'string' || !account[key]) || new Set(accounts.map((account: any) => account[key])).size !== roles.length)) throw new TypeError('Distinct restricted Git identities required for the fixed team');
   for (const actor of accounts) httpClient(origin, `token ${actor.token}`);
-  let team: any; let runtimeId: any;
-  const resolve = (agentId: any) => { const role = Object.keys(team ?? {}).find((role: any) => team[role] === agentId); if (!role) throw fail('NOT_ALLOWED'); return actors[role]; };
+  let runtimeId: string;
+  const members = new Map<string, string>();
+  function resolve(agentId: string) {
+    const profile = members.get(agentId);
+    if (!profile || isReady && !isReady(agentId)) throw fail('NOT_ALLOWED');
+    return { actor: actors[profile], profile };
+  }
   const scope = `/api/v1/repos/${e(repository.owner)}/${e(repository.name)}`;
   const registration: any = { manifest: { id: 'gitea', title: 'Run Git pull requests', purpose: 'Publish own run branch only', provider_version: 'lead-worker-git-1', contract_version: '2', endpoint: { transport: 'in-process' }, capabilities: [{ name: 'pull_request_write', operation: 'pull_request_write', description: 'Create own branch pull request', help: { when: 'After committing and pushing your own WORK_BRANCH' }, side_effect: 'write', idempotent: false,
     input_schema: { type: 'object', properties: { owner: { const: repository.owner }, repo: { const: repository.name }, method: { const: 'create' }, head: { type: 'string', maxLength: 128 }, base: { const: 'main' }, title: { type: 'string', minLength: 1, maxLength: 1024 }, body: { type: 'string', maxLength: 4096 } }, required: ['owner', 'repo', 'method', 'head', 'base', 'title'], additionalProperties: false },
     output_schema: { type: 'object', properties: { number: { type: 'integer', minimum: 1 } }, required: ['number'], additionalProperties: true }, errors: ['NOT_ALLOWED', 'FACILITY_REQUEST_UNKNOWN'].map((code: any) => ({ code, retryable: false })) }] }, adapter: { async invoke({ caller, input, signal }: any) {
-      const actor = resolve(caller.agentId); const profile = Object.keys(team).find((role: any) => team[role] === caller.agentId);
+      const { actor, profile } = resolve(caller.agentId);
       if (caller.runtimeId !== runtimeId || caller.profile !== profile || caller.binding !== actor.binding || input.head !== actor.branch) throw fail('NOT_ALLOWED');
       return httpClient(origin, `token ${actor.token}`)('POST', `${scope}/pulls`, { title: input.title, head: actor.branch, base: 'main', ...(input.body === undefined ? {} : { body: input.body }) }, { signal });
     } } };
   async function verifyDelivery({ actor: agentId, delivery, direction, requireDirectionText = false, signal }: any, checkHead: any) {
-    const actor = resolve(agentId); const request = httpClient(origin, `token ${actor.token}`);
+    const { actor } = resolve(agentId); const request = httpClient(origin, `token ${actor.token}`);
     if (checkHead) {
       const ref = await request('GET', `${scope}/branches/${e(actor.branch)}`, undefined, { signal });
       if (ref?.commit?.id !== delivery.commit) throw fail('DELIVERY_INVALID');
@@ -86,7 +105,20 @@ export function createLeadWorkerGit(facilities: any, helperCount: any) {
   }
   return Object.freeze({
     register(services: any) { services.registerService(registration); },
-    bindTeam(id: any, identities: any) { if (team || typeof id !== 'string' || !id || !matchesTeam(roles, identities)) throw fail('NOT_ALLOWED'); runtimeId = id; team = structuredClone(identities); },
+    bindTeam(id: string, identities: Record<string, string>) {
+      if (runtimeId || typeof id !== 'string' || !id || !matchesTeam(roles, identities)) throw fail('NOT_ALLOWED');
+      runtimeId = id;
+      for (const role of roles) members.set(identities[role], role);
+    },
+    addMember({ agentId, profile, actor }: { agentId: string; profile: string; actor: Record<string, string> }) {
+      if (!isReady || !runtimeId || members.has(agentId) || Object.hasOwn(actors, profile) || members.size >= roles.length + 1) throw fail('NOT_ALLOWED');
+      for (const key of ['accountId', 'username', 'token', 'branch', 'binding']) {
+        if (typeof actor?.[key] !== 'string' || !actor[key] || accounts.some(value => value[key] === actor[key])) throw fail('NOT_ALLOWED');
+      }
+      httpClient(origin, `token ${actor.token}`);
+      Object.defineProperty(actors, profile, { value: structuredClone(actor), enumerable: true });
+      members.set(agentId, profile);
+    },
     verifyDelivery: (value: any) => verifyDelivery(value, true),
     verifyPinnedDelivery: (value: any) => verifyDelivery(value, false),
     identities() { return Object.fromEntries(Object.entries((actors as Record<string, any>)).map(([role, { token, ...identity }]: any) => [role, identity])); },

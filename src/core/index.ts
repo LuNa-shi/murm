@@ -14,10 +14,11 @@ import { createInputLedger } from './input-ledger.js';
 import { createFileControls } from './file-controls.js';
 import { saveAgentArtifacts } from './artifact-collection.js';
 import { createRedactor, createRunRecords, runtimeConfiguration } from './run-records.js';
+import { createRuntimeManagement } from './runtime-management.js';
 import { claimOpenSandboxBackend, openOpenSandboxBackend } from './opensandbox-backend.js';
 import { createAgentService } from './agent-service.js';
 import { createServiceTrace, exportServiceStates } from './service-trace.js';
-import { registerServicePrivateValues, snapshotServiceRegistry } from './services.js';
+import { registerServicePrivateValues, snapshotServiceRegistry, type ServiceRegistration } from './services.js';
 
 export { createSandbox } from './opensandbox-backend.js';
 export { getExecutorCapabilities } from './executor-driver.js';
@@ -26,11 +27,14 @@ export type { ExecutorCapabilities, ExecutorKind, ModelConfig, RuntimeConnection
 export type { HttpJsonAdapterOptions, ServiceRegistration } from './services.js';
 export type { JsonValue, ServiceAdapter, ServiceCaller, ServiceCapability, ServiceManifest, ServiceRequest } from './service-types.js';
 export type {
+  AgentAccess, AgentAccessGrant, AgentAccessMutation, AgentAccessPolicy, AgentAccessRequest,
   AgentInfo, AgentInitialInputResult, AgentListFilter, AgentSpawnReceipt, AgentStatus, CloseOptions, CloseReceipt,
   CollectionSpec, CompleteFileDigest, CompleteFileSnapshot, CompleteFileSnapshotOptions, ConditionalInputReceipt,
   CreateRuntimeOptions, ErrorInfo, FileEntry, FileReplaceOptions, FileReplaceReceipt, FileSnapshot, FileSnapshotOptions,
   FileTree, InputMode, InputReceipt, InterruptOptions, InterruptReceipt, PartialFileDigest, PartialFileSnapshot,
-  PendingCleanup, Profile, ResourceError, Runtime, RuntimeEvent, RuntimeFiles, RuntimeState, SendOptions, SpawnOptions,
+  PendingCleanup, Profile, ProfileDefinition, ProfileRegistration, ResourceError, Runtime, RuntimeEvent, RuntimeFiles,
+  RuntimeManagementChange, RuntimeManagementSnapshot, RuntimeServiceDefinition, RuntimeServiceRegistration,
+  RuntimeState, SendOptions, ServiceRetirement, SpawnOptions,
   StopOptions, StopReceipt, WorkspaceOptions,
 } from './types.js';
 
@@ -62,7 +66,6 @@ interface RuntimeAgent {
   cleanupAction?: PendingCleanup['action'];
   eventSequence: number;
   fatal?: boolean;
-  bindings?: Readonly<Record<string, string>>;
   collect?: CollectionSpec;
   start?: Promise<AgentInfo>;
 }
@@ -105,25 +108,30 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const redactor = createRedactor([process.env.OPEN_SANDBOX_API_KEY, process.env.MURM_EXECD_ACCESS_TOKEN]);
   const errorInfo = redactor.error;
   let config: ReturnType<typeof claimOpenSandboxBackend>;
-  let registrations: any, profiles: any, outputDir: any;
+  function validateProfileExecution(profile: Profile) {
+    config.driver.assertEnvironment?.(profile.env);
+    if (profile.allowContextFork && !config.driver.capabilities.contextFork) throw new TypeError('Backend does not support Profile Context Fork authority');
+  }
+  let registrations: Map<string, ServiceRegistration>, profiles: Map<string, Profile>, outputDir: string;
   try {
     if (!Number.isSafeInteger(options?.maxAgents) || options.maxAgents < 1 ||
         typeof options.outputDir !== 'string' || !options.outputDir.trim()) {
       throw new TypeError('A positive maxAgents and outputDir are required');
     }
-
+    if (options.agentAccessPolicy !== undefined && typeof options.agentAccessPolicy !== 'function') {
+      throw new TypeError('agentAccessPolicy must be a synchronous function');
+    }
     config = claimOpenSandboxBackend(options.sandbox, options);
     redactor.add([config.sandbox.apiKey, config.sandbox.execdToken,
       ...Object.values(config.models).flatMap((model) => Object.values(model.upstream.headers))]);
     registrations = snapshotServiceRegistry(options.services);
     registerServicePrivateValues(registrations, redactor.add);
     registrations.set('agent', createAgentService({ runtimeId, getAgent: id => getAgent(id),
-      spawn: (input, caller) => spawn(input, caller), get, send, stop }));
+      spawn: (input, caller) => spawn(input, caller), get, send, stop,
+      accessPolicy: options.agentAccessPolicy, getAccess: id => management.access.get(id),
+      mutateAccess: (kind, input, caller) => management.mutateAccess(kind, input, caller) }));
     profiles = snapshotProfiles(options.profiles, config.models, registrations);
-    for (const profile of profiles.values()) {
-      config.driver.assertEnvironment?.(profile.env);
-      if (profile.allowContextFork && !config.driver.capabilities.contextFork) throw new TypeError('Backend does not support Profile Context Fork authority');
-    }
+    for (const profile of profiles.values()) validateProfileExecution(profile);
     outputDir = join(resolve(options.outputDir), runtimeId);
   } catch (error: any) {
     throw resourceError('INVALID_CONTRACT', redactor.text(error.message), context, { details: [errorInfo(error, 'INVALID_CONTRACT')] });
@@ -146,11 +154,35 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     return agent && {
       profile: agent.info.profile, model: agent.profile.model, status: agent.info.status,
       unavailable: agent.fatal === true,
-      services: agent.profile.services, bindings: agent.bindings, parentId: agent.info.parentId, spawnProfiles: agent.profile.spawnProfiles, allowContextFork: agent.profile.allowContextFork,
+      ...management.bridgeAccess(agentId), parentId: agent.info.parentId, spawnProfiles: agent.profile.spawnProfiles, allowContextFork: agent.profile.allowContextFork,
     };
   };
   let bridge: any, modelAccess: any, backend: any;
   let closing = false;
+  const management = createRuntimeManagement({
+    profiles, registrations,
+    validateProfile(id, profile) {
+      const snapshot = snapshotProfiles({ [id]: profile }, config.models, registrations, profiles).get(id)!;
+      validateProfileExecution(snapshot);
+      return snapshot;
+    },
+    isClosing: () => closing,
+    isAgentLive: id => agents.has(id) && isLive(agents.get(id)),
+    cancelAccess: (agentId, serviceId, operations) => bridge.cancelAccess(agentId, serviceId, operations),
+    redact: redactor.value,
+    addSecrets: redactor.add,
+    drainService: id => bridge.drainService(id),
+    hasUncertainWrites: id => bridge.hasUncertainWrites(id),
+    async exportService(registration) {
+      const [result] = await exportServiceStates(new Map([[registration.manifest.id, registration]]), outputDir, redactor.value);
+      return result as { path?: string; error?: ErrorInfo } | undefined;
+    },
+    changed(change) {
+      const safe = redactor.value(change) as typeof change;
+      records.record('management', safe);
+      publish({ type: 'management', change: safe });
+    },
+  });
   let recordsReady = false;
   let reportSaved = false;
   const assertAssembling = () => {
@@ -462,7 +494,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     const requestId = input?.requestId;
     let parameters;
     try {
-      parameters = snapshotSpawn(input, profiles, registrations);
+      parameters = snapshotSpawn(input, profiles, management.knowsService);
       config.driver.assertEnvironment?.(parameters.secretEnv);
     }
     catch (error) { throw problem('INVALID_CONTRACT', (error as Error).message, 'spawn', undefined, requestId); }
@@ -486,19 +518,24 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       if ([...agents.values()].filter(agent => agent.info.status !== 'closed').length >= maxAgents) {
         throw problem('CONFLICT', 'Runtime has no free Agent Slot', 'spawn', undefined, requestId);
       }
+      const profile = profiles.get(parameters.profile)!;
+      if ([...Object.keys(profile.services), ...Object.keys(parameters.bindings ?? {})].some(id => !registrations.has(id))) {
+        throw problem('NOT_ALLOWED', 'Profile requires an unavailable Service', 'spawn', undefined, requestId);
+      }
       const info: AgentInfo = { id: randomUUID(), profile: parameters.profile, status: 'starting',
         ...(parameters.parentId ? { parentId: parameters.parentId } : {}) };
       redactor.add(Object.values(parameters.secretEnv ?? {}));
       const agent: RuntimeAgent = {
-        info, profile: profiles.get(parameters.profile), controller: new AbortController(),
-        activityClaims: new Set(), nativeExecuting: false, executionStopped: false, bindings: parameters.bindings, collect: parameters.collect,
+        info, profile, controller: new AbortController(),
+        activityClaims: new Set(), nativeExecuting: false, executionStopped: false, collect: parameters.collect,
         executionEpoch: 0, interruptRequests: new Map(), eventSequence: 0,
       };
       fileControls.register(agent, { writable: parameters.writable ?? agent.profile.writable, shared: !!parameters.workspace });
       request = { fingerprint, agent };
+      management.initAccess(info.id, profile.services, parameters.bindings);
       agents.set(info.id, agent);
       spawnRequests.set(requestKey, request);
-      records.record('spawn', { state: 'registered', agentId: info.id, parentId: info.parentId, profile: info.profile,
+      records.record('spawn', { state: 'registered', agentId: info.id, parentId: info.parentId, profile: info.profile, profileDigest: management.profileDigest(info.profile),
         ...(parameters.forkFrom ? { forkFrom: parameters.forkFrom } : {}),
         requestId: redactor.text(requestId), source: caller, collect: parameters.collect, writable: parameters.writable ?? agent.profile.writable });
       agent.start = Promise.resolve().then(async () => {
@@ -699,7 +736,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   let savingClose = false;
   let serviceStates: Awaited<ReturnType<typeof exportServiceStates>> | undefined;
   function closeReceipt(agentReceipts: any[], errors: ErrorInfo[], reportError?: ErrorInfo) {
-    const pending = [...agentReceipts.flatMap(agent => agent.pending ? [agent.pending] : []), ...pendingEndpoints()];
+    const pending = [...agentReceipts.flatMap(agent => agent.pending ? [agent.pending] : []), ...pendingEndpoints(), ...management.pendingServices()];
     if (reportError || savingClose) pending.push({ kind: 'report', id: runtimeId, action: 'save', ...(reportError ? { error: reportError } : {}) });
     const evidence = records.snapshot();
     if (evidence.lost) pending.push({ kind: 'report', id: runtimeId, action: 'save',
@@ -722,7 +759,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         records.record('runtime', { state: 'closing', timeoutMs });
         const stopping = Promise.all([...agents.values()].map(beginStop));
         await closeEndpoints();
-        if (endpointCleanup.bridge.done) serviceStates ??= await exportServiceStates(registrations, outputDir, redactor.value);
+        if (endpointCleanup.bridge.done) {
+          await management.retireAll(timeoutMs);
+          serviceStates ??= await exportServiceStates(registrations, outputDir, redactor.value);
+        }
         const agentReceipts = await stopping;
         if (agentReceipts.every((agent: any) => agent.cleanup === 'complete')) {
           await closeEndpoint('backend', backend);
@@ -742,7 +782,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         try {
           receipt.reportPath = reportPath;
           await saveSummary(receipt.cleanup === 'complete' ? 'closed' : 'closing', {
-            ...receipt, serviceStates, handlerErrors, handlerErrorCount,
+            ...receipt, serviceStates: [...(serviceStates ?? []), ...management.retiredExports()], handlerErrors, handlerErrorCount,
           });
           reportSaved = true;
         } catch (error: any) {
@@ -775,6 +815,8 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   return Object.freeze<Runtime>({
     id: runtimeId,
     get state() { return finalClose ? 'closed' : closing ? 'closing' : 'open'; },
+    profiles: management.profiles, services: management.services, access: management.access,
+    management: Object.freeze({ get: management.snapshot }),
     spawn: input => spawn(input), get, list, send: hostSend,
     interrupt, onEvent, stop, close, files: fileControls.api,
   });

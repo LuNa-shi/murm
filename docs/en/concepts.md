@@ -102,7 +102,7 @@ A `settled` event describes an execution. It does not establish exactly which of
 
 ## A Profile supplies both instructions and authority
 
-`Profile.prompt` describes the role to the model. `Profile.services` controls which shared operations that role can call. Workspace, network, child-spawn, and collection settings control the corresponding Runtime or backend operations.
+`Profile.prompt` describes the role to the model. `Profile.services` seeds each Agent’s initial operation permissions. The Bridge enforces the Agent’s current grants, which the host can update through `runtime.access`. Workspace, network, child-spawn, and collection settings control the corresponding Runtime or backend operations.
 
 At Runtime creation, Profiles and registered Service manifests are captured. Later edits to the original configuration object or new registrations on the original registry do not reconfigure that Runtime. Shared Service state can still evolve during execution; for example, a task pool creates and claims Tasks while its operation contract remains the same.
 

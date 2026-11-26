@@ -11,6 +11,12 @@ This reference describes the public interfaces of **`@murm/core` `0.2.0`** in th
 
 Import all public types and the six runtime values from `@murm/core`. The values are `createSandbox`, `createRuntime`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`.
 
+## Runtime management
+
+Use `runtime.profiles.register/get/list` for immutable Profiles and `runtime.services.register/get/list/retire` for the Service directory. Use `runtime.access.get/grant/revoke` to change an existing Agent's operation permissions. Mutations use stable request IDs. Service retirement closes admission, waits for authorized work to drain, and reports its current state. The application owns deployment and external facility cleanup.
+
+Subscribe with `onEvent` before reading `runtime.management.get()`. Buffer management changes during the read, then apply the changes newer than the returned management `sequence`. Re-read if a sequence is missing. The same root entry exports the management request, receipt, snapshot and event types. See [Runtime management](../../architecture/15-core-runtime.md#runtime-management).
+
 ## `createRuntime(options)`
 
 ```ts

@@ -25,7 +25,7 @@ async function setup(t, options = {}) {
     const response = await fetch(transport.url + '/call', { method: 'POST', headers: { authorization: `Bearer ${credentials.secretEnvironment.MURM_BRIDGE_TOKEN}` }, body: JSON.stringify({ service_id: 'agent', operation, operation_id: id, payload }) });
     return response.json();
   };
-  return { runtime, parent, call };
+  return { runtime, parent, call, outputDir };
 }
 test('parent discovers built-in control and creates exactly one child with no initial input', async t => {
   const { runtime, parent, call } = await setup(t);
@@ -333,4 +333,63 @@ test('Agent context fork requires the caller Profile permission and uses its own
   assert.equal(transport.spawns.get(result.result.agent.id).options.forkFrom, allowed.parent.id);
   assert.equal(result.result.agent.parentId, allowed.parent.id);
   assert.equal((await allowed.call('spawn', { profile: 'child', fork: false }, 'fork')).error.code, 'CONFLICT');
+});
+
+test('Core v2 CLI grants and revokes only explicitly delegated operations for a managed Agent', async t => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execute = promisify(execFile);
+  const { writeFile } = await import('node:fs/promises');
+  let managed;
+  const base = { model: 'default', image: 'test', writable: true, services: {} };
+  const { runtime, parent, call, outputDir } = await setup(t, {
+    profiles: {
+      parent: { ...base, services: { agent: ['access_get', 'grant', 'revoke'] } },
+      child: base,
+    },
+    agentAccessPolicy: ({ callerId, agentId, operation, serviceId, operations }) =>
+      callerId !== agentId && agentId === managed && (operation === 'access_get' ||
+        serviceId === 'orders' && operations?.length === 1 && operations[0] === 'check'),
+  });
+  const child = await runtime.spawn({ requestId: 'worker', profile: 'child', parentId: parent.id });
+  managed = child.id;
+  const outsider = await runtime.spawn({ requestId: 'outsider', profile: 'child', parentId: parent.id });
+  await runtime.services.register({
+    requestId: 'ready-orders', deploymentRef: 'local', implementationId: 'v1', ownership: 'run',
+    registration: {
+      manifest: {
+        id: 'orders', title: 'Orders', purpose: 'Checks orders', provider_version: '1', contract_version: '2',
+        endpoint: { transport: 'in-process' },
+        capabilities: [{
+          name: 'check', operation: 'check', description: 'Check', side_effect: 'read', idempotent: true,
+          help: { when: 'Check orders' }, input_schema: { type: 'object' }, output_schema: { type: 'boolean' }, errors: [],
+        }],
+      },
+      adapter: { invoke: () => true },
+    },
+  });
+  const envFor = id => {
+    const credentials = transport.spawns.get(id).credentials;
+    return { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
+  };
+  const cli = async (id, ...args) => (await execute(process.execPath, ['dist/scripts/swarm.js', ...args], { env: envFor(id), timeout: 5000 })).stdout;
+  const status = JSON.parse(await cli(parent.id, 'agent', 'access_get', '--agent-id', child.id));
+  assert.equal(status.version, 0);
+  assert.deepEqual(status.services, {});
+  await assert.rejects(cli(child.id, 'service', 'invoke', 'orders', 'check'));
+
+  const payload = { agent_id: child.id, service_id: 'orders', operations: ['check'] };
+  assert.equal((await call('grant', { ...payload, agent_id: outsider.id }, 'deny-other')).error.code, 'NOT_ALLOWED');
+  assert.equal((await call('grant', { ...payload, service_id: 'agent', operations: ['spawn'] }, 'deny-scope')).error.code, 'NOT_ALLOWED');
+  assert.equal((await call('grant', payload, 'not-lead', child.id)).error.code, 'NOT_ALLOWED');
+  const path = join(outputDir, 'access-request.json');
+  await writeFile(path, JSON.stringify(payload));
+  const grant = JSON.parse(await cli(parent.id, 'agent', 'grant', '--input', path, '--request-id', 'grant'));
+  assert.equal(grant.version, 1);
+  assert.equal(JSON.parse(await cli(child.id, 'service', 'invoke', 'orders', 'check')), true);
+  const revoke = JSON.parse(await cli(parent.id, 'agent', 'revoke', '--input', path, '--request-id', 'revoke'));
+  assert.equal(revoke.version, 2);
+  await assert.rejects(cli(child.id, 'service', 'invoke', 'orders', 'check'));
+  assert.deepEqual(await runtime.get(child.id), child);
+  assert.equal(transport.spawns.size, 3);
 });

@@ -1,8 +1,8 @@
-# Fixed Lead-Worker Harness
+# Lead-Worker Harness
 
-This example creates one lead and two helpers through the public Core SDK. The team size and role Profiles are fixed before startup. Each Agent has its own Profile, sandbox, workDir, persistent Session, Git account and branch. The Board is a local SQLite Service with exclusive owner claims, not PeerMesh's soft overlapping CLAIM notes. The trusted host owns the controller, identity bindings and cleanup.
+This example creates one lead and two helpers through the public Core SDK. The default workflow uses preconfigured Profiles and a fixed team. Each Agent has its own Profile, sandbox, workDir, persistent Session, Git account and branch. The Board is a local SQLite Service with exclusive owner claims, not PeerMesh's soft overlapping CLAIM notes. The trusted host owns the controller, identity bindings and cleanup.
 
-The host imports only from `@murm/core` for Runtime, Sandbox and Service author APIs. See the [SDK guide](../../docs/en/sdk.md) for configuration and resource ownership.
+The host imports the Runtime, Sandbox and Service author APIs from `@murm/core`. The Lead-Worker controller runs from the bundled example. See the [SDK guide](../../docs/en/sdk.md), [mechanism guide](../../docs/en/harnesses/lead-worker.md) and [dynamic-team design](../../docs/designs/dynamic-lead-worker.md).
 
 ## Install and configure
 
@@ -44,3 +44,38 @@ Deterministic verification uses real Core, CLI subprocesses and Bridge authoriza
 For a host-managed four-group workload, `createLeadWorkerHarness({ helperCount: 3, ... })` also exposes `runStage`. Call it serially four times: the first input has `{ goal, paths }`, and the later inputs have `{ supplement, paths }`. `paths` maps `helper1`, `helper2` and `helper3` to three new distinct artifact paths for that group. Pass a host `signal` on every call to enforce the outer schedule. The controller retains the original team, requires actual preceding feedback adoption and verifies twelve fixed Git files by the final group. Its receipts preserve accepted Core inputs and settled event identities. The read-only `get(agentId)` supports host monitoring during waits. The caller owns its schedule, resource limits and final cleanup verification. The supplied CLI continues to run the original short two-group workflow.
 
 A host may first call `prepareStages({ signal })` once to obtain four real Core input receipts and actor-specific public Board read/ready-note evidence. This is finite setup and excludes the short workflow; it leaves all four business groups available. All three helpers run concurrently after the lead direction is validated. Setup notes do not count among the twelve business deliverables.
+
+
+## Dynamic orders mode
+
+Set the optional property below in the configuration passed to the same example CLI. Select the image by its local Docker ID. Store the candidate bundle and Run output in private host evidence storage.
+
+```js
+config.dynamic = {
+  variant: 'orders-a',
+  serviceImage: process.env.MURM_LEAD_WORKER_SERVICE_IMAGE,
+  candidatePath: './private-evidence/orders-candidate.json',
+};
+```
+
+For a single shared 30-minute work deadline, set `workTimeoutMs: 1_800_000` and `turnTimeoutMs: null`. The Run starts its work clock after startup and gives all Agent inputs and final verification the time remaining on that clock. Cleanup has its own bound.
+
+Dynamic mode uses one Lead, two original Workers and a runtime-created checker in the same Board and Git project. The Lead can deploy its own checking program, register the checker Profile, admit the member, and grant or revoke the checking operation on an existing Worker. Assigned Workers can read `spec.md` and `sample.jsonl` from the initial Git project. The final program is evaluated from the Lead's pinned Git commit in fresh containers. The installed package includes the dynamic entry point, task, starter and independent oracle.
+
+After a successful Run, execute the offline verifier from that package using its saved report and candidate bundle.
+
+```bash
+node dist/examples/lead-worker/verify-orders.js <harness-report.json> <orders-candidate.json>
+```
+
+The command verifies the frozen candidate and saved cleanup receipts, then reruns the nine independent orders cases. It exits nonzero for a missing or mismatched artifact, incomplete saved cleanup, or a failed case. Full L4 collaboration replay remains a follow-up for [Issue #235](https://github.com/LuNa-shi/murm/issues/235). It must verify grant/revoke, original Worker Session continuity and checker feedback adoption from frozen Run evidence. The [acceptance design](../../docs/designs/dynamic-lead-worker.md) specifies these requirements.
+
+### 动态订单模式
+
+在现有配置中设置上面的 `dynamic` 字段，检查容器镜像使用本地不可变 Docker image ID。Lead 和两名原 Worker 先启动。Lead 可以部署检查服务、登记 checker Profile、加入第四名成员，并给原 Worker 授权或撤权。任务与反馈仍由同一个 Board 和 Git 项目推进。
+
+宿主从 Lead 提交的固定 Git 版本提取文件，用包内冻结的独立测试检查退出码、stdout 和 stderr。Run 关闭后，用上面的 `verify-orders.js`、Run 报告和候选包核对冻结产物与保存的清理回执，并重跑九项独立用例。完整 L4 复验留待 [Issue #235](https://github.com/LuNa-shi/murm/issues/235) 的后续切片，需要从冻结的 Run 证据核对 grant/revoke、原 Worker Session 连续性和 checker 反馈采用。
+
+The installed native scripted gate can be run with `MURM_LEAD_WORKER_DYNAMIC_NATIVE_TEST=1` and the immutable `MURM_CORE_TEST_IMAGE` and `MURM_LEAD_WORKER_SERVICE_IMAGE` IDs. Build the Checkout first, then run `node --test dist/test/lead-worker-dynamic-native.test.js`. The gate provisions a fresh private Gitea facility, runs the packaged example at an external installation, and reruns its oracle offline.
+
+The real-model gate is `node --test dist/test/lead-worker-dynamic-model.test.js`. Enable it with `MURM_LEAD_WORKER_DYNAMIC_MODEL_TEST=1` once the provider and resource bounds are approved. Set the two immutable image IDs and `MURM_LEAD_WORKER_DYNAMIC_MODEL_CONFIG` to a host JSON file with `provider`, `model`, `url`, `maxOutputTokens`, `workMs`, `authorization` and `providerAllowance`. The latter two record the approved Run and applicable provider allowance. Use the scoped credential in `MURM_LEAD_WORKER_MODEL_TOKEN`. One invocation makes two independent attempts from the same installed package. The working deadline always applies. Set `requestsPerRun` to also enforce an aggregate request cap. Every admitted attempt counts toward a configured cap even when its provider outcome is unknown. The gate records model use in both modes.

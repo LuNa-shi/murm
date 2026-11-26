@@ -9,6 +9,8 @@ interface BridgeAgent {
   profile: string;
   services: Readonly<Record<string, readonly string[]>>;
   bindings?: Readonly<Record<string, string>>;
+  accessVersion?: number;
+  accessGeneration?(serviceId: string, operation: string): number;
 }
 
 function allows(grants: BridgeAgent['services'] | undefined, service: string, operation: string) {
@@ -81,11 +83,28 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
   const agentTokens = new Map<string, string>();
   let closing = false;
   let closePromise: Promise<void> | undefined;
-  const active = new Map<AbortController, string | undefined>();
+  const active = new Map<AbortController, { agentId: string; serviceId: string; operation: string }>();
+  const serviceWork = new Map<string, Set<Promise<void>>>();
+  const uncertainWrites = new Set<string>();
+
+  function trackCompletion(id: string, completion: Promise<void>) {
+    let pending = serviceWork.get(id);
+    if (!pending) serviceWork.set(id, pending = new Set());
+    pending.add(completion);
+    void completion.then(() => {
+      pending.delete(completion);
+      if (pending.size === 0) serviceWork.delete(id);
+    });
+  }
   const visibleServices = (grants: BridgeAgent['services']) => permittedServiceManifests(registrations, grants);
   const server = createServer(async (request, response) => {
     const attemptId = randomUUID();
-    const recordAttempt = (record: ServiceInvocationRecord) => recordService?.({ ...record, attemptId });
+    let accessVersion: number | undefined;
+    let remoteWrite = false;
+    const recordAttempt = (record: ServiceInvocationRecord) => {
+      if (remoteWrite && record.state === 'settled' && record.outcome === 'unknown') uncertainWrites.add(record.serviceId);
+      recordService?.({ ...record, attemptId, ...(accessVersion === undefined ? {} : { accessVersion }) });
+    };
     let body: BridgeBody | undefined;
     let controller: AbortController | undefined;
     let instrumented = false;
@@ -127,17 +146,30 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
         reply(response, 200, { ok: true, result: { services: visibleServices(current.services) } }); return;
       }
       if (body.operation === 'get_service_metadata' && body.service_id === undefined) {
-        const manifest = visibleServices(current.services).find(item => item.id === (body!.payload as { service?: string } | null | undefined)?.service);
+        const service = (body.payload as { service?: string } | null | undefined)?.service;
+        const manifest = visibleServices(current.services).find(item => item.id === service);
+        // Record discovery on its own stage. A denied manifest lookup has no
+        // adapter invocation and must never be treated as a dispatch denial.
+        if (!manifest && typeof service === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(service)) {
+          trace = { runtimeId, attemptId, accessVersion: current.accessVersion,
+            caller: { runtimeId, agentId, profile: current.profile }, service,
+            operation: body.operation, operation_id: body.operation_id, input: {}, startedAt: new Date().toISOString() };
+          traceService?.({ ...trace, phase: 'started' });
+        }
         if (!manifest) throw new MurmError('NOT_ALLOWED', 'Service is unavailable to this Profile');
         reply(response, 200, { ok: true, result: manifest }); return;
       }
-      trace = { runtimeId, attemptId, caller: { runtimeId, agentId, profile: current.profile,
+      accessVersion = current.accessVersion;
+      const generation = current.accessGeneration?.(body.service_id, body.operation);
+      trace = { runtimeId, attemptId, ...(accessVersion === undefined ? {} : { accessVersion }), caller: { runtimeId, agentId, profile: current.profile,
         ...(Object.hasOwn(current.bindings ?? {}, body.service_id) ? { binding: current.bindings![body.service_id] } : {}) },
         service: body.service_id, operation: body.operation, operation_id: body.operation_id,
         input: Object.hasOwn(body, 'payload') ? body.payload : {}, startedAt: new Date().toISOString() };
       traceService?.({ ...trace, phase: 'started' });
       const registration = registrations.get(body.service_id);
       if (!registration || !allows(current.services, body.service_id, body.operation)) throw new MurmError('NOT_ALLOWED', 'Profile does not authorize this Service operation');
+      remoteWrite = registration.manifest.endpoint.transport === 'http-json' &&
+        registration.manifest.capabilities.some(item => item.operation === body!.operation && item.side_effect === 'write');
       const binding = Object.hasOwn(current.bindings ?? {}, body.service_id) && typeof current.bindings![body.service_id] === 'string'
         ? current.bindings![body.service_id] : undefined;
       const caller = { runtimeId, agentId: agentId!, profile: current.profile, ...(binding === undefined ? {} : { binding }) };
@@ -149,14 +181,20 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
         }
       });
       controller = new AbortController();
-      active.set(controller, agentId);
+      active.set(controller, { agentId: caller.agentId, serviceId: body.service_id, operation: body.operation });
       instrumented = true;
-      const result = await invokeService(registration, { operation: body.operation, input: Object.hasOwn(body, 'payload') ? body.payload : {},
+      const invocation = invokeService(registration, { operation: body.operation, input: Object.hasOwn(body, 'payload') ? body.payload : {},
         envelope: { operation_id: body.operation_id }, caller, signal: controller.signal, recordService: recordAttempt,
+        trackCompletion: completion => trackCompletion(registration.manifest.id, completion),
         assertAuthorized: () => {
           const latest=live();
-          if(latest.profile!==caller.profile || !allows(latest.services, body!.service_id, body!.operation)) throw new MurmError('NOT_ALLOWED','Service caller authority was revoked');
+          if (latest.profile !== caller.profile || !allows(latest.services, body!.service_id, body!.operation)
+            || latest.accessGeneration?.(body!.service_id, body!.operation) !== generation) {
+            throw new MurmError('NOT_ALLOWED', 'Service caller authority was revoked');
+          }
         } }, serviceTimeoutMs);
+      trackCompletion(registration.manifest.id, invocation.then(() => {}, () => {}));
+      const result = await invocation;
       traceOutput = result;
       reply(response, 200, { ok: true, result });
     } catch (caught) {
@@ -214,13 +252,20 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
   });
   const publicUrl = configuration.publicUrl.replaceAll('{port}', String((server.address() as AddressInfo).port)).replace(/\/$/, '');
   function cancelAgentCalls(agentId: string) {
-    for (const [controller, callerId] of active) {
-      if (callerId === agentId) controller.abort();
+    for (const [controller, call] of active) {
+      if (call.agentId === agentId) controller.abort();
     }
   }
   return {
     publicUrl,
     cancelAgentCalls,
+    cancelAccess(agentId: string, serviceId: string, operations: ReadonlySet<string>) {
+      for (const [controller, call] of active) {
+        if (call.agentId === agentId && call.serviceId === serviceId && operations.has(call.operation)) controller.abort();
+      }
+    },
+    async drainService(id: string) { await Promise.all(serviceWork.get(id) ?? []); },
+    hasUncertainWrites: (id: string) => uncertainWrites.has(id),
     visibleServices,
     credentialsForAgent(agentId: string) {
       const agent = getAgent(agentId);

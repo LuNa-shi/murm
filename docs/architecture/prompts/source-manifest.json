@@ -15,19 +15,19 @@
     },
     {
       "path": "src/cli/swarm-cli.ts",
-      "sha256": "0dbf151c53f43d98ccd87a10e4be9cddabd49b28a05bfb559f61d5ceda16cf7a"
+      "sha256": "49f36777848ed576ee314f93eb609e7125e08ca83e2a8b2e092862f8d9cf1c5c"
     },
     {
       "path": "src/cli/service-command.ts",
-      "sha256": "bd669d56c16c6aaedbb562ada531be3f78de4ebc5b0954ea9d5b6115afe49089"
+      "sha256": "1954ef06963181523cb4caed8becd4d1611eccf348b8407bbc609e46518f341b"
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "d5f54ebff9c5599748d921c28ca8e5810c8d9b7903c162c65f2567c11aacb27e"
+      "sha256": "a3ab2b5d81c55ae629577438eab2f6483b5dcd7a9b6126cf6360d32fd26b7a8c"
     },
     {
       "path": "src/core/bridge.ts",
-      "sha256": "ba92a8c29e06d5bbe59670d1be49d580bda17bd54b2807d204138d5689f661ef"
+      "sha256": "003d80596d23c02543bd09db964a2bccc2e8739f9a269d62c047cf0d8a817538"
     },
     {
       "path": "src/core/startup-prompt.ts",
@@ -35,7 +35,7 @@
     },
     {
       "path": "src/core/opensandbox-backend.ts",
-      "sha256": "363cf7f6080ec4cde3e4b03dcc8d261c0b653bde93c4bf72f28f01e0553c6787"
+      "sha256": "b5f0afb361666f5ac78bf16b389f6801336be1537a9bc3a93de4f31e877cd3ca"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
@@ -75,7 +75,7 @@
     },
     {
       "path": "src/harnesses/taskpool/controller.ts",
-      "sha256": "d9f84c2e4d64c203bf797b7311a54eddc2b15e9ee43af7788bc986eab0e951cd"
+      "sha256": "c41c7c5655a12d760f1846d37516d32f48731d4caee830b9bb4d3959981e463a"
     },
     {
       "path": "src/harnesses/taskpool/harness.ts",
@@ -155,11 +155,23 @@
     },
     {
       "path": "src/harnesses/lead-worker/prompts.ts",
-      "sha256": "edce33888bcb30b073c9d947014592de5f92b5c5dc07c70f3f3803ee91d43cc8"
+      "sha256": "22ffe10d66454452ec90fd9492f1c1483af64d6e9cfe4b98ee7e7a201c026969"
     },
     {
       "path": "src/harnesses/lead-worker/index.ts",
-      "sha256": "8cdc3b23b944fcc1cd64933528d3f781360a21da21ecee88942647c824f5da1c"
+      "sha256": "5814ab52d2f029f47243a7300336885501f5329ddeaa8c18c48893b73c166f5d"
+    },
+    {
+      "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",
+      "sha256": "729596347dab0e824fc9373dbb678108d086d56215a3dd865329af948f832625"
+    },
+    {
+      "path": "src/harnesses/lead-worker/dynamic.ts",
+      "sha256": "de0ef3a703d3266571e31f120abfc0053ee9a4eea1008d2b415f4820b0a7de91"
+    },
+    {
+      "path": "examples/lead-worker/dynamic-orders.ts",
+      "sha256": "7ac538fa430b128f3daf3ac7952576b5ebf12c7ae582b3012a73b8c5e9b1e9cd"
     },
     {
       "path": "src/runtime/runtime.ts",
@@ -199,7 +211,7 @@
     },
     {
       "path": "src/task/task-service.ts",
-      "sha256": "8249953a2ff94299e5ed28bfd74dfad918c15375bc842fe33d94bbfb2e3b6ade"
+      "sha256": "f39c9796f501298e1d6a060286c96e0e884e69205fcd6e7e2d612f42456d122e"
     },
     {
       "path": "src/task/task-types.ts",
@@ -466,10 +478,34 @@
       "sha256": "0045a458adf415fb6e61371af1a6e0031af98fe1e8df8ee5f9cfd9cb78379e85"
     },
     {
+      "path": "src/harnesses/lead-worker/prompts.ts",
+      "anchor": "export const dynamicLeadPrompt = `",
+      "line": 8,
+      "sha256": "0b2857905c23f7bd6ed84b4c07c59d653c6f68dd81f9c0cf47f8d76bbf10b86e"
+    },
+    {
+      "path": "src/harnesses/lead-worker/prompts.ts",
+      "anchor": "export const dynamicWorkerPrompt = `",
+      "line": 16,
+      "sha256": "50f148705ee19eadd67d4ef431c0cdf2dca0c7af53805dcb40c84993c90319f0"
+    },
+    {
       "path": "src/harnesses/lead-worker/index.ts",
       "anchor": "                  const nextPath =",
-      "line": 197,
+      "line": 239,
       "sha256": "d899bf6da9a12ab775120db5f1068857fe565eb414938a7dc3d584039e096f28"
+    },
+    {
+      "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",
+      "anchor": "    send(lead, { type: 'dynamic-goal'",
+      "line": 49,
+      "sha256": "03cd6cfc940618705fcfe04f34241366944ff13a5bad31e38bda7856cb9f4bae"
+    },
+    {
+      "path": "src/harnesses/lead-worker/dynamic.ts",
+      "anchor": "                model, image, writable: true, prompt:",
+      "line": 241,
+      "sha256": "a6ba57740baffd026ee1589c2222ebfda6d3dc4e4bfc12a6a4040db5bdfc14e7"
     },
     {
       "path": "benchmarks/putnambench-taskpool/run.ts",
@@ -520,7 +556,7 @@
     },
     {
       "path": "src/harnesses/taskpool/controller.ts",
-      "line": 188,
+      "line": 194,
       "expression": "const receipt=await runtime.send(row.agentId,text,{requestId,mode});"
     }
   ],
@@ -587,19 +623,19 @@
     },
     {
       "path": "src/task/task-service.ts",
-      "line": 1498,
+      "line": 1501,
       "field": "guidance",
       "sha256": "7e00a9a0673a67a15ea3cc67a3ce0331614bdf9a024122bbf2821ad7cb98844f"
     },
     {
       "path": "src/task/task-service.ts",
-      "line": 1616,
+      "line": 1619,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.ts",
-      "line": 1766,
+      "line": 1769,
       "field": "guidance",
       "sha256": "0c29e58c66dcf4acc44d132fc797f70b6ecbf208337c14f45e8bfe0b5717385b"
     }
@@ -619,7 +655,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "0dd9780f082c954cdf7cfa5514190b3770539f0f56f7d904d71ca19c6a3df180"
+      "sha256": "365638be26d101bfa9b99edaac2d536fd0f04295056e06c710e3df030c3fbc3a"
     },
     {
       "path": "docs/architecture/prompts/10-local-setup-probe.md",
@@ -651,7 +687,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-lead-worker-harness.md",
-      "sha256": "185414b7df73eded7598f969ba39d761bb613ad94c808da75d64d7bd1f5c7335"
+      "sha256": "5f33bbd68fc2e05b4b3d385878da26d3535c3d241b7fa0cdc5633de9e2020d75"
     },
     {
       "path": "docs/architecture/prompts/08-taskpool-harness.md",

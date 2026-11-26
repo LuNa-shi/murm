@@ -62,3 +62,32 @@ for (const configuration of [{ count: 3 }, { count: 8, helperCount: 7 }]) {
     assert.ok(!seen.some(row => row.method === 'DELETE' && row.path.includes('/repos/')));
   });
 }
+
+test('Git accepts a new Profile identity only after its registered member is ready', async t => {
+  let ready = false;
+  const origin = await server(t, request => {
+    assert.equal(request.headers.authorization, 'token checker-token');
+    return { number: 1 };
+  });
+  const git = createLeadWorkerGit({
+    origin, repository: { owner: 'owner', name: 'repo' },
+    repositoryUrl: `${origin}/owner/repo.git`, actors: actors(),
+  }, 2, { isReady: id => id !== 'checker-id' || ready });
+  const registry = new ServiceRegistry();
+  git.register(registry);
+  git.bindTeam('runtime', { lead: 'lead-id', helper1: 'one', helper2: 'two' });
+  const registration = snapshotServiceRegistry(registry).get('gitea');
+  const input = { owner: 'owner', repo: 'repo', method: 'create', head: 'check-branch', base: 'main', title: 'Verified result' };
+  const caller = { runtimeId: 'runtime', agentId: 'checker-id', profile: 'orders-checker', binding: 'checker-binding' };
+  const invoke = identity => invokeService(registration, { operation: 'pull_request_write', input, caller: identity, envelope: { operation_id: 'pr' } });
+  await assert.rejects(invoke(caller), { code: 'NOT_ALLOWED' });
+  git.addMember({ agentId: 'checker-id', profile: 'orders-checker', actor: {
+    accountId: '4', username: 'checker-account', branch: 'check-branch', token: 'checker-token', binding: 'checker-binding',
+  } });
+  await assert.rejects(invoke(caller), { code: 'NOT_ALLOWED' });
+  ready = true;
+  await assert.rejects(invoke({ ...caller, profile: 'helper1' }), { code: 'NOT_ALLOWED' });
+  assert.deepEqual(await invoke(caller), { number: 1 });
+  assert.equal(git.identities()['orders-checker'].username, 'checker-account');
+  assert.equal(JSON.stringify(git.identities()).includes('checker-token'), false);
+});

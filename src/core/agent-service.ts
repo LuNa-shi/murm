@@ -1,4 +1,4 @@
-import type { AgentInfo, AgentInitialInputResult, AgentSpawnReceipt, ConditionalInputReceipt, InputMode, InputReceipt, SendOptions, SpawnOptions, StopReceipt } from './types.js';
+import type { AgentAccess, AgentAccessPolicy, AgentAccessMutation, AgentAccessRequest, AgentInfo, AgentInitialInputResult, AgentSpawnReceipt, ConditionalInputReceipt, InputMode, InputReceipt, SendOptions, SpawnOptions, StopReceipt } from './types.js';
 import type { JsonValue } from './service-types.js';
 
 interface AgentAuthority {
@@ -18,6 +18,9 @@ interface AgentServiceOptions {
   send(id: string, input: string, options: SendOptions & { wakeIfIdle?: true }, caller: string): Promise<InputReceipt>;
   send(id: string, input: string, options: SendOptions, caller: string): Promise<ConditionalInputReceipt>;
   stop: (id: string) => Promise<StopReceipt>;
+  accessPolicy?: AgentAccessPolicy;
+  getAccess(id: string): AgentAccess | null;
+  mutateAccess(operation: 'grant' | 'revoke', input: AgentAccessMutation, caller: string): Promise<AgentAccess>;
 }
 
 interface SpawnRequest {
@@ -34,6 +37,8 @@ interface AgentInput {
   agent_id: string;
   fork?: boolean;
   wake_if_idle?: boolean;
+  service_id: string;
+  operations: string[];
 }
 
 interface AgentServiceFailure extends Error {
@@ -77,8 +82,13 @@ const inputReceipt = { oneOf: [
   object({ inputId: id, status: { const: 'not-accepted' }, reason: { const: 'idle' } }, ['inputId', 'status', 'reason']),
   object({ inputId: id, status: { const: 'accepted' }, disposition: { enum: ['started', 'queued', 'handled'] } }, ['inputId', 'status', 'disposition']),
 ] };
+const operations = { type: 'array', minItems: 1, uniqueItems: true, items: id };
+const accessOutput = object({ agentId: id, version: { type: 'integer', minimum: 0 },
+  services: { type: 'object', additionalProperties: { type: 'array', items: id } },
+}, ['agentId', 'version', 'services']);
+const accessInput = object({ agent_id: id, service_id: id, operations }, ['agent_id', 'service_id', 'operations']);
 const outputs: Record<string, Record<string, unknown>> = {
-  get: agentInfo, send: inputReceipt, stop: stopReceipt,
+  get: agentInfo, send: inputReceipt, stop: stopReceipt, access_get: accessOutput, grant: accessOutput, revoke: accessOutput,
   spawn: object({ agent: agentInfo, initialInput: { anyOf: [
     inputReceipt, { type: 'null' }, object({ status: { const: 'rejected' }, error: errorInfo }, ['status', 'error']),
   ] } }, ['agent', 'initialInput']),
@@ -90,13 +100,16 @@ const definitions: readonly [string, string, Record<string, unknown>][] = [
   ['get', 'Inspect yourself or one direct child in this Runtime.', object({ agent_id: id }, ['agent_id'])],
   ['send', 'Continue yourself or one direct child; omitted mode is steer and wake_if_idle defaults to true. Reuse request-id after unknown.', object({ agent_id: id, input: { type: 'string' }, mode, wake_if_idle: { type: 'boolean' } }, ['agent_id', 'input'])],
   ['stop', 'Stop and collect one direct child; pending cleanup can be retried. Self-stop is unavailable.', object({ agent_id: id }, ['agent_id'])],
+  ['access_get', 'Inspect the current Service operations of an Agent within your management scope.', object({ agent_id: id }, ['agent_id'])],
+  ['grant', 'Grant Service operations to a managed Agent within the host delegation policy.', accessInput],
+  ['revoke', 'Revoke Service operations from a managed Agent within the host delegation policy.', accessInput],
 ];
 
-export function createAgentService({ runtimeId, getAgent, spawn, get, send, stop }: AgentServiceOptions) {
+export function createAgentService({ runtimeId, getAgent, spawn, get, send, stop, accessPolicy, getAccess, mutateAccess }: AgentServiceOptions) {
   const requests = new Map<string, SpawnRequest>();
   function deny(message: string): never { throw Object.assign(new Error(message), { code: 'NOT_ALLOWED' }); }
   return builtinAgentRegistration({ id: 'agent', title: 'Agent control', purpose: 'Control direct children within host Profile policy.', provider_version: '1', contract_version: '2', endpoint: { transport: 'in-process' },
-    capabilities: definitions.map(([operation, description, input_schema]) => ({ name: operation, operation, description, help: { when: description }, side_effect: operation === 'get' ? 'read' : 'write', idempotent: true, input_schema, output_schema: outputs[operation], errors })),
+    capabilities: definitions.map(([operation, description, input_schema]) => ({ name: operation, operation, description, help: { when: description }, side_effect: operation === 'get' || operation === 'access_get' ? 'read' : 'write', idempotent: true, input_schema, output_schema: outputs[operation], errors })),
   }, { async invoke({ caller, capability, input: serviceInput, envelope }) {
     const input = serviceInput as unknown as AgentInput;
     const operation = capability.operation;
@@ -146,6 +159,17 @@ export function createAgentService({ runtimeId, getAgent, spawn, get, send, stop
       return jsonSnapshot(await request.work);
     }
     const target = getAgent(input.agent_id);
+    if (operation === 'access_get' || operation === 'grant' || operation === 'revoke') {
+      if (!target || (operation !== 'access_get' && input.agent_id === caller.agentId)) deny('Target is outside your management scope');
+      const subject = { runtimeId, callerId: caller.agentId, agentId: input.agent_id };
+      const request: AgentAccessRequest = operation === 'access_get' ? { ...subject, operation } :
+        { ...subject, operation, serviceId: input.service_id, operations: [...input.operations] };
+      if (accessPolicy?.(request) !== true) deny('Access operation is outside the configured management scope');
+      if (operation === 'access_get') return jsonSnapshot(getAccess(input.agent_id));
+      return jsonSnapshot(await mutateAccess(operation, {
+        agentId: input.agent_id, serviceId: input.service_id, operations: input.operations, requestId,
+      }, source));
+    }
     if (!target || !(target.parentId === caller.agentId || (operation !== 'stop' && input.agent_id === caller.agentId))) deny('Target must be yourself or a direct child; stop requires a child');
     if (operation === 'get') {
       const snapshot = await get(input.agent_id);

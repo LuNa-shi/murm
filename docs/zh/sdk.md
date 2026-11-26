@@ -34,6 +34,8 @@ cp node_modules/@murm/core/examples/bridge-services/{handoff.ts,handoff-config.t
 
 复制后的示例只从包的公共入口导入 SDK。它可以直接运行，不需要先执行 `murm init`，也不依赖仓库内部的 `src/` 相对路径。
 
+运行期间可通过[管理 API](reference/api.md#runtime-管理)扩展 Profile 和 Service 目录，并调整 Agent 的 Service 权限。
+
 ## 跑通一次完整交接
 
 先按[快速上手的执行环境准备步骤](./quickstart.md#1-准备代码与执行环境)准备 Linux、Docker、OpenSandbox，以及包含 `jq` 的兼容 murm Worker 镜像。宿主需要访问 Lifecycle API 与 Worker 端点，沙箱需要访问宿主的 Bridge 和 Model Gateway。

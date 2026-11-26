@@ -40,13 +40,13 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `28570d9b5cfadc3ceaa8136860bb8df2238ce951a144b996e5b2d9d5f2924111` |
 | [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `d5f54ebff9c5599748d921c28ca8e5810c8d9b7903c162c65f2567c11aacb27e` |
-| [src/core/types.ts](../../src/core/types.ts) | `ea1da44babc14b44f4a33053890bc3cc27944ed844f22197698d34d1c0fa92fc` |
-| [src/core/services.ts](../../src/core/services.ts) | `9e6a70cca00cbac70d4914211e10c9fbf756c9bd6fc1c3dddebdc83fd5278e02` |
-| [src/core/service-types.ts](../../src/core/service-types.ts) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
-| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | `363cf7f6080ec4cde3e4b03dcc8d261c0b653bde93c4bf72f28f01e0553c6787` |
+| [src/core/index.ts](../../src/core/index.ts) | `a3ab2b5d81c55ae629577438eab2f6483b5dcd7a9b6126cf6360d32fd26b7a8c` |
+| [src/core/types.ts](../../src/core/types.ts) | `cf92f2f1576e5f754e72436b073f7b5909ca162e1cc21f41834f70ef36377b02` |
+| [src/core/services.ts](../../src/core/services.ts) | `823b7c83efd0fc61314c5511177b32b8863f469454cad5c5288bd04e5e82cf96` |
+| [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
+| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | `b5f0afb361666f5ac78bf16b389f6801336be1537a9bc3a93de4f31e877cd3ca` |
 | [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | `9ae1004077d204fc0c923905c0b35349aaca8caafac72a3c87ec1a4087a89956` |
-| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `1238f16f38c00885e98fdb5c9b65cf3a0c79b7df8cf59ac009749a977f0af2cd` |
+| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `f06269fb81525faba2eb6a46956b0b98131ddddd45b53e17fe1d71ca5a3390f4` |
 
 ### Exact built-in command operation surface
 
@@ -3097,7 +3097,7 @@ export { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from '
 export type { ExecutorCapabilities, ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SandboxConfig, SteeringMode } from './backend-config.js';
 export type { HttpJsonAdapterOptions, ServiceRegistration } from './services.js';
 export type { JsonValue, ServiceAdapter, ServiceCaller, ServiceCapability, ServiceManifest, ServiceRequest } from './service-types.js';
-export type { AgentInfo, AgentInitialInputResult, AgentListFilter, AgentSpawnReceipt, AgentStatus, CloseOptions, CloseReceipt, CollectionSpec, CompleteFileDigest, CompleteFileSnapshot, CompleteFileSnapshotOptions, ConditionalInputReceipt, CreateRuntimeOptions, ErrorInfo, FileEntry, FileReplaceOptions, FileReplaceReceipt, FileSnapshot, FileSnapshotOptions, FileTree, InputMode, InputReceipt, InterruptOptions, InterruptReceipt, PartialFileDigest, PartialFileSnapshot, PendingCleanup, Profile, ResourceError, Runtime, RuntimeEvent, RuntimeFiles, RuntimeState, SendOptions, SpawnOptions, StopOptions, StopReceipt, WorkspaceOptions, } from './types.js';
+export type { AgentAccess, AgentAccessGrant, AgentAccessMutation, AgentAccessPolicy, AgentAccessRequest, AgentInfo, AgentInitialInputResult, AgentListFilter, AgentSpawnReceipt, AgentStatus, CloseOptions, CloseReceipt, CollectionSpec, CompleteFileDigest, CompleteFileSnapshot, CompleteFileSnapshotOptions, ConditionalInputReceipt, CreateRuntimeOptions, ErrorInfo, FileEntry, FileReplaceOptions, FileReplaceReceipt, FileSnapshot, FileSnapshotOptions, FileTree, InputMode, InputReceipt, InterruptOptions, InterruptReceipt, PartialFileDigest, PartialFileSnapshot, PendingCleanup, Profile, ProfileDefinition, ProfileRegistration, ResourceError, Runtime, RuntimeEvent, RuntimeFiles, RuntimeManagementChange, RuntimeManagementSnapshot, RuntimeServiceDefinition, RuntimeServiceRegistration, RuntimeState, SendOptions, ServiceRetirement, SpawnOptions, StopOptions, StopReceipt, WorkspaceOptions, } from './types.js';
 export declare function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
 ```
 
@@ -3105,7 +3105,8 @@ export declare function createRuntime(options: CreateRuntimeOptions): Promise<Ru
 
 ```ts
 import type { ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SteeringMode } from './backend-config.js';
-import type { ServiceRegistry } from './services.js';
+import type { ServiceRegistration, ServiceRegistry } from './services.js';
+import type { ServiceManifest } from './service-types.js';
 export {};
 export interface Profile {
     /** Optional Harness instructions added to the standard startup prompt. */
@@ -3131,6 +3132,7 @@ export interface CreateRuntimeOptions {
     services: ServiceRegistry;
     maxAgents: number;
     outputDir: string;
+    agentAccessPolicy?: AgentAccessPolicy;
 }
 export interface FileEntry {
     readonly encoding: 'utf8' | 'base64';
@@ -3295,6 +3297,9 @@ export type RuntimeEvent = AgentEvent | {
     agentId: string;
 } | {
     type: 'runtimeChanged';
+} | {
+    type: 'management';
+    change: RuntimeManagementChange;
 };
 export type RuntimeState = 'open' | 'closing' | 'closed';
 export interface InterruptOptions {
@@ -3308,9 +3313,9 @@ export interface CloseOptions {
     timeoutMs?: number;
 }
 export interface PendingCleanup {
-    kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report';
+    kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report' | 'service';
     id: string;
-    action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+    action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save' | 'retire-service';
     error?: ErrorInfo;
     resourceKey?: string;
     providerId?: string;
@@ -3341,6 +3346,92 @@ export interface CloseReceipt {
         pending: number;
     };
 }
+export interface ProfileRegistration {
+    readonly actorId?: string;
+    readonly id: string;
+    readonly requestId: string;
+    readonly profile: Profile;
+}
+export interface ProfileDefinition {
+    readonly actorId?: string;
+    readonly id: string;
+    readonly digest: string;
+    readonly sequence: number;
+    readonly profile: Profile;
+}
+export interface RuntimeServiceRegistration {
+    readonly actorId?: string;
+    readonly requestId: string;
+    readonly registration: ServiceRegistration;
+    readonly deploymentRef: string;
+    readonly implementationId: string;
+    readonly ownership: 'run' | 'external';
+}
+export interface ServiceRetirement {
+    readonly actorId?: string;
+    readonly serviceId: string;
+    readonly requestId: string;
+    readonly timeoutMs?: number;
+}
+export interface RuntimeServiceDefinition {
+    readonly actorId?: string;
+    readonly id: string;
+    readonly manifest: ServiceManifest;
+    readonly sequence: number;
+    readonly state: 'ready' | 'retiring' | 'retired';
+    readonly deploymentRef?: string;
+    readonly implementationId?: string;
+    readonly ownership?: RuntimeServiceRegistration['ownership'];
+    readonly error?: ErrorInfo;
+}
+export type AgentAccessRequest = {
+    readonly runtimeId: string;
+    readonly callerId: string;
+    readonly agentId: string;
+} & ({
+    readonly operation: 'access_get';
+} | {
+    readonly operation: 'grant' | 'revoke';
+    readonly serviceId: string;
+    readonly operations: readonly string[];
+});
+export type AgentAccessPolicy = (request: AgentAccessRequest) => boolean;
+export interface AgentAccess {
+    readonly agentId: string;
+    readonly version: number;
+    readonly services: Readonly<Record<string, readonly string[]>>;
+}
+export interface AgentAccessMutation {
+    readonly agentId: string;
+    readonly serviceId: string;
+    readonly operations: readonly string[];
+    readonly requestId: string;
+}
+export type AgentAccessGrant = AgentAccessMutation & {
+    readonly binding?: string;
+};
+export interface RuntimeManagementSnapshot {
+    readonly sequence: number;
+    readonly profiles: readonly ProfileDefinition[];
+    readonly services: readonly RuntimeServiceDefinition[];
+    readonly access: readonly AgentAccess[];
+}
+export type RuntimeManagementChange = {
+    readonly sequence: number;
+    readonly caller: string;
+    readonly requestId: string;
+} & ({
+    readonly operation: 'profile.register';
+    readonly definition: ProfileDefinition;
+} | {
+    readonly operation: 'service.register' | 'service.retire';
+    readonly definition: RuntimeServiceDefinition;
+} | {
+    readonly operation: 'access.grant' | 'access.revoke';
+    readonly access: AgentAccess;
+    readonly serviceId: string;
+    readonly operations: readonly string[];
+});
 export interface Runtime {
     readonly id: string;
     readonly state: RuntimeState;
@@ -3355,6 +3446,25 @@ export interface Runtime {
     onEvent(handler: (event: RuntimeEvent) => void | Promise<void>): () => void;
     stop(agentId: string, options?: StopOptions): Promise<StopReceipt>;
     close(options?: CloseOptions): Promise<CloseReceipt>;
+    readonly profiles: {
+        register(input: ProfileRegistration): Promise<ProfileDefinition>;
+        get(id: string): ProfileDefinition | null;
+        list(): readonly ProfileDefinition[];
+    };
+    readonly access: {
+        get(agentId: string): AgentAccess | null;
+        grant(input: AgentAccessGrant): Promise<AgentAccess>;
+        revoke(input: AgentAccessMutation): Promise<AgentAccess>;
+    };
+    readonly services: {
+        register(input: RuntimeServiceRegistration): Promise<RuntimeServiceDefinition>;
+        get(id: string): RuntimeServiceDefinition | null;
+        list(): readonly RuntimeServiceDefinition[];
+        retire(input: ServiceRetirement): Promise<RuntimeServiceDefinition>;
+    };
+    readonly management: {
+        get(): RuntimeManagementSnapshot;
+    };
     readonly files: RuntimeFiles;
 }
 export interface RuntimeFiles {
@@ -3387,10 +3497,12 @@ export interface ServiceInvocation {
     signal?: AbortSignal;
     recordService?: (record: ServiceInvocationRecord) => void;
     assertAuthorized?: () => void;
+    trackCompletion?: (completion: Promise<void>) => void;
 }
 export interface ServiceInvocationRecord {
     /** One Bridge HTTP attempt, independent of the logical operation identity. */
     attemptId?: string;
+    accessVersion?: number;
     runtimeId: string;
     agentId: string;
     profile: string;
@@ -3415,8 +3527,9 @@ export declare class ServiceRegistry {
 }
 export declare function builtinAgentRegistration(manifest: ServiceManifest, adapter: ServiceAdapter): Readonly<ServiceRegistration>;
 export declare function createInProcessAdapter(implementation: ServiceAdapter): ServiceAdapter;
+export declare function snapshotServiceRegistration(registration: ServiceRegistration): Readonly<ServiceRegistration>;
 export declare function snapshotServiceRegistry(services: ServiceRegistry): Map<string, Readonly<ServiceRegistration>>;
-export declare function invokeService(registration: ServiceRegistration, { operation, input, envelope, caller, signal, recordService, assertAuthorized }: ServiceInvocation, timeoutMs?: number): Promise<JsonValue>;
+export declare function invokeService(registration: ServiceRegistration, { operation, input, envelope, caller, signal, recordService, assertAuthorized, trackCompletion }: ServiceInvocation, timeoutMs?: number): Promise<JsonValue>;
 /** Host-configured HTTP adapter. Its credential never enters Agent environments. */
 export interface HttpJsonAdapterOptions {
     token?: string;
@@ -3487,7 +3600,11 @@ export interface ServiceRequest {
 }
 export interface ServiceAdapter {
     invoke(request: ServiceRequest): JsonValue | Promise<JsonValue>;
-    /** Optional bounded host-only snapshot called during Runtime close. */
+    /** Host confirmation that an uncertain HTTP write cannot continue to change remote state. */
+    confirmQuiescent?(options: {
+        signal: AbortSignal;
+    }): boolean | Promise<boolean>;
+    /** Optional bounded host-only snapshot called during retirement or Runtime close. */
     exportState?(options: {
         signal: AbortSignal;
     }): JsonValue | Promise<JsonValue>;
@@ -3792,6 +3909,8 @@ export interface RuntimeConnectionOptions {
         advertiseHost?: string;
         requestTimeoutMs?: number;
         maxOutputTokens?: number | null;
+        /** Maximum new upstream attempts per Runtime and model alias, including unknown outcomes. */
+        maxRequests?: number;
     };
 }
 export interface OpenSandboxBackendConfig {
@@ -3818,6 +3937,8 @@ export interface OpenSandboxBackendConfig {
         host: string;
         advertiseHost: string;
         requestTimeoutMs?: number;
+        /** Cap new upstream attempts per Runtime and model alias, including unknown outcomes. */
+        maxRequests?: number;
         /** null preserves executor output parameters without a host token clamp. */
         maxOutputTokens?: number | null;
     };

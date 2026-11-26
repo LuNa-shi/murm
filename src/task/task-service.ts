@@ -487,6 +487,9 @@ export class TaskService {
       if (normalizedOperation === 'task_finish' && !replayed) {
         this.#emitExecutionState({ kind: 'execution_finish_accepted', execution_id: result.execution.execution_id });
       }
+      if (normalizedOperation === 'fence_execution' && !replayed) {
+        this.#emitExecutionState({ kind: 'execution_fenced', execution_id: result.execution.execution_id });
+      }
       if (normalizedOperation === 'agent_exit' && !replayed) {
         this.#emitExecutionState({ kind: 'agent_exit_accepted', agent_id: result.agent.agent_id });
       }
