@@ -463,24 +463,36 @@ test("empty and partially written model requests recover when the final record a
   assert.equal(events[0].requestId, "q");
 });
 
-test("record detail rejects replaced and truncated source files", async (t) => {
+test("record detail rejects overwritten, replaced and truncated source files", async (t) => {
   const root = await fixture(t);
   const path = join(root, "evidence.jsonl");
-  await jsonLines(root, "evidence.jsonl", [
+  const rows = [
     { type: "input", agentId: "a", state: "accepted", seq: 1 },
-  ]);
+    { type: "input", agentId: "a", state: "accepted", seq: 2 },
+  ];
+  await jsonLines(root, "evidence.jsonl", rows);
   const reader = await createTraceReader({ root });
   const id = (await reader.listRuns())[0].id;
   const event = (await reader.events(id)).events[0];
-  await writeFile(path, "");
+  // The inode and byte count survive an in-place overwrite.
+  await jsonLines(
+    root,
+    "evidence.jsonl",
+    rows.map((row) => ({ ...row, agentId: "b" })),
+  );
+  await assert.rejects(
+    reader.detail(id, event.id),
+    /source.*changed|source.*replaced/i,
+  );
+  // Retaining the first record while truncating the suffix still invalidates its original source identity.
+  await jsonLines(root, "evidence.jsonl", [rows[0]]);
+  assert.equal((await reader.events(id)).events.length, 0);
   await assert.rejects(
     reader.detail(id, event.id),
     /source.*changed|source.*replaced/i,
   );
   await rm(path);
-  await jsonLines(root, "evidence.jsonl", [
-    { type: "input", agentId: "b", state: "accepted", seq: 1 },
-  ]);
+  await jsonLines(root, "evidence.jsonl", rows);
   await assert.rejects(
     reader.detail(id, event.id),
     /source.*changed|source.*replaced/i,
