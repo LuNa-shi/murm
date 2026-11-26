@@ -297,3 +297,31 @@ test('Notes terminal failure is an error with no native Pi retry classification'
   assert.equal(isRetryableAssistantError(failed), false);
   assert.equal(upstream.receipt().arrivals, 2);
 });
+
+test('Codex Notes fixture uses native exec_command and correlates prefixed tool evidence', async t => {
+  const upstream = await createNotesHarnessUpstream({ executor: 'codex' });
+  t.after(() => upstream.close());
+  const send = input => fetch(upstream.url, { method: 'POST',
+    body: JSON.stringify({ model: 'gpt-5.4', input }) });
+  const rows = [
+    { role: 'writer', cwd: '/workspace/project', process: { pid: 12, starttime: '34' }, author: 'writer', replay: true, conflict: true, forged: true, permission: true },
+    { role: 'reader', cwd: '/workspace/project', process: { pid: 56, starttime: '78' }, author: 'writer', read: true, permission: true },
+    { role: 'followup', cwd: '/workspace/project', process: { pid: 56, starttime: '78' }, sessionId: 'b'.repeat(36), continuity: true, bytes: 200 },
+  ];
+  for (const row of rows) {
+    const command = await (await send([])).text();
+    assert.match(command, /"name":"exec_command"/);
+    const output = 'Chunk ID: fixture\nWall time: 0.01 seconds\nProcess exited with code 0\nOutput:\n' + JSON.stringify(row);
+    assert.equal((await send([{ type: 'function_call_output', call_id: `notes_${row.role}`, output }])).status, 200);
+  }
+  assert.equal(upstream.receipt().failure, undefined);
+  assert.equal(upstream.receipt().accepted, 6);
+  for (const executor of ['pi', 'codex']) {
+    const program = notesHarnessCommand('followup', executor).split("<<'NOTES_HARNESS'\n")[1].split('\nNOTES_HARNESS')[0];
+    const pattern = program.split('match=re.fullmatch(')[1].split(',sessions')[0];
+    const filename = executor === 'codex'
+      ? 'rollout-2026-11-25T20-01-02-12345678-1234-1234-1234-123456789abc.jsonl'
+      : '2026-11-25T20-01-02-000Z_12345678-1234-1234-1234-123456789abc.jsonl';
+    await execute('python3', ['-c', `import re; assert re.fullmatch(${pattern}, ${JSON.stringify(filename)})`]);
+  }
+});
