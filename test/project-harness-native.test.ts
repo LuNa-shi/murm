@@ -140,6 +140,9 @@ test('installed TaskPool starts read-only discovery and publishes a taken Task t
   await writeFile(join(project, '.slot'), slot + '\n');
   await writeFile(join(project, 'payload'), Buffer.from([0, 255, 89]), { mode: 0o755 });
   await writeFile(join(project, '.env.example'), 'PROJECT_FLAG=enabled\n');
+  await mkdir(join(project, '.swarm'));
+  await writeFile(join(project, '.swarm', 'workspace.json'), '{"project":true}\n');
+  await writeFile(join(project, '.swarm-staging'), 'ordinary file\n');
   const evidence = await createNativeEvidenceDirectory('project-taskpool');
   const prompt = 'Use the project slot to prepare an evidence file and publish it in the Mission Workspace.';
   const script = `python3 - <<'MURM_PROJECT_TEST'
@@ -154,6 +157,8 @@ def verify_tree():
  assert os.stat('payload').st_mode & stat.S_IXUSR
  assert open('.slot').read().strip()
  assert open('.env.example').read().strip() == 'PROJECT_FLAG=enabled'
+ assert json.load(open('.swarm/workspace.json')) == {'project':True}
+ assert open('.swarm-staging').read().strip() == 'ordinary file'
 verify_tree()
 try:
  open('before-take.txt','w').close()
@@ -240,6 +245,8 @@ export default config;
   assert.match(mode, /^100755 blob/);
   const { stdout: configExample } = await execute('git', ['-C', workspace.path, 'show', `${workspace.commit}:.env.example`]);
   assert.equal(configExample, 'PROJECT_FLAG=enabled\n');
+  const { stdout: projectMetadata } = await execute('git', ['-C', workspace.path, 'show', `${workspace.commit}:.swarm/workspace.json`]);
+  assert.deepEqual(JSON.parse(projectMetadata), { project: true });
   await assert.rejects(readFile(join(project, 'delivery.txt')), { code: 'ENOENT' });
   assert.deepEqual(await ownedContainers(result.result.runtimeId), []);
   await writeFile(join(evidence, 'verification.json'), JSON.stringify({

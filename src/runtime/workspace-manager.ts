@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, lstat, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, lstat, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative as pathRelative, resolve } from 'node:path';
 import { ERROR_CODES, MurmError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
-import { WorkspaceRepository } from './workspace-repository.js';
+import { isWorkspaceGitPath, WorkspaceRepository } from './workspace-repository.js';
 import {
   assertReadableWorkspacePath,
   normalizeWorkspaceContract,
@@ -58,8 +58,10 @@ async function exists(path: any) {
 
 export class WorkspaceManager {
   declare rootDir: any;
+  readonly projectFileTree: boolean;
 
-  constructor({ rootDir }: any) {
+  constructor({ rootDir, projectFileTree = false }: any) {
+    this.projectFileTree = projectFileTree === true;
     this.rootDir = resolve(requireString(rootDir, 'rootDir'));
   }
 
@@ -96,6 +98,16 @@ export class WorkspaceManager {
     });
   }
 
+  #projectRoot(workspaceRef: string) {
+    return this.projectFileTree ? join(workspaceRef, 'project') : workspaceRef;
+  }
+
+  #projectFile(path: string) {
+    if (!this.projectFileTree) return safePath(path);
+    if (!isWorkspaceGitPath(path)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Invalid Execution project path');
+    return path;
+  }
+
   async #createWorkspace({ executionId, fencingVersion, task, workspaceRef = this.workspacePath(executionId), publicSnapshot, publishedWorkspaceRef = workspaceRef }: any) {
     workspaceRef = this.#assertWorkspacePath(workspaceRef);
     await mkdir(this.rootDir, { recursive: true });
@@ -116,20 +128,26 @@ export class WorkspaceManager {
     const workspaceContract = normalizeWorkspaceContract(taskWorkspace);
     const files = publicSnapshot.files;
     const fileManifest = Object.create(null);
-    const normalizedFiles = Object.entries(files).map(([inputPath, content]: any) => [safePath(inputPath), content]);
+    const projectRoot = this.#projectRoot(workspaceRef);
+    await mkdir(projectRoot, { recursive: true });
+    const modes = this.projectFileTree ? publicSnapshot.file_modes : undefined;
+    const normalizedFiles = Object.entries(files).map(([inputPath, content]: any) => [this.#projectFile(inputPath), content]);
     for (const [relativePath, content] of normalizedFiles) {
-      const target = join(workspaceRef, relativePath);
-      await this.#assertNoSymlinkAncestors(workspaceRef, target);
+      const target = join(projectRoot, relativePath);
+      await this.#assertNoSymlinkAncestors(projectRoot, target);
       await this.#assertWritableFileTarget(target);
       await mkdir(dirname(target), { recursive: true });
-      await writeFile(target, content, 'utf8');
+      const mode = modes?.[relativePath] === 0o755 ? 0o755 : 0o644;
+      await writeFile(target, content, { encoding: 'utf8', mode });
+      if (modes) await chmod(target, mode);
       fileManifest[relativePath] = contentEntry(content);
     }
     validateRequiredWorkspaceInputs(fileManifest, workspaceContract);
     if (stableStringify(fileManifest) !== stableStringify(publicSnapshot.manifest)) {
       throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Initial project bytes do not match the public revision manifest');
     }
-    const gitCommit = (await new WorkspaceRepository().createInitialTree(workspaceRef, files)).commit;
+    const stagingDirectory = this.projectFileTree ? join(workspaceRef, META_DIR, 'git-staging') : undefined;
+    const gitCommit = (await new WorkspaceRepository().createInitialTree(projectRoot, files, { modes, stagingDirectory })).commit;
     const metadata = {
       execution_id: executionId,
       workspace_ref: publishedWorkspaceRef,
@@ -137,7 +155,7 @@ export class WorkspaceManager {
       workspace_revision: 1,
       content_hash: hash({ revision: 1, files: fileManifest }),
       git_commit: gitCommit,
-      git_worktree: publishedWorkspaceRef,
+      git_worktree: this.#projectRoot(publishedWorkspaceRef),
       files: fileManifest,
       workspace_contract: workspaceContract,
       public_workspace_input: Object.fromEntries(Object.entries(publicSnapshot).filter(([key]: any) => key !== 'files')),
@@ -272,11 +290,12 @@ export class WorkspaceManager {
   async #writeRevisionSnapshot(workspaceRef: any, metadata: any) {
     await this.#writeRevisionMetadata(workspaceRef, metadata);
     const snapshotRoot = join(workspaceRef, META_DIR, 'revisions', String(metadata.workspace_revision), 'files');
+    const projectRoot = this.#projectRoot(workspaceRef);
     await mkdir(snapshotRoot, { recursive: true });
     for (const relativePath of Object.keys(metadata.files ?? {})) {
-      const source = join(workspaceRef, relativePath);
+      const source = join(projectRoot, relativePath);
       const target = join(snapshotRoot, relativePath);
-      await this.#assertNoSymlinkAncestors(workspaceRef, source);
+      await this.#assertNoSymlinkAncestors(projectRoot, source);
       await this.#assertReadableFileTarget(source);
       await mkdir(dirname(target), { recursive: true });
       await writeFile(target, await readFile(source));

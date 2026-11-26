@@ -1,6 +1,6 @@
 import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
 import { observeProjectRuntime, projectConfiguration } from '../../src/harnesses/shared/project-runtime.js';
-import { projectError } from '../../src/harnesses/shared/project-input.js';
+import { ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
 import { runMessageHandoff } from './handoff.js';
 import { handoffConfig, type HandoffConfig } from './handoff-config.js';
 
@@ -10,7 +10,7 @@ const messages = {
     const config = await projectConfiguration<HandoffConfig>(context, async () => ({ default: handoffConfig() }));
     for (const ms of [config.workTimeoutMs, config.cleanupTimeoutMs]) {
       if (!Number.isSafeInteger(ms) || ms < 1 || ms > 2_147_483_647) {
-        throw projectError('INVALID_RUN_CONFIGURATION', 'Messages requires finite work and cleanup time limits');
+        throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Messages requires finite work and cleanup time limits');
       }
     }
     const { report, submissions } = await runMessageHandoff({ ...config, outputDir: context.outputDir },

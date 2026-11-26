@@ -6,14 +6,14 @@ import { promisify } from 'node:util';
 import type { FileTree } from '@murm/core';
 import { decodeFileSeed } from '../../../scripts/core-file-seed.js';
 import { isWorkspaceGitPath, WorkspaceRepository } from '../../runtime/workspace-repository.js';
-import { projectError } from './project-input.js';
+import { projectError, ProjectPreflightError } from './project-input.js';
 
 const git = promisify(execFile);
 
 /** Validate before the provisioner makes externally visible changes. */
 export function checkGitProject(files: FileTree) {
   for (const path of Object.keys(files)) {
-    if (!isWorkspaceGitPath(path)) throw projectError('PROJECT_PATH_INVALID', `Team Git does not admit ${JSON.stringify(path)}`);
+    if (!isWorkspaceGitPath(path)) throw new ProjectPreflightError('PROJECT_PATH_INVALID', `Team Git does not admit ${JSON.stringify(path)}`);
   }
 }
 

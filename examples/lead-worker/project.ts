@@ -1,7 +1,7 @@
 import { createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@murm/core';
 import { runLeadWorker } from '../../src/harnesses/lead-worker/index.js';
 import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
-import { projectError } from '../../src/harnesses/shared/project-input.js';
+import { ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
 import { checkGitProject } from '../../src/harnesses/shared/project-git.js';
 import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
 import { deployDynamicContainer } from './dynamic-container.js';
@@ -21,14 +21,14 @@ const leadWorker = {
     const { team = 'static' } = config;
     if ((team !== 'static' && team !== 'dynamic') ||
         (team === 'dynamic' && config.helperCount !== undefined && config.helperCount !== 2)) {
-      throw projectError('INVALID_RUN_CONFIGURATION', 'Choose a static team or a dynamic team with two initial workers');
+      throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Choose a static team or a dynamic team with two initial workers');
     }
     if (config.closeTimeoutMs !== undefined && (!Number.isSafeInteger(config.closeTimeoutMs) ||
         config.closeTimeoutMs < 1 || config.closeTimeoutMs > 60_000)) {
-      throw projectError('INVALID_RUN_CONFIGURATION', 'Lead–Worker requires a close wait of up to 60 seconds');
+      throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Lead–Worker requires a close wait of up to 60 seconds');
     }
     if (Buffer.byteLength(context.input.prompt) > 64 * 1024) {
-      throw projectError('INVALID_HARNESS_INPUT', 'Lead–Worker supports up to 64 KiB of prompt text');
+      throw new ProjectPreflightError('INVALID_HARNESS_INPUT', 'Lead–Worker supports up to 64 KiB of prompt text');
     }
     checkGitProject(context.initial.files);
     let sandbox;
@@ -37,7 +37,7 @@ const leadWorker = {
       sandbox = createSandbox(config.sandbox);
       if (team === 'dynamic') deploy = deployDynamicContainer(config.checkingImage ?? config.image);
     } catch {
-      throw projectError('INVALID_RUN_CONFIGURATION', 'Invalid Lead–Worker Sandbox or dynamic checker image');
+      throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid Lead–Worker Sandbox or dynamic checker image');
     }
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
     try {

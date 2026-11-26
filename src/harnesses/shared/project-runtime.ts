@@ -1,5 +1,5 @@
 import type { Runtime } from '@murm/core';
-import { projectError } from './project-input.js';
+import { ProjectPreflightError } from './project-input.js';
 import type { HarnessJson, ProjectHarnessContext, ProjectHarnessResult } from './project-harness.js';
 
 const json = (value: unknown): HarnessJson => JSON.parse(JSON.stringify(value));
@@ -50,7 +50,7 @@ export async function projectConfiguration<C>(context: ProjectHarnessContext, de
       throw new Error('Missing sandbox, models or image');
     }
   } catch {
-    throw projectError('INVALID_RUN_CONFIGURATION', 'Configure sandbox, models and image for this Harness');
+    throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Configure sandbox, models and image for this Harness');
   }
   context.signal.throwIfAborted();
   return value as C;

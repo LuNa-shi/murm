@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { runSubagentsHarness } from './main.js';
 import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
-import { projectError } from '../../src/harnesses/shared/project-input.js';
+import { projectError, ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
 import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
 
 const subagents = {
@@ -10,11 +10,11 @@ const subagents = {
   input: true,
   async run(context) {
     const config = await projectConfiguration<Parameters<typeof runSubagentsHarness>[0]>(context, () => import('./config.js'));
-    if (config.closeTimeoutMs !== undefined && (!Number.isSafeInteger(config.closeTimeoutMs) ||
-        config.closeTimeoutMs < 1 || config.closeTimeoutMs > 2_147_483_647)) {
-      throw projectError('INVALID_RUN_CONFIGURATION', 'Subagents requires a finite close wait');
+    if (![config.workTimeoutMs ?? 120_000, config.closeTimeoutMs ?? 30_000]
+      .every(limit => Number.isSafeInteger(limit) && limit > 0 && limit <= 2_147_483_647)) {
+      throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Subagents requires finite work and close waits');
     }
-    if (config.workspace) throw projectError('INVALID_RUN_CONFIGURATION', 'The project entry uses private Subagents work directories');
+    if (config.workspace) throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'The project entry uses private Subagents work directories');
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
     try {
       const report = await runSubagentsHarness({

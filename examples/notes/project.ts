@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
 import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
-import { projectError } from '../../src/harnesses/shared/project-input.js';
+import { projectError, ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
 import { createNotes } from './main.js';
 import { runInput } from './run-input.js';
 import { runWithReport } from './run-report.js';
@@ -27,10 +27,10 @@ const notesHarness = {
     const config = await projectConfiguration<Config>(context, () => import('./config.js'));
     const { image, model = 'default', turnTimeoutMs = 30_000, closeTimeoutMs = 30_000 } = config;
     if (![turnTimeoutMs, closeTimeoutMs].every(ms => Number.isSafeInteger(ms) && ms > 0 && ms <= 2_147_483_647) ||
-        typeof image !== 'string' || !image) throw projectError('INVALID_RUN_CONFIGURATION', 'Invalid Notes image or time limit');
+        typeof image !== 'string' || !image) throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid Notes image or time limit');
     let sandbox;
     try { sandbox = createSandbox(config.sandbox); }
-    catch { throw projectError('INVALID_RUN_CONFIGURATION', 'Invalid Notes sandbox configuration'); }
+    catch { throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid Notes sandbox configuration'); }
     const notes = createNotes();
     const common = { image, model, writable: true };
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;

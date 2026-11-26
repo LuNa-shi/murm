@@ -8,7 +8,7 @@ import { WorkspaceManager } from '../../src/runtime/workspace-manager.js';
 import { TaskService } from '../../src/task/task-service.js';
 import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
 import { checkGitProject } from '../../src/harnesses/shared/project-git.js';
-import { projectError } from '../../src/harnesses/shared/project-input.js';
+import { ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
 import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
 import { runTaskPoolHarness } from './harness.js';
 
@@ -30,13 +30,13 @@ const taskpool = {
       closeTimeoutMs = 30_000 } = configuration;
     if (![workTimeoutMs, closeTimeoutMs].every(value => Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647) ||
         !Number.isSafeInteger(capacity) || capacity < 1 || typeof image !== 'string' || !image) {
-      throw projectError('INVALID_RUN_CONFIGURATION', 'TaskPool requires finite work and close time limits, image and capacity');
+      throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'TaskPool requires finite work and close time limits, image and capacity');
     }
     let sandbox;
     try {
       sandbox = createSandbox(configuration.sandbox);
     } catch {
-      throw projectError('INVALID_RUN_CONFIGURATION', 'Invalid TaskPool sandbox configuration');
+      throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid TaskPool sandbox configuration');
     }
     checkGitProject(context.initial.files);
     const entries = decodeFileSeed(context.initial.files).entries;
@@ -48,7 +48,7 @@ const taskpool = {
       contextService = new ContextService(join(context.outputDir, 'context.sqlite'), { taskService });
       const workspaceRoot = join(context.outputDir, 'workspace');
       const missionWorkspace = new MissionWorkspace({ rootDir: workspaceRoot, projectFileTree: true });
-      const workspaceManager = new WorkspaceManager({ rootDir: join(context.outputDir, 'agents') });
+      const workspaceManager = new WorkspaceManager({ rootDir: join(context.outputDir, 'agents'), projectFileTree: true });
       const missionId = `mission:${context.runId}`;
       const workspaceId = context.runId;
       taskService.createMission({ mission_id: missionId, goal: context.input.prompt }, makeEnvelope({ actorRef: 'host' }));

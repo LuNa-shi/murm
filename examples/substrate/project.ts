@@ -1,7 +1,7 @@
 import { createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@murm/core';
 import { runSubstrate } from '../../src/harnesses/substrate/index.js';
 import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
-import { projectError } from '../../src/harnesses/shared/project-input.js';
+import { ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
 import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
 import type { substrateConfiguration } from './project-config.js';
 
@@ -15,14 +15,14 @@ const substrate = {
     const configuration = await projectConfiguration<Configuration>(context,
       async () => ({ default: (await import('./project-config.js')).substrateConfiguration() }));
     if (Buffer.byteLength(context.input.prompt) > 8192) {
-      throw projectError('INVALID_HARNESS_INPUT', 'Substrate supports up to 8 KiB of prompt text');
+      throw new ProjectPreflightError('INVALID_HARNESS_INPUT', 'Substrate supports up to 8 KiB of prompt text');
     }
     const { sandbox, connection, models, image, model, poolSize, maxRounds, workTimeoutMs, turnTimeoutMs, closeTimeoutMs } = configuration;
     let sandboxHandle;
     try {
       sandboxHandle = createSandbox(sandbox);
     } catch {
-      throw projectError('INVALID_RUN_CONFIGURATION', 'Invalid Substrate sandbox configuration');
+      throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid Substrate sandbox configuration');
     }
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
     try {

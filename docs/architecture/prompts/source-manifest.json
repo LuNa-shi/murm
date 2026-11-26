@@ -63,15 +63,15 @@
     },
     {
       "path": "examples/notes/project.ts",
-      "sha256": "dd5ac4002a59267ae8eec380ae1951d46bacf63e5ccd15e494dccad8335d87e5"
+      "sha256": "54cd3a1c150495d0c7f80b871baa10cde4e11ee1c5db85bd36b5ecf1fd630387"
     },
     {
       "path": "examples/taskpool/project.ts",
-      "sha256": "7324b00c8412c9a35b5716852a256c8b2dc08b6727e4f79aa1fa2c4f45a0d400"
+      "sha256": "5864ca45f1c0d217fa18fe549a2adfe96b9df56b45a5864b7c4dd4f11f4fea6c"
     },
     {
       "path": "src/harnesses/shared/project-git.ts",
-      "sha256": "543888a465c5ed14cc87ece646fa9e2b53b704cf90900804657363f3ead3a049"
+      "sha256": "44be9eadb684a596a85195bf6208a3c65f24f0be69539460bf7eca5311516e6f"
     },
     {
       "path": "src/harnesses/shared/run-input.ts",
@@ -79,11 +79,11 @@
     },
     {
       "path": "src/harnesses/substrate/index.ts",
-      "sha256": "fca69a8a92690ec2b13a8b302e09295d82ede413a5951c09fb552721792800b2"
+      "sha256": "52402b70c20d127b3c0cf3f2ec8eea6e31c8eb7b07e799e4d274fcf952c7b04d"
     },
     {
       "path": "src/harnesses/substrate/substrate.ts",
-      "sha256": "b615779757e7229bc60eef1e2aa968d3227f18befbd7fb2c415b7e4541a0d6b6"
+      "sha256": "86b8926e4743b2b16d036ef7771f6a68eca5f57140c24643c8b5017548ef8f37"
     },
     {
       "path": "examples/taskpool/controller.ts",
@@ -348,43 +348,43 @@
     {
       "path": "src/harnesses/substrate/index.ts",
       "anchor": "export const peerPrompt = '",
-      "line": 8,
+      "line": 9,
       "sha256": "80f964edecba1ce3c7c40cfb732799bdfb7ae96699d39185e2f6635555a6daeb"
     },
     {
       "path": "src/harnesses/substrate/substrate.ts",
       "anchor": "purpose: '",
-      "line": 91,
+      "line": 92,
       "sha256": "0a5954f75ed9fac077a64924acfeeb5b9d0871937b25133d43f17756ab349700"
     },
     {
       "path": "src/harnesses/substrate/substrate.ts",
       "anchor": "capability('publish', '",
-      "line": 93,
+      "line": 94,
       "sha256": "6467664b40aa318b9471d337f8aff53a5ae1306c1371c6c623bfe4eb3559b5a8"
     },
     {
       "path": "src/harnesses/substrate/substrate.ts",
       "anchor": "capability('visit', '",
-      "line": 94,
+      "line": 95,
       "sha256": "2ba12cb0a0ff3527b9894ca1582cb29e63d19a6f5e65441a21161867a5adadc8"
     },
     {
       "path": "src/harnesses/substrate/substrate.ts",
       "anchor": "capability('search', '",
-      "line": 95,
+      "line": 96,
       "sha256": "fbf343059b480fcf7250e0cfe40d58971d1f9151239e1416fa224c4f05973d5d"
     },
     {
       "path": "src/harnesses/substrate/index.ts",
       "anchor": "export const cyclePrompt = '",
-      "line": 9,
+      "line": 10,
       "sha256": "c783b6377a748f73ae5b941513f362f67a9ef7155f6da56671047e8af5182df4"
     },
     {
       "path": "src/harnesses/substrate/index.ts",
       "anchor": "                  const text = ",
-      "line": 101,
+      "line": 102,
       "sha256": "b3e9b0b92a6fbc3eec0a9e5903b3944b28a194009884d169e9fcc163a769f877"
     },
     {

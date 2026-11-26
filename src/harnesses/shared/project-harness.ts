@@ -4,7 +4,7 @@ import { registerHooks } from 'node:module';
 import { homedir, tmpdir } from 'node:os';
 import { extname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { captureProject, isInside, projectError, resolveProjectDirectory } from './project-input.js';
+import { captureProject, isInside, projectError, ProjectPreflightError, resolveProjectDirectory } from './project-input.js';
 import { saveReport } from './run-report.js';
 
 export type HarnessInput = Readonly<{ cwd: string; prompt: string }>;
@@ -269,7 +269,7 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
       business = await Promise.race([work(), stopDeadline.promise]);
     } catch (error) {
       const code = failureCode(error, enteredHarness ? 'HARNESS_RUN_FAILED' : 'PROJECT_CAPTURE_FAILED');
-      const preflight = phase === 'starting' && (isLaunchError(code) || code === 'PROJECT_PATH_INVALID');
+      const preflight = error instanceof ProjectPreflightError;
       const documented = isLaunchError(code) ||
         /^(PROJECT_(?:FILE_|PATH_|SOURCE_|GIT|LFS)|HARNESS_STOP_TIMEOUT|RUN_STOPPING)/.test(code);
       const message = documented && error instanceof Error ? error.message : 'Harness operation failed';

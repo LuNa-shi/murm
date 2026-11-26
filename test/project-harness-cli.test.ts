@@ -409,3 +409,27 @@ test('failed report persistence preserves separate business, export and cleanup 
     return true;
   });
 });
+
+test('startup error from a loaded module preserves unconfirmed cleanup', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-project-external-startup-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const project = join(directory, 'project');
+  await mkdir(project);
+  const module = join(directory, 'harness.mjs');
+  await writeFile(module, `
+    import { writeFile } from 'node:fs/promises';
+    import { join } from 'node:path';
+    export default {id:'startup-fixture', apiVersion:1, async run(context) {
+      await writeFile(join(context.outputDir, 'allocated'), 'owned resource marker');
+      throw Object.assign(new Error('Configuration rejected after allocation'), {code:'INVALID_RUN_CONFIGURATION'});
+    }};
+  `);
+  await assert.rejects(execute(process.execPath, [cli, '--harness', module, '--cwd', project,
+    '--prompt', 'A task', '--output-dir', join(directory, 'output')], { cwd: directory, timeout: 10_000 }), error => {
+    const { result } = JSON.parse(error.stdout);
+    assert.equal(result.reason, 'INVALID_RUN_CONFIGURATION');
+    assert.equal(result.cleanup.status, 'pending');
+    assert.deepEqual(result.cleanup.pending, ['harness-cleanup-unconfirmed']);
+    return true;
+  });
+});

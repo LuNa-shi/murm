@@ -151,16 +151,18 @@ export class WorkspaceRepository {
 
   async initialize(root: any) { await git(root, ['init', '--initial-branch=main', '--template=', root]); }
 
-  async createInitialTree(root: any, files: any) {
+  async createInitialTree(root: string, files: Record<string, string | Uint8Array>, { modes, stagingDirectory }: {
+    modes?: Readonly<Record<string, 0o644 | 0o755>>;
+    stagingDirectory?: string;
+  } = {}) {
     await this.initialize(root);
-    const imported = await this.importTree(root, files, [], 'Initial Execution project input');
+    const imported = await this.importTree(root, files, [], 'Initial Execution project input', modes, stagingDirectory);
     gitSync(root, ['update-ref', 'refs/heads/main', imported.commit, ZERO]);
     gitSync(root, ['read-tree', '--reset', imported.commit]);
     return imported;
   }
 
-  async importTree(root: any, files: any, parentCommits: any, message: any, modes?: Readonly<Record<string, 0o644 | 0o755>>) {
-    const stageRoot = join(root, '.swarm-staging');
+  async importTree(root: any, files: any, parentCommits: any, message: any, modes?: Readonly<Record<string, 0o644 | 0o755>>, stageRoot = join(root, '.swarm-staging')) {
     await mkdir(stageRoot, { recursive: true });
     const stage = await mkdtemp(join(stageRoot, 'tree-'));
     const worktree = join(stage, 'files');

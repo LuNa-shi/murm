@@ -2,7 +2,7 @@ import { createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@m
 import { addAbortListener } from 'node:events';
 import { runPeerMeshTeam } from '../../src/harnesses/peermesh/team.js';
 import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
-import { projectError } from '../../src/harnesses/shared/project-input.js';
+import { ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
 import { checkGitProject } from '../../src/harnesses/shared/project-git.js';
 import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
 import { peerMeshConfig } from './project-config.js';
@@ -16,15 +16,15 @@ const peerMesh = {
     const config = await projectConfiguration<Config>(context, async () => ({ default: peerMeshConfig() }));
     const { durationMs = 120_000 } = config;
     if (!Number.isSafeInteger(durationMs) || durationMs < 1 || durationMs > 86_400_000) {
-      throw projectError('INVALID_RUN_CONFIGURATION', 'Invalid PeerMesh work window');
+      throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid PeerMesh work window');
     }
     if (Buffer.byteLength(context.input.prompt) > 16_000) {
-      throw projectError('INVALID_HARNESS_INPUT', 'PeerMesh project issues support up to 16,000 prompt bytes');
+      throw new ProjectPreflightError('INVALID_HARNESS_INPUT', 'PeerMesh project issues support up to 16,000 prompt bytes');
     }
     checkGitProject(context.initial.files);
     let sandbox;
     try { sandbox = createSandbox(config.sandbox); }
-    catch { throw projectError('INVALID_RUN_CONFIGURATION', 'Invalid PeerMesh sandbox configuration'); }
+    catch { throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid PeerMesh sandbox configuration'); }
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
     try {
       const report = await runPeerMeshTeam({

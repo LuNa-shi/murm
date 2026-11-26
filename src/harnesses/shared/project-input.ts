@@ -18,6 +18,15 @@ export function projectError(code: string, message: string) {
   return Object.assign(new Error(message), { code });
 }
 
+export class ProjectPreflightError extends TypeError {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
 export function resolveHarnessInput(value: unknown, launchDirectory: string) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
       Object.keys(value).some(key => key !== 'cwd' && key !== 'prompt')) {
