@@ -67,7 +67,7 @@
     },
     {
       "path": "examples/substrate/fate-run.ts",
-      "sha256": "035d93dc94141f229f217504ed566778f6636f2fdb25eed946b09a864cd80b1c"
+      "sha256": "b9ecbfc3bd5a8fcf9099039952fd0d8f12d7767fb2c1cdd0796da1eec68d538e"
     },
     {
       "path": "examples/substrate/fate-service.ts",

@@ -336,11 +336,17 @@ export async function runFateSubstrate({
         let checkpointTimer: ReturnType<typeof setTimeout> | undefined;
         let checkpointWrite: Promise<void> | undefined;
         if (checkpointAfterMs !== undefined) {
-          const scheduledAt = new Date(openedAt + checkpointAfterMs).toISOString();
-          checkpointTimer = setTimeout(() => {
+          const scheduledMs = openedAt + checkpointAfterMs;
+          const scheduledAt = new Date(scheduledMs).toISOString();
+          const captureCheckpoint = () => {
             const activePeers = [...peers.values()];
             if (remainingMs() === 0 || !activePeers.some(peer => peer.active)) return;
-            const capturedAt = new Date().toISOString();
+            const capturedMs = Date.now();
+            if (capturedMs < scheduledMs) {
+              checkpointTimer = setTimeout(captureCheckpoint, scheduledMs - capturedMs);
+              return;
+            }
+            const capturedAt = new Date(capturedMs).toISOString();
             const path = join(directory, 'fate-work-checkpoint.json');
             checkpointWrite = (async () => {
               try {
@@ -357,7 +363,8 @@ export async function runFateSubstrate({
                 checkpoint = { state: 'failed', afterMs: checkpointAfterMs, scheduledAt, capturedAt, code: 'FATE_CHECKPOINT_FAILED' };
               }
             })();
-          }, checkpointAfterMs);
+          };
+          checkpointTimer = setTimeout(captureCheckpoint, Math.max(0, scheduledMs - Date.now()));
         }
         const initialInput = verifiedCompletion ? fateVerifiedInput(workTimeoutMs) : fateInput;
         const workDone = Promise.all([...peers.values()].map(async peer => {
