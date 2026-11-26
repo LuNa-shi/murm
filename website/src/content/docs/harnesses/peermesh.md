@@ -1,65 +1,36 @@
 ---
 title: PeerMesh
-description: Peer-to-peer engineering team coordinating through overlapping Board claims, team chat channels, per-peer serial routers, and Git pull requests.
+description: Peer-to-peer engineering team coordinating through overlapping Board claims, team chat, direct messages during work, and verified Git pull requests.
 section: BUILT-IN HARNESSES
 order: 8
 ---
 
-**PeerMesh** *(repository module: `src/environments/agensh`)* models a flat team of peer engineers without a central dispatcher or exclusive locks. Peers develop on personal Git branches, post overlapping soft intentions (`CLAIM`) and progress (`FACT`, `PATCH_SUMMARY`) on a shared Board, negotiate splits in team chat, and open PRs merged by host verification. Source code: [src/environments/agensh](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments/agensh).
+**PeerMesh** *(repository module: `src/harnesses/peermesh`)* models a flat team of peer engineers without a central dispatcher or exclusive locks. Peers develop on personal Git branches, post overlapping soft intentions (`CLAIM`) and progress (`FACT`, `PATCH_SUMMARY`) on a shared Board, negotiate splits in team chat, and open PRs merged by host verification. Source code: [src/harnesses/peermesh](https://github.com/LuNa-shi/SwarmEnv/tree/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/peermesh).
 
-## 1. Registered Services
+## 1. Start a project team
 
-Before spawning agents, the host provisions an isolated Gitea repository, Mattermost channel, per-peer credentials, and a local Board process, exposing three scoped Services ([services.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/agensh/services.ts)):
+The [installed PeerMesh example](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/peermesh/README.md) uses `createPeerMeshTeam({ project, ... })`. The host creates an isolated Gitea repository, a Mattermost channel, a Board and separate peer accounts. Every peer receives the same project issue after its Session and event subscriptions are ready. Peers choose their own work and Git branches in the run repository.
 
-| Service | Operations | Guardrails |
-| --- | --- | --- |
-| **`agensh-context`** | `board_read`, `board_write`, `board_grep`, `board_unfold` | Soft overlapping `CLAIM`, `FACT`, `OBSERVED`, `FAIL`, `PATCH_SUMMARY` rendered per `viewer` |
-| **`message`** | `post_message` | Scoped strictly to the run's `channel_id`; Mattermost tokens stay in the host adapter |
-| **`gitea`** | `issue_read`, `issue_write`, `pull_request_write` | PRs allowed only from the peer's own `WORK_BRANCH` into `main`; direct merges stay host-only |
+| Service | What peers use it for |
+| --- | --- |
+| `peermesh-context` | Read, search and post Board entries. Overlapping claims are advisory. |
+| `message` | Post run-channel messages, discover other peers, send private messages and read their own inbox. |
+| `gitea` | Read project work, open and discuss pull requests, and request verified merges. |
 
-Native `git clone / commit / push` inside the sandbox communicates with Gitea via `Profile.network.allow` and per-peer `secretEnv`.
+Each peer can use native Git against the allowlisted Gitea origin with its own credentials. When a peer calls `swarm gitea pull_request_merge` with the PR and expected head SHA, the host verifies the caller, repository, PR and pinned commit before merging into protected `main`. A stale head requires a fresh check. After a response with unknown outcome, inspect or reconcile the same head.
 
-## 2. Runtime primitives used
+## 2. Route events during active work
 
-1. **Per-peer Profiles & `bindings`**: `createAgenshTeam` creates dedicated Profiles (`peer-a`, `peer-b`, …), injects `WORK_BRANCH` / `RUN_REPOSITORY` / `RUN_CHANNEL` via `Profile.env`, restricts outbound network to Gitea, binds external accounts via `spawn({ bindings })`, and delivers each peer's `GITEA_TOKEN` through `secretEnv`.
-2. **Required Git archive (`collect`)**: every peer spawns with `collect: { paths: ['.'], includeGit: true, maxBytes: exportLimit, required: true }` so unpushed commits and working trees are always preserved.
-3. **Serial `followUp` batching**: each peer has one dedicated router feeding `runInput` (`mode: 'followUp'`), ensuring one batch of external events settles cleanly before the next starts.
+The host polls paginated external events and tracks delivery for each peer. A private message or new Board entry can reach a running Session through Core steer at Pi’s next execution boundary. Other events are prepared for the next turn. The router records admission and outcome. In the separate setup without a project file, it serializes follow-up batches and PR delivery uses the configured peer branch.
 
-## 3. Host control loop
+## 3. Freeze, archive and verify
 
-Each peer runs an independent **EventSource → Router** loop ([router.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/agensh/router.ts)):
-
-```ts
-// 1. Ingest Mattermost mentions and Gitea events into each peer's router
-eventSource.onExternalEvent((event) => {
-  // Deduplicates by [source, eventId, targetWorker] and ignores self-authored events
-  router.ingest(event);
-});
-
-// 2. Serial pump attaching a fresh Board snapshot before every turn
-async function pump() {
-  while (accepting && queue.length) {
-    const batch = queue.shift()!;
-    const boardContext = await readContext({ signal });
-    const payload = `${routerInstruction}\n${JSON.stringify({ ...batch, context: boardContext })}`;
-
-    await runInput(runtime, peerBotId, payload, {
-      requestId: batch.requestId,
-      timeoutMs: turnTimeoutMs,
-    });
-  }
-
-  // Optionally schedule an idle nudge when the queue stays quiet
-  scheduleIdleNudgeIfConfigured();
-}
-```
-
-When peers open PRs, [delivery.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/agensh/delivery.ts) (`createAgenshDelivery`) checks author, branch, pinned commit SHA, and target `main` before merging. On teardown, routers stop first, `runtime.close()` confirms container export and deletion, and only then are the Board process and temporary credentials torn down.
+At the deadline the host fences new delivery and fixes the current `main` commit. It exports that tree and records its archive digest. Core stops and archives each peer’s Pi Session and required private workspace before releasing the sandbox. The Harness records merge receipts, the fixed commit, router activity, archive paths and cleanup outcomes in its report.
 
 ## Source files
 
-- Team assembly: [src/environments/agensh/team.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/agensh/team.ts)
-- Serial router & nudges: [src/environments/agensh/router.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/agensh/router.ts)
-- Service wrappers: [src/environments/agensh/services.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/agensh/services.ts)
-- Host PR verification: [src/environments/agensh/delivery.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/agensh/delivery.ts)
-- Package walkthrough: [examples/agensh-environment/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/examples/agensh-environment/README.md)
+- Team assembly: [src/harnesses/peermesh/team.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/peermesh/team.ts)
+- Serial router & nudges: [src/harnesses/peermesh/router.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/peermesh/router.ts)
+- Service wrappers: [src/harnesses/peermesh/services.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/peermesh/services.ts)
+- Host PR verification: [src/harnesses/peermesh/delivery.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/peermesh/delivery.ts)
+- Package walkthrough: [examples/peermesh/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/peermesh/README.md)

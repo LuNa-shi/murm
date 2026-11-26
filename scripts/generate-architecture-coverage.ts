@@ -15,12 +15,13 @@ const safe = (path: any) => typeof path === 'string' && path !== '' && !path.sta
 // runtime inputs. They can contain dependency symlinks and must never affect
 // the tracked source inventory.
 const skipRoots = new Set(['.git', '.worktree', '.worktrees', '.claude', 'node_modules', 'dist', '.codex', 'docs', 'test', 'test-support', 'experiments', 'reports']);
+const skipPaths = new Set(['third_party/agensh', 'website/.astro', 'website/dist', 'website/node_modules']);
 async function walk(directory: any, prefix: any = ''): Promise<any>  {
   const files: any[] = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (prefix === '' && skipRoots.has(entry.name)) continue;
     const path = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (path === 'third_party/agensh') continue; // External Git submodule, inventoried at the integration boundary.
+    if (skipPaths.has(path)) continue;
     if (entry.isSymbolicLink()) throw new Error(`Source inventory needs an explicit symlink policy: ${path}`);
     if (entry.isDirectory()) files.push(...await walk(resolve(directory, entry.name), path));
     else if (entry.isFile()) files.push(path);

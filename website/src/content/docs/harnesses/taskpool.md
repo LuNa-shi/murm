@@ -5,7 +5,7 @@ section: BUILT-IN HARNESSES
 order: 7
 ---
 
-**TaskPool** *(repository module: `src/environments/flat`)* is built for long-running projects where individual workers may time out or rotate. There is no permanent manager: identical participants discover work from a shared **Task** pool, publish immutable **Materials**, and merge verified changes into a versioned **Workspace `main`**. Source code: [src/environments/flat](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments/flat).
+**TaskPool** *(repository module: `src/harnesses/taskpool`)* is built for long-running projects where individual workers may time out or rotate. There is no permanent manager: identical participants discover work from a shared **Task** pool, publish immutable **Materials**, and merge verified changes into a versioned **Workspace `main`**. Source code: [src/harnesses/taskpool](https://github.com/LuNa-shi/SwarmEnv/tree/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool).
 
 ## 1. Registered Services
 
@@ -22,11 +22,11 @@ TaskPool combines three Runtime mechanisms to enforce strict task ownership:
 
 ### 1. Read-only discovery followed by `files.prepare` + `files.grant`
 
-Every `researcher` starts with **`writable: false`**. Until it successfully claims a task via `swarm task take T1`, it cannot write to its workspace. Once claimed, [task-handoff.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/flat/task-handoff.ts) runs a four-step handoff on the host:
+Every `researcher` starts with **`writable: false`**. Until it successfully claims a task via `swarm task take T1`, it cannot write to its workspace. Once claimed, [task-handoff.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/task-handoff.ts) runs a four-step handoff on the host:
 
 ```ts
 // 1. Assemble input files from the pinned public workspace version and cited materials
-const inputs = await prepareFlatInputs({ execution, missionWorkspace, contextService });
+const inputs = await prepareTaskPoolInputs({ execution, missionWorkspace, contextService });
 
 // 2. Stage files into the empty read-only directory and obtain a trusted PreparedFiles handle
 const prepared = await runtime.files.prepare(agentId, {
@@ -45,21 +45,21 @@ await runtime.files.grant({ requestId: `${handoffId}:grant`, prepared });
 
 Consider a classic lease-expiry race:
 
-> Worker A holds a 5-minute lease on Task 1 and stalls. At minute 5, the controller reclaims Task 1 and assigns it to Worker B. During the seconds before Worker A's container finishes tearing down, Worker A might still fire another model call on stale state.
+> Agent A holds a five-minute lease on Task 1 and stalls. When the lease expires, its container may still be running while cleanup proceeds. The Model Gateway denies inference under the stale lease. The controller can refill the slot after it confirms cleanup.
 
-`modelAccessPolicy` attaches a synchronous gate right in front of the host **Model Gateway** ([model-access-policy.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/flat/model-access-policy.ts)):
+`modelAccessPolicy` attaches a synchronous gate right in front of the host **Model Gateway** ([model-access-policy.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/model-access-policy.ts)):
 
 ```ts
 const modelAccessPolicy: ModelAccessPolicy = {
   authorize(caller) {
-    const bot = taskService.getBot(caller.botId);
-    if (!bot || isStopping()) return null; // deny immediately
+    const agent = taskService.getAgent(caller.agentId);
+    if (!agent || isStopping()) return null; // deny immediately
 
-    if (bot.state === 'UNBOUND') {
-      return { phase: 'selection', deadlineAt: Date.parse(bot.selection_deadline) };
+    if (agent.state === 'UNBOUND') {
+      return { phase: 'selection', deadlineAt: Date.parse(agent.selection_deadline) };
     }
-    const exec = taskService.getExecution(bot.execution_id);
-    if (bot.state !== 'ACTIVE' || exec?.state !== 'RUNNING') return null;
+    const exec = taskService.getExecution(agent.execution_id);
+    if (agent.state !== 'ACTIVE' || exec?.state !== 'RUNNING') return null;
 
     return {
       phase: 'work',
@@ -83,24 +83,24 @@ TaskPool separates turn completion (`settled`) from task completion (`task finis
 
 ## 3. Host control loop
 
-[controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/flat/controller.ts) runs a dual **event + heartbeat reconciliation loop**:
+[controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/controller.ts) runs a dual **event + heartbeat reconciliation loop**:
 
 ```ts
 // Track 1: Event-driven continuation & finish handling
 runtime.onEvent((event) => {
   if (event.type !== 'settled') return;
-  const { owner, execution } = readDomainState(event.botId);
+  const { owner, execution } = readDomainState(event.agentId);
 
   if (owner?.state === 'CLOSING' || execution?.state === 'CLOSING') {
-    void stopAndRefill(event.botId, 'task-finish');
+    void stopAndRefill(event.agentId, 'task-finish');
   } else if (owner?.state === 'ACTIVE' && execution?.state === 'RUNNING') {
-    void runtime.send(event.botId, buildContinuationMessage(execution), {
-      requestId: `continue:${event.botId}:${event.seq}`,
+    void runtime.send(event.agentId, buildContinuationMessage(execution), {
+      requestId: `continue:${event.agentId}:${event.seq}`,
       mode: 'followUp',
     });
   } else if (owner?.state === 'UNBOUND') {
-    void runtime.send(event.botId, FLAT_DISCOVERY_MESSAGE, {
-      requestId: `discovery:${event.botId}:${event.seq}`,
+    void runtime.send(event.agentId, AGENT_DISCOVERY_MESSAGE, {
+      requestId: `discovery:${event.agentId}:${event.seq}`,
       mode: 'followUp',
     });
   }
@@ -112,7 +112,7 @@ setInterval(() => void reconcileAndRefill(), heartbeatMs);
 
 ## Source files
 
-- Entrypoint: [src/environments/flat/environment.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/flat/environment.ts)
-- Reconciliation controller: [src/environments/flat/controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/flat/controller.ts)
-- File handoff: [src/environments/flat/task-handoff.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/flat/task-handoff.ts)
-- Model lease gate: [src/environments/flat/model-access-policy.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/flat/model-access-policy.ts)
+- Entrypoint: [src/harnesses/taskpool/harness.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/harness.ts)
+- Reconciliation controller: [src/harnesses/taskpool/controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/controller.ts)
+- File handoff: [src/harnesses/taskpool/task-handoff.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/task-handoff.ts)
+- Model lease gate: [src/harnesses/taskpool/model-access-policy.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/model-access-policy.ts)

@@ -1,45 +1,51 @@
 ---
 title: Types & Mapping
-description: Public TypeScript definitions for @swarmenv/core 0.2.0 (ac72c76) and their mapping to murm concepts.
+description: Public TypeScript definitions for @murm/core 0.2.0 (f98eb71d0eac61ac99a1b98a9d04ef353f781fec) and their mapping to murm concepts.
 section: REFERENCE
 order: 13
 ---
 
-Complete public TypeScript definitions matching `@swarmenv/core` `0.2.0` at commit [`ac72c76`](https://github.com/LuNa-shi/SwarmEnv/commit/ac72c76).
+Selected public TypeScript declarations from `@murm/core` `0.2.0` at commit [`f98eb71d`](https://github.com/LuNa-shi/SwarmEnv/commit/f98eb71d0eac61ac99a1b98a9d04ef353f781fec).
 
 ## Concept-to-code mapping
 
 | `murm` concept | Package symbol / directory | Source file |
 | --- | --- | --- |
-| `Runtime` | `createRuntime`, `Runtime` | [src/core/types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/core/types.ts) |
-| `Agent` | `BotInfo`, `BotStatus`, `BotEvent`, `Profile` | [src/core/types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/core/types.ts) |
-| `Service` | `ServiceRegistry`, `ServiceManifest`, `ServiceAdapter`, `ServiceRequest` | [src/core/service-types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/core/service-types.ts) |
-| `Sandbox` | `createPiOpenSandboxBackend`, `PiOpenSandboxBackendConfig` | [src/core/backend-config.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/core/backend-config.ts) |
-| `Harness` | `Environment` (`src/environments/*`, `examples/*-environment/`) | [src/environments/](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments) |
-| `Run` | `runtime.id` + `outputDir/<runtimeId>/` + `CloseReceipt` | [src/core/run-records.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/core/run-records.ts) |
+| `Runtime` | `createRuntime`, `Runtime` | [src/core/types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/core/types.ts) |
+| `Agent` | `AgentInfo`, `AgentStatus`, `AgentEvent`, `Profile` | [src/core/types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/core/types.ts) |
+| `Service` | `ServiceRegistry`, `ServiceManifest`, `ServiceAdapter`, `ServiceRequest` | [src/core/service-types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/core/service-types.ts) |
+| `Sandbox` | `createPiOpenSandboxBackend`, `PiOpenSandboxBackendConfig` | [src/core/backend-config.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/core/backend-config.ts) |
+| `Harness` | `src/harnesses/` and `examples/` | [src/harnesses/](https://github.com/LuNa-shi/SwarmEnv/tree/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses) |
+| `Run` | `runtime.id` + `outputDir/<runtimeId>/` + `CloseReceipt` | [src/core/run-records.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/core/run-records.ts) |
 
 ## Runtime control surface
 
 ```ts
 export interface Runtime {
   readonly id: string;
-  spawn(options: SpawnOptions): Promise<BotInfo>;
-  get(botId: string): Promise<BotInfo>;
-  list(filter?: BotListFilter): Promise<BotInfo[]>;
-  start(botId: string, input: string, options: { requestId: string }): Promise<InputReceipt>;
-  steer(botId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
-  interrupt(botId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>;
-  send(botId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
-  send(botId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
-  onEvent(handler: (event: BotEvent) => void): () => void;
-  stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
+  spawn(options: SpawnOptions): Promise<AgentInfo>;
+  get(agentId: string): Promise<AgentInfo>;
+  list(filter?: AgentListFilter): Promise<AgentInfo[]>;
+  start(agentId: string, input: string, options: { requestId: string }): Promise<InputReceipt>;
+  steer(agentId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
+  interrupt(agentId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>;
+  send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
+  send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
+  onEvent(handler: (event: AgentEvent) => void): () => void;
+  stop(agentId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
   readonly files: {
     snapshot(
-      botId: string,
+      agentId: string,
       options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }
     ): Promise<FileSnapshot>;
-    prepare(botId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
+    installStatus(agentId: string, options: { requestId: string }): Promise<FileInstall | null>;
+    install(
+      agentId: string,
+      options: { requestId: string; expected: FileSnapshot; files: FileSeed }
+    ): Promise<FileInstall>;
+    confirm(agentId: string, options: { requestId: string }): Promise<FileInstall>;
+    prepare(agentId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
     grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
   };
 }
@@ -49,7 +55,7 @@ export interface Runtime {
 
 ```ts
 export interface Profile {
-  prompt: string;
+  prompt?: string;
   model: string;
   image: string;
   writable: boolean;
@@ -65,7 +71,7 @@ export interface CreateRuntimeOptions {
   backend: Backend;
   profiles: Readonly<Record<string, Profile>>;
   services: ServiceRegistry;
-  maxBots: number;
+  maxAgents: number;
   outputDir: string;
   modelAccessPolicy?: ModelAccessPolicy;
 }
@@ -83,13 +89,13 @@ export interface SpawnOptions {
   collect?: CollectionSpec;
 }
 
-export type BotStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+export type AgentStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
 
-export interface BotInfo {
+export interface AgentInfo {
   id: string;
   profile: string;
   parentId?: string;
-  status: BotStatus;
+  status: AgentStatus;
   cursor: number;
   latestOutput?: string;
   lastError?: ErrorInfo;
@@ -127,7 +133,7 @@ export interface InterruptReceipt {
   discardedInputHashes?: readonly string[];
 }
 
-export type BotEvent = { botId: string; seq: number } & (
+export type AgentEvent = { agentId: string; seq: number } & (
   | { type: 'output'; text: string }
   | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
   | { type: 'error'; error: ErrorInfo; fatal: boolean }
@@ -153,7 +159,7 @@ export interface ServiceManifest {
 
 export interface ServiceCaller {
   runtimeId: string;
-  botId: string;
+  agentId: string;
   profile: string;
   binding?: string;
 }
@@ -182,7 +188,7 @@ export interface ModelPermit {
 export interface ModelAccessPolicy {
   authorize(caller: {
     readonly runtimeId: string;
-    readonly botId: string;
+    readonly agentId: string;
     readonly profile: string;
     readonly model: string;
   }): ModelPermit | null;

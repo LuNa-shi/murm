@@ -246,6 +246,12 @@ Profile 由宿主建立并冻结。`model` 选择 backend 配置中的模型别�
 
 `Profile.network.allow` 指定额外目标；Bridge 与模型 gateway 自动加入。当前 backend 首版只接受非 loopback IPv4 字面量的 HTTP(S) origin，按目标 IP/port 放行。Gitea 同一端点的 REST 操作仍受该账户的 upstream ACL 约束，不提供 Git-only 路径限制。此能力需要修改当前只允许 Bridge 与 gateway 的网络规则。[当前网络隔离](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/runtime/docker-bot-network.js)
 
+#### Core 启动提示与 Service 发现
+
+Core 统一装配普通 Agent 的初始 system prompt。开头介绍隔离 Sandbox 和 `swarm` CLI，随后在 `<tools>` 中列出四项原生工具，并在 `<services>` 中列出已注册且当前 Profile 获准调用的操作。目录使用与 `swarm service list` 相同的权限过滤，显示 Service 用途、操作命令和简短说明。详细参数通过操作命令的 `--help` 或 `swarm service view <id>` 查阅。Bridge 调用仍按可信身份与当前权限校验。普通启动不注入 Pi 开发文档目录。
+
+`Profile.prompt` 可选，默认留空。Harness 需要角色或协作说明时，Core 将其追加为 `<added_system_prompt>`。项目、Mission 或子任务通过后续 user message 发送。[已确认规范](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7163618408)
+
 ### 6.2 Service 注册与可信调用
 
 采用 `ServiceRegistry.registerService({manifest, adapter})` 和 `adapter.invoke(request)`。注册表装配、操作发现与 Bash 入口沿用现有结构。HTTP 接入遵循同一个 ServiceAdapter 合同，由 Harness 选择和配置具体实现。新通用 manifest 的合同版本在附录 A 标为 `2`：保留操作名、schema、help、side\_effect、idempotent 与错误定义，将旧 `bound / recovery` audience 和 Task/Execution 上下文校验交还 TaskPool 兼容适配。旧 v1 manifest 必须显式转换，不能静默忽略领域授权。[Registry](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/sdk/service-registry.js) · [manifest](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/sdk/service-manifest.js)

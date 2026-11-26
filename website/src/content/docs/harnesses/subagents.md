@@ -5,11 +5,11 @@ section: BUILT-IN HARNESSES
 order: 6
 ---
 
-**Subagents** models a lead agent (`/root`) that breaks down a problem, spawns named child agents recursively, coordinates via messages in real time, and integrates their work. Source code: [examples/subagents-environment](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/examples/subagents-environment).
+**Subagents** models a lead agent (`/root`) that breaks down a problem, spawns named child agents recursively, coordinates via messages in real time, and integrates their work. Source code: [examples/subagents](https://github.com/LuNa-shi/SwarmEnv/tree/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/subagents).
 
 ## 1. Registered Service
 
-Instead of exposing raw `bot` primitives directly to the model, Subagents registers a domain-specific **`collaboration` Service** ([collaboration-service.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/examples/subagents-environment/collaboration-service.ts)) that gives every participant a hierarchical path (`/root`, `/root/reviewer`, up to `maxDepth`):
+Instead of exposing raw `agent` primitives directly to the model, Subagents registers a domain-specific **`collaboration` Service** ([collaboration-service.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/subagents/collaboration-service.ts)) that gives every participant a hierarchical path (`/root`, `/root/reviewer`, up to `maxDepth`):
 
 | Operation | Example Arguments | Host Behavior |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ Instead of exposing raw `bot` primitives directly to the model, Subagents regist
 
 ## 3. Host control loop
 
-Strip away validation and [controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/examples/subagents-environment/controller.ts) revolves around each member's `inbox` and `wait` handle:
+Strip away validation and [controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/subagents/controller.ts) revolves around each member's `inbox` and `wait` handle:
 
 ```ts
 // 1. Offer a message to a member without disturbing idle agents
@@ -55,7 +55,7 @@ async function offer(member: Member, message: Message) {
 
 // 2. Forward completed child turns to their direct parent
 runtime.onEvent((event) => {
-  const member = byId.get(event.botId);
+  const member = byId.get(event.agentId);
   if (!member?.parent) return;
   if (event.type === 'settled' && event.outcome !== 'aborted') {
     const resultMsg = buildChildResultMessage(member, event);
@@ -69,7 +69,7 @@ User prompts from CLI or `--interactive` mode call `submit(root, ...)`, flushing
 
 ## 4. End-to-end validation (ProgramBench `fd`)
 
-In [EXP-20261125-10](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/docs/experiments/EXP-20261125-10-issue199-fd.md), Subagents ran with 3 slots (`/root` + 2 children) on a shared workspace for a 1-hour rebuild of `fd 10.3.0`:
+In [EXP-20261125-10](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/docs/experiments/EXP-20261125-10-issue199-fd.md), Subagents ran with 3 slots (`/root` + 2 children) on a shared workspace for a 1-hour rebuild of `fd 10.3.0`:
 
 - **Measured concurrency**: `/root` spawned `/root/probe_patterns` and `/root/probe_filters` with **515 seconds** of overlapping child model execution;
 - **Verified adoption**: `/root/probe_filters` authored 66 filter tests handed off to `/root`, exposing 38 failures that `/root` fixed to green;
@@ -78,6 +78,6 @@ In [EXP-20261125-10](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/docs/expe
 
 ## Source files
 
-- Entrypoint & interactive CLI: [examples/subagents-environment/main.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/examples/subagents-environment/main.ts)
-- Controller & mailbox: [examples/subagents-environment/controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/examples/subagents-environment/controller.ts)
-- Service manifest: [examples/subagents-environment/collaboration-service.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/examples/subagents-environment/collaboration-service.ts)
+- Entrypoint & interactive CLI: [examples/subagents/main.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/subagents/main.ts)
+- Controller & mailbox: [examples/subagents/controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/subagents/controller.ts)
+- Service manifest: [examples/subagents/collaboration-service.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/subagents/collaboration-service.ts)

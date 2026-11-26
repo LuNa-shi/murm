@@ -5,11 +5,11 @@ section: BUILT-IN HARNESSES
 order: 10
 ---
 
-**Lead-Worker** *(repository module: `src/environments/lead-helper`)* fits teams that need one clear owner of direction while forcing field constraints discovered during execution back into the next round of planning. One **lead** and 2–7 **workers** (`helper` roles in code) coordinate through a local SQLite **Board** and personal Gitea branches. Source code: [src/environments/lead-helper](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments/lead-helper).
+**Lead-Worker** *(repository module: `src/harnesses/lead-worker`)* fits teams that need one clear owner of direction while forcing field constraints discovered during execution back into the next round of planning. One **lead** and 2–7 **workers** (`helper` roles in code) coordinate through a local SQLite **Board** and personal Gitea branches. Source code: [src/harnesses/lead-worker](https://github.com/LuNa-shi/SwarmEnv/tree/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/lead-worker).
 
 ## 1. Registered Services
 
-Lead-Worker registers two Services with asymmetric role permissions ([board.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/lead-helper/board.ts)):
+Lead-Worker registers two Services with asymmetric role permissions ([board.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/lead-worker/board.ts)):
 
 - **`board` (transactional SQLite state machine)**:
   - `lead`: `read`, `list_subtasks`, `announce` (set/revise direction), `assign`, `create_subtask`, `update_subtask`, `note`.
@@ -23,13 +23,13 @@ The `board` Service enforces three strict invariants:
 
 ## 2. Runtime primitives used
 
-- **Fixed team with isolated credentials**: spawns `lead` and `helper1..helperN` upfront with distinct Profiles, Gitea `bindings`, `secretEnv.GITEA_TOKEN`, and required `collect(includeGit: true)`. Built-in `bot` Service is disabled.
+- **Fixed team with isolated credentials**: spawns `lead` and `helper1..helperN` upfront with distinct Profiles, Gitea `bindings`, `secretEnv.GITEA_TOKEN`, and required `collect(includeGit: true)`. Built-in `agent` Service is disabled.
 - **Fatal failure fence**: `runtime.onEvent` watches for any `fatal` error or unexpected `exit`, calling `board.fence()` to freeze writes while preserving ownership state and failure artifacts.
 - **Staged turn orchestration**: uses `runInput` across alternating lead/worker stages in persistent sessions.
 
 ## 3. Host control loop
 
-[src/environments/lead-helper/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/lead-helper/index.ts) implements the two-round `runWorkflow` (and extensible `runStage` with candidate verification):
+[src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/lead-worker/index.ts) implements the two-round `runWorkflow` (and extensible `runStage` with candidate verification):
 
 ```ts
 // Step 1: Lead publishes initial direction, assignments, and ready subtasks
@@ -63,7 +63,7 @@ On close, the host waits for `runtime.close()` to confirm all Git checkouts are 
 
 ## Source files
 
-- Orchestrator (`runWorkflow` / `runStage`): [src/environments/lead-helper/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/lead-helper/index.ts)
-- SQLite Board & causal checks: [src/environments/lead-helper/board.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/lead-helper/board.ts)
-- Gitea provisioning & delivery verification: [src/environments/lead-helper/git.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/lead-helper/git.ts)
-- Usage guide: [examples/lead-helper-environment/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/examples/lead-helper-environment/README.md)
+- Orchestrator (`runWorkflow` / `runStage`): [src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/lead-worker/index.ts)
+- SQLite Board & causal checks: [src/harnesses/lead-worker/board.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/lead-worker/board.ts)
+- Gitea provisioning & delivery verification: [src/harnesses/lead-worker/git.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/lead-worker/git.ts)
+- Usage guide: [examples/lead-worker/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/lead-worker/README.md)

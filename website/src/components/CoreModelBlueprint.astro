@@ -2,17 +2,17 @@
 const CONCEPTS = {
   all: {
     tag: 'OVERVIEW',
-    code: 'createRuntime({ backend, profiles, services, maxBots, outputDir })',
+    code: 'createRuntime({ backend, profiles, services, maxAgents, outputDir })',
     note: 'Author on the top plane; let murm isolate, bridge, and archive everything below the boundary.',
   },
   harness: {
     tag: 'HARNESS · AUTHORING',
-    code: 'runtime.onEvent((e) => runtime.send(targetId, nextTask))  // src/environments/*',
+    code: 'runtime.onEvent((e) => runtime.send(targetId, nextTask))  // src/harnesses/*',
     note: 'Your host TypeScript logic deciding who spawns, how events route, and when a run finishes.',
   },
   agent: {
     tag: 'AGENT · AUTHORING',
-    code: 'runtime.spawn({ requestId, profile: "worker", forkFrom? })  // BotInfo · Profile',
+    code: 'runtime.spawn({ requestId, profile: "worker", forkFrom? })  // AgentInfo · Profile',
     note: 'An independent worker with a persistent Pi session, private workspace, and 4 local tools.',
   },
   service: {
@@ -32,7 +32,7 @@ const CONCEPTS = {
   },
   run: {
     tag: 'RUN · EXECUTION',
-    code: 'outputDir/<runId>/{runtime.json, evidence.jsonl, service-calls.jsonl, bots/}',
+    code: 'outputDir/<runtimeId>/{runtime.json, evidence.jsonl, service-calls.jsonl, <agentId>/}',
     note: 'One concrete execution archived to disk with redacted traces, native sessions, and reports.',
   },
 };
@@ -60,7 +60,7 @@ const CONCEPTS = {
       <button type="button" class="cm-cell" data-cm-item="agent">
         <span class="cm-cell-head">
           <code>Agent</code>
-          <span class="cm-pill cm-pill-author">Bot</span>
+          <span class="cm-pill cm-pill-author">Agent</span>
         </span>
         <span class="cm-cell-desc">Persistent session · 4 local tools</span>
       </button>

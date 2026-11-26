@@ -5,11 +5,11 @@ section: BUILT-IN HARNESSES
 order: 9
 ---
 
-**Substrate** *(repository module: `src/environments/scalemas`)* shows how minimal a multi-agent Harness can be: no task table, no central manager, and no private messages. Three to eight equal peers research concurrently around one **immutable shared substrate** — searching and reading prior findings, then publishing self-contained follow-ups with explicit citations. Source code: [src/environments/scalemas](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments/scalemas).
+**Substrate** *(repository module: `src/harnesses/substrate`)* shows how minimal a multi-agent Harness can be: no task table, no central manager, and no private messages. Three to eight equal peers research concurrently around one **immutable shared substrate** — searching and reading prior findings, then publishing self-contained follow-ups with explicit citations. Source code: [src/harnesses/substrate](https://github.com/LuNa-shi/SwarmEnv/tree/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate).
 
 ## 1. Registered Service
 
-Substrate registers a single SQLite-backed **`substrate` Service** ([substrate.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/scalemas/substrate.ts)) with three operations:
+Substrate registers a single SQLite-backed **`substrate` Service** ([substrate.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate/substrate.ts)) with three operations:
 
 | Operation | Input | Storage & Ordering Guarantees |
 | --- | --- | --- |
@@ -22,25 +22,25 @@ Because published entries are immutable, revising an earlier claim means publish
 ## 2. Runtime primitives used
 
 Substrate touches only four baseline Runtime calls:
-- `createRuntime({ services: substrate.services, maxBots: poolSize, profiles: { peer } })`
+- `createRuntime({ services: substrate.services, maxAgents: poolSize, profiles: { peer } })`
 - `runtime.spawn({ profile: 'peer', files: { 'question.txt': ... } })`
 - `runInput` (`runtime.send(..., { mode: 'followUp' })` + `settled` wait)
 - `runtime.stop(peerId)` (retires each peer cleanly once its rounds finish while `substrate.sqlite` remains intact)
 
 ## 3. Host control loop
 
-In [src/environments/scalemas/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/scalemas/index.ts), `Promise.all` drives every peer independently through `maxRounds` turns (with optional `maxConcurrentInputs` throttling and an `onCycle` correction hook):
+In [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate/index.ts), `Promise.all` drives every peer independently through `maxRounds` turns (with optional `maxConcurrentInputs` throttling and an `onCycle` correction hook):
 
 ```ts
-// 1. Spawn poolSize equal peers and register their botIds in substrate
+// 1. Spawn poolSize equal peers and register their agentIds in substrate
 for (let i = 0; i < poolSize; i++) {
-  const bot = await runtime.spawn({
+  const agent = await runtime.spawn({
     requestId: `peer:${i}`,
     profile: 'peer',
     files: { 'question.txt': { encoding: 'utf8', data: question } },
   });
-  substrate.bindPeer(bot.id);
-  peers.push(bot);
+  substrate.bindPeer(agent.id);
+  peers.push(agent);
 }
 
 // 2. Drive all peers concurrently across maxRounds turns inside persistent sessions
@@ -65,11 +65,17 @@ await Promise.all(
 
 ## 4. Verifying cross-agent knowledge reuse
 
-[collaboration-evidence.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/scalemas/collaboration-evidence.ts) audits the SQLite publish table alongside `substrate_reads` to verify the complete causal chain: **(1) an artifact persists after its author stops → (2) another peer runs `search` and `visit` on it → (3) that peer publishes a new artifact explicitly citing that address**.
+[collaboration-evidence.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate/collaboration-evidence.ts) audits the SQLite publish table alongside `substrate_reads` to verify the complete causal chain: **(1) an artifact persists after its author stops → (2) another peer runs `search` and `visit` on it → (3) that peer publishes a new artifact explicitly citing that address**.
+
+## FATE example
+
+The [Substrate example](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/substrate/README.md) also includes FATE-M, FATE-H and FATE-X configurations. The host fixes the problem and work window and independently grades frozen Lean candidates. The selected condition exposes a shared library, private libraries, or no library. With `fate.verifiedCompletion: true`, a peer can finish early only after Lean passes on the exact proof it submits. An unfinished reply can be followed up in the same Session within the work window.
+
+The 30-minute verified-completion run on FATE-X problem 31 recorded reuse of another peer’s Lean code. The four frozen candidates all failed independent grading. [Run report](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/docs/experiments/EXP-20261125-20-scalemas-fatex-verified.md)
 
 ## Source files
 
-- Concurrent round driver: [src/environments/scalemas/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/scalemas/index.ts)
-- SQLite substrate: [src/environments/scalemas/substrate.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/scalemas/substrate.ts)
-- Collaboration evidence checker: [src/environments/scalemas/collaboration-evidence.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/scalemas/collaboration-evidence.ts)
-- Usage guide: [examples/scalemas-environment/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/examples/scalemas-environment/README.md)
+- Concurrent round driver: [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate/index.ts)
+- SQLite substrate: [src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate/substrate.ts)
+- Collaboration evidence checker: [src/harnesses/substrate/collaboration-evidence.ts](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/substrate/collaboration-evidence.ts)
+- Usage guide: [examples/substrate/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/examples/substrate/README.md)

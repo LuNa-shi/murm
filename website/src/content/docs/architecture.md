@@ -22,7 +22,7 @@ Containers do not run a bare Pi process. A lightweight trusted **Worker** launch
 
 Separating Worker from Pi solves two practical multi-agent problems:
 
-1. **Controlled file handoffs**: `files.prepare`, `files.grant`, and `files.snapshot` execute through the Worker. It can briefly pause active writers, capture a consistent snapshot, or flip directory write permissions without granting Pi extra OS privileges.
+1. **Controlled file handoffs**: `files.prepare`, `files.grant`, `files.snapshot`, and the guarded install flow execute through the Worker. It can briefly pause active writers, capture a consistent snapshot, or flip directory write permissions without granting Pi extra OS privileges.
 2. **Archive-before-delete teardown**: when stopping an agent, the Runtime instructs Worker to terminate Pi first (freezing disk state) while keeping Worker alive to stream the native Pi session and `collect` artifacts back to the host before deleting the container.
 
 ## 3. How a Service call crosses the Bridge
@@ -31,17 +31,17 @@ When an agent executes `swarm <service> <operation>` inside Bash, the call moves
 
 ![How a Service Call Crosses the Bridge: 5-Step Verified Pipeline](../../assets/images/service-bridge-flow.jpg)
 
-1. **Container command**: `swarm` automatically attaches the container-scoped `SWARMENV_BRIDGE_TOKEN` and posts JSON to the host Service Bridge.
+1. **Container command**: `swarm` automatically attaches the container-scoped `MURM_BRIDGE_TOKEN` and posts JSON to the host Service Bridge.
 2. **Token & ACL check**: the Bridge resolves the real `agentId` and `profile`, then verifies `Profile.services` permits the requested operation. Unauthorized calls fail immediately with `403 NOT_ALLOWED`.
 3. **Strict JSON Schema validation**: `ServiceRegistry` validates inputs against `manifest.input_schema` (draft-07) before business code ever runs.
-4. **Trusted caller injection & execution**: the Bridge constructs an unforgeable `caller` (`runtimeId`, `botId`, `profile`, and optional `binding`) and invokes either the in-process function or remote HTTP Service.
+4. **Trusted caller injection & execution**: the Bridge constructs an unforgeable `caller` (`runtimeId`, `agentId`, `profile`, and optional `binding`) and invokes either the in-process function or remote HTTP Service.
 5. **Output validation & trace tape**: responses are checked against `output_schema`, returned to the agent, and durably appended to `service-calls.jsonl`.
 
 ### How agents discover available Services
 
-Agents can inspect their permitted capabilities at any time via `swarm service list` and `swarm service view <id>`, complemented by role instructions in `Profile.prompt`.
+Agents can inspect their permitted capabilities at any time via `swarm service list` and `swarm service view <id>` for full operation schemas.
 
-As the `murm` prompt model evolves, this discovery path unifies into **`system prompt + tools + services`**: at startup, the Runtime generates a compact capability index directly from `Profile.services` and registered manifests (keeping detailed schemas on-demand via `swarm service view`), so registering a new Service automatically surfaces to every authorized agent without repetitive prompt boilerplate.
+Core composes the initial system prompt at Agent startup. Core adds a runtime preamble, a `<tools>` section, and a `<services>` section before any `Profile.prompt` role instructions. The Services section shows a CLI command and description for each operation granted by the frozen Profile and registered manifest, plus guidance on requesting help. For an operation that conflicts with a built-in CLI command, the section shows `swarm service invoke <service> <operation>`. Pi provides its four local tool definitions separately.
 
 ## 4. Model Gateway path
 
@@ -53,19 +53,19 @@ All `/v1/responses` calls from Pi flow through the host **Model Gateway**:
 
 ## 5. Durable Run directory layout
 
-All run records are written under `outputDir/<runId>/` with secrets and `secretEnv` automatically redacted to `[redacted]`:
+Core writes Run records under `outputDir/<runtimeId>/`. It redacts registered credentials in its traces. The records and archived files may still contain private prompts, tool results and project contents. Harnesses that use the reporting helper also save a separate delivery report.
 
 ```text
-outputDir/<runId>/
+outputDir/<runtimeId>/
 ├── runtime.json                 # Effective config, stop receipts, cleanup verdict
 ├── evidence.jsonl               # Ordered lifecycle, input, and event timeline
-├── service-calls.jsonl          # Every Service call: caller, input, output, error
+├── service-calls.jsonl          # Private Service trace, including inputs and results
 ├── service-state.<id>.json      # Optional per-Service state snapshots on close
 ├── model-trace/<attemptId>/     # Raw request.json, response.txt, result.json
-├── bots/<agentId>/
+├── <agentId>/
 │   ├── session/                 # Native Pi JSONL conversation archive
 │   └── artifacts/files/         # Files exported via Profile/Spawn collect specs
-└── environment-report.json      # Harness delivery outcome & independent error slots
+└── harness-report.json      # Harness delivery outcome & independent error slots
 ```
 
 Next, read [Anatomy of a Run](../run-lifecycle/) to walk through these primitives inside a concrete multi-turn collaboration.

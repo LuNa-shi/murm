@@ -4,7 +4,7 @@ Repository TypeScript sources compile with `npm run build` into `dist/`. `npm pa
 
 Give Root a task. Root looks for independent work it can delegate early, chooses the assignments, and works on a complementary part while the team is active. A Child can delegate again. Team members can send notices, assign more work, wait and interrupt. A Child's result goes to its direct parent.
 
-This example requires Node.js 22.19 or newer and the same local Docker OpenSandbox provider and Pi 1.3.0 Worker image as the [Notes example](../notes-environment/README.md). Build and install a tarball in an independent directory:
+This example requires Node.js 22.19 or newer and the same local Docker OpenSandbox provider and Pi 1.3.0 Worker image as the [Notes example](../notes/README.md). Build and install a tarball in an independent directory:
 
 ```sh
 repo=/absolute/path/to/murm

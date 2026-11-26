@@ -5,7 +5,7 @@ section: DEVELOPERS
 order: 11
 ---
 
-Building a new multi-agent system in `murm` means writing a plain TypeScript **Harness** against `@swarmenv/core` — zero edits to the Runtime, Worker image, or `swarm` CLI.
+Building a new multi-agent system in `murm` means writing a plain TypeScript **Harness** against `@murm/core` — zero edits to the Runtime, Worker image, or `swarm` CLI.
 
 Every Harness combines four building blocks: **shared Services**, **role Profiles**, a **host control loop**, and **resilient closeout**.
 
@@ -19,14 +19,14 @@ Every Harness combines four building blocks: **shared Services**, **role Profile
 
 A Service pairs a declarative **manifest** (operations + JSON Schemas) with either an **in-process function** (`createInProcessAdapter`) or an **HTTP adapter** (`createHttpJsonAdapter`).
 
-Below is a production-ready local Service pattern demonstrating three key habits: **trusting the Runtime-injected `caller`**, **idempotent retries**, and **calling `assertAuthorized()` right before mutating state**:
+Below is an in-process Service example demonstrating three key habits: **trusting the Runtime-injected `caller`**, **idempotent retries**, and **calling `assertAuthorized()` right before mutating state**:
 
 ```ts
 import {
   ServiceRegistry,
   createInProcessAdapter,
   type ServiceManifest,
-} from '@swarmenv/core/services';
+} from '@murm/core/services';
 
 const notesManifest: ServiceManifest = {
   id: 'notes',
@@ -96,13 +96,13 @@ export function createNotesService() {
         if (capability.operation === 'get') return existing ?? null;
 
         if (existing) {
-          if (existing.author === caller.botId && existing.text === req.text) return existing;
+          if (existing.author === caller.agentId && existing.text === req.text) return existing;
           throw Object.assign(new Error('Key already exists with different content'), { code: 'CONFLICT' });
         }
 
         // Confirm the caller is still authorized right before committing state
         assertAuthorized();
-        const entry = { key: req.key, text: req.text!, author: caller.botId };
+        const entry = { key: req.key, text: req.text!, author: caller.agentId };
         records.set(req.key, entry);
         return entry;
       },
@@ -122,7 +122,7 @@ If your Service runs in a separate process, switch `endpoint` to `{ transport: '
 Use Profiles to pair role instructions with hard runtime permissions:
 
 ```ts
-import type { Profile } from '@swarmenv/core';
+import type { Profile } from '@murm/core';
 
 const profiles: Record<string, Profile> = {
   researcher: {
@@ -144,28 +144,28 @@ const profiles: Record<string, Profile> = {
 ```
 
 Common optional capabilities:
-- **Let agents spawn sub-agents**: grant built-in `bot` operations (`{ bot: ['spawn', 'get', 'send', 'stop'] }`), restrict allowed roles with `spawnProfiles`, enable context inheritance via `allowContextFork: true`, or wrap them in a domain Service like [Subagents](../harnesses/subagents/).
+- **Let agents spawn sub-agents**: grant built-in `agent` operations (`{ agent: ['spawn', 'get', 'send', 'stop'] }`), restrict allowed roles with `spawnProfiles`, enable context inheritance via `allowContextFork: true`, or wrap them in a domain Service like [Subagents](../harnesses/subagents/).
 - **Share a repository across agents**: pass `workspace: { id: 'shared-repo', mode: 'read-write' }` in `runtime.spawn()`.
-- **Access internal services (such as Gitea)**: whitelist the origin in `Profile.network.allow` and inject per-agent tokens via `spawn({ secretEnv })`.
+- **Access internal services (such as Gitea)**: allow the origin in `Profile.network.allow` and pass required container credentials in `spawn({ secretEnv })`.
 
 ## 4. Write the host control loop (three standard patterns)
 
 ```ts
-import { createRuntime } from '@swarmenv/core';
-import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
+import { createRuntime } from '@murm/core';
+import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
 
 const runtime = await createRuntime({
   backend: createPiOpenSandboxBackend(config.backend),
   services,
   profiles,
-  maxBots: 4,
+  maxAgents: 4,
   outputDir: './runs',
 });
 ```
 
 ### Pattern A: Serial turn helper (fixed pipelines or parallel fixed rounds)
 
-When each agent has a single input source and runs one turn at a time, reuse [runInput](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/shared/run-input.ts):
+When each agent has a single input source and runs one turn at a time, reuse [runInput](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/shared/run-input.ts):
 
 ```ts
 const researcher = await runtime.spawn({ requestId: 'spawn-1', profile: 'researcher', files: seedFiles });
@@ -177,29 +177,30 @@ await runInput(runtime, researcher.id, 'Audit parser boundaries and publish note
 
 ### Pattern B: Event + non-waking mailbox (dynamic delegation & real-time messaging)
 
-Listen to `runtime.onEvent`, attempt non-waking `steer` delivery first, and buffer in a per-agent mailbox if the recipient is idle:
+Listen to `runtime.onEvent`, attempt non-waking `steer` delivery first, and buffer only when the recipient is confirmed idle. The functions in this sketch represent Harness-owned routing and persistence.
 
 ```ts
 runtime.onEvent((event) => {
   if (event.type !== 'settled') return;
-  const payload = JSON.stringify({ from: event.botId, outcome: event.outcome, output: event.output ?? '' });
+  const payload = JSON.stringify({ from: event.agentId, outcome: event.outcome, output: event.output ?? '' });
   void runtime.send(targetId, payload, {
-    requestId: `deliver:${event.botId}:${event.seq}`,
+    requestId: `deliver:${event.agentId}:${event.seq}`,
     mode: 'steer',
     wakeIfIdle: false,
   }).then((receipt) => {
     if (receipt.status === 'not-accepted') enqueueMailbox(targetId, payload);
-  });
+    if (receipt.status === 'unknown') recordUncertainDelivery(event, payload);
+  }).catch(recordDeliveryError);
 });
 ```
 
 ### Pattern C: Reconciliation loop (task pools, leases, and automatic replacement)
 
-Treat your domain database as the source of truth: on `settled`, continue with `mode: 'followUp'` if the business task is still active; run a periodic `setInterval` to renew heartbeats, stop expired workers, and refill idle slots (see [TaskPool Controller](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/flat/controller.ts)).
+Treat your domain database as the source of truth: on `settled`, continue with `mode: 'followUp'` if the business task is still active; run a periodic `setInterval` to renew heartbeats, stop expired workers, and refill idle slots (see [TaskPool Controller](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/taskpool/controller.ts)).
 
 ## 5. Resilient closeout and verification
 
-Wrap your Harness with [runWithReport](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/shared/run-report.ts) so **harness errors**, **cleanup errors**, and **report-save errors** are preserved independently without masking one another:
+Wrap your Harness with [runWithReport](https://github.com/LuNa-shi/SwarmEnv/blob/f98eb71d0eac61ac99a1b98a9d04ef353f781fec/src/harnesses/shared/run-report.ts) so **harness errors**, **cleanup errors**, and **report-save errors** are preserved independently without masking one another:
 
 ```ts
 const report = await runWithReport({
@@ -209,14 +210,13 @@ const report = await runWithReport({
   async run(runtime) {
     return { delivered: true };
   },
-  afterClose: async () => {
-    // Tear down external resources only after the Runtime confirms container cleanup
-    await closeExternalResources();
+  afterClose: async (cleanup: CloseReceipt) => {
+    if (cleanup.cleanup === 'complete') await closeExternalResources();
   },
 });
 ```
 
-After your first run finishes, inspect `outputDir/<runId>/` (`runtime.json`, `evidence.jsonl`, `service-calls.jsonl`, and `bots/*/artifacts/files/`) to verify three invariants:
+After your first run finishes, inspect `outputDir/<runtimeId>/` (`runtime.json`, `evidence.jsonl`, `service-calls.jsonl`, and `<agentId>/artifacts/files/`) to verify three invariants:
 1. Agents spawned and overlapped as intended;
 2. Downstream agents actually read upstream Service outputs and acted on them;
 3. `runtime.json` reports `cleanup: 'complete'` with every required deliverable archived.

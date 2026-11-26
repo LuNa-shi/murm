@@ -5,15 +5,15 @@ section: REFERENCE
 order: 12
 ---
 
-This reference matches `@swarmenv/core` `0.2.0` at commit [`ac72c76`](https://github.com/LuNa-shi/SwarmEnv/commit/ac72c76). See [Types & Mapping](../types/) for complete TypeScript declarations.
+This reference matches `@murm/core` `0.2.0` at commit [`f98eb71d`](https://github.com/LuNa-shi/SwarmEnv/commit/f98eb71d0eac61ac99a1b98a9d04ef353f781fec). See [Types & Mapping](../types/) for selected TypeScript declarations and links to the source.
 
 ## Package entrypoints
 
 | Entrypoint | Exports | Purpose |
 | --- | --- | --- |
-| `@swarmenv/core` | `createRuntime` | Create a Runtime instance for one Run |
-| `@swarmenv/core/services` | `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`, `builtinBotRegistration`, `getAdapterMetadata`, `invokeService`, `isJson`, `snapshotServiceRegistry` | Register and invoke Services |
-| `@swarmenv/core/backends/pi-opensandbox` | `createPiOpenSandboxBackend` | Configure the Pi/OpenSandbox execution backend |
+| `@murm/core` | `createRuntime` | Create a Runtime instance for one Run |
+| `@murm/core/services` | `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`, `builtinAgentRegistration`, `getAdapterMetadata`, `invokeService`, `isJson`, `snapshotServiceRegistry` | Register and invoke Services |
+| `@murm/core/backends/pi-opensandbox` | `createPiOpenSandboxBackend` | Configure the Pi/OpenSandbox execution backend |
 
 ## `createRuntime(options)`
 
@@ -23,17 +23,17 @@ createRuntime(options: CreateRuntimeOptions): Promise<Runtime>
 
 - `backend`: single-use backend handle from `createPiOpenSandboxBackend()` (cannot be shared across multiple Runtimes).
 - `profiles`: map of role name → `Profile`, frozen on creation; unknown model aliases or Service operations fail immediately.
-- `services`: populated `ServiceRegistry` (ID `bot` is reserved for the built-in bot Service).
-- `maxBots`: positive integer bounding concurrent resource slots.
+- `services`: populated `ServiceRegistry` (ID `agent` is reserved for the built-in agent Service).
+- `maxAgents`: positive integer bounding concurrent resource slots.
 - `outputDir`: root directory; run artifacts are written to `outputDir/<runtime.id>/`.
 - `modelAccessPolicy` *(optional)*: synchronous Model Gateway hook (`authorize(caller): ModelPermit | null`, `withCommit(commit)`) for lease-gated harnesses such as [TaskPool](../../harnesses/taskpool/).
 
 ## Agent lifecycle: `spawn`, `get`, `list`
 
 ```ts
-runtime.spawn(options: SpawnOptions): Promise<BotInfo>
-runtime.get(botId: string): Promise<BotInfo>
-runtime.list(filter?: BotListFilter): Promise<BotInfo[]>
+runtime.spawn(options: SpawnOptions): Promise<AgentInfo>
+runtime.get(agentId: string): Promise<AgentInfo>
+runtime.list(filter?: AgentListFilter): Promise<AgentInfo[]>
 ```
 
 - `spawn` registers identity, claims a capacity slot, boots the container and Pi session, and resolves in `status: 'idle'` without starting inference.
@@ -44,14 +44,14 @@ runtime.list(filter?: BotListFilter): Promise<BotInfo[]>
 ## Input delivery & events: `send` (recommended), `start`, `steer`, `onEvent`
 
 ```ts
-runtime.send(botId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>
-runtime.send(botId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>
+runtime.send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>
+runtime.send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>
 
 // Convenience aliases (prefer unified send in new Harnesses)
-runtime.start(botId: string, input: string, options: { requestId: string }): Promise<InputReceipt>
-runtime.steer(botId: string, input: string, options: SteerOptions): Promise<InputReceipt>
+runtime.start(agentId: string, input: string, options: { requestId: string }): Promise<InputReceipt>
+runtime.steer(agentId: string, input: string, options: SteerOptions): Promise<InputReceipt>
 
-runtime.onEvent(handler: (event: BotEvent) => void): () => void
+runtime.onEvent(handler: (event: AgentEvent) => void): () => void
 ```
 
 | Option | Default | Behavior |
@@ -62,25 +62,29 @@ runtime.onEvent(handler: (event: BotEvent) => void): () => void
 | `steeringMode` | `'one-at-a-time'` | `'all'` drains all pending steer items at once; persists on the Pi session |
 
 - **Receipts**: `accepted` (`disposition: 'started' | 'queued' | 'handled'`), `not-accepted` (`reason: 'idle'`), or `unknown` (reconcile with the exact same `requestId` and payload).
-- **Events** (each carries `botId` and monotonic `seq`): `output`, `settled` (`outcome: 'completed' | 'failed' | 'aborted'`), `error` (`fatal`), `exit` (`expected`).
+- **Events** (each carries `agentId` and monotonic `seq`): `output`, `settled` (`outcome: 'completed' | 'failed' | 'aborted'`), `error` (`fatal`), `exit` (`expected`).
 
 ## Controlled file primitives
 
 ```ts
-runtime.files.prepare(botId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>
+runtime.files.prepare(agentId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>
 runtime.files.grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>
-runtime.files.snapshot(botId: string, options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }): Promise<FileSnapshot>
+runtime.files.snapshot(agentId: string, options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }): Promise<FileSnapshot>
+runtime.files.install(agentId: string, options: { requestId: string; expected: FileSnapshot; files: FileSeed }): Promise<FileInstall>
+runtime.files.installStatus(agentId: string, options: { requestId: string }): Promise<FileInstall | null>
+runtime.files.confirm(agentId: string, options: { requestId: string }): Promise<FileInstall>
 ```
 
 - **`prepare` + `grant`**: stages files into an empty read-only workspace and issues a trusted `PreparedFiles` handle; pass that exact in-memory object to `grant` to unlock write access.
 - **`snapshot`**: pauses active writers (including shared-workspace peers) via Worker to return a consistent `{ version, digest, files }` snapshot (up to 16 MiB).
-- **`collect`**: `{ paths, includeGit, maxBytes, required }`. Failing a `required: true` export or session archive preserves the container and returns `cleanup: 'pending'`.
+- **`install` + `confirm`**: replace the captured working files under a writer fence, with the exact `FileSnapshot` as the expected version. After recording the domain outcome, call `confirm` with the install request ID to resume writers. Use `installStatus` or replay the original operation to recover an uncertain receipt.
+- **`collect`**: `{ paths, includeGit, allowMissingGit?, maxBytes, required }`. Failing a `required: true` export or session archive preserves the container and returns `cleanup: 'pending'`.
 
 ## Interrupt, stop, and close
 
 ```ts
-runtime.interrupt(botId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>
-runtime.stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>
+runtime.interrupt(agentId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>
+runtime.stop(agentId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>
 runtime.close(options?: { timeoutMs?: number }): Promise<CloseReceipt>
 ```
 
@@ -90,10 +94,10 @@ runtime.close(options?: { timeoutMs?: number }): Promise<CloseReceipt>
 ## Service protocol v2 & `swarm` CLI
 
 - **Manifest v2** (`contract_version: '2'`): declares `id`, `title`, `purpose`, `endpoint` (`in-process` or `http-json`), and `capabilities` (`side_effect`, `idempotent`, draft-07 `input_schema`/`output_schema`, `errors`, `timeout_ms` default 30s).
-- **`ServiceRequest`**: passes validated `input`, `envelope.operation_id`, unforgeable `caller` (`{ runtimeId, botId, profile, binding? }`), `signal`, and `assertAuthorized()`.
+- **`ServiceRequest`**: passes validated `input`, `envelope.operation_id`, unforgeable `caller` (`{ runtimeId, agentId, profile, binding? }`), `signal`, and `assertAuthorized()`.
 - **Optional `exportState({ signal })`**: called on `runtime.close()` (30s cap) and persisted to `service-state.<id>.json`.
 - **HTTP Services**: POST to `endpoint.url + (capability.path ?? '/v2/' + operation)` with `idempotency-key` and optional Bearer token; response must be `{ ok: true, result }` (2 MiB cap, redirects disabled).
-- **Built-in `bot` Service** (when authorized in `Profile.services.bot`): `spawn`, `get`, `send` (supports `mode` & `wake_if_idle`), `stop` (direct children only).
+- **Built-in `agent` Service**: only operations granted in `Profile.services.agent` are available. `spawn` and `stop` apply to direct children. `get` and `send` can also target the caller itself. `send` supports `mode` and `wake_if_idle`.
 
 ```bash
 swarm service list

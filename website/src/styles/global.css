@@ -1943,3 +1943,6 @@ html.reveal-ready [data-reveal-line].is-visible {
   .docs-pager { grid-template-columns: 1fr; }
   .pager-link.next { grid-column: auto; text-align: left; }
 }
+
+.search-empty { padding: 20px; text-align: center; color: var(--ink-muted); font-size: 13.5px; }
+.search-item-section { font-weight: 400; font-size: 11.5px; color: var(--ink-muted); margin-left: 6px; }

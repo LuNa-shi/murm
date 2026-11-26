@@ -18,10 +18,10 @@ const index = entries.map((entry) => ({
         <circle cx="11" cy="11" r="8" />
         <path d="m21 21-4.3-4.3" />
       </svg>
-      <input class="search-input" id="search-input" type="search" placeholder="Search concepts, harnesses, APIs..." autocomplete="off" />
+      <input class="search-input" id="search-input" type="search" aria-label="Search documentation" placeholder="Search concepts, harnesses, APIs..." autocomplete="off" />
       <kbd style="font-family:var(--font-pixel);font-size:10px;color:var(--ink-muted);border:1px solid var(--border);border-radius:4px;padding:1px 6px;">ESC</kbd>
     </div>
-    <div class="search-results" id="search-results"></div>
+    <div class="search-results" id="search-results" aria-live="polite"></div>
   </div>
 </div>
 
@@ -40,30 +40,43 @@ const index = entries.map((entry) => ({
       : index.slice(0, 8);
 
     if (!matches.length) {
-      resultsEl.innerHTML = `<div style="padding:20px;text-align:center;color:var(--ink-muted);font-size:13.5px;">No matching pages for "${q}"</div>`;
+      const empty = document.createElement('div');
+      empty.className = 'search-empty';
+      empty.textContent = `No matching pages for "${query.trim()}"`;
+      resultsEl.replaceChildren(empty);
       return;
     }
 
-    resultsEl.innerHTML = matches
-      .map(
-        (item) => `
-        <a class="search-item" href="${item.href}">
-          <div class="search-item-title">${item.title} <span style="font-weight:400;font-size:11.5px;color:var(--ink-muted);margin-left:6px;">${item.section}</span></div>
-          <div class="search-item-desc">${item.description}</div>
-        </a>`
-      )
-      .join('');
+    const links = matches.map((item) => {
+      const link = document.createElement('a');
+      link.className = 'search-item';
+      link.href = item.href;
+      const title = document.createElement('div');
+      title.className = 'search-item-title';
+      title.textContent = item.title;
+      const section = document.createElement('span');
+      section.className = 'search-item-section';
+      section.textContent = item.section;
+      title.append(section);
+      const description = document.createElement('div');
+      description.className = 'search-item-desc';
+      description.textContent = item.description;
+      link.append(title, description);
+      return link;
+    });
+    resultsEl.replaceChildren(...links);
   }
 
   function openSearch() {
     modal?.classList.add('open');
     render('');
-    setTimeout(() => input?.focus(), 20);
+    input?.focus();
   }
 
   function closeSearch() {
     modal?.classList.remove('open');
     if (input) input.value = '';
+    openBtn?.focus();
   }
 
   openBtn?.addEventListener('click', openSearch);

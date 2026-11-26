@@ -18,7 +18,7 @@ Each concept below is introduced with a short focused snippet before combining a
 
 ## 1. Agent — an independent execution unit with persistent state
 
-An **Agent** is a single reasoning and coding actor (named `Bot` in the `@swarmenv/core` TypeScript API). Each agent runs a native Pi session with just four local tools: `read`, `write`, `edit`, and `bash`.
+An **Agent** is a single reasoning and coding actor. Each agent runs a native Pi session with just four local tools: `read`, `write`, `edit`, and `bash`.
 
 You configure an agent's role, model, container image, and service permissions through a static **Profile**:
 
@@ -52,8 +52,8 @@ services.registerService({
   adapter: createInProcessAdapter({
     invoke({ capability, input, caller }) {
       if (capability.operation === 'get') return records.get(input.key) ?? null;
-      // caller.botId is injected by the Runtime after token auth — unforgeable
-      const entry = { key: input.key, text: input.text, author: caller.botId };
+      // caller.agentId is injected by the Runtime after token auth — unforgeable
+      const entry = { key: input.key, text: input.text, author: caller.agentId };
       records.set(input.key, entry);
       return entry;
     },
@@ -75,7 +75,7 @@ Because the interface is uniform, task pools (TaskPool), team mailboxes (Subagen
 
 ## 3. Harness — your multi-agent coordination logic
 
-If **Runtime** is the engine that runs agents reliably, **Harness** (stored under `src/environments/*` in the repository) is the outer coordination system you build on top of it — such as `Subagents`, `TaskPool`, `PeerMesh`, `Substrate`, or `Lead-Worker`.
+If **Runtime** is the engine that runs agents reliably, **Harness** (stored under `src/harnesses/*` in the repository) is the outer coordination system you build on top of it — such as `Subagents`, `TaskPool`, `PeerMesh`, `Substrate`, or `Lead-Worker`.
 
 The boundary is strict:
 - **Runtime is passive**: when an agent finishes a turn and emits `settled`, it rests in `idle`. The Runtime never decides to forward results to another agent or start another round.
@@ -99,7 +99,7 @@ await runtime.send(agent.id, 'Read the shared note and write review.md.', {
 
 // 3. Subscribe to live lifecycle events (output, settled, error, exit)
 const off = runtime.onEvent((event) => {
-  if (event.type === 'settled') console.log(event.botId, event.outcome);
+  if (event.type === 'settled') console.log(event.agentId, event.outcome);
 });
 
 // 4. Stop an agent or close the entire run
@@ -107,7 +107,7 @@ await runtime.stop(agent.id);
 await runtime.close();
 ```
 
-> **About `send`, `start`, and `steer`**: in `@swarmenv/core`, `runtime.start` and `runtime.steer` are thin aliases over `runtime.send` (`mode: 'followUp'` and `mode: 'steer'`, respectively). Only `send` exposes the full option set, including conditional non-waking delivery (`wakeIfIdle: false`). Prefer `runtime.send` in new Harnesses.
+> **About `send`, `start`, and `steer`**: in `@murm/core`, `runtime.start` and `runtime.steer` are thin aliases over `runtime.send` (`mode: 'followUp'` and `mode: 'steer'`, respectively). Only `send` exposes the full option set, including conditional non-waking delivery (`wakeIfIdle: false`). Prefer `runtime.send` in new Harnesses.
 
 ---
 
@@ -125,7 +125,7 @@ Every agent runs inside its own **Sandbox** (currently an OpenSandbox-managed Do
 
 Every Runtime instance corresponds to one **Run** identified by a unique `runId` (`runtime.id`).
 
-A Run is a complete, redacted directory under `outputDir/<runId>/` containing the effective config snapshot, ordered event log (`evidence.jsonl`), full Service call log (`service-calls.jsonl`), raw model request/response traces (`model-trace/`), native per-agent session JSONL files, and exported deliverables.
+A Run has a private directory under `outputDir/<runtimeId>/` containing the effective config snapshot, ordered event log (`evidence.jsonl`), full Service call log (`service-calls.jsonl`), raw model request/response traces (`model-trace/`), native per-agent session JSONL files, and exported deliverables.
 
 ---
 
@@ -134,9 +134,9 @@ A Run is a complete, redacted directory under `outputDir/<runId>/` containing th
 Combining the fragments above produces a complete multi-agent Harness skeleton:
 
 ```ts
-import { createRuntime } from '@swarmenv/core';
-import { ServiceRegistry } from '@swarmenv/core/services';
-import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
+import { createRuntime } from '@murm/core';
+import { ServiceRegistry } from '@murm/core/services';
+import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
 
 // 1. Register shared Services
 const services = new ServiceRegistry();
@@ -147,7 +147,7 @@ const runtime = await createRuntime({
   backend: createPiOpenSandboxBackend(config.backend),
   services,
   profiles: { writer: writerProfile, reader: readerProfile },
-  maxBots: 2,
+  maxAgents: 2,
   outputDir: './runs',
 });
 
@@ -162,12 +162,12 @@ await runInput(runtime, reader.id, 'Verify via swarm notes get and write review.
 await runtime.close();
 ```
 
-## Symbol mapping to `@swarmenv/core`
+## Symbol mapping to `@murm/core`
 
-| `murm` concept | `@swarmenv/core` symbol / path | Responsibility |
+| `murm` concept | `@murm/core` symbol / path | Responsibility |
 | --- | --- | --- |
-| `Agent` | `Bot` (`BotInfo`, `BotEvent`) | Independent execution unit inside a sandbox |
-| `Harness` | `Environment` (`src/environments/*`) | Host-side coordination logic and policies |
+| `Agent` | `AgentInfo`, `AgentEvent` | Independent execution unit inside a sandbox |
+| `Harness` | `src/harnesses/` and `examples/` | Host-side coordination logic and policies |
 | `Runtime` | `Runtime` (`createRuntime`) | Control plane and lifecycle engine |
 | `Run` | `runtime.id` + `outputDir/<runtimeId>/` | Concrete execution and durable trace archive |
 | `Sandbox` | OpenSandbox container + `Worker` | Filesystem, network, and process boundary |

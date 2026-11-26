@@ -4,13 +4,13 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **231 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **280 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/subagents/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes/.npmignore`, `examples/subagents/.npmignore`, `examples/lead-worker/.npmignore`, `examples/substrate/.npmignore`, `examples/peermesh/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`, `examples/substrate/FateProofGuard.lean`, `examples/substrate/VerifyFateProof.lean`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/subagents/`, `website/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes/.npmignore`, `examples/subagents/.npmignore`, `examples/lead-worker/.npmignore`, `examples/substrate/.npmignore`, `examples/peermesh/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`, `examples/substrate/FateProofGuard.lean`, `examples/substrate/VerifyFateProof.lean`, `.github/workflows/deploy-website.yml`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -20,6 +20,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | docs/ and .codex/ | Development governance and generated reference artifacts; reviewed by documentation/link checks, not part of research-Agent runtime except explicitly listed provider documents. |
 | third_party/agensh | Pinned external PeerMesh source. The public-Core Harness documents the native board protocol and schema provenance at its local integration boundary. |
 | dist/ | Generated output from TypeScript and accompanying runtime assets. The inventory fingerprints the source inputs. |
+| website/node_modules/, website/.astro/ and website/dist/ | External npm dependencies, generated Astro metadata and compiled static site output. The inventory tracks site inputs. |
 
 ## File-by-file ownership
 
@@ -233,7 +234,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 |---|---|---|---|
 | [scripts/check-architecture.ts](../../scripts/check-architecture.ts) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `0df92907ec29c96b93503d09ffbe8902732676ed040dba3546a9d7205c4e25da` |
 | [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `63e10512f292e45af9b503810b680b53de6076fb31358459936e6f06763959bf` |
-| [scripts/generate-architecture-coverage.ts](../../scripts/generate-architecture-coverage.ts) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `02854fccac16e25dab914c4585d0824c8ec4b2c7d8b5e2d40348c3ef20028582` |
+| [scripts/generate-architecture-coverage.ts](../../scripts/generate-architecture-coverage.ts) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `228407cc3420e01ca2f7e4a6d82043fa8e318167e268868f56ca5737606015c4` |
 | [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `09de809b1b8d57484c756b301ce3da88711dbc49ae75ac7ffca12e5a9c019d28` |
 
 ### durable storage (3)
@@ -330,6 +331,60 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [services/mathlib-search/references/loogle.md](../../services/mathlib-search/references/loogle.md) | Repository-owned query guidance loaded by bundle | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `3aff1ebba86327de5465c0b44b37cb5ec57f5bac6b07c90ed211a0b2f02376bd` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | Optional provider manifest, schemas, help and documentation declarations | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [services/mathlib-search/SKILL.md](../../services/mathlib-search/SKILL.md) | Repository-owned full Mathlib tool usage instructions loaded by bundle | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `e7f79c40eed183b5a5bb0568923ec5575d450016dba41ff5a7cef94414e6f27c` |
+
+### public documentation website (49)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [.github/workflows/deploy-website.yml](../../.github/workflows/deploy-website.yml) | Build, upload and deploy the static website to GitHub Pages from main | [22-website](22-website.md) | `0a4eba962ee3b02af6db64e0ef336feb8b1f55e1fce8b584dda1d32d7645b419` |
+| [website/.gitignore](../../website/.gitignore) | Exclude local dependency, cache and compiled site directories | [22-website](22-website.md) | `0db8bd6c594178190fc23344aa1c5ff73241ebf21d78dfc8a2d206c1dbaea598` |
+| [website/astro.config.mjs](../../website/astro.config.mjs) | Static build and Markdown rendering configuration, deployment origin and base | [22-website](22-website.md) | `8af03855a557eadb0a7cdca85193d324149ab3d7f3aba7fd0b9d84b2d20cd177` |
+| [website/package-lock.json](../../website/package-lock.json) | Locked site build dependencies and package integrity | [22-website](22-website.md) | `7459244f4f7b87643d4546a4e6b6cbf11984f4375908412dc7858262a24a00f1` |
+| [website/package.json](../../website/package.json) | Site dependencies and local development, build and preview entry points | [22-website](22-website.md) | `1972baf3044c78c1a69b2f84cd96bf57aa44d971faeeffebeef781c6380d8582` |
+| [website/public/favicon.svg](../../website/public/favicon.svg) | Public site icon | [22-website](22-website.md) | `1a97c80a952d8df1fe59a00dc793fc4420007b65c761eb46e1ef2e3f2e68a451` |
+| [website/public/licenses/caveat.txt](../../website/public/licenses/caveat.txt) | Distributed font copyright and license notice | [22-website](22-website.md) | `163a2b400e16916ad3196296c946c526d0efce6baf22a2164269ffc62fb9f671` |
+| [website/public/licenses/departure-mono.txt](../../website/public/licenses/departure-mono.txt) | Distributed font copyright and license notice | [22-website](22-website.md) | `b65e42750f3cb65437a97f4dfd781c58f199259949db2341012be60e32500e83` |
+| [website/public/licenses/inter.txt](../../website/public/licenses/inter.txt) | Distributed font copyright and license notice | [22-website](22-website.md) | `3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345` |
+| [website/public/licenses/jetbrains-mono.txt](../../website/public/licenses/jetbrains-mono.txt) | Distributed font copyright and license notice | [22-website](22-website.md) | `403581b69dac5cff4079205e01c6b467e56af449ecbd7247693ddb1baafa005b` |
+| [website/public/licenses/space-grotesk.txt](../../website/public/licenses/space-grotesk.txt) | Distributed font copyright and license notice | [22-website](22-website.md) | `18a4de52385f6b988782639d5d0cc1326e5a8c2de9a7f01d7b20d9aedcc60943` |
+| [website/src/assets/fonts/DepartureMono-Regular.woff2](../../website/src/assets/fonts/DepartureMono-Regular.woff2) | Locally bundled Departure Mono font asset | [22-website](22-website.md) | `5b4fed1daa90708aa9c6ee1190abca9dc22164a1c1def0020386e46b61038cfb` |
+| [website/src/assets/images/agent-lifecycle.jpg](../../website/src/assets/images/agent-lifecycle.jpg) | Source illustration for the public architecture and Harness guides | [22-website](22-website.md) | `fc776288ffde977574feab08d9d3ba9bd7ae0f2c24d65b16f459baa56bb87234` |
+| [website/src/assets/images/architecture-overview.jpg](../../website/src/assets/images/architecture-overview.jpg) | Source illustration for the public architecture and Harness guides | [22-website](22-website.md) | `211cab0335e02357c0b88e95378ee4f72120bfd68df2080a60a57ef2cb03473e` |
+| [website/src/assets/images/five-programs-compare.jpg](../../website/src/assets/images/five-programs-compare.jpg) | Source illustration for the public architecture and Harness guides | [22-website](22-website.md) | `0ed05d5bd74c9531de5ac8569198fd676ebd1938f2a0b90823fc4a92bd6724b9` |
+| [website/src/assets/images/service-bridge-flow.jpg](../../website/src/assets/images/service-bridge-flow.jpg) | Source illustration for the public architecture and Harness guides | [22-website](22-website.md) | `0adff33d5f58281b7b149606e1b20dd49ef22f246adb167404babe8a5f6c089f` |
+| [website/src/components/CoreModelBlueprint.astro](../../website/src/components/CoreModelBlueprint.astro) | Interactive diagram of the six Core concepts | [22-website](22-website.md) | `9a213197539e4ebed82c410b7da65f06bcbb174eae1eb05dfebc90cc00d73e09` |
+| [website/src/components/DomainStrip.astro](../../website/src/components/DomainStrip.astro) | Landing page application domains | [22-website](22-website.md) | `b0d7c88f3f3cc986279c09a68eacd4111649ba5dd2a4468fa48da3804a61facb` |
+| [website/src/components/HarnessShowcase.astro](../../website/src/components/HarnessShowcase.astro) | Interactive selection and diagrams for the five Harnesses | [22-website](22-website.md) | `f708afb9972a0eaf7f8c415ea077e521ccbf16f9e0e12fd3af9a4d9989a7345a` |
+| [website/src/components/MurmLogo.astro](../../website/src/components/MurmLogo.astro) | Shared murm wordmark and icon | [22-website](22-website.md) | `37deb2538a3c36ac773e086f3ac9efad5028e2ba106089473a854ec46bc5e48c` |
+| [website/src/components/MurmurationCanvas.astro](../../website/src/components/MurmurationCanvas.astro) | Animated landing page canvas | [22-website](22-website.md) | `f23420853eb2c6a78285f85cc40cb94d2875c6937bb2c629ad3d2123b86f3b1c` |
+| [website/src/components/NoRebuildGrid.astro](../../website/src/components/NoRebuildGrid.astro) | Landing page examples of reusable Runtime capabilities | [22-website](22-website.md) | `b6471dc4b115daaec839e0c99ac528debcef54b5a1c92c95dac1059a19e9797e` |
+| [website/src/components/PillarSchematics.astro](../../website/src/components/PillarSchematics.astro) | Landing page architecture diagrams | [22-website](22-website.md) | `a49ca7eb002a55b22f44d202b321f54bca0ff9c80d5bc63a8e0d150ebe127b81` |
+| [website/src/components/SearchModal.astro](../../website/src/components/SearchModal.astro) | Client-side documentation search, keyboard shortcuts and result navigation | [22-website](22-website.md) | `c50cc5a827daece1bda2082bb07ed50338a82a07036682b18534b3339d6a883d` |
+| [website/src/components/Sidebar.astro](../../website/src/components/Sidebar.astro) | Documentation section navigation | [22-website](22-website.md) | `ae907aa6925e1f95f2db17460076324a330287a2041e14b4478285728eb83f2d` |
+| [website/src/components/TopNav.astro](../../website/src/components/TopNav.astro) | Site navigation, mobile menu, theme and search controls | [22-website](22-website.md) | `2407f6616efc7c2354151bac4f81cbae51bce3d0b31adf50393dbf01b1a57577` |
+| [website/src/content.config.ts](../../website/src/content.config.ts) | Documentation loader and frontmatter schema | [22-website](22-website.md) | `b6988d4c07fe1298e36c3f70f39e6a8aee359faab87709d7ee9cd51695cf9792` |
+| [website/src/content/docs/architecture.md](../../website/src/content/docs/architecture.md) | Published documentation content for System Architecture | [22-website](22-website.md) | `35f7e41b8a836206cdb62764fef4790450e3c6150110343554fc994519e1d3f8` |
+| [website/src/content/docs/build-your-harness.md](../../website/src/content/docs/build-your-harness.md) | Published documentation content for Build Your Own Harness | [22-website](22-website.md) | `c39f0c2074d73fdc651f75dce439cfb9cbbb170e6385ce1ee447bbe8cf85b70a` |
+| [website/src/content/docs/concepts.md](../../website/src/content/docs/concepts.md) | Published documentation content for Core Concepts | [22-website](22-website.md) | `61043eaea9c1fd3ff83ab5f342b89d40e19ee69cdccf894ed46cb0fb976e9e15` |
+| [website/src/content/docs/harnesses/index.md](../../website/src/content/docs/harnesses/index.md) | Published documentation content for Five Topologies Overview | [22-website](22-website.md) | `b878e2a85d20f91b2eea063d631bb40b9018b1e0569b45165140e226b8effba7` |
+| [website/src/content/docs/harnesses/lead-worker.md](../../website/src/content/docs/harnesses/lead-worker.md) | Published documentation content for Lead-Worker | [22-website](22-website.md) | `f4851c703e210eac4edb5c75ab61167e5d94e0b15d9e1527ff576bdccc48f889` |
+| [website/src/content/docs/harnesses/peermesh.md](../../website/src/content/docs/harnesses/peermesh.md) | Published documentation content for PeerMesh | [22-website](22-website.md) | `f30afc8c32dcc96ce193baee3bb0877878de1b6cfd095b597d9f2cb31ab44699` |
+| [website/src/content/docs/harnesses/subagents.md](../../website/src/content/docs/harnesses/subagents.md) | Published documentation content for Subagents | [22-website](22-website.md) | `62ad186a38ec7e405ac044d0bbed170cc0cd1d1f7f86e81cc818efc4a585cf4a` |
+| [website/src/content/docs/harnesses/substrate.md](../../website/src/content/docs/harnesses/substrate.md) | Published documentation content for Substrate | [22-website](22-website.md) | `0e3d9779f93efbb0f63e4e37cd47353b806254562d3247b0a43169f81808ccd3` |
+| [website/src/content/docs/harnesses/taskpool.md](../../website/src/content/docs/harnesses/taskpool.md) | Published documentation content for TaskPool | [22-website](22-website.md) | `26b1b16ab99838eb432b6a256accd585bccbb47b24aeb307ea9a2c5a03c4e1af` |
+| [website/src/content/docs/quickstart.md](../../website/src/content/docs/quickstart.md) | Published documentation content for Quick Start | [22-website](22-website.md) | `b7605174deb98468867fc34d2a245b85a90c881c1db78d306ef8565f5891ce4d` |
+| [website/src/content/docs/reference/api.md](../../website/src/content/docs/reference/api.md) | Published documentation content for API & Configuration | [22-website](22-website.md) | `87bcea54de61f645de26f6572fe54a43393c2717e14d038efa589bf398213935` |
+| [website/src/content/docs/reference/deploy.md](../../website/src/content/docs/reference/deploy.md) | Published documentation content for Deployment | [22-website](22-website.md) | `94dcf1b4447c1194d36a5e905d3814383400202f0775217147b747574b94bc54` |
+| [website/src/content/docs/reference/types.md](../../website/src/content/docs/reference/types.md) | Published documentation content for Types & Mapping | [22-website](22-website.md) | `a62bf85c97882d3f81997a54d100db7487142e92ce43b9ff2adffbac982937e9` |
+| [website/src/content/docs/run-lifecycle.md](../../website/src/content/docs/run-lifecycle.md) | Published documentation content for Anatomy of a Run | [22-website](22-website.md) | `9347cefdd3b9f5a518e03c5b588e9b067f409221d1de7e2ea20b82c1c5ab9549` |
+| [website/src/layouts/BaseLayout.astro](../../website/src/layouts/BaseLayout.astro) | Document shell, browser theme and shared site styles | [22-website](22-website.md) | `b131b81bbb5218668a8d814fbe92855d243bbf2ab486d18bab5132c921a5b546` |
+| [website/src/layouts/DocsLayout.astro](../../website/src/layouts/DocsLayout.astro) | Documentation shell, section sidebar and page headings | [22-website](22-website.md) | `8d53b995837a45c4188356039fee2fcf9b2d2346d030e0ef9dbe5030acbebd26` |
+| [website/src/lib/nav.ts](../../website/src/lib/nav.ts) | Public documentation navigation groups and routes | [22-website](22-website.md) | `26672bfb78cc0ec3e09f82f78c58513dbca0cc4ea1a24b71ed6d3705bdaed2ef` |
+| [website/src/lib/url.ts](../../website/src/lib/url.ts) | Deployment base resolution for generated site URLs | [22-website](22-website.md) | `c96db4b0d42b65f83b70233aaa06a445d3a00d485b59d42ba0299cada706bff3` |
+| [website/src/pages/docs/[...slug].astro](../../website/src/pages/docs/[...slug].astro) | Build-time documentation route enumeration and rendering | [22-website](22-website.md) | `a446e944266e0e8bf9211b297e0de8948b8d6cbc08e91edfaaf1d78a91c6b376` |
+| [website/src/pages/index.astro](../../website/src/pages/index.astro) | Public landing page assembly | [22-website](22-website.md) | `504eee3d30f2bba51e56c88404ab53a46982350917e82495572d25472597f385` |
+| [website/src/styles/global.css](../../website/src/styles/global.css) | Responsive styles, font declarations and browser theme colors | [22-website](22-website.md) | `623cc44dfe007f5dcdf72de9573bd8125f7c79297065c5135b4e64aa2b771f2e` |
+| [website/tsconfig.json](../../website/tsconfig.json) | Astro TypeScript source configuration | [22-website](22-website.md) | `8ac0c34ca488883dfa22bccd923af5072ef84b18dbd73fcd23e797c29398d387` |
 
 ### runtime and execution (13)
 

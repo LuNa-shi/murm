@@ -5,15 +5,15 @@ section: ARCHITECTURE
 order: 4
 ---
 
-API tables are easier to internalize through a concrete timeline. Walk through one realistic scenario: **`architect` and `tester` collaborate to refactor a parser module and write regression tests** — mid-flight a new requirement arrives, `tester` drifts off-track and gets interrupted without losing queued messages, and the run closes cleanly.
+API tables are easier to internalize through a concrete timeline. Walk through one realistic scenario: **`architect` and `tester` collaborate to refactor a parser module and write regression tests** — mid-flight a new requirement arrives, `tester` drifts off-track and gets interrupted and the Harness reconciles discarded inputs, and the run closes cleanly.
 
 ![Agent Lifecycle, Unified send(), Interrupt and Safe Close Order](../../assets/images/agent-lifecycle.jpg)
 
 ## Phase 1: Start a Run and spawn idle agents
 
-Your Harness calls `createRuntime()`, freezing the Profile and Service registries and creating `outputDir/<runId>/`. No containers exist yet.
+Your Harness calls `createRuntime()`, freezing the Profile and Service registries and creating `outputDir/<runtimeId>/`. No containers exist yet.
 
-Calling `runtime.spawn()` registers an `agentId`, reserves a capacity **Slot** (bounded by `maxBots`), boots the sandbox and Pi session, and returns with `status: 'idle'` — no inference starts automatically:
+Calling `runtime.spawn()` registers an `agentId`, reserves a capacity **Slot** (bounded by `maxAgents`), boots the sandbox and Pi session, and returns with `status: 'idle'` — no inference starts automatically:
 
 ```ts
 // Subscribe before sending the first input so fast events are never missed
@@ -37,7 +37,7 @@ Separating `spawn` from the first input lets your Harness wire routing tables, p
 
 ## Phase 2: Deliver work with unified `send`
 
-`runtime.send(agentId, text, options)` is the single entry point for delivering work and notifications. Two flags control timing and wake semantics precisely:
+`runtime.send(agentId, text, options)` is the unified input method for both work and notifications. Two flags control timing and wake semantics precisely:
 
 - **`mode: 'followUp'`**: queues after the agent's current turn settles. Use for independent new tasks or batched external events.
 - **`mode: 'steer'`** *(default)*: injects after the current tool batch finishes and before the next model request — correcting direction without killing an in-flight shell command.
@@ -103,7 +103,7 @@ if (interrupted.status === 'interrupted') {
 }
 ```
 
-`interrupt` cancels in-flight Bridge calls for that agent, aborts the active turn, flushes unconsumed inputs, and returns `discardedInputHashes` (SHA-256 digests) so your Harness can recover dropped notifications losslessly.
+`interrupt` cancels in-flight Bridge calls for that agent, aborts the active turn, flushes unconsumed inputs, and returns `discardedInputHashes` (SHA-256 digests) so the Harness can identify discarded items that it has retained and decide whether to replay them.
 
 ## Phase 5: Archive-before-delete closeout
 
