@@ -46,6 +46,12 @@
   --sch-grid: rgba(91, 109, 129, 0.11);
   --sch-card-bg: #ffffff;
   --sch-shadow: #1c1d1a;
+  --sch-lane-service: rgba(44, 76, 222, 0.055);
+  --sch-lane-service-rail: rgba(44, 76, 222, 0.088);
+  --sch-lane-service-border: rgba(44, 76, 222, 0.22);
+  --sch-lane-workspace: rgba(15, 118, 110, 0.055);
+  --sch-lane-workspace-rail: rgba(15, 118, 110, 0.088);
+  --sch-lane-workspace-border: rgba(15, 118, 110, 0.22);
 }
 
 :root[data-theme='dark'] {
@@ -78,6 +84,12 @@
   --sch-grid: rgba(148, 163, 184, 0.09);
   --sch-card-bg: #1c212c;
   --sch-shadow: #06070a;
+  --sch-lane-service: rgba(124, 147, 255, 0.09);
+  --sch-lane-service-rail: rgba(124, 147, 255, 0.14);
+  --sch-lane-service-border: rgba(124, 147, 255, 0.26);
+  --sch-lane-workspace: rgba(45, 212, 191, 0.085);
+  --sch-lane-workspace-rail: rgba(45, 212, 191, 0.13);
+  --sch-lane-workspace-border: rgba(45, 212, 191, 0.25);
 }
 
 *,
@@ -1142,11 +1154,75 @@ html.reveal-ready [data-reveal-line].is-visible {
   border-color: color-mix(in srgb, var(--accent) 36%, transparent);
 }
 
-.click-hint {
+.lane-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
   margin-left: auto;
+  padding-right: 12px;
+  border-right: 1px solid var(--border);
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: var(--ink-muted);
+}
+
+.lane-swatch-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.lane-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 2.5px;
+  border: 1px solid var(--border-strong);
+  display: inline-block;
+}
+
+.lane-swatch-agent {
+  background: var(--sch-surface);
+}
+
+.lane-swatch-service {
+  background: var(--accent-soft);
+  border-color: var(--sch-indigo);
+}
+
+.lane-swatch-workspace {
+  background: var(--teal-soft);
+  border-color: var(--sch-teal);
+}
+
+.click-hint {
+  margin-left: 8px;
   font-family: var(--font-pixel);
   font-size: 10.5px;
   color: var(--ink-muted);
+}
+
+.sch-lane-badge-agent {
+  fill: var(--bg-subtle);
+  stroke: var(--border-strong);
+  stroke-width: 0.9;
+}
+
+.sch-lane-badge-service {
+  fill: var(--accent-soft);
+  stroke: var(--sch-indigo);
+  stroke-width: 0.9;
+}
+
+.sch-lane-badge-workspace {
+  fill: var(--teal-soft);
+  stroke: var(--sch-teal);
+  stroke-width: 0.9;
+}
+
+.sch-lane-badge-txt {
+  font-family: var(--font-pixel);
+  font-size: 8.5px;
+  letter-spacing: 0.05em;
 }
 
 .schematic-canvas-scroll {
@@ -1848,6 +1924,7 @@ html.reveal-ready [data-reveal-line].is-visible {
   .cm-plane, .cm-boundary { grid-template-columns: 1fr; gap: 10px; }
   .cm-row { grid-template-columns: 1fr; gap: 8px; }
   .cm-arrow, .cm-boundary-cols { display: none; }
+  .lane-legend { margin-left: 0; border-right: 0; padding-right: 0; }
   .click-hint { margin-left: 0; }
   .docs-shell { grid-template-columns: 1fr; }
   .docs-sidebar {
