@@ -22,13 +22,13 @@ Open `http://localhost:4321/` to preview changes live. All documentation Markdow
 To test a production build with a custom path prefix (matching GitHub Pages):
 
 ```bash
-BASE_PATH=/SwarmEnv SITE_URL=https://luna-shi.github.io npm run build
+BASE_PATH=/murm SITE_URL=https://luna-shi.github.io npm run build
 npm run preview
 ```
 
 ## 2. Deploy to GitHub Pages
 
-The repository includes a GitHub Actions workflow at [.github/workflows/deploy-website.yml](https://github.com/LuNa-shi/SwarmEnv/blob/main/.github/workflows/deploy-website.yml):
+The repository includes a GitHub Actions workflow at [.github/workflows/deploy-website.yml](https://github.com/LuNa-shi/murm/blob/main/.github/workflows/deploy-website.yml):
 
 1. Open repository **Settings → Pages → Build and deployment → Source** and select **GitHub Actions**.
 2. Merge changes into `main` (or trigger the workflow via `workflow_dispatch`).

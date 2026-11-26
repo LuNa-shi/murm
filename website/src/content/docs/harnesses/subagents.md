@@ -5,11 +5,11 @@ section: BUILT-IN HARNESSES
 order: 7
 ---
 
-**Subagents** models a lead agent (`/root`) that breaks down a task, spawns named child agents recursively (up to `maxDepth`), exchanges messages in real time, and integrates results. Source: [examples/subagents](https://github.com/LuNa-shi/SwarmEnv/tree/main/examples/subagents).
+**Subagents** models a lead agent (`/root`) that breaks down a task, spawns named child agents recursively (up to `maxDepth`), exchanges messages in real time, and integrates results. Source: [examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents).
 
 ## 1. Registered Service (`collaboration`)
 
-Rather than exposing raw `agent` primitives directly, Subagents registers one domain-specific **`collaboration` Service** ([collaboration-service.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/collaboration-service.ts)) that addresses every team member by hierarchical path (`/root`, `/root/reviewer`, `/root/reviewer/parser`):
+Rather than exposing raw `agent` primitives directly, Subagents registers one domain-specific **`collaboration` Service** ([collaboration-service.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/collaboration-service.ts)) that addresses every team member by hierarchical path (`/root`, `/root/reviewer`, `/root/reviewer/parser`):
 
 | Operation | Key arguments | Host behavior |
 | --- | --- | --- |
@@ -34,7 +34,7 @@ swarm collaboration wait_agent --timeout-ms 60000 --request-id wait-reviewer
 
 ## 2. How the controller coordinates delivery
 
-The heart of [examples/subagents/controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/controller.ts) is per-member serialization (`serial(member, ...)`) combined with non-waking steer offers and automatic parent forwarding:
+The heart of [examples/subagents/controller.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/controller.ts) is per-member serialization (`serial(member, ...)`) combined with non-waking steer offers and automatic parent forwarding:
 
 ```ts
 // 1. Offer a message to a member: wake an active wait_agent first, else steer only if running
@@ -90,7 +90,7 @@ When a user sends a prompt to `/root` (or a parent calls `followup_task`), `subm
 
 ## 3. Shared workspace closeout safety
 
-By default, every member gets a private working directory and children return findings or patches as messages. When `config.workspace` mounts one shared `read-write` workspace across `/root` and children and `/root` has a `collect` spec, [examples/subagents/main.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/main.ts) stops all child writers **before** calling `runtime.close()` so Root's collected files are guaranteed quiescent:
+By default, every member gets a private working directory and children return findings or patches as messages. When `config.workspace` mounts one shared `read-write` workspace across `/root` and children and `/root` has a `collect` spec, [examples/subagents/main.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/main.ts) stops all child writers **before** calling `runtime.close()` so Root's collected files are guaranteed quiescent:
 
 ```ts
 if (sharedWriters && collect && !sharedDeliveryUnverified) {
@@ -139,7 +139,7 @@ try {
 
 ## Source files
 
-- Entry point & interactive CLI: [examples/subagents/main.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/main.ts)
-- Controller, mailbox & interrupt recovery: [examples/subagents/controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/controller.ts)
-- `collaboration` Service manifest: [examples/subagents/collaboration-service.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/collaboration-service.ts)
-- Setup & verification notes: [examples/subagents/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/subagents/README.md) · [ProgramBench `fd` run record](https://github.com/LuNa-shi/SwarmEnv/blob/main/docs/experiments/EXP-20261125-10-issue199-fd.md)
+- Entry point & interactive CLI: [examples/subagents/main.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/main.ts)
+- Controller, mailbox & interrupt recovery: [examples/subagents/controller.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/controller.ts)
+- `collaboration` Service manifest: [examples/subagents/collaboration-service.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/collaboration-service.ts)
+- Setup & verification notes: [examples/subagents/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md) · [ProgramBench `fd` run record](https://github.com/LuNa-shi/murm/blob/main/docs/experiments/EXP-20261125-10-issue199-fd.md)

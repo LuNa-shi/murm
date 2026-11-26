@@ -29,7 +29,7 @@ A Service pairs a declarative **v2 manifest** (`ServiceManifest`) with either an
 
 ### In-process Service (TypeScript inside your Harness)
 
-This example mirrors [examples/notes/main.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/notes/main.ts) and demonstrates four core habits: strict draft-07 schemas, trusting the Bridge-injected `caller.agentId`, idempotent retries, and calling `assertAuthorized()` immediately before mutating state:
+This example mirrors [examples/notes/main.ts](https://github.com/LuNa-shi/murm/blob/main/examples/notes/main.ts) and demonstrates four core habits: strict draft-07 schemas, trusting the Bridge-injected `caller.agentId`, idempotent retries, and calling `assertAuthorized()` immediately before mutating state:
 
 ```ts
 import {
@@ -199,7 +199,7 @@ Pick the control-loop pattern that fits your topology:
 
 ### Pattern A: Serial turns with `runInput()`
 
-Best for fixed pipelines, staged lead/worker rounds, or parallel independent peers where each agent has one exclusive input source at a time. Reuse [`runInput`](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/shared/run-input.ts):
+Best for fixed pipelines, staged lead/worker rounds, or parallel independent peers where each agent has one exclusive input source at a time. Reuse [`runInput`](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/shared/run-input.ts):
 
 ```ts
 import { runInput } from './run-input.js';
@@ -254,7 +254,7 @@ See [TaskPool](../harnesses/taskpool/) for the complete production implementatio
 
 ## 5. Wrap closeout with `runWithReport()`
 
-Never let a cleanup error overwrite your original business failure (or vice versa). Wrap your Harness in [`runWithReport`](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/shared/run-report.ts), which keeps `result`, `businessFailure`, `cleanup`, `cleanupFailure`, and `reportSaveFailure` as independent fields and atomically writes `outputDir/<runtimeId>/harness-report.json`:
+Never let a cleanup error overwrite your original business failure (or vice versa). Wrap your Harness in [`runWithReport`](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/shared/run-report.ts), which keeps `result`, `businessFailure`, `cleanup`, `cleanupFailure`, and `reportSaveFailure` as independent fields and atomically writes `outputDir/<runtimeId>/harness-report.json`:
 
 ```ts
 import { runWithReport } from './run-report.js';

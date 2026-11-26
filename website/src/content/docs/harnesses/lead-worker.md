@@ -9,7 +9,7 @@ order: 11
 
 ## 1. Registered Services & asymmetric permissions
 
-[src/harnesses/lead-worker/board.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/lead-worker/board.ts) enforces distinct operations per role at both the Service Bridge (`Profile.services`) and inside the adapter:
+[src/harnesses/lead-worker/board.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/board.ts) enforces distinct operations per role at both the Service Bridge (`Profile.services`) and inside the adapter:
 
 ```ts
 export const boardPermissions = Object.freeze({
@@ -54,7 +54,7 @@ swarm board complete --input complete.json --request-id helper1-done
 
 ## 2. Staged control loop & failure fencing
 
-In [src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/lead-worker/index.ts), `createLeadWorkerHarness()` spawns the fixed team upfront (`maxAgents: 1 + helperCount`), binds their IDs into `board` and `git`, and subscribes to `runtime.onEvent()` so any fatal error, non-completed settlement, or unexpected exit immediately calls `board.fence()` — freezing further Board mutations while preserving all records for inspection.
+In [src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/index.ts), `createLeadWorkerHarness()` spawns the fixed team upfront (`maxAgents: 1 + helperCount`), binds their IDs into `board` and `git`, and subscribes to `runtime.onEvent()` so any fatal error, non-completed settlement, or unexpected exit immediately calls `board.fence()` — freezing further Board mutations while preserving all records for inspection.
 
 The default workflow runs two alternating stages using `runInput`:
 
@@ -98,7 +98,7 @@ On close, `close()` waits for `runtime.close()` to confirm every agent's executi
 
 ## Source files
 
-- Harness orchestrator (`runWorkflow`, `prepareStages`, `runStage`): [src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/lead-worker/index.ts)
-- SQLite `board` Service & causal gates: [src/harnesses/lead-worker/board.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/lead-worker/board.ts)
-- Gitea provisioning & SHA-256 delivery verification: [src/harnesses/lead-worker/git.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/lead-worker/git.ts)
-- Example config & guide: [examples/lead-worker/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/lead-worker/README.md)
+- Harness orchestrator (`runWorkflow`, `prepareStages`, `runStage`): [src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/index.ts)
+- SQLite `board` Service & causal gates: [src/harnesses/lead-worker/board.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/board.ts)
+- Gitea provisioning & SHA-256 delivery verification: [src/harnesses/lead-worker/git.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/git.ts)
+- Example config & guide: [examples/lead-worker/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/README.md)

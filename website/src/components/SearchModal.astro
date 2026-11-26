@@ -1,31 +1,38 @@
 ---
 import { getCollection } from 'astro:content';
-import { withBase } from '../lib/url';
+import { UI, docHref, type Lang } from '../lib/i18n';
 
-const entries = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.order);
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = 'en' } = Astro.props;
+const t = UI[lang];
+const entries = (await getCollection(lang === 'zh' ? 'docsZh' : 'docs')).sort((a, b) => a.data.order - b.data.order);
 const index = entries.map((entry) => ({
   title: entry.data.title,
   description: entry.data.description,
   section: entry.data.section,
-  href: withBase(`/docs/${entry.id.replace(/\/index$/, '')}/`),
+  href: docHref(lang, entry.id),
 }));
+const emptyPrefix = t.searchEmptyPrefix;
 ---
 
-<div class="search-backdrop" id="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation">
+<div class="search-backdrop" id="search-modal" role="dialog" aria-modal="true" aria-label={t.searchAria}>
   <div class="search-dialog">
     <div class="search-input-wrap">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ink-muted)">
         <circle cx="11" cy="11" r="8" />
         <path d="m21 21-4.3-4.3" />
       </svg>
-      <input class="search-input" id="search-input" type="search" aria-label="Search documentation" placeholder="Search concepts, harnesses, APIs..." autocomplete="off" />
+      <input class="search-input" id="search-input" type="search" aria-label={t.searchAria} placeholder={t.searchPlaceholder} autocomplete="off" />
       <kbd style="font-family:var(--font-pixel);font-size:10px;color:var(--ink-muted);border:1px solid var(--border);border-radius:4px;padding:1px 6px;">ESC</kbd>
     </div>
     <div class="search-results" id="search-results" aria-live="polite"></div>
   </div>
 </div>
 
-<script define:vars={{ index }}>
+<script define:vars={{ index, emptyPrefix }}>
   const modal = document.getElementById('search-modal');
   const input = document.getElementById('search-input');
   const resultsEl = document.getElementById('search-results');
@@ -42,7 +49,7 @@ const index = entries.map((entry) => ({
     if (!matches.length) {
       const empty = document.createElement('div');
       empty.className = 'search-empty';
-      empty.textContent = `No matching pages for "${query.trim()}"`;
+      empty.textContent = `${emptyPrefix} "${query.trim()}"`;
       resultsEl.replaceChildren(empty);
       return;
     }

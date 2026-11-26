@@ -107,7 +107,7 @@ if (notice.status === 'not-accepted') {
 
 Wait for the `settled` event on `onEvent` to observe turn completion. If a transport drop or 60-second host wait produces `status: 'unknown'`, repeat `runtime.send()` with the **exact same `requestId` and arguments** — the Runtime queries the Worker's saved RPC result ledger instead of injecting a duplicate prompt. Reusing the same `requestId` with different arguments throws `CONFLICT`.
 
-> **Single-source convenience helper**: When an agent has only one input source and runs one exclusive turn at a time (as in Notes, Substrate, and Lead-Worker), use [`runInput()`](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/shared/run-input.ts), which verifies the agent is `idle`, subscribes before sending, and resolves when both a `'started'` receipt and the matching `settled` event arrive.
+> **Single-source convenience helper**: When an agent has only one input source and runs one exclusive turn at a time (as in Notes, Substrate, and Lead-Worker), use [`runInput()`](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/shared/run-input.ts), which verifies the agent is `idle`, subscribes before sending, and resolves when both a `'started'` receipt and the matching `settled` event arrive.
 
 ## Phase 3: Coordinate files safely
 

@@ -10,7 +10,7 @@ In `murm`, every agent runs inside an isolated Docker container (**Sandbox**) su
 Before running a harness, make sure you have:
 
 - **Node.js `>= 22.19.0`** and **Docker** installed locally.
-- **Local OpenSandbox** (Docker provider) running with Core project-limit support (default lifecycle endpoint: `http://127.0.0.1:8080/v1`). See [OpenSandbox backend details](https://github.com/LuNa-shi/SwarmEnv/blob/main/docs/architecture/16-pi-opensandbox-backend.md).
+- **Local OpenSandbox** (Docker provider) running with Core project-limit support (default lifecycle endpoint: `http://127.0.0.1:8080/v1`). See [OpenSandbox backend details](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/16-pi-opensandbox-backend.md).
 - **A `/v1/responses`-compatible model endpoint** (the shipped examples target `kimi_proxy/k3`; upstream credentials remain on the host and never enter a container).
 
 ## 1. Clone, build, and prepare the worker image
@@ -18,8 +18,8 @@ Before running a harness, make sure you have:
 Clone the repository and compile TypeScript sources into `dist/`:
 
 ```bash
-git clone https://github.com/LuNa-shi/SwarmEnv.git
-cd SwarmEnv
+git clone https://github.com/LuNa-shi/murm.git
+cd murm
 npm ci
 npm run build
 ```
@@ -35,7 +35,7 @@ worker_image=$(docker image inspect murm-worker:local --format '{{.Id}}')
 
 ## 2. Run your first Harness: Notes
 
-Start with **[Notes](https://github.com/LuNa-shi/SwarmEnv/tree/main/examples/notes)** — the smallest end-to-end multi-agent harness (two agents, one custom in-process `notes` Service, zero external databases or chat servers).
+Start with **[Notes](https://github.com/LuNa-shi/murm/tree/main/examples/notes)** — the smallest end-to-end multi-agent harness (two agents, one custom in-process `notes` Service, zero external databases or chat servers).
 
 `writer` publishes a seeded source fact via `swarm notes put`, `reader` fetches it via `swarm notes get` and writes `review.md`, then copies `review.md` to `followup.md` in a second turn on the same persistent session. The host verifies the Service records and checks both archived files after stopping `reader`.
 
@@ -97,10 +97,10 @@ Default limits are 4 live agents (`MURM_SUBAGENTS_MAX_AGENTS`) and depth 3 (`MUR
 
 ## 5. Install `@murm/core` in your own project
 
-To build a Harness outside the `SwarmEnv` checkout, pack the distributable tarball and install it in an independent directory:
+To build a Harness outside the `murm` checkout, pack the distributable tarball and install it in an independent directory:
 
 ```bash
-repo=/absolute/path/to/SwarmEnv
+repo=/absolute/path/to/murm
 mkdir my-harness && cd my-harness
 npm pack "$repo" --pack-destination .
 npm init -y

@@ -9,7 +9,7 @@ order: 9
 
 ## 1. Registered Services
 
-[src/harnesses/peermesh/services.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/peermesh/services.ts) registers three Services per run, binding every peer's container identity to its own provisioned accounts while keeping upstream tokens on the host:
+[src/harnesses/peermesh/services.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/services.ts) registers three Services per run, binding every peer's container identity to its own provisioned accounts while keeping upstream tokens on the host:
 
 | Service | Operations | Purpose |
 | --- | --- | --- |
@@ -34,11 +34,11 @@ swarm gitea pull_request_merge \
   --request-id merge-pr-3
 ```
 
-When a peer calls `pull_request_merge`, [delivery.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/peermesh/delivery.ts) verifies the caller, repository, PR number, and pinned `head_sha` before merging into protected `main`. A stale commit SHA is rejected and requires a fresh merge check.
+When a peer calls `pull_request_merge`, [delivery.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/delivery.ts) verifies the caller, repository, PR number, and pinned `head_sha` before merging into protected `main`. A stale commit SHA is rejected and requires a fresh merge check.
 
 ## 2. Per-peer router & mid-turn steering
 
-In [team.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/peermesh/team.ts) and [router.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/peermesh/router.ts), each peer gets an independent serial router that polls Mattermost/Gitea/Board events and dispatches them into the peer's single persistent Pi session:
+In [team.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/team.ts) and [router.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/router.ts), each peer gets an independent serial router that polls Mattermost/Gitea/Board events and dispatches them into the peer's single persistent Pi session:
 
 ```ts
 const router = createPeerMeshRouter({
@@ -83,7 +83,7 @@ Create a project JSON file describing the shared issue and optional seeded files
 }
 ```
 
-Configure the host environment variables (see [examples/peermesh/config.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/peermesh/config.ts) and [examples/peermesh/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/peermesh/README.md)) and launch via the foreground CLI:
+Configure the host environment variables (see [examples/peermesh/config.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/config.ts) and [examples/peermesh/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/README.md)) and launch via the foreground CLI:
 
 ```bash
 export MURM_PEERMESH_PROJECT_FILE=./project.json
@@ -114,8 +114,8 @@ node dist/scripts/read-harness-result.js \
 
 ## Source files
 
-- Team assembly & lifecycle: [src/harnesses/peermesh/team.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/peermesh/team.ts)
-- Per-peer router, steering & nudges: [src/harnesses/peermesh/router.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/peermesh/router.ts)
-- Service wrappers (`peermesh-context`, `message`, `gitea`): [src/harnesses/peermesh/services.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/peermesh/services.ts)
-- Host PR merge verification & archive export: [src/harnesses/peermesh/delivery.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/peermesh/delivery.ts)
-- Example config & guide: [examples/peermesh/config.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/peermesh/config.ts) · [examples/peermesh/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/peermesh/README.md)
+- Team assembly & lifecycle: [src/harnesses/peermesh/team.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/team.ts)
+- Per-peer router, steering & nudges: [src/harnesses/peermesh/router.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/router.ts)
+- Service wrappers (`peermesh-context`, `message`, `gitea`): [src/harnesses/peermesh/services.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/services.ts)
+- Host PR merge verification & archive export: [src/harnesses/peermesh/delivery.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/delivery.ts)
+- Example config & guide: [examples/peermesh/config.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/config.ts) · [examples/peermesh/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/README.md)

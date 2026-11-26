@@ -2,7 +2,7 @@
 import BaseLayout from './BaseLayout.astro';
 import Sidebar from '../components/Sidebar.astro';
 import { getPrevNext } from '../lib/nav';
-import { withBase } from '../lib/url';
+import { UI, docHref, type Lang } from '../lib/i18n';
 
 interface Heading {
   depth: number;
@@ -16,26 +16,43 @@ interface Props {
   section: string;
   currentSlug: string;
   headings: Heading[];
+  lang?: Lang;
 }
 
-const { title, description, section, currentSlug, headings } = Astro.props;
-const { prev, next } = getPrevNext(currentSlug);
+const { title, description, section, currentSlug, headings, lang = 'en' } = Astro.props;
+const t = UI[lang];
+const { prev, next } = getPrevNext(currentSlug, lang);
 const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 ---
 
-<BaseLayout title={`${title} · murm`} description={description} showTopNav={true} showMobileMenu={true}>
+<BaseLayout
+  title={`${title} · murm`}
+  description={description}
+  showTopNav={true}
+  showMobileMenu={true}
+  lang={lang}
+  currentSlug={currentSlug}
+>
   <div class="docs-shell">
-    <Sidebar currentSlug={currentSlug} />
+    <Sidebar currentSlug={currentSlug} lang={lang} />
 
     <main class="docs-main" id="docs-content">
       <div class="docs-header-row">
         <div class="docs-eyebrow">{section}</div>
-        <button type="button" class="copy-page-btn" id="copy-page-btn" aria-label="Copy page text">
+        <button
+          type="button"
+          class="copy-page-btn"
+          id="copy-page-btn"
+          aria-label={t.copyPageAria}
+          data-copy-page-label={t.copyPage}
+          data-copied-page-label={t.copiedPage}
+          data-error-page-label={t.copyError}
+        >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <rect x="9" y="9" width="13" height="13" rx="2" />
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
-          <span>Copy page</span>
+          <span>{t.copyPage}</span>
         </button>
       </div>
       <h1 class="docs-title">{title}</h1>
@@ -46,16 +63,16 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
       </article>
 
       {(prev || next) && (
-        <nav class="docs-pager" aria-label="Pagination">
+        <nav class="docs-pager" aria-label={t.paginationAria}>
           {prev && (
-            <a class="pager-link prev" href={withBase(`/docs/${prev.slug}/`)}>
-              <span class="pager-dir">← PREVIOUS</span>
+            <a class="pager-link prev" href={docHref(lang, prev.slug)}>
+              <span class="pager-dir">{t.prevLabel}</span>
               <span class="pager-title">{prev.title}</span>
             </a>
           )}
           {next && (
-            <a class="pager-link next" href={withBase(`/docs/${next.slug}/`)}>
-              <span class="pager-dir">NEXT →</span>
+            <a class="pager-link next" href={docHref(lang, next.slug)}>
+              <span class="pager-dir">{t.nextLabel}</span>
               <span class="pager-title">{next.title}</span>
             </a>
           )}
@@ -63,10 +80,10 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
       )}
     </main>
 
-    <aside class="docs-toc" aria-label="On this page">
+    <aside class="docs-toc" aria-label={t.onThisPage}>
       {toc.length > 0 && (
         <>
-          <div class="toc-title">ON THIS PAGE</div>
+          <div class="toc-title">{t.onThisPage}</div>
           <ul class="toc-list">
             {toc.map((h) => (
               <li>
@@ -85,6 +102,9 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
     (function () {
       const copyBtn = document.getElementById('copy-page-btn');
       if (copyBtn) {
+        const defaultLabel = copyBtn.dataset.copyPageLabel || 'Copy page';
+        const copiedLabel = copyBtn.dataset.copiedPageLabel || 'Copied';
+        const errorLabel = copyBtn.dataset.errorPageLabel || 'Error';
         copyBtn.addEventListener('click', async () => {
           const titleEl = document.querySelector('.docs-title');
           const leadEl = document.querySelector('.docs-lead');
@@ -100,10 +120,10 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
           const label = copyBtn.querySelector('span');
           try {
             await navigator.clipboard.writeText(parts.join('\n\n'));
-            if (label) label.textContent = 'Copied';
-            setTimeout(() => { if (label) label.textContent = 'Copy page'; }, 1500);
+            if (label) label.textContent = copiedLabel;
+            setTimeout(() => { if (label) label.textContent = defaultLabel; }, 1500);
           } catch {
-            if (label) label.textContent = 'Error';
+            if (label) label.textContent = errorLabel;
           }
         });
       }

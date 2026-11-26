@@ -196,7 +196,7 @@ Without adding any logging code to your Harness, a Run records:
 
 ## Putting it all together
 
-Combine the pieces above into a complete minimal Harness (adapted directly from [examples/notes/main.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/notes/main.ts)):
+Combine the pieces above into a complete minimal Harness (adapted directly from [examples/notes/main.ts](https://github.com/LuNa-shi/murm/blob/main/examples/notes/main.ts)):
 
 ```ts
 import { createRuntime } from '@murm/core';

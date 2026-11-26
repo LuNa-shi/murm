@@ -1,6 +1,6 @@
 ---
 title: Types & Source Map
-description: Exact public TypeScript declarations for @murm/core 0.2.0 and source links into the SwarmEnv repository.
+description: Exact public TypeScript declarations for @murm/core 0.2.0 and source links into the murm repository.
 section: REFERENCE
 order: 13
 ---
@@ -11,13 +11,13 @@ All declarations below are taken directly from `@murm/core` `0.2.0` on `main`.
 
 | Concept | Package symbol / path | Source file |
 | --- | --- | --- |
-| **Runtime** | `createRuntime`, `Runtime` | [src/core/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/index.ts) · [src/core/types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/types.ts) |
-| **Agent & Profile** | `Profile`, `AgentInfo`, `AgentStatus`, `AgentEvent` | [src/core/types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/types.ts) · [src/core/agent-service.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/agent-service.ts) |
-| **Service** | `ServiceRegistry`, `ServiceManifest`, `ServiceAdapter`, `ServiceRequest` | [src/core/services.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/services.ts) · [src/core/service-types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/service-types.ts) |
-| **Sandbox backend** | `createPiOpenSandboxBackend`, `PiOpenSandboxBackendConfig` | [src/core/backend-config.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/backend-config.ts) · [src/core/pi-opensandbox-backend.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/pi-opensandbox-backend.ts) |
-| **Harnesses** | TaskPool, PeerMesh, Substrate, Lead-Worker, Subagents, Notes | [src/harnesses/](https://github.com/LuNa-shi/SwarmEnv/tree/main/src/harnesses) · [examples/](https://github.com/LuNa-shi/SwarmEnv/tree/main/examples) |
-| **Run & Traces** | `runtime.id`, `outputDir/<runtimeId>/`, `CloseReceipt` | [src/core/run-records.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/run-records.ts) · [src/core/model-trace.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/model-trace.ts) · [src/core/service-trace.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/core/service-trace.ts) |
-| **`swarm` CLI** | `runSwarmCli` | [src/cli/swarm-cli.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/cli/swarm-cli.ts) |
+| **Runtime** | `createRuntime`, `Runtime` | [src/core/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/index.ts) · [src/core/types.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/types.ts) |
+| **Agent & Profile** | `Profile`, `AgentInfo`, `AgentStatus`, `AgentEvent` | [src/core/types.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/types.ts) · [src/core/agent-service.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/agent-service.ts) |
+| **Service** | `ServiceRegistry`, `ServiceManifest`, `ServiceAdapter`, `ServiceRequest` | [src/core/services.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/services.ts) · [src/core/service-types.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/service-types.ts) |
+| **Sandbox backend** | `createPiOpenSandboxBackend`, `PiOpenSandboxBackendConfig` | [src/core/backend-config.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/backend-config.ts) · [src/core/pi-opensandbox-backend.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/pi-opensandbox-backend.ts) |
+| **Harnesses** | TaskPool, PeerMesh, Substrate, Lead-Worker, Subagents, Notes | [src/harnesses/](https://github.com/LuNa-shi/murm/tree/main/src/harnesses) · [examples/](https://github.com/LuNa-shi/murm/tree/main/examples) |
+| **Run & Traces** | `runtime.id`, `outputDir/<runtimeId>/`, `CloseReceipt` | [src/core/run-records.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/run-records.ts) · [src/core/model-trace.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/model-trace.ts) · [src/core/service-trace.ts](https://github.com/LuNa-shi/murm/blob/main/src/core/service-trace.ts) |
+| **`swarm` CLI** | `runSwarmCli` | [src/cli/swarm-cli.ts](https://github.com/LuNa-shi/murm/blob/main/src/cli/swarm-cli.ts) |
 
 ## Runtime control surface (`@murm/core`)
 

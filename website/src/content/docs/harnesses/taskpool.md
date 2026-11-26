@@ -39,7 +39,7 @@ swarm task finish --outcome done --workspace-revision 0.2 --material-ids '["M1"]
 
 Every `researcher` spawns with **`writable: false`**. While unbound, it can inspect Tasks, Materials, and public Workspace files through Services, but cannot modify `/workspace/project`.
 
-When the agent wins `swarm task take`, [task-handoff.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/taskpool/task-handoff.ts) heartbeats the reservation while running a four-step host handoff:
+When the agent wins `swarm task take`, [task-handoff.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/task-handoff.ts) heartbeats the reservation while running a four-step host handoff:
 
 ```ts
 // 1. Assemble pinned public workspace revision + linked Material inputs
@@ -71,7 +71,7 @@ await runtime.files.grant({ requestId: `${id}:grant`, prepared });
 
 ### Lease-gated model inference via `modelAccessPolicy`
 
-If an agent stalls and its lease expires while container teardown is still running, [model-access-policy.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/taskpool/model-access-policy.ts) stops stale inference right inside the host Model Gateway:
+If an agent stalls and its lease expires while container teardown is still running, [model-access-policy.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/model-access-policy.ts) stops stale inference right inside the host Model Gateway:
 
 ```ts
 export function authorizeTaskPoolAgent({ taskService, missionId, agentId, deadline, isStopping }): ModelPermit | null {
@@ -103,7 +103,7 @@ Whenever a lease expires or its `fencing_version` changes, the Model Gateway imm
 
 ### Dual event + heartbeat reconciliation loop
 
-[controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/taskpool/controller.ts) separates turn settlement (`settled`) from task completion (`swarm task finish`):
+[controller.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/controller.ts) separates turn settlement (`settled`) from task completion (`swarm task finish`):
 - **Event track (`runtime.onEvent`)**: if an agent settles while its Execution is still `RUNNING`, the controller sends a `followUp` continuation turn; if it is `UNBOUND`, it sends discovery guidance; if `CLOSING` (after `task finish`), it calls `runtime.stop()`, finalizes domain state, and spawns a fresh replacement into the freed Slot.
 - **Heartbeat track (`setInterval`)**: renews active leases, detects stalled or expired agents, stops them cleanly, and refills open Slots up to `capacity` until all Tasks are terminal (or the Mission is accepted under `completionPolicy: 'mission'`).
 
@@ -122,8 +122,8 @@ node dist/scripts/read-harness-result.js \
 
 ## Source files
 
-- Harness assembly & closeout: [src/harnesses/taskpool/harness.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/taskpool/harness.ts)
-- Reconciliation controller: [src/harnesses/taskpool/controller.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/taskpool/controller.ts)
-- File handoff (`prepare` / `grant`): [src/harnesses/taskpool/task-handoff.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/taskpool/task-handoff.ts)
-- Lease gate (`ModelAccessPolicy`): [src/harnesses/taskpool/model-access-policy.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/taskpool/model-access-policy.ts)
-- Publication & workspace capture: [src/harnesses/taskpool/publication-services.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/taskpool/publication-services.ts)
+- Harness assembly & closeout: [src/harnesses/taskpool/harness.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/harness.ts)
+- Reconciliation controller: [src/harnesses/taskpool/controller.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/controller.ts)
+- File handoff (`prepare` / `grant`): [src/harnesses/taskpool/task-handoff.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/task-handoff.ts)
+- Lease gate (`ModelAccessPolicy`): [src/harnesses/taskpool/model-access-policy.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/model-access-policy.ts)
+- Publication & workspace capture: [src/harnesses/taskpool/publication-services.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/publication-services.ts)

@@ -1,63 +1,140 @@
 ---
-const ZONES = {
-  all: {
-    tag: 'OVERVIEW',
-    note: 'Your Harness runs the control loop on the left, steering isolated Sandboxes inside the Runtime arena, routing shared Services through the external Gateway, and streaming every Run to the Trace monitor.',
-    code: 'createRuntime({ backend, profiles, services, maxAgents, outputDir })',
-  },
-  harness: {
-    tag: 'HARNESS · CONTROL LOOP',
-    note: 'The TypeScript program you write. It subscribes to arena events, enforces coordination rules, routes messages, and decides when the swarm finishes.',
-    code: 'runtime.onEvent((e) => runtime.send(nextAgent, prompt, { mode: "steer" }))',
-  },
-  runtime: {
-    tag: 'RUNTIME · THE ARENA',
-    note: 'The sandtable engine managing container lifecycles, concurrency slots, file handoffs, and archive-before-delete cleanup across the whole swarm.',
-    code: 'const runtime = await createRuntime({ backend, profiles, services, maxAgents })',
-  },
-  sandbox: {
-    tag: 'SANDBOXES & AGENTS',
-    note: 'Each Agent executes inside its own isolated container with a persistent Pi session, private workspace, 4 local tools, and hard disk/network limits.',
-    code: 'await runtime.spawn({ requestId, profile: "coder", workspace? })',
-  },
-  gateway: {
-    tag: 'HOST GATEWAY · OUTSIDE THE ARENA',
-    note: 'Trusted boundary outside the sandtable. Proxies model requests (so API keys never enter containers) and authenticates every Service call by caller ID and JSON Schema.',
-    code: 'MURM_BRIDGE_TOKEN -> Service Bridge (auth + schema) · Model Gateway',
-  },
-  service: {
-    tag: 'SHARED SERVICES · CUSTOMIZABLE',
-    note: 'Overhead shared space you compose freely — task pools, mailboxes, Git boards, or formal verifiers — accessible to authorized agents without editing agent code.',
-    code: 'services.registerService({ manifest, adapter: createInProcessAdapter(...) })',
-  },
-  trace: {
-    tag: 'RUN TRACE MONITOR',
-    note: 'Every model request, tool call, service invocation, and native session is automatically redacted and archived on disk for full replay and inspection.',
-    code: 'outputDir/<runtimeId>/{runtime.json, evidence.jsonl, service-calls.jsonl, <agentId>/}',
-  },
-};
+import type { Lang } from '../lib/i18n';
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = 'en' } = Astro.props;
+const isZh = lang === 'zh';
+
+const ZONES = isZh
+  ? {
+      all: {
+        tag: '总览',
+        note: '左侧是你编写的 Harness 控制循环，它操控中央 Runtime 沙盘里的各个隔离沙箱；沙箱通过外部 Host Gateway 接入可定制共享 Services，所有运行轨迹实时流入右侧 Trace 显示器。',
+        code: 'createRuntime({ backend, profiles, services, maxAgents, outputDir })',
+      },
+      harness: {
+        tag: 'HARNESS · 控制循环',
+        note: '由你编写的 TypeScript 程序：订阅沙盘事件、执行协作规则、路由消息，并决定何时中断或结束整个集群。',
+        code: 'runtime.onEvent((e) => runtime.send(nextAgent, prompt, { mode: "steer" }))',
+      },
+      runtime: {
+        tag: 'RUNTIME · 沙盘舞台',
+        note: '集群运行底座：统一管理容器生命周期、并发槽位、受控文件交接以及“先归档再销毁”的清理流程。',
+        code: 'const runtime = await createRuntime({ backend, profiles, services, maxAgents })',
+      },
+      sandbox: {
+        tag: 'SANDBOXES & AGENTS',
+        note: '每个 Agent 在独立隔离容器中运行持久化 Pi 会话，拥有私有工作区、四个本地工具以及严格的磁盘/网络配额。',
+        code: 'await runtime.spawn({ requestId, profile: "coder", workspace? })',
+      },
+      gateway: {
+        tag: 'HOST GATEWAY · 沙盘外可信网关',
+        note: '位于沙盘外部的可信边界：代理模型请求（API 密钥绝不进入容器），并按真实调用者身份与 JSON Schema 校验每一次 Service 调用。',
+        code: 'MURM_BRIDGE_TOKEN -> Service Bridge (auth + schema) · Model Gateway',
+      },
+      service: {
+        tag: 'SHARED SERVICES · 可定制共享区域',
+        note: '由你自由组合的共享协作空间——任务池、邮箱、Git 协作板或形式化验证器——授权 Agent 无需改写自身代码即可通过统一 CLI 调用。',
+        code: 'services.registerService({ manifest, adapter: createInProcessAdapter(...) })',
+      },
+      trace: {
+        tag: 'RUN TRACE MONITOR',
+        note: '每一次模型请求、工具调用、服务交互与原生会话都会自动脱敏并落盘归档，支持完整复盘与评测。',
+        code: 'outputDir/<runtimeId>/{runtime.json, evidence.jsonl, service-calls.jsonl, <agentId>/}',
+      },
+    }
+  : {
+      all: {
+        tag: 'OVERVIEW',
+        note: 'Your Harness runs the control loop on the left, steering isolated Sandboxes inside the Runtime arena, routing shared Services through the external Gateway, and streaming every Run to the Trace monitor.',
+        code: 'createRuntime({ backend, profiles, services, maxAgents, outputDir })',
+      },
+      harness: {
+        tag: 'HARNESS · CONTROL LOOP',
+        note: 'The TypeScript program you write. It subscribes to arena events, enforces coordination rules, routes messages, and decides when the swarm finishes.',
+        code: 'runtime.onEvent((e) => runtime.send(nextAgent, prompt, { mode: "steer" }))',
+      },
+      runtime: {
+        tag: 'RUNTIME · THE ARENA',
+        note: 'The sandtable engine managing container lifecycles, concurrency slots, file handoffs, and archive-before-delete cleanup across the whole swarm.',
+        code: 'const runtime = await createRuntime({ backend, profiles, services, maxAgents })',
+      },
+      sandbox: {
+        tag: 'SANDBOXES & AGENTS',
+        note: 'Each Agent executes inside its own isolated container with a persistent Pi session, private workspace, 4 local tools, and hard disk/network limits.',
+        code: 'await runtime.spawn({ requestId, profile: "coder", workspace? })',
+      },
+      gateway: {
+        tag: 'HOST GATEWAY · OUTSIDE THE ARENA',
+        note: 'Trusted boundary outside the sandtable. Proxies model requests (so API keys never enter containers) and authenticates every Service call by caller ID and JSON Schema.',
+        code: 'MURM_BRIDGE_TOKEN -> Service Bridge (auth + schema) · Model Gateway',
+      },
+      service: {
+        tag: 'SHARED SERVICES · CUSTOMIZABLE',
+        note: 'Overhead shared space you compose freely — task pools, mailboxes, Git boards, or formal verifiers — accessible to authorized agents without editing agent code.',
+        code: 'services.registerService({ manifest, adapter: createInProcessAdapter(...) })',
+      },
+      trace: {
+        tag: 'RUN TRACE MONITOR',
+        note: 'Every model request, tool call, service invocation, and native session is automatically redacted and archived on disk for full replay and inspection.',
+        code: 'outputDir/<runtimeId>/{runtime.json, evidence.jsonl, service-calls.jsonl, <agentId>/}',
+      },
+    };
+
+const ui = isZh
+  ? {
+      badge: '心智模型',
+      sub: '悬停或点击沙盘任意区域，查看集群如何被 Harness 调度与隔离',
+      tabs: { all: '全部', harness: 'HARNESS', runtime: 'RUNTIME', sandbox: '沙箱', gateway: '网关', service: 'SERVICES', trace: 'TRACE' },
+      primLabel: '核心原语：',
+      handBuild: '自由定制！',
+      handKeys: '绝不进入沙箱！',
+      handLoop: '由你编写控制循环！',
+      svcMeta: '自由组合任意协作状态',
+      arenaMeta: '隔离执行沙盘',
+      gwMeta: '沙盘外部可信区',
+      consoleTitle: '控制循环与规则',
+      consoleFoot: '角色 · 路由 · 停止条件',
+    }
+  : {
+      badge: 'MENTAL MODEL',
+      sub: 'Hover or click any zone on the sandtable to trace how the swarm is controlled',
+      tabs: { all: 'ALL', harness: 'HARNESS', runtime: 'RUNTIME', sandbox: 'SANDBOXES', gateway: 'GATEWAY', service: 'SERVICES', trace: 'TRACE' },
+      primLabel: 'Primitive:',
+      handBuild: 'build your own!',
+      handKeys: 'never enter sandboxes!',
+      handLoop: 'you write the loop!',
+      svcMeta: 'plug any coordination state',
+      arenaMeta: 'ISOLATED EXECUTION SANDTABLE',
+      gwMeta: 'OUTSIDE ARENA',
+      consoleTitle: 'Control Loop & Rules',
+      consoleFoot: 'roles · routing · stop rules',
+    };
 ---
 
 <div class="arena-wrap" data-arena-model>
   <figure class="schematic-card arena-card">
     <div class="schematic-head">
       <div class="schematic-title-wrap">
-        <span class="pixel-badge">MENTAL MODEL</span>
-        <span class="schematic-sub">Hover or click any zone on the sandtable to trace how the swarm is controlled</span>
+        <span class="pixel-badge">{ui.badge}</span>
+        <span class="schematic-sub">{ui.sub}</span>
       </div>
-      <div class="stage-controls" role="tablist" aria-label="Focus architecture zone">
-        <button type="button" class="phase-btn active" data-az-select="all" role="tab" aria-selected="true">ALL</button>
-        <button type="button" class="phase-btn" data-az-select="harness" role="tab" aria-selected="false">HARNESS</button>
-        <button type="button" class="phase-btn" data-az-select="runtime" role="tab" aria-selected="false">RUNTIME</button>
-        <button type="button" class="phase-btn" data-az-select="sandbox" role="tab" aria-selected="false">SANDBOXES</button>
-        <button type="button" class="phase-btn" data-az-select="gateway" role="tab" aria-selected="false">GATEWAY</button>
-        <button type="button" class="phase-btn" data-az-select="service" role="tab" aria-selected="false">SERVICES</button>
-        <button type="button" class="phase-btn" data-az-select="trace" role="tab" aria-selected="false">TRACE</button>
+      <div class="stage-controls" role="tablist" aria-label={isZh ? '聚焦架构区域' : 'Focus architecture zone'}>
+        <button type="button" class="phase-btn active" data-az-select="all" role="tab" aria-selected="true">{ui.tabs.all}</button>
+        <button type="button" class="phase-btn" data-az-select="harness" role="tab" aria-selected="false">{ui.tabs.harness}</button>
+        <button type="button" class="phase-btn" data-az-select="runtime" role="tab" aria-selected="false">{ui.tabs.runtime}</button>
+        <button type="button" class="phase-btn" data-az-select="sandbox" role="tab" aria-selected="false">{ui.tabs.sandbox}</button>
+        <button type="button" class="phase-btn" data-az-select="gateway" role="tab" aria-selected="false">{ui.tabs.gateway}</button>
+        <button type="button" class="phase-btn" data-az-select="service" role="tab" aria-selected="false">{ui.tabs.service}</button>
+        <button type="button" class="phase-btn" data-az-select="trace" role="tab" aria-selected="false">{ui.tabs.trace}</button>
       </div>
     </div>
 
     <div class="schematic-canvas-scroll">
-      <svg class="schematic-svg arena-svg" viewBox="0 0 1060 448" width="1060" height="448" role="img" aria-label="Tactical sandtable mental model of murm: Harness control loop steering isolated Sandboxes inside a Runtime arena, connected through an external Host Gateway to Shared Services, with a live Run Trace monitor">
+      <svg class="schematic-svg arena-svg" viewBox="0 0 1060 448" width="1060" height="448" role="img" aria-label={isZh ? 'murm 沙盘心智模型交互图' : 'Tactical sandtable mental model of murm: Harness control loop steering isolated Sandboxes inside a Runtime arena, connected through an external Host Gateway to Shared Services, with a live Run Trace monitor'}>
         <defs>
           <pattern id="g-arena" width="24" height="24" patternUnits="userSpaceOnUse">
             <path d="M 24 0 L 0 0 0 24" fill="none" stroke="var(--sch-grid)" stroke-width="0.9" />
@@ -76,53 +153,44 @@ const ZONES = {
           </marker>
         </defs>
 
-        <!-- Drafting paper canvas -->
         <rect x="0" y="0" width="1060" height="448" fill="var(--sch-surface)" />
         <rect x="0" y="0" width="1060" height="448" fill="url(#g-arena)" />
 
-        <!-- ================================================================ -->
-        <!-- 1. OVERHEAD SHARED SERVICES (Pale-blue customizable shared zone) -->
-        <!-- ================================================================ -->
+        <!-- 1. OVERHEAD SHARED SERVICES -->
         <g class="az-zone" data-az-zone="service" tabindex="0" role="button" aria-label="Inspect Shared Services">
           <rect x="301" y="21" width="514" height="84" rx="8" fill="var(--sch-lane-service)" stroke="var(--sch-indigo)" stroke-width="1.5" stroke-dasharray="5 3" class="az-outline" />
           <rect x="301" y="21" width="514" height="4" rx="2" fill="var(--sch-indigo)" />
           <text x="316" y="40" class="ar-kicker-blue">SHARED SERVICES · CUSTOMIZABLE</text>
-          <text x="800" y="40" text-anchor="end" class="ar-meta">plug any coordination state</text>
+          <text x="800" y="40" text-anchor="end" class="ar-meta">{ui.svcMeta}</text>
 
-          <!-- 3 Service tiles -->
           <rect x="319" y="51" width="150" height="42" rx="5" class="sch-shadow" />
           <rect x="316" y="48" width="150" height="42" rx="5" class="sch-card" />
           <rect x="316" y="48" width="4" height="42" rx="2" fill="var(--sch-amber)" />
           <text x="328" y="65" class="sch-card-pixel">TASK POOL</text>
-          <text x="328" y="81" class="sch-card-title">Leases &amp; DAGs</text>
+          <text x="328" y="81" class="sch-card-title">{isZh ? '租约与任务 DAG' : 'Leases & DAGs'}</text>
 
           <rect x="485" y="51" width="150" height="42" rx="5" class="sch-shadow" />
           <rect x="482" y="48" width="150" height="42" rx="5" class="sch-card" />
           <rect x="482" y="48" width="4" height="42" rx="2" fill="var(--sch-indigo)" />
           <text x="494" y="65" class="sch-card-pixel">BOARD / MAILBOX</text>
-          <text x="494" y="81" class="sch-card-title">Messages &amp; claims</text>
+          <text x="494" y="81" class="sch-card-title">{isZh ? '消息与任务认领' : 'Messages & claims'}</text>
 
           <rect x="651" y="51" width="150" height="42" rx="5" class="sch-shadow" />
           <rect x="648" y="48" width="150" height="42" rx="5" class="sch-card" />
           <rect x="648" y="48" width="4" height="42" rx="2" fill="var(--sch-teal)" />
           <text x="660" y="65" class="sch-card-pixel">GIT / VERIFIER</text>
-          <text x="660" y="81" class="sch-card-title">PRs, Lean &amp; custom</text>
+          <text x="660" y="81" class="sch-card-title">{isZh ? 'PR、Lean 与自定义' : 'PRs, Lean & custom'}</text>
 
-          <!-- Handwritten note outside right -->
-          <text x="836" y="64" class="sch-hand-blue">build your own!</text>
+          <text x="836" y="64" class="sch-hand-blue">{ui.handBuild}</text>
           <path d="M 832 69 C 824 72, 822 72, 818 68" fill="none" stroke="var(--sch-indigo)" stroke-width="1.5" stroke-linecap="round" />
         </g>
 
-        <!-- ================================================================ -->
-        <!-- 2. HOST GATEWAY (Outside the sandtable, bridging Services + Keys) -->
-        <!-- ================================================================ -->
-        <!-- Vertical bridge pipe: Gateway <-> Services -->
+        <!-- 2. HOST GATEWAY -->
         <g class="az-edge" data-az-links="gateway service">
           <path class="sch-flow-line" d="M 556 132 L 556 108" fill="none" stroke="var(--sch-indigo)" stroke-width="2.1" marker-end="url(#ar-co)" />
           <text x="568" y="123" class="ar-pipe-lbl">auth + JSON schema</text>
         </g>
 
-        <!-- Vertical collector pipe: Sandboxes -> Gateway -->
         <g class="az-edge" data-az-links="gateway sandbox runtime">
           <path class="sch-flow-line" d="M 392 216 V 202 H 720 V 216" fill="none" stroke="var(--sch-indigo)" stroke-width="1.6" opacity="0.82" />
           <path class="sch-flow-line" d="M 556 216 V 188" fill="none" stroke="var(--sch-indigo)" stroke-width="2.1" marker-end="url(#ar-co)" />
@@ -134,34 +202,27 @@ const ZONES = {
           <rect x="405" y="132" width="298" height="51" rx="6" class="sch-card az-outline" />
           <rect x="405" y="132" width="298" height="5" rx="2" fill="var(--sch-indigo)" />
           <text x="418" y="152" class="ar-kicker-blue">HOST GATEWAY</text>
-          <text x="690" y="152" text-anchor="end" class="ar-meta">OUTSIDE ARENA</text>
+          <text x="690" y="152" text-anchor="end" class="ar-meta">{ui.gwMeta}</text>
           <text x="418" y="171" class="sch-card-title">Service Bridge  ·  Model Gateway</text>
 
-          <!-- External API Keys chip cleanly attached to Gateway outside the sandtable -->
           <path d="M 703 158 H 732" stroke="var(--ink)" stroke-width="1.4" stroke-dasharray="3 2.5" />
           <rect x="735" y="143" width="110" height="30" rx="5" class="sch-shadow" />
           <rect x="732" y="140" width="110" height="30" rx="5" class="sch-card sch-card-yellow" />
           <text x="787" y="159" text-anchor="middle" class="ar-key-txt">API KEYS</text>
-          <text x="854" y="159" class="sch-hand-blue-sm">never enter sandboxes!</text>
+          <text x="854" y="159" class="sch-hand-blue-sm">{ui.handKeys}</text>
         </g>
 
-        <!-- ================================================================ -->
-        <!-- 3. CENTER TACTICAL SANDTABLE — RUNTIME ARENA + 3 SANDBOXES       -->
-        <!-- ================================================================ -->
-        <!-- Outer Sandtable Table Surface (Runtime) -->
+        <!-- 3. CENTER TACTICAL SANDTABLE — RUNTIME ARENA + 3 SANDBOXES -->
         <g class="az-zone" data-az-zone="runtime" tabindex="0" role="button" aria-label="Inspect Runtime Sandtable Arena">
-          <!-- Tactile 3D tabletop base rim -->
           <path d="M 304 416 L 814 416 L 822 406 L 822 224 L 814 218 L 304 218 Z" fill="var(--ink)" opacity="0.14" />
           <rect x="298" y="216" width="516" height="196" rx="9" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.8" class="az-outline" />
           <rect x="304" y="222" width="504" height="184" rx="6" fill="url(#g-arena-fine)" />
-          <!-- Tabletop bevel bottom bar -->
           <path d="M 298 390 H 814 V 403 C 814 408 810 412 805 412 H 307 C 302 412 298 408 298 403 Z" fill="var(--sch-header)" stroke="var(--ink)" stroke-width="1.4" />
           <text x="314" y="239" class="ar-arena-title">RUNTIME · THE ARENA</text>
-          <text x="798" y="239" text-anchor="end" class="ar-meta">ISOLATED EXECUTION SANDTABLE</text>
+          <text x="798" y="239" text-anchor="end" class="ar-meta">{ui.arenaMeta}</text>
           <text x="556" y="404.5" text-anchor="middle" class="ar-floor-meta">containers · disk quotas · network allowlists · archive-before-delete</text>
         </g>
 
-        <!-- 3 Isolated Sandbox Pods inside the Arena -->
         <g class="az-zone" data-az-zone="sandbox" tabindex="0" role="button" aria-label="Inspect Isolated Sandboxes and Agents">
           <!-- Sandbox 01 -->
           <rect x="314" y="252" width="154" height="126" rx="6" fill="var(--sch-surface)" stroke="var(--ink)" stroke-width="1.35" stroke-dasharray="4 3" class="az-outline" />
@@ -171,7 +232,7 @@ const ZONES = {
           <rect x="323" y="277" width="130" height="5" rx="2" fill="var(--sch-indigo)" />
           <text x="334" y="297" class="sch-card-pixel">AGENT · LEAD</text>
           <text x="334" y="313" class="sch-card-title">Pi + Workspace</text>
-          <text x="334" y="328" class="ar-meta">persistent session</text>
+          <text x="334" y="328" class="ar-meta">{isZh ? '持久化会话' : 'persistent session'}</text>
           <rect x="323" y="347" width="28" height="17" rx="3" class="ar-tool-box" /><text x="337" y="358.5" text-anchor="middle" class="ar-tool-txt">read</text>
           <rect x="355" y="347" width="32" height="17" rx="3" class="ar-tool-box" /><text x="371" y="358.5" text-anchor="middle" class="ar-tool-txt">write</text>
           <rect x="391" y="347" width="28" height="17" rx="3" class="ar-tool-box" /><text x="405" y="358.5" text-anchor="middle" class="ar-tool-txt">edit</text>
@@ -185,7 +246,7 @@ const ZONES = {
           <rect x="488" y="277" width="130" height="5" rx="2" fill="var(--sch-teal)" />
           <text x="499" y="297" class="sch-card-pixel">AGENT · CODER</text>
           <text x="499" y="313" class="sch-card-title">Pi + Workspace</text>
-          <text x="499" y="328" class="ar-meta">persistent session</text>
+          <text x="499" y="328" class="ar-meta">{isZh ? '持久化会话' : 'persistent session'}</text>
           <rect x="488" y="347" width="28" height="17" rx="3" class="ar-tool-box" /><text x="502" y="358.5" text-anchor="middle" class="ar-tool-txt">read</text>
           <rect x="520" y="347" width="32" height="17" rx="3" class="ar-tool-box" /><text x="536" y="358.5" text-anchor="middle" class="ar-tool-txt">write</text>
           <rect x="556" y="347" width="28" height="17" rx="3" class="ar-tool-box" /><text x="570" y="358.5" text-anchor="middle" class="ar-tool-txt">edit</text>
@@ -199,17 +260,14 @@ const ZONES = {
           <rect x="653" y="277" width="130" height="5" rx="2" fill="var(--sch-amber)" />
           <text x="664" y="297" class="sch-card-pixel">AGENT · TESTER</text>
           <text x="664" y="313" class="sch-card-title">Pi + Workspace</text>
-          <text x="664" y="328" class="ar-meta">persistent session</text>
+          <text x="664" y="328" class="ar-meta">{isZh ? '持久化会话' : 'persistent session'}</text>
           <rect x="653" y="347" width="28" height="17" rx="3" class="ar-tool-box" /><text x="667" y="358.5" text-anchor="middle" class="ar-tool-txt">read</text>
           <rect x="685" y="347" width="32" height="17" rx="3" class="ar-tool-box" /><text x="701" y="358.5" text-anchor="middle" class="ar-tool-txt">write</text>
           <rect x="721" y="347" width="28" height="17" rx="3" class="ar-tool-box" /><text x="735" y="358.5" text-anchor="middle" class="ar-tool-txt">edit</text>
           <rect x="753" y="347" width="30" height="17" rx="3" class="ar-tool-box" /><text x="768" y="358.5" text-anchor="middle" class="ar-tool-txt">bash</text>
         </g>
 
-        <!-- ================================================================ -->
-        <!-- 4. LEFT CONSOLE — HARNESS CONTROL LOOP (Marker Yellow Highlight) -->
-        <!-- ================================================================ -->
-        <!-- Bi-directional Control Loop Arrows (Harness <-> Runtime) -->
+        <!-- 4. LEFT CONSOLE — HARNESS CONTROL LOOP -->
         <g class="az-edge" data-az-links="harness runtime">
           <path class="sch-flow-line" d="M 222 282 L 294 282" fill="none" stroke="var(--sch-indigo)" stroke-width="2.2" marker-end="url(#ar-co)" />
           <text x="258" y="272" text-anchor="middle" class="ar-pipe-lbl">spawn·send</text>
@@ -219,14 +277,13 @@ const ZONES = {
         </g>
 
         <g class="az-zone" data-az-zone="harness" tabindex="0" role="button" aria-label="Inspect Harness Control Loop">
-          <text x="120" y="200" text-anchor="middle" class="sch-hand-blue">you write the loop!</text>
+          <text x="120" y="200" text-anchor="middle" class="sch-hand-blue">{ui.handLoop}</text>
           <rect x="25" y="220" width="196" height="192" rx="8" class="sch-shadow" />
           <rect x="21" y="216" width="196" height="192" rx="8" class="sch-card sch-card-yellow az-outline" />
           <text x="35" y="238" class="ar-kicker-dark">HARNESS</text>
           <text x="203" y="238" text-anchor="end" class="ar-kicker-dark">TS</text>
-          <text x="35" y="259" class="ar-console-title">Control Loop &amp; Rules</text>
+          <text x="35" y="259" class="ar-console-title">{ui.consoleTitle}</text>
 
-          <!-- Crisp inner pseudo-loop window -->
           <rect x="35" y="274" width="168" height="92" rx="5" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.2" />
           <text x="45" y="293" class="ar-code-k">while</text><text x="80" y="293" class="ar-code-t">(running) &#123;</text>
           <text x="53" y="311" class="ar-code-t">route(event);</text>
@@ -234,23 +291,19 @@ const ZONES = {
           <text x="53" y="347" class="ar-code-k">send</text><text x="81" y="347" class="ar-code-t">(agent, cmd);</text>
           <text x="45" y="361" class="ar-code-t">&#125;</text>
 
-          <text x="35" y="388" class="ar-console-foot">roles · routing · stop rules</text>
+          <text x="35" y="388" class="ar-console-foot">{ui.consoleFoot}</text>
         </g>
 
-        <!-- ================================================================ -->
-        <!-- 5. RIGHT WORKSTATION SCREEN — RUN TRACE MONITOR                  -->
-        <!-- ================================================================ -->
+        <!-- 5. RIGHT WORKSTATION SCREEN — RUN TRACE MONITOR -->
         <g class="az-edge" data-az-links="runtime trace">
           <path class="sch-flow-line" d="M 814 312 L 866 312" fill="none" stroke="var(--sch-amber)" stroke-width="2.1" marker-end="url(#ar-am)" />
           <text x="840" y="302" text-anchor="middle" class="ar-pipe-lbl">stream</text>
         </g>
 
         <g class="az-zone" data-az-zone="trace" tabindex="0" role="button" aria-label="Inspect Run Trace Monitor">
-          <!-- Monitor stand -->
           <rect x="944" y="380" width="22" height="16" rx="2" fill="var(--border-strong)" stroke="var(--ink)" stroke-width="1.3" />
           <rect x="920" y="394" width="70" height="8" rx="3" fill="var(--sch-header)" stroke="var(--ink)" stroke-width="1.4" />
 
-          <!-- Monitor bezel -->
           <rect x="873" y="228" width="168" height="154" rx="8" class="sch-shadow" />
           <rect x="869" y="224" width="168" height="154" rx="8" class="sch-card az-outline" />
           <rect x="869.8" y="224.8" width="166.4" height="24" rx="7" fill="var(--sch-header)" />
@@ -258,7 +311,6 @@ const ZONES = {
           <circle cx="884" cy="237" r="3.5" fill="var(--sch-teal)" />
           <text x="895" y="240.5" class="ar-kicker-dark">TRACE MONITOR</text>
 
-          <!-- Screen viewport with live multi-lane traces -->
           <rect x="881" y="259" width="144" height="82" rx="4" fill="var(--sch-surface)" stroke="var(--border-strong)" stroke-width="1" />
           <text x="888" y="275" class="ar-tool-txt">IN</text>
           <rect x="914" y="267" width="16" height="9" rx="2" fill="var(--sch-blue)" />
@@ -275,7 +327,6 @@ const ZONES = {
           <rect x="970" y="313" width="18" height="9" rx="2" fill="var(--sch-teal)" />
           <rect x="992" y="313" width="24" height="9" rx="2" fill="var(--sch-amber)" />
 
-          <!-- Bottom screen metrics -->
           <text x="882" y="359" class="ar-meta">sessions · calls · traces</text>
           <text x="955" y="422" text-anchor="middle" class="ar-pipe-lbl">outputDir/&lt;runtimeId&gt;/</text>
         </g>
@@ -288,7 +339,7 @@ const ZONES = {
         <span data-az-note>{ZONES.all.note}</span>
       </div>
       <div class="stage-tech-pills">
-        <span><strong>Primitive:</strong> <code data-az-code>{ZONES.all.code}</code></span>
+        <span><strong>{ui.primLabel}</strong> <code data-az-code>{ZONES.all.code}</code></span>
       </div>
     </figcaption>
   </figure>

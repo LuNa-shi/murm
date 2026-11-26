@@ -9,7 +9,7 @@ order: 10
 
 ## 1. Registered Service (`substrate`)
 
-[src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/substrate/substrate.ts) registers a single in-process SQLite Service (`substrate`) with three operations:
+[src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/substrate.ts) registers a single in-process SQLite Service (`substrate`) with three operations:
 
 | Operation | Input | Guarantees |
 | --- | --- | --- |
@@ -32,7 +32,7 @@ Because entries are immutable, correcting or extending an earlier finding means 
 
 ## 2. Host control loop
 
-Substrate uses just four baseline Runtime calls: `createRuntime`, `spawn`, `runInput`, and `stop`. In [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/substrate/index.ts), `Promise.all` drives every peer concurrently across `maxRounds` turns (2–32), with optional `maxConcurrentInputs` throttling and an `onCycle` hook for host-side correction turns:
+Substrate uses just four baseline Runtime calls: `createRuntime`, `spawn`, `runInput`, and `stop`. In [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/index.ts), `Promise.all` drives every peer concurrently across `maxRounds` turns (2–32), with optional `maxConcurrentInputs` throttling and an `onCycle` hook for host-side correction turns:
 
 ```ts
 // 1. Spawn poolSize (3..8) equal peers and bind their IDs to the substrate Service
@@ -83,14 +83,14 @@ node dist/examples/substrate/main.js dist/examples/substrate/config.js > substra
 node dist/examples/substrate/main.js --result "./substrate-runs/$runtime_id" --runtime-id "$runtime_id"
 ```
 
-[collaboration-evidence.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/substrate/collaboration-evidence.ts) audits `substrate_contents`, `substrate_references`, and `substrate_reads` to verify the complete cross-peer reuse chain:
+[collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/collaboration-evidence.ts) audits `substrate_contents`, `substrate_references`, and `substrate_reads` to verify the complete cross-peer reuse chain:
 1. Peer A publishes an artifact that persists after Peer A retires;
 2. Peer B discovers it via `search` and reads it via `visit`;
 3. Peer B publishes a new artifact explicitly citing Peer A's `content:<sha256>` address.
 
 ## 4. Formal theorem proving with FATE (Lean 4)
 
-The [Substrate example](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/substrate/README.md) also ships **FATE-M**, **FATE-H**, and **FATE-X** Lean `4.28.0` benchmark configurations on the exact same host runner. By adding a host-side Lean checking Service (`check_lean`) alongside the substrate Service, you can compare three experimental conditions on the same Runtime:
+The [Substrate example](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) also ships **FATE-M**, **FATE-H**, and **FATE-X** Lean `4.28.0` benchmark configurations on the exact same host runner. By adding a host-side Lean checking Service (`check_lean`) alongside the substrate Service, you can compare three experimental conditions on the same Runtime:
 - `shared`: all peers share one substrate library;
 - `private`: each peer has only its own isolated library;
 - `none`: no substrate library.
@@ -108,7 +108,7 @@ node dist/examples/substrate/main.js dist/examples/substrate/fate-config.js
 
 ## Source files
 
-- Concurrent round driver: [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/substrate/index.ts)
-- SQLite `substrate` Service: [src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/substrate/substrate.ts)
-- Cross-peer reuse auditor: [src/harnesses/substrate/collaboration-evidence.ts](https://github.com/LuNa-shi/SwarmEnv/blob/main/src/harnesses/substrate/collaboration-evidence.ts)
-- CLI & FATE Lean configs: [examples/substrate/README.md](https://github.com/LuNa-shi/SwarmEnv/blob/main/examples/substrate/README.md) · [FATE-X #31 run report](https://github.com/LuNa-shi/SwarmEnv/blob/main/docs/experiments/EXP-20261125-20-scalemas-fatex-verified.md)
+- Concurrent round driver: [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/index.ts)
+- SQLite `substrate` Service: [src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/substrate.ts)
+- Cross-peer reuse auditor: [src/harnesses/substrate/collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/collaboration-evidence.ts)
+- CLI & FATE Lean configs: [examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) · [FATE-X #31 run report](https://github.com/LuNa-shi/murm/blob/main/docs/experiments/EXP-20261125-20-scalemas-fatex-verified.md)
