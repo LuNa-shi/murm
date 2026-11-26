@@ -91,13 +91,13 @@ if role=='lead' and initial:
  cli('agent','revoke',scope,request='revoke-checker')
  add_task('revoked','revoked.txt',worker,'Probe the checker after revocation')
  wait_for(lambda: completed(['revoked']))
- add_task('checker','check.txt',member['agentId'],'Check the committed candidate at '+proof['commit'])
+ add_task('checker','checker-report.json',member['agentId'],'Check the committed candidate at '+proof['commit'])
  result['preliminary']=proof
 elif role=='lead':
  feedback=next((row for row in state['notes'] if row['actor']==state['team'].get('checker')),None)
  if feedback and not any(row['id']=='adopt' for row in state['subtasks']):
   board('announce',{'text':'Fix the indexing bug demonstrated by the checker feedback.','feedback_ids':[feedback['seq']]})
-  add_task('adopt','adopt.txt',state['team']['helper1'],'Keep original indexes including blank lines')
+  add_task('adopt','line-index.mjs',state['team']['helper1'],'Keep original indexes including blank lines')
  elif feedback and completed(['adopt']):
   state=board('read')
   if all(row['state']=='complete' for row in state['subtasks']):
@@ -129,20 +129,24 @@ else:
   git('fetch','origin','lead-'+branch.removeprefix('checker-'))
   assert git('rev-parse','FETCH_HEAD')==commit
   git('cherry-pick',*git('rev-list','--reverse','origin/main..'+commit).splitlines())
-  checked_good=cli(service,'check_orders',{'jsonl':valid})
-  checked_mixed=cli(service,'check_orders',{'jsonl':mixed})
+  checked_good=cli(service,'check_orders',{'jsonl':valid},request='review-valid')
+  checked_mixed=cli(service,'check_orders',{'jsonl':mixed},request='review-invalid')
+  good_execution=run('node','orders.mjs',input=valid)
   execution=run('node','orders.mjs',input=mixed)
   assert execution.returncode==1
   actual=json.loads(execution.stdout)
   assert checked_good['totals']=={'USD':100}
   assert checked_mixed['errors']==[{'line':3,'code':'DUPLICATE_ID'},{'line':4,'code':'INVALID_JSON'}]
   assert actual['errors']!=checked_mixed['errors']
-  feedback='Commit '+commit+' reports duplicate/malformed lines 2/3 for a leading blank. The checker reports original lines 3/4.'
-  (root/path).write_text(feedback+'\\n')
-  board('note',{'subtask_id':id,'text':feedback})
+  feedback='Preserve original line positions across blank lines. The candidate reports 2/3, and the checker reports 3/4.'
+  def transcript(execution,requestId):
+   return {'requestId':requestId,'status':execution.returncode,'stdout':execution.stdout,'stderr':execution.stderr}
+  (root/path).write_text(json.dumps({'candidateCommit':commit,'feedback':feedback,'recommendedPath':'line-index.mjs',
+    'valid':transcript(good_execution,'review-valid'),'invalid':transcript(execution,'review-invalid')})+'\\n')
+  board('note',{'subtask_id':id,'text':'Candidate '+commit+' '+feedback})
  elif id=='adopt':
-  (root/'orders-lib.mjs').write_text(files['corrected'])
-  (root/path).write_text('Apply the checker feedback by preserving original indexes including blank lines.\\n')
+  (root/'orders-lib.mjs').write_text("import { lineIndex } from './line-index.mjs';\\n"+files['corrected'].replace('(index, valid, errors) => index + 1','lineIndex'))
+  (root/path).write_text('export const lineIndex = index => index + 1;\\n')
   git('add','orders-lib.mjs')
  publish([path],id)
  current=board('read')

@@ -4,6 +4,7 @@ import { mkdtemp, copyFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { verifyClosedOrders } from '../examples/lead-worker/verify-orders.js';
 
 type OrdersInput = { stdin?: string; file?: string; args?: string[] };
 type OrdersTranscript = { status: number | null; stdout: string; stderr: string };
@@ -65,4 +66,19 @@ test('the independent orders oracle rejects the initial project and a wrong tota
 
   await writeMixedOrders(1349);
   assert.deepEqual(mixedCase(await verifyOrders(execute)), { id: 'orders-a', ok: false });
+});
+
+test('offline verification requires the closed Git identities before starting Docker', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-orders-closed-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const report = join(directory, 'report.json');
+  const candidate = join(directory, 'candidate.json');
+  await writeFile(candidate, '{}');
+  await writeFile(report, JSON.stringify({
+    result: { verdict: { ok: true, results: Array.from({ length: 9 }, () => ({ ok: true })) } },
+    businessFailure: null, cleanupFailure: null, reportSaveFailure: null,
+    cleanup: { cleanup: 'complete', agents: Array.from({ length: 4 }, () => ({ execution: 'stopped', cleanup: 'complete' })),
+      harness: { cleanup: 'complete', pending: [], resources: [{ id: 'checking', kind: 'checking-container', state: 'closed' }] } },
+  }));
+  await assert.rejects(verifyClosedOrders(report, candidate), error => error instanceof assert.AssertionError && error.expected === 4);
 });

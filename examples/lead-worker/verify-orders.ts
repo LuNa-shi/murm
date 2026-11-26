@@ -20,9 +20,18 @@ export async function verifyClosedOrders(reportPath: string, bundlePath: string)
   assert.equal(report.cleanup?.cleanup, 'complete');
   assert.equal(report.cleanup.agents?.length, 4);
   assert.ok(report.cleanup.agents.every((row: { execution: string; cleanup: string }) => row.execution === 'stopped' && row.cleanup === 'complete'));
-  const checking = report.cleanup.harness?.resources?.filter((row: { kind: string }) => row.kind === 'checking-container');
-  assert.equal(checking?.length, 1);
-  assert.equal(checking[0].state, 'closed');
+  assert.equal(report.cleanup.harness?.cleanup, 'complete');
+  assert.deepEqual(report.cleanup.harness.pending, []);
+  const resources: { kind: string; id: string; state: string }[] = report.cleanup.harness.resources;
+  assert.equal(new Set(resources.map(row => JSON.stringify([row.kind, row.id]))).size, resources.length);
+  for (const [kind, state, count] of [['checking-container', 'closed', 1], ['gitea-account', 'closed', 4],
+    ['orders-verification-container', 'closed', 9], ['board-connection', 'closed', 1], ['board-data', 'retained', 1],
+    ['repository-create-intent', 'retained', 1], ['repository', 'retained', 1]] as const) {
+    const rows = resources.filter(row => row.kind === kind);
+    assert.equal(rows.length, count);
+    assert.ok(rows.every(row => row.state === state));
+  }
+  assert.ok(resources.every(row => row.state === 'closed' || row.state === 'retained'));
   assert.deepEqual(report.result.harness.dynamic.deployment.verification, { validInput: true, duplicateAndMalformedInput: true });
   for (const key of ['commit', 'sha256', 'treeSha256', 'image']) assert.equal(candidate[key], verdict[key]);
   assert.match(candidate.commit, /^[a-f0-9]{40}$/);

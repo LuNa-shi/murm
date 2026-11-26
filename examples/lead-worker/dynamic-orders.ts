@@ -10,6 +10,8 @@ import { assertContainerImage, deployDynamicContainer, docker, isolatedContainer
 
 type Variant = 'orders-a' | 'orders-b';
 type Candidate = Record<string, string>;
+type OrdersCase = { stdin?: string; file?: string; args?: string[] };
+type ExecuteOrders = (input: OrdersCase) => Promise<{ status: number | null; stdout: string; stderr: string }>;
 const fixtures = new URL('../../../examples/lead-worker/fixtures/', import.meta.url);
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 export const ordersTreeDigest = (files: Candidate) => digest(Buffer.from(JSON.stringify(Object.entries(files).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0))));
@@ -20,7 +22,7 @@ function safePath(path: string) {
   return filePath.test(path) && !path.split('/').some(part => ['.', '..', '.git'].includes(part.toLowerCase()));
 }
 
-export async function fetchOrdersCandidate({ repositoryUrl, token, commit, sha256, signal }: Parameters<DynamicLeadWorkerOptions['verifyFinal']>[0]) {
+export async function fetchOrdersCandidate({ repositoryUrl, token, commit, sha256, signal }: Omit<Parameters<DynamicLeadWorkerOptions['verifyFinal']>[0], 'resources'>) {
   const url = new URL(repositoryUrl);
   const parts = url.pathname.match(/^\/([^/]+)\/([^/]+)\.git$/);
   if (!parts || !commitId.test(commit) || !/^[a-f0-9]{64}$/.test(sha256) || url.username || url.password || url.search || url.hash)
@@ -52,12 +54,9 @@ export async function fetchOrdersCandidate({ repositoryUrl, token, commit, sha25
   return files;
 }
 
-export async function testOrdersCandidate(files: Candidate, image: string, signal?: AbortSignal, resources?: DynamicDeploymentRequest['resources']) {
+export async function withOrdersCandidate<T>(files: Candidate, image: string, run: (execute: ExecuteOrders) => Promise<T>,
+  signal?: AbortSignal, resources?: DynamicDeploymentRequest['resources']) {
   assertContainerImage(image);
-  const { verifyOrders } = await import(fileURLToPath(new URL('oracle.mjs', fixtures))) as {
-    verifyOrders(execute: (input: { stdin?: string; file?: string; args?: string[] }) =>
-      Promise<{ status: number | null; stdout: string; stderr: string }>): Promise<{ ok: boolean; results: Array<{ id: string; ok: boolean }> }>;
-  };
   let projectBytes = 0;
   if (!Object.hasOwn(files, 'orders.mjs') || Object.keys(files).length > 64) throw new Error('Invalid frozen candidate');
   const directory = await mkdtemp(join(tmpdir(), 'murm-candidate-'));
@@ -76,7 +75,7 @@ export async function testOrdersCandidate(files: Candidate, image: string, signa
     }
     const testInput = join(directory, 'case.jsonl');
     let cleanupFailure: unknown;
-    const verdict = await verifyOrders(async ({ stdin, file, args = [] }) => {
+    const verdict = await run(async ({ stdin, file, args = [] }) => {
       signal?.throwIfAborted();
       if (cleanupFailure) throw cleanupFailure;
       const fileArgs = file === undefined ? args.map(value => `/tmp/${value}`) : ['/case.jsonl'];
@@ -100,6 +99,13 @@ export async function testOrdersCandidate(files: Candidate, image: string, signa
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+export async function testOrdersCandidate(files: Candidate, image: string, signal?: AbortSignal, resources?: DynamicDeploymentRequest['resources']) {
+  const { verifyOrders } = await import(fileURLToPath(new URL('oracle.mjs', fixtures))) as {
+    verifyOrders(execute: ExecuteOrders): Promise<{ ok: boolean; results: Array<{ id: string; ok: boolean }> }>;
+  };
+  return withOrdersCandidate(files, image, verifyOrders, signal, resources);
 }
 
 export async function dynamicOrders({ variant, serviceImage, candidatePath }: {

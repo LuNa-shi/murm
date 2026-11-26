@@ -9,13 +9,14 @@ import { createNativeEvidenceDirectory, installNativeNotesExample } from './fixt
 import { createLocalPeerMeshStack } from './fixtures/peermesh-local-stack.js';
 import { createCleanupBudget } from './fixtures/peermesh-deadline.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
+import { auditCheckerAdoption } from './fixtures/lead-worker-collaboration.js';
 
 const execute = promisify(execFile);
 const imageId = /^sha256:[a-f0-9]{64}$/;
 const readJson = async (path: string) => JSON.parse(await readFile(path, 'utf8'));
 const hash = (bytes: string | Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
-async function inspectRun(outputDir, report, candidate, model) {
+async function inspectRun({ outputDir, report, candidate, model, gitea, runId, serviceImage }) {
   assert.equal(report.businessFailure, null);
   assert.equal(report.cleanupFailure, null);
   assert.equal(report.reportSaveFailure, null);
@@ -65,15 +66,8 @@ async function inspectRun(outputDir, report, candidate, model) {
   const legal = checkCalls.find(row => row.output?.valid?.length && row.output?.errors?.length === 0);
   const bad = checkCalls.find(row => row.output?.errors?.some(error => ['INVALID_JSON', 'DUPLICATE_ID'].includes(error.code)));
   assert.ok(legal && bad && checkCalls.some(row => row.seq > revoked.seq));
-  const feedback = board.notes.find(row => row.actor === checker && board.submitted.feedbackIds.includes(row.seq)
-    && /\b[a-f0-9]{40}\b/.test(row.text));
-  assert.ok(feedback);
-  assert.ok(board.reads.some(row => row.actor === lead && row.notesThrough >= feedback.seq && row.seq < board.submitted.seq));
-  const continued = board.subtasks.find(row => row.owner === worker && row.delivery?.verified &&
-    /\.[cm]?js$/.test(row.path) && Object.hasOwn(candidate.files, row.path) &&
-    hash(Buffer.from(candidate.files[row.path], 'base64')) === row.delivery.sha256 &&
-    board.history.some(event => event.type === 'claim' && event.subtaskId === row.id && event.seq > feedback.seq));
-  assert.ok(continued, 'The final tree must contain a verified follow-up code or test artifact from the original Worker');
+  const adoption = await auditCheckerAdoption({ gitea, runId, report, candidate, calls, worker, serviceImage });
+  assert.ok(board.reads.some(row => row.actor === lead && row.notesThrough >= adoption.feedbackSeq && row.seq < board.submitted.seq));
   assert.ok(report.result.verdict.ok && report.result.verdict.results.every(row => row.ok));
 
   const attempts = [];
@@ -95,7 +89,7 @@ async function inspectRun(outputDir, report, candidate, model) {
   assert.ok([...keys][0]);
   assert.ok(continuity.some(row => row.at < Date.parse(changed.startedAt)));
   assert.ok(continuity.some(row => row.at > Date.parse(revoked.startedAt)));
-  return { worker, checker, feedbackSeq: feedback.seq, adoptionCommit: continued.delivery.commit, finalCommit: candidate.commit,
+  return { worker, checker, ...adoption, finalCommit: candidate.commit,
     modelContextSha256: hash([...keys][0]), completedRequests: attempts.length };
 }
 
@@ -163,7 +157,7 @@ test('two clean installed-package Lead-Worker Runs against the approved real pro
       receipt.businessFailure = report.businessFailure?.code ?? null;
       receipt.cleanupFailure = report.cleanupFailure?.code ?? null;
       assert.ok(!('exit' in child), 'The installed example reported a Run failure');
-      receipt.collaboration = await inspectRun(outputDir, report, await readJson(candidatePath), model);
+      receipt.collaboration = await inspectRun({ outputDir, report, candidate: await readJson(candidatePath), model, gitea, runId, serviceImage });
       const repeated = await execute(process.execPath, [join(packageDir, 'verify-orders.js'), report.reportPath, candidatePath],
         { cwd: installed.directory, env: installed.env, timeout: 60_000 });
       receipt.offline = JSON.parse(repeated.stdout);

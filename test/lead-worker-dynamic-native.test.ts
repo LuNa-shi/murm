@@ -11,6 +11,7 @@ import { createCleanupBudget } from './fixtures/peermesh-deadline.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { createDynamicLeadWorkerUpstream } from './fixtures/lead-worker-dynamic-upstream.js';
 import { generatedService } from './fixtures/lead-worker-dynamic-orders.js';
+import { auditCheckerAdoption } from './fixtures/lead-worker-collaboration.js';
 
 const execute = promisify(execFile);
 
@@ -112,6 +113,8 @@ test('dynamic Lead-Worker runs via the installed package with native Pi, Gitea a
       row.service === definition.id && row.operation === 'get_service_metadata').map(row => [row.accessVersion, row.error?.code]),
     [[0, 'NOT_ALLOWED'], [2, 'NOT_ALLOWED']]);
     assert.equal(attempts.filter(row => row.caller.agentId === state.team.checker && !row.error).length, 2);
+    proof.collaboration = await auditCheckerAdoption({ gitea: facility.gitea, runId, report, calls, worker: state.team.helper1,
+      candidate: JSON.parse(await readFile(candidatePath, 'utf8')), serviceImage });
     const offline = await execute(process.execPath, [join(packageDir, 'verify-orders.js'), report.reportPath, candidatePath], {
       cwd: installed.directory, env: installed.env, timeout: 60_000,
     });
