@@ -346,7 +346,7 @@ export async function openOpenSandboxBackend(config: OpenSandboxBackendConfig, {
         secretEnvironment: { ...(options.secretEnv ?? {}), ...bridgeCredentials.secretEnvironment, ...credentials.secretEnvironment },
         projectQuota: quota, modelCatalogResource: credentials.catalogResource, beforeAgentStart: assertOpen });
       agent.started = true;
-      const ready = await manager.agentRpc(agentId, { type: 'get_state', id: `ready-${randomUUID()}` }, { timeoutMs: 10000 });
+      const ready = await manager.agentRpc(agentId, { type: 'get_state', id: `ready-${randomUUID()}` }, { timeoutMs: 10_000, since: 0 });
       if (ready.response?.success !== true || ready.response.command !== 'get_state') throw invalid('Executor readiness response was not confirmed');
       consume(agent, ready.records ?? []);
       assertOpen();
