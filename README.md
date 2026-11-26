@@ -63,3 +63,7 @@ The legacy mathematical benchmark runner, dedicated launchers and embedded datas
 
 Obsolete documentation remains accessible from the [fixed Git history tree](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs). This working tree does not recreate an `archive/` directory. Ignored raw experiment data may not exist in Git history.
 
+## License
+
+murm's original code and documentation are licensed under the [MIT License](LICENSE). Third-party material retains its own terms. [Third-party notices](docs/third-party-notices.md)
+
