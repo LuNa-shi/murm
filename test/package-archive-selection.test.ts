@@ -19,7 +19,7 @@ for (const [file, missing] of [
     const archive = join(directory, 'candidate.tgz');
     await execute('tar', ['-czf', archive, 'package'], { cwd: directory, timeout: 5000 });
     const digest = createHash('sha256').update(await readFile(archive)).digest('hex');
-    const env = { ...process.env, SWARMENV_TEST_PACKAGE_ARCHIVE: archive, SWARMENV_TEST_PACKAGE_SHA256: digest };
+    const env = { ...process.env, MURM_TEST_PACKAGE_ARCHIVE: archive, MURM_TEST_PACKAGE_SHA256: digest };
     delete env.NODE_TEST_CONTEXT;
     await assert.rejects(execute(process.execPath, ['--test', fileURLToPath(new URL(file, import.meta.url))], {
       cwd: directory, env, timeout: 25_000, maxBuffer: 2 * 1024 ** 2,

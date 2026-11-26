@@ -5,7 +5,7 @@ import { LeanFinalTreeVerifier } from '../src/judge/lean-final-tree-verifier.js'
 import { LeanChecker } from '../src/judge/lean-adapter.js';
 import { agentCheckResult, normalizeCheckerResult } from '../src/judge/check-result.js';
 
-const leanRoot = process.env.SWARMENV_TEST_LEAN_ROOT;
+const leanRoot = process.env.MURM_TEST_LEAN_ROOT;
 const real = { skip: !leanRoot };
 function fixture(options = {}) {
   const fixtureSource = 'theorem target : True := by sorry\n';

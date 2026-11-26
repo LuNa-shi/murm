@@ -257,8 +257,8 @@ export class JudgeService {
     const requestedSource = payload.source ?? payload.workspace_source ?? null;
     const project = ['lean-project', 'lean-module'].includes(requestedSource?.check_mode)
       ? await this.#readProject(requestedSource, envelope) : null;
-    if (this.readProjectRevision && !project && this.taskService?.getBot(envelope.actor_ref)) {
-      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Registered Bot checks require a trusted public project revision');
+    if (this.readProjectRevision && !project && this.taskService?.getAgent(envelope.actor_ref)) {
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Registered Agent checks require a trusted public project revision');
     }
     const source = project?.source ?? requestedSource;
     if (!source || typeof source.content !== 'string') {
@@ -380,8 +380,8 @@ export class JudgeService {
     const execution = this.taskService?.getExecution(envelope.execution_id);
     const task = this.taskService?.getTask(envelope.task_id);
     if (!execution || !task || execution.owner_ref !== envelope.actor_ref || execution.task_id !== task.task_id ||
-        !this.taskService.getBot(envelope.actor_ref) || execution.workspace_input?.workspace_id !== reference.workspace_id) {
-      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Project check requires the bound Bot and its public Workspace');
+        !this.taskService.getAgent(envelope.actor_ref) || execution.workspace_input?.workspace_id !== reference.workspace_id) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Project check requires the bound Agent and its public Workspace');
     }
     const snapshot = await this.readProjectRevision({ workspaceId: reference.workspace_id, revision: reference.revision });
     if (!snapshot || snapshot.mission_id !== task.mission_id || snapshot.workspace_id !== reference.workspace_id ||
@@ -409,7 +409,7 @@ export class JudgeService {
     // or awaiting a response. They are not part of the scientific input.
     const requestHash = hash(normalized.workspace_source.file_ref?.git_commit ? { ...normalized, state_version: null } : normalized);
     const publicInput = Boolean(normalized.workspace_source.file_ref?.git_commit);
-    const registered = Boolean(this.taskService?.getBot(requestEnvelope.actor_ref));
+    const registered = Boolean(this.taskService?.getAgent(requestEnvelope.actor_ref));
     const separateLifecycle = (publicInput || registered) && this.taskService?.db !== this.db;
     if (separateLifecycle && typeof this.taskService?.withServiceLifecycleWrite !== 'function') {
       throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Public Judge admission requires the local Task lifecycle authority');

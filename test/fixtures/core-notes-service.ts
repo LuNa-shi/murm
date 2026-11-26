@@ -12,16 +12,16 @@ export function notesManifest(id = 'notes') {
 export async function setup(t, adapter, options = {}) {
   const services = new ServiceRegistry();
   services.registerService({ manifest: options.manifest ?? notesManifest(), adapter });
-  const bot = { profile: 'writer', status: 'idle', services: { notes: ['put', 'get'] }, bindings: { notes: 'notes-account', other: 'must-not-leak' } };
-  const bridge = await createCoreBridge({ runtimeId: 'run-one', configuration: { host: '127.0.0.1', publicUrl: 'http://127.0.0.1:{port}' }, getBot: id => id === 'bot-one' ? bot : null, registrations: snapshotServiceRegistry(services), ...options.bridge });
+  const agent = { profile: 'writer', status: 'idle', services: { notes: ['put', 'get'] }, bindings: { notes: 'notes-account', other: 'must-not-leak' } };
+  const bridge = await createCoreBridge({ runtimeId: 'run-one', configuration: { host: '127.0.0.1', publicUrl: 'http://127.0.0.1:{port}' }, getAgent: id => id === 'agent-one' ? agent : null, registrations: snapshotServiceRegistry(services), ...options.bridge });
   t.after(() => bridge.close());
-  const credentials = bridge.credentialsForBot('bot-one');
-  const headers = { authorization: `Bearer ${credentials.secretEnvironment.SWARMENV_BRIDGE_TOKEN}` };
+  const credentials = bridge.credentialsForAgent('agent-one');
+  const headers = { authorization: `Bearer ${credentials.secretEnvironment.MURM_BRIDGE_TOKEN}` };
   const call = async (operation, payload = {}, extra = {}) => {
     const response = await fetch(bridge.publicUrl + '/call', { method: 'POST', headers, body: JSON.stringify({ service_id: 'notes', operation, operation_id: 'fixed-request', payload, ...extra }) });
     return { status: response.status, ...await response.json() };
   };
-  return { bot, bridge, call, credentials };
+  return { agent, bridge, call, credentials };
 }
 
 
@@ -33,10 +33,10 @@ export function createNotesService() {
     calls.push({ operation: capability.operation, caller: structuredClone(caller), operation_id: envelope.operation_id });
     if (capability.operation === 'get') return entries.get(input.key) ?? null;
     const previous = entries.get(input.key);
-    if (previous && (previous.author !== caller.botId || previous.text !== input.text)) {
+    if (previous && (previous.author !== caller.agentId || previous.text !== input.text)) {
       const error = new Error('Fixed note conflicts'); error.code = 'CONFLICT'; throw error;
     }
-    if (!previous) { entries.set(input.key, { ...input, author: caller.botId }); writes++; }
+    if (!previous) { entries.set(input.key, { ...input, author: caller.agentId }); writes++; }
     return entries.get(input.key);
   } } };
 }

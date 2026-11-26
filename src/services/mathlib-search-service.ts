@@ -395,7 +395,7 @@ export class MathlibSearchService {
     url.searchParams.set('q', query);
     // Loogle's HTTP wrapper documents only /json?q=...; --module and
     // --max-results are backend process flags, not request parameters. Apply
-    // the SwarmEnv module and result limits after normalizing the response so
+    // the murm module and result limits after normalizing the response so
     // a deployment cannot silently ignore a caller's bounded filter.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('mathlib search timed out')), this.timeoutMs);
@@ -416,7 +416,7 @@ export class MathlibSearchService {
       const normalized = normalizeUpstreamResult(body, {
         query,
         // Loogle's HTTP contract accepts only `q`; module filtering is a
-        // SwarmEnv-side concern. Normalize the complete response first so a
+        // murm-side concern. Normalize the complete response first so a
         // non-matching declaration cannot consume the caller's result limit
         // before a matching declaration is considered.
         maxResults: null,

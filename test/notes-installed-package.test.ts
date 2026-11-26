@@ -71,12 +71,12 @@ test('checkout TMPDIR cannot make an external frozen consumer inherit checkout d
       }finally{await installed.close();}
     }`;
   await execute(process.execPath, ['--input-type=module', '-e', script], { cwd: checkout, env: { ...process.env, TMPDIR: temp,
-    SWARMENV_TEST_PACKAGE_ARCHIVE: archive, SWARMENV_TEST_PACKAGE_SHA256: expectedSha256 }, timeout: 25_000 });
+    MURM_TEST_PACKAGE_ARCHIVE: archive, MURM_TEST_PACKAGE_SHA256: expectedSha256 }, timeout: 25_000 });
   // Linked worktrees use a .git file; a symlinked TMPDIR must be checked by its real ancestry too.
   await rm(join(checkout, '.git'), { recursive: true }); await writeFile(join(checkout, '.git'), 'gitdir: private-worktree-metadata');
   const linkedTemp = join(root, 'linked-temp'); await symlink(temp, linkedTemp);
   await execute(process.execPath, ['--input-type=module', '-e', script], { cwd: checkout, env: { ...process.env, TMPDIR: linkedTemp,
-    SWARMENV_TEST_PACKAGE_ARCHIVE: archive, SWARMENV_TEST_PACKAGE_SHA256: expectedSha256 }, timeout: 25_000 });
+    MURM_TEST_PACKAGE_ARCHIVE: archive, MURM_TEST_PACKAGE_SHA256: expectedSha256 }, timeout: 25_000 });
 });
 
 test('all external install gates honor the host frozen archive selection without packing a fallback', async t => {
@@ -85,15 +85,15 @@ test('all external install gates honor the host frozen archive selection without
   const script = `import assert from 'node:assert/strict'; import {installNotesExample,installNativeNotesExample} from ${JSON.stringify(fixture)};
     await assert.rejects(installNotesExample(), {code:'FROZEN_PACKAGE_DIGEST_MISMATCH'});
     await assert.rejects(installNativeNotesExample(), {code:'FROZEN_PACKAGE_DIGEST_MISMATCH'});
-    delete process.env.SWARMENV_TEST_PACKAGE_SHA256;
+    delete process.env.MURM_TEST_PACKAGE_SHA256;
     await assert.rejects(installNotesExample(), {code:'INVALID_FROZEN_PACKAGE'});
     await assert.rejects(installNativeNotesExample(), {code:'INVALID_FROZEN_PACKAGE'});
-    process.env.SWARMENV_TEST_PACKAGE_SHA256='a'.repeat(64);
-    delete process.env.SWARMENV_TEST_PACKAGE_ARCHIVE;
+    process.env.MURM_TEST_PACKAGE_SHA256='a'.repeat(64);
+    delete process.env.MURM_TEST_PACKAGE_ARCHIVE;
     await assert.rejects(installNotesExample(), {code:'INVALID_FROZEN_PACKAGE'});
     await assert.rejects(installNativeNotesExample(), {code:'INVALID_FROZEN_PACKAGE'});`;
   await execute(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, PATH: '',
-    SWARMENV_TEST_PACKAGE_ARCHIVE: archive, SWARMENV_TEST_PACKAGE_SHA256: 'a'.repeat(64) }, timeout: 5000 });
+    MURM_TEST_PACKAGE_ARCHIVE: archive, MURM_TEST_PACKAGE_SHA256: 'a'.repeat(64) }, timeout: 5000 });
 });
 
 test('matching frozen archive installs its exact bytes outside checkout without attributing current Git provenance', { timeout: 30_000 }, async t => {
@@ -137,13 +137,13 @@ const installed=await installNativeNotesExample({parentDirectory:${JSON.stringif
 try {
   assert.equal((await import('node:path')).dirname(installed.directory),${JSON.stringify(nativeParent)});
   assert.equal((await (await import('node:fs/promises')).stat(installed.directory)).mode & 0o777,0o700);
-  assert.equal(installed.metadata.sha256,process.env.SWARMENV_TEST_PACKAGE_SHA256);
+  assert.equal(installed.metadata.sha256,process.env.MURM_TEST_PACKAGE_SHA256);
   assert.equal(installed.metadata.sourceCommit,null); assert.equal(installed.metadata.sourceDirty,null);
   const result=await execute(process.execPath,['--input-type=module','-e',"import assert from 'node:assert/strict'; import {marker} from '@murm/core'; assert.equal(marker,'frozen-candidate');"],{cwd:installed.directory,env:installed.env,timeout:5000});
   assert.equal(result.stderr,'');
 } finally {await installed.close();}
-`], { env: { ...process.env, SWARMENV_TEST_PACKAGE_ARCHIVE: archive,
-    SWARMENV_TEST_PACKAGE_SHA256: expectedSha256 }, timeout: 15_000 });
+`], { env: { ...process.env, MURM_TEST_PACKAGE_ARCHIVE: archive,
+    MURM_TEST_PACKAGE_SHA256: expectedSha256 }, timeout: 15_000 });
   assert.equal(selected.stderr, '');
   assert.deepEqual(await readFile(archive), bytes);
 });
@@ -156,7 +156,7 @@ test('native package gate rejects a dirty checkout before npm and removes its in
   await writeFile(git, "#!/bin/sh\ncase \"$1\" in rev-parse) printf '%s\\n' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;; status) printf '%s\\n' ' M changed.js';; *) exit 1;; esac\n");
   await chmod(git, 0o700);
   const env = { ...process.env, PATH: commands, TMPDIR: root };
-  delete env.SWARMENV_TEST_PACKAGE_ARCHIVE; delete env.SWARMENV_TEST_PACKAGE_SHA256;
+  delete env.MURM_TEST_PACKAGE_ARCHIVE; delete env.MURM_TEST_PACKAGE_SHA256;
   const script = `import assert from 'node:assert/strict'; import {installNativeNotesExample} from ${JSON.stringify(fixture)};
     await assert.rejects(installNativeNotesExample(), {code:'DIRTY_PACKAGE_SOURCE'});`;
   await execute(process.execPath, ['--input-type=module', '-e', script], { env, timeout: 5000 });
@@ -201,7 +201,7 @@ test('candidate package admits only declared distribution roots and retains exec
     'docs/architecture/source-map.json', 'dist/test/fixtures/foreground-host-configuration.js',
   ];
   const exampleRuns = { notes: 'notes-runs', subagents: 'subagents-runs', 'lead-worker': 'lead-helper-runs',
-    substrate: 'scalemas-runs', peermesh: 'agensh-runs' };
+    substrate: 'substrate-runs', peermesh: 'peermesh-runs' };
   const privatePaths = ['.env.production', 'local-credentials.json', 'runtime.json', 'notes-runs/run/secret.txt',
     'local-artifacts/run/private.bin', 'experiments/run/private.bin', 'reports/run/private.bin', '.worktree/other/private.txt',
     ...Object.entries(exampleRuns).map(([example, runs]) => `examples/${example}/${runs}/run/runtime.json`)];

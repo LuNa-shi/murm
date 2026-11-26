@@ -19,7 +19,7 @@ try {
     const result = await readHarnessResult(options);
     process.stdout.write(`${JSON.stringify(result)}\n`);
     // This is inspection success, independent of the recorded business outcome.
-    process.exitCode = result.environment.state === 'read' && result.core.state === 'read' ? 0 : 1;
+    process.exitCode = result.harness.state === 'read' && result.core.state === 'read' ? 0 : 1;
   }
 } catch (error: any) {
   const invalid = error.code === 'INVALID_RESULT_ARGUMENTS';

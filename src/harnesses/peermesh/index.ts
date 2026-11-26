@@ -21,15 +21,15 @@ export function createPeerProfile({ image, model = 'default', facilities }: any)
           RUN_OWNER: facilities.repository.owner, RUN_REPO: facilities.repository.name, RUN_ISSUE: String(facilities.issueNumber), RUN_CHANNEL: facilities.channelId, RUN_BOARD: facilities.boardId },
         network: { allow: [repository.origin] }, services: { gitea: ['issue_read', 'issue_write', 'pull_request_write', ...(facilities.project ? ['issue_list', 'pull_request_list',
           'pull_request_read', 'comment_list', 'comment_write', 'pull_request_merge'] : [])],
-          message: ['post_message', ...(facilities.project ? ['peer_list', 'send_dm'] : [])], 'agensh-context': ['board_read', 'board_write', 'board_grep', 'board_unfold'] } };
+          message: ['post_message', ...(facilities.project ? ['peer_list', 'send_dm'] : [])], 'peermesh-context': ['board_read', 'board_write', 'board_grep', 'board_unfold'] } };
 }
 
-/** A single input owner. Core owns the Bot; Environment owns facilities. */
+/** A single input owner. Core owns the Agent; Environment owns facilities. */
 export async function createPeerMeshHarness(options: any) {
   const { runId, image, model = 'default', exportLimit, outputDir, backend } = options;
   if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId) || typeof image !== 'string' || !image || !Number.isSafeInteger(exportLimit) || exportLimit < 1) throw new TypeError('Agensh Environment requires run, image and actual export limit');
   if (options.signal !== undefined && !(options.signal instanceof AbortSignal)) throw new TypeError('Agensh startup signal must be an AbortSignal');
-  const checkStartup = () => { if (options.signal?.aborted) throw Object.assign(new Error('Agensh startup aborted'), { code: 'ENVIRONMENT_START_ABORTED' }); };
+  const checkStartup = () => { if (options.signal?.aborted) throw Object.assign(new Error('Agensh startup aborted'), { code: 'HARNESS_START_ABORTED' }); };
   const resources = createOwnedResources();
   const lifetime: any = new AbortController();
   const secrets = [options.gitea?.adminToken, options.mattermost?.adminToken, ...(options.secretValues ?? [])].filter((value: any) => typeof value === 'string' && value);
@@ -46,15 +46,15 @@ export async function createPeerMeshHarness(options: any) {
     closing = true; lifetime.abort();
     if (complete) return structuredClone(complete);
     if (!closeWork) closeWork = (async () => {
-      const core = runtime ? await runtime.close({ timeoutMs }) : { cleanup: 'complete', bots: [], pending: [] };
+      const core = runtime ? await runtime.close({ timeoutMs }) : { cleanup: 'complete', agents: [], pending: [] };
       // Even stopped execution can still depend on its container for required
       // export. Keep owned facilities until Core's full cleanup is complete.
-      if (core.cleanup !== 'complete' || core.bots?.some((bot: any) => bot.execution !== 'stopped' || bot.cleanup !== 'complete')) {
-        return { ...core, environment: { cleanup: 'pending', pending: resources.snapshot().filter((row: any) => row.state !== 'retained' && row.state !== 'closed') } };
+      if (core.cleanup !== 'complete' || core.agents?.some((agent: any) => agent.execution !== 'stopped' || agent.cleanup !== 'complete')) {
+        return { ...core, harness: { cleanup: 'pending', pending: resources.snapshot().filter((row: any) => row.state !== 'retained' && row.state !== 'closed') } };
       }
-      const environment = await resources.close();
-      const receipt: any = { ...core, cleanup: environment.cleanup, environment };
-      if (environment.cleanup === 'complete') { complete = receipt; unsubscribe?.(); }
+      const harness = await resources.close();
+      const receipt: any = { ...core, cleanup: harness.cleanup, harness };
+      if (harness.cleanup === 'complete') { complete = receipt; unsubscribe?.(); }
       return receipt;
     })().finally(() => { closeWork = undefined; });
     return structuredClone(await closeWork);
@@ -71,18 +71,18 @@ export async function createPeerMeshHarness(options: any) {
     const repository: any = new URL(facilities.repositoryUrl);
     if (repository.origin !== new URL(facilities.endpoints.gitea).origin || repository.username || repository.password || repository.search || repository.hash) throw new TypeError('Git repository must use the configured credential-free Gitea origin');
     checkStartup();
-    runtime = await createRuntime({ backend, services: service.services, maxBots: 1, outputDir,
+    runtime = await createRuntime({ backend, services: service.services, maxAgents: 1, outputDir,
       profiles: { peer: createPeerProfile({ image, model, facilities }) } });
     checkStartup();
     unsubscribe = runtime.onEvent((event: any) => {
       // Core owns raw execution evidence. The Environment report keeps indexes.
-      events.push({ botId: event.botId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
+      events.push({ agentId: event.agentId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
     });
     checkStartup();
     peer = await runtime.spawn({ requestId: `spawn-${runId}`, profile: 'peer', bindings: service.bindings,
       secretEnv: { GITEA_TOKEN: facilities.peer.gitea.token }, collect: { paths: ['.'], includeGit: true, maxBytes: exportLimit, required: true } });
     checkStartup();
-    service.bindBot({ runtimeId: runtime.id, botId: peer.id });
+    service.bindAgent({ runtimeId: runtime.id, agentId: peer.id });
     return Object.freeze({ id: runtime.id, peer: Object.freeze({ ...peer }), snapshot, close, redact, onEvent: (listener: any) => runtime.onEvent(listener),
       async runInput(input: any, wait: any) {
         if (closing) throw Object.assign(new Error('Environment is closing'), { code: 'ENVIRONMENT_CLOSING' });
@@ -95,7 +95,7 @@ export async function createPeerMeshHarness(options: any) {
       },
     });
   } catch (error: any) {
-    const code = options.signal?.aborted ? 'ENVIRONMENT_START_ABORTED' : error.code ?? 'ENVIRONMENT_START_FAILED';
+    const code = options.signal?.aborted ? 'HARNESS_START_ABORTED' : error.code ?? 'HARNESS_START_FAILED';
     let cleanup: any;
     // A failed Core factory with unknown owned cleanup has no public handle.
     // Preserve facility dependencies and its authoritative recovery receipt.
@@ -113,9 +113,9 @@ export function runPeerMeshPeer(options: any, business: any) {
   let owned: any;
   return runWithReport({ outputDir: options.outputDir, closeTimeoutMs: options.closeTimeoutMs ?? 60_000,
     createRuntime: async () => { owned = await createPeerMeshHarness(options); return owned; },
-    run: async (environment: any) => {
-      try { return { business: await business(environment), environment: environment.snapshot() }; }
-      catch (error: any) { error.details = [...(error.details ?? []), environment.snapshot()]; throw error; }
+    run: async (harness: any) => {
+      try { return { business: await business(harness), harness: harness.snapshot() }; }
+      catch (error: any) { error.details = [...(error.details ?? []), harness.snapshot()]; throw error; }
     },
     redact: (value: any) => {
       const safe = owned ? owned.redact(value) : value;

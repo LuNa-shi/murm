@@ -4,7 +4,7 @@ import { httpClient } from './http.js';
 
 /** Dedicated pinned native board, with explicit host Python/MySQL prerequisites.
  * Merely constructing this launcher allocates nothing. Calling it is a real
- * facility experiment and must pass the same independent gate as the Bot. */
+ * facility experiment and must pass the same independent gate as the Agent. */
 export function createBoardLauncher({ sourceDirectory, mysqlDsn, origin, python = 'python3', startupTimeoutMs = 15_000 }: any) {
   const address: any = new URL(origin);
   if (!['127.0.0.1', '0.0.0.0'].includes(address.hostname) || address.protocol !== 'http:' || !address.port || address.username || address.password || address.pathname !== '/' || address.search || address.hash ||

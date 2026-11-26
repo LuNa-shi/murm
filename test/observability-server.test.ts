@@ -67,7 +67,7 @@ test('ObservabilityServer serves experiment queries and reconstructs Core execut
 });
 
 test('ObservabilityServer exposes a live SSE stream for a registered Experiment', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-observability-stream-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-observability-stream-'));
   const writer = new ObservationStore(join(root, 'observability.sqlite'));
   const readerStore = new ObservationStore(join(root, 'observability.sqlite'));
   writer.registerExperiment({ experimentId: 'run-stream' });
@@ -92,7 +92,7 @@ test('ObservabilityServer exposes a live SSE stream for a registered Experiment'
 });
 
 test('ObservabilityServer pushes cross-process Experiment registry updates over SSE', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-observability-registry-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-observability-registry-'));
   await mkdir(join(root, '.observability'), { recursive: true });
   const database = join(root, '.observability', 'observability.sqlite');
   const writer = new ObservationStore(database);
@@ -141,10 +141,10 @@ test('ObservabilityServer keeps imported lifecycle facts and root-array projecti
   append({ source: 'workspace', kind: 'workspace_revision_saved', taskId: 'task-root', executionId: 'exec-root', payload: { path: 'README.md', workspace_revision: 2 } });
   append({ source: 'judge', kind: 'judge_check_finished', taskId: 'task-root', executionId: 'exec-root', payload: { workspace_source_id: 'material-1', verdict: 'FAIL' } });
   append({ source: 'task-service', kind: 'dispatch.complete', taskId: 'task-root', executionId: 'exec-root', payload: { result: [{ task_id: 'task-root', goal: 'Imported task', state: 'WAITING' }, { material_id: 'material-1', kind: 'artifact', summary: 'Imported proof note' }] } });
-  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'swarmenv_context_publish', args: { kind: 'artifact' } } } });
-  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-1', toolName: 'swarmenv_context_publish', result: { details: { material: { material_id: 'material-1', kind: 'artifact', summary: 'Imported proof note', content: { summary: 'Readable material', proof: 'PROOFSECRET' }, producer_task_id: 'task-root', producer_execution_id: 'exec-root' } } } } } });
-  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-task-view', toolName: 'swarmenv_task_view', args: { task_id: 'task-root' } } } });
-  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-task-view', toolName: 'swarmenv_task_view', args: { task_id: 'task-root' }, result: { details: { task: { task_id: 'task-root', goal: 'Current task', task_instructions: 'PRIVATE INSTRUCTIONS', state: 'WAITING' } } } } } });
+  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'murm_context_publish', args: { kind: 'artifact' } } } });
+  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-1', toolName: 'murm_context_publish', result: { details: { material: { material_id: 'material-1', kind: 'artifact', summary: 'Imported proof note', content: { summary: 'Readable material', proof: 'PROOFSECRET' }, producer_task_id: 'task-root', producer_execution_id: 'exec-root' } } } } } });
+  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-task-view', toolName: 'murm_task_view', args: { task_id: 'task-root' } } } });
+  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-task-view', toolName: 'murm_task_view', args: { task_id: 'task-root' }, result: { details: { task: { task_id: 'task-root', goal: 'Current task', task_instructions: 'PRIVATE INSTRUCTIONS', state: 'WAITING' } } } } } });
   const server = new ObservabilityServer({ observationStore: store });
   const { url } = await server.start();
   try {
@@ -156,7 +156,7 @@ test('ObservabilityServer keeps imported lifecycle facts and root-array projecti
     const arrayResult = overview.events.find((event) => event.kind === 'dispatch.complete').payload.result;
     assert.equal(arrayResult[0].task_id, 'task-root');
     assert.equal(arrayResult[1].material_id, 'material-1');
-    assert.ok(overview.events.some((event) => event.payload.record?.toolName === 'swarmenv_context_publish'));
+    assert.ok(overview.events.some((event) => event.payload.record?.toolName === 'murm_context_publish'));
     assert.equal(overview.tool_counts['exec-root'], 2);
 
     const material = await fetch(`${url}/api/experiments/run-imported/materials/material-1`).then((response) => response.json());
@@ -168,7 +168,7 @@ test('ObservabilityServer keeps imported lifecycle facts and root-array projecti
     assert.equal(task.task.fields.goal, 'Current task');
     assert.equal(task.task.fields.task_instructions, '[redacted]');
     const detail = await fetch(`${url}/api/experiments/run-imported/execution-detail?execution_id=exec-root`).then((response) => response.json());
-    assert.ok(detail.events.some((event) => event.payload.record?.toolName === 'swarmenv_context_publish'));
+    assert.ok(detail.events.some((event) => event.payload.record?.toolName === 'murm_context_publish'));
     assert.equal(detail.truncated, false);
   } finally {
     await server.stop();
@@ -213,7 +213,7 @@ test('ObservabilityServer caps oversized overview projections', async () => {
       source: 'agent',
       kind: 'rpc_record',
       executionId: 'exec-large-overview',
-      payload: { record: { type: 'tool_execution_start', toolCallId: `call-${sequence}`, toolName: 'swarmenv_context_publish', args } },
+      payload: { record: { type: 'tool_execution_start', toolCallId: `call-${sequence}`, toolName: 'murm_context_publish', args } },
     });
   }
   const server = new ObservabilityServer({ observationStore: store });

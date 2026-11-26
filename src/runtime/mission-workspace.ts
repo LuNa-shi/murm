@@ -102,7 +102,7 @@ function fileEntries(files: any) {
  * Runtime-owned Mission Workspace repository.
  *
  * This module deliberately keeps Git and revision metadata outside an
- * Execution directory. Bots only receive materialized files and high-level
+ * Execution directory. Agents only receive materialized files and high-level
  * save and checked merge operations; they never receive a repository path or Git
  * credentials.
  */

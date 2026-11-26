@@ -54,10 +54,10 @@ test('Core gateway meters a request and the run fence preserves a pre-deadline a
   const db = new DatabaseSync(':memory:');
   const gateway = new ResponsesBudgetGateway({ db, upstream: { ...window.upstream, model: 'k3' },
     timeBounds: { maxOutputTokens: 8192, requestTimeoutMs: 3_000 },
-    validateBot: () => ({ phase: 'work', deadline: Date.now() + 3_000 }) });
+    validateAgent: () => ({ phase: 'work', deadline: Date.now() + 3_000 }) });
   t.after(async () => { await gateway.stop(); db.close(); });
   const { baseUrl } = await gateway.start();
-  const token = gateway.issueToken({ runtimeId: 'runtime', botId: 'bot' });
+  const token = gateway.issueToken({ runtimeId: 'runtime', agentId: 'agent' });
   const headers = { authorization: `Bearer ${token}` };
 
   const before = await send(baseUrl + '/responses', headers);

@@ -43,9 +43,9 @@ async function upstream(commands) {
 const python = source => `python3 - <<'WORKSPACE_PROBE'\n${source}\nprint('PASS')\nWORKSPACE_PROBE`;
 
 test('native running snapshots preserve random bytes and scoped shared workspaces enforce readonly mounts and private control state', {
-  skip: process.env.SWARMENV_CORE_WORKSPACE_REAL_TEST !== '1', timeout: 240_000,
+  skip: process.env.MURM_CORE_WORKSPACE_REAL_TEST !== '1', timeout: 240_000,
 }, async t => {
-  const image = process.env.SWARMENV_CORE_TEST_IMAGE; assert.ok(image);
+  const image = process.env.MURM_CORE_TEST_IMAGE; assert.ok(image);
   const bytes = randomBytes(64);
   const randomText = `snapshot λ ${randomBytes(20).toString('hex')}\n`;
   const commands = new Map([
@@ -61,14 +61,14 @@ except OSError as error:
 assert not pathlib.Path('/workspace/runtime/parent-only').exists()
 assert os.environ['WORKSPACE_PROFILE_MARKER']=='reader'
 assert os.environ['WORKSPACE_SECRET_MARKER']=='reader-credential'
-assert 'SWARMENV_WORKER_TOKEN' not in os.environ
-assert hashlib.sha256(os.environ['SWARMENV_BRIDGE_TOKEN'].encode()).hexdigest()!=pathlib.Path('writer-bridge-fingerprint').read_text()`)],
+assert 'MURM_WORKER_TOKEN' not in os.environ
+assert hashlib.sha256(os.environ['MURM_BRIDGE_TOKEN'].encode()).hexdigest()!=pathlib.Path('writer-bridge-fingerprint').read_text()`)],
     ['mark', python(`import hashlib,os,pathlib
 assert os.environ['WORKSPACE_PROFILE_MARKER']=='writer'
 assert os.environ['WORKSPACE_SECRET_MARKER']=='writer-credential'
-assert 'SWARMENV_WORKER_TOKEN' not in os.environ
+assert 'MURM_WORKER_TOKEN' not in os.environ
 pathlib.Path('/workspace/runtime/parent-only').write_text('private')
-pathlib.Path('writer-bridge-fingerprint').write_text(hashlib.sha256(os.environ['SWARMENV_BRIDGE_TOKEN'].encode()).hexdigest())
+pathlib.Path('writer-bridge-fingerprint').write_text(hashlib.sha256(os.environ['MURM_BRIDGE_TOKEN'].encode()).hexdigest())
 pathlib.Path('shared').write_text('visible')`)],
     ['isolated', python(`import pathlib\nassert list(pathlib.Path('.').iterdir())==[]\nassert not pathlib.Path('/workspace/runtime/parent-only').exists()\npathlib.Path('private').write_text('own')`)],
     ['continue', python(`import pathlib\nassert pathlib.Path('shared').read_text()=='visible'\nassert pathlib.Path('/workspace/runtime/parent-only').read_text()=='private'\npathlib.Path('after-peer-stop').write_text('continued')`)],
@@ -110,10 +110,10 @@ pathlib.Path('shared').write_text('visible')`)],
     }
     await writeFile(join(outputDir, 'receipt.json'), JSON.stringify(report, null, 2), { mode: 0o600 });
   });
-  const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
+  const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   async function runtime() {
     const result = await createRuntime({ backend: createPiOpenSandboxBackend({
-      sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
+      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
       bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
       modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 30_000, maxOutputTokens: 128 },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: provider.url, headers: {} } } },
@@ -121,16 +121,16 @@ pathlib.Path('shared').write_text('visible')`)],
     }), profiles: Object.fromEntries(['worker', 'writer', 'reader'].map(name => [name, {
       prompt: 'Execute the fixed probe.', model: 'default', image, writable: true, services: {},
       env: { WORKSPACE_PROFILE_MARKER: name },
-    }])), services: new ServiceRegistry(), maxBots: 4, outputDir });
+    }])), services: new ServiceRegistry(), maxAgents: 4, outputDir });
     runtimes.push(result); return result;
   }
-  async function turn(runtime, bot, id) {
+  async function turn(runtime, agent, id) {
     let resolve;
     const settled = new Promise(done => { resolve = done; });
-    const unsubscribe = runtime.onEvent(event => { if (event.botId === bot.id && event.type === 'settled') resolve(event); });
+    const unsubscribe = runtime.onEvent(event => { if (event.agentId === agent.id && event.type === 'settled') resolve(event); });
     const timer = setTimeout(() => resolve({ outcome: 'timeout' }), 25_000);
     try {
-      assert.equal((await runtime.send(bot.id, id, { requestId: id, mode: 'followUp' })).status, 'accepted');
+      assert.equal((await runtime.send(agent.id, id, { requestId: id, mode: 'followUp' })).status, 'accepted');
       const event = await settled; assert.equal(event.outcome, 'completed'); assert.equal(event.output, `${id}_OK`);
     } finally { clearTimeout(timer); unsubscribe(); }
   }
@@ -138,7 +138,7 @@ pathlib.Path('shared').write_text('visible')`)],
   const writer = await a.spawn({ requestId: 'writer', profile: 'writer', workspace: { id: 'shared', mode: 'read-write' },
     secretEnv: { WORKSPACE_SECRET_MARKER: 'writer-credential' } });
   const key = value => createHash('sha256').update(value).digest('hex');
-  const backing = join('/run/swarmenv-workspaces', key(a.id), key('shared'));
+  const backing = join('/run/murm-workspaces', key(a.id), key('shared'));
   await access(backing);
   await turn(a, writer, 'mark');
   const reader = await a.spawn({ requestId: 'reader', profile: 'reader', workspace: { id: 'shared', mode: 'read-only' },

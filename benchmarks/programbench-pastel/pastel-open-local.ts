@@ -7,8 +7,8 @@ import { inputTexts, localUpstream, message, tool, toolOutput } from './local-in
 
 const [, , mode, image, duration = '30000', extra] = process.argv;
 const durationMs = Number(duration);
-assert.ok(!extra && ['subagents', 'flat', 'agensh'].includes(mode) && /^sha256:[a-f0-9]{64}$/.test(image),
-  'Usage: node pastel-open-local.ts <subagents|flat|agensh> <worker-image-id> [duration-ms]');
+assert.ok(!extra && ['subagents', 'taskpool', 'peermesh'].includes(mode) && /^sha256:[a-f0-9]{64}$/.test(image),
+  'Usage: node pastel-open-local.ts <subagents|taskpool|peermesh> <worker-image-id> [duration-ms]');
 assert.ok(Number.isSafeInteger(durationMs) && durationMs >= 15_000 && durationMs <= 60_000);
 const compile = '#!/bin/sh\nset -eu\ninstall -m 0755 pastel.py executable\n';
 const parser = 'def color(value):\n    return {"red": "ff0000", "blue": "0000ff"}.get(value, value)\n';
@@ -54,8 +54,8 @@ function subagents(input, number, texts) {
     return tool('delegate', command(`
 assignments=json.loads(${JSON.stringify(JSON.stringify(assignments))})
 for role, assignment in assignments.items():
-    result=cli('bot','spawn','--request-id','child-'+role,payload={'profile':'child','input':assignment,'mode':'followUp'})
-    print(result['bot']['id'])
+    result=cli('agent','spawn','--request-id','child-'+role,payload={'profile':'child','input':assignment,'mode':'followUp'})
+    print(result['agent']['id'])
 `), 55);
   }
   const children = texts.filter(value => value.startsWith('{"childId"')).map(JSON.parse);
@@ -82,7 +82,7 @@ print(json.dumps(cli('candidate','publish','--request-id','verified-candidate',p
 `));
 }
 
-function flat(input, number) {
+function taskpool(input, number) {
   const roles = ['parser', 'formatter', 'integrator'];
   if (roles.some(role => toolOutput(input, role) !== undefined)) {
     return message(number, 'Completed the Task and published its source.');
@@ -130,7 +130,7 @@ print(material_id)
 `), 55);
 }
 
-function agensh(input, number, texts) {
+function peermesh(input, number, texts) {
   const role = texts.some(text => text.includes('reusable color-input parsing component')) ? 'a'
     : texts.some(text => text.includes('independent color-output formatting')) ? 'b' : 'c';
   const response = toolOutput(input, `peer-${role}`);
@@ -147,10 +147,10 @@ if role in ('a','b'):
     name='colors.py' if role=='a' else 'formatting.py'
     save({name:${JSON.stringify(parser)} if role=='a' else ${JSON.stringify(formatting)}})
     fact=facts[role]
-    cli('agensh-context','board_write','--request-id','fact',payload={**board,'type':'FACT','content':fact,'detail':'Observed the reference named colors.'})
+    cli('peermesh-context','board_write','--request-id','fact',payload={**board,'type':'FACT','content':fact,'detail':'Observed the reference named colors.'})
     bash('git','add',name)
 else:
-    rendered=cli('agensh-context','board_read',payload=board)['rendered']
+    rendered=cli('peermesh-context','board_read',payload=board)['rendered']
     assert all(fact in rendered for fact in facts.values())
     assert pathlib.Path('colors.py').is_file()
     save({'pastel.py':${JSON.stringify(main)},'compile.sh':${JSON.stringify(compile)}})
@@ -162,7 +162,7 @@ print(cli('gitea','pull_request_write','--request-id','pr',payload={**repo,'meth
 `), 55);
 }
 
-const driver = { subagents, flat, agensh }[mode];
+const driver = { subagents, taskpool, peermesh }[mode];
 assert.ok(driver);
 const maxRequests = 24;
 const maxOutputTokens = 4096;
@@ -178,7 +178,7 @@ try {
   assert.equal(upstream.receipt().failure, undefined);
   assert.deepEqual(audit.failures, []);
   assert.equal(audit.verifiedContributors, 2);
-  assert.ok(audit.meteredBots >= 3);
+  assert.ok(audit.meteredAgents >= 3);
 } finally {
   await upstream.close();
 }

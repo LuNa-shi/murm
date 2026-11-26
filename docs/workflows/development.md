@@ -6,7 +6,7 @@ The default engineering procedure is defined by the [installed Matt Pocock engin
 
 ## Phase 0005: design first, Issues track execution
 
-For the Core / Harness stage, the owner’s 2026-11-23 instruction makes the [complete design on main](../phases/0005-core-environment/README.md) the sole authority for target requirements, scope, decisions and acceptance. First merge the documentation through a reviewed PR, then derive the spec Issue and independently verifiable tickets from that exact version. Issues track dependencies, implementation and evidence. If a ticket summary differs from the design, reconcile the ticket; requirement changes go through the authoritative design PR and then update affected tickets. Notion is source material for the migration. This exception does not alter resource/research/publication permissions or declare the proposed API implemented.
+For the Core / Harness stage, the owner’s 2026-11-23 instruction makes the [complete design on main](../phases/0005-core-harness/README.md) the sole authority for target requirements, scope, decisions and acceptance. First merge the documentation through a reviewed PR, then derive the spec Issue and independently verifiable tickets from that exact version. Issues track dependencies, implementation and evidence. If a ticket summary differs from the design, reconcile the ticket; requirement changes go through the authoritative design PR and then update affected tickets. Notion is source material for the migration. This exception does not alter resource/research/publication permissions or declare the proposed API implemented.
 
 ## Issue-first development for other stages
 

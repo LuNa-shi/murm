@@ -66,7 +66,7 @@ export class LeanModuleChecker {
     if (typeof missionId !== 'string' || !missionId) throw new TypeError('Module cache requires the bound Mission identity');
     const selected = sources.find((source: any) => source.path === path);
     if (!selected) throw new TypeError('Module check requires one configured Lean source path');
-    const directory = await mkdtemp(join(tmpdir(), 'swarmenv-module-check-'));
+    const directory = await mkdtemp(join(tmpdir(), 'murm-module-check-'));
     const stats = { hits: 0, misses: 0, stored_bytes: 0, byte_limit: this.cacheBytes };
     const result = (verdict: any, diagnostic: any, extra: any = {}) => ({ verdict, diagnostic, checked_tree: tree,
       checked_paths: [], scope: 'module', requested_path: path, cache: { ...stats, stored_bytes: this.#bytes }, ...extra });
@@ -148,7 +148,7 @@ export class LeanModuleChecker {
             'ulimit -c 0\n/bin/mkdir -p "/output/${1%/*}"\n' +
             ' /toolchain/bin/lean -j1 "$3" --run /driver/Build.lean "$2" "$4" "/output/$1.olean" "$5" >&2 || { status=$?; if [ "$status" = 21 ]; then exit 21; fi; exit 23; }\n' +
             'for suffix in olean olean.private olean.server; do if [ -f "/output/$1.$suffix" ] && [ ! -L "/output/$1.$suffix" ]; then printf "%s\\n" "$suffix"; /bin/base64 -w0 "/output/$1.$suffix"; printf "\\n"; fi; done',
-            'swarmenv-module', source.module.replaceAll('.', '/'), `/input/${source.sourcePath}`, this.memoryArgument, source.module, key);
+            'murm-module', source.module.replaceAll('.', '/'), `/input/${source.sourcePath}`, this.memoryArgument, source.module, key);
           const built = await startProcess(() => this.execute(args, { ...budget, maxOutput: 192 * 1024 ** 2 }));
           const diagnostic = this.classify(built.stderr);
           if (built.code !== 0) {

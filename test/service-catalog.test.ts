@@ -29,7 +29,7 @@ test('Service catalog keeps internal ownership metadata and exposes the Task sur
 });
 
 test('public and internal catalog metadata both omit retired lifecycle and parent-review tools', () => {
-  const legacy = /execution_wait|request_wait|wake(?:_execution)?|parent_review|request_rework|create_rework_task|swarmenv_call/i;
+  const legacy = /execution_wait|request_wait|wake(?:_execution)?|parent_review|request_rework|create_rework_task|murm_call/i;
   const publicTools = listTools();
   assert.ok(publicTools.length > 0);
   assert.ok(publicTools.every((tool) => !legacy.test(`${tool.name} ${tool.operation} ${tool.description}`)));

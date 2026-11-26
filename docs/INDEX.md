@@ -9,7 +9,7 @@ This is the entry point to current maintained documentation. Historical design d
 | Question | Source | Responsibility |
 |---|---|---|
 | Why research murm? | [PROJECT.md](PROJECT.md) | Research motivation and open problems |
-| What governs the current Core / Harness stage? | **[Phase 0005 design on main](phases/0005-core-environment/README.md)** | Sole authority for this stage’s target requirements, decisions, scope and acceptance; Issues derive their tasks and checks from it |
+| What governs the current Core / Harness stage? | **[Phase 0005 design on main](phases/0005-core-harness/README.md)** | Sole authority for this stage’s target requirements, decisions, scope and acceptance; Issues derive their tasks and checks from it |
 | What must be built or observed in other stages? | **Human-approved GitHub Issue / accepted Agent Brief in its comments** | Requirements, hypotheses, scope and acceptance outside the Phase 0005 exception |
 | How is a substantial next stage designed? | [phases/INDEX.md](phases/INDEX.md) | Phase 0005 is authoritative target design; other entries are versioned Issue attachments. Progress and evidence remain in Issue/PR |
 | Which engineering workflow applies? | **Installed Matt Pocock engineering skills** + [AGENTS.md](../AGENTS.md) | `/to-spec`, optional `/to-tickets`, `/implement`, `/implement-spec`, `/tdd`, `/code-review`, `/pr` |

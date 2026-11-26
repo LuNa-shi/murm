@@ -31,17 +31,17 @@ Set the environment variables below in the host process. Load secrets from your 
 
 | Variable | Value |
 | --- | --- |
-| `SWARMENV_AGENSH_PROJECT_FILE` | Path to the trusted project JSON described below. |
-| `SWARMENV_AGENSH_RUN_ID` | Fresh lowercase letter/digit/hyphen identifier, up to 32 characters, beginning with a letter or digit. |
-| `SWARMENV_AGENSH_IMAGE` | Absolute Worker image ID such as `sha256:<image-id>`. |
-| `SWARMENV_AGENSH_MODEL_URL` | Actual Kimi K3 `/v1/responses` URL. |
-| `SWARMENV_AGENSH_GITEA_ORIGIN`, `SWARMENV_AGENSH_GITEA_OWNER`, `SWARMENV_AGENSH_GITEA_TOKEN` | API origin reachable by the host and Agents, repository owner, and host provisioning token. |
-| `SWARMENV_AGENSH_MATTERMOST_ORIGIN`, `SWARMENV_AGENSH_MATTERMOST_TEAM_ID`, `SWARMENV_AGENSH_MATTERMOST_TOKEN` | Host API origin, existing team identifier, and host provisioning token. |
-| `SWARMENV_AGENSH_BOARD_SOURCE`, `SWARMENV_AGENSH_BOARD_MYSQL_DSN` | Pinned Board source directory containing `main.py` and the dedicated database DSN. Relative source paths resolve from the consumer directory. |
+| `MURM_PEERMESH_PROJECT_FILE` | Path to the trusted project JSON described below. |
+| `MURM_PEERMESH_RUN_ID` | Fresh lowercase letter/digit/hyphen identifier, up to 32 characters, beginning with a letter or digit. |
+| `MURM_PEERMESH_IMAGE` | Absolute Worker image ID such as `sha256:<image-id>`. |
+| `MURM_PEERMESH_MODEL_URL` | Actual Kimi K3 `/v1/responses` URL. |
+| `MURM_PEERMESH_GITEA_ORIGIN`, `MURM_PEERMESH_GITEA_OWNER`, `MURM_PEERMESH_GITEA_TOKEN` | API origin reachable by the host and Agents, repository owner, and host provisioning token. |
+| `MURM_PEERMESH_MATTERMOST_ORIGIN`, `MURM_PEERMESH_MATTERMOST_TEAM_ID`, `MURM_PEERMESH_MATTERMOST_TOKEN` | Host API origin, existing team identifier, and host provisioning token. |
+| `MURM_PEERMESH_BOARD_SOURCE`, `MURM_PEERMESH_BOARD_MYSQL_DSN` | Pinned Board source directory containing `main.py` and the dedicated database DSN. Relative source paths resolve from the consumer directory. |
 
-Optional settings use the same `SWARMENV_AGENSH_` prefix. `HOST` defaults to `172.17.0.1` and must be the guest-reachable host IPv4 address. `LIFECYCLE_URL` defaults to `http://127.0.0.1:8080/v1` and `ENDPOINT_HOST` to `127.0.0.1`. Set `LIFECYCLE_TOKEN` and `MODEL_TOKEN` for authenticated endpoints. `BOARD_ORIGIN` defaults to `http://127.0.0.1:8660` and `BOARD_PYTHON` to `python3`. `OUTPUT_DIR` defaults to `./agensh-runs`.
+Optional settings use the same `MURM_PEERMESH_` prefix. `HOST` defaults to `172.17.0.1` and must be the guest-reachable host IPv4 address. `LIFECYCLE_URL` defaults to `http://127.0.0.1:8080/v1` and `ENDPOINT_HOST` to `127.0.0.1`. Set `LIFECYCLE_TOKEN` and `MODEL_TOKEN` for authenticated endpoints. `BOARD_ORIGIN` defaults to `http://127.0.0.1:8660` and `BOARD_PYTHON` to `python3`. `OUTPUT_DIR` defaults to `./peermesh-runs`.
 
-Set `SWARMENV_AGENSH_PEERS` to a number from 2 to 8. It defaults to 2. Each peer has one CPU, 1 GiB memory, 128 MiB project disk and 8,192 project inodes. The model gateway allows 2,048 output tokens per request. Project work starts after provisioning and defaults to one hour, with a separate 30-second close wait. The example gives each sandbox enough lifetime from allocation to cover the foreground host window and the close wait, so the host can still export private work at the project deadline. A missing required variable produces an `AGENSH_CONFIG_*_REQUIRED` error at startup.
+Set `MURM_PEERMESH_PEERS` to a number from 2 to 8. It defaults to 2. Each peer has one CPU, 1 GiB memory, 128 MiB project disk and 8,192 project inodes. The model gateway allows 2,048 output tokens per request. Project work starts after provisioning and defaults to one hour, with a separate 30-second close wait. The example gives each sandbox enough lifetime from allocation to cover the foreground host window and the close wait, so the host can still export private work at the project deadline. A missing required variable produces an `PEERMESH_CONFIG_*_REQUIRED` error at startup.
 
 The project file supplies the issue title and body. Optional `seed` maps up to 64 normalized repository-relative paths to UTF-8 text (up to 64 KiB per file). Use `durationMs` to choose the work window.
 
@@ -56,21 +56,21 @@ The project file supplies the issue title and body. Optional `seed` maps up to 6
 }
 ```
 
-For the four-peer Pandoc exercise, use the official ProgramBench task `jgm__pandoc.5caad90`. Use `SWARMENV_AGENSH_PEERS=4` and a project duration of 3,600,000 milliseconds. Give the peers the goal of reconstructing the behavior of `/opt/programbench/executable` and producing a root `compile.sh` that builds their own `./executable`. Point them to `/opt/programbench/MANUAL.txt`. Keep the official evaluator and its data on the host. See [upstream Agensh's reproduction guide](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/REPRODUCE.md#configure-the-experiment).
+For the four-peer Pandoc exercise, use the official ProgramBench task `jgm__pandoc.5caad90`. Use `MURM_PEERMESH_PEERS=4` and a project duration of 3,600,000 milliseconds. Give the peers the goal of reconstructing the behavior of `/opt/programbench/executable` and producing a root `compile.sh` that builds their own `./executable`. Point them to `/opt/programbench/MANUAL.txt`. Keep the official evaluator and its data on the host. See [upstream Agensh's reproduction guide](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/REPRODUCE.md#configure-the-experiment).
 
 Build the matching Worker from the source revision to be evaluated. The following image copies the reference program and the public instructions from the official v6 cleanroom.
 
 ```sh
 docker build -f services/opensandbox-agent/Dockerfile \
   --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
-  -t swarmenv-agensh-worker:local .
-docker build -t swarmenv-agensh-pandoc:local - <<'DOCKERFILE'
+  -t murm-peermesh-worker:local .
+docker build -t murm-peermesh-pandoc:local - <<'DOCKERFILE'
 FROM programbench/jgm_1776_pandoc.5caad90@sha256:02add2de637e9b5f42ecb3600944a15f7a6311107a872f2a95b31eb97c279681 AS cleanroom
-FROM swarmenv-agensh-worker:local
+FROM murm-peermesh-worker:local
 COPY --from=cleanroom --chown=0:0 --chmod=0111 /workspace/executable /opt/programbench/executable
 COPY --from=cleanroom --chown=0:0 --chmod=0444 /workspace/README.md /workspace/MANUAL.txt /workspace/COPYING.md /workspace/COPYRIGHT /opt/programbench/
 DOCKERFILE
-export SWARMENV_AGENSH_IMAGE=$(docker image inspect swarmenv-agensh-pandoc:local --format '{{.Id}}')
+export MURM_PEERMESH_IMAGE=$(docker image inspect murm-peermesh-pandoc:local --format '{{.Id}}')
 ```
 
 ## Start, observe and stop
@@ -94,7 +94,7 @@ Use the Runtime ID from the final record to inspect the saved reports, including
 ```sh
 runtime_id=RUNTIME_ID_FROM_RESULT
 node "$package/dist/scripts/read-harness-result.js" \
-  --run-directory "./agensh-runs/$runtime_id" --runtime-id "$runtime_id"
+  --run-directory "./peermesh-runs/$runtime_id" --runtime-id "$runtime_id"
 ```
 
 The report records the fixed main commit, archive path and SHA-256, verified merge receipts, router activity, each peer's private artifact and cleanup outcomes. An unresolved merge or archive failure leaves delivery pending. Check the saved archive in an independent evaluator and use the repository, Board and message records to verify collaboration. To change collaboration policy, follow the peer, input and router settings in the [PeerMesh manual](../../docs/architecture/18-peermesh-harness.md#core-admission-and-input-order). The [foreground protocol](../../docs/architecture/17-harness-reporting.md#foreground-harness-control) documents all commands and result codes.

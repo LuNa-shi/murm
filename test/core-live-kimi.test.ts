@@ -6,7 +6,7 @@ import { createCappedUpstream } from './fixtures/core-capped-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 
 test('public Core live Kimi K3 acceptance verifies actual file tools within the authorized cap', {
-  skip: process.env.SWARMENV_CORE_LIVE_KIMI_TEST !== '1' && 'Live Kimi acceptance requires explicit run authorization and opt-in configuration',
+  skip: process.env.MURM_CORE_LIVE_KIMI_TEST !== '1' && 'Live Kimi acceptance requires explicit run authorization and opt-in configuration',
   timeout: 155_000,
 }, async t => {
   const startedAt = Date.now();
@@ -18,7 +18,7 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
   const marker = 'CORE_LIVE_TOOL_EFFECT_CONFIRMED';
   const events = [];
   let runtime;
-  let botId;
+  let agentId;
   let proxy;
   let stop;
   let close;
@@ -51,22 +51,22 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
     const { ServiceRegistry } = await import('@murm/core/services');
     const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
     let upstreamHeaders;
-    try { upstreamHeaders = JSON.parse(process.env.SWARMENV_CORE_LIVE_UPSTREAM_HEADERS_JSON ?? '{}'); }
+    try { upstreamHeaders = JSON.parse(process.env.MURM_CORE_LIVE_UPSTREAM_HEADERS_JSON ?? '{}'); }
     catch { throw new Error('LIVE_HEADERS_INVALID'); }
-    const image = process.env.SWARMENV_CORE_TEST_IMAGE;
+    const image = process.env.MURM_CORE_TEST_IMAGE;
     if (!image) throw new Error('LIVE_IMAGE_REQUIRED');
     proxy = await createCappedUpstream({
-      upstreamUrl: process.env.SWARMENV_CORE_LIVE_UPSTREAM_URL,
+      upstreamUrl: process.env.MURM_CORE_LIVE_UPSTREAM_URL,
       upstreamHeaders, deadlineAt, maxRequests: 8, maxOutputTokens: 4096, filename, marker,
     });
     const backend = createPiOpenSandboxBackend({
       sandbox: {
-        lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-        endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
-        apiKey: process.env.SWARMENV_CORE_TEST_API_KEY, commandTimeoutMs: 20_000,
+        lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+        endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
+        apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 20_000,
       },
-      bridge: { host: '0.0.0.0', publicUrl: process.env.SWARMENV_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
-      modelGateway: { host: '0.0.0.0', advertiseHost: process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1',
+      bridge: { host: '0.0.0.0', publicUrl: process.env.MURM_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
+      modelGateway: { host: '0.0.0.0', advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1',
         requestTimeoutMs: 30_000, maxOutputTokens: 4096 },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: proxy.url, headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 * 1024, inodes: 4096 } },
@@ -75,27 +75,27 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
     runtime = await createRuntime({ backend, profiles: {
       worker: { prompt: 'Use the requested Bash and read tools directly. Verify the file contents before reporting completion. Keep the response brief.',
         model: 'default', image, writable: true, services: {} },
-    }, services: new ServiceRegistry(), maxBots: 1, outputDir });
+    }, services: new ServiceRegistry(), maxAgents: 1, outputDir });
     if (Date.now() >= deadlineAt) throw new Error('LIVE_DEADLINE');
     resources.beforeSpawnEmpty = (await ownedContainers(runtime.id)).length === 0;
     assert.equal(resources.beforeSpawnEmpty, true);
     phase = 'spawn';
-    const bot = await runtime.spawn({ requestId: 'live-kimi-spawn', profile: 'worker' });
-    botId = bot.id;
-    assert.equal(bot.status, 'idle');
+    const agent = await runtime.spawn({ requestId: 'live-kimi-spawn', profile: 'worker' });
+    agentId = agent.id;
+    assert.equal(agent.status, 'idle');
     assert.equal(proxy.receipt().forwarded, 0);
     const active = await ownedContainers(runtime.id);
     resources.spawnOne = active.length === 1;
     assert.equal(resources.spawnOne, true);
     if (Date.now() >= deadlineAt) throw new Error('LIVE_DEADLINE');
     runtime.onEvent(event => {
-      events.push({ type: event.type, botId: event.botId, seq: event.seq,
+      events.push({ type: event.type, agentId: event.agentId, seq: event.seq,
         outcome: event.outcome, expected: event.expected, errorCode: event.error?.code });
-      if (event.botId === botId && event.type === 'settled') resolveSettled({ outcome: event.outcome, output: event.output });
+      if (event.agentId === agentId && event.type === 'settled') resolveSettled({ outcome: event.outcome, output: event.output });
     });
     const input = `Use the bash tool to create ${filename} containing exactly ${marker} and a newline. Then use the read tool on ${filename}. After verifying its exact contents, reply FILE_OK.`;
     phase = 'send';
-    const sent = await runtime.send(botId, input, { requestId: 'live-kimi-input', mode: 'followUp' });
+    const sent = await runtime.send(agentId, input, { requestId: 'live-kimi-input', mode: 'followUp' });
     sendStatus = sent.status;
     inputId = sent.inputId;
     assert.equal(sendStatus, 'accepted');
@@ -107,7 +107,7 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
     assert.equal(expectedOutput, true);
     assert.equal(deadlineExpired, false);
     phase = 'result_evidence';
-    const current = await runtime.get(botId);
+    const current = await runtime.get(agentId);
     assert.equal(current.status, 'idle');
     expectedLatestOutput = current.latestOutput === 'FILE_OK';
     assert.equal(expectedLatestOutput, true);
@@ -119,15 +119,15 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
     assert.equal(evidence.readVerified, true);
     assert.ok(evidence.forwarded > 0 && evidence.forwarded <= 8);
     phase = 'stop';
-    stop = await runtime.stop(botId, { timeoutMs: Math.min(30_000, remaining()) });
+    stop = await runtime.stop(agentId, { timeoutMs: Math.min(30_000, remaining()) });
     assert.equal(stop.execution, 'stopped');
     assert.equal(stop.cleanup, 'complete');
     resources.afterStopEmpty = (await ownedContainers(runtime.id)).length === 0;
     assert.equal(resources.afterStopEmpty, true);
-    assert.equal((await runtime.get(botId)).status, 'closed');
+    assert.equal((await runtime.get(agentId)).status, 'closed');
     phase = 'closed_send_rejection';
-    await assert.rejects(runtime.send(botId, 'closed Bot rejection check', { requestId: 'live-kimi-closed-check' }), {
-      code: 'NOT_ALLOWED', runtimeId: runtime.id, botId, requestId: 'live-kimi-closed-check',
+    await assert.rejects(runtime.send(agentId, 'closed Agent rejection check', { requestId: 'live-kimi-closed-check' }), {
+      code: 'NOT_ALLOWED', runtimeId: runtime.id, agentId, requestId: 'live-kimi-closed-check',
     });
     closedSendRejected = true;
     phase = 'close';
@@ -146,13 +146,13 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
     try {
       await writeFile(reportPath, JSON.stringify({
         provider: 'kimi_proxy', model: 'k3', workloadLimitMs: 120_000, cleanupTailLimitMs: 30_000,
-        runtimeId: runtime?.id, botId, requestId: 'live-kimi-input', inputId, sendStatus, outcome,
+        runtimeId: runtime?.id, agentId, requestId: 'live-kimi-input', inputId, sendStatus, outcome,
         acceptedInputCount: sendStatus === 'accepted' ? 1 : 0,
         expectedOutput, expectedLatestOutput, closedSendRejected, resources, failurePhase,
         deadlineExpired, elapsedMs: Date.now() - startedAt, failure,
         upstream: proxy?.receipt(), events,
         stop: receiptProjection(stop),
-        close: close && { cleanup: close.cleanup, bots: close.bots.map(receiptProjection),
+        close: close && { cleanup: close.cleanup, agents: close.agents.map(receiptProjection),
           errors: close.errors.map(error => ({ code: error.code, retryable: error.retryable })) },
       }, null, 2), { mode: 0o600 });
     } catch { failure = true; failurePhase ??= 'report'; }

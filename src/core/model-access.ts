@@ -2,7 +2,7 @@ import type { AgentInfo, ErrorInfo, ModelAccessPolicy, PendingCleanup } from './
 import type { createModelTrace } from './model-trace.js';
 import type { PiOpenSandboxBackendConfig } from './backend-config.js';
 
-interface ModelBot {
+interface ModelAgent {
   status: AgentInfo['status'];
   unavailable?: boolean;
   model: string;
@@ -19,7 +19,7 @@ interface ModelOptions {
   runtimeId: string;
   outputDir: string;
   config: PiOpenSandboxBackendConfig;
-  getBot(id: string): ModelBot | undefined;
+  getAgent(id: string): ModelAgent | undefined;
   modelAccessPolicy?: ModelAccessPolicy;
   modelTrace?: ReturnType<typeof createModelTrace>;
   onOwned?: (owner: ModelOwner) => void;
@@ -107,10 +107,10 @@ function synchronousPolicy(policy: ModelAccessPolicy | undefined): <T>(commit: (
   };
 }
 
-export async function createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy, modelTrace, onOwned }: ModelOptions) {
+export async function createCoreModelAccess({ runtimeId, outputDir, config, getAgent, modelAccessPolicy, modelTrace, onOwned }: ModelOptions) {
   if (typeof runtimeId !== 'string' || !runtimeId || typeof outputDir !== 'string' || !outputDir ||
-      typeof getBot !== 'function' || !config?.models || !Object.keys(config.models).length) {
-    throw invalid('Model access requires Runtime identity, output directory, models and Bot authority');
+      typeof getAgent !== 'function' || !config?.models || !Object.keys(config.models).length) {
+    throw invalid('Model access requires Runtime identity, output directory, models and Agent authority');
   }
   const withLifecycleWrite = synchronousPolicy(modelAccessPolicy);
   const gatewayConfig = structuredClone(config.modelGateway);
@@ -137,10 +137,10 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
     kind: 'model', id: `${runtimeId}:${alias}`, action: 'close',
     ...(closeFailures.has(alias) ? { error: closeFailures.get(alias) } : {}),
   }] : []);
-  const liveBot = (botId: string, alias: string) => {
-    const bot = getBot(botId);
-    return !closed && bot && !bot.unavailable && ['starting', 'idle', 'running'].includes(bot.status) &&
-      bot.model === alias && typeof bot.profile === 'string' && bot.profile ? bot : null;
+  const liveAgent = (agentId: string, alias: string) => {
+    const agent = getAgent(agentId);
+    return !closed && agent && !agent.unavailable && ['starting', 'idle', 'running'].includes(agent.status) &&
+      agent.model === alias && typeof agent.profile === 'string' && agent.profile ? agent : null;
   };
   const close = () => {
     if (closePromise) return closePromise;
@@ -181,12 +181,12 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
         ...(entry.model.provider === 'kimi_proxy' && entry.model.model === 'k3' ? { transformPayload: kimiResponsesPayload } : {}),
         beginTrace: modelTrace ? (request: Record<string, unknown>) => modelTrace.begin({ ...request, modelAlias: alias, provider: entry.model.provider }) : undefined,
         withLifecycleWrite,
-        validateBot: ({ runtimeId: callerRuntimeId, botId }: { runtimeId: string; botId: string }) => {
+        validateAgent: ({ runtimeId: callerRuntimeId, agentId }: { runtimeId: string; agentId: string }) => {
           if (callerRuntimeId !== runtimeId) return null;
-          const bot = liveBot(botId, alias);
-          if (!bot || bot.status === 'starting') return null;
+          const agent = liveAgent(agentId, alias);
+          if (!agent || agent.status === 'starting') return null;
           if (!modelAccessPolicy) return { phase: 'work', deadline: Date.now() + entry.gateway!.policy.requestTimeoutMs };
-          const permit = modelAccessPolicy.authorize(Object.freeze({ runtimeId, botId, profile: bot.profile, model: alias }));
+          const permit = modelAccessPolicy.authorize(Object.freeze({ runtimeId, agentId, profile: agent.profile, model: alias }));
           if ((permit as { then?: unknown } | null)?.then) {
             Promise.resolve(permit).catch(() => {});
             return null;
@@ -210,22 +210,22 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
     throw error;
   }
   return {
-    credentialsForBot(botId: string, alias: string) {
+    credentialsForAgent(agentId: string, alias: string) {
       const entry = aliases.get(alias);
-      if (!entry || !liveBot(botId, alias) || tokens.has(botId)) {
-        throw Object.assign(new Error('Model credentials require a fresh live Bot and its configured model'),
-          { code: 'NOT_ALLOWED', runtimeId, botId });
+      if (!entry || !liveAgent(agentId, alias) || tokens.has(agentId)) {
+        throw Object.assign(new Error('Model credentials require a fresh live Agent and its configured model'),
+          { code: 'NOT_ALLOWED', runtimeId, agentId });
       }
-      const token = entry.gateway!.issueToken({ runtimeId, botId });
-      tokens.set(botId, { token, gateway: entry.gateway! });
+      const token = entry.gateway!.issueToken({ runtimeId, agentId });
+      tokens.set(agentId, { token, gateway: entry.gateway! });
       const prefix = `PI_${entry.model.provider.toUpperCase().replaceAll('-', '_')}`;
       return { environment: { [`${prefix}_BASE_URL`]: entry.baseUrl }, secretEnvironment: { [`${prefix}_API_KEY`]: token },
         baseUrl: entry.baseUrl!, catalogResource: entry.catalogResource };
     },
-    revokeBot(botId: string) {
-      const binding = tokens.get(botId);
+    revokeAgent(agentId: string) {
+      const binding = tokens.get(agentId);
       if (binding) binding.gateway.revokeToken(binding.token);
-      tokens.set(botId, null);
+      tokens.set(agentId, null);
     },
     close,
     pendingCleanup,

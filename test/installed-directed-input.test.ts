@@ -72,18 +72,18 @@ function observableStatus(status) {
 
 async function durableScenario(runDirectory, runtimeId) {
   const core = JSON.parse(await readFile(join(runDirectory, 'runtime.json'), 'utf8'));
-  const environment = JSON.parse(await readFile(join(runDirectory, 'environment-report.json'), 'utf8'));
+  const harness = JSON.parse(await readFile(join(runDirectory, 'harness-report.json'), 'utf8'));
   assert.equal(core.runtimeId, runtimeId);
-  assert.equal(environment.runtimeId, runtimeId);
+  assert.equal(harness.runtimeId, runtimeId);
   return {
     configuration: core.config,
     coreStatus: core.status,
-    businessFailure: environment.businessFailure,
-    cleanupFailure: environment.cleanupFailure,
-    reportSaveFailure: environment.reportSaveFailure,
-    cleanup: environment.cleanup.cleanup,
-    pending: environment.cleanup.pending,
-    peers: environment.environment.peers.map(peer => ({
+    businessFailure: harness.businessFailure,
+    cleanupFailure: harness.cleanupFailure,
+    reportSaveFailure: harness.reportSaveFailure,
+    cleanup: harness.cleanup.cleanup,
+    pending: harness.cleanup.pending,
+    peers: harness.harness.peers.map(peer => ({
       key: peer.key,
       batches: peer.router.batches.map(batch => ({
         source: batch.source,
@@ -169,7 +169,7 @@ test('installed headless and CLI share configuration, directed input provenance 
   const status = reply('status').result;
   assert.deepEqual(status.peers.map(peer => peer.batches.length), [2, 2]);
   assert.deepEqual(status.peers.map(peer => peer.status), ['idle', 'idle']);
-  assert.deepEqual(status.peers.map(peer => peer.botId), ready.peers.map(peer => peer.botId));
+  assert.deepEqual(status.peers.map(peer => peer.agentId), ready.peers.map(peer => peer.agentId));
   const terminal = records.at(-1);
   assert.equal(terminal.type, 'result');
   assert.equal(terminal.runtimeId, ready.runtimeId);
@@ -178,13 +178,13 @@ test('installed headless and CLI share configuration, directed input provenance 
   assert.equal(terminal.businessFailureCode, null);
   assert.equal(terminal.cleanupFailureCode, null);
   assert.equal(terminal.reportSaveFailureCode, null);
-  assert.deepEqual(terminal.bots.map(bot => bot.botId).sort(), ready.peers.map(peer => peer.botId).sort());
-  assert.ok(terminal.bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete'));
+  assert.deepEqual(terminal.agents.map(agent => agent.agentId).sort(), ready.peers.map(peer => peer.agentId).sort());
+  assert.ok(terminal.agents.every(agent => agent.execution === 'stopped' && agent.cleanup === 'complete'));
 
   const saved = JSON.parse(await readFile(terminal.reportPath, 'utf8'));
   assert.equal(saved.runtimeId, ready.runtimeId);
-  assert.deepEqual(saved.environment.peers.map(peer => peer.router.batches.length), [2, 2]);
-  for (const peer of saved.environment.peers) {
+  assert.deepEqual(saved.harness.peers.map(peer => peer.router.batches.length), [2, 2]);
+  for (const peer of saved.harness.peers) {
     const batches = peer.router.batches;
     assert.deepEqual(batches.map(batch => batch.source), ['kickoff', 'user']);
     assert.ok(batches.every(batch => batch.state === 'completed' && batch.targetWorker === `worker-${peer.key}`));
@@ -198,14 +198,14 @@ test('installed headless and CLI share configuration, directed input provenance 
     readEntry, '--run-directory', ready.runDirectory, '--runtime-id', ready.runtimeId,
   ], { cwd: installed.directory, env: installed.env, timeout: 10_000 })).stdout);
   assert.equal(reader.runtimeId, ready.runtimeId);
-  assert.equal(reader.environment.state, 'read');
+  assert.equal(reader.harness.state, 'read');
   assert.equal(reader.core.state, 'read');
-  assert.equal(reader.environment.business, 'returned');
-  assert.equal(reader.environment.acceptance, 'not-interpreted');
-  for (const receipt of [reader.environment, reader.core]) {
+  assert.equal(reader.harness.business, 'returned');
+  assert.equal(reader.harness.acceptance, 'not-interpreted');
+  for (const receipt of [reader.harness, reader.core]) {
     assert.equal(receipt.cleanup, 'complete');
     assert.equal(receipt.pendingCount, 0);
-    assert.deepEqual(receipt.bots, terminal.bots);
+    assert.deepEqual(receipt.agents, terminal.agents);
   }
   assert.doesNotMatch(JSON.stringify({ records, reader }), /PRIVATE_|private-git|private-mm/);
 
@@ -233,15 +233,15 @@ test('installed headless and CLI share configuration, directed input provenance 
   assert.notEqual(headless.runtimeId, ready.runtimeId);
   assert.equal(headless.runtimeId, headlessReady.runtimeId);
   assert.equal(headlessReady.runDirectory, join(headlessOutput, headless.runtimeId));
-  assert.equal(headless.reportPath, join(headlessReady.runDirectory, 'environment-report.json'));
+  assert.equal(headless.reportPath, join(headlessReady.runDirectory, 'harness-report.json'));
   assert.notEqual(headlessReady.runDirectory, ready.runDirectory);
   assert.deepEqual(observableStatus(headlessReady), observableStatus(ready));
   assert.deepEqual(ready.peers.map(peer => [peer.status, peer.ready, peer.accepting, peer.fenced]), [
     ['idle', true, true, false], ['idle', true, true, false],
   ]);
   const headlessStatus = headless.records.find(row => row.id === 'status').result;
-  assert.deepEqual(headlessStatus.peers.map(peer => peer.botId), headlessReady.peers.map(peer => peer.botId));
-  assert.ok(headlessReady.peers.every(peer => !ready.peers.some(other => other.botId === peer.botId)));
+  assert.deepEqual(headlessStatus.peers.map(peer => peer.agentId), headlessReady.peers.map(peer => peer.agentId));
+  assert.ok(headlessReady.peers.every(peer => !ready.peers.some(other => other.agentId === peer.agentId)));
   assert.deepEqual(observableStatus(headlessStatus), observableStatus(status));
   assert.deepEqual(headless.records.filter(row => row.type === 'error').map(row => row.code), ['BATCH_CONFLICT']);
   const headlessReply = id => headless.records.find(row => row.id === id).result;
@@ -254,7 +254,7 @@ test('installed headless and CLI share configuration, directed input provenance 
   const cliDurable = await durableScenario(ready.runDirectory, ready.runtimeId);
   const headlessDurable = await durableScenario(headlessReady.runDirectory, headless.runtimeId);
   assert.deepEqual(headlessDurable, cliDurable);
-  assert.equal(cliDurable.configuration.maxBots, 2);
+  assert.equal(cliDurable.configuration.maxAgents, 2);
   assert.equal(cliDurable.configuration.backend.piVersion, '1.3.0');
   assert.deepEqual(Object.keys(cliDurable.configuration.profiles).sort(), ['peer-a', 'peer-b']);
   for (const profile of Object.values(cliDurable.configuration.profiles)) {
@@ -268,15 +268,15 @@ test('installed headless and CLI share configuration, directed input provenance 
     readEntry, '--run-directory', headlessReady.runDirectory, '--runtime-id', headless.runtimeId,
   ], { cwd: installed.directory, env: installed.env, timeout: 10_000 })).stdout);
   assert.equal(headlessReader.runtimeId, headless.runtimeId);
-  assert.equal(headlessReader.environment.state, 'read');
+  assert.equal(headlessReader.harness.state, 'read');
   assert.equal(headlessReader.core.state, 'read');
-  for (const receipt of [headlessReader.environment, headlessReader.core]) {
+  for (const receipt of [headlessReader.harness, headlessReader.core]) {
     assert.equal(receipt.cleanup, 'complete');
     assert.equal(receipt.pendingCount, 0);
-    assert.deepEqual(receipt.bots.map(bot => bot.botId).sort(), headlessReady.peers.map(peer => peer.botId).sort());
-    assert.ok(receipt.bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete'));
+    assert.deepEqual(receipt.agents.map(agent => agent.agentId).sort(), headlessReady.peers.map(peer => peer.agentId).sort());
+    assert.ok(receipt.agents.every(agent => agent.execution === 'stopped' && agent.cleanup === 'complete'));
   }
-  assert.equal(headlessReader.environment.business, reader.environment.business);
-  assert.equal(headlessReader.environment.acceptance, reader.environment.acceptance);
+  assert.equal(headlessReader.harness.business, reader.harness.business);
+  assert.equal(headlessReader.harness.acceptance, reader.harness.acceptance);
   assert.doesNotMatch(JSON.stringify({ headless, headlessReader }), /PRIVATE_|private-git|private-mm/);
 });

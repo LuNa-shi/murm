@@ -41,8 +41,8 @@ export async function runSubagentsHarness({ backend, model = 'default', image, o
     createRuntime: async () => {
       signal?.throwIfAborted();
       const common: any = { model, image, writable: true };
-      const runtime = await createRuntime({ backend: createPiOpenSandboxBackend(backend), outputDir, services: new ServiceRegistry(), maxBots: childCount + 1, profiles: {
-        parent: { ...common, prompt: parentPromptFor(childCount), services: { bot: ['spawn', 'get', 'send', 'stop'] }, spawnProfiles: ['child'] },
+      const runtime = await createRuntime({ backend: createPiOpenSandboxBackend(backend), outputDir, services: new ServiceRegistry(), maxAgents: childCount + 1, profiles: {
+        parent: { ...common, prompt: parentPromptFor(childCount), services: { agent: ['spawn', 'get', 'send', 'stop'] }, spawnProfiles: ['child'] },
         child: { ...common, prompt: childPrompt, services: {} },
       } });
       return { ...runtime, close(options: any) {

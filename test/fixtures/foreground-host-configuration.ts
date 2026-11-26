@@ -1,7 +1,7 @@
 import { registerHooks } from 'node:module';
-import { transport } from './core-bot-service-backend.js';
+import { transport } from './core-agent-service-backend.js';
 registerHooks({ resolve(specifier, context, next) {
-  if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./agensh-team-backend.js', import.meta.url).href, shortCircuit: true };
+  if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./peermesh-team-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
 transport.reset(); transport.collectable = true;
@@ -14,7 +14,7 @@ if (process.env.FOREGROUND_TEST_CLEANUP_FAILURE === 'collect-artifacts') {
 transport.next = function settle(id) {
   if (process.env.FOREGROUND_TEST_HOLD === '1') return;
   const submission = transport.submissions.get(id);
-  transport.spawns.get(submission.botId).onEvent({ type: 'settled', outcome: 'completed', output: 'PRIVATE_MODEL_OUTPUT' });
+  transport.spawns.get(submission.agentId).onEvent({ type: 'settled', outcome: 'completed', output: 'PRIVATE_MODEL_OUTPUT' });
   transport.next = settle;
 };
 const peers = ['a', 'b'].map(key => ({ key, branch: `branch-${key}`,

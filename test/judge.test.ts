@@ -115,7 +115,7 @@ test('Agent CheckResult feedback redacts credentials from checker diagnostics', 
 });
 
 test('fixture manifest binds original source bytes and validates locked checker identity', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-original-fixture-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-original-fixture-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const problemFile = join(root, 'input.lean');
   await writeFile(problemFile, fixtureSource);
@@ -139,7 +139,7 @@ test('fixture manifest binds original source bytes and validates locked checker 
 });
 
 test('Judge reopening reuses one fixture revision but checks a changed canonical revision', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-judge-fixture-revision-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-judge-fixture-revision-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const { putnambench_commit: originalCommit, ...manifest } = fixtureManifest;
   const checker = checkerWithPreflight({
@@ -243,7 +243,7 @@ test('Checker result contract distinguishes source failure from a checker that n
 });
 
 test('Lean checker preflight reports an unavailable executable before proof checking', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-checker-missing-executable-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-checker-missing-executable-'));
   const projectRoot = join(root, 'lean4');
   const problemPath = join(projectRoot, 'src', 'input.lean');
   const source = fixtureSource;
@@ -251,7 +251,7 @@ test('Lean checker preflight reports an unavailable executable before proof chec
     await mkdir(join(projectRoot, 'src'), { recursive: true });
     await writeFile(problemPath, source);
     const manifest = { ...fixtureManifest, project_root: projectRoot, problem_file_hash: createHash('sha256').update(source).digest('hex') };
-    const checker = new LeanChecker({ command: '/definitely-missing-swarmenv-checker' });
+    const checker = new LeanChecker({ command: '/definitely-missing-murm-checker' });
     const result = await checker.preflight({ fixtureManifest: manifest });
     assert.equal(result.status, 'unavailable');
     assert.equal(result.checker_process_status, 'not_started');
@@ -271,7 +271,7 @@ test('Lean checker preflight refuses an unbound fixture or an unknown toolchain 
   assert.equal(unbound.diagnostic_code, 'checker_input_binding_unverified');
   assert.equal(unbound.evidence.input_binding_verified, false);
 
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-checker-unknown-version-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-checker-unknown-version-'));
   const projectRoot = join(root, 'lean4');
   const problemPath = join(projectRoot, 'src', 'input.lean');
   const source = 'import Mathlib\ntheorem input : True := by trivial\n';
@@ -297,7 +297,7 @@ test('Lean checker preflight refuses an unbound fixture or an unknown toolchain 
 });
 
 test('Lean checker preflight binds the locked input, project cwd, and toolchain version', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-checker-preflight-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-checker-preflight-'));
   const projectRoot = join(root, 'lean4');
   const problemPath = join(projectRoot, 'src', 'input.lean');
   const source = 'import Mathlib\ntheorem input : True := by trivial\n';

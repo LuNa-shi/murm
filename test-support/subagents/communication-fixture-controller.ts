@@ -33,7 +33,7 @@ export function createSubagentsController(runtime: any, parentId: any, { maxChil
     return entry;
   }
   const unsubscribe = runtime.onEvent((event: any) => {
-    const key = `${event.botId}:${event.seq}`;
+    const key = `${event.agentId}:${event.seq}`;
     if (seen.has(key)) return;
     if (seen.size >= 256 || Buffer.byteLength(JSON.stringify(event)) > 64 * 1024) {
       accepting = false; if (errors.length < 8 && !errors.some((error: any) => error.code === 'EVENT_LIMIT')) errors.push({ code: 'EVENT_LIMIT' }); notify(); return;
@@ -41,18 +41,18 @@ export function createSubagentsController(runtime: any, parentId: any, { maxChil
     seen.add(key);
     const snapshot = structuredClone(event);
     const observedOrder = ++observationOrder;
-    if (snapshot.botId === parentId && snapshot.type === 'settled') {
+    if (snapshot.agentId === parentId && snapshot.type === 'settled') {
       // Freeze membership in the synchronous callback, not in its later queue job.
       // References may receive a late admission receipt, but future sends never join.
       turnEvidence.set(snapshot.seq, { observedOrder, entries: deliveries.filter((entry: any) => entry.dispatchOrder !== undefined && entry.dispatchOrder < observedOrder) });
     }
     void enqueue(async () => {
-      if (snapshot.botId === parentId) {
+      if (snapshot.agentId === parentId) {
         if (snapshot.type === 'settled') parentTurns.push(snapshot);
         if (snapshot.type === 'exit') parentClosed = true;
         return;
       }
-      const child = await runtime.get(snapshot.botId);
+      const child = await runtime.get(snapshot.agentId);
       if (child.parentId !== parentId) return;
       children.add(child.id);
       if (children.size > maxChildren) { accepting = false; throw failure('CHILD_LIMIT'); }
@@ -60,15 +60,15 @@ export function createSubagentsController(runtime: any, parentId: any, { maxChil
       const failedTurn = snapshot.type === 'settled' && ['failed', 'aborted'].includes(snapshot.outcome);
       const terminalFailure = snapshot.type === 'error' && snapshot.fatal || snapshot.type === 'exit' && !snapshot.expected;
       if (snapshot.type !== 'settled' && !terminalFailure) return;
-      if (terminalFailure && failures.has(snapshot.botId)) return;
-      if (failedTurn || terminalFailure) failures.add(snapshot.botId);
-      else failures.delete(snapshot.botId);
-      const result: any = { childId: snapshot.botId, eventSeq: snapshot.seq,
+      if (terminalFailure && failures.has(snapshot.agentId)) return;
+      if (failedTurn || terminalFailure) failures.add(snapshot.agentId);
+      else failures.delete(snapshot.agentId);
+      const result: any = { childId: snapshot.agentId, eventSeq: snapshot.seq,
         outcome: snapshot.type === 'settled' ? snapshot.outcome : 'failed',
         ...(snapshot.output === undefined ? {} : { output: snapshot.output }),
         ...(snapshot.error === undefined ? {} : { error: snapshot.error }),
         ...(terminalFailure ? { failure: snapshot.type } : {}) };
-      await deliver(JSON.stringify(result), `child-result:${snapshot.botId}:${snapshot.seq}`, { kind: 'child', result, eventOrder: observedOrder });
+      await deliver(JSON.stringify(result), `child-result:${snapshot.agentId}:${snapshot.seq}`, { kind: 'child', result, eventOrder: observedOrder });
     }).catch(() => {});
   });
   return Object.freeze({

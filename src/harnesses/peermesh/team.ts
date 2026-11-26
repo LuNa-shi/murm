@@ -47,10 +47,10 @@ export async function createPeerMeshTeam(options: any) {
   let runtime: any, facilities: any, services: any, closing = false, closeWork: any, completed: any, fencedFailure: any;
   const hostStreamFailure = () => ['HOST_INPUT_FAILED', 'HOST_OUTPUT_FAILED'].includes(signal.reason?.code) ? signal.reason.code : undefined;
   const check = () => {
-    if (signal.aborted) throw fencedFailure ?? fail(hostStreamFailure() ?? 'ENVIRONMENT_START_ABORTED');
+    if (signal.aborted) throw fencedFailure ?? fail(hostStreamFailure() ?? 'HARNESS_START_ABORTED');
   };
-  const peerStates = () => [...peers].map(([key, bot]: any) => ({ key, botId: bot.id, profile: bot.profile,
-    ...(unavailablePeers.has(bot.id) ? { unavailable: unavailablePeers.get(bot.id) } : {}),
+  const peerStates = () => [...peers].map(([key, agent]: any) => ({ key, agentId: agent.id, profile: agent.profile,
+    ...(unavailablePeers.has(agent.id) ? { unavailable: unavailablePeers.get(agent.id) } : {}),
     router: routers.get(key)?.snapshot(), subscription: subscriptions.get(key)?.snapshot?.() }));
   const snapshot = () => redact({ runId, runtimeId: runtime?.id, closing, identities: services?.identities(), ...(delivery ? { project: { repository: facilities.repository, issue: facilities.issueNumber,
     startedAt, durationMs, delivery: deliveryReceipt, merges: delivery.snapshot() } } : {}), resources: resources.snapshot(), peers: peerStates() });
@@ -58,8 +58,8 @@ export async function createPeerMeshTeam(options: any) {
   function fence(reason: any) {
     if (closing || signal.aborted) return;
     const code = typeof reason === 'string' ? reason : reason?.code;
-    const detail = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'AGENSH_SOURCE_FAILED';
-    fencedFailure = Object.assign(fail('AGENSH_TEAM_FENCED'), { details: [{ code: detail }] });
+    const detail = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'PEERMESH_SOURCE_FAILED';
+    fencedFailure = Object.assign(fail('PEERMESH_TEAM_FENCED'), { details: [{ code: detail }] });
     stop(fencedFailure);
   }
   async function close({ timeoutMs = 60_000 }: any = {}) {
@@ -75,8 +75,8 @@ export async function createPeerMeshTeam(options: any) {
             error => { deliveryReceipt = { ...error.pin, state: 'pending', code: error.code ?? 'DELIVERY_EXPORT_FAILED' }; })
         : undefined;
       let core: any;
-      try { core = runtime ? await bounded(() => runtime.close({ timeoutMs: Math.max(1, end - Date.now()) }), Math.max(1, end - Date.now()), 'CORE_CLOSE_PENDING') : { cleanup: 'complete', bots: [], pending: [] }; }
-      catch { core = { cleanup: 'pending', bots: [...peers.values()].map((bot: any) => ({ botId: bot.id, execution: 'unknown', cleanup: 'pending' })), pending: [{ kind: 'runtime-close', id: runtime?.id }] }; }
+      try { core = runtime ? await bounded(() => runtime.close({ timeoutMs: Math.max(1, end - Date.now()) }), Math.max(1, end - Date.now()), 'CORE_CLOSE_PENDING') : { cleanup: 'complete', agents: [], pending: [] }; }
+      catch { core = { cleanup: 'pending', agents: [...peers.values()].map((agent: any) => ({ agentId: agent.id, execution: 'unknown', cleanup: 'pending' })), pending: [{ kind: 'runtime-close', id: runtime?.id }] }; }
       const routersDrained = await bounded(() => Promise.all([...routers.values()].map(router => router.finishClose(core))),
         Math.max(1, end - Date.now()), 'ROUTER_CLOSE_PENDING').then(() => true, () => false);
       if (deliveryWork) {
@@ -84,9 +84,9 @@ export async function createPeerMeshTeam(options: any) {
           .catch(() => { deliveryReceipt ??= { state: 'pending', code: 'DELIVERY_EXPORT_PENDING' }; });
       }
       const sourcesPending = pendingSources.size > 0 || [...sourceResults, ...sourceCreation].some((row: any) => row.status === 'rejected');
-      if (core.cleanup !== 'complete' || core.bots?.some((bot: any) => bot.execution !== 'stopped' || bot.cleanup !== 'complete') || sourcesPending || !routersDrained || deliveryReceipt?.state === 'pending') return { ...core, cleanup: 'pending', ...(deliveryReceipt ? { delivery: deliveryReceipt } : {}), sourceCleanup: sourcesPending ? 'pending' : 'complete', ...(!routersDrained ? { routerCleanup: 'pending' } : {}), environment: { cleanup: 'pending', resources: resources.snapshot() } };
-      const environment = await bounded(() => resources.close(), Math.max(1, end - Date.now()), 'FACILITY_CLOSE_PENDING').catch(() => ({ cleanup: 'pending', resources: resources.snapshot() }));
-      const receipt: any = { ...core, cleanup: environment.cleanup, environment, ...(deliveryReceipt ? { delivery: deliveryReceipt } : {}) };
+      if (core.cleanup !== 'complete' || core.agents?.some((agent: any) => agent.execution !== 'stopped' || agent.cleanup !== 'complete') || sourcesPending || !routersDrained || deliveryReceipt?.state === 'pending') return { ...core, cleanup: 'pending', ...(deliveryReceipt ? { delivery: deliveryReceipt } : {}), sourceCleanup: sourcesPending ? 'pending' : 'complete', ...(!routersDrained ? { routerCleanup: 'pending' } : {}), harness: { cleanup: 'pending', resources: resources.snapshot() } };
+      const harness = await bounded(() => resources.close(), Math.max(1, end - Date.now()), 'FACILITY_CLOSE_PENDING').catch(() => ({ cleanup: 'pending', resources: resources.snapshot() }));
+      const receipt: any = { ...core, cleanup: harness.cleanup, harness, ...(deliveryReceipt ? { delivery: deliveryReceipt } : {}) };
       if (receipt.cleanup === 'complete') { completed = receipt; for (const unsubscribe of unsubscriptions) unsubscribe(); }
       return structuredClone(receipt);
     })().finally(() => { closeWork = undefined; });
@@ -105,9 +105,9 @@ export async function createPeerMeshTeam(options: any) {
       delivery = createPeerMeshDelivery({ facilities, adminToken: options.gitea?.adminToken });
       signal.addEventListener('abort', () => delivery?.stop(), { once: true });
     }
-    function projectFailure(botId: string, key: string, error: any) {
+    function projectFailure(agentId: string, key: string, error: any) {
       if (closing || signal.aborted) return;
-      unavailablePeers.set(botId, { type: 'routing', code: error?.code ?? error });
+      unavailablePeers.set(agentId, { type: 'routing', code: error?.code ?? error });
       routers.get(key)?.stop();
     }
     services = createPeerMeshServices(facilities, delivery, options.project ? entry => {
@@ -127,28 +127,28 @@ export async function createPeerMeshTeam(options: any) {
       }
     } : undefined);
     const profiles = Object.fromEntries(facilities.peers.map((peer: any) => [`peer-${peer.key}`, createPeerProfile({ image, model, facilities: { ...facilities, peer } })]));
-    runtime = await createRuntime({ backend, services: services.services, profiles, maxBots: peerKeys.length, outputDir }); check();
+    runtime = await createRuntime({ backend, services: services.services, profiles, maxAgents: peerKeys.length, outputDir }); check();
     unsubscriptions.push(runtime.onEvent((event: any) => {
-      const planned = closing || [...stoppedPeers].some((key: any) => peers.get(key)?.id === event.botId);
+      const planned = closing || [...stoppedPeers].some((key: any) => peers.get(key)?.id === event.agentId);
       if (!planned && (event.type === 'exit' || (event.type === 'error' && event.fatal))) {
-        unavailablePeers.set(event.botId, { type: event.type, seq: event.seq });
+        unavailablePeers.set(event.agentId, { type: event.type, seq: event.seq });
       }
     }));
     for (const peer of facilities.peers) {
       const profile = `peer-${peer.key}`;
-      const bot = await runtime.spawn({ requestId: `spawn-${peer.key}`, profile, bindings: services.bindingsFor(peer.key), secretEnv: { GITEA_TOKEN: peer.gitea.token }, collect: { paths: ['.'], includeGit: true, ...(options.project ? { allowMissingGit: true } : {}), maxBytes: exportLimit, required: true } });
-      peers.set(peer.key, bot); check(); services.bindBot({ runtimeId: runtime.id, botId: bot.id, peerKey: peer.key, profile });
+      const agent = await runtime.spawn({ requestId: `spawn-${peer.key}`, profile, bindings: services.bindingsFor(peer.key), secretEnv: { GITEA_TOKEN: peer.gitea.token }, collect: { paths: ['.'], includeGit: true, ...(options.project ? { allowMissingGit: true } : {}), maxBytes: exportLimit, required: true } });
+      peers.set(peer.key, agent); check(); services.bindAgent({ runtimeId: runtime.id, agentId: agent.id, peerKey: peer.key, profile });
     }
     for (const peer of facilities.peers) {
-      const bot = peers.get(peer.key); const mapping: any = { botId: bot.id, workerId: peer.board.workerId };
+      const agent = peers.get(peer.key); const mapping: any = { agentId: agent.id, workerId: peer.board.workerId };
       const board = httpClient(facilities.endpoints.board);
-      const failRouting = options.project ? (error: any) => projectFailure(bot.id, peer.key, error) : fence;
+      const failRouting = options.project ? (error: any) => projectFailure(agent.id, peer.key, error) : fence;
       const router = createPeerMeshRouter({ ...(options.project ? {
         workTimeoutMs: durationMs + 120_000, turnTimeoutMs: durationMs, maxBatches: 256, idleNudgeMs: 120_000, maxNudges: 8,
       } : {}), ...options.router, mapping, onFence: failRouting,
-        steerInput: options.project ? (text: string, requestId: string) => runtime.steer(bot.id, text, { requestId, source: 'agensh-peer-notice', steeringMode: 'all' }) : undefined,
+        steerInput: options.project ? (text: string, requestId: string) => runtime.steer(agent.id, text, { requestId, source: 'agensh-peer-notice', steeringMode: 'all' }) : undefined,
         runInput: (text: any, wait: any) => {
-          const send = () => runInput(runtime, bot.id, text, { ...wait, operation: options.project ? 'start' : 'send', signal: AbortSignal.any([signal, wait.signal]) });
+          const send = () => runInput(runtime, agent.id, text, { ...wait, operation: options.project ? 'start' : 'send', signal: AbortSignal.any([signal, wait.signal]) });
           return inputAdmission ? inputAdmission.run(send) : send();
         },
         readContext: options.router?.readContext ?? (async ({ signal }: any) => (await board('GET', `/board/${encodeURIComponent(facilities.boardId)}/read?viewer=${encodeURIComponent(peer.board.workerId)}`, undefined, { signal })).rendered) });
@@ -171,15 +171,15 @@ export async function createPeerMeshTeam(options: any) {
     for (const router of routers.values()) router.markReady();
     if (options.project) {
       startedAt = new Date().toISOString();
-      deadlineTimer = setTimeout(() => stop(fail('AGENSH_PROJECT_DEADLINE')), durationMs);
+      deadlineTimer = setTimeout(() => stop(fail('PEERMESH_PROJECT_DEADLINE')), durationMs);
       for (const router of routers.values()) router.kickoff(options.project.body);
     }
-    return Object.freeze({ id: runtime.id, snapshot, redact, close, signal, getBot: runtime.get,
+    return Object.freeze({ id: runtime.id, snapshot, redact, close, signal, getAgent: runtime.get,
       currentPeers: () => ({ closing, peers: peerStates() }),
       async stopPeer(key: any, { timeoutMs = 60_000 }: any = {}) {
         if (closing || !peers.has(key)) throw fail('UNKNOWN_RECIPIENT');
         if (!finite(timeoutMs)) throw new TypeError('Peer stop requires a finite wait');
-        // Fence this peer's event/input owners before stopping its Core Bot.
+        // Fence this peer's event/input owners before stopping its Core Agent.
         // Facility credentials and all cleanup ownership remain with team.close.
         const end = performance.now() + timeoutMs;
         stoppedPeers.add(key); routers.get(key).stop();
@@ -201,6 +201,6 @@ export async function createPeerMeshTeam(options: any) {
 export function runPeerMeshTeam(options: any, business: any) {
   let owned: any;
   return runWithReport({ outputDir: options.outputDir, closeTimeoutMs: options.closeTimeoutMs ?? 60_000,
-    createRuntime: async () => { owned = await createPeerMeshTeam(options); return owned; }, run: (environment: any) => business(environment),
-    redact: (report: any) => owned ? owned.redact({ ...report, environment: owned.snapshot() }) : report });
+    createRuntime: async () => { owned = await createPeerMeshTeam(options); return owned; }, run: (harness: any) => business(harness),
+    redact: (report: any) => owned ? owned.redact({ ...report, harness: owned.snapshot() }) : report });
 }

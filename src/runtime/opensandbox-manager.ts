@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { ERROR_CODES, MurmError } from '../errors.js';
-import { openSandboxBotKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
+import { openSandboxAgentKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
 import { decodeFileSeed } from '../../scripts/core-file-seed.js';
 import { snapshotCollectionSpec, MAX_COLLECTION_LINE_BYTES } from '../../scripts/core-collection.js';
 
@@ -204,7 +204,7 @@ export class OpenSandboxManager {
   constructor({
     lifecycleBaseUrl,
     apiKey = globalThis.process?.env?.OPEN_SANDBOX_API_KEY ?? null,
-    execdToken = globalThis.process?.env?.SWARMENV_EXECD_ACCESS_TOKEN ?? null,
+    execdToken = globalThis.process?.env?.MURM_EXECD_ACCESS_TOKEN ?? null,
     image,
     resourceLimits = { cpu: '2', memory: '2Gi' },
     entrypoint = ['tail', '-f', '/dev/null'],
@@ -214,7 +214,7 @@ export class OpenSandboxManager {
     execdPort = DEFAULT_EXECd_PORT,
     endpointHost = null,
     workerPort = 44100,
-    workerCommand = ['node', '/opt/swarmenv/agent-worker.mjs'],
+    workerCommand = ['node', '/opt/murm/agent-worker.mjs'],
     foregroundSession = false,
     waitForExecdReady = null,
     execdReadyTimeoutMs = 30_000,
@@ -271,17 +271,17 @@ export class OpenSandboxManager {
     return { ...this.verified, ok: true };
   }
 
-  ownsBotResource(resourceKey: any) { return this.executions.has(resourceKey) || this.pendingCreations.has(resourceKey); }
+  ownsAgentResource(resourceKey: any) { return this.executions.has(resourceKey) || this.pendingCreations.has(resourceKey); }
 
   async reconcileExecutions(options: any = {}) { return this.#reconcileExecutions(options); }
 
-  async #reconcileExecutions({ missionId, runtimeId, bots = [], timeoutMs = 30_000, onSandboxDiscovered = null }: any = {}, recoveringCreation: any = null) {
+  async #reconcileExecutions({ missionId, runtimeId, agents = [], timeoutMs = 30_000, onSandboxDiscovered = null }: any = {}, recoveringCreation: any = null) {
     if (!runtimeId) required(missionId, 'mission_id');
     const owned = (key: any) => this.executions.has(key) ||
       (this.pendingCreations.has(key) && this.pendingCreations.get(key) !== recoveringCreation);
     const liveSandboxIds = new Set([...this.executions.values()].map((record: any) => record.sandboxId));
-    const targets = bots.filter((bot: any) => (runtimeId ? bot.runtime_id === runtimeId : bot.mission_id === missionId) && bot.bot_id && bot.resource_key &&
-      (!bot.provider || bot.provider === 'opensandbox'));
+    const targets = agents.filter((agent: any) => (runtimeId ? agent.runtime_id === runtimeId : agent.mission_id === missionId) && agent.agent_id && agent.resource_key &&
+      (!agent.provider || agent.provider === 'opensandbox'));
     const deadline = Date.now() + timeout(timeoutMs);
     const remaining = () => {
       const ms = deadline - Date.now();
@@ -289,7 +289,7 @@ export class OpenSandboxManager {
       return ms;
     };
     const sandboxes = await this.#listSandboxes(remaining);
-    const result: any = { provider: 'opensandbox', quarantined: [], pending: [], confirmed_bot_ids: [], owned_bot_ids: [] };
+    const result: any = { provider: 'opensandbox', quarantined: [], pending: [], confirmed_agent_ids: [], owned_agent_ids: [] };
     const dispositions = new Map<any, any>();
     const quarantine = async (target: any) => {
       if (owned(target.resource_key)) return false;
@@ -308,27 +308,27 @@ export class OpenSandboxManager {
         return false;
       }
     };
-    const knownIds = new Set(targets.map((bot: any) => bot.sandbox_id).filter(Boolean));
+    const knownIds = new Set(targets.map((agent: any) => agent.sandbox_id).filter(Boolean));
     const ownerKey = runtimeId ? openSandboxRuntimeKey(runtimeId) : openSandboxMissionKey(missionId);
     const missionMismatch = (metadata: any) => runtimeId
       ? metadata.runtime_key !== ownerKey
       : metadata.mission_key && metadata.mission_key !== ownerKey;
-    for (const bot of targets) {
-      if (owned(bot.resource_key)) {
-        result.owned_bot_ids.push(bot.bot_id);
+    for (const agent of targets) {
+      if (owned(agent.resource_key)) {
+        result.owned_agent_ids.push(agent.agent_id);
         continue;
       }
-      const target = { bot_id: bot.bot_id, mission_id: missionId, execution_id: bot.execution_id ?? null, resource_key: bot.resource_key };
-      const botKey = openSandboxBotKey(bot.bot_id);
-      const resourceKey = openSandboxBotKey(bot.resource_key);
-      const matches = new Set(this.reconciliationIds.get(bot.resource_key));
-      if (bot.sandbox_id) matches.add(bot.sandbox_id);
+      const target = { agent_id: agent.agent_id, mission_id: missionId, execution_id: agent.execution_id ?? null, resource_key: agent.resource_key };
+      const agentKey = openSandboxAgentKey(agent.agent_id);
+      const resourceKey = openSandboxAgentKey(agent.resource_key);
+      const matches = new Set(this.reconciliationIds.get(agent.resource_key));
+      if (agent.sandbox_id) matches.add(agent.sandbox_id);
       let conflict = false;
       for (const [sandboxId, metadata] of sandboxes) {
-        if (!matches.has(sandboxId) && metadata.bot_key !== botKey && metadata.resource_key !== resourceKey) continue;
-        const incompatible = missionMismatch(metadata) || (metadata.bot_key && metadata.bot_key !== botKey) ||
+        if (!matches.has(sandboxId) && metadata.agent_key !== agentKey && metadata.resource_key !== resourceKey) continue;
+        const incompatible = missionMismatch(metadata) || (metadata.agent_key && metadata.agent_key !== agentKey) ||
           (metadata.resource_key && metadata.resource_key !== resourceKey) ||
-          (sandboxId !== bot.sandbox_id && knownIds.has(sandboxId)) || liveSandboxIds.has(sandboxId);
+          (sandboxId !== agent.sandbox_id && knownIds.has(sandboxId)) || liveSandboxIds.has(sandboxId);
         if (incompatible) {
           conflict = true;
           matches.delete(sandboxId);
@@ -348,21 +348,21 @@ export class OpenSandboxManager {
         for (const sandboxId of matches) result.pending.push({ ...target, sandbox_id: sandboxId, reason: 'provider_identity_mismatch' });
         continue;
       }
-      if (matches.size > 0) this.reconciliationIds.set(bot.resource_key, matches);
-      else this.reconciliationIds.delete(bot.resource_key);
+      if (matches.size > 0) this.reconciliationIds.set(agent.resource_key, matches);
+      else this.reconciliationIds.delete(agent.resource_key);
       if (conflict || matches.size === 0) continue;
       const [sandboxId] = matches;
-      if (!bot.sandbox_id && onSandboxDiscovered) {
+      if (!agent.sandbox_id && onSandboxDiscovered) {
         try {
-          await onSandboxDiscovered(bot, sandboxId);
+          await onSandboxDiscovered(agent, sandboxId);
         } catch (error: any) {
           result.pending.push({ ...target, sandbox_id: sandboxId, reason: 'resource_record_unconfirmed', error_class: error?.code ?? error?.name });
           continue;
         }
       }
       if (await quarantine({ ...target, sandbox_id: sandboxId })) {
-        this.reconciliationIds.delete(bot.resource_key);
-        result.confirmed_bot_ids.push(bot.bot_id);
+        this.reconciliationIds.delete(agent.resource_key);
+        result.confirmed_agent_ids.push(agent.agent_id);
       }
     }
     this.logger?.({ event: 'sandbox.reconciled', provider: 'opensandbox', quarantined: result.quarantined.length, pending: result.pending.length });
@@ -410,10 +410,10 @@ export class OpenSandboxManager {
     }
   }
 
-  async ensureExecution({ executionId, botId = null, onCreateDispatch = null, onCreateRejected = null, onCreated = null, onWorkerToken,
+  async ensureExecution({ executionId, agentId = null, onCreateDispatch = null, onCreateRejected = null, onCreated = null, onWorkerToken,
     timeoutSeconds = 3600, projectQuotaRequired = false, cleanupOnFailure = true, workspaceRef = null, bindingVersion = null, environment = {}, metadata = {} }: any = {}) {
     const id = required(executionId, 'execution_id');
-    required(botId, 'bot_id');
+    required(agentId, 'agent_id');
     const existing = this.executions.get(id);
     if (existing) {
       if (existing.preparing || existing.stopPromise) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox preparation or cleanup is pending', { execution_id: id }, { retryable: true });
@@ -425,9 +425,9 @@ export class OpenSandboxManager {
       throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Sandbox timeout must be at least 60 seconds');
     }
     const launchBody = { ...this.environment, ...envs(environment) };
-    const { mission_id: configuredMission = null, mission_key: _missionKey, bot_id: _botId, bot_key: _botKey,
+    const { mission_id: configuredMission = null, mission_key: _missionKey, agent_id: _agentId, agent_key: _agentKey,
       resource_key: _resourceKey, runtime_id: configuredRuntime = null, runtime_key: _runtimeKey, ...labels } = { ...this.metadata, ...metadata };
-    const creation = { bot_id: botId, resource_key: id, mission_id: configuredMission, runtime_id: configuredRuntime, inFlight: true, onCreated };
+    const creation = { agent_id: agentId, resource_key: id, mission_id: configuredMission, runtime_id: configuredRuntime, inFlight: true, onCreated };
     if (creation) this.pendingCreations.set(id, creation);
     const workerToken = randomUUID();
     const workerEntrypoint = [...this.workerCommand, '--port', String(this.workerPort), ...(projectQuotaRequired ? ['--require-project-quota'] : [])];
@@ -446,13 +446,13 @@ export class OpenSandboxManager {
         image: { uri: this.image },
         entrypoint: workerEntrypoint,
         resourceLimits: this.resourceLimits,
-        env: { ...launchBody, SWARMENV_WORKER_TOKEN: workerToken },
+        env: { ...launchBody, MURM_WORKER_TOKEN: workerToken },
         ...(this.volumes.length > 0 ? { volumes: this.volumes } : {}),
         metadata: {
           ...labels,
           ...(configuredRuntime ? { runtime_key: openSandboxRuntimeKey(configuredRuntime) } : {}),
           ...(configuredMission ? { mission_key: openSandboxMissionKey(configuredMission) } : {}),
-          bot_key: openSandboxBotKey(botId), resource_key: openSandboxBotKey(id),
+          agent_key: openSandboxAgentKey(agentId), resource_key: openSandboxAgentKey(id),
           ...(bindingVersion === null || bindingVersion === undefined ? {} : { binding_version: String(bindingVersion) }),
         },
       },
@@ -481,7 +481,7 @@ export class OpenSandboxManager {
     let execdHeaders = suppliedExecdEndpoint?.headers ?? {};
     // Retain the resource as soon as its provider ID exists. Endpoint/health
     // preparation failures must not erase responsibility for deletion.
-    const record: any = { executionId: id, botId, projectQuotaRequired, boundExecutionId: null, sandboxId, execdUrl: null, execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), workerToken, preparing: true };
+    const record: any = { executionId: id, agentId, projectQuotaRequired, boundExecutionId: null, sandboxId, execdUrl: null, execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), workerToken, preparing: true };
     this.executions.set(id, record);
     this.pendingCreations.delete(id);
     try {
@@ -513,15 +513,15 @@ export class OpenSandboxManager {
     return this.#snapshot(record);
   }
 
-  bindBotExecution({ botId, executionId, bindingVersion = null, workspaceRef = null }: any) {
-    const record: any = this.#record(botId);
-    if (record.botId !== botId || record.preparing || record.stopPromise) {
-      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bot Sandbox is not ready for binding');
+  bindAgentExecution({ agentId, executionId, bindingVersion = null, workspaceRef = null }: any) {
+    const record: any = this.#record(agentId);
+    if (record.agentId !== agentId || record.preparing || record.stopPromise) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent Sandbox is not ready for binding');
     }
     required(executionId, 'execution_id');
     if ((record.boundExecutionId && record.boundExecutionId !== executionId) ||
         (this.executions.has(executionId) && this.executions.get(executionId) !== record)) {
-      throw new MurmError(ERROR_CODES.CONFLICT, 'Bot Sandbox is already bound');
+      throw new MurmError(ERROR_CODES.CONFLICT, 'Agent Sandbox is already bound');
     }
     record.boundExecutionId = executionId;
     record.bindingVersion = bindingVersion;
@@ -610,15 +610,15 @@ export class OpenSandboxManager {
   }
 
   async startAgent({ writable = false, files, forkSession, workspace, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null }: any = {}) {
-    const contract = { protocolVersion: 'swarmenv-core-v1', resources: [] };
+    const contract = { protocolVersion: 'murm-core-v1', resources: [] };
     const record: any = this.#record(executionId);
     const signature = (values: any) => Array.isArray(values) && values.every((item: any) => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
       ? JSON.stringify(values.map(({ path, sha256 }: any) => ({ path, sha256 })).sort((a: any, b: any) => a.path.localeCompare(b.path))) : null;
     const expectedVersion = files !== undefined || writable ? 1 : 0;
     const expectedDigest = expectedVersion === 1 ? decodeFileSeed(files ?? {}).digest : undefined;
-    if (signature(resources) !== signature(contract.resources)) throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Bot contract');
-    if (!record.botId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Bot Sandbox');
-    if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
+    if (signature(resources) !== signature(contract.resources)) throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Agent contract');
+    if (!record.agentId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Agent Sandbox');
+    if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
     if (record.agent) return { ...record.agent };
     record.executionStopped = false;
     const workerToken = record.workerToken;
@@ -659,20 +659,20 @@ export class OpenSandboxManager {
     });
     const receipt = startup.body?.result?.contract;
     if (receipt?.version !== contract.protocolVersion || !Array.isArray(receipt.resources) || signature(receipt.resources) !== signature(resources)) {
-      throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest the pinned Bot contract resources');
+      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest the pinned Agent contract resources');
     }
     const quotaReceipt = startup.body?.result?.project_quota;
     const catalogReceipt = startup.body?.result?.model_catalog_resource;
     if (projectQuota && (quotaReceipt?.bytes !== projectQuota.bytes || quotaReceipt?.inodes !== projectQuota.inodes)) {
-      throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest Bot workspace quota');
+      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest Agent workspace quota');
     }
     if (modelCatalogResource && signature([catalogReceipt]) !== signature([modelCatalogResource])) {
-      throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest the pinned Pi model catalog');
+      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest the pinned Pi model catalog');
     }
     const fileReceipt = startup.body?.result?.project_files;
-    if (workspace && JSON.stringify(startup.body?.result?.shared_workspace) !== JSON.stringify(workspace)) throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker did not attest shared workspace');
+    if (workspace && JSON.stringify(startup.body?.result?.shared_workspace) !== JSON.stringify(workspace)) throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker did not attest shared workspace');
     if (!workspace && (fileReceipt?.version !== expectedVersion || fileReceipt.writable !== writable || fileReceipt.digest !== expectedDigest)) {
-      throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest initial Core files and workDir permissions');
+      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest initial Core files and workDir permissions');
     }
     record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), contract: receipt };
     this.logger?.({ event: 'sandbox.agent_started', provider: 'opensandbox', execution_id: executionId, sandbox_id: record.sandboxId, worker_port: this.workerPort });
@@ -705,7 +705,7 @@ export class OpenSandboxManager {
     if (typeof workspaceRef !== 'string' || workspaceRef.length === 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspaceRef is required to initialize the provider Workspace');
     const root = workspaceRef;
     const files: any[] = [];
-    if (!manifest) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Bot input requires a pinned manifest');
+    if (!manifest) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Agent input requires a pinned manifest');
     if (manifest) {
       const rootInfo = await lstat(root);
       if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace input root must be a regular directory');
@@ -741,25 +741,25 @@ export class OpenSandboxManager {
 
   async #projectCall(executionId: any, action: any, manifest: any = undefined, input: any = {}) {
     const record: any = this.#record(executionId);
-    if (!record.botId || record.boundExecutionId !== executionId || !record.agent || record.stopPromise) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Project control requires the live bound Bot worker');
+    if (!record.agentId || record.boundExecutionId !== executionId || !record.agent || record.stopPromise) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Project control requires the live bound Agent worker');
     const body = { ...input, execution_id: executionId, binding_version: record.bindingVersion, ...(manifest ? { manifest } : {}) };
     const response = await this.#request(`${record.agent.endpoint}/project/${action}`, { absolute: true, method: 'POST',
       extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body, timeoutMs: action.startsWith('install') ? 5000 : 30_000 });
     const result: any = responseValue(response.body);
     const expected = action === 'prepare' ? 'PREPARED' : 'ACTIVE';
     if ((!action.startsWith('install') && result?.state !== expected) || result?.execution_id !== executionId || result?.binding_version !== record.bindingVersion) throw new MurmError(ERROR_CODES.START_FAILED, 'Worker did not confirm the expected project permission state');
-    if (record.stopPromise || this.executions.get(executionId) !== record) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during project control');
-    this.logger?.({ event: `sandbox.project_${action === 'prepare' ? 'prepared' : action === 'grant' ? 'granted' : action}`, bot_id: record.botId, execution_id: executionId, binding_version: record.bindingVersion });
+    if (record.stopPromise || this.executions.get(executionId) !== record) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent stopped during project control');
+    this.logger?.({ event: `sandbox.project_${action === 'prepare' ? 'prepared' : action === 'grant' ? 'granted' : action}`, agent_id: record.agentId, execution_id: executionId, binding_version: record.bindingVersion });
     return result;
   }
 
-  prepareBotProject({ executionId, manifest }: any) { return this.#projectCall(executionId, 'prepare', manifest); }
-  grantBotProject({ executionId }: any) { return this.#projectCall(executionId, 'grant'); }
+  prepareAgentProject({ executionId, manifest }: any) { return this.#projectCall(executionId, 'prepare', manifest); }
+  grantAgentProject({ executionId }: any) { return this.#projectCall(executionId, 'grant'); }
 
   async coreSessionSnapshot(executionId: string) {
     const record = this.#record(executionId);
-    if (record.agent?.contract?.version !== 'swarmenv-core-v1' || record.stopPromise || record.executionStopped) {
-      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Context Fork requires a live Bot Worker');
+    if (record.agent?.contract?.version !== 'murm-core-v1' || record.stopPromise || record.executionStopped) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Context Fork requires a live Agent Worker');
     }
     const response = await this.#request(`${record.agent.endpoint}/core/session/snapshot`, {
       absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` },
@@ -770,8 +770,8 @@ export class OpenSandboxManager {
 
   async coreFileOperation(executionId: string, action: string, input: unknown) {
     const record = this.#record(executionId);
-    if (record.agent?.contract?.version !== 'swarmenv-core-v1' || record.stopPromise) {
-      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Core files require the live Bot Worker');
+    if (record.agent?.contract?.version !== 'murm-core-v1' || record.stopPromise) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Core files require the live Agent Worker');
     }
     const response = await this.#request(`${record.agent.endpoint}/core/files/${action}`, {
       absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` },
@@ -786,15 +786,15 @@ export class OpenSandboxManager {
     return responseValue(response.body);
   }
 
-  snapshotBotProject({ executionId }: any) { return this.#projectCall(executionId, 'snapshot'); }
-  installBotProject({ executionId, ...input }: any) { return this.#projectCall(executionId, 'install', undefined, input); }
-  queryBotProjectInstall({ executionId, request_id }: any) {
+  snapshotAgentProject({ executionId }: any) { return this.#projectCall(executionId, 'snapshot'); }
+  installAgentProject({ executionId, ...input }: any) { return this.#projectCall(executionId, 'install', undefined, input); }
+  queryAgentProjectInstall({ executionId, request_id }: any) {
     const closed = this.projectInstallReceipts.get(executionId);
     if (closed) return structuredClone(closed.receipts.find((receipt: any) => receipt.request_id === request_id) ?? { execution_id: executionId, binding_version: closed.bindingVersion, request_id, phase: 'not_found' });
     return this.#projectCall(executionId, 'install-result', undefined, { request_id });
   }
-  forgetBotProjectInstalls({ executionId }: any) { this.projectInstallReceipts.delete(executionId); }
-  confirmBotProjectInstall({ executionId, request_id, content_hash }: any) { return this.#projectCall(executionId, 'install-confirm', undefined, { request_id, content_hash }); }
+  forgetAgentProjectInstalls({ executionId }: any) { this.projectInstallReceipts.delete(executionId); }
+  confirmAgentProjectInstall({ executionId, request_id, content_hash }: any) { return this.#projectCall(executionId, 'install-confirm', undefined, { request_id, content_hash }); }
 
   /** Pull guest files back before Runtime checkpoints or deletes the sandbox. */
   async agentRpc(executionId: any, message: any, { timeoutMs = 600_000, since }: any = {}) {
@@ -840,11 +840,11 @@ export class OpenSandboxManager {
     const spec = snapshotCollectionSpec(input);
     const record: any = this.#record(executionId);
     if (!record.executionStopped || !record.coreAgent || !record.agent || record.stopPromise) {
-      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Core collection requires a confirmed stopped Bot and retained Worker');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Core collection requires a confirmed stopped Agent and retained Worker');
     }
     const fingerprint = JSON.stringify(spec);
     const policyKey = session ? 'sessionCollectionSpec' : 'collectionSpec';
-    if (record[policyKey] && record[policyKey] !== fingerprint) throw new MurmError(ERROR_CODES.CONFLICT, 'Bot collection policy is immutable');
+    if (record[policyKey] && record[policyKey] !== fingerprint) throw new MurmError(ERROR_CODES.CONFLICT, 'Agent collection policy is immutable');
     record[policyKey] = fingerprint;
     const controller = new AbortController();
     const deadline = setTimeout(() => controller.abort(new Error('Core collection transport deadline')), session ? 610_000 : 30_000);
@@ -920,14 +920,14 @@ export class OpenSandboxManager {
   }
 
   async #releaseUnknownCreation(creation: any) {
-    const result: any = await this.#reconcileExecutions({ missionId: creation.mission_id, runtimeId: creation.runtime_id, bots: [creation],
-      onSandboxDiscovered: async (bot: any, sandboxId: any) => {
-        await bot.onCreated?.({ provider: 'opensandbox', bot_id: bot.bot_id, resource_key: bot.resource_key, sandbox_id: sandboxId });
-        bot.sandbox_id = sandboxId;
+    const result: any = await this.#reconcileExecutions({ missionId: creation.mission_id, runtimeId: creation.runtime_id, agents: [creation],
+      onSandboxDiscovered: async (agent: any, sandboxId: any) => {
+        await agent.onCreated?.({ provider: 'opensandbox', agent_id: agent.agent_id, resource_key: agent.resource_key, sandbox_id: sandboxId });
+        agent.sandbox_id = sandboxId;
       } }, creation);
-    if (!result.confirmed_bot_ids.includes(creation.bot_id)) {
+    if (!result.confirmed_agent_ids.includes(creation.agent_id)) {
       throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox creation or deletion cannot be confirmed',
-        { bot_id: creation.bot_id, resource_key: creation.resource_key }, { retryable: true });
+        { agent_id: creation.agent_id, resource_key: creation.resource_key }, { retryable: true });
     }
     this.pendingCreations.delete(creation.resource_key);
     return true;
@@ -937,7 +937,7 @@ export class OpenSandboxManager {
 
   snapshot() { return { provider: 'opensandbox', lifecycle_url: this.lifecycleBaseUrl, image: this.image, verified: this.verified, executions: [...new Set(this.executions.values())].map((record: any) => this.#snapshot(record)) }; }
 
-  #snapshot(record: any) { return { execution_id: record.boundExecutionId, bot_id: record.botId, resource_key: record.executionId, sandbox_id: record.sandboxId, binding_version: record.bindingVersion, workspace: '/workspace/project', host_workspace_ref: null, agent_worker: record.agent ? { worker_port: record.agent.worker_port, started_at: record.agent.started_at } : null }; }
+  #snapshot(record: any) { return { execution_id: record.boundExecutionId, agent_id: record.agentId, resource_key: record.executionId, sandbox_id: record.sandboxId, binding_version: record.bindingVersion, workspace: '/workspace/project', host_workspace_ref: null, agent_worker: record.agent ? { worker_port: record.agent.worker_port, started_at: record.agent.started_at } : null }; }
   #record(executionId: any) { const record: any = this.executions.get(executionId); if (!record) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'sandbox is not bound to this Execution', { execution_id: executionId }); return record; }
 
   async #waitWorker(endpoint: any, headers: any) {
@@ -1007,8 +1007,8 @@ export class OpenSandboxManager {
       const response = await this.fetch(url, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: controller.signal });
       const text = await response.text();
       const parsed = response.headers?.get?.('content-type')?.includes('text/event-stream') ? null : (text ? jsonData(text) : {});
-      if (workerStart && response.status === 400 && parsed?.ok === false && parsed.code === ERROR_CODES.BOT_STARTUP_CONTRACT) {
-        throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker rejected the pinned Bot startup contract');
+      if (workerStart && response.status === 400 && parsed?.ok === false && parsed.code === ERROR_CODES.AGENT_STARTUP_CONTRACT) {
+        throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker rejected the pinned Agent startup contract');
       }
       if (!response.ok && !allowStatuses.includes(response.status)) throw new MurmError(absolute && /\/project\/(snapshot|install|install-result|install-confirm)$/.test(new URL(url).pathname) && [ERROR_CODES.WORKSPACE_BUSY, ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED].includes(parsed?.code)
         ? parsed.code : response.status >= 500 ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT,

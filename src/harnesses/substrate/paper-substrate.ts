@@ -121,8 +121,8 @@ interface SubstrateOptions {
   mode: Exclude<SharingMode, 'none'>;
   services: ServiceRegistry;
   authorize(caller: ServiceCaller): void;
-  countOperation?(botId: string, operation: string, requestId: string): void;
-  resourceExists(botId: string, address: string): boolean;
+  countOperation?(agentId: string, operation: string, requestId: string): void;
+  resourceExists(agentId: string, address: string): boolean;
 }
 
 /** Versioned tables in the Environment-owned SQLite store. Legacy tables retain their own contracts. */
@@ -156,7 +156,7 @@ export function createPaperSubstrate({ databasePath, runId, mode, services, auth
     db.prepare('INSERT OR IGNORE INTO paper_runs (run_id,mode) VALUES(?,?)').run(runId, mode);
     if (db.prepare('SELECT mode FROM paper_runs WHERE run_id=?').get(runId)?.mode !== mode) throw new Rejection('CONFLICT', 'The run already uses another sharing mode');
 
-    const scopeFor = (botId: string) => mode === 'shared' ? '' : botId;
+    const scopeFor = (agentId: string) => mode === 'shared' ? '' : agentId;
     const getMessage = db.prepare('SELECT * FROM paper_messages WHERE run_id=? AND scope=? AND address=?');
     const visibleMessages = db.prepare('SELECT * FROM paper_messages WHERE run_id=? AND scope=? ORDER BY ordinal');
     const outgoing = db.prepare('SELECT target FROM paper_refs WHERE source=? ORDER BY ordinal');
@@ -167,11 +167,11 @@ export function createPaperSubstrate({ databasePath, runId, mode, services, auth
       if (!row) throw new Rejection('NOT_FOUND', `Contribution is not visible: ${address}`);
       return row;
     };
-    const references = (botId: string, rationale: string, refs: string[]) => {
+    const references = (agentId: string, rationale: string, refs: string[]) => {
       validateRationale(rationale, refs);
       return refs.map(address => {
-        if (getMessage.get(runId, scopeFor(botId), address)) return { address, kind: 'message' };
-        if (resourceExists(botId, address)) return { address, kind: 'resource' };
+        if (getMessage.get(runId, scopeFor(agentId), address)) return { address, kind: 'message' };
+        if (resourceExists(agentId, address)) return { address, kind: 'resource' };
         throw new Rejection('NOT_FOUND', `Reference is not visible: ${address}`);
       });
     };
@@ -182,19 +182,19 @@ export function createPaperSubstrate({ databasePath, runId, mode, services, auth
         incoming_refs: incoming.all(row.address, runId, row.scope).map(ref => String(ref.address)),
       };
     }
-    function publish(botId: string, req: string, input: Publication, now: string) {
+    function publish(agentId: string, req: string, input: Publication, now: string) {
       if ([input.sub_task, input.artifact].some(value => !value.isWellFormed() || !value.trim())) {
         throw new Rejection('INVALID_CONTRACT', 'Sub-task and artifact must be well-formed non-empty text');
       }
       tokenizer ??= new Tiktoken(encoder);
       const contentSize = tokenizer.encode(input.sub_task, [], []).length + tokenizer.encode(input.artifact, [], []).length;
       if (contentSize > maxContentTokens) throw new Rejection('INVALID_CONTRACT', 'Sub-task plus artifact exceed 1,024 tokens');
-      const refs = references(botId, input.rationale, input.refs);
-      const scope = scopeFor(botId);
+      const refs = references(agentId, input.rationale, input.refs);
+      const scope = scopeFor(agentId);
       const sha256 = digest(stableStringify(input));
-      const address = `content:${digest(stableStringify([runId, botId, req, sha256]))}`;
+      const address = `content:${digest(stableStringify([runId, agentId, req, sha256]))}`;
       db.prepare(`INSERT INTO paper_messages(address,run_id,scope,author,sub_task,artifact,rationale,weight,created_at,sha256)
-        VALUES(?,?,?,?,?,?,?,0,?,?)`).run(address, runId, scope, botId, input.sub_task, input.artifact, input.rationale, now, sha256);
+        VALUES(?,?,?,?,?,?,?,0,?,?)`).run(address, runId, scope, agentId, input.sub_task, input.artifact, input.rationale, now, sha256);
       for (const [index, ref] of refs.entries()) {
         db.prepare('INSERT INTO paper_refs VALUES(?,?,?,?)').run(address, ref.address, index, ref.kind);
         if (ref.kind === 'message') db.prepare('UPDATE paper_messages SET weight=weight+0.3*(1-weight) WHERE address=?').run(ref.address);
@@ -210,14 +210,14 @@ export function createPaperSubstrate({ databasePath, runId, mode, services, auth
         request.assertAuthorized();
         const operation = capability.operation;
         const fingerprint = digest(stableStringify({ operation, input }));
-        const scope = scopeFor(caller.botId);
+        const scope = scopeFor(caller.agentId);
         const now = new Date().toISOString();
         let response: JsonValue = null;
         let rejection: Rejection | null = null;
         db.exec('BEGIN IMMEDIATE');
         try {
           const previous = db.prepare(`SELECT fingerprint,response,error_code,error_message FROM paper_requests
-            WHERE run_id=? AND author=? AND request_id=?`).get(runId, caller.botId, envelope.operation_id) as RequestRow | undefined;
+            WHERE run_id=? AND author=? AND request_id=?`).get(runId, caller.agentId, envelope.operation_id) as RequestRow | undefined;
           if (previous) {
             if (previous.fingerprint !== fingerprint) throw new Rejection('CONFLICT', 'Request identity was reused with a different operation or input');
             if (previous.error_code) throw new Rejection(previous.error_code, previous.error_message ?? 'Request rejected');
@@ -225,14 +225,14 @@ export function createPaperSubstrate({ databasePath, runId, mode, services, auth
             db.exec('COMMIT');
             return replay;
           }
-          countOperation?.(caller.botId, operation, envelope.operation_id);
+          countOperation?.(caller.agentId, operation, envelope.operation_id);
           const tick = db.prepare(`INSERT INTO paper_clocks VALUES(?,?,1)
             ON CONFLICT(run_id,scope) DO UPDATE SET tick=tick+1 RETURNING tick`).get(runId, scope)!.tick!;
           db.prepare('UPDATE paper_messages SET weight=weight*0.98 WHERE run_id=? AND scope=? AND weight>0').run(runId, scope);
           let audit = null;
           db.exec('SAVEPOINT paper_operation');
           try {
-            if (operation === 'publish') response = publish(caller.botId, envelope.operation_id, input as Publication, now);
+            if (operation === 'publish') response = publish(caller.agentId, envelope.operation_id, input as Publication, now);
             else if (operation === 'visit') {
               const { addresses } = input as { addresses: string[] };
               response = { results: addresses.map(address => projection(requireMessage(scope, address))) };
@@ -250,7 +250,7 @@ export function createPaperSubstrate({ databasePath, runId, mode, services, auth
           }
           db.exec('RELEASE paper_operation');
           db.prepare(`INSERT INTO paper_requests(run_id,author,request_id,operation,fingerprint,input,response,error_code,error_message,audit,tick,created_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(runId, caller.botId, envelope.operation_id, operation, fingerprint, JSON.stringify(input),
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(runId, caller.agentId, envelope.operation_id, operation, fingerprint, JSON.stringify(input),
             rejection ? null : JSON.stringify(response), rejection?.code ?? null, rejection?.message ?? null, audit, tick, now);
           db.exec('COMMIT');
         } catch (cause) {
@@ -269,7 +269,7 @@ export function createPaperSubstrate({ databasePath, runId, mode, services, auth
         if (!updated.changes) throw new Rejection('CONFLICT', 'Run ID belongs to another Runtime');
         runtimeId = id;
       },
-      validateReferences(botId: string, rationale: string, refs: string[]) { references(botId, rationale, refs); },
+      validateReferences(agentId: string, rationale: string, refs: string[]) { references(agentId, rationale, refs); },
       snapshot() {
         const contents = (db.prepare('SELECT * FROM paper_messages WHERE run_id=? ORDER BY ordinal').all(runId) as StoredMessage[])
           .map(row => ({ ...projection(row), author: row.author, version: 1, sha256: row.sha256, created_at: row.created_at, citation_weight: row.weight }));

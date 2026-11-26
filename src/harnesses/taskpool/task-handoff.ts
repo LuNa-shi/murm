@@ -5,14 +5,14 @@ import { executionEnvelope, prepareTaskPoolInputs } from './prepare-inputs.js';
 const failure = (message: any) => new MurmError('NOT_ALLOWED', message);
 const errorInfo = (error: any) => ({ code: error?.code ?? 'SERVICE_UNAVAILABLE', message: error?.message ?? 'Flat handoff failed' });
 
-export function startPreparationHeartbeat({ taskService, missionId, botId, executionId, expectedFence, intervalMs, isClosing, checkSignal }: any) {
+export function startPreparationHeartbeat({ taskService, missionId, agentId, executionId, expectedFence, intervalMs, isClosing, checkSignal }: any) {
   let timer: any, error: any;
   const check = () => {
     if (error) throw error;
     checkSignal();
     taskService.assertMissionResearchOpen(missionId);
-    taskService.assertBotDeadline(botId);
-    const owner = taskService.getBot(botId), execution = taskService.getExecution(executionId);
+    taskService.assertAgentDeadline(agentId);
+    const owner = taskService.getAgent(agentId), execution = taskService.getExecution(executionId);
     if (isClosing() || owner?.state !== 'PREPARING' || owner.execution_id !== executionId || execution?.state !== 'CREATED' ||
         execution.fencing_version !== expectedFence || Date.now() >= Date.parse(execution.lease_expires_at)) throw failure('Flat Task reservation is no longer current');
     return execution;
@@ -25,7 +25,7 @@ export function startPreparationHeartbeat({ taskService, missionId, botId, execu
 
 export async function runTaskPoolHandoff({ request, runtime, taskService, missionId, missionWorkspace, workspaceId, workspaceManager, contextService,
   executionTimeoutMs, handoffLeadMs, missionDeadline, heartbeatMs, stopTimeoutMs, preparationTimeoutMs, isClosing, signal, preview }: any) {
-  const { botId, taken, id } = request;
+  const { agentId, taken, id } = request;
   const executionId = taken.execution.execution_id, fence = taken.execution.fencing_version;
   let deadlineAt: any;
   const checkSignal = () => {
@@ -49,16 +49,16 @@ export async function runTaskPoolHandoff({ request, runtime, taskService, missio
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   };
   try {
-    deadlineAt = Math.min(Date.now() + preparationTimeoutMs, missionDeadline(), Date.parse(taskService.getBot(botId)?.hard_deadline));
+    deadlineAt = Math.min(Date.now() + preparationTimeoutMs, missionDeadline(), Date.parse(taskService.getAgent(agentId)?.hard_deadline));
     if (!Number.isFinite(deadlineAt)) throw failure('No finite Flat preparation deadline');
-    lease = startPreparationHeartbeat({ taskService, missionId, botId, executionId, expectedFence: fence,
+    lease = startPreparationHeartbeat({ taskService, missionId, agentId, executionId, expectedFence: fence,
       intervalMs: heartbeatMs, isClosing, checkSignal });
     request.stage = 'prepare-inputs';
     const inputs = await bounded(() => prepareTaskPoolInputs({ execution: taken.execution, taskService, missionWorkspace, workspaceId, workspaceManager,
       contextService, preview, check: () => lease.check() }));
     lease.check();
     request.stage = 'prepare-files';
-    const prepared = await bounded(() => runtime.files.prepare(botId, { requestId: `${id}:prepare`, files: inputs.files }));
+    const prepared = await bounded(() => runtime.files.prepare(agentId, { requestId: `${id}:prepare`, files: inputs.files }));
     lease.check();
     request.prepared = prepared;
     lease.stop();
@@ -66,26 +66,26 @@ export async function runTaskPoolHandoff({ request, runtime, taskService, missio
     // advanced state_version since the initial reservation.
     let execution = taskService.getExecution(executionId);
     const now = Date.now();
-    const bot = taskService.getBot(botId), task = taskService.getTask(execution.task_id);
-    const timeout = Math.min(task.timebox_ms ?? executionTimeoutMs, executionTimeoutMs, missionDeadline() - now, Date.parse(bot.hard_deadline) - now);
+    const agent = taskService.getAgent(agentId), task = taskService.getTask(execution.task_id);
+    const timeout = Math.min(task.timebox_ms ?? executionTimeoutMs, executionTimeoutMs, missionDeadline() - now, Date.parse(agent.hard_deadline) - now);
     if (!Number.isFinite(timeout) || timeout < 1) throw failure('No Execution budget remains');
     request.stage = 'start-execution';
-    execution = taskService.dispatch('start_execution', { core_id: bot.core_id, started_at: new Date(now).toISOString(),
+    execution = taskService.dispatch('start_execution', { core_id: agent.core_id, started_at: new Date(now).toISOString(),
       execution_deadline: new Date(now + timeout).toISOString(), handoff_deadline: new Date(now + Math.max(0, timeout - handoffLeadMs)).toISOString() },
     executionEnvelope(execution, `${id}:start`)).execution;
     request.stage = 'grant-files';
     await bounded(() => runtime.files.grant({ requestId: `${id}:grant`, prepared }));
-    const core = await bounded(() => runtime.get(botId));
+    const core = await bounded(() => runtime.get(agentId));
     checkSignal();
-    taskService.assertMissionResearchOpen(missionId); taskService.assertBotDeadline(botId);
-    const owner = taskService.getBot(botId);
+    taskService.assertMissionResearchOpen(missionId); taskService.assertAgentDeadline(agentId);
+    const owner = taskService.getAgent(agentId);
     execution = taskService.getExecution(executionId);
-    if (owner?.state !== 'ACTIVE' || owner.execution_id !== executionId || execution.state !== 'RUNNING' || execution.owner_ref !== botId ||
+    if (owner?.state !== 'ACTIVE' || owner.execution_id !== executionId || execution.state !== 'RUNNING' || execution.owner_ref !== agentId ||
         execution.fencing_version !== fence || taskService.getTask(execution.task_id)?.spec_version !== execution.spec_version || Date.now() >= Math.min(Date.parse(execution.execution_deadline), Date.parse(execution.lease_expires_at))) {
       throw failure('Flat ownership changed during file grant');
     }
-    if (!['idle', 'running'].includes(core.status)) throw failure('Core Bot closed during flat handoff');
-    const handoff: any = { botId, executionId, executionFence: fence, prepared: { ...prepared }, workspaceRevision: execution.workspace_input.revision };
+    if (!['idle', 'running'].includes(core.status)) throw failure('Core Agent closed during flat handoff');
+    const handoff: any = { agentId, executionId, executionFence: fence, prepared: { ...prepared }, workspaceRevision: execution.workspace_input.revision };
     request.stage = 'complete';
     request.handoff = handoff;
     return { task: taskService.getTask(execution.task_id), execution, materials: inputs.materials,
@@ -102,17 +102,17 @@ export async function runTaskPoolHandoff({ request, runtime, taskService, missio
 
 /** Explicit host retry preserves the original handoff error and owned request. */
 export async function stopFailedHandoff({ request, runtime, taskService, stopTimeoutMs }: any) {
-  const botId = request.botId, executionId = request.taken.execution.execution_id;
-  try { taskService.requestBotStop(botId, 'flat-handoff-failed', { terminalState: 'FAILED' }); }
+  const agentId = request.agentId, executionId = request.taken.execution.execution_id;
+  try { taskService.requestAgentStop(agentId, 'flat-handoff-failed', { terminalState: 'FAILED' }); }
   catch (intentError: any) { request.intentError = errorInfo(intentError); }
   try {
-    const stopped = await runtime.stop(botId, { timeoutMs: stopTimeoutMs });
+    const stopped = await runtime.stop(agentId, { timeoutMs: stopTimeoutMs });
     request.stopped = stopped;
     request.cleanupError = undefined;
     if (stopped.execution === 'stopped') {
       const current = taskService.getExecution(executionId);
       if (['CREATED', 'RUNNING'].includes(current.state)) taskService.dispatch('stop_execution', { terminal_state: 'FAILED', terminal_reason: 'flat-handoff-failed' }, executionEnvelope(current, `${request.id}:failed`));
-      if (stopped.cleanup === 'complete') taskService.finalizeBotClose(botId);
+      if (stopped.cleanup === 'complete') taskService.finalizeAgentClose(agentId);
     }
   } catch (cleanupError: any) { request.cleanupError = errorInfo(cleanupError); }
 }

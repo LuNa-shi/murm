@@ -7,10 +7,10 @@ import { instance, runDirectory, sha256, task } from './case.ts';
 import { localBackend, saveReceipt } from './local-integration.ts';
 import { ownedContainers } from '../../dist/test/fixtures/core-runtime-containers.js';
 import { runOpenSubagents } from './pastel-open-subagents.ts';
-import { runOpenFlat } from './pastel-open-flat.ts';
-import { runOpenAgensh } from './pastel-open-agensh.ts';
+import { runOpenTaskPool } from './pastel-open-taskpool.ts';
+import { runOpenPeerMesh } from './pastel-open-peermesh.ts';
 
-const drivers = { subagents: runOpenSubagents, flat: runOpenFlat, agensh: runOpenAgensh };
+const drivers = { subagents: runOpenSubagents, taskpool: runOpenTaskPool, peermesh: runOpenPeerMesh };
 
 interface PastelRunOptions {
   mode: string;
@@ -21,7 +21,7 @@ interface PastelRunOptions {
   maxConcurrent?: number;
   maxOutputTokens?: number | null;
   upstreamKind: 'scripted_loopback' | 'hosted_k3';
-  agenshImages?: Awaited<ReturnType<typeof import('./pastel-open-agensh.ts').resolveAgenshImages>>;
+  agenshImages?: Awaited<ReturnType<typeof import('./pastel-open-peermesh.ts').resolvePeerMeshImages>>;
   onStart?: (event: { startedAt: string; runtimeId?: string }) => void | Promise<void>;
 }
 
@@ -38,11 +38,11 @@ async function modelUsage(directory, runtimeId) {
   return report.modelLedgers.map(({ alias, path }) => {
     const db = new DatabaseSync(path, { readOnly: true });
     try {
-      return { alias, bots: db.prepare(`SELECT bot_id AS botId, COUNT(*) AS attempts,
+      return { alias, agents: db.prepare(`SELECT agent_id AS agentId, COUNT(*) AS attempts,
         COUNT(output_tokens) AS metered, COUNT(*) FILTER (WHERE state='unknown') AS unknown,
         COUNT(*) FILTER (WHERE state='pending') AS pending, SUM(input_tokens) AS inputTokens,
         SUM(output_tokens) AS outputTokens, MAX(output_tokens) AS maxObservedOutputTokens
-        FROM runtime_model_attempts WHERE runtime_id=? GROUP BY bot_id`).all(runtimeId) };
+        FROM runtime_model_attempts WHERE runtime_id=? GROUP BY agent_id`).all(runtimeId) };
     } finally {
       db.close();
     }

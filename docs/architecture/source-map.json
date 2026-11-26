@@ -103,7 +103,7 @@
       "role": "Hosted matrix admission, fixture fingerprints, candidate and adoption audit, and official evaluation"
     },
     {
-      "path": "benchmarks/programbench-pastel/pastel-open-agensh.ts",
+      "path": "benchmarks/programbench-pastel/pastel-open-peermesh.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/08-prompts.md",
@@ -112,7 +112,7 @@
       "role": "Pastel Board and pinned Git contribution handoff between three peer Agents"
     },
     {
-      "path": "benchmarks/programbench-pastel/pastel-open-flat.ts",
+      "path": "benchmarks/programbench-pastel/pastel-open-taskpool.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/08-prompts.md",
@@ -155,7 +155,7 @@
       "role": "Pastel slice through the ordinary Subagents entry, in-flight user input and independent offline checker"
     },
     {
-      "path": "benchmarks/putnambench-flat/case.ts",
+      "path": "benchmarks/putnambench-taskpool/case.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -164,7 +164,7 @@
       "role": "Locked PutnamBench case identity and exact upstream input validation"
     },
     {
-      "path": "benchmarks/putnambench-flat/case.test.ts",
+      "path": "benchmarks/putnambench-taskpool/case.test.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
@@ -172,7 +172,7 @@
       "role": "Original PutnamBench statement replacement rejection regression"
     },
     {
-      "path": "benchmarks/putnambench-flat/lean.ts",
+      "path": "benchmarks/putnambench-taskpool/lean.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -182,7 +182,7 @@
       "role": "Locked three-layer Putnam Lean deployment and matching Mathlib search"
     },
     {
-      "path": "benchmarks/putnambench-flat/main.ts",
+      "path": "benchmarks/putnambench-taskpool/main.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -192,7 +192,7 @@
       "role": "Opt-in PutnamBench preflight and registered hosted entry"
     },
     {
-      "path": "benchmarks/putnambench-flat/run.ts",
+      "path": "benchmarks/putnambench-taskpool/run.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -201,7 +201,7 @@
       "role": "Putnam TaskPool stores, input window, candidate and receipt composition"
     },
     {
-      "path": "benchmarks/putnambench-flat/tsconfig.json",
+      "path": "benchmarks/putnambench-taskpool/tsconfig.json",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
@@ -271,7 +271,7 @@
       "role": "Node support, dependency requirements and executable package scripts"
     },
     {
-      "path": "scripts/bot-filesystem-policy.c",
+      "path": "scripts/agent-filesystem-policy.c",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -354,7 +354,7 @@
       "role": "Mathlib HTTP provider process and environment settings"
     },
     {
-      "path": "scripts/mount-bot-workspace.py",
+      "path": "scripts/mount-agent-workspace.py",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -562,7 +562,7 @@
       "role": "Native Pi compatible-provider catalog with runtime environment interpolation"
     },
     {
-      "path": "src/agent/bot-contract.ts",
+      "path": "src/agent/agent-contract.ts",
       "category": "Agent and prompts",
       "chapters": [
         "docs/architecture/01-agent-core.md",
@@ -848,7 +848,7 @@
       "role": "Automatic transaction-aware private SQLite before/after row history and committed write boundaries"
     },
     {
-      "path": "src/runtime/docker-bot-disk.ts",
+      "path": "src/runtime/docker-agent-disk.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -858,14 +858,14 @@
       "role": "Docker Agent identity validation and bounded filesystem preparation"
     },
     {
-      "path": "src/runtime/docker-bot-network.ts",
+      "path": "src/runtime/docker-agent-network.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
         "docs/architecture/07-run-configuration.md",
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Pinned local Docker namespace egress enforcement with frozen per-Bot Profile origins"
+      "role": "Pinned local Docker namespace egress enforcement with frozen per-Agent Profile origins"
     },
     {
       "path": "src/runtime/execution-workspace.ts",
@@ -1261,7 +1261,7 @@
       "role": "Pinned external PeerMesh source location and board schema attribution"
     },
     {
-      "path": "src/core/bot-service.ts",
+      "path": "src/core/agent-service.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1422,7 +1422,7 @@
       "role": "TaskPool Task/Mission model authority and Core synchronous policy adapter"
     },
     {
-      "path": "src/harnesses/taskpool/bot-coordinator.ts",
+      "path": "src/harnesses/taskpool/agent-coordinator.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1500,7 +1500,7 @@
       "role": "Fixed Workspace and Material input provenance and canonical FileSeed preparation"
     },
     {
-      "path": "scripts/git-credential-agensh.ts",
+      "path": "scripts/git-credential-peermesh.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md"
@@ -1811,14 +1811,6 @@
       "role": "TaskPool host composition, optional trusted Workspace capture binding, and independent business/resource reporting"
     },
     {
-      "path": "scripts/read-environment-result.ts",
-      "category": "launch and composition",
-      "chapters": [
-        "docs/architecture/17-harness-reporting.md"
-      ],
-      "role": "Compatibility entry point delegating to read-harness-result"
-    },
-    {
       "path": "scripts/read-harness-result.ts",
       "category": "launch and composition",
       "chapters": [
@@ -1833,14 +1825,6 @@
         "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Read saved Harness and Core receipts with expected identity and bounded normal-output projection"
-    },
-    {
-      "path": "scripts/run-environment.ts",
-      "category": "launch and composition",
-      "chapters": [
-        "docs/architecture/17-harness-reporting.md"
-      ],
-      "role": "Compatibility entry point delegating to run-harness"
     },
     {
       "path": "scripts/run-harness.ts",

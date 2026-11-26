@@ -6,7 +6,7 @@ export const ERROR_CODES = Object.freeze({
   PROCESS_EXITED: 'PROCESS_EXITED',
   RPC_ERROR: 'RPC_ERROR',
   START_FAILED: 'START_FAILED',
-  BOT_STARTUP_CONTRACT: 'BOT_STARTUP_CONTRACT',
+  AGENT_STARTUP_CONTRACT: 'AGENT_STARTUP_CONTRACT',
   WORKSPACE_BUSY: 'WORKSPACE_BUSY',
   WORKSPACE_RECONCILIATION_REQUIRED: 'WORKSPACE_RECONCILIATION_REQUIRED',
   WORKSPACE_REQUEST_ABORTED: 'WORKSPACE_REQUEST_ABORTED',
@@ -45,7 +45,7 @@ export class MurmError extends Error {
   constructor(code: string, message: string, details: unknown = undefined, options: ErrorOptions & { retryable?: boolean } = {}) {
     super(message, options);
     // Preserve the diagnostic name used by existing log consumers.
-    this.name = 'SwarmEnvError';
+    this.name = 'MurmError';
     this.code = code;
     this.details = details;
     this.retryable = options.retryable ?? false;
@@ -62,5 +62,3 @@ export function asMurmError(error: any, fallbackCode: string = ERROR_CODES.INVAL
 export function fail(code: string, message: string, details: unknown = undefined, options: ErrorOptions & { retryable?: boolean } = {}): never {
   throw new MurmError(code, message, details, options);
 }
-
-export { MurmError as SwarmEnvError, asMurmError as asSwarmEnvError };

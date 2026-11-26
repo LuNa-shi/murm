@@ -4,9 +4,9 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
-import { transport } from './fixtures/core-bot-service-backend.js';
+import { transport } from './fixtures/core-agent-service-backend.js';
 const hooks = registerHooks({ resolve(specifier, context, next) {
-  if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/agensh-team-backend.js', import.meta.url).href, shortCircuit: true };
+  if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/peermesh-team-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
 const { runForegroundHarness } = await import('../src/harnesses/shared/foreground-host.js');
@@ -19,14 +19,14 @@ async function configuration(t) {
   const peers = ['a', 'b'].map(key => ({ key, branch: `branch-${key}`,
     gitea: { username: key, binding: `git-${key}`, accountId: key, token: `git-secret-${key}` },
     message: { binding: `mm-${key}`, accountId: key, token: `mm-secret-${key}` }, board: { binding: `board-${key}`, workerId: `worker-${key}` } }));
-  return { mode: 'agensh', timeoutMs: 5000, options: { runId: 'foreground', image: 'fixture', outputDir, backend: {}, closeTimeoutMs: 1000,
+  return { mode: 'peermesh', timeoutMs: 5000, options: { runId: 'foreground', image: 'fixture', outputDir, backend: {}, closeTimeoutMs: 1000,
     prepare: async () => ({ runId: 'foreground', repository: { owner: 'owner', name: 'repo' }, repositoryUrl: 'http://172.17.0.1:3000/owner/repo.git', channelId: 'channel', boardId: 'board', issueNumber: 1,
       endpoints: { gitea: 'http://172.17.0.1:3000', message: 'http://127.0.0.1:3001', board: 'http://127.0.0.1:3002' }, peers }),
     router: { workTimeoutMs: 5000, turnTimeoutMs: 1000, readContext: async () => 'private board context', subscribe: async () => ({ ready: true, stop: async () => {} }) } } };
 }
 function settle(id) {
   const submission = transport.submissions.get(id);
-  transport.spawns.get(submission.botId).onEvent({ type: 'settled', outcome: 'completed', output: 'private model text' });
+  transport.spawns.get(submission.agentId).onEvent({ type: 'settled', outcome: 'completed', output: 'private model text' });
   transport.next = settle;
 }
 
@@ -37,7 +37,7 @@ test('foreground host targets the existing agensh router and preserves request r
   const report = await runForegroundHarness(config, async host => {
     saved = host;
     const before = await host.status();
-    assert.equal(before.mode, 'agensh');
+    assert.equal(before.mode, 'peermesh');
     assert.deepEqual(before.peers.map(peer => peer.status), ['idle', 'idle']);
     assert.equal(before.runDirectory, join(config.options.outputDir, before.runtimeId));
     const kickoff = await host.kickoff({ recipient: 'a', input: 'initial' });
@@ -56,7 +56,7 @@ test('foreground host targets the existing agensh router and preserves request r
     await assert.rejects(host.input({ ...input, requestId: 'after-stop' }), { code: 'HOST_STOPPING' });
   });
   assert.equal(report.businessFailure, null, JSON.stringify(report));
-  assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.cleanup.bots.length, 2);
+  assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.cleanup.agents.length, 2);
   const closed = await saved.status();
   assert.equal(closed.closing, true);
   assert.deepEqual(closed.peers.map(peer => [peer.status, peer.lastStop]), [
@@ -73,7 +73,7 @@ test('host abort bounds an interaction that never returns and retains actual cle
   const pending = runForegroundHarness({ ...config, signal: controller.signal }, async () => { entered.resolve(); await new Promise(() => {}); });
   await entered.promise; controller.abort();
   const report = await pending;
-  assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.cleanup.bots.length, 2);
+  assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.cleanup.agents.length, 2);
   assert.equal(transport.submissions.size, 0);
 });
 
@@ -83,15 +83,15 @@ test('foreground status follows Core activity and exposes only the latest error 
   transport.next = sent.resolve;
   const report = await runForegroundHarness(config, async host => {
     const kickoff = await host.kickoff({ recipient: 'a', input: 'held work' });
-    const { botId } = transport.submissions.get(await sent.promise);
-    const backendBot = transport.spawns.get(botId);
-    backendBot.onEvent({ type: 'error', error: { code: 'TRANSIENT_FAILURE', message: 'private operator detail' }, fatal: false });
+    const { agentId } = transport.submissions.get(await sent.promise);
+    const backendAgent = transport.spawns.get(agentId);
+    backendAgent.onEvent({ type: 'error', error: { code: 'TRANSIENT_FAILURE', message: 'private operator detail' }, fatal: false });
     const active = await host.status();
     assert.deepEqual(active.peers.map(peer => [peer.status, peer.lastErrorCode]), [
       ['running', 'TRANSIENT_FAILURE'], ['idle', undefined],
     ]);
     assert.ok(!JSON.stringify(active).includes('private operator detail'));
-    backendBot.onEvent({ type: 'settled', outcome: 'completed', output: 'private model output' });
+    backendAgent.onEvent({ type: 'settled', outcome: 'completed', output: 'private model output' });
     assert.equal((await host.wait({ recipient: 'a', batchId: kickoff.batchId, timeoutMs: 1000 })).state, 'completed');
     const idle = await host.status();
     assert.equal(idle.peers[0].status, 'idle');
@@ -104,11 +104,11 @@ test('foreground status follows Core activity and exposes only the latest error 
   assert.equal(report.cleanup.cleanup, 'complete');
 });
 
-test('flat host rejects an invalid snapshot binding before allocating any Bot', async t => {
+test('flat host rejects an invalid snapshot binding before allocating any Agent', async t => {
   const config = await configuration(t);
   config.options.snapshotProject = true;
   let entered = false;
-  const report = await runForegroundHarness({ ...config, mode: 'flat' }, async () => { entered = true; });
+  const report = await runForegroundHarness({ ...config, mode: 'taskpool' }, async () => { entered = true; });
   assert.equal(report.businessFailure.code, 'INVALID_CONTRACT');
   assert.match(report.businessFailure.message, /snapshotProject/);
   assert.equal(report.cleanup, null);
@@ -150,15 +150,15 @@ test('actual foreground CLI routes explicit peer commands and emits bounded save
   assert.equal(records.find(record => record.id === 'feedback-replay').result.batchId, records.find(record => record.id === 'feedback').result.batchId);
   assert.equal(records.find(record => record.id === 'feedback-conflict').code, 'BATCH_CONFLICT');
   const view = records.find(record => record.id === 'view').result;
-  assert.deepEqual(view.peers.map(peer => peer.botId), records.find(record => record.type === 'ready').status.peers.map(peer => peer.botId));
+  assert.deepEqual(view.peers.map(peer => peer.agentId), records.find(record => record.type === 'ready').status.peers.map(peer => peer.agentId));
   assert.equal(view.runDirectory, join(root, view.runtimeId));
   assert.deepEqual(view.peers.map(peer => peer.status), ['idle', 'idle']);
   assert.ok(view.peers[0].cursor > 0);
   assert.equal(view.peers[0].batches.length, 2); assert.equal(view.peers[1].batches.length, 0);
-  const result = records.find(record => record.type === 'result'); assert.equal(result.cleanup, 'complete'); assert.equal(result.bots.length, 2);
-  assert.ok(result.bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete'));
+  const result = records.find(record => record.type === 'result'); assert.equal(result.cleanup, 'complete'); assert.equal(result.agents.length, 2);
+  assert.ok(result.agents.every(agent => agent.execution === 'stopped' && agent.cleanup === 'complete'));
   const saved = JSON.parse(await readFile(result.reportPath, 'utf8'));
-  assert.equal(saved.cleanup.bots.length, 2); assert.equal(saved.cleanupFailure, null);
+  assert.equal(saved.cleanup.agents.length, 2); assert.equal(saved.cleanupFailure, null);
   const output = JSON.stringify(records);
   assert.ok(!output.includes('PRIVATE_')); assert.ok(!output.includes('private-git'));
 });
@@ -179,7 +179,7 @@ test('foreground CLI records startup cancellation received while loading configu
   const [exit] = await exited; assert.equal(exit, 1, Buffer.concat(stderr).toString());
   const records = Buffer.concat(stdout).toString().trim().split('\n').map(line => JSON.parse(line));
   assert.equal(records.length, 1); assert.equal(records[0].type, 'result');
-  assert.equal(records[0].businessFailureCode, 'ENVIRONMENT_START_ABORTED'); assert.equal(records[0].bots, null);
+  assert.equal(records[0].businessFailureCode, 'HARNESS_START_ABORTED'); assert.equal(records[0].agents, null);
 });
 
 test('SIGTERM during an active CLI wait closes the team without replies after the final result', { timeout: 15_000 }, async t => {
@@ -203,7 +203,7 @@ test('SIGTERM during an active CLI wait closes the team without replies after th
   const [exit] = await once(child, 'exit'); assert.equal(exit, 0, Buffer.concat(stderr).toString());
   assert.equal(records.at(-1).type, 'result'); assert.equal(records.at(-1).cleanup, 'complete');
   assert.ok(!records.some(record => record.id === 'active-wait'));
-  assert.ok(records.at(-1).bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete'));
+  assert.ok(records.at(-1).agents.every(agent => agent.execution === 'stopped' && agent.cleanup === 'complete'));
 });
 
 test('an agensh router deadline ends foreground interaction before a longer host deadline', { timeout: 3000 }, async t => {
@@ -212,7 +212,7 @@ test('an agensh router deadline ends foreground interaction before a longer host
   const started = performance.now();
   const report = await runForegroundHarness(config, async () => new Promise(() => {}));
   assert.equal(report.cleanup.cleanup, 'complete');
-  assert.equal(report.businessFailure?.code, 'AGENSH_TEAM_FENCED');
+  assert.equal(report.businessFailure?.code, 'PEERMESH_TEAM_FENCED');
   assert.equal(report.businessFailure?.details?.[0]?.code, 'ROUTER_WORK_EXPIRED');
   assert.ok(performance.now() - started < 1000);
 });
@@ -252,7 +252,7 @@ test('JSON-line stop overtakes an active wait, seals queued input and precedes t
   assert.ok(!records.some(row => row.type === 'reply' && row.id?.startsWith('overflow-')));
   assert.equal(records.at(-1).cleanup, 'complete');
   const saved = JSON.parse(await readFile(records.at(-1).reportPath, 'utf8'));
-  assert.equal(saved.environment.peers[1].router.batches.length, 0);
+  assert.equal(saved.harness.peers[1].router.batches.length, 0);
 });
 
 test('source failure stays a safe team failure and host deadline stays a distinct failure', async t => {
@@ -263,8 +263,8 @@ test('source failure stays a safe team failure and host deadline stays a distinc
     failSource({ code: 'PRIVATE_source_failure', message: 'private-git-a' });
     await new Promise(() => {});
   });
-  assert.equal(source.businessFailure.code, 'AGENSH_TEAM_FENCED');
-  assert.deepEqual(source.businessFailure.details, [{ code: 'AGENSH_SOURCE_FAILED' }]);
+  assert.equal(source.businessFailure.code, 'PEERMESH_TEAM_FENCED');
+  assert.deepEqual(source.businessFailure.details, [{ code: 'PEERMESH_SOURCE_FAILED' }]);
   assert.equal(source.cleanup.cleanup, 'complete');
   const deadline = await runForegroundHarness({ ...config, timeoutMs: 200 }, async () => new Promise(() => {}));
   assert.equal(deadline.businessFailure.code, 'HOST_WORK_TIMEOUT');
@@ -279,7 +279,7 @@ test('CLI self-fence exits unsuccessfully and a configuration throwing null emit
   const fixture = new URL('./fixtures/foreground-host-configuration.js', import.meta.url).href;
   const fenced = join(root, 'fenced.mjs');
   await writeFile(fenced, `import config from ${JSON.stringify(fixture)};\nconfig.options.router.workTimeoutMs = 100;\nexport default config;\n`);
-  for (const [path, expected, stream] of [[fenced, 'AGENSH_TEAM_FENCED', 'stdout'], [join(root, 'null.mjs'), 'HOST_START_FAILED', 'stderr']]) {
+  for (const [path, expected, stream] of [[fenced, 'PEERMESH_TEAM_FENCED', 'stdout'], [join(root, 'null.mjs'), 'HOST_START_FAILED', 'stderr']]) {
     if (stream === 'stderr') await writeFile(path, 'throw null;\n');
     const child = spawn(process.execPath, ['dist/scripts/run-harness.js', '--config', path],
       { env: { ...process.env, FOREGROUND_TEST_OUTPUT: root }, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -309,13 +309,13 @@ test('startup source self-fence preserves its first safe cause and actual cleanu
     };
     transport.onStop = () => { stopped++; };
     const report = await runForegroundHarness(config, async () => { entered = true; });
-    assert.equal(report.businessFailure.code, 'AGENSH_TEAM_FENCED');
+    assert.equal(report.businessFailure.code, 'PEERMESH_TEAM_FENCED');
     assert.equal(report.businessFailure.cleanup, 'complete');
     assert.deepEqual(report.businessFailure.details[0], { code: 'EVENT_SOURCE_FAILED' });
     const [snapshot, receipt] = report.businessFailure.details.slice(1);
     assert.equal(snapshot.closing, true); assert.equal(snapshot.peers.length, 2);
     assert.equal(receipt.cleanup, 'complete');
-    assert.ok(receipt.bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete'));
+    assert.ok(receipt.agents.every(agent => agent.execution === 'stopped' && agent.cleanup === 'complete'));
     assert.equal(facilityClosed, true); assert.equal(stopped, 2); assert.equal(entered, false);
     assert.equal(transport.submissions.size, 0);
     assert.ok(!JSON.stringify(report).includes('private startup detail'));

@@ -15,7 +15,7 @@ function completion(usage = { input_tokens: 4, output_tokens: 3 }) {
 
 test('explicit null time policy preserves natural provider output parameters without a synthetic clamp', async t => {
   const { call, gateway, requests } = await fixture(t, undefined, { timeBounds: { requestTimeoutMs: 2000, maxOutputTokens: null } });
-  const token = gateway.issueToken({ runtimeId: 'r', botId: 'natural' });
+  const token = gateway.issueToken({ runtimeId: 'r', agentId: 'natural' });
   for (const maximum of [undefined, 128000]) {
     const response = await call(token, `natural-${maximum ?? 'absent'}`, { model, input: 'controlled', stream: true,
       ...(maximum === undefined ? {} : { max_output_tokens: maximum }) });
@@ -42,7 +42,7 @@ async function fixture(t, fn, { timeBounds = { requestTimeoutMs: 2000, maxOutput
     headers: { authorization: 'Bearer host-secret', 'x-openai-actor-authorization': 'host-actor' },
   };
   const options = { db, upstream: upstreamOptions, timeBounds,
-    validateBot: () => ({ phase: 'work', deadline: Date.now() + timeBounds.requestTimeoutMs }) };
+    validateAgent: () => ({ phase: 'work', deadline: Date.now() + timeBounds.requestTimeoutMs }) };
   const gateway = new ResponsesBudgetGateway(options);
   const { baseUrl } = await gateway.start();
   t.after(async () => {
@@ -55,7 +55,7 @@ async function fixture(t, fn, { timeBounds = { requestTimeoutMs: 2000, maxOutput
     method: 'POST',
     headers: {
       'content-type': 'application/json', authorization: `Bearer ${token}`,
-      'x-swarmenv-request-id': id, 'x-openai-actor-authorization': 'guest injection',
+      'x-murm-request-id': id, 'x-openai-actor-authorization': 'guest injection',
     },
     body: JSON.stringify(body),
     ...request,
@@ -67,8 +67,8 @@ test('time-bounded Responses uses Runtime credentials and replays only observed 
   const { db, gateway, call, requests } = await fixture(t, (_, response) => {
     response.end(requests.length === 1 ? completion() : 'event: unrecognized\ndata: {}\n\n');
   }, { timeBounds: { requestTimeoutMs: 1000, maxOutputTokens: 64 } });
-  const token = gateway.issueToken({ runtimeId: 'r', botId: 'b' });
-  assert.throws(() => gateway.issueToken({ missionId: 'm', botId: 'b' }), /trusted Runtime\/Bot binding/);
+  const token = gateway.issueToken({ runtimeId: 'r', agentId: 'b' });
+  assert.throws(() => gateway.issueToken({ missionId: 'm', agentId: 'b' }), /trusted Runtime\/Agent binding/);
   const body = { model, input: 'prove', max_output_tokens: 100 };
   assert.equal((await call(token, 'one', body)).status, 200);
   assert.equal(await (await call(token, 'one', body)).text(), completion());
@@ -90,7 +90,7 @@ test('time-bounded Responses uses Runtime credentials and replays only observed 
 
 test('validates actual Pi Responses item shapes, forwards only configured credentials, and replays receipt', async t => {
   const { gateway, call, requests } = await fixture(t);
-  const token = gateway.issueToken({ runtimeId: 'r', botId: 'b' });
+  const token = gateway.issueToken({ runtimeId: 'r', agentId: 'b' });
   const body = {
     model, stream: true, store: false, max_output_tokens: 30, prompt_cache_key: 'pi-session',
     input: [
@@ -125,7 +125,7 @@ test('validates actual Pi Responses item shapes, forwards only configured creden
 
 test('rejects alternate routes, tools, remote inputs, tier and stateful Responses modes', async t => {
   const { gateway, call, requests } = await fixture(t);
-  const token = gateway.issueToken({ runtimeId: 'r', botId: 'b' });
+  const token = gateway.issueToken({ runtimeId: 'r', agentId: 'b' });
   for (const patch of [
     { model: 'other' }, { background: true }, { conversation: 'conv_1' }, { previous_response_id: 'resp_1' },
     { service_tier: 'priority' }, { tools: [{ type: 'web_search' }] },
@@ -141,7 +141,7 @@ test('rejects alternate routes, tools, remote inputs, tier and stateful Response
 
 test('concurrent requests retain unknown usage and reject replay after gateway restart', async t => {
   const { db, gateway, call, requests, options } = await fixture(t, (_req, res) => res.end('data: {}\n\n'));
-  const token = gateway.issueToken({ runtimeId: 'r', botId: 'c' });
+  const token = gateway.issueToken({ runtimeId: 'r', agentId: 'c' });
   const work = await Promise.all(['1', '2', '3', '4'].map(id => call(token, id)));
   assert.deepEqual(work.map(r => r.status), [200, 200, 200, 200]);
   await Promise.all(work.map(r => r.text()));
@@ -149,10 +149,10 @@ test('concurrent requests retain unknown usage and reject replay after gateway r
   const next = new ResponsesBudgetGateway(options);
   const { baseUrl } = await next.start();
   t.after(() => next.stop());
-  const nextToken = next.issueToken({ runtimeId: 'r', botId: 'c' });
+  const nextToken = next.issueToken({ runtimeId: 'r', agentId: 'c' });
   const replay = await fetch(`${baseUrl}/responses`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${nextToken}`, 'x-swarmenv-request-id': '4' },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${nextToken}`, 'x-murm-request-id': '4' },
     body: JSON.stringify({ model, input: 'prove' }),
   });
   assert.equal(replay.status, 409);
@@ -171,7 +171,7 @@ test('stop terminates actual upstream stream and preserves unknown usage on disc
     res.once('close', confirmClosed);
     res.write('data: {}\n\n');
   });
-  const token = gateway.issueToken({ runtimeId: 'r', botId: 'c' });
+  const token = gateway.issueToken({ runtimeId: 'r', agentId: 'c' });
   const result = await call(token, 'one');
   assert.equal(result.status, 200);
   const replayWhilePending = await call(token, 'one');
@@ -192,8 +192,8 @@ test('requires time bounds and rejects the retired upstream financial contract',
 });
 
 test('locally installed Pi replays provider reasoning with empty content through the gateway over real SSE', async t => {
-  const packageRoot = process.env.SWARMENV_TEST_PI_AI_ROOT;
-  if (!packageRoot) return t.skip('set SWARMENV_TEST_PI_AI_ROOT to the installed Pi AI package');
+  const packageRoot = process.env.MURM_TEST_PI_AI_ROOT;
+  if (!packageRoot) return t.skip('set MURM_TEST_PI_AI_ROOT to the installed Pi AI package');
   const { stream } = await import(new URL('dist/api/openai-responses.js', pathToFileURL(packageRoot + '/')));
   const reasoning = { type: 'reasoning', id: 'rs_fixture', summary: [{ type: 'summary_text', text: 'Fixture summary' }],
     encrypted_content: 'fixture-encrypted', content: [] };
@@ -201,7 +201,7 @@ test('locally installed Pi replays provider reasoning with empty content through
     response.end('event: response.output_item.done\ndata: ' +
       JSON.stringify({ type: 'response.output_item.done', output_index: 0, item: reasoning }) + '\n\n' + completion());
   });
-  const token = gateway.issueToken({ runtimeId: 'r', botId: 'c' });
+  const token = gateway.issueToken({ runtimeId: 'r', agentId: 'c' });
   const provider = {
     id: model, name: model, api: 'openai-responses', provider: 'gpt_proxy', baseUrl,
     input: ['text'], reasoning: true, contextWindow: 500000, maxTokens: 128000,
@@ -227,13 +227,13 @@ test('locally installed Pi replays provider reasoning with empty content through
 });
 
 
-test('rejected upstream HTTP responses retain safe diagnostics without changing Bot errors or unknown usage', async t => {
+test('rejected upstream HTTP responses retain safe diagnostics without changing Agent errors or unknown usage', async t => {
   const { db, gateway, call } = await fixture(t, (_, response) => {
     response.writeHead(503, { 'content-type': 'application/json', 'x-request-id': 'req_provider_fixture',
       'retry-after': '12', 'x-private-header': 'sensitive-header' });
     response.end('{"private":"sensitive-body"}');
   }, { timeBounds: { requestTimeoutMs: 1000, maxOutputTokens: 64 } });
-  const token = gateway.issueToken({ runtimeId: 'r', botId: 'b' });
+  const token = gateway.issueToken({ runtimeId: 'r', agentId: 'b' });
   const response = await call(token, 'http-rejected');
   assert.equal(response.status, 502);
   const error = await response.text();
@@ -257,7 +257,7 @@ test('successful HTTP with non-SSE content retains a distinct rejection and disc
       'retry-after': 'sensitive-header' });
     response.end('{"private":"sensitive-body"}');
   }, { timeBounds: { requestTimeoutMs: 1000, maxOutputTokens: 64 } });
-  const token = gateway.issueToken({ runtimeId: 'r', botId: 'b' });
+  const token = gateway.issueToken({ runtimeId: 'r', agentId: 'b' });
   const response = await call(token, 'wrong-content-type');
   assert.equal(response.status, 502);
   assert.doesNotMatch(await response.text(), /sensitive|content.type/);
@@ -279,7 +279,7 @@ for (const scenario of [
       response.writeHead(scenario.status, { 'retry-after': scenario.retry });
       response.end();
     });
-    const token = gateway.issueToken({ runtimeId: 'r', botId: 'b' });
+    const token = gateway.issueToken({ runtimeId: 'r', agentId: 'b' });
     const response = await call(token, 'rejected');
     assert.equal(response.status, scenario.clientStatus);
     await response.text();

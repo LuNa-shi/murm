@@ -121,11 +121,11 @@ export function createRedactor(values: readonly unknown[] = []) {
   return { add, text, value, stream, jsonl, error };
 }
 
-export function runtimeConfiguration({ config, profiles, registrations, maxBots, modelAccessPolicy, defaultTimeoutMs }: {
+export function runtimeConfiguration({ config, profiles, registrations, maxAgents, modelAccessPolicy, defaultTimeoutMs }: {
   config: PiOpenSandboxBackendConfig;
   profiles: ReadonlyMap<string, Profile>;
   registrations: ReadonlyMap<string, ServiceRegistration>;
-  maxBots: number;
+  maxAgents: number;
   modelAccessPolicy?: ModelAccessPolicy;
   defaultTimeoutMs: number;
 }, redact: (value: string) => string) {
@@ -133,7 +133,7 @@ export function runtimeConfiguration({ config, profiles, registrations, maxBots,
   return {
     schemaVersion: 1,
     coreVersion: packageInfo.version,
-    maxBots,
+    maxAgents,
     backend: {
       type: 'pi-opensandbox', piVersion: '1.3.0', network: isolation.network, disk: isolation.disk,
       cpu: redact(sandbox.resourceLimits?.cpu ?? '2'), memory: redact(sandbox.resourceLimits?.memory ?? '2Gi'),

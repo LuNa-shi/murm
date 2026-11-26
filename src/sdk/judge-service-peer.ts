@@ -18,7 +18,7 @@ export function createJudgeServicePeer({ database, token, coordinator, checker, 
   const requests = new AsyncLocalStorage<any>();
   const phases = new Map();
   const authority: Record<string, any> = {};
-  for (const method of ['getBot', 'getTask', 'getExecution', 'materialScope', 'assertMissionResearchOpen']) {
+  for (const method of ['getAgent', 'getTask', 'getExecution', 'materialScope', 'assertMissionResearchOpen']) {
     authority[method] = (...args: any[]) => requests.getStore().authority[method](...args);
   }
   // Presence is required by local admission guards; all real remote writes

@@ -13,8 +13,8 @@ const digest = (content: any) => createHash('sha256').update(content).digest('he
 export function verifySubstrateCollaboration({ publisherStop, afterStop, beforeSuccessor, finalSnapshot,
   consumerId, originalAddress, successorAddress }: any = {}) {
   requireEvidence(publisherStop?.execution === 'stopped' && ['complete', 'pending'].includes(publisherStop.cleanup) &&
-    typeof publisherStop.botId === 'string' && publisherStop.botId && typeof consumerId === 'string' && consumerId &&
-    consumerId !== publisherStop.botId && typeof originalAddress === 'string' && typeof successorAddress === 'string' && originalAddress !== successorAddress);
+    typeof publisherStop.agentId === 'string' && publisherStop.agentId && typeof consumerId === 'string' && consumerId &&
+    consumerId !== publisherStop.agentId && typeof originalAddress === 'string' && typeof successorAddress === 'string' && originalAddress !== successorAddress);
   const snapshots = [afterStop, beforeSuccessor, finalSnapshot];
   for (const snapshot of snapshots) {
     requireEvidence(typeof snapshot?.runId === 'string' && snapshot.runId && typeof snapshot.runtimeId === 'string' && snapshot.runtimeId &&
@@ -32,7 +32,7 @@ export function verifySubstrateCollaboration({ publisherStop, afterStop, beforeS
   }
   const original = afterStop.contents.find((row: any) => row.address === originalAddress);
   const successor = finalSnapshot.contents.find((row: any) => row.address === successorAddress);
-  requireEvidence(original?.author === publisherStop.botId && successor?.author === consumerId &&
+  requireEvidence(original?.author === publisherStop.agentId && successor?.author === consumerId &&
     successor.references.includes(originalAddress) && !beforeSuccessor.contents.some((row: any) => row.address === successorAddress));
   const reads = beforeSuccessor.reads;
   const searchReadIndex = reads.findIndex((row: any, index: any) => index >= afterStop.reads.length && row?.author === consumerId &&
@@ -41,6 +41,6 @@ export function verifySubstrateCollaboration({ publisherStop, afterStop, beforeS
     row.operation === 'visit' && row.input?.address === originalAddress && Array.isArray(row.result) && row.result.includes(originalAddress));
   requireEvidence(searchReadIndex >= 0 && visitReadIndex > searchReadIndex);
   return Object.freeze({ accepted: true, scope: 'durable-collaboration-handoff', runId: afterStop.runId, runtimeId: afterStop.runtimeId,
-    publisherId: publisherStop.botId, consumerId, publisherExecution: 'stopped', publisherCleanup: publisherStop.cleanup,
+    publisherId: publisherStop.agentId, consumerId, publisherExecution: 'stopped', publisherCleanup: publisherStop.cleanup,
     originalAddress, originalSha256: digest(original.content), successorAddress, successorSha256: digest(successor.content), searchReadIndex, visitReadIndex });
 }

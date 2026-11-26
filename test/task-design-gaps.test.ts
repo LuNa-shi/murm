@@ -13,10 +13,10 @@ function fixture(t) {
     acceptance_conditions: ['Include supporting evidence'], ...fields,
   }, makeEnvelope({ actorRef: 'agent:test' })).task;
   const coordinator = (id, coordinationPermissions = [], scope = missionId) => {
-    service.registerBot({ botId: id, missionId: scope, coreId: id, coordinationPermissions,
+    service.registerAgent({ agentId: id, missionId: scope, coreId: id, coordinationPermissions,
       selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
-    service.recordBotSandbox(id, { provider: 'controlled', sandboxId: id });
-    service.markBotReady(id);
+    service.recordAgentSandbox(id, { provider: 'controlled', sandboxId: id });
+    service.markAgentReady(id);
     return operationId => makeEnvelope({ actorRef: id, operationId });
   };
   return { service, create, coordinator };
@@ -68,16 +68,16 @@ test('Task cancellation needs UNBOUND Mission authority while other coordination
   assert.equal(service.dispatch('task_cancel', { ...observed(ordinaryTarget), reason: input.reason }, ordinary('ordinary')).task.state, 'CANCELED');
   assert.throws(() => service.dispatch('task_cancel', input, makeEnvelope({ actorRef: 'operator:unverified' })), { code: 'NOT_ALLOWED' });
   service.createMission({ mission_id: 'foreign', goal: 'Separate Mission' }, makeEnvelope({ actorRef: 'operator:test' }));
-  const foreign = coordinator('foreign-bot', ['task_cancel'], 'foreign');
+  const foreign = coordinator('foreign-agent', ['task_cancel'], 'foreign');
   assert.throws(() => service.dispatch('task_cancel', input, foreign('cross-mission')), { code: 'NOT_ALLOWED' });
   assert.deepEqual(service.assertMissionCoordination(granted('inspect'), 'unsupersede'), {
-    mission_id: task.mission_id, bot_id: 'granted', task_id: null, execution_id: null,
+    mission_id: task.mission_id, agent_id: 'granted', task_id: null, execution_id: null,
   });
   const cancellation = service.dispatch('task_cancel', input, granted('cancel'));
   assert.equal(cancellation.task.state, 'CANCELED');
   assert.equal(cancellation.cancellation.actor_ref, 'granted');
   assert.equal(service.dispatch('task_view', { task_id: task.task_id }, granted('view')).cancellation.reason, input.reason);
-  service.requestBotStop('granted', 'test');
+  service.requestAgentStop('granted', 'test');
   assert.throws(() => service.assertMissionCoordination(granted('close'), 'unsupersede'), { code: 'NOT_ALLOWED' });
   assert.deepEqual(service.dispatch('task_cancel', input, granted('cancel')), cancellation);
 });

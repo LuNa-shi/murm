@@ -16,7 +16,7 @@ function sha256(value) {
 }
 
 async function withManager(run) {
-  const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-workspace-contract-'));
+  const rootDir = await mkdtemp(join(tmpdir(), 'murm-workspace-contract-'));
   const manager = new WorkspaceManager({ rootDir });
   try {
     return await run(manager, rootDir);

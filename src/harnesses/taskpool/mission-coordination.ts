@@ -65,7 +65,7 @@ export function createMissionCoordination({
       if (material.relation_version !== ref.relation_version || disputed !== ref.disputed ||
           stableStringify(successors) !== stableStringify([...ref.active_successor_ids].sort())) return false;
       if (!material.producer_task_id && !material.producer_execution_id) return true;
-      return taskService.materialOriginMission(material.producer_task_id, material.producer_execution_id, material.producer_bot_id) === missionId;
+      return taskService.materialOriginMission(material.producer_task_id, material.producer_execution_id, material.producer_agent_id) === missionId;
     });
   const validateCompletion = (submission: any) => running() && submission.mission_id === missionId &&
     submission.workspace_id === workspaceId && stableStringify(acceptance()) === stableStringify(submission.acceptance);

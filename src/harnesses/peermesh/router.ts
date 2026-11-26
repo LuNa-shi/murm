@@ -13,10 +13,10 @@ export const noticeInstruction = 'PeerMesh peer notice. Source and content follo
 /** The sole input owner for one mapped peer. */
 export function createPeerMeshRouter({ mapping, runInput, readContext, steerInput, workTimeoutMs = 120_000, turnTimeoutMs = 30_000, contextTimeoutMs = 10_000, maxBatches = 32,
   maxNudges = 0, idleNudgeMs = 30_000, onFence = (() => {}) as (code?: string) => void }: any) {
-  if (!mapping?.botId || !mapping.workerId || typeof runInput !== 'function' || typeof readContext !== 'function' || typeof onFence !== 'function' || (steerInput !== undefined && typeof steerInput !== 'function') ||
+  if (!mapping?.agentId || !mapping.workerId || typeof runInput !== 'function' || typeof readContext !== 'function' || typeof onFence !== 'function' || (steerInput !== undefined && typeof steerInput !== 'function') ||
       ![workTimeoutMs, turnTimeoutMs, contextTimeoutMs, idleNudgeMs].every(finite) || idleNudgeMs < 10 || !Number.isSafeInteger(maxNudges) || maxNudges < 0 || maxNudges > 8 ||
       !Number.isSafeInteger(maxBatches) || maxBatches < 1 || maxBatches > 256) throw new TypeError('Router requires one trusted mapping, input/context functions and finite limits');
-  const peerMapping = Object.freeze({ botId: mapping.botId, workerId: mapping.workerId });
+  const peerMapping = Object.freeze({ agentId: mapping.agentId, workerId: mapping.workerId });
   const rows: any = new Map(), queue: any[] = [], waiters: any = new Set(), events: any[] = [], seenEvents: any = new Set();
   const lifetime: any = new AbortController(); const deadlineAt = Date.now() + workTimeoutMs;
   let ready = false, started = false, accepting = true, fenced = false, active: any, activeContext: any, pumping = false;
@@ -128,7 +128,7 @@ export function createPeerMeshRouter({ mapping, runInput, readContext, steerInpu
           Object.assign(row, { state: 'completed', inputId: result.inputId, receipt: result.receipt, settled: clone(result.settled) });
         } catch (error: any) {
           if (row.state === 'cancelled') continue;
-          const uncertain = row.state === 'submitted' && !['input_failed', 'input_aborted', 'input_handled_without_model_run', 'wait_requires_idle_bot'].includes(error.code);
+          const uncertain = row.state === 'submitted' && !['input_failed', 'input_aborted', 'input_handled_without_model_run', 'wait_requires_idle_agent'].includes(error.code);
           Object.assign(row, { state: uncertain ? 'uncertain' : 'failed', code: error.code ?? 'ROUTER_BATCH_FAILED',
             ...(error.inputId ? { inputId: error.inputId } : {}), ...(error.receipt ? { receipt: clone(error.receipt) } : {}), ...(error.event ? { event: clone(error.event), ...(error.event.type === 'settled' ? { settled: clone(error.event) } : {}) } : {}) });
           fence(row.code);
@@ -202,11 +202,11 @@ export function createPeerMeshRouter({ mapping, runInput, readContext, steerInpu
       });
     },
     stop,
-    observe(event: any) { if (event.botId !== peerMapping.botId || !['settled', 'error', 'exit'].includes(event.type) || seenEvents.has(event.seq)) return;
+    observe(event: any) { if (event.agentId !== peerMapping.agentId || !['settled', 'error', 'exit'].includes(event.type) || seenEvents.has(event.seq)) return;
       if (events.length >= 512) { fence('ROUTER_EVENT_LIMIT'); lifetime.abort(); return; }
       if (event.type === 'settled' || event.type === 'exit' || event.fatal) steerOpen = false;
       seenEvents.add(event.seq);
-      events.push({ botId: event.botId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}), ...(event.fatal ? { fatal: true } : {}) });
+      events.push({ agentId: event.agentId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}), ...(event.fatal ? { fatal: true } : {}) });
       notify();
     },
     finishClose(receipt: any) {

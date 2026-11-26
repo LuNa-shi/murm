@@ -34,14 +34,14 @@ for (const closeDuringPreflight of [false, true, 'scoped']) test(`independent Ju
   });
   judge.connect(endpoint.url);
   tasks.createMission({ mission_id: 'mission:one', goal: 'Investigate one question' }, makeEnvelope({ actorRef: 'operator:test' }));
-  tasks.registerBot({ botId: 'bot:one', missionId: 'mission:one', coreId: 'core:one', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
-  tasks.recordBotSandbox('bot:one', { provider: 'controlled', sandboxId: 'sandbox:one' });
-  tasks.markBotReady('bot:one');
-  const task = tasks.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: 'mission:one', summary: 'Investigate a bounded question', expected_output: 'A Material with evidence', acceptance_conditions: ['Explain the finding'] }, makeEnvelope({ actorRef: 'bot:one' })).task;
-  const taken = tasks.takeTask(task.task_id, { owner_ref: 'bot:one', core_id: 'core:one', take_key: 'take:one' });
+  tasks.registerAgent({ agentId: 'agent:one', missionId: 'mission:one', coreId: 'core:one', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+  tasks.recordAgentSandbox('agent:one', { provider: 'controlled', sandboxId: 'sandbox:one' });
+  tasks.markAgentReady('agent:one');
+  const task = tasks.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: 'mission:one', summary: 'Investigate a bounded question', expected_output: 'A Material with evidence', acceptance_conditions: ['Explain the finding'] }, makeEnvelope({ actorRef: 'agent:one' })).task;
+  const taken = tasks.takeTask(task.task_id, { owner_ref: 'agent:one', core_id: 'core:one', take_key: 'take:one' });
   const env = id => {
     const e = tasks.getExecution(taken.execution.execution_id);
-    return makeEnvelope({ operationId: id, actorRef: 'bot:one', taskId: task.task_id, executionId: e.execution_id,
+    return makeEnvelope({ operationId: id, actorRef: 'agent:one', taskId: task.task_id, executionId: e.execution_id,
       specVersion: e.spec_version, stateVersion: e.state_version, fencingVersion: e.fencing_version });
   };
   tasks.dispatch('start_execution', {}, env('start'));
@@ -126,15 +126,15 @@ async function queuedJudge(t, { sourceDelay = 1200, missionBudget, interruptQueu
   });
   judge.connect(endpoint.url);
   tasks.createMission({ mission_id: 'mission:queue', goal: 'Investigate queued checks' }, makeEnvelope({ actorRef: 'operator:test' }));
-  tasks.registerBot({ botId: 'bot:queue', missionId: 'mission:queue', coreId: 'core:queue', selectionDeadline: new Date(Date.now() + 60000).toISOString() });
-  tasks.recordBotSandbox('bot:queue', { provider: 'controlled', sandboxId: 'sandbox:queue' });
-  tasks.markBotReady('bot:queue');
+  tasks.registerAgent({ agentId: 'agent:queue', missionId: 'mission:queue', coreId: 'core:queue', selectionDeadline: new Date(Date.now() + 60000).toISOString() });
+  tasks.recordAgentSandbox('agent:queue', { provider: 'controlled', sandboxId: 'sandbox:queue' });
+  tasks.markAgentReady('agent:queue');
   const task = tasks.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: 'mission:queue', summary: 'Check fixed revisions', expected_output: 'Checked source',
-    acceptance_conditions: ['Record checker results'] }, makeEnvelope({ actorRef: 'bot:queue' })).task;
-  const taken = tasks.takeTask(task.task_id, { owner_ref: 'bot:queue', core_id: 'core:queue', take_key: 'take:queue' });
+    acceptance_conditions: ['Record checker results'] }, makeEnvelope({ actorRef: 'agent:queue' })).task;
+  const taken = tasks.takeTask(task.task_id, { owner_ref: 'agent:queue', core_id: 'core:queue', take_key: 'take:queue' });
   const envelope = operationId => {
     const e = tasks.getExecution(taken.execution.execution_id);
-    return makeEnvelope({ operationId, actorRef: 'bot:queue', taskId: task.task_id, executionId: e.execution_id,
+    return makeEnvelope({ operationId, actorRef: 'agent:queue', taskId: task.task_id, executionId: e.execution_id,
       specVersion: e.spec_version, stateVersion: e.state_version, fencingVersion: e.fencing_version });
   };
   tasks.dispatch('start_execution', {}, envelope('start:queue'));

@@ -30,7 +30,7 @@ const operationHelp: Record<string, string> = {
 export type MathlibMatch = { name: string; type: string | null; module: string | null; source: string | null };
 type Resource = MathlibMatch & { address: string };
 type Submission = { proof: string; rationale: string; refs: string[]; finish: boolean };
-export type FateCandidate = Submission & { botId: string; requestId: string; sha256: string; submittedAt: string };
+export type FateCandidate = Submission & { agentId: string; requestId: string; sha256: string; submittedAt: string };
 
 function failure(code: string, message: string) {
   return Object.assign(new Error(message), { code });
@@ -73,7 +73,7 @@ interface TaskOptions {
   path: string;
   services: ServiceRegistry;
   authorize(caller: ServiceCaller): void;
-  countOperation(botId: string, operation: string, requestId: string): void;
+  countOperation(agentId: string, operation: string, requestId: string): void;
   remainingMs(): number;
   signal: AbortSignal;
   problemAddress: string;
@@ -81,8 +81,8 @@ interface TaskOptions {
   verifiedCompletion?: boolean;
   search(query: string, signal: AbortSignal): Promise<MathlibMatch[]>;
   check(proof: string, options: { signal: AbortSignal; timeoutMs: number }): Promise<FateVerdict>;
-  validateReferences(botId: string, rationale: string, refs: string[]): void;
-  onFinish(botId: string): void;
+  validateReferences(agentId: string, rationale: string, refs: string[]): void;
+  onFinish(agentId: string): void;
 }
 
 export function createFateTaskService(options: TaskOptions) {
@@ -93,22 +93,22 @@ export function createFateTaskService(options: TaskOptions) {
   const declaredFinished = new Set<string>();
   const requests = new Map<string, { fingerprint: string; result: Promise<JsonValue> }>();
   const resourceScopes = new Map<string, Map<string, Resource>>();
-  const operations: { botId: string; operation: string; requestId: string; startedAt: string; outcome: string; elapsedMs?: number }[] = [];
+  const operations: { agentId: string; operation: string; requestId: string; startedAt: string; outcome: string; elapsedMs?: number }[] = [];
   const pending = new Set<Promise<JsonValue>>();
 
-  const resourceScope = (botId: string) => options.shareMathlibResources ? '' : botId;
-  const resourceExists = (botId: string, address: string) =>
-    address === options.problemAddress || resourceScopes.get(resourceScope(botId))?.has(address) === true;
+  const resourceScope = (agentId: string) => options.shareMathlibResources ? '' : agentId;
+  const resourceExists = (agentId: string, address: string) =>
+    address === options.problemAddress || resourceScopes.get(resourceScope(agentId))?.has(address) === true;
 
   async function run(request: ServiceRequest): Promise<JsonValue> {
-    const { caller: { botId }, capability: { operation: name }, envelope: { operation_id: requestId }, input } = request;
-    options.countOperation(botId, name, requestId);
+    const { caller: { agentId }, capability: { operation: name }, envelope: { operation_id: requestId }, input } = request;
+    options.countOperation(agentId, name, requestId);
     const signal = AbortSignal.any([request.signal, options.signal]);
     signal.throwIfAborted();
     if (name === 'search_mathlib') {
       const { query } = input as { query: string };
       if (!query.trim() || !query.isWellFormed()) throw failure('INVALID_CONTRACT', 'Provide a search query');
-      const scopeId = resourceScope(botId);
+      const scopeId = resourceScope(agentId);
       const scope = resourceScopes.get(scopeId) ?? new Map<string, Resource>();
       if (query.startsWith('mathlib:')) {
         const entry = scope.get(query.trim());
@@ -125,20 +125,20 @@ export function createFateTaskService(options: TaskOptions) {
       return { results: entries };
     }
     if (name === 'check_lean') {
-      const count = checks.get(botId) ?? 0;
+      const count = checks.get(agentId) ?? 0;
       if (count >= maxChecks) throw failure('CHECK_LIMIT', 'This peer used all ten working Lean checks');
       const timeoutMs = Math.min(checkTimeoutMs, options.remainingMs());
       if (timeoutMs < 1) throw failure('NOT_ALLOWED', 'The work period ended');
-      checks.set(botId, count + 1);
+      checks.set(agentId, count + 1);
       const { proof } = input as { proof: string };
       const verdict = await options.check(proof, { timeoutMs, signal });
       if (options.verifiedCompletion && verdict.status === 'passed') {
         signal.throwIfAborted();
         request.assertAuthorized();
         options.authorize(request.caller);
-        const passed = passedProofs.get(botId) ?? new Set<string>();
+        const passed = passedProofs.get(agentId) ?? new Set<string>();
         passed.add(sha256(proof));
-        passedProofs.set(botId, passed);
+        passedProofs.set(agentId, passed);
       }
       return verdict;
     }
@@ -148,28 +148,28 @@ export function createFateTaskService(options: TaskOptions) {
       throw failure('INVALID_CONTRACT', 'Submit a bounded, nonempty Lean proof term');
     }
     validateRationale(submission.rationale, submission.refs);
-    options.validateReferences(botId, submission.rationale, submission.refs);
+    options.validateReferences(agentId, submission.rationale, submission.refs);
     request.assertAuthorized();
     options.authorize(request.caller);
     const digest = sha256(submission.proof);
-    if (options.verifiedCompletion && submission.finish && !passedProofs.get(botId)?.has(digest)) {
+    if (options.verifiedCompletion && submission.finish && !passedProofs.get(agentId)?.has(digest)) {
       throw failure(proofCheckRequired, 'Continue working. Get status passed from check_lean for this exact proof before finishing.');
     }
     const candidate: FateCandidate = {
-      ...submission, botId, requestId, sha256: digest, submittedAt: new Date().toISOString(),
+      ...submission, agentId, requestId, sha256: digest, submittedAt: new Date().toISOString(),
     };
-    db.prepare(`INSERT INTO fate_candidates VALUES(?,?) ON CONFLICT(bot_id) DO UPDATE SET candidate=excluded.candidate`)
-      .run(botId, JSON.stringify(candidate));
+    db.prepare(`INSERT INTO fate_candidates VALUES(?,?) ON CONFLICT(agent_id) DO UPDATE SET candidate=excluded.candidate`)
+      .run(agentId, JSON.stringify(candidate));
     if (submission.finish) {
-      declaredFinished.add(botId);
-      options.onFinish(botId);
+      declaredFinished.add(agentId);
+      options.onFinish(agentId);
     }
     return { sha256: candidate.sha256, submitted_at: candidate.submittedAt, finish: candidate.finish };
   }
 
   try {
     chmodSync(options.path, 0o600);
-    db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE fate_candidates (bot_id TEXT PRIMARY KEY, candidate TEXT NOT NULL);');
+    db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE fate_candidates (agent_id TEXT PRIMARY KEY, candidate TEXT NOT NULL);');
     options.services.registerService({
       manifest: fateServiceManifest(options.verifiedCompletion),
       adapter: createInProcessAdapter({ invoke(request) {
@@ -177,15 +177,15 @@ export function createFateTaskService(options: TaskOptions) {
         if (closed) throw failure('NOT_ALLOWED', 'Task Service is closed');
         options.authorize(caller);
         request.assertAuthorized();
-        const key = stableStringify([caller.botId, envelope.operation_id]);
+        const key = stableStringify([caller.agentId, envelope.operation_id]);
         const fingerprint = sha256(stableStringify({ name: capability.operation, input }));
         const prior = requests.get(key);
         if (prior) {
           if (prior.fingerprint !== fingerprint) throw failure('CONFLICT', 'Task request was reused with a different operation or input');
           return prior.result;
         }
-        if (declaredFinished.has(caller.botId)) throw failure('NOT_ALLOWED', 'The peer has finished');
-        const evidence: typeof operations[number] = { botId: caller.botId, operation: capability.operation,
+        if (declaredFinished.has(caller.agentId)) throw failure('NOT_ALLOWED', 'The peer has finished');
+        const evidence: typeof operations[number] = { agentId: caller.agentId, operation: capability.operation,
           requestId: envelope.operation_id, startedAt: new Date().toISOString(), outcome: 'pending' };
         operations.push(evidence);
         const result = run(request).then(value => {
@@ -206,10 +206,10 @@ export function createFateTaskService(options: TaskOptions) {
     return Object.freeze({
       resourceExists,
       snapshot() {
-        const candidates = db.prepare('SELECT candidate FROM fate_candidates ORDER BY bot_id').all()
+        const candidates = db.prepare('SELECT candidate FROM fate_candidates ORDER BY agent_id').all()
           .map(row => JSON.parse(String(row.candidate)) as FateCandidate);
         return { candidates, operations, checks: Object.fromEntries(checks),
-          resources: Object.fromEntries([...resourceScopes].map(([botId, scope]) => [botId, [...scope.values()]])) };
+          resources: Object.fromEntries([...resourceScopes].map(([agentId, scope]) => [agentId, [...scope.values()]])) };
       },
       settle: () => Promise.allSettled([...pending]),
       close() { if (!closed) { closed = true; db.close(); } },

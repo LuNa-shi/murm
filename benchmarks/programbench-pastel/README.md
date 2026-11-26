@@ -38,12 +38,12 @@ docker tag "$cleanroom@$cleanroom_digest" "$cleanroom:task_cleanroom_v6"
 
 docker build -f services/opensandbox-agent/Dockerfile \
   --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
-  -t swarmenv-programbench-base:local .
-docker build -t swarmenv-programbench-pastel:local benchmarks/programbench-pastel
-worker=$(docker image inspect swarmenv-programbench-pastel:local --format '{{.Id}}')
+  -t murm-programbench-base:local .
+docker build -t murm-programbench-pastel:local benchmarks/programbench-pastel
+worker=$(docker image inspect murm-programbench-pastel:local --format '{{.Id}}')
 ```
 
-The Worker recipe installs only the reference executable and public documentation from the cleanroom image. Core supplies the Agent network grants. The test data stay in the host evaluator. The Worker has no provider credentials. OpenSandbox defaults to `http://127.0.0.1:8080/v1`, with `127.0.0.1` as endpoint host and `172.17.0.1` as the container-reachable host address. Export `SWARMENV_CORE_TEST_LIFECYCLE_URL`, `SWARMENV_CORE_TEST_ENDPOINT_HOST`, `SWARMENV_CORE_TEST_ADVERTISE_HOST` or `SWARMENV_CORE_TEST_API_KEY` if the provider requires different values.
+The Worker recipe installs only the reference executable and public documentation from the cleanroom image. Core supplies the Agent network grants. The test data stay in the host evaluator. The Worker has no provider credentials. OpenSandbox defaults to `http://127.0.0.1:8080/v1`, with `127.0.0.1` as endpoint host and `172.17.0.1` as the container-reachable host address. Export `MURM_CORE_TEST_LIFECYCLE_URL`, `MURM_CORE_TEST_ENDPOINT_HOST`, `MURM_CORE_TEST_ADVERTISE_HOST` or `MURM_CORE_TEST_API_KEY` if the provider requires different values.
 
 PeerMesh also requires Docker images for Git, messaging, database and Board. Pull the first three by their pinned digest. The runner resolves those references to local image IDs. Build the Board from the existing pinned submodule and pass its local image ID.
 
@@ -52,8 +52,8 @@ docker pull docker.gitea.com/gitea@sha256:538658de667c5d098a274f2f63aa6ec891d88f
 docker pull mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902
 docker pull mattermost/mattermost-team-edition@sha256:eadc42c1fefbe9837aa628ff3005c1ed7f08df6ecc372d2b549b7fc75736cb41
 git submodule update --init third_party/agensh
-docker build -t swarmenv-programbench-board:local third_party/agensh/board-service
-export PROGRAMBENCH_BOARD_IMAGE=$(docker image inspect swarmenv-programbench-board:local --format '{{.Id}}')
+docker build -t murm-programbench-board:local third_party/agensh/board-service
+export PROGRAMBENCH_BOARD_IMAGE=$(docker image inspect murm-programbench-board:local --format '{{.Id}}')
 ```
 
 ## Run local verification
@@ -63,7 +63,7 @@ The benchmark runs its TypeScript source directly with Node. Build murm first so
 ```sh
 ./node_modules/.bin/tsc --project benchmarks/programbench-pastel/tsconfig.json
 node --test benchmarks/shared/run-window.test.ts
-for mode in subagents flat agensh; do
+for mode in subagents taskpool peermesh; do
   node benchmarks/programbench-pastel/pastel-open-local.ts "$mode" "$worker" 30000 || exit
 done
 ```

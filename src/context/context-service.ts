@@ -121,7 +121,7 @@ export class ContextService {
       if (typeof this.taskService?.materialScope !== 'function') throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Material requests require Task-owned Mission authority');
       const executionWrite = ['context_publish_material', 'consume_materials', 'material_dispute', 'material_supersede', 'material_unsupersede'].includes(operation) && envelope?.execution_id !== null;
       validateEnvelope(envelope, { executionWrite });
-      const registeredBot = Boolean(this.taskService.getBot?.(envelope.actor_ref));
+      const registeredAgent = Boolean(this.taskService.getAgent?.(envelope.actor_ref));
       const read = ['read_materials', 'context_search_materials', 'list_material_relations', 'context_get_material', 'list_material_consumptions'].includes(operation);
       if (['read_materials', 'context_search_materials'].includes(operation) && ['kind', 'scope', 'role', 'evidence_state'].some((field: any) => Object.hasOwn(payload, field))) {
         throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Material queries use content, producer and correction filters');
@@ -130,19 +130,19 @@ export class ContextService {
       const result = read ? this.#readSnapshot(() => {
         const scopedPayload = this.#scopeRead(payload, envelope);
         if (operation === 'read_materials' || operation === 'context_search_materials') {
-          return registeredBot ? this.#readMaterialPage(scopedPayload) : this.#readMaterials(scopedPayload);
+          return registeredAgent ? this.#readMaterialPage(scopedPayload) : this.#readMaterials(scopedPayload);
         }
         if (operation === 'list_material_relations') return this.listMaterialRelations(scopedPayload);
         if (operation === 'context_get_material') {
           const view = this.#materialView(scopedPayload);
-          return registeredBot && view.material ? { ...view, material: this.#publicMaterial(view.material),
+          return registeredAgent && view.material ? { ...view, material: this.#publicMaterial(view.material),
             usage: this.#materialUsagePage(view.material, scopedPayload) } : view;
         }
         return this.listMaterialConsumptions(scopedPayload);
       }) : this.#lifecycleTransaction(() => {
         const originalFingerprint = operationPayload(operation, payload, envelope);
         const fingerprint = operationPayload(operation, payload,
-          this.taskService?.getBot?.(envelope.actor_ref) ? { ...envelope, state_version: null } : envelope);
+          this.taskService?.getAgent?.(envelope.actor_ref) ? { ...envelope, state_version: null } : envelope);
         const replay = this.#replay(envelope.operation_id, fingerprint, originalFingerprint);
         if (replay) {
           replayed = true;
@@ -155,11 +155,11 @@ export class ContextService {
         else if (operation === 'material_supersede') value = this.#supersedeMaterial(payload, envelope);
         else if (operation === 'material_unsupersede') value = this.#unsupersedeMaterial(payload, envelope);
         else throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unsupported Context Service operation: ${operation}`);
-        if (registeredBot && value.relation) {
+        if (registeredAgent && value.relation) {
           value = { ...value, material: this.#publicMaterial(value.material),
             ...(value.replacement ? { replacement: this.#publicMaterial(value.replacement) } : {}) };
         }
-        if (registeredBot) {
+        if (registeredAgent) {
           if (operation === 'material_unsupersede' && !envelope.execution_id) this.#assertCorrectionCoordinator(envelope);
           else this.#assertExecutionFence(envelope);
         }
@@ -278,18 +278,18 @@ export class ContextService {
   }
 
   #publicMaterial(material: any, { summaryOnly = false }: any = {}) {
-    const { material_id, mission_id, producer_task_id, producer_execution_id, producer_bot_id, content_hash,
+    const { material_id, mission_id, producer_task_id, producer_execution_id, producer_agent_id, content_hash,
       version, relation_version, created_at } = material;
     const preview = typeof material.content === 'string' ? material.content : stableStringify(material.content);
     const selected = {
-      material_id, mission_id, producer_task_id, producer_execution_id, producer_bot_id,
+      material_id, mission_id, producer_task_id, producer_execution_id, producer_agent_id,
       content_hash, version, relation_version, created_at, title: material.title ?? preview?.trim().slice(0, 120) ?? material_id,
       summary: material.summary ?? preview?.trim().slice(0, 500) ?? '',
       media_type: material.media_type ?? (typeof material.content === 'string' ? 'text/markdown' : 'application/json'),
       attachments: this.db.prepare('SELECT name, media_type, content_hash, length(bytes) AS size_bytes FROM material_attachments WHERE material_id = ? ORDER BY name').all(material_id).map((row: any) => ({ ...row })),
     };
     return summaryOnly ? selected : { ...selected, content: material.content, provenance: {
-      mission_id, task_id: producer_task_id, execution_id: producer_execution_id, bot_id: producer_bot_id,
+      mission_id, task_id: producer_task_id, execution_id: producer_execution_id, agent_id: producer_agent_id,
       actor_ref: material.provenance?.actor_ref ?? null, used_materials: material.provenance?.used_materials ?? [],
     } };
   }
@@ -328,10 +328,10 @@ export class ContextService {
       } catch { throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Material cursor does not match this query'); }
     }
     const rows = this.db.prepare(`WITH window AS MATERIALIZED (
-      SELECT rowid AS sequence, material_id, mission_id, producer_task_id, producer_execution_id, producer_bot_id,
+      SELECT rowid AS sequence, material_id, mission_id, producer_task_id, producer_execution_id, producer_agent_id,
         title, summary, media_type, content_hash, version, created_at, content_json
       FROM materials WHERE mission_id = ? AND rowid > ? AND rowid <= ? ORDER BY rowid LIMIT 501
-    ) SELECT sequence, material_id, mission_id, producer_task_id, producer_execution_id, producer_bot_id, title, summary,
+    ) SELECT sequence, material_id, mission_id, producer_task_id, producer_execution_id, producer_agent_id, title, summary,
       media_type, content_hash, version, created_at, substr(content_json, 1, 502) AS preview,
       CASE WHEN ? IS NULL THEN 1 WHEN instr(lower(title), lower(?)) > 0 THEN 3 WHEN instr(lower(summary), lower(?)) > 0 THEN 2
         WHEN instr(lower(content_json), lower(?)) > 0 THEN 1 ELSE 0 END AS relevance
@@ -497,8 +497,8 @@ export class ContextService {
     if (payload.action_ref !== undefined && payload.action_ref !== null && (typeof payload.action_ref !== 'string' || payload.action_ref.length === 0)) {
       throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'action_ref must be a non-empty string or null');
     }
-    const impact = payload.impact ?? (scope.bot_id ? null : payload.action_ref ?? null);
-    if ((scope.bot_id || impact !== null) && (typeof impact !== 'string' || !impact.trim() || impact.length > 2_000)) {
+    const impact = payload.impact ?? (scope.agent_id ? null : payload.action_ref ?? null);
+    if ((scope.agent_id || impact !== null) && (typeof impact !== 'string' || !impact.trim() || impact.length > 2_000)) {
       throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Material consumption requires a concrete impact of at most 2000 characters');
     }
     const materials = uniqueMaterialIds.map((id: any) => this.getMaterial(id));
@@ -532,7 +532,7 @@ export class ContextService {
     }
     if (payload.content === undefined) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'material content is required');
     const provenance: any = { actor_ref: envelope.actor_ref, mission_id: caller.mission_id, task_id: caller.task_id,
-      execution_id: caller.execution_id, bot_id: caller.bot_id };
+      execution_id: caller.execution_id, agent_id: caller.agent_id };
     {
       const used = payload.used_material_ids ?? [];
       if (!Array.isArray(used) || used.length > 100 || new Set(used).size !== used.length || used.some((id: any) => typeof id !== 'string' || !id)) {
@@ -613,7 +613,7 @@ export class ContextService {
       version,
       producer_task_id: envelope.task_id,
       producer_execution_id: envelope.execution_id,
-      producer_bot_id: caller?.bot_id ?? null,
+      producer_agent_id: caller?.agent_id ?? null,
       provenance,
       supersedes,
       created_at: now(),
@@ -622,7 +622,7 @@ export class ContextService {
     if (existing) {
       if (supersedes) throw new MurmError(ERROR_CODES.CONFLICT, 'A new combined publish/supersede request requires a new Material ID; replay the original request ID instead');
       if (existing.content_hash !== contentHash || existing.mission_id !== material.mission_id || existing.supersedes !== material.supersedes ||
-          existing.producer_task_id !== material.producer_task_id || existing.producer_execution_id !== material.producer_execution_id || (existing.producer_bot_id ?? null) !== material.producer_bot_id) {
+          existing.producer_task_id !== material.producer_task_id || existing.producer_execution_id !== material.producer_execution_id || (existing.producer_agent_id ?? null) !== material.producer_agent_id) {
         throw new MurmError(ERROR_CODES.CONFLICT, 'material_id already contains a different immutable record');
       }
       if ((existing.title !== title || existing.summary !== summary || existing.media_type !== mediaType ||
@@ -633,10 +633,10 @@ export class ContextService {
     }
     this.db.prepare(`INSERT INTO materials (
       material_id, mission_id, content_hash, content_json, version,
-      producer_task_id, producer_execution_id, producer_bot_id, provenance_json, supersedes, created_at, title, summary, media_type
+      producer_task_id, producer_execution_id, producer_agent_id, provenance_json, supersedes, created_at, title, summary, media_type
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(material.material_id, material.mission_id, material.content_hash, json(material.content), material.version,
-        material.producer_task_id, material.producer_execution_id, material.producer_bot_id, json(material.provenance), material.supersedes,
+        material.producer_task_id, material.producer_execution_id, material.producer_agent_id, json(material.provenance), material.supersedes,
         material.created_at, title, summary, mediaType);
     const insertAttachment = this.db.prepare('INSERT INTO material_attachments (material_id, name, media_type, content_hash, bytes) VALUES (?, ?, ?, ?, ?)');
     for (const attachment of attachments) insertAttachment.run(materialId, attachment.name, attachment.media_type, attachment.content_hash, attachment.bytes);
@@ -843,7 +843,7 @@ export class ContextService {
   #materialInScope(material: any, scope: any) {
     if (!material || material.mission_id !== scope.mission_id) return false;
     if (!material.producer_task_id && !material.producer_execution_id) return true;
-    return this.taskService?.materialOriginMission?.(material.producer_task_id, material.producer_execution_id, material.producer_bot_id) === scope.mission_id;
+    return this.taskService?.materialOriginMission?.(material.producer_task_id, material.producer_execution_id, material.producer_agent_id) === scope.mission_id;
   }
 
   #scopeRead(payload: any, envelope: any) {

@@ -12,10 +12,10 @@ import { createServiceManifest } from '../src/sdk/service-manifest.js';
 import { createServiceHost } from '../src/sdk/service-host.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { registerUserService, createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
-import { botServiceDirectory } from '../src/agent/bot-contract.js';
+import { agentServiceDirectory } from '../src/agent/agent-contract.js';
 
 async function sourceFixture() {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mathlib-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-mathlib-'));
   await writeFile(join(root, 'Algebra.lean'), [
     'namespace Mathlib',
     'theorem add_comm_demo (a b : Nat) : a + b = b + a := by omega',
@@ -27,7 +27,7 @@ async function sourceFixture() {
 }
 
 async function standaloneMathlibFixture() {
-  const parent = await mkdtemp(join(tmpdir(), 'swarmenv-mathlib-project-'));
+  const parent = await mkdtemp(join(tmpdir(), 'murm-mathlib-project-'));
   const root = join(parent, 'Mathlib');
   await mkdir(root);
   await writeFile(join(root, 'Algebra.lean'), 'theorem add_comm_demo (a b : Nat) : a + b = b + a := by omega\n');
@@ -190,7 +190,7 @@ test('Mathlib Search Service crosses the independent HTTP Host and Registry adap
     registerUserService(registry, { manifest, adapter: createHttpJsonAdapter({ token: 'mathlib-test-token' }) });
     const profile = buildCapabilityProfile({ role: AGENT_ROLES.BOUND, registry });
     assert.deepEqual(profile.capabilities.map((capability) => capability.name), ['mathlib_search']);
-    assert.equal(botServiceDirectory(profile)[0].provider_service, 'mathlib-search');
+    assert.equal(agentServiceDirectory(profile)[0].provider_service, 'mathlib-search');
     const result = await registry.invoke({
       serviceId: 'mathlib-search',
       capability: 'mathlib_search',
@@ -254,22 +254,22 @@ test('A registered HTTP Mathlib capability is discoverable and executes through 
     runtimeCapabilities: [],
   });
   const bridgeEnvironment = await bridge.start();
-  const previousBridgeUrl = process.env.SWARMENV_BRIDGE_URL;
-  const previousBridgeToken = process.env.SWARMENV_BRIDGE_TOKEN;
-  process.env.SWARMENV_BRIDGE_URL = bridgeEnvironment.SWARMENV_BRIDGE_URL;
-  process.env.SWARMENV_BRIDGE_TOKEN = bridgeEnvironment.SWARMENV_BRIDGE_TOKEN;
+  const previousBridgeUrl = process.env.MURM_BRIDGE_URL;
+  const previousBridgeToken = process.env.MURM_BRIDGE_TOKEN;
+  process.env.MURM_BRIDGE_URL = bridgeEnvironment.MURM_BRIDGE_URL;
+  process.env.MURM_BRIDGE_TOKEN = bridgeEnvironment.MURM_BRIDGE_TOKEN;
   try {
     const profile = bridge.getCapabilityProfile();
-    assert.equal(botServiceDirectory(profile)[0].provider_service, 'mathlib-search');
+    assert.equal(agentServiceDirectory(profile)[0].provider_service, 'mathlib-search');
     const result = await bridge.call({ operation: 'mathlib_search', payload: { query: 'distance_nonneg', max_results: 2 } });
     assert.equal(result.backend, 'source-index');
     assert.equal(result.mathlib_revision, 'mathlib-named-tool-test');
     assert.equal(result.results[0].name, 'distance_nonneg_demo');
   } finally {
-    if (previousBridgeUrl === undefined) delete process.env.SWARMENV_BRIDGE_URL;
-    else process.env.SWARMENV_BRIDGE_URL = previousBridgeUrl;
-    if (previousBridgeToken === undefined) delete process.env.SWARMENV_BRIDGE_TOKEN;
-    else process.env.SWARMENV_BRIDGE_TOKEN = previousBridgeToken;
+    if (previousBridgeUrl === undefined) delete process.env.MURM_BRIDGE_URL;
+    else process.env.MURM_BRIDGE_URL = previousBridgeUrl;
+    if (previousBridgeToken === undefined) delete process.env.MURM_BRIDGE_TOKEN;
+    else process.env.MURM_BRIDGE_TOKEN = previousBridgeToken;
     await bridge.stop();
     await host.stop();
     await fixture.cleanup();
@@ -376,7 +376,7 @@ test('Bound Agent Bridge invokes a registered user Service without a generic ser
     assert.equal(result.query, 'commutativity');
     assert.equal(result.result[0].name, 'Nat.add_comm');
     assert.equal(result.actor_ref, 'agent:bound');
-    await assert.rejects(() => bridge.call({ operation: 'swarmenv_call', payload: {} }), /not available/);
+    await assert.rejects(() => bridge.call({ operation: 'murm_call', payload: {} }), /not available/);
   } finally {
     await bridge.stop();
   }

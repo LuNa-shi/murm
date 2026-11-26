@@ -12,7 +12,7 @@ const META = '.swarm-workspace.json';
 const JOURNAL = '.swarm-journal.json';
 export const WORKSPACE_HISTORY_DIR = '.swarm-history';
 const ZERO = '0'.repeat(40);
-const GIT_IDENTITY = ['-c', 'user.name=SwarmEnv Runtime', '-c', 'user.email=runtime@swarmenv.invalid'];
+const GIT_IDENTITY = ['-c', 'user.name=murm Runtime', '-c', 'user.email=runtime@murm.invalid'];
 
 function syncDirectory(path: any) {
   const fd = openSync(path, 'r');

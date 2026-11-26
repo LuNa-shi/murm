@@ -41,14 +41,14 @@ export function createNotes() {
   const adapter = createInProcessAdapter({ invoke({ capability, input, caller }: any) {
     const previous = records.get(input.key);
     if (capability.operation === 'get') {
-      reads.push({ botId: caller.botId, key: input.key, found: Boolean(previous) });
+      reads.push({ agentId: caller.agentId, key: input.key, found: Boolean(previous) });
       return previous ?? null;
     }
-    if (previous && (previous.author !== caller.botId || previous.text !== input.text)) {
+    if (previous && (previous.author !== caller.agentId || previous.text !== input.text)) {
       throw Object.assign(new Error('A different note already uses this key'), { code: 'CONFLICT' });
     }
     if (previous) return previous;
-    const current: any = { key: input.key, text: input.text, author: caller.botId };
+    const current: any = { key: input.key, text: input.text, author: caller.agentId };
     records.set(input.key, current);
     return current;
   } });
@@ -91,7 +91,7 @@ export async function runNotesHarness({ backend, model = 'default', image, outpu
     createRuntime: async () => {
       signal?.throwIfAborted();
       const common: any = { model, image, writable: true };
-      return createRuntime({ backend: createPiOpenSandboxBackend(backend), services: notes.services, maxBots: 2, outputDir,
+      return createRuntime({ backend: createPiOpenSandboxBackend(backend), services: notes.services, maxAgents: 2, outputDir,
         profiles: {
           writer: { ...common, services: { notes: ['put'] } },
           reader: { ...common, services: { notes: ['get'] },
@@ -101,9 +101,9 @@ export async function runNotesHarness({ backend, model = 'default', image, outpu
     },
     async run(runtime: any) {
       function checkCancelled() { signal?.throwIfAborted(); }
-      async function turn(bot: any, requestId: any, input: any) {
-        const { inputId, settled } = await runInput(runtime, bot.id, input, { requestId, timeoutMs: turnTimeoutMs, signal });
-        completed.push({ botId: bot.id, requestId, inputId, seq: settled.seq, outcome: settled.outcome });
+      async function turn(agent: any, requestId: any, input: any) {
+        const { inputId, settled } = await runInput(runtime, agent.id, input, { requestId, timeoutMs: turnTimeoutMs, signal });
+        completed.push({ agentId: agent.id, requestId, inputId, seq: settled.seq, outcome: settled.outcome });
       }
       checkCancelled();
       if (!['baseline', 'source', 'finding'].every((field: any) => typeof fact?.[field] === 'string' && fact[field])) {
@@ -120,7 +120,7 @@ export async function runNotesHarness({ backend, model = 'default', image, outpu
       checkCancelled();
       const reader = await runtime.spawn({ requestId: 'reader', profile: 'reader', files });
       await turn(reader, 'reader-input', inputText.get);
-      if (!notes.reads.some((read: any) => read.botId === reader.id && read.key === key && read.found)) {
+      if (!notes.reads.some((read: any) => read.agentId === reader.id && read.key === key && read.found)) {
         throw new Error('The reader did not retrieve the exact source fact from Notes');
       }
       await turn(reader, 'reader-followup', inputText.follow);
@@ -129,7 +129,7 @@ export async function runNotesHarness({ backend, model = 'default', image, outpu
       const filesPath = stopped.artifacts.find((path: any) => path.endsWith('/artifacts/files'));
       if (stopped.cleanup !== 'complete' || !filesPath) {
         throw Object.assign(new Error('The reader evidence has not been exported'), { code: 'REVIEW_EXPORT_PENDING',
-          runtimeId: runtime.id, botId: reader.id, cleanup: stopped.cleanup, details: stopped.errors });
+          runtimeId: runtime.id, agentId: reader.id, cleanup: stopped.cleanup, details: stopped.errors });
       }
       const filesContent = await Promise.all(['review.md', 'followup.md'].map((path: any) => readFile(join(filesPath, path), 'utf8')));
       if (filesContent.some((content: any) => content !== reviewText(fact))) throw new Error('The archived reader files differ from the fixed source fact');
@@ -153,7 +153,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const { readHarnessResult } = await import('./read-result.js');
       const result = await readHarnessResult({ runDirectory: args[1], runtimeId: args[3] });
       process.stdout.write(`${JSON.stringify(result)}\n`);
-      process.exitCode = result.environment.state === 'read' && result.core.state === 'read' ? 0 : 1;
+      process.exitCode = result.harness.state === 'read' && result.core.state === 'read' ? 0 : 1;
     } else {
       if (args.length !== 1 || !args[0] || args[0].startsWith('--')) {
         throw Object.assign(new Error(), { code: 'NOTES_ARGUMENTS_INVALID' });

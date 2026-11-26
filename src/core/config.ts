@@ -21,7 +21,7 @@ function strings(value: unknown): value is string[] {
 export function validateEnvironment(value: unknown, name: string) {
   if (value === undefined) return;
   if (!record(value)) throw new TypeError(`${name} must be a map of environment variables`);
-  const reserved = /^(?:SWARMENV_|PI_|PATH$|HOME$|TMPDIR$|TMP$|TEMP$|USER$|LOGNAME$|SHELL$|PWD$|OLDPWD$|NODE_OPTIONS$|BASH_ENV$|ENV$|LD_|XDG_)/;
+  const reserved = /^(?:MURM_|PI_|PATH$|HOME$|TMPDIR$|TMP$|TEMP$|USER$|LOGNAME$|SHELL$|PWD$|OLDPWD$|NODE_OPTIONS$|BASH_ENV$|ENV$|LD_|XDG_)/;
   for (const [key, item] of Object.entries(value)) {
     if (!/^[A-Z_][A-Z0-9_]*$/.test(key) || reserved.test(key) ||
         typeof item !== 'string' || item.length > 4096 || item.includes('\0')) {

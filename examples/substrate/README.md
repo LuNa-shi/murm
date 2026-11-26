@@ -7,7 +7,7 @@ This example runs the existing fixed peer pool through the public Core and Pi/Op
 Use Node.js 22.19 or newer, local Docker OpenSandbox with the Core isolation prerequisites, a compatible Pi 1.3.0 Worker image and a Kimi K3 Responses endpoint. Build the candidate archive from a clean checkout, then install its locked production dependencies in an independent directory:
 
 ```sh
-repo=/absolute/path/to/SwarmEnv
+repo=/absolute/path/to/murm
 consumer=$(mktemp -d)
 npm pack "$repo" --pack-destination "$consumer"
 cd "$consumer"
@@ -23,26 +23,26 @@ Run the shipped host in its installed package directory and edit the copied `con
 node node_modules/@murm/core/dist/examples/substrate/main.js --help
 ```
 
-Set `SWARMENV_SCALEMAS_RUN` to a fresh lowercase alphanumeric/hyphen identifier (up to 64 characters), `SWARMENV_SCALEMAS_IMAGE` to your immutable Worker image ID, and `SWARMENV_SCALEMAS_MODEL_URL` to the exact Kimi K3 `/v1/responses` endpoint. Set `SWARMENV_SCALEMAS_MODEL_TOKEN` if it needs bearer authentication. `SWARMENV_SCALEMAS_HOST` defaults to `172.17.0.1`; choose the guest-reachable host IPv4 address. The config also reads optional lifecycle URL, token and endpoint-host variables. Tokens stay in host backend configuration; never include them in the question or contribution text.
+Set `MURM_SUBSTRATE_RUN` to a fresh lowercase alphanumeric/hyphen identifier (up to 64 characters), `MURM_SUBSTRATE_IMAGE` to your immutable Worker image ID, and `MURM_SUBSTRATE_MODEL_URL` to the exact Kimi K3 `/v1/responses` endpoint. Set `MURM_SUBSTRATE_MODEL_TOKEN` if it needs bearer authentication. `MURM_SUBSTRATE_HOST` defaults to `172.17.0.1`; choose the guest-reachable host IPv4 address. The config also reads optional lifecycle URL, token and endpoint-host variables. Tokens stay in host backend configuration; never include them in the question or contribution text.
 
 Edit the copied `config.js` question and limits, then launch from the consumer root:
 
 ```sh
 node node_modules/@murm/core/dist/examples/substrate/main.js \
-  ./config.js > scalemas-result.json
+  ./config.js > substrate-result.json
 ```
 
 The default is three peers, two rounds each, a 120-second work window, a 30-second per-turn wait, a separate 30-second close wait and 2,048 output tokens per model request. The existing mechanism allows three through eight peers and two through 32 rounds. These are bounded example settings, not a one-hour endurance policy or a global request-count cap. To change collaboration, edit the question/config first; `src/harnesses/substrate/index.ts` owns peer prompts, the serial drivers and stopping policy, and `substrate.ts` owns content permissions, ranking and persistence. No dynamic spawning or interactive input is provided.
 
 Ctrl+C or SIGTERM aborts further work and enters bounded Core close. The command exits 0 only when business execution, cleanup and report saving succeeded; failures exit 1. Invalid arguments exit 2. Configuration errors print a constant diagnostic code without printing the configuration or exception message. Required export failures or unknown execution can leave resources pending. Neither the one-shot CLI nor `runSubstrateExample(config, signal)` exposes the underlying Runtime for retry or reconciliation. They return reports and leave pending ownership explicit; reconciling such resources requires a separate trusted host procedure using the recorded identities, not another call to this wrapper.
 
-`scalemas-result.json` contains `runtimeId`, `reportPath`, per-peer turn receipts and separate business, cleanup and save failures. Under `scalemas-runs/<runtimeId>/`, Core records `runtime.json`, evidence and collected private files. `environment-report.json` also includes the substrate content/read snapshot and the database path. The persistent `scalemas-runs/substrate.sqlite` survives Agent cleanup; use a fresh output directory/run ID for each independent run. It closes after report projection even when physical cleanup is pending. Published data is not removed. Contributions, queries, artifacts and model output can contain private project text; these files are private run evidence.
+`substrate-result.json` contains `runtimeId`, `reportPath`, per-peer turn receipts and separate business, cleanup and save failures. Under `substrate-runs/<runtimeId>/`, Core records `runtime.json`, evidence and collected private files. `harness-report.json` also includes the substrate content/read snapshot and the database path. The persistent `substrate-runs/substrate.sqlite` survives Agent cleanup; use a fresh output directory/run ID for each independent run. It closes after report projection even when physical cleanup is pending. Published data is not removed. Contributions, queries, artifacts and model output can contain private project text; these files are private run evidence.
 
 Read saved receipts without importing model configuration or contacting a running Runtime:
 
 ```sh
-runtime_id=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("scalemas-result.json","utf8")).runtimeId)')
-run_dir=$(node -e 'console.log(require("path").dirname(JSON.parse(require("fs").readFileSync("scalemas-result.json","utf8")).reportPath))')
+runtime_id=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("substrate-result.json","utf8")).runtimeId)')
+run_dir=$(node -e 'console.log(require("path").dirname(JSON.parse(require("fs").readFileSync("substrate-result.json","utf8")).reportPath))')
 node node_modules/@murm/core/dist/examples/substrate/main.js \
   --result "$run_dir" --runtime-id "$runtime_id"
 ```
@@ -62,29 +62,29 @@ elan toolchain install leanprover/lean4:v4.28.0
 (cd fate-m && lake exe cache get)
 ```
 
-From a consumer directory containing the installed murm tarball, set `SWARMENV_FATE_PROJECT` to that workspace and `SWARMENV_FATE_LEAN` to the installed Lean toolchain directory. Set `SWARMENV_SUBSTRATE_RUN` to a fresh ID, `SWARMENV_SUBSTRATE_IMAGE` to the reviewed worker image, and `SWARMENV_SUBSTRATE_MODEL_URL` and `SWARMENV_SUBSTRATE_MODEL_TOKEN` to the approved K3 endpoint and credential. The model URL includes its Responses route. Optional lifecycle settings are listed in the generic example above. `SWARMENV_SUBSTRATE_OUTPUT` defaults to `./experiments/scalemas-fate`.
+From a consumer directory containing the installed murm tarball, set `MURM_FATE_PROJECT` to that workspace and `MURM_FATE_LEAN` to the installed Lean toolchain directory. Set `MURM_SUBSTRATE_RUN` to a fresh ID, `MURM_SUBSTRATE_IMAGE` to the reviewed worker image, and `MURM_SUBSTRATE_MODEL_URL` and `MURM_SUBSTRATE_MODEL_TOKEN` to the approved K3 endpoint and credential. The model URL includes its Responses route. Optional lifecycle settings are listed in the generic example above. `MURM_SUBSTRATE_OUTPUT` defaults to `./experiments/substrate-fate`.
 
 ```sh
 example=node_modules/@murm/core/dist/examples/substrate
-node "$example/main.js" --fate-prepare "$SWARMENV_FATE_PROJECT" "$SWARMENV_FATE_LEAN"
+node "$example/main.js" --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN"
 node "$example/main.js" --fate-matrix "$example/fate-config.js"
-node "$example/main.js" --fate-rescore "$SWARMENV_FATE_PROJECT" "$SWARMENV_FATE_LEAN" \
-  "./experiments/scalemas-fate/${SWARMENV_SUBSTRATE_RUN}-shared/fate-frozen-candidates.json"
+node "$example/main.js" --fate-rescore "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" \
+  "./experiments/substrate-fate/${MURM_SUBSTRATE_RUN}-shared/fate-frozen-candidates.json"
 ```
 
-For a single condition, set `SWARMENV_FATE_MODE` to `shared`, `private` or `none`, then pass the configuration file directly. The matrix uses an independent directory for each condition, in that order, and stops launching groups if a prior group's cleanup is pending. A run ID cannot overwrite earlier evidence. Preparation and rescoring make no model calls. Formal runs require the repository's frozen experiment registration.
+For a single condition, set `MURM_FATE_MODE` to `shared`, `private` or `none`, then pass the configuration file directly. The matrix uses an independent directory for each condition, in that order, and stops launching groups if a prior group's cleanup is pending. A run ID cannot overwrite earlier evidence. Preparation and rescoring make no model calls. Formal runs require the repository's frozen experiment registration.
 
-`fate-result.json` records task/peer state, score, end reasons, model usage, Core Trace and cleanup, and points to the frozen candidate bundle. A final candidate is a Lean term such as a `by` proof, with any helper lemmas declared locally inside the proof. Sources, candidate contents, peer journals and raw tool results are private run evidence. See the [architecture chapter](../../docs/architecture/19-substrate-harness.md#fate-paper-alignment-configurations) for the contracts and the [Phase 0005 design](../../docs/phases/0005-core-environment/05-scalemas-fate.md) for acceptance.
+`fate-result.json` records task/peer state, score, end reasons, model usage, Core Trace and cleanup, and points to the frozen candidate bundle. A final candidate is a Lean term such as a `by` proof, with any helper lemmas declared locally inside the proof. Sources, candidate contents, peer journals and raw tool results are private run evidence. See the [architecture chapter](../../docs/architecture/19-substrate-harness.md#fate-paper-alignment-configurations) for the contracts and the [Phase 0005 design](../../docs/phases/0005-core-harness/05-substrate-fate.md) for acceptance.
 
 ## FATE-H with K3
 
 The shipped FATE configuration selects `kimi_proxy/k3`. An explicit host configuration can also set the selected `backend.models` entry to `provider: 'gpt_proxy', model: 'gpt-6.1-sol'` and supply that provider's Responses URL and host credential.
 
-Set `SWARMENV_FATE_BENCHMARK=FATE-H` and `SWARMENV_FATE_PROJECT` to the prepared workspace for FATE-H #2. Freeze [FATE-H at `17967b3`](https://github.com/frenzymath/FATE-H/tree/17967b3118082adfba7c5a5fc03b5f4a53717b59) and run `lake exe cache get` in that workspace. It uses the same Lean 4.28.0 and dependency source revisions as FATE-M. Pass `FATE-H` after the project and toolchain paths in `--fate-prepare`. A frozen bundle selects its own benchmark during rescoring, and the supplied project must match it.
+Set `MURM_FATE_BENCHMARK=FATE-H` and `MURM_FATE_PROJECT` to the prepared workspace for FATE-H #2. Freeze [FATE-H at `17967b3`](https://github.com/frenzymath/FATE-H/tree/17967b3118082adfba7c5a5fc03b5f4a53717b59) and run `lake exe cache get` in that workspace. It uses the same Lean 4.28.0 and dependency source revisions as FATE-M. Pass `FATE-H` after the project and toolchain paths in `--fate-prepare`. A frozen bundle selects its own benchmark during rescoring, and the supplied project must match it.
 
 ```sh
-export SWARMENV_FATE_BENCHMARK=FATE-H
-node "$example/main.js" --fate-prepare "$SWARMENV_FATE_PROJECT" "$SWARMENV_FATE_LEAN" FATE-H
+export MURM_FATE_BENCHMARK=FATE-H
+node "$example/main.js" --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-H
 node "$example/main.js" --fate-matrix "$example/fate-config.js"
 ```
 
@@ -92,11 +92,11 @@ This configuration gives four peers up to 45 minutes of work and samples progres
 
 ## FATE-X #31
 
-Prepare [FATE-X at `a6fb49e`](https://github.com/frenzymath/FATE-X/tree/a6fb49ee85fd05bb8ce9fc66e1c66797b5a0592d) with `lake exe cache get`. It uses the same Lean 4.28.0 and Mathlib revision. Point `SWARMENV_FATE_PROJECT` at that workspace, then select FATE-X in the launcher and preparation steps. The checker uses the full original `Problem31.UFD_of_ge_5` declaration with its local definitions. The default work window is 30 minutes.
+Prepare [FATE-X at `a6fb49e`](https://github.com/frenzymath/FATE-X/tree/a6fb49ee85fd05bb8ce9fc66e1c66797b5a0592d) with `lake exe cache get`. It uses the same Lean 4.28.0 and Mathlib revision. Point `MURM_FATE_PROJECT` at that workspace, then select FATE-X in the launcher and preparation steps. The checker uses the full original `Problem31.UFD_of_ge_5` declaration with its local definitions. The default work window is 30 minutes.
 
 ```sh
-export SWARMENV_FATE_BENCHMARK=FATE-X
-node "$example/main.js" --fate-prepare "$SWARMENV_FATE_PROJECT" "$SWARMENV_FATE_LEAN" FATE-X
+export MURM_FATE_BENCHMARK=FATE-X
+node "$example/main.js" --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-X
 node "$example/main.js" "$example/fate-config.js"
 ```
 

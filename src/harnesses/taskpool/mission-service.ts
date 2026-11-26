@@ -20,20 +20,20 @@ export function createTaskPoolMissionService({runtime,taskService,missionWorkspa
   const getRuntime=()=>typeof runtime==='function'?runtime():runtime;
   let closing=false;
   function binding(caller: any,submit: any) {
-    const core=getRuntime(),bot=taskService.getBot(caller?.botId);
-    if(closing || caller?.runtimeId!==core?.id || caller.profile!==profile || !bot || bot.mission_id!==missionId ||
-      bot.sandbox_id || bot.core_id===core.id || !['UNBOUND','ACTIVE'].includes(bot.state)) deny('Mission caller is outside its current Core binding');
+    const core=getRuntime(),agent=taskService.getAgent(caller?.agentId);
+    if(closing || caller?.runtimeId!==core?.id || caller.profile!==profile || !agent || agent.mission_id!==missionId ||
+      agent.sandbox_id || agent.core_id===core.id || !['UNBOUND','ACTIVE'].includes(agent.state)) deny('Mission caller is outside its current Core binding');
     const until=deadline();
     if(!Number.isFinite(until) || Date.now()>=until) deny('Mission host deadline elapsed');
-    taskService.assertBotDeadline(bot.bot_id);
-    const execution=bot.execution_id?taskService.getExecution(bot.execution_id):null;
-    const envelope=execution?{...executionEnvelope(execution,'flat:mission:admission'),actor_ref:bot.bot_id}:makeEnvelope({actorRef:bot.bot_id});
+    taskService.assertAgentDeadline(agent.agent_id);
+    const execution=agent.execution_id?taskService.getExecution(agent.execution_id):null;
+    const envelope=execution?{...executionEnvelope(execution,'flat:mission:admission'),actor_ref:agent.agent_id}:makeEnvelope({actorRef:agent.agent_id});
     if(submit) {
       if(!permissions.includes('mission_submit')) deny('Mission submission is not enabled by this host');
       const scope=taskService.assertMissionCoordination(envelope,'mission_submit');
       if(scope.mission_id!==missionId) deny('Mission coordination belongs to another Mission');
     } else taskService.materialScope(envelope,{write:false});
-    return {core,bot,execution};
+    return {core,agent,execution};
   }
   const manifest: any={id:'mission',title:'Flat Mission',purpose:'Inspect and explicitly submit fixed public Mission results',provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},
     capabilities:listTools('task').filter((tool: any)=>operations.includes(tool.operation)).map((tool: any)=>({
@@ -55,16 +55,16 @@ export function createTaskPoolMissionService({runtime,taskService,missionWorkspa
       if(current.execution?.execution_id!==original.execution?.execution_id || current.execution?.fencing_version!==original.execution?.fencing_version) throw new MurmError('FENCED','Mission caller binding changed');
       return current;
     }
-    const live=await original.core.get(original.bot.bot_id);
+    const live=await original.core.get(original.agent.agent_id);
     if(!['idle','running'].includes(live.status) || live.profile!==profile) deny('Core Mission caller is unavailable');
     const workspace=await missionWorkspace.get({workspaceId});
     if(workspace.mission_id!==missionId) deny('Mission Workspace belongs to another Mission');
     const current=guard();
-    const key=inputFingerprint([original.core.id,original.bot.bot_id,envelope.operation_id]);
+    const key=inputFingerprint([original.core.id,original.agent.agent_id,envelope.operation_id]);
     if(operation==='mission_get') return taskService.getMission(missionId);
     let submissionId=input.submission_id??null;
     if(submit) {
-      const result=await missionCoordination.submit({missionId,workspaceId,actorRef:current.bot.bot_id,
+      const result=await missionCoordination.submit({missionId,workspaceId,actorRef:current.agent.agent_id,
         taskId:current.execution?.task_id??null,executionId:current.execution?.execution_id??null,fencingVersion:current.execution?.fencing_version??null,
         materialIds:input.material_ids,requestId:`flat:mission:${key}`});
       submissionId=result.submission_id;

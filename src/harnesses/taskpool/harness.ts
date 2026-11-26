@@ -10,7 +10,7 @@ import { createTaskPoolController } from './controller.js';
 import { createTaskPoolMathlibService } from './mathlib-service.js';
 import { createTaskPoolModelAccessPolicy } from './model-access-policy.js';
 
-export const TASKPOOL_WITHOUT_WORKSPACE_SAVE_PROMPT = '当前配置支持读取公开 Workspace 和发布 Material。请领取可通过这些能力完成的 Task，按照 Task 的真实完成条件提交结果。运行期间的私有文件只保留在 Bot 工作目录中。';
+export const TASKPOOL_WITHOUT_WORKSPACE_SAVE_PROMPT = '当前配置支持读取公开 Workspace 和发布 Material。请领取可通过这些能力完成的 Task，按照 Task 的真实完成条件提交结果。运行期间的私有文件只保留在 Agent 工作目录中。';
 
 /** Trusted host entry point. Domain stores remain caller-owned and readable. */
 export async function runTaskPoolHarness({backend,model,image,prompt='',
@@ -60,7 +60,7 @@ export async function runTaskPoolHarness({backend,model,image,prompt='',
         ...(mathlib?[[mathlib.manifest.id,mathlib.manifest.capabilities.map(cap=>cap.operation)]]:[]),
         ...(mission?[['mission',mission.manifest.capabilities.filter((cap: any)=>cap.operation!=='mission_submit'||permissions.includes('mission_submit')).map((cap: any)=>cap.operation)]]:[]),
       ]);
-      runtime=await createRuntime({backend,profiles:{researcher},services,maxBots:capacity,outputDir,
+      runtime=await createRuntime({backend,profiles:{researcher},services,maxAgents:capacity,outputDir,
         modelAccessPolicy:createTaskPoolModelAccessPolicy({runtimeId:()=>runtime?.id,taskService,missionId,deadline,isStopping:()=>controller?.snapshot().closing??false})});
       try {
         controller=createTaskPoolController({...controllerOptions,autonomousTasks,completionPolicy,runtime,taskService,missionId,capacity,deadlineAt,activeDeadline:deadline,coordinationPermissions:permissions,
@@ -92,11 +92,11 @@ export async function runTaskPoolHarness({backend,model,image,prompt='',
         await controller.reconcileClose(receipt);
         if(workspaceMergeChecker) {
           result.workspaceMerge=await publication.waitForMerges({timeoutMs:Math.max(1,closeDeadline-Date.now()-1)});
-          if(result.workspaceMerge.cleanup!=='complete') throw new MurmError('FLAT_MERGE_CLEANUP_PENDING','Flat final-tree merge checker has no confirmed completion receipt',result.workspaceMerge);
+          if(result.workspaceMerge.cleanup!=='complete') throw new MurmError('TASKPOOL_MERGE_CLEANUP_PENDING','Flat final-tree merge checker has no confirmed completion receipt',result.workspaceMerge);
         }
         if(judgeService) {
           result.judge=await publication.waitForJudges({timeoutMs:Math.max(1,closeDeadline-Date.now()-1)});
-          if(result.judge.cleanup!=='complete') throw new MurmError('FLAT_JUDGE_CLEANUP_PENDING','Flat Judge operations have no confirmed completion receipt',result.judge);
+          if(result.judge.cleanup!=='complete') throw new MurmError('TASKPOOL_JUDGE_CLEANUP_PENDING','Flat Judge operations have no confirmed completion receipt',result.judge);
         }
       }
       finally { Object.assign(result,controller.snapshot()); }
@@ -109,7 +109,7 @@ export async function runTaskPoolHarness({backend,model,image,prompt='',
       if(completionPolicy==='mission') result.missionAcceptance=taskService.getAcceptedSubmission(missionId);
       const completed=completionPolicy==='mission' ? result.completion==='mission-accepted' && result.missionAcceptance?.state==='accepted' : result.completion==='all-tasks-terminal';
       if(!completed || (completionPolicy==='tasks' && result.failures.length)) {
-        const error: any=new MurmError('FLAT_BUSINESS_FAILED',completionPolicy==='mission'?'Flat ended without trusted Mission acceptance':'Flat ended without complete successful Task closure',{completion:result.completion});
+        const error: any=new MurmError('TASKPOOL_BUSINESS_FAILED',completionPolicy==='mission'?'Flat ended without trusted Mission acceptance':'Flat ended without complete successful Task closure',{completion:result.completion});
         error.details=[result];throw error;
       }
       return result;

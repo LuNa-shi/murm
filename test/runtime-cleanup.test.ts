@@ -36,7 +36,7 @@ async function fixture(t, { removeSandbox = async () => new Response('{}'), runt
       if (url.endsWith('/sandboxes')) return new Response(JSON.stringify({ id: 'sandbox-test' }), { status: 202 });
       if (url.includes('/endpoints/')) return new Response(JSON.stringify({ url: 'http://execd.test' }));
       if (url.endsWith('/stop')) return new Response(JSON.stringify({ result: { stopped: true } }));
-      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: 'swarmenv-core-v1', resources: [] }, project_files: { version: 0, writable: false } } }));
+      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: 'murm-core-v1', resources: [] }, project_files: { version: 0, writable: false } } }));
       if (url.includes('/project/')) {
         const input = JSON.parse(options.body);
         return new Response(JSON.stringify({ result: { state: url.endsWith('/prepare') ? 'PREPARED' : 'ACTIVE', execution_id: input.execution_id, binding_version: input.binding_version } }));
@@ -62,13 +62,13 @@ async function fixture(t, { removeSandbox = async () => new Response('{}'), runt
   session.closed = false;
   session.waitForReady = async () => {};
   session.stop = async () => { session.closed = true; session.emit('close'); };
-  const startSession = async ({ bot, onSandboxCreated, beforeAgentStart }) => {
-    await sandboxManager.ensureExecution({ executionId: bot.resource_key, botId: bot.bot_id, onCreated: onSandboxCreated });
-    await sandboxManager.startAgent({ executionId: bot.resource_key, command: 'pi', resources: [], args: [], beforeAgentStart });
+  const startSession = async ({ agent, onSandboxCreated, beforeAgentStart }) => {
+    await sandboxManager.ensureExecution({ executionId: agent.resource_key, agentId: agent.agent_id, onCreated: onSandboxCreated });
+    await sandboxManager.startAgent({ executionId: agent.resource_key, command: 'pi', resources: [], args: [], beforeAgentStart });
     return session;
   };
-  const { bot } = await runtime.startBot({ missionId: 'mission:cleanup', coreId: 'core-1', startSession });
-  const take = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:cleanup' });
+  const { agent } = await runtime.startAgent({ missionId: 'mission:cleanup', coreId: 'core-1', startSession });
+  const take = service.takeTask(task.task_id, { owner_ref: agent.agent_id, core_id: agent.core_id, take_key: 'take:cleanup' });
   await runtime.bindAgentExecution(take.execution.execution_id, session, { coreId: 'core-1' });
   return { service, runtime, sandboxManager, session, executionId: take.execution.execution_id };
 }

@@ -10,7 +10,7 @@ const requireString = (value: any) => { if (typeof value !== 'string' || !value)
 export async function preparePeerMeshFacilities({ runId, gitea, mattermost, startBoard, resources, signal, peerKeys, project }: any) {
   if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId) || typeof startBoard !== 'function') throw new TypeError('Invalid Agensh run or board launcher');
   if (signal !== undefined && !(signal instanceof AbortSignal)) throw new TypeError('Agensh startup signal must be an AbortSignal');
-  const check = () => { if (signal?.aborted) throw Object.assign(new Error('Agensh startup aborted'), { code: 'ENVIRONMENT_START_ABORTED' }); };
+  const check = () => { if (signal?.aborted) throw Object.assign(new Error('Agensh startup aborted'), { code: 'HARNESS_START_ABORTED' }); };
   check();
   const rawGit = httpClient(gitea.origin, `token ${requireString(gitea.adminToken)}`);
   const rawMm = httpClient(mattermost.origin, `Bearer ${requireString(mattermost.adminToken)}`);
@@ -46,7 +46,7 @@ export async function preparePeerMeshFacilities({ runId, gitea, mattermost, star
     const password = randomBytes(32).toString('base64url');
     const rawAccountGit = httpClient(gitea.origin, `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`);
     const accountGit = startup(rawAccountGit);
-    const tokenName = `swarmenv-${suffix}`;
+    const tokenName = `murm-${suffix}`;
     // Intent precedes the remote write. Unknown outcomes remain reconcilable by
     // the unique email instead of deleting an unrelated pre-existing account.
     let gitUser: any; let gitAccountCreateUnknown = false; let gitTokenCreateUnknown = false; let gitTokensRevoked = false;
@@ -116,7 +116,7 @@ export async function preparePeerMeshFacilities({ runId, gitea, mattermost, star
       resources.own({ kind: 'channel', id: channel.id, retained: true });
     }
     await mm('POST', `/api/v4/channels/${e(channel.id)}/members`, { user_id: mmUser.id });
-    const mmTokenName = `swarmenv-${suffix}`;
+    const mmTokenName = `murm-${suffix}`;
     resources.own({ kind: 'mattermost-token', id: mmTokenName, close: async () => {
       const tokens = await rawMm('GET', `/api/v4/users/${e(mmUser.id)}/tokens?page=0&per_page=200`);
       if (!Array.isArray(tokens)) throw new Error('unconfirmed tokens');

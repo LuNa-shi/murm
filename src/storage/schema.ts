@@ -233,10 +233,10 @@ CREATE TABLE IF NOT EXISTS execution_finish_intents (
   closed_at TEXT
 );
 
--- Runtime creates Bot identities before there is any Task take. The Task
+-- Runtime creates Agent identities before there is any Task take. The Task
 -- coordinator stores them here so take and lifecycle guards share a transaction.
-CREATE TABLE IF NOT EXISTS bots (
-  bot_id TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS agents (
+  agent_id TEXT PRIMARY KEY,
   mission_id TEXT NOT NULL REFERENCES missions(mission_id),
   core_id TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('STARTING', 'UNBOUND', 'PREPARING', 'ACTIVE', 'CLOSING', 'CLOSED')),
@@ -260,8 +260,8 @@ CREATE TABLE IF NOT EXISTS bots (
   updated_at TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS bots_occupied_core
-  ON bots(mission_id, core_id) WHERE state <> 'CLOSED';
+CREATE UNIQUE INDEX IF NOT EXISTS agents_occupied_core
+  ON agents(mission_id, core_id) WHERE state <> 'CLOSED';
 
 CREATE TABLE IF NOT EXISTS operations (
   operation_id TEXT PRIMARY KEY,

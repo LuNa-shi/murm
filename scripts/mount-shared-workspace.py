@@ -36,13 +36,13 @@ def main():
     action, runtime_key, workspace_key, *args = sys.argv[1:]
     if action not in ("create", "attach", "delete") or not all(re.fullmatch(r"[a-f0-9]{64}", key) for key in (runtime_key, workspace_key)):
         raise ValueError("invalid shared workspace identity")
-    parent = f"/run/swarmenv-workspaces/{runtime_key}"
+    parent = f"/run/murm-workspaces/{runtime_key}"
     path = f"{parent}/{workspace_key}"
     if action == "create":
         size, inodes = map(int, args)
         if not 16 * 1024**2 <= size <= 4 * 1024**3 or size % 4096 or not 1024 <= inodes <= 262144:
             raise ValueError("invalid workspace quota")
-        for name in ("/run/swarmenv-workspaces", parent):
+        for name in ("/run/murm-workspaces", parent):
             directory(name)
         if not os.path.ismount(path):
             directory(path)

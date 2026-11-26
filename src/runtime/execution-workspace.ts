@@ -100,7 +100,7 @@ export class ExecutionWorkspace {
 
   async #capture(execution: any, identity: any) {
     this.guard(identity);
-    const snapshot = await this.sandbox.snapshotBotProject({ executionId: execution.execution_id, requestId: `flat:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}` });
+    const snapshot = await this.sandbox.snapshotAgentProject({ executionId: execution.execution_id, requestId: `flat:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}` });
     this.guard(identity);
     return this.#decodeSnapshot(snapshot, execution);
   }
@@ -124,7 +124,7 @@ export class ExecutionWorkspace {
         if (row.phase === 'capturing') this.#fail(row, new MurmError(ERROR_CODES.WORKSPACE_REQUEST_ABORTED, 'Snapshot owner ended before recording its immutable input; use a new request ID'));
         else if (['captured', 'installing', 'installed'].includes(row.phase)) {
           const source = JSON.parse(row.captured_json).source;
-          try { await this.#complete(row, { actorRef: source.bot_id, taskId: source.task_id, executionId, fencingVersion: source.fencing_version }, { closedConfirmed }); }
+          try { await this.#complete(row, { actorRef: source.agent_id, taskId: source.task_id, executionId, fencingVersion: source.fencing_version }, { closedConfirmed }); }
           catch (error: any) { if (this.#request(executionId, row.request_id).phase !== 'failed') throw error; }
         }
       }
@@ -168,7 +168,7 @@ export class ExecutionWorkspace {
         else {
           const source = JSON.parse(pending.captured_json).source;
           try {
-            await this.#complete(pending, { actorRef: source.bot_id, taskId: source.task_id,
+            await this.#complete(pending, { actorRef: source.agent_id, taskId: source.task_id,
               executionId: source.execution_id, fencingVersion: source.fencing_version, signal: identity.signal });
           }
           catch (error: any) { if (this.#request(pending.execution_id, pending.request_id).phase !== 'failed') throw error; }
@@ -195,7 +195,7 @@ export class ExecutionWorkspace {
         const snapshot = await this.#capture(execution, identity);
         let captured: any = { kind: operation, workspace_id: current.workspace_id, base_revision: current.last_saved_revision ?? current.initial_revision, parents: current.parents,
           state_version: current.version, manifest: snapshot.manifest, files: Object.fromEntries(Object.entries(snapshot.files).map(([path, bytes]: any) => [path, bytes.toString('base64')])),
-          source: { mission_id: this.tasks.getTask(execution.task_id).mission_id, task_id: execution.task_id, execution_id: execution.execution_id, bot_id: execution.owner_ref, fencing_version: execution.fencing_version },
+          source: { mission_id: this.tasks.getTask(execution.task_id).mission_id, task_id: execution.task_id, execution_id: execution.execution_id, agent_id: execution.owner_ref, fencing_version: execution.fencing_version },
           conflicts: current.conflicts };
         if (operation === 'save' && input.material_ids?.length) {
           const context = this.context ?? this.tasks.contextService;
@@ -263,7 +263,7 @@ export class ExecutionWorkspace {
   async #completeApply(row: any, identity: any, { closedConfirmed = false }: any = {}) {
     const captured: any = JSON.parse(row.captured_json);
     const execution = this.guard(identity, { receiptOnly: true });
-    if (captured.source.execution_id !== execution.execution_id || captured.source.bot_id !== execution.owner_ref || captured.source.fencing_version !== identity.fencingVersion) throw invalid('Apply capture identity differs from its E');
+    if (captured.source.execution_id !== execution.execution_id || captured.source.agent_id !== execution.owner_ref || captured.source.fencing_version !== identity.fencingVersion) throw invalid('Apply capture identity differs from its E');
     const workerId = `apply:${hash(stableStringify([row.execution_id, row.request_id]))}`;
     const workerInput = { executionId: row.execution_id, request_id: workerId, snapshot_request_id: captured.snapshot_request_id, expected_content_hash: captured.expected_content_hash, content_hash: captured.content_hash, files: captured.files };
     const expectedFingerprint = hash(stableStringify({ expected_content_hash: captured.expected_content_hash, content_hash: captured.content_hash }));
@@ -276,7 +276,7 @@ export class ExecutionWorkspace {
       try { this.guard(identity); }
       catch (error: any) {
         let closedReceipt: any = null;
-        try { closedReceipt = verify(await this.sandbox.queryBotProjectInstall(workerInput)); } catch { /* No confirmed worker outcome survives. */ }
+        try { closedReceipt = verify(await this.sandbox.queryAgentProjectInstall(workerInput)); } catch { /* No confirmed worker outcome survives. */ }
         if (row.phase === 'installed' && closedReceipt?.phase === 'committed') {
           this.db.prepare("UPDATE execution_workspace_requests SET phase = 'done', captured_json = NULL, updated_at = ? WHERE execution_id = ? AND request_id = ?")
             .run(new Date().toISOString(), row.execution_id, row.request_id);
@@ -300,10 +300,10 @@ export class ExecutionWorkspace {
         } catch (error: any) { this.db.exec('ROLLBACK'); throw error; }
         row = this.#request(row.execution_id, row.request_id);
       }
-      let receipt = verify(await this.sandbox.queryBotProjectInstall(workerInput));
+      let receipt = verify(await this.sandbox.queryAgentProjectInstall(workerInput));
       if (receipt.phase === 'not_found' && row.phase === 'installing') {
         this.guard(identity);
-        try { receipt = verify(await this.sandbox.installBotProject(workerInput)); }
+        try { receipt = verify(await this.sandbox.installAgentProject(workerInput)); }
         catch (error: any) {
           if ([ERROR_CODES.WORKSPACE_BUSY, ERROR_CODES.INVALID_CONTRACT].includes(error.code)) this.#fail(row, error);
           throw error;
@@ -334,7 +334,7 @@ export class ExecutionWorkspace {
       }
       if (receipt.phase !== 'committed') {
         this.guard(identity);
-        receipt = verify(await this.sandbox.confirmBotProjectInstall(workerInput));
+        receipt = verify(await this.sandbox.confirmAgentProjectInstall(workerInput));
         if (receipt.phase !== 'committed') throw new MurmError(ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, 'Worker has not confirmed apply acknowledgement');
       }
       this.db.prepare("UPDATE execution_workspace_requests SET phase = 'done', captured_json = NULL, updated_at = ? WHERE execution_id = ? AND request_id = ?")
@@ -351,7 +351,7 @@ export class ExecutionWorkspace {
     const captured: any = JSON.parse(row.captured_json);
     if (captured.kind === 'apply') return this.#completeApply(row, identity, completionOptions);
     const execution = this.guard(identity, { receiptOnly: true });
-    if (captured.source.execution_id !== execution.execution_id || captured.source.bot_id !== execution.owner_ref || captured.source.fencing_version !== identity.fencingVersion) throw invalid('Captured request identity does not match its E');
+    if (captured.source.execution_id !== execution.execution_id || captured.source.agent_id !== execution.owner_ref || captured.source.fencing_version !== identity.fencingVersion) throw invalid('Captured request identity does not match its E');
     const files = Object.fromEntries(Object.entries(captured.files).map(([path, encoded]: any) => [path, Buffer.from(encoded, 'base64')]));
     const options = { workspaceId: captured.workspace_id, baseRevision: captured.base_revision, parentRevisions: captured.parents,
       files, source: captured.source, conflicts: captured.conflicts, requestId: `execution:${row.execution_id}:save:${row.request_id}`, guard: () => this.guard(identity),

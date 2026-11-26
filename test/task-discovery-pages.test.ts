@@ -53,8 +53,8 @@ test('registered discovery cannot use a cursor or explicit scope to inspect anot
   create('first'); create('second');
   const cursor = list({ limit: 1 }).next_cursor;
   service.createMission({ mission_id: 'mission:other', goal: 'Another independent project' }, makeEnvelope({ actorRef: 'operator:test' }));
-  service.registerBot({ botId: 'reader', missionId: 'mission:other', coreId: 'core-reader', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
-  service.recordBotSandbox('reader', { provider: 'controlled', sandboxId: 'reader' }); service.markBotReady('reader');
+  service.registerAgent({ agentId: 'reader', missionId: 'mission:other', coreId: 'core-reader', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+  service.recordAgentSandbox('reader', { provider: 'controlled', sandboxId: 'reader' }); service.markAgentReady('reader');
   const envelope = makeEnvelope({ actorRef: 'reader' });
   assert.throws(() => service.dispatch('task_list', { mission_id: 'mission:pages' }, envelope), { code: 'NOT_ALLOWED' });
   assert.throws(() => service.dispatch('task_list', { cursor }, envelope), { code: 'INVALID_CONTRACT' });

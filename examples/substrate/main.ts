@@ -52,7 +52,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const { readHarnessResult } = await import('../../src/harnesses/shared/read-result.js');
       const result = await readHarnessResult({ runDirectory: args[1], runtimeId: args[3] });
       process.stdout.write(`${JSON.stringify(result)}\n`);
-      process.exitCode = result.environment.state === 'read' && result.core.state === 'read' ? 0 : 1;
+      process.exitCode = result.harness.state === 'read' && result.core.state === 'read' ? 0 : 1;
     } else if (args[0] === '--fate-prepare' && (args.length === 3 || args.length === 4)) {
       const benchmark = args[3] ?? 'FATE-M';
       if (!isFateBenchmark(benchmark)) throw Object.assign(new Error(), { code: 'SUBSTRATE_ARGUMENTS_INVALID' });

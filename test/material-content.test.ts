@@ -13,9 +13,9 @@ function fixture(t) {
     if (!taskService.getMission(mission)) {
       taskService.createMission({ mission_id: mission, goal: 'Study a shared claim' }, makeEnvelope({ actorRef: 'operator:test' }));
     }
-    taskService.registerBot({ botId: name, coreId: name, missionId: mission, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
-    taskService.recordBotSandbox(name, { provider: 'controlled', sandboxId: name });
-    taskService.markBotReady(name);
+    taskService.registerAgent({ agentId: name, coreId: name, missionId: mission, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+    taskService.recordAgentSandbox(name, { provider: 'controlled', sandboxId: name });
+    taskService.markAgentReady(name);
     if (!active) return () => makeEnvelope({ actorRef: name });
     const task = taskService.createTask({ mission_id: mission, summary: 'Inspect a research claim', gap: 'The Mission needs reproducible evidence for the shared claim', priority: 'medium', expected_output: 'Evidence',
       acceptance_conditions: ['Reproducible explanation'] }, makeEnvelope({ actorRef: name })).task;
@@ -45,7 +45,7 @@ test('modern Material stores immutable metadata and attachment bytes with scoped
   assert.equal(material.title, payload.title);
   assert.equal(material.summary, payload.summary);
   assert.equal(material.media_type, 'text/plain');
-  assert.equal(material.producer_bot_id, 'producer');
+  assert.equal(material.producer_agent_id, 'producer');
   assert.ok(!['kind', 'role', 'evidence_state', 'evidence', 'content_json'].some(key => Object.hasOwn(material, key)));
   assert.deepEqual(material.attachments, [{ name: 'input.bin', media_type: 'application/octet-stream', content_hash: digest, size_bytes: bytes.length }]);
   const input = { material_id: 'evidence', attachment_name: 'input.bin' };
@@ -133,9 +133,9 @@ test('sparse Material queries keep a continuation after scanning an empty bounde
   context.dispatch('context_publish_material', { material_id: 'initial', content: 'irrelevant' }, producer());
   taskService.db.exec(`WITH RECURSIVE numbers(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM numbers WHERE i < 500)
     INSERT INTO materials (material_id, mission_id, content_hash, content_json,
-      version, producer_task_id, producer_execution_id, producer_bot_id, provenance_json, created_at)
+      version, producer_task_id, producer_execution_id, producer_agent_id, provenance_json, created_at)
     SELECT 'filler-' || i, mission_id, content_hash, content_json,
-      version, producer_task_id, producer_execution_id, producer_bot_id, provenance_json, created_at FROM materials, numbers WHERE material_id='initial'`);
+      version, producer_task_id, producer_execution_id, producer_agent_id, provenance_json, created_at FROM materials, numbers WHERE material_id='initial'`);
   context.dispatch('context_publish_material', { material_id: 'match', content: 'Matching keyword' }, producer());
   const input = { query: 'keyword' };
   const first = context.dispatch('context_search_materials', input, reader());

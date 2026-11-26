@@ -21,9 +21,9 @@ export async function prepareLeadWorkerGit({ runId, gitea, resources, signal, he
   resources.own({ kind: 'repository', id: `${owner}/${repository.name}`, retained: true });
   const actors: any = {};
   for (const role of roles) {
-    if (signal?.aborted) throw fail('ENVIRONMENT_START_ABORTED');
+    if (signal?.aborted) throw fail('HARNESS_START_ABORTED');
     const username = `lh-${role}-${createHash('sha256').update(runId).digest('hex').slice(0, 16)}`; const email = `${username}-${randomBytes(8).toString('hex')}@murm.invalid`;
-    const password = randomBytes(32).toString('base64url'); const tokenName = `swarmenv-${runId}-${role}`;
+    const password = randomBytes(32).toString('base64url'); const tokenName = `murm-${runId}-${role}`;
     const accountHttp = httpClient(gitea.origin, `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`);
     let account: any; let createUnknown = true; let tokenUnknown = false; let revoked = false;
     resources.own({ kind: 'gitea-account', id: username, close: async () => {
@@ -62,17 +62,17 @@ export function createLeadWorkerGit(facilities: any, helperCount: any) {
   if (!matchesRoles(roles, actors) || ['accountId', 'username', 'token', 'branch', 'binding'].some((key: any) => accounts.some((account: any) => typeof account?.[key] !== 'string' || !account[key]) || new Set(accounts.map((account: any) => account[key])).size !== roles.length)) throw new TypeError('Distinct restricted Git identities required for the fixed team');
   for (const actor of accounts) httpClient(origin, `token ${actor.token}`);
   let team: any; let runtimeId: any;
-  const resolve = (botId: any) => { const role = Object.keys(team ?? {}).find((role: any) => team[role] === botId); if (!role) throw fail('NOT_ALLOWED'); return actors[role]; };
+  const resolve = (agentId: any) => { const role = Object.keys(team ?? {}).find((role: any) => team[role] === agentId); if (!role) throw fail('NOT_ALLOWED'); return actors[role]; };
   const scope = `/api/v1/repos/${e(repository.owner)}/${e(repository.name)}`;
   const registration: any = { manifest: { id: 'gitea', title: 'Run Git pull requests', purpose: 'Publish own run branch only', provider_version: 'lead-helper-git-1', contract_version: '2', endpoint: { transport: 'in-process' }, capabilities: [{ name: 'pull_request_write', operation: 'pull_request_write', description: 'Create own branch pull request', help: { when: 'After committing and pushing your own WORK_BRANCH' }, side_effect: 'write', idempotent: false,
     input_schema: { type: 'object', properties: { owner: { const: repository.owner }, repo: { const: repository.name }, method: { const: 'create' }, head: { type: 'string', maxLength: 128 }, base: { const: 'main' }, title: { type: 'string', minLength: 1, maxLength: 1024 }, body: { type: 'string', maxLength: 4096 } }, required: ['owner', 'repo', 'method', 'head', 'base', 'title'], additionalProperties: false },
     output_schema: { type: 'object', properties: { number: { type: 'integer', minimum: 1 } }, required: ['number'], additionalProperties: true }, errors: ['NOT_ALLOWED', 'FACILITY_REQUEST_UNKNOWN'].map((code: any) => ({ code, retryable: false })) }] }, adapter: { async invoke({ caller, input, signal }: any) {
-      const actor = resolve(caller.botId); const profile = Object.keys(team).find((role: any) => team[role] === caller.botId);
+      const actor = resolve(caller.agentId); const profile = Object.keys(team).find((role: any) => team[role] === caller.agentId);
       if (caller.runtimeId !== runtimeId || caller.profile !== profile || caller.binding !== actor.binding || input.head !== actor.branch) throw fail('NOT_ALLOWED');
       return httpClient(origin, `token ${actor.token}`)('POST', `${scope}/pulls`, { title: input.title, head: actor.branch, base: 'main', ...(input.body === undefined ? {} : { body: input.body }) }, { signal });
     } } };
-  async function verifyDelivery({ actor: botId, delivery, direction, requireDirectionText = false, signal }: any, checkHead: any) {
-    const actor = resolve(botId); const request = httpClient(origin, `token ${actor.token}`);
+  async function verifyDelivery({ actor: agentId, delivery, direction, requireDirectionText = false, signal }: any, checkHead: any) {
+    const actor = resolve(agentId); const request = httpClient(origin, `token ${actor.token}`);
     if (checkHead) {
       const ref = await request('GET', `${scope}/branches/${e(actor.branch)}`, undefined, { signal });
       if (ref?.commit?.id !== delivery.commit) throw fail('DELIVERY_INVALID');

@@ -66,7 +66,7 @@ interface RunOptions {
 }
 
 type Peer = {
-  botId: string; finish: AbortController; active: boolean; semanticOperations: number;
+  agentId: string; finish: AbortController; active: boolean; semanticOperations: number;
   endReason?: 'submitted' | 'settled' | 'deadline' | 'cancelled' | 'failed';
   inputFailure?: { code: string; inputId?: string; receipt?: unknown }; startedAt?: string; endedAt?: string;
   inputId?: string; stop?: StopReceipt; stopFailure?: string;
@@ -76,7 +76,7 @@ type Peer = {
 
 type FrozenCandidates = {
   version: 1; runId: string; mode: SharingMode; benchmark?: FateBenchmark; problemId: number; problemSha256: string;
-  frozenAt: string; scoreTimeoutMs: number; peers: { botId: string; candidate: FateCandidate | null }[];
+  frozenAt: string; scoreTimeoutMs: number; peers: { agentId: string; candidate: FateCandidate | null }[];
 };
 
 type Checkpoint = { state: 'not_reached'; afterMs: number } |
@@ -121,17 +121,17 @@ async function evaluateFrozen(project: FateProject, bundle: FrozenCandidates) {
       bundle.problemSha256 !== project.problemSha256 ||
       !modes.includes(bundle.mode) || !Number.isSafeInteger(bundle.scoreTimeoutMs) || bundle.scoreTimeoutMs < 1 ||
       bundle.scoreTimeoutMs > durations.score || !Array.isArray(bundle.peers) ||
-      new Set(bundle.peers.map(peer => peer.botId)).size !== bundle.peers.length ||
-      bundle.peers.some(({ botId, candidate }) => typeof botId !== 'string' || !botId || (candidate !== null &&
-        (candidate?.botId !== botId || typeof candidate.proof !== 'string' || sha256(candidate.proof) !== candidate.sha256)))) {
+      new Set(bundle.peers.map(peer => peer.agentId)).size !== bundle.peers.length ||
+      bundle.peers.some(({ agentId, candidate }) => typeof agentId !== 'string' || !agentId || (candidate !== null &&
+        (candidate?.agentId !== agentId || typeof candidate.proof !== 'string' || sha256(candidate.proof) !== candidate.sha256)))) {
     throw new Error('Frozen candidate bundle identity or proof digest mismatch');
   }
   const start = performance.now();
   const checker = bundle.peers.some(peer => peer.candidate) ? await createFateChecker(project) : null;
   try {
-    const scores = await Promise.all(bundle.peers.map(async ({ botId, candidate }) => candidate ? {
-      botId, sha256: candidate.sha256, ...(await checker!.evaluate(candidate.proof, { timeoutMs: bundle.scoreTimeoutMs })),
-    } : { botId, sha256: null, status: 'no_submission', code: 'NO_SUBMISSION', elapsedMs: 0 }));
+    const scores = await Promise.all(bundle.peers.map(async ({ agentId, candidate }) => candidate ? {
+      agentId, sha256: candidate.sha256, ...(await checker!.evaluate(candidate.proof, { timeoutMs: bundle.scoreTimeoutMs })),
+    } : { agentId, sha256: null, status: 'no_submission', code: 'NO_SUBMISSION', elapsedMs: 0 }));
     return {
       runId: bundle.runId, mode: bundle.mode, benchmark: project.benchmark, problemId: bundle.problemId, problemSha256: bundle.problemSha256,
       teamSuccess: scores.some(score => score.status === 'passed'), candidates: scores,
@@ -153,19 +153,19 @@ async function measureEvidence(path: string | undefined, receipt: StopReceipt[] 
     const usage = (report.modelLedgers as { alias: string; path: string }[]).map(ledger => {
       const db = new DatabaseSync(ledger.path, { readOnly: true });
       try {
-        return { alias: ledger.alias, peers: db.prepare(`SELECT bot_id AS botId, COUNT(*) AS requests,
+        return { alias: ledger.alias, peers: db.prepare(`SELECT agent_id AS agentId, COUNT(*) AS requests,
           COUNT(*) FILTER (WHERE input_tokens IS NULL OR output_tokens IS NULL) AS requestsWithoutUsage,
           COUNT(*) FILTER (WHERE state='unknown') AS unknownRequests,
           COUNT(*) FILTER (WHERE state='pending') AS pendingRequests, SUM(input_tokens) AS inputTokens,
-          SUM(output_tokens) AS outputTokens FROM runtime_model_attempts WHERE runtime_id=? GROUP BY bot_id ORDER BY bot_id`).all(report.runtimeId) };
+          SUM(output_tokens) AS outputTokens FROM runtime_model_attempts WHERE runtime_id=? GROUP BY agent_id ORDER BY agent_id`).all(report.runtimeId) };
       } finally { db.close(); }
     });
-    const nativeTools = await Promise.all(receipt.map(async ({ botId, sessionArchive }) => {
+    const nativeTools = await Promise.all(receipt.map(async ({ agentId, sessionArchive }) => {
       try {
-        if (!sessionArchive) return { botId, state: 'unavailable', counts: null };
+        if (!sessionArchive) return { agentId, state: 'unavailable', counts: null };
         const manifest = JSON.parse(await readFile(sessionArchive, 'utf8'));
         const sessions = (manifest.files as { path: string }[]).filter(file => file.path.endsWith('.jsonl'));
-        if (!sessions.length) return { botId, state: 'unavailable', counts: null };
+        if (!sessions.length) return { agentId, state: 'unavailable', counts: null };
         const calls = new Map<string, string>();
         for (const session of sessions) {
           const raw = await readFile(join(dirname(sessionArchive), 'files', session.path), 'utf8');
@@ -178,8 +178,8 @@ async function measureEvidence(path: string | undefined, receipt: StopReceipt[] 
         }
         const counts: Record<string, number> = { read: 0, write: 0, edit: 0, bash: 0 };
         for (const name of calls.values()) counts[name] = (Object.hasOwn(counts, name) ? counts[name] : 0) + 1;
-        return { botId, state: 'recorded', counts };
-      } catch { return { botId, state: 'unavailable', counts: null }; }
+        return { agentId, state: 'recorded', counts };
+      } catch { return { agentId, state: 'unavailable', counts: null }; }
     }));
     const tracePath = join(dirname(path), 'service-calls.jsonl');
     const serviceTrace = await stat(tracePath).then(info => ({ path: tracePath, bytes: info.size }), () => null);
@@ -246,13 +246,13 @@ export async function runFateSubstrate({
   let timer: ReturnType<typeof setTimeout> | undefined;
   const remainingMs = () => workSignal.aborted ? 0 : Math.max(0, deadlineMs - Date.now());
   const authorize = (caller: ServiceCaller | ModelCaller) => {
-    if (!startedAt || caller.runtimeId !== runtimeId || caller.profile !== 'peer' || !peers.get(caller.botId)?.active || remainingMs() === 0) {
+    if (!startedAt || caller.runtimeId !== runtimeId || caller.profile !== 'peer' || !peers.get(caller.agentId)?.active || remainingMs() === 0) {
       throw Object.assign(noTime(), { code: 'NOT_ALLOWED' });
     }
   };
-  const countOperation = (botId: string, operation: string, requestId: string) => {
-    const peer = peers.get(botId)!;
-    const seen = semanticRequests.get(botId)!;
+  const countOperation = (agentId: string, operation: string, requestId: string) => {
+    const peer = peers.get(agentId)!;
+    const seen = semanticRequests.get(agentId)!;
     const key = JSON.stringify([operation, requestId]);
     if (seen.has(key)) return;
     if (peer.finishRequested) throw Object.assign(new Error('Peer has finished; only stable request replay is available'), { code: 'NOT_ALLOWED' });
@@ -267,12 +267,12 @@ export async function runFateSubstrate({
     task = createFateTaskService({
       path: join(directory, 'fate-candidates.sqlite'), services, authorize, countOperation, remainingMs, signal: workSignal,
       problemAddress, shareMathlibResources: mode === 'shared', verifiedCompletion, search, check: checker.evaluate,
-      validateReferences(botId, rationale, refs) {
-        if (substrate) substrate.validateReferences(botId, rationale, refs);
-        else if (refs.some(ref => !task!.resourceExists(botId, ref))) throw Object.assign(new Error('Reference is outside the task resources'), { code: 'NOT_FOUND' });
+      validateReferences(agentId, rationale, refs) {
+        if (substrate) substrate.validateReferences(agentId, rationale, refs);
+        else if (refs.some(ref => !task!.resourceExists(agentId, ref))) throw Object.assign(new Error('Reference is outside the task resources'), { code: 'NOT_FOUND' });
       },
-      onFinish(botId) {
-        const peer = peers.get(botId)!;
+      onFinish(agentId) {
+        const peer = peers.get(agentId)!;
         peer.finishRequested = true;
         // Allow Bridge to deliver the committed receipt and Pi to settle.
         // Fresh task/substrate requests are already fenced.
@@ -301,7 +301,7 @@ export async function runFateSubstrate({
       async createRuntime() {
         await limited(search('Fintype.card', setupSignal), setupSignal);
         return createRuntime({
-          backend, outputDir: directory, services, maxBots: poolSize, profiles: { peer: profile },
+          backend, outputDir: directory, services, maxAgents: poolSize, profiles: { peer: profile },
           modelAccessPolicy: {
             authorize(caller) {
               try { authorize(caller); return { phase: 'work', deadlineAt: deadlineMs }; } catch { return null; }
@@ -316,12 +316,12 @@ export async function runFateSubstrate({
         try {
           for (let index = 0; index < poolSize; index++) {
             setupSignal.throwIfAborted();
-            const bot = await limited(core.spawn({ requestId: `peer:${index}`, profile: 'peer', files: {
+            const agent = await limited(core.spawn({ requestId: `peer:${index}`, profile: 'peer', files: {
               'problem.lean': { data: project.formal, encoding: 'utf8' },
               'problem.txt': { data: `${project.informal}\n\nProblem resource: ${problemAddress}\n`, encoding: 'utf8' },
             } }), setupSignal);
-            semanticRequests.set(bot.id, new Set());
-            peers.set(bot.id, { botId: bot.id, finish: new AbortController(), active: true, semanticOperations: 0 });
+            semanticRequests.set(agent.id, new Set());
+            peers.set(agent.id, { agentId: agent.id, finish: new AbortController(), active: true, semanticOperations: 0 });
           }
           setupSignal.throwIfAborted();
         } catch (error) {
@@ -347,9 +347,9 @@ export async function runFateSubstrate({
                 const snapshot = task!.snapshot();
                 await writePrivateJson(path, {
                   runId, runtimeId, mode, scheduledAt, capturedAt, benchmark: project.benchmark, problemId: project.pins.problemId,
-                  peers: activePeers.map(({ botId, active, startedAt, endedAt, finishRequested, semanticOperations }) =>
-                    ({ botId, active, startedAt, endedAt, finishRequested, semanticOperations })),
-                  candidates: snapshot.candidates.map(({ botId, requestId, sha256, submittedAt, refs }) => ({ botId, requestId, sha256, submittedAt, refs })),
+                  peers: activePeers.map(({ agentId, active, startedAt, endedAt, finishRequested, semanticOperations }) =>
+                    ({ agentId, active, startedAt, endedAt, finishRequested, semanticOperations })),
+                  candidates: snapshot.candidates.map(({ agentId, requestId, sha256, submittedAt, refs }) => ({ agentId, requestId, sha256, submittedAt, refs })),
                   taskOperations: snapshot.operations, substrate: substrate?.snapshot() ?? null,
                 });
                 checkpoint = { state: 'recorded', afterMs: checkpointAfterMs, path, scheduledAt, capturedAt };
@@ -366,8 +366,8 @@ export async function runFateSubstrate({
           const signal = AbortSignal.any([workSignal, peer.finish.signal]);
           try {
             for (let continuation = 0; ; continuation++) {
-              const receipt = await runInput(core, peer.botId, continuation ? fateVerificationContinuation : initialInput, {
-                requestId: continuation ? `${peer.botId}:continue:${continuation}` : `${peer.botId}:problem`,
+              const receipt = await runInput(core, peer.agentId, continuation ? fateVerificationContinuation : initialInput, {
+                requestId: continuation ? `${peer.agentId}:continue:${continuation}` : `${peer.agentId}:problem`,
                 timeoutMs: Math.max(1, remainingMs()), signal,
               });
               peer.inputId = receipt.inputId;
@@ -388,7 +388,7 @@ export async function runFateSubstrate({
             peer.active = false;
             clearTimeout(peer.finishTimer);
             peer.endedAt = new Date().toISOString();
-            try { peer.stop = await core.stop(peer.botId, { timeoutMs: closeTimeoutMs }); }
+            try { peer.stop = await core.stop(peer.agentId, { timeoutMs: closeTimeoutMs }); }
             catch (error) { peer.stopFailure = (error as { code?: string }).code ?? 'PEER_STOP_FAILED'; }
           }
         }));
@@ -404,16 +404,16 @@ export async function runFateSubstrate({
     work.abort();
     clearTimeout(timer);
     await task.settle();
-    const byPeer = new Map(task.snapshot().candidates.map(candidate => [candidate.botId, candidate]));
+    const byPeer = new Map(task.snapshot().candidates.map(candidate => [candidate.agentId, candidate]));
     const bundle: FrozenCandidates = {
       version: 1, runId, mode, benchmark: project.benchmark, problemId: project.pins.problemId, problemSha256: project.problemSha256,
-      frozenAt: new Date().toISOString(), scoreTimeoutMs, peers: [...peers.keys()].map(botId => ({ botId, candidate: byPeer.get(botId) ?? null })),
+      frozenAt: new Date().toISOString(), scoreTimeoutMs, peers: [...peers.keys()].map(agentId => ({ agentId, candidate: byPeer.get(agentId) ?? null })),
     };
     const bundlePath = join(directory, 'fate-frozen-candidates.json');
     await writePrivateJson(bundlePath, bundle);
     const coreReport = typeof report.cleanup?.reportPath === 'string' ? report.cleanup.reportPath :
       typeof report.reportPath === 'string' ? join(dirname(report.reportPath), 'runtime.json') : undefined;
-    const evidence = await measureEvidence(coreReport, report.cleanup?.bots);
+    const evidence = await measureEvidence(coreReport, report.cleanup?.agents);
     let scoring;
     let scoreFailure = null;
     try {

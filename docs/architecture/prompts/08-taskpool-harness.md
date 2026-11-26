@@ -9,10 +9,10 @@ These are repository-owned texts and deterministic examples, not transcripts of 
 
 The default Added System Prompt is empty. Without a Core or injected live capture binding, the host includes this explanation after any supplied Profile text.
 
-Body SHA-256: `7ddd3c046642e46ad91153885ed29729e1d733c4c0f6420da7200f750ff28a4d`
+Body SHA-256: `5371acb1ed023ed240934f27c739c3e6f2feed68e9618378e2165db46e6e97b9`
 
 ````text
-当前配置支持读取公开 Workspace 和发布 Material。请领取可通过这些能力完成的 Task，按照 Task 的真实完成条件提交结果。运行期间的私有文件只保留在 Bot 工作目录中。
+当前配置支持读取公开 Workspace 和发布 Material。请领取可通过这些能力完成的 Task，按照 Task 的真实完成条件提交结果。运行期间的私有文件只保留在 Agent 工作目录中。
 ````
 ## Default discovery input
 
@@ -23,40 +23,40 @@ Read public Tasks and take suitable work. Continue in this Session after take.
 ````
 ## Autonomous discovery input
 
-When autonomous Tasks are enabled and there is no host override, the controller reads the public Mission and registered Bot after the final discovery send guard. The effective run deadline comes from the controller host admission clock. The initial batch is sent after any configured host admission callback.
+When autonomous Tasks are enabled and there is no host override, the controller reads the public Mission and registered Agent after the final discovery send guard. The effective run deadline comes from the controller host admission clock. The initial batch is sent after any configured host admission callback.
 
-Body SHA-256: `e7334d7d3aac67206924ab58acc4cef5b80ab88ee357acfb9024e6042932874f`
+Body SHA-256: `cea02bb8be6de55e0a236c647bfefacff5a6c6d26d860eaa559fe8c94a8119ac`
 
 ````text
 Mission: <MISSION_ID>
 Goal: <MISSION_GOAL>
 Acceptance: "<MISSION_ACCEPTANCE>"
-Bot: <BOT_ID>
+Agent: <AGENT_ID>
 Selection deadline: <SELECTION_DEADLINE>
-Bot hard deadline: <BOT_HARD_DEADLINE>
+Agent hard deadline: <AGENT_HARD_DEADLINE>
 Mission deadline: <MISSION_DEADLINE>
 
 During discovery, inspect the public Workspace, Tasks, and Materials. Your private project is read-only until you take a Task.
 
-Run swarm task list --states '["ready","running"]'. Read relevant Task contracts with swarm task view. If the pool is empty, propose a first concrete piece of work. If a Task already covers the Mission-wide deliverable, find a distinct, checkable contribution to it. Refresh the list before creating or taking a Task. If another Bot wins a take, check the list again.
+Run swarm task list --states '["ready","running"]'. Read relevant Task contracts with swarm task view. If the pool is empty, propose a first concrete piece of work. If a Task already covers the Mission-wide deliverable, find a distinct, checkable contribution to it. Refresh the list before creating or taking a Task. If another Agent wins a take, check the list again.
 
-You may propose multiple Tasks during discovery and during your Execution. Use a separate swarm task create call for each concrete gap and deliverable. See swarm task create --help. Other Bots can take your proposals. Take one suitable available Task with swarm task take. After it succeeds, remain in this Session with your one Execution and do detailed work there. If you discover a blocker another Bot can resolve, propose that work and continue the parts of your Task you can advance.
+You may propose multiple Tasks during discovery and during your Execution. Use a separate swarm task create call for each concrete gap and deliverable. See swarm task create --help. Other Agents can take your proposals. Take one suitable available Task with swarm task take. After it succeeds, remain in this Session with your one Execution and do detailed work there. If you discover a blocker another Agent can resolve, propose that work and continue the parts of your Task you can advance.
 
-When your responsibility ends, report the actual outcome with swarm task finish and end this Bot. Stop work when the Mission is accepted or stopped.
+When your responsibility ends, report the actual outcome with swarm task finish and end this Agent. Stop work when the Mission is accepted or stopped.
 ````
 ## PutnamBench first user input
 
-The original source and path come from the same locked fixture used to initialize the public Workspace. The controller adds the original source to each Bot’s first discovery input. Subsequent discovery inputs use the same Mission goal, current deadlines and collaboration guidance. The PutnamBench Profile supplies no Added System Prompt.
+The original source and path come from the same locked fixture used to initialize the public Workspace. The controller adds the original source to each Agent’s first discovery input. Subsequent discovery inputs use the same Mission goal, current deadlines and collaboration guidance. The PutnamBench Profile supplies no Added System Prompt.
 
-Body SHA-256: `dc808a9c7f29b54a24afecace829f4700112e93a895dde5dc47021bf26b5d897`
+Body SHA-256: `25d88e997474d12f0171d0b6490c3810b35db38be48f7f78ca87e4b754fc1e27`
 
 ````text
 Mission: mission:putnam_2025_b1
 Goal: Work together to prove the original PutnamBench 2025 B1 theorem in Lean.
 Acceptance: "<MISSION_ACCEPTANCE>"
-Bot: <BOT_ID>
+Agent: <AGENT_ID>
 Selection deadline: <SELECTION_DEADLINE>
-Bot hard deadline: <BOT_HARD_DEADLINE>
+Agent hard deadline: <AGENT_HARD_DEADLINE>
 Mission deadline: <MISSION_DEADLINE>
 
 Submit a fixed main revision that passes the independent Lean check of the original theorem. Keep the theorem statement unchanged. The final proof may not depend on sorry or any axiom outside the checker's allowed set.
@@ -69,15 +69,15 @@ Original problem:
 
 During discovery, inspect the public Workspace, Tasks, and Materials. Your private project is read-only until you take a Task.
 
-Run swarm task list --states '["ready","running"]'. Read relevant Task contracts with swarm task view. If the pool is empty, propose a first concrete piece of work. If a Task already covers the Mission-wide deliverable, find a distinct, checkable contribution to it. Refresh the list before creating or taking a Task. If another Bot wins a take, check the list again.
+Run swarm task list --states '["ready","running"]'. Read relevant Task contracts with swarm task view. If the pool is empty, propose a first concrete piece of work. If a Task already covers the Mission-wide deliverable, find a distinct, checkable contribution to it. Refresh the list before creating or taking a Task. If another Agent wins a take, check the list again.
 
-You may propose multiple Tasks during discovery and during your Execution. Use a separate swarm task create call for each concrete gap and deliverable. See swarm task create --help. Other Bots can take your proposals. Take one suitable available Task with swarm task take. After it succeeds, remain in this Session with your one Execution and do detailed work there. If you discover a blocker another Bot can resolve, propose that work and continue the parts of your Task you can advance.
+You may propose multiple Tasks during discovery and during your Execution. Use a separate swarm task create call for each concrete gap and deliverable. See swarm task create --help. Other Agents can take your proposals. Take one suitable available Task with swarm task take. After it succeeds, remain in this Session with your one Execution and do detailed work there. If you discover a blocker another Agent can resolve, propose that work and continue the parts of your Task you can advance.
 
 Put reusable Lean code in a separate importable module under lean4/src/. Save your actual files with swarm workspace save and check the saved revision with swarm judge check. For a result a peer can use, publish a Material with structured content giving the declaration, file path, saved revision, and check outcome. See swarm material publish --help. Link it as a response to the Task that can use it.
 
 When a peer's result could help, inspect the Material and its fixed files. If you decide to use it, save your own changes, apply the peer's fixed revision with swarm workspace apply, and resolve any reported conflicts. Use the actual declaration in your proof. Record the use with swarm material consume --action workspace before including its ID in swarm workspace save --material-ids. Check the combined work before merging. Public main can advance while your private project stays on its current revision.
 
-When the complete proof is on main, submit it with swarm mission submit and check the submission result. When your own responsibility ends, save and share useful work, report the actual outcome with swarm task finish, and end this Bot. Stop work when the Mission is accepted or stopped.
+When the complete proof is on main, submit it with swarm mission submit and check the submission result. When your own responsibility ends, save and share useful work, report the actual outcome with swarm task finish, and end this Agent. Stop work when the Mission is accepted or stopped.
 ````
 ## Offline swarm task create help
 

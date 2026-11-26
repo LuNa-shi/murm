@@ -16,7 +16,7 @@ export async function prepareWorkspaceCheckSource(input: any, { workspace, works
       ? 'Judge check requires a fixed public revision and a valid optional file path; save the project first'
       : 'Judge check requires a fixed public revision and path; save the project first');
   }
-  if (input.workspace_id !== undefined && input.workspace_id !== workspaceId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Judge input must belong to the Bot Mission Workspace');
+  if (input.workspace_id !== undefined && input.workspace_id !== workspaceId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Judge input must belong to the Agent Mission Workspace');
   if (projectCheck) return { workspace_id: workspaceId, revision: input.revision,
     ...(hasPath ? { path: input.path } : {}), check_mode: checkMode };
   const snapshot = await workspace.exportRevision({ workspaceId, revision: input.revision });

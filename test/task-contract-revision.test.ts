@@ -11,9 +11,9 @@ function fixture(t, path = ':memory:') {
   t.after(() => service.close());
   service.createMission({ mission_id: 'mission', goal: 'Resolve the fixed research objective' });
   for (const id of ['author', 'editor', 'worker']) {
-    service.registerBot({ botId: id, missionId: 'mission', coreId: id, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
-    service.recordBotSandbox(id, { provider: 'controlled', sandboxId: id });
-    service.markBotReady(id);
+    service.registerAgent({ agentId: id, missionId: 'mission', coreId: id, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+    service.recordAgentSandbox(id, { provider: 'controlled', sandboxId: id });
+    service.markAgentReady(id);
   }
   const envelope = (actor = 'author', fields = {}) => makeEnvelope({ actorRef: actor, ...fields });
   const create = (fields = {}) => service.createTask({ mission_id: 'mission', summary: 'Find bridge', gap: 'The fixed objective needs the missing bridge implication',
@@ -23,7 +23,7 @@ function fixture(t, path = ':memory:') {
   return { service, create, revise, envelope };
 }
 
-test('Bot proposals require a gap and explicit priority and retain each version of the contract', t => {
+test('Agent proposals require a gap and explicit priority and retain each version of the contract', t => {
   const { service, create, revise, envelope } = fixture(t);
   for (const fields of [{ gap: undefined }, { gap: ' ' }, { priority: undefined }, { priority: 9 }]) {
     assert.throws(() => create(fields), { code: 'INVALID_CONTRACT' });

@@ -10,14 +10,14 @@ import { ServiceRegistry } from '@murm/core/services';
 import { createFilesUpstream, seededFiles, preparedFiles } from './fixtures/core-files-upstream.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
-import { openSandboxBotKey } from '../src/runtime/opensandbox-metadata.js';
+import { openSandboxAgentKey } from '../src/runtime/opensandbox-metadata.js';
 
 const execute = promisify(execFile);
 
-test('actual no-Task Bots verify initial seeds and readonly prepare/grant with native file writes', {
-  skip: process.env.SWARMENV_CORE_FILES_REAL_TEST !== '1' && 'Combined implementation pin and fixed local gate require independent review', timeout: 220_000,
+test('actual no-Task Agents verify initial seeds and readonly prepare/grant with native file writes', {
+  skip: process.env.MURM_CORE_FILES_REAL_TEST !== '1' && 'Combined implementation pin and fixed local gate require independent review', timeout: 220_000,
 }, async t => {
-  const image = process.env.SWARMENV_CORE_TEST_IMAGE; assert.ok(image);
+  const image = process.env.MURM_CORE_TEST_IMAGE; assert.ok(image);
   const upstream = await createFilesUpstream(); t.after(() => upstream.close());
   const outputDir = join(process.cwd(), 'experiments', `core-files-${Date.now()}`);
   await mkdir(outputDir, { recursive: true, mode: 0o700 });
@@ -37,10 +37,10 @@ test('actual no-Task Bots verify initial seeds and readonly prepare/grant with n
     await writeFile(join(outputDir, 'acceptance.json'), JSON.stringify(report, null, 2), { mode: 0o600 });
     assert.equal(report.failure, false, 'Acceptance receipt must confirm workload bounds and complete cleanup');
   });
-  const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
+  const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
-    sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY,
+    sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
       resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
     bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
     modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 30_000, maxOutputTokens: 128 },
@@ -49,39 +49,39 @@ test('actual no-Task Bots verify initial seeds and readonly prepare/grant with n
   }), profiles: {
     seeded: { prompt: 'Perform the fixed initial file checks.', model: 'default', image, writable: true, services: {} },
     discovery: { prompt: 'Perform the fixed readonly and file handoff checks.', model: 'default', image, writable: false, services: {} },
-  }, services: new ServiceRegistry(), maxBots: 2, outputDir });
+  }, services: new ServiceRegistry(), maxAgents: 2, outputDir });
   runtimes.push(runtime); report.runtimeId = runtime.id;
   assert.deepEqual(await ownedContainers(runtime.id), []);
   const a = await runtime.spawn({ profile: 'seeded', requestId: 'seeded-spawn', files: seededFiles });
   const b = await runtime.spawn({ profile: 'discovery', requestId: 'readonly-spawn' });
-  report.bots = [a, b].map(bot => ({ botId: bot.id, status: bot.status, profile: bot.profile }));
+  report.agents = [a, b].map(agent => ({ agentId: agent.id, status: agent.status, profile: agent.profile }));
   assert.equal(a.status, 'idle'); assert.equal(b.status, 'idle');
   const containers = await ownedContainers(runtime.id); assert.equal(containers.length, 2);
   report.containers = containers;
   const identities = await Promise.all(containers.map(async container => ({ container,
-    botKey: JSON.parse((await execute('docker', ['inspect', '--format', '{{json .Config.Labels.bot_key}}', container], { timeout: 5000 })).stdout) })));
-  const bContainer = identities.find(row => row.botKey === openSandboxBotKey(b.id)).container;
+    agentKey: JSON.parse((await execute('docker', ['inspect', '--format', '{{json .Config.Labels.agent_key}}', container], { timeout: 5000 })).stdout) })));
+  const bContainer = identities.find(row => row.agentKey === openSandboxAgentKey(b.id)).container;
   const docker = (...args) => execute('docker', ['exec', bContainer, ...args], { timeout: 5000 });
   // A fixed outside-workDir sentinel detects path escape without reading private conversations.
   await docker('sh', '-c', "printf 'OUTSIDE_UNCHANGED\\n' > /workspace/core-files-outside-probe");
-  async function turn(bot, id) {
+  async function turn(agent, id) {
     assert.equal(deadlineExpired, false);
-    assert.equal((await runtime.get(bot.id)).status, 'idle');
+    assert.equal((await runtime.get(agent.id)).status, 'idle');
     let resolve;
     const settled = new Promise(done => { resolve = done; });
-    const unsubscribe = runtime.onEvent(event => { if (event.botId === bot.id && event.type === 'settled') resolve(event); });
+    const unsubscribe = runtime.onEvent(event => { if (event.agentId === agent.id && event.type === 'settled') resolve(event); });
     const timer = setTimeout(() => resolve({ outcome: 'timeout' }), 35_000);
     try {
-      const input = await runtime.send(bot.id, id, { requestId: id, mode: 'followUp' });
+      const input = await runtime.send(agent.id, id, { requestId: id, mode: 'followUp' });
       assert.equal(input.status, 'accepted');
       const result = await settled; assert.equal(result.outcome, 'completed'); assert.equal(result.output, `${id}_OK`);
-      report.turns[id] = { input, outcome: result.outcome, cursor: (await runtime.get(bot.id)).cursor };
+      report.turns[id] = { input, outcome: result.outcome, cursor: (await runtime.get(agent.id)).cursor };
     } finally { clearTimeout(timer); unsubscribe(); }
   }
   async function rejects(label, task) {
     await assert.rejects(task, error => {
       assert.ok(['INVALID_CONTRACT', 'NOT_ALLOWED', 'NOT_FOUND', 'CONFLICT'].includes(error.code));
-      report.rejections.push({ label, code: error.code, operation: error.operation, botId: error.botId, requestId: error.requestId });
+      report.rejections.push({ label, code: error.code, operation: error.operation, agentId: error.agentId, requestId: error.requestId });
       return true;
     });
   }
@@ -98,13 +98,13 @@ test('actual no-Task Bots verify initial seeds and readonly prepare/grant with n
     runtime.files.prepare(b.id, { requestId: 'fixed-prepare', files: preparedFiles }),
     runtime.files.prepare(b.id, { requestId: 'fixed-prepare', files: preparedFiles }),
   ]);
-  assert.deepEqual(prepared, duplicate); assert.equal(prepared.botId, b.id);
+  assert.deepEqual(prepared, duplicate); assert.equal(prepared.agentId, b.id);
   assert.ok(Number.isSafeInteger(prepared.version) && prepared.version > 0);
   assert.match(prepared.digest, /^[a-f0-9]{64}$/); report.prepared = prepared;
   await rejects('prepare-request-conflict', () => runtime.files.prepare(b.id, { requestId: 'fixed-prepare', files: seededFiles }));
   await rejects('nonempty-workdir', () => runtime.files.prepare(b.id, { requestId: 'no-overwrite', files: preparedFiles }));
   for (const [label, forged] of [
-    ['forged-copy', { ...prepared }], ['wrong-bot', { ...prepared, botId: a.id }],
+    ['forged-copy', { ...prepared }], ['wrong-agent', { ...prepared, agentId: a.id }],
     ['stale-version', { ...prepared, version: prepared.version - 1 }], ['wrong-digest', { ...prepared, digest: '0'.repeat(64) }],
   ]) await rejects(label, () => runtime.files.grant({ requestId: label, prepared: forged }));
   await turn(b, 'F06_B2');
@@ -112,7 +112,7 @@ test('actual no-Task Bots verify initial seeds and readonly prepare/grant with n
     runtime.files.grant({ requestId: 'fixed-grant', prepared }),
     runtime.files.grant({ requestId: 'fixed-grant', prepared }),
   ]);
-  assert.deepEqual(grant, { botId: b.id, version: prepared.version, writable: true }); assert.deepEqual(grantReplay, grant);
+  assert.deepEqual(grant, { agentId: b.id, version: prepared.version, writable: true }); assert.deepEqual(grantReplay, grant);
   report.grant = grant;
   await rejects('grant-request-conflict', () => runtime.files.grant({ requestId: 'fixed-grant', prepared: { ...prepared, digest: 'f'.repeat(64) } }));
   await turn(b, 'F06_B3');

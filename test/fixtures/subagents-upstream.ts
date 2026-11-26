@@ -18,7 +18,7 @@ export function childCommand(followup) {
 import json,os,pathlib,subprocess
 ${identity}
 pathlib.Path('denied-child.json').write_text(json.dumps({'profile':'child'}))
-denied=subprocess.run(['swarm','bot','spawn','--input','denied-child.json','--request-id','no-recursion'],capture_output=True,text=True,timeout=10)
+denied=subprocess.run(['swarm','agent','spawn','--input','denied-child.json','--request-id','no-recursion'],capture_output=True,text=True,timeout=10)
 assert denied.returncode!=0 and json.loads(denied.stderr)['code'] in ['CLI_ERROR','NOT_ALLOWED']
 current={'process':process,'cwd':os.getcwd(),'recursionDenied':True}
 ${followup ? `assert json.loads(pathlib.Path('continuity.json').read_text())==current
@@ -40,7 +40,7 @@ def cli(*args):
 def denied(payload,name):
  path=name+'.json'
  pathlib.Path(path).write_text(json.dumps(payload))
- result=subprocess.run(['swarm','bot','spawn','--input',path,'--request-id',name],capture_output=True,text=True,timeout=10)
+ result=subprocess.run(['swarm','agent','spawn','--input',path,'--request-id',name],capture_output=True,text=True,timeout=10)
  assert result.returncode!=0 and json.loads(result.stderr)['code'] in ['SERVICE_INPUT_INVALID','NOT_ALLOWED']
  return True
 checks=[denied({'profile':'parent'},'bad-profile'),denied({'profile':'child','parentId':'forged'},'forged-parent')]
@@ -48,16 +48,16 @@ children=[]
 for role in ['A','B']:
  path='child-'+role+'.json'
  pathlib.Path(path).write_text(json.dumps({'profile':'child','input':'SUBAGENTS_CHILD_'+role,'mode':'followUp'}))
- result=cli('bot','spawn','--input',path,'--request-id','child-'+role)
+ result=cli('agent','spawn','--input',path,'--request-id','child-'+role)
  assert result['initialInput']['status']=='accepted'
- children.append(result['bot'])
+ children.append(result['agent'])
 assert len(set(child['id'] for child in children))==2
 assert all(child['parentId']==children[0]['parentId'] for child in children)
-for operation,target in [('get','foreign-runtime-bot'),('send','foreign-runtime-bot'),('stop',children[0]['parentId'])]:
- args=['swarm','bot',operation,'--bot-id',target,'--request-id','denied-'+operation]
+for operation,target in [('get','foreign-runtime-agent'),('send','foreign-runtime-agent'),('stop',children[0]['parentId'])]:
+ args=['swarm','agent',operation,'--agent-id',target,'--request-id','denied-'+operation]
  if operation=='send':
-  pathlib.Path('foreign-send.json').write_text(json.dumps({'bot_id':target,'input':'forbidden','mode':'followUp'}))
-  args=['swarm','bot','send','--input','foreign-send.json','--request-id','denied-send']
+  pathlib.Path('foreign-send.json').write_text(json.dumps({'agent_id':target,'input':'forbidden','mode':'followUp'}))
+  args=['swarm','agent','send','--input','foreign-send.json','--request-id','denied-send']
  result=subprocess.run(args,capture_output=True,text=True,timeout=10)
  assert result.returncode!=0 and json.loads(result.stderr)['code']=='NOT_ALLOWED'
  checks.append(True)
@@ -138,7 +138,7 @@ export async function createSubagentsUpstream({ onFailure = () => {}, observeSes
         } else if (results.size === 2 && counts.A === 2) {
           await observeSessions('before-followup', native);
           const child = children[0].id;
-          item = tool('followup', `set -euo pipefail\nswarm bot get --bot-id ${child} | python3 -c 'import json,sys; assert json.load(sys.stdin)["status"]=="idle"'\npython3 - <<'SUBAGENTS'\nimport json,pathlib\npathlib.Path('followup.json').write_text(json.dumps({'bot_id':'${child}','input':'SUBAGENTS_FOLLOWUP','mode':'followUp'}))\nSUBAGENTS\nswarm bot send --input followup.json --request-id child-followup`);
+          item = tool('followup', `set -euo pipefail\nswarm agent get --agent-id ${child} | python3 -c 'import json,sys; assert json.load(sys.stdin)["status"]=="idle"'\npython3 - <<'SUBAGENTS'\nimport json,pathlib\npathlib.Path('followup.json').write_text(json.dumps({'agent_id':'${child}','input':'SUBAGENTS_FOLLOWUP','mode':'followUp'}))\nSUBAGENTS\nswarm agent send --input followup.json --request-id child-followup`);
           parentPhase = 'followup-sent';
         } else item = message('Waiting for remaining child results.');
       } else {

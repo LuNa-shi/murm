@@ -31,7 +31,7 @@ export class CoreWorkDir {
   #current?: { receipt: PreparedReceipt; entries: ExpectedFile[] };
   #writable = false;
   #shared = false;
-  #snapshots = new Map<string, { identity: string; receipt: Omit<FileSnapshot, 'botId'> }>();
+  #snapshots = new Map<string, { identity: string; receipt: Omit<FileSnapshot, 'agentId'> }>();
   #snapshotVersion = 0;
   #installer: ProjectInstaller;
   #installs = new Map<string, { identity: string; version: number; digest: string; input: any }>();

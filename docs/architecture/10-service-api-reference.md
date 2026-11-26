@@ -8,7 +8,7 @@ A JSON Schema in a manifest is a declared contract. This implementation validate
 
 | Field | Meaning in this implementation |
 |---|---|
-| `name` / `operation` | Named capability and dispatched handler operation. The Pi tool name is `swarmenv_` followed by the profile's disambiguated `tool_name`. |
+| `name` / `operation` | Named capability and dispatched handler operation. The Pi tool name is `murm_` followed by the profile's disambiguated `tool_name`. |
 | `audience` | Which Session roles may see/call it; currently `bound` and `recovery`. |
 | `context` | Context needed by Bridge; non-catalog registered operations with nonempty context normally require a current Task/Execution, except taking a Task. |
 | `requires_binding` | Additional binding check enforced by Registry and HTTP host, used by Mathlib Search. |
@@ -22,7 +22,7 @@ A JSON Schema in a manifest is a declared contract. This implementation validate
 
 After changing catalogs, capability selection, manifests, schemas or error vocabulary, run `node dist/scripts/generate-architecture-api.js` and review the generated differences. `node dist/scripts/generate-architecture-api.js --check` detects stale generated content without changing it. A successful check detects declaration drift; it does not prove that the explanatory text or runtime behavior is correct.
 
-Internal Services use `MurmError`. The former class/helper exports and the diagnostic error name `SwarmEnvError` remain for consumers of the previous names. Structured error codes are listed below.
+Internal Services use `MurmError`. The former class/helper exports and the diagnostic error name `MurmError` remain for consumers of the previous names. Structured error codes are listed below.
 
 <!-- BEGIN GENERATED REFERENCE -->
 
@@ -32,19 +32,19 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `58dc15ec4ed3cca5ee3e1a2c131b17813f7703e598001748259b5c5064abf5ce` |
-| [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `ccb1dea4ee2e42ecd86169d9ccc2c8b8d151a7184e3b9795802499357302db46` |
+| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `adbeb0d8b2057f13538732c09f30f34c59adb43292471c18d77f1075584a4b1c` |
+| [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `c080a6cec3a3f12ed5f9b0529b46db2d2aea8c217b99b8d29b5a48b1d52249a5` |
 | [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `3759b5509820d4ee1793c802e1e5c99aee0f7095fc6d43244d1ca0a773776dd0` |
 | [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `ee72fba940f1e45926b4f8c04a13c355868e6d15b84df6cade45f2371b4db770` |
 | [src/agent/capability-profile.ts](../../src/agent/capability-profile.ts) | `53a57335eb59af29119a889b12044d94d838c5df9d138cc86e2d0da5bd01f0c5` |
-| [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `a2e6633eb595a54262c3c28818daeb617013b7b4fbe3dd7a45ec5bb5bb37caaa` |
-| [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
-| [src/errors.ts](../../src/errors.ts) | `66df1c83c0886c39bae1c8f63086efbefccdf305e359976e2d7a54c69b669922` |
-| [src/core/index.ts](../../src/core/index.ts) | `75864afead0fa320e7d34a59dceedcc57f10f17a8d7bd8e386ce30dde9ca23ca` |
-| [src/core/types.ts](../../src/core/types.ts) | `01a3ed177ae7a40e8e0bf0aa1f391a2d51606fe1525be8f4da47239fc58ea25a` |
-| [src/core/public-services.ts](../../src/core/public-services.ts) | `3d9b797156e9c13cfeea316025584f4aa379007b80831413df0cb9d588719583` |
-| [src/core/services.ts](../../src/core/services.ts) | `9d4971a9154aedf46cced59e1c8736067acc456373edb86471ece9686840c734` |
-| [src/core/service-types.ts](../../src/core/service-types.ts) | `d841faa0929ccf821f57036e2eb1483ba2d06290b5ac0a3adf4683099282c87a` |
+| [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `28570d9b5cfadc3ceaa8136860bb8df2238ce951a144b996e5b2d9d5f2924111` |
+| [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
+| [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
+| [src/core/index.ts](../../src/core/index.ts) | `24658498abfe7af71dcf97dd5263100283facc11f71bb0040bbd6f71a7ea3254` |
+| [src/core/types.ts](../../src/core/types.ts) | `6be0d8ee5d874eea232c797e6cc32ad0cca9eb1b8f65a1b67fb8d3a1d0d2550e` |
+| [src/core/public-services.ts](../../src/core/public-services.ts) | `f8cea3ce6983ecd15f81ffe7a5c483f476b728a1421b40961e49073d815d7664` |
+| [src/core/services.ts](../../src/core/services.ts) | `fe9840ec2a5d25e05ac7546c2f236ca72c858d5128a1d8f464c26dd8cb5b5e9c` |
+| [src/core/service-types.ts](../../src/core/service-types.ts) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
 | [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | `f8167e4c39facba00538c3ebc97cd7c54ad3164bb138303917896aac72c1539b` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `1dbbc98f826068693373e1bcd9f1372a327dee4dfbd3a586ae72894f881585d2` |
 
@@ -67,7 +67,7 @@ Agents use native Bash to invoke typed swarm commands. Registry declarations bel
 | `context.read_materials` | `context` | `read_materials` |
 | `judge.judge_get_check_result` | `judge` | `get_check_result` |
 | `judge.judge_workspace_check` | `judge` | `workspace_check` |
-| `task.bot_exit` | `task` | `bot_exit` |
+| `task.agent_exit` | `task` | `agent_exit` |
 | `task.mission_get` | `task` | `mission_get` |
 | `task.mission_submission_get` | `task` | `mission_submission_get` |
 | `task.mission_submit` | `task` | `mission_submit` |
@@ -115,19 +115,19 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "7b0c87da8e05f7468364705ec0b8ec7277df9e49141f4d1fefca9711fe54a86c"
+  "manifest_hash": "804b836fdab0271635e356e1094d1d5e8ddc6d6240cee2b9f9c32abd9aa41cac"
 }
 ```
 
 #### catalog.catalog_list_services
 
-List every available SwarmEnv Service and its tool count.
+List every available murm Service and its tool count.
 
 ```json
 {
   "name": "catalog_list_services",
   "operation": "list_services",
-  "description": "List every available SwarmEnv Service and its tool count.",
+  "description": "List every available murm Service and its tool count.",
   "input_schema": {
     "type": "object",
     "properties": {},
@@ -153,9 +153,9 @@ List every available SwarmEnv Service and its tool count.
   "requires_binding": false,
   "scope": "public-read",
   "help": {
-    "when": "List every available SwarmEnv Service and its tool count.",
+    "when": "List every available murm Service and its tool count.",
     "ref": "service://catalog/list_services",
-    "text": "Purpose: Role-scoped Service and capability discovery.\nUse when: List every available SwarmEnv Service and its tool count.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Role-scoped Service and capability discovery.\nUse when: List every available murm Service and its tool count.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/list_services",
@@ -285,19 +285,19 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74"
+  "manifest_hash": "fe83cedd8d96df5f0ff48ab7a4b1e0940bb4200817470b08e87184bbc27ec0c7"
 }
 ```
 
-#### task.bot_exit
+#### task.agent_exit
 
-End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.
+End this unbound Agent after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.
 
 ```json
 {
-  "name": "bot_exit",
-  "operation": "bot_exit",
-  "description": "End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.",
+  "name": "agent_exit",
+  "operation": "agent_exit",
+  "description": "End this unbound Agent after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -334,12 +334,12 @@ End this unbound Bot after finding no useful work or exhausting its selection bu
   "requires_binding": false,
   "scope": "task-write",
   "help": {
-    "when": "End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.",
-    "ref": "service://task/bot_exit",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: End this unbound Bot after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "when": "End this unbound Agent after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.",
+    "ref": "service://task/agent_exit",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: End this unbound Agent after finding no useful work or exhausting its selection budget. Runtime releases the Core after confirmed cleanup.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
-  "path": "/v1/bot_exit",
+  "path": "/v1/agent_exit",
   "errors": []
 }
 ```
@@ -411,13 +411,13 @@ Read Mission counts and bounded Task and eligibility previews; use Task list to 
 
 #### task.task_take
 
-Take an existing Task in this Mission using the caller Bot and Core.
+Take an existing Task in this Mission using the caller Agent and Core.
 
 ```json
 {
   "name": "task_take",
   "operation": "task_take",
-  "description": "Take an existing Task in this Mission using the caller Bot and Core.",
+  "description": "Take an existing Task in this Mission using the caller Agent and Core.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -462,9 +462,9 @@ Take an existing Task in this Mission using the caller Bot and Core.
   "requires_binding": false,
   "scope": "task-write",
   "help": {
-    "when": "Take an existing Task in this Mission using the caller Bot and Core.",
+    "when": "Take an existing Task in this Mission using the caller Agent and Core.",
     "ref": "service://task/task_take",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Take an existing Task in this Mission using the caller Bot and Core.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Take an existing Task in this Mission using the caller Agent and Core.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_take",
@@ -675,13 +675,13 @@ Read a Task contract, gap and priority, dependencies, Executions and Materials. 
 
 #### task.task_revise
 
-An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.
+An UNBOUND Agent may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.
 
 ```json
 {
   "name": "task_revise",
   "operation": "task_revise",
-  "description": "An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.",
+  "description": "An UNBOUND Agent may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -808,9 +808,9 @@ An UNBOUND Bot may revise an open, unowned Task in its Mission, including previo
   "requires_binding": false,
   "scope": "task-write",
   "help": {
-    "when": "An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.",
+    "when": "An UNBOUND Agent may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.",
     "ref": "service://task/task_revise",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: An UNBOUND Agent may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_revise",
@@ -979,13 +979,13 @@ Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup close
 
 #### task.task_cancel
 
-An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.
+An UNBOUND Agent may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.
 
 ```json
 {
   "name": "task_cancel",
   "operation": "task_cancel",
-  "description": "An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.",
+  "description": "An UNBOUND Agent may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -1038,9 +1038,9 @@ An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed ve
   "requires_binding": false,
   "scope": "mission-write",
   "help": {
-    "when": "An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.",
+    "when": "An UNBOUND Agent may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.",
     "ref": "service://task/task_cancel",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: An UNBOUND Agent may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_cancel",
@@ -2709,7 +2709,7 @@ Exact repository bundle declaration. Loading the bundle additionally binds its d
     "references": ["references/loogle.md"]
   },
   "secret_refs": {
-    "token": "env:SWARMENV_MATHLIB_SEARCH_TOKEN"
+    "token": "env:MURM_MATHLIB_SEARCH_TOKEN"
   },
   "metadata": {
     "backend": "loogle-compatible"
@@ -2775,7 +2775,7 @@ This section records catalog declarations used by trusted service composition bu
   "service": "task",
   "operation": "task_create",
   "version": "1.0",
-  "description": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Bot proposals require explicit Environment registration and current Mission authority. Optional base_revision pins input; otherwise take uses main.",
+  "description": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Agent proposals require explicit Environment registration and current Mission authority. Optional base_revision pins input; otherwise take uses main.",
   "scope": "task-write",
   "side_effect": true,
   "parameters": {
@@ -3051,7 +3051,7 @@ This section records catalog declarations used by trusted service composition bu
   "PROCESS_EXITED": "PROCESS_EXITED",
   "RPC_ERROR": "RPC_ERROR",
   "START_FAILED": "START_FAILED",
-  "BOT_STARTUP_CONTRACT": "BOT_STARTUP_CONTRACT",
+  "AGENT_STARTUP_CONTRACT": "AGENT_STARTUP_CONTRACT",
   "WORKSPACE_BUSY": "WORKSPACE_BUSY",
   "WORKSPACE_RECONCILIATION_REQUIRED": "WORKSPACE_RECONCILIATION_REQUIRED",
   "WORKSPACE_REQUEST_ABORTED": "WORKSPACE_REQUEST_ABORTED",
@@ -3121,7 +3121,7 @@ export interface Profile {
 }
 export interface ModelCaller {
     readonly runtimeId: string;
-    readonly botId: string;
+    readonly agentId: string;
     readonly profile: string;
     readonly model: string;
 }
@@ -3142,7 +3142,7 @@ export interface CreateRuntimeOptions {
     backend: Backend;
     profiles: Readonly<Record<string, Profile>>;
     services: ServiceRegistry;
-    maxBots: number;
+    maxAgents: number;
     outputDir: string;
     modelAccessPolicy?: ModelAccessPolicy;
 }
@@ -3160,26 +3160,26 @@ export interface CollectionSpec {
     required: boolean;
 }
 export interface PreparedFiles {
-    readonly botId: string;
+    readonly agentId: string;
     readonly version: number;
     readonly digest: string;
 }
 export interface FileSnapshot {
-    readonly botId: string;
+    readonly agentId: string;
     readonly requestId: string;
     readonly version: number;
     readonly digest: string;
     readonly files: FileSeed;
 }
 export interface FileInstall {
-    readonly botId: string;
+    readonly agentId: string;
     readonly requestId: string;
     readonly version: number;
     readonly digest: string;
     readonly phase: 'installed' | 'committed';
 }
 export interface GrantReceipt {
-    readonly botId: string;
+    readonly agentId: string;
     readonly version: number;
     readonly writable: true;
 }
@@ -3211,7 +3211,7 @@ export interface ResourceError extends Error {
     code: string;
     operation: string;
     runtimeId?: string;
-    botId?: string;
+    agentId?: string;
     requestId?: string;
     cleanup: 'complete' | 'pending';
     reportPath?: string;
@@ -3264,13 +3264,13 @@ export type AgentInitialInputResult = InputReceipt | {
     status: 'rejected';
     error: ErrorInfo;
 } | null;
-/** Built-in bot.spawn Service result, distinct from host Runtime.spawn. */
+/** Built-in agent.spawn Service result, distinct from host Runtime.spawn. */
 export interface AgentSpawnReceipt {
-    bot: AgentInfo;
+    agent: AgentInfo;
     initialInput: AgentInitialInputResult;
 }
 export type AgentEvent = {
-    botId: string;
+    agentId: string;
     seq: number;
 } & ({
     type: 'output';
@@ -3290,7 +3290,7 @@ export type AgentEvent = {
     expected: boolean;
 });
 export interface PendingCleanup {
-    kind: 'bot' | 'bridge' | 'model' | 'backend' | 'report';
+    kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report';
     id: string;
     action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
     error?: ErrorInfo;
@@ -3300,7 +3300,7 @@ export interface PendingCleanup {
     executionStopped?: boolean;
 }
 export interface StopReceipt {
-    botId: string;
+    agentId: string;
     execution: 'stopped' | 'unknown';
     cleanup: 'complete' | 'pending';
     artifacts: readonly string[];
@@ -3309,7 +3309,7 @@ export interface StopReceipt {
     pending?: PendingCleanup;
 }
 export interface CloseReceipt {
-    bots: readonly StopReceipt[];
+    agents: readonly StopReceipt[];
     cleanup: 'complete' | 'pending';
     errors: readonly ErrorInfo[];
     pending: readonly PendingCleanup[];
@@ -3325,46 +3325,46 @@ export interface CloseReceipt {
 export interface Runtime {
     readonly id: string;
     spawn(options: SpawnOptions): Promise<AgentInfo>;
-    get(botId: string): Promise<AgentInfo>;
+    get(agentId: string): Promise<AgentInfo>;
     list(filter?: AgentListFilter): Promise<AgentInfo[]>;
-    start(botId: string, input: string, options: {
+    start(agentId: string, input: string, options: {
         requestId: string;
     }): Promise<InputReceipt>;
-    steer(botId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
-    interrupt(botId: string, options: {
+    steer(agentId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
+    interrupt(agentId: string, options: {
         requestId: string;
         timeoutMs?: number;
     }): Promise<InterruptReceipt>;
-    send(botId: string, input: string, options: SendOptions & {
+    send(agentId: string, input: string, options: SendOptions & {
         wakeIfIdle?: true;
     }): Promise<InputReceipt>;
-    send(botId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
+    send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
     onEvent(handler: (event: AgentEvent) => void): () => void;
-    stop(botId: string, options?: {
+    stop(agentId: string, options?: {
         timeoutMs?: number;
     }): Promise<StopReceipt>;
     close(options?: {
         timeoutMs?: number;
     }): Promise<CloseReceipt>;
     readonly files: {
-        snapshot(botId: string, options: {
+        snapshot(agentId: string, options: {
             requestId: string;
             paths: readonly string[];
             includeGit?: boolean;
             maxBytes?: number;
         }): Promise<FileSnapshot>;
-        installStatus(botId: string, options: {
+        installStatus(agentId: string, options: {
             requestId: string;
         }): Promise<FileInstall | null>;
-        install(botId: string, options: {
+        install(agentId: string, options: {
             requestId: string;
             expected: FileSnapshot;
             files: FileSeed;
         }): Promise<FileInstall>;
-        confirm(botId: string, options: {
+        confirm(agentId: string, options: {
             requestId: string;
         }): Promise<FileInstall>;
-        prepare(botId: string, options: {
+        prepare(agentId: string, options: {
             requestId: string;
             files: FileSeed;
         }): Promise<PreparedFiles>;
@@ -3374,13 +3374,12 @@ export interface Runtime {
         }): Promise<GrantReceipt>;
     };
 }
-export type { AgentStatus as BotStatus, AgentListFilter as BotListFilter, AgentInfo as BotInfo, AgentInitialInputResult as BotInitialInputResult, AgentSpawnReceipt as BotSpawnReceipt, AgentEvent as BotEvent, };
 ```
 
 #### dist/src/core/public-services.d.ts
 
 ```ts
-export { ServiceRegistry, builtinBotRegistration, createHttpJsonAdapter, createInProcessAdapter, getAdapterMetadata, invokeService, isJson, snapshotServiceRegistry, } from './services.js';
+export { ServiceRegistry, builtinAgentRegistration, createHttpJsonAdapter, createInProcessAdapter, getAdapterMetadata, invokeService, isJson, snapshotServiceRegistry, } from './services.js';
 export type { AdapterMetadata, ServiceInvocation, ServiceInvocationRecord, ServiceRegistration } from './services.js';
 export type * from './service-types.js';
 ```
@@ -3411,7 +3410,7 @@ export interface ServiceInvocation {
 }
 export interface ServiceInvocationRecord {
     runtimeId: string;
-    botId: string;
+    agentId: string;
     profile: string;
     serviceId: string;
     operation: string;
@@ -3432,11 +3431,11 @@ export declare class ServiceRegistry {
     constructor();
     registerService(registration: ServiceRegistration): void;
 }
-export declare function builtinBotRegistration(manifest: ServiceManifest, adapter: ServiceAdapter): Readonly<ServiceRegistration>;
+export declare function builtinAgentRegistration(manifest: ServiceManifest, adapter: ServiceAdapter): Readonly<ServiceRegistration>;
 export declare function createInProcessAdapter(implementation: ServiceAdapter): ServiceAdapter;
 export declare function snapshotServiceRegistry(services: ServiceRegistry): Map<string, Readonly<ServiceRegistration>>;
 export declare function invokeService(registration: ServiceRegistration, { operation, input, envelope, caller, signal, recordService, assertAuthorized }: ServiceInvocation, timeoutMs?: number): Promise<JsonValue>;
-/** Host-configured HTTP adapter. Its credential never enters Bot environments. */
+/** Host-configured HTTP adapter. Its credential never enters Agent environments. */
 export declare function createHttpJsonAdapter({ token, timeoutMs, fetchImpl }?: {
     token?: string;
     timeoutMs?: number;
@@ -3488,7 +3487,7 @@ export interface ServiceCapability {
 }
 export interface ServiceCaller {
     runtimeId: string;
-    botId: string;
+    agentId: string;
     profile: string;
     binding?: string;
 }

@@ -192,7 +192,7 @@ export function createSubagentsController(
   }
 
   const unsubscribe = runtime.onEvent(event => {
-    const member = byId.get(event.botId);
+    const member = byId.get(event.agentId);
     if (!member) return;
     if (event.type === 'settled' || event.type === 'exit') member.executionRevision++;
     if (event.type === 'settled') {
@@ -289,7 +289,7 @@ export function createSubagentsController(
     },
     list: () => runtime.list(),
     async invoke(request: ServiceRequest): Promise<JsonValue> {
-      const caller = request.caller.runtimeId === runtime.id && byId.get(request.caller.botId);
+      const caller = request.caller.runtimeId === runtime.id && byId.get(request.caller.agentId);
       if (!caller) fail('NOT_ALLOWED', 'Caller does not belong to this team');
       request.assertAuthorized();
       const call = request.input as Record<string, JsonValue>;
@@ -297,11 +297,11 @@ export function createSubagentsController(
       if (operation === 'list_agents') {
         const prefix = call.path_prefix === undefined ? '/root' : canonical(caller, call.path_prefix);
         const visible = await runtime.list();
-        return visible.flatMap(bot => {
-          const member = byId.get(bot.id);
-          return member && ['starting', 'idle', 'running'].includes(bot.status) &&
+        return visible.flatMap(agent => {
+          const member = byId.get(agent.id);
+          return member && ['starting', 'idle', 'running'].includes(agent.status) &&
             (member.path === prefix || member.path.startsWith(prefix + '/'))
-            ? [{ path: member.path, botId: bot.id, status: bot.status, lastOutcome: member.lastOutcome ?? null }] : [];
+            ? [{ path: member.path, agentId: agent.id, status: agent.status, lastOutcome: member.lastOutcome ?? null }] : [];
         });
       }
       const key = JSON.stringify([caller.id, request.envelope.operation_id]);
@@ -327,17 +327,17 @@ export function createSubagentsController(
           const child = entry.destination;
           try {
             if (!child.id) {
-              const bot = await runtime.spawn({ profile: 'child', requestId: entry.id, parentId: caller.id,
+              const agent = await runtime.spawn({ profile: 'child', requestId: entry.id, parentId: caller.id,
                 ...(call.fork_turns === 'none' ? {} : { forkFrom: caller.id }), workspace: childWorkspace });
-              child.id = bot.id;
-              byId.set(bot.id, child);
+              child.id = agent.id;
+              byId.set(agent.id, child);
             }
           } catch (error) {
             if ((error as { code?: string }).code !== 'OPERATION_UNKNOWN') byPath.delete(path);
             throw error;
           }
           const receipt = await submit(child, entry, inputText(call.message), caller.path, entry.id + ':initial', request.assertAuthorized);
-          return { task_name: child.path, botId: child.id, ...receipt };
+          return { task_name: child.path, agentId: child.id, ...receipt };
         }
         const recipient = target(caller, call.target);
         if (operation === 'followup_task') {
@@ -398,7 +398,7 @@ export function createSubagentsController(
       return {
         accepting,
         members: [...byPath.values()].map(member => ({
-          path: member.path, botId: member.id ?? null, parent: member.parent?.path ?? null,
+          path: member.path, agentId: member.id ?? null, parent: member.parent?.path ?? null,
           lastOutcome: member.lastOutcome ?? null, waiting: Boolean(member.wait),
           nativeQueuedAdmissions: member.submitted.size,
           pending: member.inbox.map(({ id, state }) => ({ id, state })),

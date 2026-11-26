@@ -36,7 +36,7 @@ async function stoppedCli(t, failure, cwd, { blockReport = false, businessFailur
   lines.on('line', line => {
     const record = JSON.parse(line); records.push(record);
     if (record.type === 'ready') {
-      if (blockReport) mkdirSync(join(record.status.runDirectory, 'environment-report.json'));
+      if (blockReport) mkdirSync(join(record.status.runDirectory, 'harness-report.json'));
       if (!businessFailure) child.stdin.end(`${JSON.stringify({ id: 'stop-original-run', operation: 'stop' })}\n`);
     }
   });
@@ -61,12 +61,12 @@ async function assertReceiptParity(t, { failure, execution, action, failureCode 
   assert.deepEqual(records.find(record => record.id === 'stop-original-run'), { type: 'reply', id: 'stop-original-run', result: { status: 'stopping' } });
   assert.equal(result.runtimeId, ready.runtimeId);
   assert.equal(ready.runDirectory, join(outputDir, result.runtimeId));
-  assert.equal(result.reportPath, join(ready.runDirectory, 'environment-report.json'));
-  assert.equal(result.bots.length, 2);
-  assert.deepEqual(result.bots.map(bot => bot.botId).sort(), ready.peers.map(peer => peer.botId).sort());
-  assert.ok(result.bots.every(bot => bot.execution === execution && bot.cleanup === 'pending'));
-  assert.deepEqual(result.pending.filter(item => item.kind === 'bot').sort((a, b) => a.id.localeCompare(b.id)),
-    result.bots.map(bot => ({ kind: 'bot', id: bot.botId, action, errorCode: failureCode })).sort((a, b) => a.id.localeCompare(b.id)));
+  assert.equal(result.reportPath, join(ready.runDirectory, 'harness-report.json'));
+  assert.equal(result.agents.length, 2);
+  assert.deepEqual(result.agents.map(agent => agent.agentId).sort(), ready.peers.map(peer => peer.agentId).sort());
+  assert.ok(result.agents.every(agent => agent.execution === execution && agent.cleanup === 'pending'));
+  assert.deepEqual(result.pending.filter(item => item.kind === 'agent').sort((a, b) => a.id.localeCompare(b.id)),
+    result.agents.map(agent => ({ kind: 'agent', id: agent.agentId, action, errorCode: failureCode })).sort((a, b) => a.id.localeCompare(b.id)));
 
   const saved = JSON.parse(await readFile(result.reportPath, 'utf8'));
   const core = JSON.parse(await readFile(join(ready.runDirectory, 'runtime.json'), 'utf8'));
@@ -74,8 +74,8 @@ async function assertReceiptParity(t, { failure, execution, action, failureCode 
   assert.equal(core.runtimeId, result.runtimeId);
   for (const receipt of [saved.cleanup, core]) {
     assert.equal(receipt.cleanup, 'pending');
-    assert.ok(receipt.bots.every(bot => bot.errors.some(error => error.code === failureCode)));
-    assert.deepEqual(receipt.bots.map(({ botId, execution, cleanup }) => ({ botId, execution, cleanup })), result.bots);
+    assert.ok(receipt.agents.every(agent => agent.errors.some(error => error.code === failureCode)));
+    assert.deepEqual(receipt.agents.map(({ agentId, execution, cleanup }) => ({ agentId, execution, cleanup })), result.agents);
     assert.equal(receipt.pending.length, result.pendingCount);
     for (const { errorCode, ...pending } of result.pending) {
       assert.ok(receipt.pending.some(item => item.error?.code === errorCode && Object.entries(pending).every(([key, value]) => item[key] === value)));
@@ -85,15 +85,15 @@ async function assertReceiptParity(t, { failure, execution, action, failureCode 
   assert.equal(saved.cleanupFailure.code, result.cleanupFailureCode);
   const input = { runDirectory: ready.runDirectory, runtimeId: result.runtimeId };
   const inspected = await readHarnessResult(input);
-  for (const receipt of [inspected.environment, inspected.core]) {
+  for (const receipt of [inspected.harness, inspected.core]) {
     assert.equal(receipt.state, 'read');
     assert.equal(receipt.cleanup, 'pending');
-    assert.deepEqual(receipt.bots, result.bots);
+    assert.deepEqual(receipt.agents, result.agents);
     assert.equal(receipt.pendingCount, result.pendingCount);
     assert.deepEqual(receipt.pending, result.pending);
   }
-  assert.equal(inspected.environment.business, 'returned');
-  assert.equal(inspected.environment.acceptance, 'not-interpreted');
+  assert.equal(inspected.harness.business, 'returned');
+  assert.equal(inspected.harness.acceptance, 'not-interpreted');
   assert.equal(inspected.core.recordedStatus, 'closing');
   const { stdout } = await execute(process.execPath, ['dist/scripts/read-harness-result.js', '--run-directory', input.runDirectory, '--runtime-id', input.runtimeId], { cwd });
   assert.deepEqual(JSON.parse(stdout), inspected);
@@ -115,7 +115,7 @@ test('foreground report persistence failure stays separate from business and cle
     { failure: '', businessFailure: true, execution: 'stopped', cleanup: 'complete' },
     { failure: 'stop-execution', businessFailure: true, execution: 'unknown', cleanup: 'pending' },
   ]) {
-    const expectedBusiness = scenario.businessFailure ? 'AGENSH_TEAM_FENCED' : null;
+    const expectedBusiness = scenario.businessFailure ? 'PEERMESH_TEAM_FENCED' : null;
     const expectedCleanup = scenario.cleanup === 'pending' ? 'CLEANUP_PENDING' : null;
     // The same public path first succeeds in saving, then meets a real rename
     // obstruction created only after ready. Core runtime.json remains writable.
@@ -130,23 +130,23 @@ test('foreground report persistence failure stays separate from business and cle
       assert.equal(result.reportSaveFailureCode, blockReport ? 'REPORT_SAVE_FAILED' : null);
       assert.equal(exit, blockReport || expectedBusiness || expectedCleanup ? 1 : 0);
       assert.equal(result.cleanup, scenario.cleanup);
-      assert.equal(result.bots.length, 2);
+      assert.equal(result.agents.length, 2);
       const core = JSON.parse(await readFile(join(ready.runDirectory, 'runtime.json'), 'utf8'));
       assert.equal(core.runtimeId, result.runtimeId);
-      assert.deepEqual(core.bots.map(({ botId, execution, cleanup }) => ({ botId, execution, cleanup })), result.bots);
-      assert.ok(result.bots.every(bot => bot.execution === scenario.execution && bot.cleanup === scenario.cleanup));
+      assert.deepEqual(core.agents.map(({ agentId, execution, cleanup }) => ({ agentId, execution, cleanup })), result.agents);
+      assert.ok(result.agents.every(agent => agent.execution === scenario.execution && agent.cleanup === scenario.cleanup));
       assert.equal(result.pendingCount, core.pending.length);
       if (blockReport) {
         assert.equal(result.reportPath, null);
-        await assert.rejects(readFile(join(ready.runDirectory, 'environment-report.json')), { code: 'EISDIR' });
+        await assert.rejects(readFile(join(ready.runDirectory, 'harness-report.json')), { code: 'EISDIR' });
         const inspected = await readHarnessResult({ runDirectory: ready.runDirectory, runtimeId: ready.runtimeId });
-        assert.equal(inspected.environment.state, 'unreadable');
+        assert.equal(inspected.harness.state, 'unreadable');
         assert.equal(inspected.core.state, 'read');
-        assert.equal(inspected.environment.business, 'unknown');
+        assert.equal(inspected.harness.business, 'unknown');
         assert.equal(inspected.core.cleanup, scenario.cleanup);
-        assert.ok(!(await readdir(ready.runDirectory)).some(name => name.startsWith('.environment-report-')));
+        assert.ok(!(await readdir(ready.runDirectory)).some(name => name.startsWith('.harness-report-')));
       } else {
-        assert.equal(result.reportPath, join(outputDir, ready.runtimeId, 'environment-report.json'));
+        assert.equal(result.reportPath, join(outputDir, ready.runtimeId, 'harness-report.json'));
         const saved = JSON.parse(await readFile(result.reportPath, 'utf8'));
         assert.equal(saved.businessFailure?.code ?? null, expectedBusiness);
         assert.equal(saved.cleanupFailure?.code ?? null, expectedCleanup);

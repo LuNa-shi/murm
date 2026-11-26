@@ -12,7 +12,7 @@ import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
 test('ObservabilityServer exposes the selected Execution Workspace files and revisions', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-observability-workspace-'));
+  const root = await mkdtemp(join(tmpdir(), 'murm-observability-workspace-'));
   const database = new DatabaseSync(join(root, 'state.sqlite'));
   const taskService = new TaskService(database);
   const mission = taskService.createMission({

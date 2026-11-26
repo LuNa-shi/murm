@@ -18,19 +18,11 @@ The installable candidate provides `@murm/core`, `@murm/core/services` and `@mur
 | Substrate | A fixed pool publishes, searches and cites durable contributions. [Substrate example](examples/substrate/README.md) |
 | Lead-Worker | Helpers claim Board work and deliver through Git under a lead's shared direction. [Lead-Worker example](examples/lead-worker/README.md) |
 
-## Upgrade from SwarmEnv
+## Upgrade to murm
 
-Install the `murm-core-0.2.0.tgz` candidate and update imports from `@swarmenv/core` to `@murm/core`, including the `/services` and `/backends/pi-opensandbox` subpaths. Update source and installed example paths using the table below. The package API exports `AgentInfo`, `AgentStatus` and `AgentEvent` alongside the previous type names.
+Install the `murm-core-0.2.0.tgz` archive and use `@murm/core`, `@murm/core/services` and `@murm/core/backends/pi-opensandbox`. Update Harness paths using the table above. Host scripts use `run-harness.js` and `read-harness-result.js`. The foreground host accepts `taskpool` and `peermesh`, and the Agent-side Service CLI is `swarm`.
 
-| Previous Harness | Current name | Source |
-|---|---|---|
-| `subagents` | Subagents | [examples/subagents](examples/subagents) |
-| `flat` | TaskPool | [src/harnesses/taskpool](src/harnesses/taskpool) |
-| `agensh` | PeerMesh | [src/harnesses/peermesh](src/harnesses/peermesh) |
-| `scaleMAS` | Substrate | [src/harnesses/substrate](src/harnesses/substrate) |
-| `lead-helper` | Lead-Worker | [src/harnesses/lead-worker](src/harnesses/lead-worker) |
-
-Use `dist/scripts/run-harness.js` to start a foreground Harness and `dist/scripts/read-harness-result.js` to inspect a saved Run. The previous command paths and `flat` / `agensh` mode values remain accepted. The Agent-side Service CLI remains `swarm`. Existing `SWARMENV_*` settings, Worker image contracts and saved Run formats still apply. [Command and record details](docs/architecture/17-harness-reporting.md#foreground-harness-control)
+Use the `MURM_*` settings in the example configuration and rebuild the Worker image from this revision. Start a new Run directory for new Harness and Runtime records. The package entry points, Agent identifiers, Service operation names, and Worker and record contracts use the current vocabulary. The GitHub repository retains its current URL. [Command and record details](docs/architecture/17-harness-reporting.md#foreground-harness-control)
 
 ## Start here
 
@@ -39,7 +31,7 @@ Use `dist/scripts/run-harness.js` to start a foreground Harness and `dist/script
 | Research purpose and open questions | [PROJECT.md](docs/PROJECT.md) |
 | Coding Agent instructions and permissions | [AGENTS.md](AGENTS.md) |
 | Current documentation map | [docs/INDEX.md](docs/INDEX.md) |
-| Current Core / Harness stage requirements | [Phase 0005 authoritative design](docs/phases/0005-core-environment/README.md) — full Core, Harness and delivery plan |
+| Current Core / Harness stage requirements | [Phase 0005 authoritative design](docs/phases/0005-core-harness/README.md) — full Core, Harness and delivery plan |
 | Human-reviewed development task | Derived GitHub Issue for Phase 0005; approved Issue contract for other stages |
 | Implementation decisions and handoff for an Issue | The originating **GitHub Issue / PR** |
 | Complete proposed stage design and review order | [docs/phases/INDEX.md](docs/phases/INDEX.md), linked to its design Issue and PR |
@@ -47,7 +39,7 @@ Use `dist/scripts/run-harness.js` to start a foreground Harness and `dist/script
 | Development and experiment workflows | [Development](docs/workflows/development.md) · [Experiments](docs/workflows/experiment.md) |
 | Domain vocabulary | [GLOSSARY.md](GLOSSARY.md) |
 
-For the Core / Harness stage, the [Phase 0005 design on main](docs/phases/0005-core-environment/README.md) is the sole source of target requirements, scope and acceptance. Its Issues cite the design revision and track implementation, dependencies and evidence; requirements change through the design PR first. Notion pages are migration sources. The design is not a claim that the new APIs are implemented. Other stages retain the human-approved Issue as their requirements contract. Resource and publication authorization stays explicit. Each implementation PR updates the affected Architecture, and stage closeout reconciles the manual, final code and evidence.
+For the Core / Harness stage, the [Phase 0005 design on main](docs/phases/0005-core-harness/README.md) is the sole source of target requirements, scope and acceptance. Its Issues cite the design revision and track implementation, dependencies and evidence; requirements change through the design PR first. Notion pages are migration sources. The design is not a claim that the new APIs are implemented. Other stages retain the human-approved Issue as their requirements contract. Resource and publication authorization stays explicit. Each implementation PR updates the affected Architecture, and stage closeout reconciles the manual, final code and evidence.
 
 ## Implementation map
 

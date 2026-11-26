@@ -8,8 +8,8 @@ function fixtureEvents() {
     { sequence: 2, source: 'runtime', kind: 'core_state_changed', core_id: 'core-1', task_id: 'task-root', execution_id: 'exec-root', occurred_at: '2026-10-20T00:00:01.000Z', payload: { state: 'RUNNING' } },
     { sequence: 3, source: 'task-service', kind: 'dispatch.complete', task_id: 'task-root', execution_id: 'exec-root', occurred_at: '2026-10-20T00:00:02.000Z', payload: { result: { task: { task_id: 'task-root', goal: 'Coordinate fixture', state: 'SUCCEEDED' }, execution: { execution_id: 'exec-root', task_id: 'task-root', state: 'SUCCEEDED' } } } },
     { sequence: 4, source: 'task-service', kind: 'dispatch.complete', task_id: 'task-wait', execution_id: 'exec-wait', occurred_at: '2026-10-20T00:00:03.000Z', payload: { result: { task: { task_id: 'task-wait', goal: 'Wait for dependency', state: 'BLOCKED' }, execution: { execution_id: 'exec-wait', task_id: 'task-wait', state: 'CLOSING', wait_condition: { type: 'dependency' } } } } },
-    { sequence: 5, source: 'agent', kind: 'rpc_record', core_id: 'core-1', task_id: 'task-root', execution_id: 'exec-root', occurred_at: '2026-10-20T00:00:04.000Z', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'swarmenv_task_list', args: { available_only: true } } } },
-    { sequence: 6, source: 'agent', kind: 'rpc_record', core_id: 'core-1', task_id: 'task-root', execution_id: 'exec-root', occurred_at: '2026-10-20T00:00:05.000Z', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-1', toolName: 'swarmenv_task_list', result: { tasks: [] }, isError: false } } },
+    { sequence: 5, source: 'agent', kind: 'rpc_record', core_id: 'core-1', task_id: 'task-root', execution_id: 'exec-root', occurred_at: '2026-10-20T00:00:04.000Z', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'murm_task_list', args: { available_only: true } } } },
+    { sequence: 6, source: 'agent', kind: 'rpc_record', core_id: 'core-1', task_id: 'task-root', execution_id: 'exec-root', occurred_at: '2026-10-20T00:00:05.000Z', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-1', toolName: 'murm_task_list', result: { tasks: [] }, isError: false } } },
     { sequence: 7, source: 'judge', kind: 'judge_check_finished', core_id: 'core-1', task_id: 'task-root', execution_id: 'exec-root', occurred_at: '2026-10-20T00:00:06.000Z', payload: { verdict: 'PASS' } },
   ];
 }
@@ -26,6 +26,6 @@ test('observation projection derives durable queues, tools, and Core traces from
   const traces = coreTraceData(events, timeline, model);
   assert.equal(traces.length, 1);
   assert.equal(traces[0].executions[0].execution_id, 'exec-root');
-  assert.equal(traces[0].tools[0].tool_name, 'swarmenv_task_list');
+  assert.equal(traces[0].tools[0].tool_name, 'murm_task_list');
   assert.equal(traces[0].checks[0].label, 'Judge check');
 });

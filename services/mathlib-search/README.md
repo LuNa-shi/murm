@@ -16,13 +16,13 @@ service volume.
 Example:
 
 ```sh
-docker build -f services/mathlib-search/Dockerfile -t swarmenv-mathlib-search .
+docker build -f services/mathlib-search/Dockerfile -t murm-mathlib-search .
 docker run --rm -p 8787:8787 \
   -e MATHLIB_SEARCH_UPSTREAM_URL=http://loogle:8080 \
   -e MATHLIB_SEARCH_PUBLIC_URL=http://mathlib-search:8787 \
   -e MATHLIB_REVISION=<locked-mathlib-revision> \
   -e LEAN_VERSION=<locked-lean-toolchain> \
-  swarmenv-mathlib-search
+  murm-mathlib-search
 ```
 
 The murm process registers the provider with a manifest and an

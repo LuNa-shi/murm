@@ -7,7 +7,7 @@ Two independent Pi Agents hand off one supplied source fact through a custom Not
 This example requires Node.js 22.19 or newer, a running local Docker OpenSandbox provider with the Core project limits enabled, and a compatible worker image containing Pi 1.3.0. Use an absolute path to the checkout of the tested implementation to build the tarball. The rest of the example runs in an independent directory from that tarball.
 
 ```sh
-repo=/absolute/path/to/SwarmEnv
+repo=/absolute/path/to/murm
 example_dir=$(mktemp -d)
 npm pack "$repo" --pack-destination "$example_dir"
 cd "$example_dir"
@@ -21,7 +21,7 @@ tar -xOf murm-core-0.2.0.tgz package/dist/src/harnesses/shared/run-report.js > r
 tar -xOf murm-core-0.2.0.tgz package/dist/src/harnesses/shared/read-result.js > read-result.js
 ```
 
-Set `SWARMENV_NOTES_IMAGE` to your compatible worker image ID and `SWARMENV_NOTES_MODEL_URL` to the Kimi K3 Responses endpoint, including the exact `/v1/responses` path. Set `SWARMENV_NOTES_MODEL_TOKEN` if the endpoint requires a bearer token. Configure `SWARMENV_NOTES_ADVERTISE_HOST` to the host's guest-reachable IPv4 address if it differs from `172.17.0.1`. The sample `config.js` also reads optional lifecycle host, endpoint host and token variables. Model and lifecycle secrets stay on the host.
+Set `MURM_NOTES_IMAGE` to your compatible worker image ID and `MURM_NOTES_MODEL_URL` to the Kimi K3 Responses endpoint, including the exact `/v1/responses` path. Set `MURM_NOTES_MODEL_TOKEN` if the endpoint requires a bearer token. Configure `MURM_NOTES_ADVERTISE_HOST` to the host's guest-reachable IPv4 address if it differs from `172.17.0.1`. The sample `config.js` also reads optional lifecycle host, endpoint host and token variables. Model and lifecycle secrets stay on the host.
 
 ```sh
 node main.js --help
@@ -40,10 +40,10 @@ run_dir=$(node -e 'const fs=require("node:fs"),path=require("node:path"); consol
 node main.js --result "$run_dir" --runtime-id "$runtime_id"
 ```
 
-Result inspection reads `environment-report.json` and `runtime.json`, checks both recorded identities, and projects business failure, recorded Core status, per-Agent execution/cleanup, pending count and artifact availability. It reports the Harness result's location without printing its content or interpreting business acceptance. Open the indicated Harness report's `result.verifiedFiles` and reader archive to inspect the actual checked deliverables. A pending receipt remains pending even if another recorded receipt later reports complete. This command reads saved files and does not contact or control a running Runtime.
+Result inspection reads `harness-report.json` and `runtime.json`, checks both recorded identities, and projects business failure, recorded Core status, per-Agent execution/cleanup, pending count and artifact availability. It reports the Harness result's location without printing its content or interpreting business acceptance. Open the indicated Harness report's `result.verifiedFiles` and reader archive to inspect the actual checked deliverables. A pending receipt remains pending even if another recorded receipt later reports complete. This command reads saved files and does not contact or control a running Runtime.
 
 The running command exits 0 when its business function returned and cleanup and report save succeeded, and exits 1 when any of those failed. Result inspection exits 0 when both correctly identified reports were readable, including a recorded business failure, and exits 1 for missing, invalid, unreadable or foreign records. Invalid command arguments exit 2. Configuration import and startup failures emit a safe error code on stderr and exit 1. Run inspection with only its arguments; it does not load `config.js` or require provider credentials.
 
-With the default configuration, each fresh Runtime writes its own directory under `notes-runs`. Read `environment-report.json` for the business result, input receipts, Notes state, cleanup and any save failure. Core writes `runtime.json`, the ordered evidence file and, on successful collection, the reader's artifacts and manifest. A required collection failure can leave a sandbox and Slot pending. Inspect the reported Agent/provider identity and original error. Handle pending ownership in the same host process if embedding the example. The one-shot CLI has no cross-process recovery command.
+With the default configuration, each fresh Runtime writes its own directory under `notes-runs`. Read `harness-report.json` for the business result, input receipts, Notes state, cleanup and any save failure. Core writes `runtime.json`, the ordered evidence file and, on successful collection, the reader's artifacts and manifest. A required collection failure can leave a sandbox and Slot pending. Inspect the reported Agent/provider identity and original error. Handle pending ownership in the same host process if embedding the example. The one-shot CLI has no cross-process recovery command.
 
 To use a different source observation, set `fact` in `config.js` to an object with `baseline`, `source` and `finding`. Edit `createNotes` and its manifest to change the business Service and adjust Profile grants as needed. The example has no Mission, Task or Execution records. It demonstrates explicit Service handoff and continuity for one reader. Model quality and automated source review are outside its scope.

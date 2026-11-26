@@ -4,21 +4,21 @@ function required(name: any) {
   return value;
 }
 
-const host = process.env.SWARMENV_NOTES_ADVERTISE_HOST ?? '172.17.0.1';
-const upstream = required('SWARMENV_NOTES_MODEL_URL');
-const token = process.env.SWARMENV_NOTES_MODEL_TOKEN;
+const host = process.env.MURM_NOTES_ADVERTISE_HOST ?? '172.17.0.1';
+const upstream = required('MURM_NOTES_MODEL_URL');
+const token = process.env.MURM_NOTES_MODEL_TOKEN;
 
 export default {
   model: 'default',
-  image: required('SWARMENV_NOTES_IMAGE'),
+  image: required('MURM_NOTES_IMAGE'),
   outputDir: './notes-runs',
   turnTimeoutMs: 30_000,
   closeTimeoutMs: 30_000,
   backend: {
     sandbox: {
-      lifecycleBaseUrl: process.env.SWARMENV_NOTES_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.SWARMENV_NOTES_ENDPOINT_HOST ?? '127.0.0.1',
-      apiKey: process.env.SWARMENV_NOTES_LIFECYCLE_TOKEN,
+      lifecycleBaseUrl: process.env.MURM_NOTES_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+      endpointHost: process.env.MURM_NOTES_ENDPOINT_HOST ?? '127.0.0.1',
+      apiKey: process.env.MURM_NOTES_LIFECYCLE_TOKEN,
       resourceLimits: { cpu: '1', memory: '1Gi' },
       commandTimeoutMs: 20_000,
     },

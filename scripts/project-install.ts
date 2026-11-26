@@ -47,7 +47,7 @@ export function decodeProjectFiles(files: any) {
   return { bytes, manifest, content_hash: hash(canonical(manifest)) };
 }
 
-/** Trusted worker-only transaction. Call install with every Bot process paused.
+/** Trusted worker-only transaction. Call install with every Agent process paused.
  * The project root inode is never replaced. Installed content remains paused
  * until the controller acknowledges its durable E state via confirm.
  */
@@ -268,8 +268,8 @@ export class ProjectInstaller {
         try { unlinkSync(`${key}.capture`); } catch {}
         return this.#public(receipt);
       } catch (rollbackError: any) {
-        this.held = key; // Worker must keep writers paused and close this Bot.
-        throw Object.assign(new Error('Apply rollback could not be verified; Bot must stop'), { code: 'WORKSPACE_RECONCILIATION_REQUIRED', cause: rollbackError });
+        this.held = key; // Worker must keep writers paused and close this Agent.
+        throw Object.assign(new Error('Apply rollback could not be verified; Agent must stop'), { code: 'WORKSPACE_RECONCILIATION_REQUIRED', cause: rollbackError });
       }
     }
   }

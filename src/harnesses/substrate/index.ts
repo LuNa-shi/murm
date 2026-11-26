@@ -13,7 +13,7 @@ const finite = (value: any) => Number.isSafeInteger(value) && value > 0 && value
 function waitFor(promise: any, signal: any) {
   let abort: any;
   return Promise.race([promise, new Promise<any>((_: any, reject: any) => {
-    abort = () => reject(fail('SCALEMAS_WORK_ABORTED'));
+    abort = () => reject(fail('SUBSTRATE_WORK_ABORTED'));
     signal.addEventListener('abort', abort, { once: true });
     if (signal.aborted) abort();
   })]).finally(() => signal.removeEventListener('abort', abort));
@@ -24,7 +24,7 @@ export function substratePeerProfile({ image, model = 'default' }: any) {
     collect: { paths: ['.'], includeGit: false, maxBytes: 2 * 1024 ** 2, required: true } };
 }
 
-/** Fixed no-Task pool. Environment owns content and drivers; Core owns all Bots. */
+/** Fixed no-Task pool. Environment owns content and drivers; Core owns all Agents. */
 export async function runSubstrate({ backend, runId, image, outputDir, question, model = 'default', poolSize = 3, maxRounds = 2,
   workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle, maxConcurrentInputs }: any, signal: any) {
   if (typeof outputDir !== 'string' || !outputDir || typeof question !== 'string' || !question.trim() || Buffer.byteLength(question) > 8192 ||
@@ -43,7 +43,7 @@ export async function runSubstrate({ backend, runId, image, outputDir, question,
   const remaining = () => {
     workSignal.throwIfAborted();
     const value = deadlineAt - Date.now();
-    if (value <= 0 || workClosed) throw fail('SCALEMAS_WORK_ABORTED');
+    if (value <= 0 || workClosed) throw fail('SUBSTRATE_WORK_ABORTED');
     return value;
   };
   const abort = () => { if (runtime) void runtime.close({ timeoutMs: 1 }).catch(() => {}); };
@@ -55,37 +55,37 @@ export async function runSubstrate({ backend, runId, image, outputDir, question,
           ranking: 'token occurrences descending, incoming references descending, stable address ascending', maxSearchResults: 8 } }),
       createRuntime: async () => {
         remaining();
-        runtime = await createRuntime({ backend, outputDir, services: substrate.services, maxBots: poolSize, profiles: {
+        runtime = await createRuntime({ backend, outputDir, services: substrate.services, maxAgents: poolSize, profiles: {
           peer: substratePeerProfile({ image, model }),
         } });
         return runtime;
       },
       async run(core: any) {
         substrate.bindRuntime(core.id);
-        const unsubscribe = core.onEvent((event: any) => events.push({ botId: event.botId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) }));
+        const unsubscribe = core.onEvent((event: any) => events.push({ agentId: event.agentId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) }));
         try {
           for (let index = 0; index < poolSize; index++) {
             remaining();
-            const bot = await waitFor(core.spawn({ requestId: `peer:${index}`, profile: 'peer', files: {
+            const agent = await waitFor(core.spawn({ requestId: `peer:${index}`, profile: 'peer', files: {
               'question.txt': { data: question, encoding: 'utf8' },
             } }), workSignal);
-            remaining(); substrate.bindPeer(bot.id);
-            peers.push({ index, botId: bot.id, turns: [], failure: null, stop: null });
+            remaining(); substrate.bindPeer(agent.id);
+            peers.push({ index, agentId: agent.id, turns: [], failure: null, stop: null });
           }
-          if (onReady) await waitFor(Promise.resolve().then(() => onReady({ runtime:core, peerIds:peers.map((peer: any)=>peer.botId), snapshot:substrate.snapshot() })),workSignal);
+          if (onReady) await waitFor(Promise.resolve().then(() => onReady({ runtime:core, peerIds:peers.map((peer: any)=>peer.agentId), snapshot:substrate.snapshot() })),workSignal);
           remaining();
           await Promise.all(peers.map(async (peer: any) => {
             try {
               for (let round = 0; round < maxRounds; round++) {
                 if (beforeCycle) {
                   remaining();
-                  await waitFor(Promise.resolve().then(() => beforeCycle({ peerIndex: peer.index, botId: peer.botId, round, signal: workSignal })), workSignal);
+                  await waitFor(Promise.resolve().then(() => beforeCycle({ peerIndex: peer.index, agentId: peer.agentId, round, signal: workSignal })), workSignal);
                   remaining();
                 }
                 const cycleQuestion = questionForCycle ? await waitFor(Promise.resolve().then(() =>
-                  questionForCycle({ peerIndex: peer.index, botId: peer.botId, round, signal: workSignal })), workSignal) : question;
-                if (typeof cycleQuestion !== 'string' || !cycleQuestion.trim() || Buffer.byteLength(cycleQuestion) > 8192) throw fail('SCALEMAS_QUESTION_INVALID');
-                const requestId = `${peer.botId}:cycle:${round}`;
+                  questionForCycle({ peerIndex: peer.index, agentId: peer.agentId, round, signal: workSignal })), workSignal) : question;
+                if (typeof cycleQuestion !== 'string' || !cycleQuestion.trim() || Buffer.byteLength(cycleQuestion) > 8192) throw fail('SUBSTRATE_QUESTION_INVALID');
+                const requestId = `${peer.agentId}:cycle:${round}`;
                 const turn: any = { requestId, round, attempts: [] }; peer.turns.push(turn);
                 // Correction is an explicit new input after a completed turn,
                 // sharing the original monotonic turn deadline rather than
@@ -93,7 +93,7 @@ export async function runSubstrate({ backend, runId, image, outputDir, question,
                 let turnDeadline: any;
                 let correction: any, attempt = 0;
                 while (true) {
-                  if (turnDeadline !== undefined && turnDeadline - performance.now() < 1) throw fail('SCALEMAS_CORRECTION_WINDOW_CLOSED');
+                  if (turnDeadline !== undefined && turnDeadline - performance.now() < 1) throw fail('SUBSTRATE_CORRECTION_WINDOW_CLOSED');
                   const currentRequestId = attempt ? `${requestId}:correction:${attempt}` : requestId;
                   const beforeSnapshot = substrate.snapshot();
                   const text = `scaleMAS peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}` +
@@ -101,8 +101,8 @@ export async function runSubstrate({ backend, runId, image, outputDir, question,
                   const sendInput = () => {
                     turnDeadline ??= performance.now() + Math.min(turnTimeoutMs, remaining());
                     const left = Math.floor(turnDeadline - performance.now());
-                    if(left < 1) throw fail('SCALEMAS_CORRECTION_WINDOW_CLOSED');
-                    return runInput(core, peer.botId, text,
+                    if(left < 1) throw fail('SUBSTRATE_CORRECTION_WINDOW_CLOSED');
+                    return runInput(core, peer.agentId, text,
                       { requestId: currentRequestId, timeoutMs: Math.min(left, remaining()), signal: workSignal });
                   };
                   const receipt = await (admission ? admission.run(sendInput) : sendInput());
@@ -110,10 +110,10 @@ export async function runSubstrate({ backend, runId, image, outputDir, question,
                     outcome: receipt.settled.outcome, seq: receipt.settled.seq, attempt };
                   turn.attempts.push(observed); Object.assign(turn, { inputId: observed.inputId, outcome: observed.outcome, seq: observed.seq });
                   const decision = onCycle ? await waitFor(Promise.resolve().then(() => onCycle({ peerIndex: peer.index,
-                    botId: peer.botId, round, attempt, requestId: currentRequestId, result: receipt, beforeSnapshot, snapshot: substrate.snapshot(), signal: workSignal, deadlineAtMs: turnDeadline })), workSignal) : undefined;
+                    agentId: peer.agentId, round, attempt, requestId: currentRequestId, result: receipt, beforeSnapshot, snapshot: substrate.snapshot(), signal: workSignal, deadlineAtMs: turnDeadline })), workSignal) : undefined;
                   if (decision?.correction === undefined) break;
                   if (typeof decision.correction !== 'string' || !decision.correction.trim() || Buffer.byteLength(decision.correction) > 4096 ||
-                      !finite(decision.timeoutMs)) throw fail('SCALEMAS_CORRECTION_INVALID');
+                      !finite(decision.timeoutMs)) throw fail('SUBSTRATE_CORRECTION_INVALID');
                   observed.rejected = structuredClone(decision.rejected);
                   correction = decision.correction;
                   turnDeadline = Math.min(turnDeadline, performance.now() + decision.timeoutMs);
@@ -124,18 +124,18 @@ export async function runSubstrate({ backend, runId, image, outputDir, question,
               peer.failure = { code: error.code ?? 'PEER_WORK_FAILED', ...(error.requestId ? { requestId: error.requestId } : {}),
                 ...(error.inputId ? { inputId: error.inputId } : {}), ...(error.receipt ? { receipt: error.receipt } : {}) };
             } finally {
-              substrate.retirePeer(peer.botId);
-              try { peer.stop = await core.stop(peer.botId, { timeoutMs: Math.max(1, Math.min(closeTimeoutMs, deadlineAt - Date.now())) }); }
+              substrate.retirePeer(peer.agentId);
+              try { peer.stop = await core.stop(peer.agentId, { timeoutMs: Math.max(1, Math.min(closeTimeoutMs, deadlineAt - Date.now())) }); }
               catch (error: any) { peer.stopFailure = { code: error.code ?? 'PEER_STOP_FAILED', cleanup: 'pending' }; }
               if(onPeerStop && peer.stop) {
-                try { await waitFor(Promise.resolve().then(()=>onPeerStop({peerIndex:peer.index,botId:peer.botId,receipt:structuredClone(peer.stop),snapshot:substrate.snapshot()})),workSignal); }
+                try { await waitFor(Promise.resolve().then(()=>onPeerStop({peerIndex:peer.index,agentId:peer.agentId,receipt:structuredClone(peer.stop),snapshot:substrate.snapshot()})),workSignal); }
                 catch(error: any) { peer.failure ??= {code:error.code ?? 'HOST_STOP_OBSERVATION_FAILED'}; }
               }
             }
           }));
-          if (workSignal.aborted || Date.now() >= deadlineAt) throw fail('SCALEMAS_WORK_ABORTED');
-          if (peers.some((peer: any) => peer.failure)) throw fail('SCALEMAS_PEERS_FAILED');
-          return { peerIds: peers.map((peer: any) => peer.botId), completedRounds: peers.map((peer: any) => peer.turns.length) };
+          if (workSignal.aborted || Date.now() >= deadlineAt) throw fail('SUBSTRATE_WORK_ABORTED');
+          if (peers.some((peer: any) => peer.failure)) throw fail('SUBSTRATE_PEERS_FAILED');
+          return { peerIds: peers.map((peer: any) => peer.agentId), completedRounds: peers.map((peer: any) => peer.turns.length) };
         } finally { workClosed = true; clearTimeout(timer); unsubscribe(); }
       },
     });

@@ -10,7 +10,7 @@ import vm from 'node:vm';
 import { rootPrompt, childPrompt } from '../examples/subagents/prompts.js';
 import { parentPromptFor, initialGoalFor } from '../test-support/subagents/communication-fixture-prompts.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
-import { BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, BOT_MATERIAL_CONTINUATION_MESSAGE, BOT_MATERIAL_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory } from '../src/agent/bot-contract.js';
+import { AGENT_CONTINUATION_MESSAGE, AGENT_SOFT_CLOSEOUT_MESSAGE, AGENT_MATERIAL_CONTINUATION_MESSAGE, AGENT_MATERIAL_SOFT_CLOSEOUT_MESSAGE, buildAgentSoftCloseoutNotice, buildAgentNotification, agentServiceDirectory } from '../src/agent/agent-contract.js';
 import { runSwarmCli } from '../src/cli/swarm-cli.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
@@ -27,7 +27,7 @@ assert.ok(args.length === 0 || (args.length === 1 && args[0] === '--check'), 'Us
 const check = args[0] === '--check';
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 const sourcePaths = [
-  'src/agent/bot-contract.ts',
+  'src/agent/agent-contract.ts',
   'src/agent/capability-profile.ts',
   'src/agent/services-bridge.ts',
   'src/cli/swarm-cli.ts', 'src/cli/service-command.ts',
@@ -35,13 +35,13 @@ const sourcePaths = [
   'examples/notes/main.ts', 'src/harnesses/shared/run-input.ts', 'src/harnesses/substrate/index.ts', 'src/harnesses/substrate/substrate.ts',
   'src/harnesses/taskpool/controller.ts', 'src/harnesses/taskpool/harness.ts',
   'examples/substrate/fate-run.ts', 'examples/substrate/fate-service.ts', 'src/harnesses/substrate/paper-substrate.ts',
-  'benchmarks/putnambench-flat/run.ts',
+  'benchmarks/putnambench-taskpool/run.ts',
   'benchmarks/programbench-pastel/subagents-example.ts',
   'examples/subagents/main.ts', 'examples/subagents/controller.ts',
   'examples/subagents/prompts.ts', 'examples/subagents/collaboration-service.ts',
   'test-support/subagents/communication-fixture.ts', 'test-support/subagents/communication-fixture-controller.ts', 'test-support/subagents/communication-fixture-prompts.ts',
   'src/harnesses/peermesh/index.ts', 'src/harnesses/peermesh/router.ts', 'src/harnesses/peermesh/routed.ts', 'src/harnesses/peermesh/team.ts',
-  'test/fixtures/agensh-team-kimi.ts', 'test/agensh-team-kimi-real.test.ts',
+  'test/fixtures/peermesh-team-kimi.ts', 'test/peermesh-team-kimi-real.test.ts',
   'src/harnesses/lead-worker/prompts.ts', 'src/harnesses/lead-worker/index.ts',
   'src/runtime/runtime.ts',
   'src/runtime/workspace-contract.ts', 'src/runtime/mission-workspace.ts',
@@ -89,17 +89,17 @@ const extendedRegistry = createBuiltinServiceRegistry();
 extendedRegistry.registerService({ manifest: mathlibBundle.manifest, bundle: mathlibBundle, adapter: { invoke() { throw new Error('documentation never invokes services'); } } });
 const extendedProfile = buildCapabilityProfile({ registry: extendedRegistry, role: AGENT_ROLES.BOUND });
 
-let toolsDoc = header('CLI directory and optional Service documentation', 'Core selects the four native tools read/write/edit/bash. The synthetic namespace directories below illustrate the retained botServiceDirectory projection; current startup discovery is composed by the Harness. Schemas and documentation are fetched through swarm service commands, not registered as separate Pi tools.');
-for (const [title, p] of [['Built-in Services', profile], ['With optional Mathlib Search', extendedProfile]] as const) toolsDoc += block(title, JSON.stringify(botServiceDirectory(p), null, 2));
+let toolsDoc = header('CLI directory and optional Service documentation', 'Core selects the four native tools read/write/edit/bash. The synthetic namespace directories below illustrate the retained agentServiceDirectory projection; current startup discovery is composed by the Harness. Schemas and documentation are fetched through swarm service commands, not registered as separate Pi tools.');
+for (const [title, p] of [['Built-in Services', profile], ['With optional Mathlib Search', extendedProfile]] as const) toolsDoc += block(title, JSON.stringify(agentServiceDirectory(p), null, 2));
 for (const path of ['services/mathlib-search/SKILL.md', 'services/mathlib-search/references/loogle.md']) toolsDoc += block(path, sources.get(path), 'Available through the authorized Service documentation resource. The directory example above shows its metadata and hash.');
 output('02-task-loop-and-tools.md', toolsDoc);
 
 let turnsDoc = header('Complete TaskPool continuation messages', 'The TaskPool controller selects these repository-owned texts from the durable Execution phase after a settled turn. Host Profile and initial input composition are described in the Harness references.');
-turnsDoc += block('Flat bound continuation', BOT_CONTINUATION_MESSAGE);
-turnsDoc += block('Soft closeout continuation', `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${BOT_SOFT_CLOSEOUT_MESSAGE}`);
+turnsDoc += block('Flat bound continuation', AGENT_CONTINUATION_MESSAGE);
+turnsDoc += block('Soft closeout continuation', `${buildAgentSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${AGENT_SOFT_CLOSEOUT_MESSAGE}`);
 output('03-runtime-turns.md', turnsDoc);
-let runtimeDoc = header('Complete Runtime notification messages', 'The Flat controller composes durable handoff warnings and eligible Material/dependency notices using buildBotNotification from bot-contract.js. Serialized admission uses followUp by default. PutnamBench selects steer for Material notices so Pi can include them at a tool continuation. The retained Runtime no longer sends notification inputs. The controller records eligibility and input admission. Synthetic identifiers below illustrate the exact current body. Confirm model visibility from the actual provider input.');
-for (const notification_type of ['handoff_warning', 'material_available', 'dependency_satisfied']) runtimeDoc += block(notification_type, buildBotNotification({ notification_type, notification_id: '<NOTIFICATION_ID>', material_id: '<MATERIAL_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', recipient_task_id: '<TASK_ID>', payload: { execution_id: '<EXECUTION_ID>', deadline: '2099-01-01T00:00:00.000Z' } }, { at: Date.parse('2098-12-31T23:59:30.000Z') }));
+let runtimeDoc = header('Complete Runtime notification messages', 'The Flat controller composes durable handoff warnings and eligible Material/dependency notices using buildAgentNotification from agent-contract.js. Serialized admission uses followUp by default. PutnamBench selects steer for Material notices so Pi can include them at a tool continuation. The retained Runtime no longer sends notification inputs. The controller records eligibility and input admission. Synthetic identifiers below illustrate the exact current body. Confirm model visibility from the actual provider input.');
+for (const notification_type of ['handoff_warning', 'material_available', 'dependency_satisfied']) runtimeDoc += block(notification_type, buildAgentNotification({ notification_type, notification_id: '<NOTIFICATION_ID>', material_id: '<MATERIAL_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', recipient_task_id: '<TASK_ID>', payload: { execution_id: '<EXECUTION_ID>', deadline: '2099-01-01T00:00:00.000Z' } }, { at: Date.parse('2098-12-31T23:59:30.000Z') }));
 output('04-runtime-messages.md', runtimeDoc);
 
 async function listSourceFiles(directory: string): Promise<string[]> {
@@ -151,13 +151,13 @@ const notesPath = 'examples/notes/main.ts';
 const notesKey = between(notesPath, "const key = '", "';\n");
 const notesInput = evaluate(between(notesPath, 'const inputText = Object.freeze(', ');\n'), { key: notesKey });
 output('07-notes-harness.md', header('Installed Notes Harness prompts',
-  'The Writer and Reader use the default Core system prompt with their own Notes grants and an empty Added System Prompt. The host supplies three fixed user inputs through its exclusive input helper. The seeded fact enters the model transcript when a Bot reads its file or receives it in a Service result.')
+  'The Writer and Reader use the default Core system prompt with their own Notes grants and an empty Added System Prompt. The host supplies three fixed user inputs through its exclusive input helper. The seeded fact enters the model transcript when a Agent reads its file or receives it in a Service result.')
   + block('Writer publication', notesInput.put)
   + block('Reader retrieval', notesInput.get)
   + block('Reader follow-up', notesInput.follow));
 const subagentsPath = 'test-support/subagents/communication-fixture-prompts.ts';
 output('08-subagents-harness.md', header('Subagents Harness prompts',
-  'The ordinary Harness stages the Root and Child Profile prompts verbatim and sends user or model-authored task text through the collaboration controller. The separate communication fixture stages its own Profile prompts. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in communication-fixture-controller.ts with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Bot Service requests.')
+  'The ordinary Harness stages the Root and Child Profile prompts verbatim and sends user or model-authored task text through the collaboration controller. The separate communication fixture stages its own Profile prompts. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in communication-fixture-controller.ts with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Agent Service requests.')
   + block('Root Profile prompt', rootPrompt)
   + block('Recursive Child Profile prompt', childPrompt)
   + block('Pastel example initial task', evaluate(between('benchmarks/programbench-pastel/subagents-example.ts', 'const initial = ', ';\nconst supplement')))
@@ -165,8 +165,8 @@ output('08-subagents-harness.md', header('Subagents Harness prompts',
   + block('Fixture Parent Profile prompt', evaluate(between(subagentsPath, 'export const parentPrompt = ', ';\n')))
   + block('Child Profile prompt', evaluate(between(subagentsPath, 'export const childPrompt = ', ';\n')))
   + block('Default initial goal', evaluate(between(subagentsPath, 'export const initialGoal = ', ';\n')))
-  + [3, 4, 5, 6, 7].map((childCount: any) => block(`Parent Profile prompt: ${childCount + 1} Bots`, parentPromptFor(childCount))
-    + block(`Default initial goal: ${childCount + 1} Bots`, initialGoalFor(childCount))).join(''));
+  + [3, 4, 5, 6, 7].map((childCount: any) => block(`Parent Profile prompt: ${childCount + 1} Agents`, parentPromptFor(childCount))
+    + block(`Default initial goal: ${childCount + 1} Agents`, initialGoalFor(childCount))).join(''));
 for (const path of ['examples/subagents/controller.ts', 'test-support/subagents/communication-fixture-controller.ts']) {
   for (const [index, line] of sources.get(path)!.split('\n').entries()) {
     if (line.includes('await runtime.send(')) sendSites.push({ path, line: index + 1, expression: line.trim() });
@@ -189,7 +189,7 @@ output('09-substrate-harness.md', header('Substrate peer prompts',
     block('Substrate ' + operation, between(substratePath, "capability('" + operation + "', '", "'"))).join('')
   + block('Cycle instruction', between(substrateIndexPath, "export const cyclePrompt = '", "';\n"))
   + block('Exact input composition', between(substrateIndexPath, '                  const text = ', '\n                  const sendInput'),
-    'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Bot inside the original turn deadline.')
+    'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Agent inside the original turn deadline.')
   + block('FATE startup in the no-library condition', renderStartupPrompt([fateManifest]))
   + block('FATE startup in the shared condition', renderStartupPrompt([fateManifest, paperSubstrateManifest('shared')], fateSharing))
   + block('FATE startup in the private condition', renderStartupPrompt([fateManifest, paperSubstrateManifest('private')], fatePrivate))
@@ -215,11 +215,11 @@ output('08-peermesh-harness.md', header('PeerMesh peer, batch and notice prompts
   + block('Exact steer input composition', between('src/harnesses/peermesh/router.ts', 'const steerText = `', '`;'),
     'The same router selects an eligible DM or admitted Board entry. Its event metadata comes from the authorized Mattermost source or Board admission. Core sends steer as a separate same-Session prompt at the next Pi execution boundary. It appears in model context when Pi consumes the queued input, separately from the ordinary batch JSON.')
   + block('Configured idle nudge', between('src/harnesses/peermesh/router.ts', "export const idleNudgeInput = '", "';"))
-  + block('Opt-in hosted acceptance common instructions', between('test/fixtures/agensh-team-kimi.ts', 'export const liveCommon = `', '`;'))
-  + block('Opt-in hosted A initial instructions', between('test/fixtures/agensh-team-kimi.ts', 'export const liveAInitial = `', '`;'))
-  + block('Opt-in hosted B initial instructions', between('test/fixtures/agensh-team-kimi.ts', 'export const liveBInitial = `', '`;'))
-  + block('Opt-in hosted A external comment instructions', between('test/fixtures/agensh-team-kimi.ts', 'export const liveAUser = `', '`;'))
-  + block('Exact hosted initial composition', between('test/fixtures/agensh-team-kimi.ts', '  return [`', '];'),
+  + block('Opt-in hosted acceptance common instructions', between('test/fixtures/peermesh-team-kimi.ts', 'export const liveCommon = `', '`;'))
+  + block('Opt-in hosted A initial instructions', between('test/fixtures/peermesh-team-kimi.ts', 'export const liveAInitial = `', '`;'))
+  + block('Opt-in hosted B initial instructions', between('test/fixtures/peermesh-team-kimi.ts', 'export const liveBInitial = `', '`;'))
+  + block('Opt-in hosted A external comment instructions', between('test/fixtures/peermesh-team-kimi.ts', 'export const liveAUser = `', '`;'))
+  + block('Exact hosted initial composition', between('test/fixtures/peermesh-team-kimi.ts', '  return [`', '];'),
     'The host supplies two distinct provisioned peer usernames and a fresh 24-character seed. Only A receives the seed. The user comment names only A and appends liveAUser. Negotiation and agreement text are actual model-authored Mattermost posts, delivered by the normal authenticated subscription. The fixture injects no model tool program or terminal response.'));
 const leadHelperPath = 'src/harnesses/lead-worker/prompts.ts';
 let leadHelperDoc = header('Fixed Lead-Worker role and turn instructions', 'Profiles stage lead/helper roles. The Harness serializes each round instruction with trusted host fields before exclusive followUp delivery; these are source templates, not a native transcript.');
@@ -233,11 +233,11 @@ for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'help
 leadHelperDoc += block('Staged corrective input composition and send', between('src/harnesses/lead-worker/index.ts', '                  const nextPath =', '\n                  final = board.snapshot();'), 'The trusted host checker must explicitly return STAGE_CANDIDATE_REJECTED. Actual stage, helper role and attempt derive the fresh path and request ID; the original task and monotonic deadline remain fixed. No reference answer or new permission is supplied.');
 output('08-lead-worker-harness.md', leadHelperDoc);
 const flatControllerPath = 'src/harnesses/taskpool/controller.ts';
-const flatEnvironmentPath = 'src/harnesses/taskpool/harness.ts';
-const putnamPath = 'benchmarks/putnambench-flat/run.ts';
+const taskPoolHarnessPath = 'src/harnesses/taskpool/harness.ts';
+const putnamPath = 'benchmarks/putnambench-taskpool/run.ts';
 const discoveryFields = {
   mission: { mission_id: '<MISSION_ID>', goal: '<MISSION_GOAL>', acceptance_conditions: '<MISSION_ACCEPTANCE>' },
-  bot: { bot_id: '<BOT_ID>', selection_deadline: '<SELECTION_DEADLINE>', hard_deadline: '<BOT_HARD_DEADLINE>' },
+  agent: { agent_id: '<AGENT_ID>', selection_deadline: '<SELECTION_DEADLINE>', hard_deadline: '<AGENT_HARD_DEADLINE>' },
   runDeadline: '<MISSION_DEADLINE>',
 };
 const autonomousDiscovery = buildTaskPoolAutonomousDiscoveryMessage(discoveryFields);
@@ -259,20 +259,20 @@ const flatCliHelp = await Promise.all(['create', 'link'].map(async command => {
 }));
 output('08-taskpool-harness.md', header('TaskPool discovery and continuation prompts',
   'After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. The current Execution determines whether the controller sends the ordinary continuation or the soft-closeout body. The trusted Core capture or explicit snapshot binding selects the guidance for the available Workspace operations. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller.')
-  + block('Profile suffix when live Workspace save is unavailable', between(flatEnvironmentPath, "export const TASKPOOL_WITHOUT_WORKSPACE_SAVE_PROMPT = '", "';"),
+  + block('Profile suffix when live Workspace save is unavailable', between(taskPoolHarnessPath, "export const TASKPOOL_WITHOUT_WORKSPACE_SAVE_PROMPT = '", "';"),
     'The default Added System Prompt is empty. Without a Core or injected live capture binding, the host includes this explanation after any supplied Profile text.')
-  + block('Default discovery input', between(flatControllerPath, "export const FLAT_DISCOVERY_MESSAGE='", "';"))
+  + block('Default discovery input', between(flatControllerPath, "export const TASKPOOL_DISCOVERY_MESSAGE='", "';"))
   + block('Autonomous discovery input', autonomousDiscovery,
-    'When autonomous Tasks are enabled and there is no host override, the controller reads the public Mission and registered Bot after the final discovery send guard. The effective run deadline comes from the controller host admission clock. The initial batch is sent after any configured host admission callback.')
+    'When autonomous Tasks are enabled and there is no host override, the controller reads the public Mission and registered Agent after the final discovery send guard. The effective run deadline comes from the controller host admission clock. The initial batch is sent after any configured host admission callback.')
   + block('PutnamBench first user input', putnamDiscovery,
-    'The original source and path come from the same locked fixture used to initialize the public Workspace. The controller adds the original source to each Bot’s first discovery input. Subsequent discovery inputs use the same Mission goal, current deadlines and collaboration guidance. The PutnamBench Profile supplies no Added System Prompt.')
+    'The original source and path come from the same locked fixture used to initialize the public Workspace. The controller adds the original source to each Agent’s first discovery input. Subsequent discovery inputs use the same Mission goal, current deadlines and collaboration guidance. The PutnamBench Profile supplies no Added System Prompt.')
   + flatCliHelp.join('')
-  + block('Default ordinary continuation with a snapshot binding', BOT_CONTINUATION_MESSAGE)
-  + block('Default ordinary continuation without a snapshot binding', BOT_MATERIAL_CONTINUATION_MESSAGE,
+  + block('Default ordinary continuation with a snapshot binding', AGENT_CONTINUATION_MESSAGE)
+  + block('Default ordinary continuation without a snapshot binding', AGENT_MATERIAL_CONTINUATION_MESSAGE,
     'The host can override controller.continuationPrompt in either configuration. During soft closeout the controller selects the built-in text for the registered Workspace capabilities.')
   + block('Soft-closeout continuation without a snapshot binding',
-    `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', warningDeadline, sampleCloseout.at, sampleCloseout)}\n${BOT_MATERIAL_SOFT_CLOSEOUT_MESSAGE}`)
-  + block('Handoff warning without a snapshot binding', buildBotNotification({
+    `${buildAgentSoftCloseoutNotice('<EXECUTION_ID>', warningDeadline, sampleCloseout.at, sampleCloseout)}\n${AGENT_MATERIAL_SOFT_CLOSEOUT_MESSAGE}`)
+  + block('Handoff warning without a snapshot binding', buildAgentNotification({
     notification_id: '<NOTIFICATION_ID>', notification_type: 'handoff_warning',
     payload: { execution_id: '<EXECUTION_ID>', deadline: warningDeadline },
   }, sampleCloseout), 'The persisted warning payload supplies the Execution ID and deadline. The controller records the notification ID and fixed composed message before dispatch.'));

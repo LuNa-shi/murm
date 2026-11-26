@@ -38,7 +38,7 @@ export function createSubstrateService({ databasePath, runId, poolSize = 3 }: an
       references: db.prepare('SELECT target FROM substrate_references WHERE source=? ORDER BY target').all(row.address).map((item: any) => item.target) };
   };
   const adapter = createInProcessAdapter({ async invoke({ capability, input, caller, envelope, signal }: any) {
-    if (closed || !runtimeId || caller?.runtimeId !== runtimeId || caller.profile !== 'peer' || (!peers.has(caller.botId) || retired.has(caller.botId))) throw error('NOT_ALLOWED', 'Substrate caller is outside this run');
+    if (closed || !runtimeId || caller?.runtimeId !== runtimeId || caller.profile !== 'peer' || (!peers.has(caller.agentId) || retired.has(caller.agentId))) throw error('NOT_ALLOWED', 'Substrate caller is outside this run');
     signal?.throwIfAborted();
     const operation = capability.operation;
     if (operation === 'search') {
@@ -52,13 +52,13 @@ export function createSubstrateService({ databasePath, runId, poolSize = 3 }: an
         return { address: row.address, summary: row.content.slice(0, 240), rank: { textOccurrences, incomingReferences } };
       }).filter((row: any) => row.rank.textOccurrences > 0).sort((left: any, right: any) => right.rank.textOccurrences - left.rank.textOccurrences ||
         right.rank.incomingReferences - left.rank.incomingReferences || (left.address < right.address ? -1 : left.address > right.address ? 1 : 0)).slice(0, input.limit);
-      db.prepare('INSERT INTO substrate_reads(run_id,author,operation,input,result) VALUES(?,?,?,?,?)').run(runId, caller.botId, operation, JSON.stringify(input), JSON.stringify(results));
+      db.prepare('INSERT INTO substrate_reads(run_id,author,operation,input,result) VALUES(?,?,?,?,?)').run(runId, caller.agentId, operation, JSON.stringify(input), JSON.stringify(results));
       return { results, limit: input.limit };
     }
     if (operation === 'visit') {
       if (!input || Object.keys(input).length !== 1 || typeof input.address !== 'string') throw error('INVALID_CONTRACT', 'Visit requires one address');
       const result = read(input.address);
-      db.prepare('INSERT INTO substrate_reads(run_id,author,operation,input,result) VALUES(?,?,?,?,?)').run(runId, caller.botId, operation, JSON.stringify(input), JSON.stringify([result.address]));
+      db.prepare('INSERT INTO substrate_reads(run_id,author,operation,input,result) VALUES(?,?,?,?,?)').run(runId, caller.agentId, operation, JSON.stringify(input), JSON.stringify([result.address]));
       return result;
     }
     if (operation !== 'publish' || !input || Object.keys(input).some((key: any) => !['content', 'references'].includes(key)) ||
@@ -70,21 +70,21 @@ export function createSubstrateService({ databasePath, runId, poolSize = 3 }: an
     const fingerprint = hash(JSON.stringify({ content: input.content, references: refs }));
     db.exec('BEGIN IMMEDIATE');
     try {
-      const previous = db.prepare('SELECT * FROM substrate_requests WHERE run_id=? AND author=? AND request_id=?').get(runId, caller.botId, envelope.operation_id);
+      const previous = db.prepare('SELECT * FROM substrate_requests WHERE run_id=? AND author=? AND request_id=?').get(runId, caller.agentId, envelope.operation_id);
       if (previous) {
         if (previous.fingerprint !== fingerprint) throw error('CONFLICT', 'Publication request was reused with different content');
         if (previous.error_code) throw error(previous.error_code, 'Publication references were not visible');
         const result = read(previous.address); db.exec('COMMIT'); return result;
       }
       refs.forEach(read);
-      const value = `content:${hash(JSON.stringify([runId, caller.botId, envelope.operation_id, fingerprint]))}`;
-      db.prepare('INSERT INTO substrate_contents VALUES(?,?,?,?)').run(value, runId, caller.botId, input.content);
+      const value = `content:${hash(JSON.stringify([runId, caller.agentId, envelope.operation_id, fingerprint]))}`;
+      db.prepare('INSERT INTO substrate_contents VALUES(?,?,?,?)').run(value, runId, caller.agentId, input.content);
       const insert = db.prepare('INSERT INTO substrate_references VALUES(?,?)'); refs.forEach((target: any) => insert.run(value, target));
-      db.prepare('INSERT INTO substrate_requests VALUES(?,?,?,?,?,?)').run(runId, caller.botId, envelope.operation_id, fingerprint, value, null);
+      db.prepare('INSERT INTO substrate_requests VALUES(?,?,?,?,?,?)').run(runId, caller.agentId, envelope.operation_id, fingerprint, value, null);
       db.exec('COMMIT'); return read(value);
     } catch (cause: any) {
       db.exec('ROLLBACK');
-      if (cause.code === 'NOT_FOUND') db.prepare('INSERT OR IGNORE INTO substrate_requests VALUES(?,?,?,?,?,?)').run(runId, caller.botId, envelope.operation_id, fingerprint, null, 'NOT_FOUND');
+      if (cause.code === 'NOT_FOUND') db.prepare('INSERT OR IGNORE INTO substrate_requests VALUES(?,?,?,?,?,?)').run(runId, caller.agentId, envelope.operation_id, fingerprint, null, 'NOT_FOUND');
       throw cause;
     }
   } });

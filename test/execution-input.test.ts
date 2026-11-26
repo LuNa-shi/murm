@@ -51,7 +51,7 @@ test('failed input construction leaves no partial directory and a different retr
   await assert.rejects(readFile(join(target, 'replacement.txt')), { code: 'ENOENT' });
 });
 
-test('OpenSandbox Bot preparation transfers exact manifest bytes including allowed env-prefix names', async t => {
+test('OpenSandbox Agent preparation transfers exact manifest bytes including allowed env-prefix names', async t => {
   const { root, manager, options, snapshot } = await fixture(t);
   const workspace = await manager.createWorkspace(options);
   const guest = join(root, 'controlled-guest');
@@ -64,7 +64,7 @@ test('OpenSandbox Bot preparation transfers exact manifest bytes including allow
       if (url.includes('/endpoints/')) return new Response('{"url":"http://execd.test"}');
       if (url.endsWith('/health')) return new Response('{}');
       if (url.endsWith('/stop')) return new Response(JSON.stringify({ result: { stopped: true } }));
-      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: 'swarmenv-core-v1', resources: [] }, project_files: { version: 0, writable: false } } }));
+      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: 'murm-core-v1', resources: [] }, project_files: { version: 0, writable: false } } }));
       if (url.endsWith('/project/prepare')) {
         const input = JSON.parse(request.body);
         assert.deepEqual(input.manifest, snapshot.manifest);
@@ -78,10 +78,10 @@ test('OpenSandbox Bot preparation transfers exact manifest bytes including allow
       throw new Error('unexpected controlled provider request');
     },
   });
-  await provider.ensureExecution({ executionId: 'execution-input', botId: 'execution-input' });
+  await provider.ensureExecution({ executionId: 'execution-input', agentId: 'execution-input' });
   t.after(() => provider.stopExecution('execution-input'));
   await provider.startAgent({ executionId: 'execution-input', command: 'pi', resources: [] });
-  provider.bindBotExecution({ botId: 'execution-input', executionId: 'execution-input', bindingVersion: 1 });
+  provider.bindAgentExecution({ agentId: 'execution-input', executionId: 'execution-input', bindingVersion: 1 });
   const copied = await provider.syncWorkspace({ executionId: 'execution-input', workspaceRef: workspace.workspace_ref, manifest: snapshot.manifest });
   assert.equal(copied.file_count, Object.keys(snapshot.files).length);
   assert.equal(preparations, 1);

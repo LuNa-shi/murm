@@ -35,8 +35,8 @@ export function createPeerMeshServices(configuration: any, delivery?: { merge(in
     peer.gitea?.token, peer.message?.token, peer.gitea?.binding, peer.message?.binding, peer.board?.binding].every((value: any) => typeof value === 'string' && value.length > 0)) {
     throw new TypeError('Agensh Services require complete run and peer identities');
   }
-  const bots: any = new Map();
-  const bindings = Object.freeze({ gitea: peer.gitea.binding, message: peer.message.binding, 'agensh-context': peer.board.binding });
+  const agents: any = new Map();
+  const bindings = Object.freeze({ gitea: peer.gitea.binding, message: peer.message.binding, 'peermesh-context': peer.board.binding });
   for (const field of ['gitea', 'message']) if (new Set(peers.map((peer: any) => peer[field].token)).size !== peers.length) throw new TypeError('Agensh peers require separate credentials');
   const services: any = new ServiceRegistry();
   const repo: any = { owner: fixed(repository.owner), repo: fixed(repository.name) };
@@ -60,7 +60,7 @@ export function createPeerMeshServices(configuration: any, delivery?: { merge(in
       post_message: { schema: object({ channel_id: fixed(channelId), message: text, root_id: text }, ['channel_id', 'message']),
         route: (input: any) => ['POST', '/api/v4/posts', input] },
     },
-    'agensh-context': {
+    'peermesh-context': {
       board_read: { schema: object({ board_id: fixed(boardId) }, ['board_id']), route: (_: any, peer: any) => ['GET', boardRoute(peer, 'read')] },
       board_write: { schema: object({ board_id: fixed(boardId), type: { type: 'string', enum: ['FACT', 'OBSERVED', 'FAIL', 'PATCH_SUMMARY', 'CLAIM'] }, content: text, detail: text, delegation_id: text }, ['board_id', 'type', 'content']),
         route: ({ type, content, detail, delegation_id }: any, peer: any) => ['POST', `/board/${encodeURIComponent(boardId)}/note`, { thread_id: peer.board.workerId, type, content, detail: detail ?? null, delegation_id: delegation_id ?? null }] },
@@ -132,17 +132,17 @@ export function createPeerMeshServices(configuration: any, delivery?: { merge(in
             ...(operation === 'pull_request_merge' ? ['DELIVERY_INVALID', 'DELIVERY_CONFLICT', 'DELIVERY_NOT_READY', 'DELIVERY_MERGE_UNKNOWN', 'DELIVERY_STOPPING'] : [])]
             .map(code => ({ code, retryable: false })) })) },
       adapter: { async invoke({ capability, input, caller, envelope, signal }: any) {
-        const bot = bots.get(caller.botId);
-        const peer = bot?.peer;
+        const agent = agents.get(caller.agentId);
+        const peer = agent?.peer;
         const binding = id === 'gitea' ? peer?.gitea.binding : id === 'message' ? peer?.message.binding : peer?.board.binding;
-        if (!bot || caller.runtimeId !== bot.runtimeId || caller.botId !== bot.botId || caller.profile !== bot.profile || caller.binding !== binding) throw failure('NOT_ALLOWED');
+        if (!agent || caller.runtimeId !== agent.runtimeId || caller.agentId !== agent.agentId || caller.profile !== agent.profile || caller.binding !== binding) throw failure('NOT_ALLOWED');
         if (capability.operation === 'pull_request_merge') {
           if (!delivery) throw failure('NOT_ALLOWED');
           return delivery.merge({ peerKey: peer.key, number: input.index, headSha: input.head_sha, requestId: envelope.operation_id, signal });
         }
         if (capability.operation === 'peer_list') return peers.map(item => ({ key: item.key, username: item.gitea.username }));
         const [method, path, body] = rules[capability.operation].route(input, peer);
-        const endpoint = id === 'agensh-context' ? endpoints.board : endpoints[id];
+        const endpoint = id === 'peermesh-context' ? endpoints.board : endpoints[id];
         const credential = id === 'gitea' ? `token ${peer.gitea.token}` : id === 'message' ? `Bearer ${peer.message.token}` : undefined;
         try {
           const result = await httpClient(endpoint, credential)(method, path, body, { signal });
@@ -159,23 +159,23 @@ export function createPeerMeshServices(configuration: any, delivery?: { merge(in
       } },
     });
   }
-  const identities = (peer: any, bot: any) => ({ runId, ...(bot ? { runtimeId: bot.runtimeId, botId: bot.botId } : {}), gitea: { binding: peer.gitea.binding, accountId: peer.gitea.accountId, repository },
+  const identities = (peer: any, agent: any) => ({ runId, ...(agent ? { runtimeId: agent.runtimeId, agentId: agent.agentId } : {}), gitea: { binding: peer.gitea.binding, accountId: peer.gitea.accountId, repository },
     message: { binding: peer.message.binding, accountId: peer.message.accountId, channelId }, board: { binding: peer.board.binding, workerId: peer.board.workerId, boardId } });
   return Object.freeze({ services, bindings,
     bindingsFor(key: any) {
       const peer = peers.find((peer: any) => peer.key === key);
       if (!peer) throw failure('NOT_ALLOWED');
-      return { gitea: peer.gitea.binding, message: peer.message.binding, 'agensh-context': peer.board.binding };
+      return { gitea: peer.gitea.binding, message: peer.message.binding, 'peermesh-context': peer.board.binding };
     },
-    bindBot(identity: any) {
+    bindAgent(identity: any) {
       const peer = peers.find((peer: any) => peer.key === (identity?.peerKey ?? peers[0].key));
-      if (!peer || !identity || ![identity.runtimeId, identity.botId].every((value: any) => typeof value === 'string' && value) ||
-          bots.has(identity.botId) || [...bots.values()].some((bot: any) => bot.peer.key === peer.key || bot.runtimeId !== identity.runtimeId)) throw failure('NOT_ALLOWED');
-      bots.set(identity.botId, Object.freeze({ runtimeId: identity.runtimeId, botId: identity.botId, profile: identity.profile ?? 'peer', peer }));
+      if (!peer || !identity || ![identity.runtimeId, identity.agentId].every((value: any) => typeof value === 'string' && value) ||
+          agents.has(identity.agentId) || [...agents.values()].some((agent: any) => agent.peer.key === peer.key || agent.runtimeId !== identity.runtimeId)) throw failure('NOT_ALLOWED');
+      agents.set(identity.agentId, Object.freeze({ runtimeId: identity.runtimeId, agentId: identity.agentId, profile: identity.profile ?? 'peer', peer }));
     },
     identities() {
-      if (configuration.peers) return peers.map((peer: any) => ({ key: peer.key, ...identities(peer, [...bots.values()].find((bot: any) => bot.peer.key === peer.key)) }));
-      return identities(peer, [...bots.values()][0]);
+      if (configuration.peers) return peers.map((peer: any) => ({ key: peer.key, ...identities(peer, [...agents.values()].find((agent: any) => agent.peer.key === peer.key)) }));
+      return identities(peer, [...agents.values()][0]);
     },
   });
 }

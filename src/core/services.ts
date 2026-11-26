@@ -26,7 +26,7 @@ export interface ServiceInvocation {
 
 export interface ServiceInvocationRecord {
   runtimeId: string;
-  botId: string;
+  agentId: string;
   profile: string;
   serviceId: string;
   operation: string;
@@ -96,8 +96,8 @@ function freeze<T>(value: T): T {
 }
 
 function validateManifest(input: unknown, builtin = false): ServiceManifest {
-  if (!record(input) || !isJson(input) || typeof input.id !== 'string' || !IDENTIFIER.test(input.id) || (input.id === 'bot' && !builtin)) {
-    invalid('Service id must be a valid identifier and bot is reserved');
+  if (!record(input) || !isJson(input) || typeof input.id !== 'string' || !IDENTIFIER.test(input.id) || (input.id === 'agent' && !builtin)) {
+    invalid('Service id must be a valid identifier and agent is reserved');
   }
   if (![input.title, input.purpose, input.provider_version].every(nonempty) || input.contract_version !== '2') {
     invalid('Service requires title, purpose, provider_version and contract_version 2');
@@ -156,9 +156,9 @@ export class ServiceRegistry {
 
 }
 
-// Internal Core assembly only; the public registry continues to reject bot.
-export function builtinBotRegistration(manifest: ServiceManifest, adapter: ServiceAdapter): Readonly<ServiceRegistration> {
-  if (manifest.id !== 'bot') invalid('Built-in registration must be bot');
+// Internal Core assembly only; the public registry continues to reject agent.
+export function builtinAgentRegistration(manifest: ServiceManifest, adapter: ServiceAdapter): Readonly<ServiceRegistration> {
+  if (manifest.id !== 'agent') invalid('Built-in registration must be agent');
   const snapshot = validateManifest(manifest, true);
   validators.set(snapshot, compile(snapshot));
   return Object.freeze({ manifest: snapshot, adapter: Object.freeze(adapter) });
@@ -192,7 +192,7 @@ export async function invokeService(registration: ServiceRegistration, { operati
   const { manifest, adapter } = registration;
   const capability = manifest.capabilities.find(item => item.operation === operation);
   const identity = { service_id: manifest.id, operation, operation_id: envelope.operation_id };
-  const record = (state: string, outcome: string, error?: { code: string; retryable: boolean }) => recordService?.({ runtimeId: caller.runtimeId, botId: caller.botId, profile: caller.profile,
+  const record = (state: string, outcome: string, error?: { code: string; retryable: boolean }) => recordService?.({ runtimeId: caller.runtimeId, agentId: caller.agentId, profile: caller.profile,
     serviceId: manifest.id, operation, operationId: envelope.operation_id, state, outcome, ...(error ? { error } : {}) });
   record('validation', 'pending');
   if (!capability) {
@@ -239,7 +239,7 @@ export async function invokeService(registration: ServiceRegistration, { operati
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
 }
 
-/** Host-configured HTTP adapter. Its credential never enters Bot environments. */
+/** Host-configured HTTP adapter. Its credential never enters Agent environments. */
 export function createHttpJsonAdapter({ token, timeoutMs = 30_000, fetchImpl = globalThis.fetch }: { token?: string; timeoutMs?: number; fetchImpl?: typeof fetch } = {}) {
   if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 86_400_000 ||
       (token !== undefined && (typeof token !== 'string' || !token))) invalid('HTTP adapter requires a bounded timeout, fetch and optional host token');

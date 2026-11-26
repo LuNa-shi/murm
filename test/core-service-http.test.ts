@@ -13,7 +13,7 @@ test('authenticated HTTP Service receives the same trusted caller as in-process 
     const chunks = []; for await (const chunk of request) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks).toString());
     calls.push({ route: request.url, ...body });
-    if (request.url === '/put') saved = { ...body.input, author: body.caller.botId };
+    if (request.url === '/put') saved = { ...body.input, author: body.caller.agentId };
     response.end(JSON.stringify({ ok: true, result: saved ?? null }));
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -22,11 +22,11 @@ test('authenticated HTTP Service receives the same trusted caller as in-process 
   manifest.endpoint = { transport: 'http-json', url: `http://127.0.0.1:${server.address().port}` };
   for (const capability of manifest.capabilities) capability.path = '/' + capability.operation;
   const { call } = await setup(t, createHttpJsonAdapter({ token: 'host-test-only' }), { manifest });
-  assert.equal((await call('put', { key: 'one', text: 'fixed' }, { caller: { botId: 'forged' } })).result.author, 'bot-one');
+  assert.equal((await call('put', { key: 'one', text: 'fixed' }, { caller: { agentId: 'forged' } })).result.author, 'agent-one');
   assert.deepEqual((await call('get', { key: 'one' })).result, saved);
   assert.equal(calls.length, 2);
   for (const request of calls) {
-    assert.deepEqual(request.caller, { runtimeId: 'run-one', botId: 'bot-one', profile: 'writer', binding: 'notes-account' });
+    assert.deepEqual(request.caller, { runtimeId: 'run-one', agentId: 'agent-one', profile: 'writer', binding: 'notes-account' });
     assert.deepEqual(request.envelope, { operation_id: 'fixed-request' });
   }
 });
@@ -65,8 +65,8 @@ test('authorized HTTP Service named constructor receives the same absent binding
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const manifest = notesManifest('constructor');
   manifest.endpoint = { transport: 'http-json', url: `http://127.0.0.1:${server.address().port}` };
-  const { bot, call } = await setup(t, createHttpJsonAdapter(), { manifest });
-  bot.services = { constructor: ['get'] }; bot.bindings = {};
+  const { agent, call } = await setup(t, createHttpJsonAdapter(), { manifest });
+  agent.services = { constructor: ['get'] }; agent.bindings = {};
   assert.equal((await call('get', { key: 'one' }, { service_id: 'constructor' })).ok, true);
-  assert.deepEqual(caller, { runtimeId: 'run-one', botId: 'bot-one', profile: 'writer' });
+  assert.deepEqual(caller, { runtimeId: 'run-one', agentId: 'agent-one', profile: 'writer' });
 });

@@ -12,13 +12,13 @@ import { ownedContainers } from './fixtures/core-runtime-containers.js';
 
 // Uses real Pi, Worker and OpenSandbox with a loopback model. No paid provider.
 test('Core Context Fork inherits a live native Session with isolated credentials and workDir', {
-  skip: process.env.SWARMENV_CORE_FORK_REAL_TEST !== '1' && 'Real OpenSandbox Context Fork probe requires opt-in',
+  skip: process.env.MURM_CORE_FORK_REAL_TEST !== '1' && 'Real OpenSandbox Context Fork probe requires opt-in',
   timeout: 180000,
 }, async t => {
   const { createRuntime } = await import('@murm/core');
   const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
   const { ServiceRegistry } = await import('@murm/core/services');
-  const image = process.env.SWARMENV_CORE_TEST_IMAGE;
+  const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.ok(image);
   const requests = [];
   const server = createServer(async (request, response) => {
@@ -33,7 +33,7 @@ test('Core Context Fork inherits a live native Session with isolated credentials
     const cliOutput = body.input.find(entry => entry.type === 'function_call_output' && entry.call_id === callId);
     const item = cliFork && !cliOutput
       ? { type: 'function_call', id: `fc_${callId}`, call_id: callId, name: 'bash',
-        arguments: JSON.stringify({ command: `swarm bot spawn --profile worker --fork true --request-id ${callId} 2>&1`, timeout: 45 }) }
+        arguments: JSON.stringify({ command: `swarm agent spawn --profile worker --fork true --request-id ${callId} 2>&1`, timeout: 45 }) }
       : requests.length === 1
       ? { type: 'function_call', id: 'fc_parent', call_id: 'parent_tool', name: 'bash',
         arguments: JSON.stringify({ command: 'echo READY > fork-ready.txt; sleep 8; echo PARENT_FILE > parent-only.txt', timeout: 15 }) }
@@ -57,22 +57,22 @@ test('Core Context Fork inherits a live native Session with isolated credentials
   await mkdir(outputDir, { recursive: true, mode: 0o700 });
   runtime = await createRuntime({
     backend: createPiOpenSandboxBackend({
-      sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-        endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY,
+      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+        endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
         commandTimeoutMs: 30000 },
-      bridge: { host: '0.0.0.0', publicUrl: process.env.SWARMENV_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
-      modelGateway: { host: '0.0.0.0', advertiseHost: process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', requestTimeoutMs: 20000, maxOutputTokens: 128 },
+      bridge: { host: '0.0.0.0', publicUrl: process.env.MURM_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
+      modelGateway: { host: '0.0.0.0', advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', requestTimeoutMs: 20000, maxOutputTokens: 128 },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
     }),
     profiles: {
       worker: { prompt: 'Perform the requested steps.', model: 'default', image, writable: true, services: {} },
       allowed: { prompt: 'Perform the requested steps.', model: 'default', image, writable: true,
-        services: { bot: ['spawn'] }, spawnProfiles: ['worker'], allowContextFork: true },
+        services: { agent: ['spawn'] }, spawnProfiles: ['worker'], allowContextFork: true },
       denied: { prompt: 'Perform the requested steps.', model: 'default', image, writable: true,
-        services: { bot: ['spawn'] }, spawnProfiles: ['worker'], allowContextFork: false },
+        services: { agent: ['spawn'] }, spawnProfiles: ['worker'], allowContextFork: false },
     },
-    services: new ServiceRegistry(), maxBots: 5, outputDir,
+    services: new ServiceRegistry(), maxAgents: 5, outputDir,
   });
   const events = [];
   runtime.onEvent(event => events.push(event));
@@ -90,9 +90,9 @@ test('Core Context Fork inherits a live native Session with isolated credentials
   assert.deepEqual(await runtime.spawn({ profile: 'worker', forkFrom: parent.id, requestId: 'fork' }), child);
   await runtime.send(child.id, 'CHILD_CONTINUE', { requestId: 'child-input' });
   const deadline = Date.now() + 30000;
-  while (!events.some(event => event.botId === child.id && event.type === 'settled') ||
-         !events.some(event => event.botId === parent.id && event.type === 'settled')) {
-    assert.ok(Date.now() < deadline, 'Forked Bots did not settle');
+  while (!events.some(event => event.agentId === child.id && event.type === 'settled') ||
+         !events.some(event => event.agentId === parent.id && event.type === 'settled')) {
+    assert.ok(Date.now() < deadline, 'Forked Agents did not settle');
     await delay(50);
   }
   const childRequest = requests.find(request => JSON.stringify(request.input).includes('CHILD_CONTINUE'));
@@ -105,17 +105,17 @@ test('Core Context Fork inherits a live native Session with isolated credentials
   const childContainer = (await ownedContainers(runtime.id)).find(id => id !== parentContainer);
   assert.equal((await docker(parentContainer, 'cat', '/workspace/project/parent-only.txt')).stdout, 'PARENT_FILE\n');
   await docker(childContainer, 'test', '!', '-e', '/workspace/project/parent-only.txt');
-  assert.equal(events.find(event => event.botId === child.id && event.type === 'settled').outcome, 'completed');
+  assert.equal(events.find(event => event.agentId === child.id && event.type === 'settled').outcome, 'completed');
 
-  async function settleInput(bot, input) {
-    const settledBefore = events.filter(event => event.botId === bot.id && event.type === 'settled').length;
-    await runtime.send(bot.id, input, { mode: 'followUp', requestId: input });
+  async function settleInput(agent, input) {
+    const settledBefore = events.filter(event => event.agentId === agent.id && event.type === 'settled').length;
+    await runtime.send(agent.id, input, { mode: 'followUp', requestId: input });
     const deadline = Date.now() + 45_000;
-    while (events.filter(event => event.botId === bot.id && event.type === 'settled').length === settledBefore) {
+    while (events.filter(event => event.agentId === agent.id && event.type === 'settled').length === settledBefore) {
       assert.ok(Date.now() < deadline, `${input} did not settle`);
       await delay(50);
     }
-    assert.equal(events.filter(event => event.botId === bot.id && event.type === 'settled').at(-1).outcome, 'completed');
+    assert.equal(events.filter(event => event.agentId === agent.id && event.type === 'settled').at(-1).outcome, 'completed');
   }
   const cliOutput = suffix => requests.flatMap(request => request.input)
     .find(entry => entry.type === 'function_call_output' && entry.call_id === `cli_fork_${suffix}`)?.output;

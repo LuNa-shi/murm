@@ -12,7 +12,7 @@ import { provider } from './fixtures/core-pi-transport.js';
 // Controlled OpenSandbox and Docker boundary, with the actual Core adapter.
 const hooks = registerHooks({ resolve(specifier, context, next) {
   if (context.parentURL?.endsWith('/src/core/pi-opensandbox-backend.js') &&
-      /\/runtime\/(opensandbox-manager|docker-bot-network|docker-bot-disk)\.js$/.test(specifier)) {
+      /\/runtime\/(opensandbox-manager|docker-agent-network|docker-agent-disk)\.js$/.test(specifier)) {
     return { url: new URL('./fixtures/core-pi-transport.js', import.meta.url).href, shortCircuit: true };
   }
   return next(specifier, context);
@@ -22,7 +22,7 @@ const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-open
 const { ServiceRegistry } = await import('@murm/core/services');
 hooks.deregister();
 
-async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', services = new ServiceRegistry(), permissions = {}, writable = true, maxBots = 1, upstreamHeaders = {} } = {}) {
+async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', services = new ServiceRegistry(), permissions = {}, writable = true, maxAgents = 1, upstreamHeaders = {} } = {}) {
   provider.reset();
   const outputDir = await mkdtemp(join(tmpdir(), 'core-pi-input-'));
   const runtime = await createRuntime({
@@ -34,27 +34,27 @@ async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', servi
       isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
     }),
     profiles: { worker: { prompt: 'fixed', model: 'default', image: 'test', writable, services: permissions } },
-    services, maxBots, outputDir,
+    services, maxAgents, outputDir,
   });
   t.after(async () => { await runtime.close(); await rm(outputDir, { recursive: true, force: true }); });
-  return { runtime, outputDir, bot: await runtime.spawn({ requestId: 'spawn', profile: 'worker' }) };
+  return { runtime, outputDir, agent: await runtime.spawn({ requestId: 'spawn', profile: 'worker' }) };
 }
 
-function bridgeCall(botId, operation = 'list_services', payload = {}) {
-  const startup = provider.starts.get(botId);
-  return fetch(startup.env.SWARMENV_BRIDGE_URL.replace('172.17.0.1', '127.0.0.1') + '/call', {
-    method: 'POST', headers: { authorization: `Bearer ${startup.secretEnvironment.SWARMENV_BRIDGE_TOKEN}`,
+function bridgeCall(agentId, operation = 'list_services', payload = {}) {
+  const startup = provider.starts.get(agentId);
+  return fetch(startup.env.MURM_BRIDGE_URL.replace('172.17.0.1', '127.0.0.1') + '/call', {
+    method: 'POST', headers: { authorization: `Bearer ${startup.secretEnvironment.MURM_BRIDGE_TOKEN}`,
       'content-type': 'application/json' }, body: JSON.stringify({ operation, operation_id: 'fixed-operation', ...payload }),
   });
 }
 
 test('adapter receipt recovery never repeats a prompt after a socket failure', async t => {
-  const { runtime, bot } = await setup(t);
+  const { runtime, agent } = await setup(t);
   provider.wait = async () => { throw Object.assign(new Error('lost socket'), { code: 'SERVICE_UNAVAILABLE' }); };
-  const unknown = await runtime.send(bot.id, 'fixed', { requestId: 'one' });
+  const unknown = await runtime.send(agent.id, 'fixed', { requestId: 'one' });
   assert.equal(unknown.status, 'unknown');
   provider.responses.set(unknown.inputId, { response: { id: unknown.inputId, command: 'prompt', success: true, data: { disposition: 'started' } }, records: [] });
-  const accepted = await runtime.send(bot.id, 'fixed', { requestId: 'one' });
+  const accepted = await runtime.send(agent.id, 'fixed', { requestId: 'one' });
   assert.equal(accepted.status, 'accepted');
   assert.equal(accepted.inputId, unknown.inputId);
   assert.equal(provider.messages.filter(message => message.type === 'prompt').length, 1);
@@ -62,7 +62,7 @@ test('adapter receipt recovery never repeats a prompt after a socket failure', a
 });
 
 test('prompt acknowledgement replays unread Worker prefix before its own response', async t => {
-  const { runtime, bot } = await setup(t);
+  const { runtime, agent } = await setup(t);
   const events = [];
   runtime.onEvent(event => events.push(event));
   provider.publish({ type: 'agent_start' });
@@ -74,24 +74,24 @@ test('prompt acknowledgement replays unread Worker prefix before its own respons
     provider.publish({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'fast' }], stopReason: 'stop' } });
     provider.publish({ type: 'agent_settled' });
   };
-  const receipt = await runtime.send(bot.id, 'fixed', { requestId: 'unread-prefix' });
+  const receipt = await runtime.send(agent.id, 'fixed', { requestId: 'unread-prefix' });
   assert.equal(receipt.status, 'accepted');
   assert.equal(events.some(event => event.type === 'error'), false);
   assert.equal(events.find(event => event.type === 'settled')?.output, 'fast');
-  assert.equal((await runtime.get(bot.id)).status, 'idle');
+  assert.equal((await runtime.get(agent.id)).status, 'idle');
 });
 
 test('a response for another input cannot establish acceptance or rejection', async t => {
-  const { runtime, bot } = await setup(t);
+  const { runtime, agent } = await setup(t);
   provider.wait = async message => provider.responses.set(message.id, { response: {
     id: 'other-input', command: 'prompt', success: false, error: 'unrelated rejection',
   } });
-  const receipt = await runtime.send(bot.id, 'fixed', { requestId: 'wrong-response' });
+  const receipt = await runtime.send(agent.id, 'fixed', { requestId: 'wrong-response' });
   assert.equal(receipt.status, 'unknown');
 });
 
 test('handled receipt cannot restore idle after actual Pi execution begins', async t => {
-  const { runtime, bot } = await setup(t);
+  const { runtime, agent } = await setup(t);
   const events = [];
   runtime.onEvent(event => events.push(event));
   provider.wrapperReplay = true;
@@ -100,27 +100,27 @@ test('handled receipt cannot restore idle after actual Pi execution begins', asy
     provider.publish({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'Active execution output' }], stopReason: 'toolUse' } });
     provider.responses.set(message.id, { response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'handled' } } });
   };
-  const receipt = await runtime.send(bot.id, '/local-command', { requestId: 'execution-before-handled' });
+  const receipt = await runtime.send(agent.id, '/local-command', { requestId: 'execution-before-handled' });
   assert.equal(receipt.disposition, 'handled');
-  const snapshot = await runtime.get(bot.id);
+  const snapshot = await runtime.get(agent.id);
   assert.equal(snapshot.status, 'running');
   assert.equal(snapshot.latestOutput, 'Active execution output');
   assert.deepEqual(events.map(event => event.type), ['output']);
 });
 
-test('unknown original submission stays unknown when receipt lookup loses authorization or the Bot closes', async t => {
-  const { runtime, bot } = await setup(t);
-  const first = await runtime.send(bot.id, 'fixed', { requestId: 'uncertain' });
+test('unknown original submission stays unknown when receipt lookup loses authorization or the Agent closes', async t => {
+  const { runtime, agent } = await setup(t);
+  const first = await runtime.send(agent.id, 'fixed', { requestId: 'uncertain' });
   assert.equal(first.status, 'unknown');
   provider.queryError = Object.assign(new Error('query unavailable'), { code: 'NOT_ALLOWED' });
-  assert.deepEqual(await runtime.send(bot.id, 'fixed', { requestId: 'uncertain' }), first);
-  await runtime.stop(bot.id);
-  assert.deepEqual(await runtime.send(bot.id, 'fixed', { requestId: 'uncertain' }), first);
+  assert.deepEqual(await runtime.send(agent.id, 'fixed', { requestId: 'uncertain' }), first);
+  await runtime.stop(agent.id);
+  assert.deepEqual(await runtime.send(agent.id, 'fixed', { requestId: 'uncertain' }), first);
   assert.equal(provider.messages.filter(message => message.type === 'prompt').length, 1);
 });
 
 test('execution boundaries clear old output and preserve aborted outcome', async t => {
-  const { runtime, bot } = await setup(t);
+  const { runtime, agent } = await setup(t);
   const events = [];
   runtime.onEvent(event => events.push(event));
   provider.publish({ type: 'agent_start' });
@@ -140,7 +140,7 @@ test('execution boundaries clear old output and preserve aborted outcome', async
 });
 
 test('lost Worker history emits a fatal gap and never fabricates a later settled snapshot', async t => {
-  const { runtime, bot } = await setup(t);
+  const { runtime, agent } = await setup(t);
   const events = [];
   runtime.onEvent(event => events.push(event));
   provider.records.push({ type: 'agent_settled', worker_sequence: 9 });
@@ -149,18 +149,18 @@ test('lost Worker history emits a fatal gap and never fabricates a later settled
   assert.equal(gap?.fatal, true);
   assert.match(gap.error.message, /gap/);
   assert.equal(events.some(event => event.type === 'settled'), false);
-  await assert.rejects(runtime.send(bot.id, 'unsafe fresh input', { requestId: 'after-gap' }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(runtime.send(agent.id, 'unsafe fresh input', { requestId: 'after-gap' }), { code: 'NOT_ALLOWED' });
 });
 
 test('a fatal history gap fences authority before subscribers while preserving receipts and owned cleanup', async t => {
-  const { runtime, bot } = await setup(t, { writable: false });
-  const unknown = await runtime.send(bot.id, 'original input', { requestId: 'original' });
+  const { runtime, agent } = await setup(t, { writable: false });
+  const unknown = await runtime.send(agent.id, 'original input', { requestId: 'original' });
   assert.equal(unknown.status, 'unknown');
-  assert.equal((await bridgeCall(bot.id)).status, 200);
+  assert.equal((await bridgeCall(agent.id)).status, 200);
   let observed;
   const fatal = new Promise(resolve => runtime.onEvent(event => {
     if (event.type === 'error' && event.fatal) {
-      observed = { event, snapshot: runtime.get(bot.id), denied: bridgeCall(bot.id) };
+      observed = { event, snapshot: runtime.get(agent.id), denied: bridgeCall(agent.id) };
       resolve();
     }
   }));
@@ -171,19 +171,19 @@ test('a fatal history gap fences authority before subscribers while preserving r
   assert.equal(snapshot.cursor, observed.event.seq);
   assert.match(snapshot.lastError.message, /gap/);
   assert.equal(snapshot.status, 'running'); // No evidence that Pi physically exited.
-  await assert.rejects(runtime.send(bot.id, 'fresh input', { requestId: 'fresh' }), { code: 'NOT_ALLOWED' });
-  await assert.rejects(runtime.files.prepare(bot.id, { requestId: 'prepare', files: {} }), { code: 'NOT_ALLOWED' });
-  await assert.rejects(runtime.spawn({ profile: 'worker', parentId: bot.id, requestId: 'child' }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(runtime.send(agent.id, 'fresh input', { requestId: 'fresh' }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(runtime.files.prepare(agent.id, { requestId: 'prepare', files: {} }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(runtime.spawn({ profile: 'worker', parentId: agent.id, requestId: 'child' }), { code: 'NOT_ALLOWED' });
   await assert.rejects(runtime.spawn({ profile: 'worker', requestId: 'before-cleanup' }), { code: 'CONFLICT' });
   provider.responses.set(unknown.inputId, { response: { id: unknown.inputId, command: 'prompt', success: true, data: { disposition: 'started' } }, records: [] });
-  assert.deepEqual(await runtime.send(bot.id, 'original input', { requestId: 'original' }), {
+  assert.deepEqual(await runtime.send(agent.id, 'original input', { requestId: 'original' }), {
     inputId: unknown.inputId, status: 'accepted', disposition: 'started',
   });
   assert.equal(provider.messages.filter(message => message.type === 'prompt').length, 1);
-  const stopped = await runtime.stop(bot.id);
+  const stopped = await runtime.stop(agent.id);
   assert.equal(stopped.execution, 'stopped');
   assert.equal(stopped.cleanup, 'complete');
-  assert.equal((await runtime.get(bot.id)).status, 'closed');
+  assert.equal((await runtime.get(agent.id)).status, 'closed');
   provider.records = []; // The replacement has its own Worker record history.
   assert.equal((await runtime.spawn({ profile: 'worker', requestId: 'replacement' })).status, 'idle');
 });
@@ -199,12 +199,12 @@ test('a fatal history gap revokes a held model stream and denies new model reque
   upstream.listen(0, '127.0.0.1');
   await once(upstream, 'listening');
   t.after(async () => { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); });
-  const { runtime, bot } = await setup(t, { upstreamUrl: `http://127.0.0.1:${upstream.address().port}/v1/responses` });
-  const start = provider.starts.get(bot.id);
+  const { runtime, agent } = await setup(t, { upstreamUrl: `http://127.0.0.1:${upstream.address().port}/v1/responses` });
+  const start = provider.starts.get(agent.id);
   const url = start.env.PI_KIMI_PROXY_BASE_URL.replace('172.17.0.1', '127.0.0.1') + '/responses';
   const call = requestId => fetch(url, { method: 'POST', headers: {
     authorization: `Bearer ${start.secretEnvironment.PI_KIMI_PROXY_API_KEY}`,
-    'content-type': 'application/json', 'x-swarmenv-request-id': requestId,
+    'content-type': 'application/json', 'x-murm-request-id': requestId,
   }, body: JSON.stringify({ model: 'k3', input: 'fixed' }) });
   const response = await call('held');
   assert.equal(response.status, 200);
@@ -232,22 +232,22 @@ test('fatal revocation cancels only its own pending Service and preserves unknow
       output_schema: { type: 'string' }, errors: [],
     }],
   }, adapter: { invoke: ({ caller, signal }) => new Promise(resolve => {
-    pending.set(caller.botId, { signal, resolve });
+    pending.set(caller.agentId, { signal, resolve });
     if (pending.size === 2) ready();
   }) } });
-  const { runtime, bot } = await setup(t, { services, permissions: { notes: ['put'] }, maxBots: 2 });
+  const { runtime, agent } = await setup(t, { services, permissions: { notes: ['put'] }, maxAgents: 2 });
   const other = await runtime.spawn({ profile: 'worker', requestId: 'other' });
-  const firstWrite = bridgeCall(bot.id, 'put', { service_id: 'notes', payload: {} });
+  const firstWrite = bridgeCall(agent.id, 'put', { service_id: 'notes', payload: {} });
   const otherWrite = bridgeCall(other.id, 'put', { service_id: 'notes', payload: {} });
   await entered;
   provider.wait = async message => provider.responses.set(message.id, {
     response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'started' } },
     records: [{ type: 'agent_settled', worker_sequence: 9 }],
   });
-  await runtime.send(bot.id, 'trigger fixed gap', { requestId: 'gap' });
-  assert.equal(pending.get(bot.id).signal.aborted, true);
+  await runtime.send(agent.id, 'trigger fixed gap', { requestId: 'gap' });
+  assert.equal(pending.get(agent.id).signal.aborted, true);
   assert.equal(pending.get(other.id).signal.aborted, false);
-  pending.get(bot.id).resolve('late result'); // Adapter did not roll back an already-started write.
+  pending.get(agent.id).resolve('late result'); // Adapter did not roll back an already-started write.
   pending.get(other.id).resolve('other result');
   const failed = await firstWrite;
   assert.equal(failed.status, 503);
@@ -259,47 +259,47 @@ test('fatal revocation cancels only its own pending Service and preserves unknow
   assert.equal((await bridgeCall(other.id)).status, 200);
 });
 
-test('a recoverable polling error preserves live Bot authority', { timeout: 5000 }, async t => {
-  const { runtime, bot } = await setup(t);
+test('a recoverable polling error preserves live Agent authority', { timeout: 5000 }, async t => {
+  const { runtime, agent } = await setup(t);
   const error = new Promise(resolve => runtime.onEvent(event => { if (event.type === 'error') resolve(event); }));
   provider.pollError = Object.assign(new Error('controlled poll interruption'), { code: 'SERVICE_UNAVAILABLE' });
   assert.equal((await error).fatal, false);
   provider.pollError = undefined;
-  assert.equal((await bridgeCall(bot.id)).status, 200);
+  assert.equal((await bridgeCall(agent.id)).status, 200);
   provider.wait = async message => provider.responses.set(message.id, {
     response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'handled' } }, records: [],
   });
-  assert.equal((await runtime.send(bot.id, 'after recovery', { requestId: 'recovered' })).status, 'accepted');
-  assert.equal((await runtime.get(bot.id)).status, 'idle');
+  assert.equal((await runtime.send(agent.id, 'after recovery', { requestId: 'recovered' })).status, 'accepted');
+  assert.equal((await runtime.get(agent.id)).status, 'idle');
 });
 
 test('a healthy parent can still inspect and stop its fatal child', async t => {
-  const { runtime, bot: parent } = await setup(t, { permissions: { bot: ['get', 'stop'] }, maxBots: 2 });
+  const { runtime, agent: parent } = await setup(t, { permissions: { agent: ['get', 'stop'] }, maxAgents: 2 });
   const child = await runtime.spawn({ profile: 'worker', parentId: parent.id, requestId: 'child' });
   provider.wait = async message => provider.responses.set(message.id, {
     response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'started' } },
     records: [{ type: 'agent_settled', worker_sequence: 9 }],
   });
   await runtime.send(child.id, 'fixed gap', { requestId: 'gap' });
-  const inspect = await bridgeCall(parent.id, 'get', { service_id: 'bot', payload: { bot_id: child.id } });
+  const inspect = await bridgeCall(parent.id, 'get', { service_id: 'agent', payload: { agent_id: child.id } });
   assert.equal(inspect.status, 200);
   const snapshot = (await inspect.json()).result;
   assert.equal(snapshot.id, child.id);
   assert.match(snapshot.lastError.message, /gap/);
   assert.equal(Object.hasOwn(snapshot, 'unavailable'), false);
-  const stopped = await bridgeCall(parent.id, 'stop', { service_id: 'bot', payload: { bot_id: child.id } });
+  const stopped = await bridgeCall(parent.id, 'stop', { service_id: 'agent', payload: { agent_id: child.id } });
   assert.equal(stopped.status, 200);
   assert.equal((await stopped.json()).result.cleanup, 'complete');
   assert.equal((await bridgeCall(parent.id)).status, 200);
 });
 
 test('private Pi compaction and retry events retain the Session and expose a failed turn for Environment policy', { timeout: 5000 }, async t => {
-  const { runtime, bot } = await setup(t);
+  const { runtime, agent } = await setup(t);
   provider.wait = async message => {
     provider.responses.set(message.id, { response: { id: message.id, command: 'prompt', success: true,
       data: { disposition: 'started' } }, records: [] });
   };
-  assert.equal((await runtime.send(bot.id, 'fixed private-memory input', { requestId: 'private-memory' })).status, 'accepted');
+  assert.equal((await runtime.send(agent.id, 'fixed private-memory input', { requestId: 'private-memory' })).status, 'accepted');
   const settled = Promise.withResolvers();
   runtime.onEvent(event => { if (event.type === 'settled') settled.resolve(event); });
   provider.publish({ type: 'agent_start' });
@@ -315,10 +315,10 @@ test('private Pi compaction and retry events retain the Session and expose a fai
   const event = await settled.promise;
   assert.equal(event.outcome, 'failed');
   assert.equal(event.error.code, 'MODEL_ERROR');
-  assert.equal((await runtime.get(bot.id)).status, 'idle');
+  assert.equal((await runtime.get(agent.id)).status, 'idle');
   assert.equal(provider.starts.size, 1);
   assert.equal(provider.messages.filter(message => message.type === 'prompt').length, 1);
-  assert.equal((await runtime.send(bot.id, 'explicit next input', { requestId: 'explicit-next' })).status, 'accepted');
+  assert.equal((await runtime.send(agent.id, 'explicit next input', { requestId: 'explicit-next' })).status, 'accepted');
   assert.equal(provider.starts.size, 1);
   assert.equal(provider.messages.filter(message => message.type === 'prompt').length, 2);
 });
@@ -352,20 +352,20 @@ test('Gateway records both request bodies and complete success, rejection and in
   upstream.listen(0, '127.0.0.1');
   await once(upstream, 'listening');
   t.after(async () => { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); });
-  const { runtime, outputDir, bot } = await setup(t, {
+  const { runtime, outputDir, agent } = await setup(t, {
     upstreamUrl: `http://127.0.0.1:${upstream.address().port}/v1/responses`,
     upstreamHeaders: { authorization: `Bearer ${remoteSecret}` },
   });
-  const start = provider.starts.get(bot.id);
-  const botToken = start.secretEnvironment.PI_KIMI_PROXY_API_KEY;
+  const start = provider.starts.get(agent.id);
+  const agentToken = start.secretEnvironment.PI_KIMI_PROXY_API_KEY;
   const base = start.env.PI_KIMI_PROXY_BASE_URL.replace('172.17.0.1', '127.0.0.1');
   const call = (id, input, signal) => fetch(base + '/responses', { method: 'POST', signal, headers: {
-    authorization: `Bearer ${botToken}`, 'content-type': 'application/json', 'x-swarmenv-request-id': id,
+    authorization: `Bearer ${agentToken}`, 'content-type': 'application/json', 'x-murm-request-id': id,
   }, body: JSON.stringify({ input }) });
   const previousCall = { type: 'function_call', call_id: 'call_1', name: 'read', arguments: '{}' };
   const emptyAssistant = { type: 'message', id: 'msg_empty', role: 'assistant', status: 'completed',
     content: [{ type: 'output_text', text: '', annotations: [] }] };
-  const toolOutput = { type: 'function_call_output', call_id: 'call_1', output: botToken };
+  const toolOutput = { type: 'function_call_output', call_id: 'call_1', output: agentToken };
   await (await call('success', [previousCall, emptyAssistant, toolOutput])).text();
   assert.equal((await call('reject', 'reject')).status, 429);
   const abort = new AbortController();
@@ -383,9 +383,9 @@ test('Gateway records both request bodies and complete success, rejection and in
       assert.equal((await stat(join(path, filename))).mode & 0o777, 0o600);
       return readFile(join(path, filename), 'utf8');
     }));
-    assert.ok(contents.every(value => !value.includes(remoteSecret) && !value.includes(botToken)));
+    assert.ok(contents.every(value => !value.includes(remoteSecret) && !value.includes(agentToken)));
     const [request, response, result] = [JSON.parse(contents[0]), contents[1], JSON.parse(contents[2])];
-    assert.equal(request.botId, bot.id);
+    assert.equal(request.agentId, agent.id);
     assert.ok(result.endedAt >= request.startedAt);
     traces.set(request.requestId, { request, response, result });
   }

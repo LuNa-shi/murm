@@ -50,7 +50,7 @@ export function createWorkspaceMergeService({ taskService, workspace, workspaceI
     };
     return workspace.merge({ workspaceId: workspaceId, fromRevision: input.from,
       requestId: `execution:${identity.executionId}:merge:${identity.requestId}`,
-      source: { operation: 'merge', mission_id: task.mission_id, task_id: task.task_id, execution_id: initial.execution_id, bot_id: initial.owner_ref, fencing_version: identity.fencingVersion },
+      source: { operation: 'merge', mission_id: task.mission_id, task_id: task.task_id, execution_id: initial.execution_id, agent_id: initial.owner_ref, fencing_version: identity.fencingVersion },
       checkPolicy, guard,
       checker: unavailableCheck ? async () => { throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Mission or Task requires an unavailable trusted final-tree checker', { policy: checkPolicy }); } : requirements.length ? async (plan: any) => {
         const execution = guard();

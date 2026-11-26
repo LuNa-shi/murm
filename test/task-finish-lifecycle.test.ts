@@ -10,7 +10,7 @@ import { makeEnvelope, operationPayload } from '../src/protocol/envelope.js';
 function fixture(t, database, taskContract = {}) {
   const service = new TaskService(database);
   t.after(() => service.close());
-  const actor = 'bot:finish';
+  const actor = 'agent:finish';
   const mission = service.createMission({ mission_id: 'mission:finish', goal: 'Complete independent local responsibilities' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
   const create = (taskId, extra = {}) => service.createTask({ mission_id: mission.mission_id, task_id: taskId, summary: `Investigate the independent responsibility ${taskId}`, goal: `Resolve ${taskId}`, expected_output: 'A reusable result', acceptance_conditions: ['The result addresses this local question'], ...extra }, makeEnvelope({ actorRef: actor })).task;
   const task = create('task:first', taskContract);
@@ -31,7 +31,7 @@ test('accepted finish retains durable Task ownership and rejects new writes unti
   assert.equal(service.getTask(task.task_id).state, 'RUNNING');
   assert.equal(service.getActiveExecutionForCore('core-1').execution_id, execution.execution_id);
   assert.equal(service.listEligibleTasks().length, 0);
-  assert.throws(() => service.takeTask(task.task_id, { owner_ref: 'bot:successor', core_id: 'core-2', take_key: 'second' }), (error) => error.code === 'CONFLICT');
+  assert.throws(() => service.takeTask(task.task_id, { owner_ref: 'agent:successor', core_id: 'core-2', take_key: 'second' }), (error) => error.code === 'CONFLICT');
   assert.throws(() => service.dispatch('heartbeat', {}, envelope('after-finish')), (error) => error.code === 'NOT_ALLOWED');
   assert.deepEqual(service.dispatch('task_finish', payload, request), accepted);
 });
@@ -56,7 +56,7 @@ test('blocked finish records a public dependency atomically and recomputes it af
   assert.equal(service.getTask(task.task_id).state, 'RUNNING');
   service.finalizeExecutionFinish(execution.execution_id, { fencingVersion: execution.fencing_version });
   assert.equal(service.getTask(task.task_id).state, 'BLOCKED');
-  const prerequisiteExecution = service.takeTask(prerequisite.task_id, { owner_ref: 'bot:prerequisite', core_id: 'core-2', take_key: 'prerequisite' }).execution;
+  const prerequisiteExecution = service.takeTask(prerequisite.task_id, { owner_ref: 'agent:prerequisite', core_id: 'core-2', take_key: 'prerequisite' }).execution;
   service.dispatch('task_finish', { outcome: 'done' }, makeEnvelope({ actorRef: prerequisiteExecution.owner_ref, taskId: prerequisite.task_id,
     executionId: prerequisiteExecution.execution_id, specVersion: prerequisiteExecution.spec_version,
     stateVersion: prerequisiteExecution.state_version, fencingVersion: prerequisiteExecution.fencing_version }));
@@ -72,7 +72,7 @@ test('cancelled finish preserves replacement intent while closing and rejects a 
   assert.equal(service.getTask(task.task_id).state, 'RUNNING');
   assert.equal(service.getExecution(execution.execution_id).state, 'CLOSING');
   assert.equal(service.getExecutionFinish(execution.execution_id).replacement_task_id, replacement.task_id);
-  const next = service.takeTask(replacement.task_id, { owner_ref: 'bot:replacement', core_id: 'core-2', take_key: 'replacement' }).execution;
+  const next = service.takeTask(replacement.task_id, { owner_ref: 'agent:replacement', core_id: 'core-2', take_key: 'replacement' }).execution;
   const request = makeEnvelope({ actorRef: next.owner_ref, taskId: replacement.task_id, executionId: next.execution_id,
     specVersion: next.spec_version, stateVersion: next.state_version, fencingVersion: next.fencing_version });
   assert.throws(() => service.dispatch('task_finish', { outcome: 'cancelled', reason: 'Invalid loop', replacement_task_id: task.task_id }, request), (error) => error.code === 'INVALID_CONTRACT');
@@ -119,8 +119,8 @@ test('blocked validation rolls back invalid owner, cancelled prerequisite and mi
   const dependent = create('task:dependent', { depends_on: [task.task_id] });
   assert.throws(() => service.dispatch('task_finish', { outcome: 'blocked', wait_for: dependent.task_id, reason: 'Invalid cycle' }, envelope('finish:cycle')), (error) => error.code === 'INVALID_CONTRACT');
   const available = create('task:available');
-  assert.throws(() => service.dispatch('task_finish', { outcome: 'blocked', wait_for: available.task_id, reason: 'Wrong owner' }, { ...envelope('finish:owner'), actor_ref: 'bot:stranger' }), (error) => error.code === 'NOT_ALLOWED');
-  const cancelled = service.takeTask(available.task_id, { owner_ref: 'bot:available', core_id: 'core-2', take_key: 'available' }).execution;
+  assert.throws(() => service.dispatch('task_finish', { outcome: 'blocked', wait_for: available.task_id, reason: 'Wrong owner' }, { ...envelope('finish:owner'), actor_ref: 'agent:stranger' }), (error) => error.code === 'NOT_ALLOWED');
+  const cancelled = service.takeTask(available.task_id, { owner_ref: 'agent:available', core_id: 'core-2', take_key: 'available' }).execution;
   service.dispatch('task_finish', { outcome: 'cancelled', reason: 'Responsibility is withdrawn' }, makeEnvelope({ actorRef: cancelled.owner_ref, taskId: available.task_id, executionId: cancelled.execution_id,
     specVersion: cancelled.spec_version, stateVersion: cancelled.state_version, fencingVersion: cancelled.fencing_version }));
   service.finalizeExecutionFinish(cancelled.execution_id, { fencingVersion: cancelled.fencing_version });
@@ -134,7 +134,7 @@ test('cleanup recomputes a prerequisite that completed while the owner was closi
   const { service, task, execution, envelope, create } = fixture(t);
   const prerequisite = create('task:during-close');
   service.dispatch('task_finish', { outcome: 'blocked', wait_for: prerequisite.task_id, reason: 'Await the result' }, envelope('finish:during-close'));
-  const other = service.takeTask(prerequisite.task_id, { owner_ref: 'bot:other', core_id: 'core-2', take_key: 'during-close' }).execution;
+  const other = service.takeTask(prerequisite.task_id, { owner_ref: 'agent:other', core_id: 'core-2', take_key: 'during-close' }).execution;
   service.dispatch('task_finish', { outcome: 'done' }, makeEnvelope({ actorRef: other.owner_ref, taskId: prerequisite.task_id, executionId: other.execution_id,
     specVersion: other.spec_version, stateVersion: other.state_version, fencingVersion: other.fencing_version }));
   service.finalizeExecutionFinish(other.execution_id, { fencingVersion: other.fencing_version });
@@ -142,7 +142,7 @@ test('cleanup recomputes a prerequisite that completed while the owner was closi
   assert.equal(service.getTask(task.task_id).state, 'OPEN');
 });
 
-test('Task detail exposes durable finish records after the Bot is gone', (t) => {
+test('Task detail exposes durable finish records after the Agent is gone', (t) => {
   const { service, task, execution, envelope } = fixture(t);
   service.dispatch('task_finish', { outcome: 'incomplete', reason: 'No result was saved' }, envelope('finish:detail'));
   service.finalizeExecutionFinish(execution.execution_id, { fencingVersion: execution.fencing_version });

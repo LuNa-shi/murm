@@ -12,14 +12,14 @@ import { inputFingerprint, executionEnvelope } from './prepare-inputs.js';
 import { listTools } from '../../sdk/service-catalog.js';
 
 const fail = (code: any, message: any) => { throw new MurmError(code, message); };
-const publicationRequestId = (runtimeId: any, botId: any, requestId: any) =>
-  `flat:publication:${inputFingerprint([runtimeId,botId,requestId])}`;
+const publicationRequestId = (runtimeId: any, agentId: any, requestId: any) =>
+  `flat:publication:${inputFingerprint([runtimeId,agentId,requestId])}`;
 const text: any = { type:'string', minLength:1, maxLength:4000 };
 const ids: any = { type:'array', items:text, maxItems:100, uniqueItems:true };
 const object = (properties: any, required: any=[]) => ({type:'object', properties, required, additionalProperties:false});
 const capability = (name: string, operation: string, input_schema: any, description: string, side_effect='write') => ({name, operation, input_schema,
   output_schema:{type:'object'}, side_effect, idempotent:true, description,
-  help:{when:'Use the current Bot Task binding; reuse the same request ID after an unknown response'}, errors:[]});
+  help:{when:'Use the current Agent Task binding; reuse the same request ID after an unknown response'}, errors:[]});
 // Preserve the published domain input contracts while Core supplies trusted identity.
 type CatalogTool = { operation: string; parameters: unknown; description: string };
 const catalog = new Map<string, CatalogTool>(listTools().map((tool: CatalogTool) => [tool.operation, tool]));
@@ -87,18 +87,18 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
   let closing=false;
   function binding(caller: any, {write=true,allowUnboundRevocation=false,feedbackId}: any={}) {
     const core=getRuntime();
-    if (closing || caller?.runtimeId!==core?.id || caller.profile!==profile || typeof caller.botId!=='string') fail('NOT_ALLOWED','Flat publication caller is outside this Runtime');
-    const bot=taskService.getBot(caller.botId);
-    if (!bot || bot.mission_id!==missionId || bot.sandbox_id || bot.core_id===core.id || !['UNBOUND','ACTIVE'].includes(bot.state) || (write && bot.state!=='ACTIVE' && !(allowUnboundRevocation && bot.state==='UNBOUND'))) fail('NOT_ALLOWED','Flat publication requires its actual current Bot owner');
+    if (closing || caller?.runtimeId!==core?.id || caller.profile!==profile || typeof caller.agentId!=='string') fail('NOT_ALLOWED','Flat publication caller is outside this Runtime');
+    const agent=taskService.getAgent(caller.agentId);
+    if (!agent || agent.mission_id!==missionId || agent.sandbox_id || agent.core_id===core.id || !['UNBOUND','ACTIVE'].includes(agent.state) || (write && agent.state!=='ACTIVE' && !(allowUnboundRevocation && agent.state==='UNBOUND'))) fail('NOT_ALLOWED','Flat publication requires its actual current Agent owner');
     const until=deadline();
     if (!Number.isFinite(until) || Date.now()>=until) fail('NOT_ALLOWED','Flat Mission budget elapsed');
-    taskService.assertMissionResearchOpen(missionId); taskService.assertBotDeadline(bot.bot_id);
-    if (write && bot.state === 'UNBOUND') {
+    taskService.assertMissionResearchOpen(missionId); taskService.assertAgentDeadline(agent.agent_id);
+    if (write && agent.state === 'UNBOUND') {
       // This is the original narrow domain exception; recheck it before replay.
-      taskService.assertMissionCoordination(makeEnvelope({actorRef:bot.bot_id}), 'unsupersede');
+      taskService.assertMissionCoordination(makeEnvelope({actorRef:agent.agent_id}), 'unsupersede');
     }
-    const execution=bot.execution_id ? taskService.getExecution(bot.execution_id):null;
-    if (execution && (execution.owner_ref!==bot.bot_id || execution.state!=='RUNNING' || Date.now()>=Date.parse(execution.lease_expires_at) || taskService.getTask(execution.task_id)?.spec_version!==execution.spec_version)) fail('NOT_ALLOWED','Flat Execution ownership or lease changed');
+    const execution=agent.execution_id ? taskService.getExecution(agent.execution_id):null;
+    if (execution && (execution.owner_ref!==agent.agent_id || execution.state!=='RUNNING' || Date.now()>=Date.parse(execution.lease_expires_at) || taskService.getTask(execution.task_id)?.spec_version!==execution.spec_version)) fail('NOT_ALLOWED','Flat Execution ownership or lease changed');
     if(feedbackId!==undefined) {
       const notification=execution&&taskService.listNotifications({missionId,recipientTaskId:execution.task_id})
         .find((row: any)=>row.notification_id===feedbackId);
@@ -108,12 +108,12 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
         if(addressed && ['CREATED','RUNNING'].includes(addressed.state)) fail('NOT_ALLOWED','Feedback belongs to another active Execution');
       }
     }
-    return {core,bot,execution};
+    return {core,agent,execution};
   }
   function installReceipt(input: any, execution: any, receipt: any) {
     if (receipt) {
       const files = coreFileSeed(input.files);
-      if (receipt.botId !== execution.owner_ref || receipt.requestId !== input.request_id ||
+      if (receipt.agentId !== execution.owner_ref || receipt.requestId !== input.request_id ||
           receipt.digest !== decodeFileSeed(files).digest || !['installed', 'committed'].includes(receipt.phase)) {
         fail('INVALID_CONTRACT', 'Core install receipt differs from the fixed apply tree');
       }
@@ -141,7 +141,7 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
         }
         try {
           const execution = taskService.getExecution(executionId);
-          taskService.requestBotStop(execution.owner_ref, 'workspace-apply-reconciliation-failed', { terminalState: 'FAILED' });
+          taskService.requestAgentStop(execution.owner_ref, 'workspace-apply-reconciliation-failed', { terminalState: 'FAILED' });
           const stopped = await getRuntime().stop(execution.owner_ref, { timeoutMs: 30000 });
           if (stopped.execution === 'stopped') await workspace.reconcile(executionId, { closedConfirmed: true });
         } catch { /* Controller close retains unconfirmed ownership and cleanup. */ }
@@ -153,12 +153,12 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
   }
   const workspace: any = new ExecutionWorkspace({taskService,contextService,workspace:missionWorkspace,
     sandboxManager:{
-      async queryBotProjectInstall(input: any) {
+      async queryAgentProjectInstall(input: any) {
         const execution = taskService.getExecution(input.executionId);
         const receipt = await getRuntime().files.installStatus(execution.owner_ref, { requestId: input.request_id });
         return installReceipt(input, execution, receipt);
       },
-      async installBotProject(input: any) {
+      async installAgentProject(input: any) {
         const execution = taskService.getExecution(input.executionId);
         const core = getRuntime();
         const expected = await core.files.snapshot(execution.owner_ref, { requestId: input.snapshot_request_id, paths: ['.'], includeGit: false, maxBytes: 16 * 1024 * 1024 });
@@ -166,17 +166,17 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
         const receipt = await core.files.install(execution.owner_ref, { requestId: input.request_id, expected, files });
         return installReceipt(input, execution, receipt);
       },
-      async confirmBotProjectInstall(input: any) {
+      async confirmAgentProjectInstall(input: any) {
         const execution = taskService.getExecution(input.executionId);
         return installReceipt(input, execution, await getRuntime().files.confirm(execution.owner_ref, { requestId: input.request_id }));
       },
-      recoverSnapshot: workspaceCapture === 'core', async snapshotBotProject({executionId,requestId}: any) {
+      recoverSnapshot: workspaceCapture === 'core', async snapshotAgentProject({executionId,requestId}: any) {
       const execution=taskService.getExecution(executionId);
       if (workspaceCapture === 'core') {
         const core = getRuntime();
         if (typeof core?.files?.snapshot !== 'function') fail('SERVICE_NOT_READY', 'Core file snapshot capability is unavailable');
         const snapshot = await core.files.snapshot(execution.owner_ref, { requestId, paths: ['.'], includeGit: false, maxBytes: 16 * 1024 * 1024 });
-        if (snapshot.botId !== execution.owner_ref || snapshot.requestId !== requestId || !Number.isSafeInteger(snapshot.version) || snapshot.version < 1) fail('INVALID_CONTRACT', 'Core snapshot receipt has a different identity');
+        if (snapshot.agentId !== execution.owner_ref || snapshot.requestId !== requestId || !Number.isSafeInteger(snapshot.version) || snapshot.version < 1) fail('INVALID_CONTRACT', 'Core snapshot receipt has a different identity');
         const decoded = decodeFileSeed(snapshot.files);
         if (decoded.digest !== snapshot.digest) fail('INVALID_CONTRACT', 'Core snapshot bytes differ from its digest');
         const digest = (bytes: any) => createHash('sha256').update(bytes).digest('hex');
@@ -185,17 +185,17 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
         return { execution_id: executionId, binding_version: execution.fencing_version, state: 'ACTIVE', files, manifest, content_hash: digest(stableStringify(manifest)) };
       }
       if(typeof snapshotProject!=='function') fail('SERVICE_NOT_READY','No supported trusted live Core snapshot binding is configured');
-      return snapshotProject({botId:execution.owner_ref,executionId,fencingVersion:execution.fencing_version,requestId});
+      return snapshotProject({agentId:execution.owner_ref,executionId,fencingVersion:execution.fencing_version,requestId});
     }},
     guard: assertWorkspace, onPending: recoverApply,
   });
   function assertWorkspace(identity: any,{receiptOnly=false}: any={}) {
-    const execution=taskService.getExecution(identity.executionId), bot=taskService.getBot(identity.actorRef);
-    if(!execution || !bot || execution.owner_ref!==identity.actorRef || execution.task_id!==identity.taskId || bot.mission_id!==missionId || execution.workspace_input?.workspace_id!==workspaceId) fail('NOT_ALLOWED','Workspace provenance is outside the current flat binding');
+    const execution=taskService.getExecution(identity.executionId), agent=taskService.getAgent(identity.actorRef);
+    if(!execution || !agent || execution.owner_ref!==identity.actorRef || execution.task_id!==identity.taskId || agent.mission_id!==missionId || execution.workspace_input?.workspace_id!==workspaceId) fail('NOT_ALLOWED','Workspace provenance is outside the current flat binding');
     if(!receiptOnly) {
       identity.assertAuthorized?.();
       if(identity.signal?.aborted) fail('NOT_ALLOWED','Workspace Service call was cancelled');
-      const current=binding({runtimeId:getRuntime()?.id,botId:identity.actorRef,profile});
+      const current=binding({runtimeId:getRuntime()?.id,agentId:identity.actorRef,profile});
       if(current.execution?.execution_id!==identity.executionId || execution.fencing_version!==identity.fencingVersion) fail('FENCED','Workspace Execution fence changed');
     }
     return execution;
@@ -218,12 +218,12 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
     if(!current.execution) fail('NOT_ALLOWED','Private Workspace operation requires an active Execution');
     if(operation==='workspace_merge') {
       if(!merge) fail('SERVICE_NOT_READY','Flat checked merge is not configured');
-      return merge.merge(input,{actorRef:current.bot.bot_id,taskId:current.execution.task_id,executionId:current.execution.execution_id,
+      return merge.merge(input,{actorRef:current.agent.agent_id,taskId:current.execution.task_id,executionId:current.execution.execution_id,
         fencingVersion:current.execution.fencing_version,requestId:id,signal,assertAuthorized});
     }
     if(!captureAvailable) fail('SERVICE_NOT_READY','No supported trusted live Core snapshot binding is configured');
     return workspace.dispatch(({workspace_save:'save',workspace_apply:'apply',workspace_status:'status',workspace_current_diff:'diff'} as Record<string, string>)[operation],input,
-      {actorRef:current.bot.bot_id,taskId:current.execution.task_id,executionId:current.execution.execution_id,fencingVersion:current.execution.fencing_version,requestId:id,signal,assertAuthorized});
+      {actorRef:current.agent.agent_id,taskId:current.execution.task_id,executionId:current.execution.execution_id,fencingVersion:current.execution.fencing_version,requestId:id,signal,assertAuthorized});
   }
   async function judgeOperation(operation: any,input: any,current: any,id: any,caller: any,signal: any,assertAuthorized: any,call: any) {
     const execution=current.execution;
@@ -237,8 +237,8 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
     };
     const guard=async()=>{
       assertCurrent();
-      const live=await current.core.get(caller.botId);
-      if(!['idle','running'].includes(live.status) || live.profile!==profile) fail('NOT_ALLOWED','Core Bot is unavailable');
+      const live=await current.core.get(caller.agentId);
+      if(!['idle','running'].includes(live.status) || live.profile!==profile) fail('NOT_ALLOWED','Core Agent is unavailable');
       return assertCurrent();
     };
     const lookupByKey=operation==='get_check_result' && input.request_key && !input.check_result_id;
@@ -250,10 +250,10 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
         ...(!source.check_mode ? {source_attestation:{task_id:execution.task_id,execution_id:execution.execution_id,path:source.path,
           revision:source.revision,workspace_revision:source.workspace_revision,workspace_id:source.workspace_id,content_hash:source.content_hash}}:{})};
     } else if(lookupByKey) {
-      payload={...input,request_key:publicationRequestId(caller.runtimeId,caller.botId,input.request_key)};
+      payload={...input,request_key:publicationRequestId(caller.runtimeId,caller.agentId,input.request_key)};
     }
     const latest=await guard();
-    const envelope=latest.execution?{...executionEnvelope(latest.execution,id),actor_ref:caller.botId}:makeEnvelope({actorRef:caller.botId,operationId:id});
+    const envelope=latest.execution?{...executionEnvelope(latest.execution,id),actor_ref:caller.agentId}:makeEnvelope({actorRef:caller.agentId,operationId:id});
     if(call) call.providerStarted=true;
     let result=await judgeService.dispatch(operation,payload,envelope,{assertAuthorized:assertCurrent});
     if(lookupByKey && result===null) {
@@ -265,7 +265,7 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
     await guard();
     if(result) {
       const task=taskService.getTask(result.target_task_id);
-      if(!task || task.mission_id!==missionId) fail('NOT_ALLOWED','Judge result is outside the Bot Mission');
+      if(!task || task.mission_id!==missionId) fail('NOT_ALLOWED','Judge result is outside the Agent Mission');
     }
     return agentCheckResult(result);
   }
@@ -273,11 +273,11 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
     const operation=cap.operation;
     const guardedReplay=service==='judge'||operation==='workspace_merge'||operation==='task_feedback'||['material_dispute','material_supersede','material_unsupersede'].includes(operation);
     if (!definitions[service]?.some((row: any)=>row.operation===operation)) fail('INVALID_CONTRACT','Unknown flat publication operation');
-    if (!input || typeof input!=='object' || Array.isArray(input) || ['actor_ref','owner_ref','bot_id','execution_id','fencing_version','spec_version','state_version'].some((key: any)=>Object.hasOwn(input,key))) fail('INVALID_CONTRACT','Flat publication cannot supply trusted identity');
+    if (!input || typeof input!=='object' || Array.isArray(input) || ['actor_ref','owner_ref','agent_id','execution_id','fencing_version','spec_version','state_version'].some((key: any)=>Object.hasOwn(input,key))) fail('INVALID_CONTRACT','Flat publication cannot supply trusted identity');
     if (typeof envelope?.operation_id!=='string' || !envelope.operation_id) fail('INVALID_CONTRACT','Flat publication needs stable request identity');
     const core=getRuntime();
-    if (caller?.runtimeId!==core?.id || caller.profile!==profile || typeof caller.botId!=='string') fail('NOT_ALLOWED','Foreign flat caller');
-    const key=stableStringify([core.id,caller.botId,envelope.operation_id]);
+    if (caller?.runtimeId!==core?.id || caller.profile!==profile || typeof caller.agentId!=='string') fail('NOT_ALLOWED','Foreign flat caller');
+    const key=stableStringify([core.id,caller.agentId,envelope.operation_id]);
     const fingerprint=stableStringify({service,operation,input});
     const previous=requests.get(key);
     if (previous) {
@@ -288,8 +288,8 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
     const read=cap.side_effect==='read';
     const access: any={write:!read,allowUnboundRevocation:service==='context' && operation==='material_unsupersede' && permissions.includes('unsupersede'),...(operation==='task_feedback'?{feedbackId:input.notification_id}:{})};
     const original=binding(caller,access);
-    const live=await core.get(caller.botId);
-    if (!['idle','running'].includes(live.status) || live.profile!==profile) fail('NOT_ALLOWED','Core Bot is unavailable');
+    const live=await core.get(caller.agentId);
+    if (!['idle','running'].includes(live.status) || live.profile!==profile) fail('NOT_ALLOWED','Core Agent is unavailable');
     signal?.throwIfAborted();
     const current=binding(caller,access);
     if (current.execution?.execution_id!==original.execution?.execution_id || current.execution?.fencing_version!==original.execution?.fencing_version) fail('FENCED','Flat binding changed during admission');
@@ -309,21 +309,21 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
         return structuredClone(result);
       }
     }
-    const id=publicationRequestId(core.id,caller.botId,envelope.operation_id);
-    const call: any=service==='judge'?{id,requestId:envelope.operation_id,operation,botId:caller.botId,executionId:current.execution?.execution_id??null}:null;
+    const id=publicationRequestId(core.id,caller.agentId,envelope.operation_id);
+    const call: any=service==='judge'?{id,requestId:envelope.operation_id,operation,agentId:caller.agentId,executionId:current.execution?.execution_id??null}:null;
     const work=Promise.resolve().then(()=>{
       signal?.throwIfAborted();
       const latest=binding(caller,access);
       if(latest.execution?.execution_id!==current.execution?.execution_id || latest.execution?.fencing_version!==current.execution?.fencing_version) fail('FENCED','Flat binding changed before publication');
-      const domainEnvelope=latest.execution ? {...executionEnvelope(latest.execution,id),actor_ref:caller.botId}:makeEnvelope({actorRef:caller.botId,operationId:id});
+      const domainEnvelope=latest.execution ? {...executionEnvelope(latest.execution,id),actor_ref:caller.agentId}:makeEnvelope({actorRef:caller.agentId,operationId:id});
       const result=service==='judge'?judgeOperation(operation,input,latest,id,caller,signal,assertAuthorized,call):service==='workspace'?workspaceOperation(operation,input,latest,id,signal,assertAuthorized):service==='context'?contextService.dispatch(operation,input,domainEnvelope):taskService.dispatch(operation,input,domainEnvelope);
-      if(operation==='task_finish') onFinish({botId:caller.botId,executionId:latest.execution.execution_id,requestId:envelope.operation_id});
+      if(operation==='task_finish') onFinish({agentId:caller.agentId,executionId:latest.execution.execution_id,requestId:envelope.operation_id});
       return result;
     });
     const request: any={fingerprint,work,pending:true,executionId:current.execution?.execution_id,fencingVersion:current.execution?.fencing_version};
     requests.set(key,request);
     if(operation==='workspace_merge') {
-      mergeCalls.set(work,{requestId:envelope.operation_id,botId:caller.botId,executionId:current.execution.execution_id});
+      mergeCalls.set(work,{requestId:envelope.operation_id,agentId:caller.agentId,executionId:current.execution.execution_id});
       void work.then(()=>mergeCalls.delete(work),()=>mergeCalls.delete(work));
     }
     if(service==='judge') {

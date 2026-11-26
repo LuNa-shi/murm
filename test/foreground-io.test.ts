@@ -69,9 +69,9 @@ test('foreground input EIO preserves its first safe failure, seals commands and 
   const { saved, records } = await runWithStreamFailure(t, 'input');
   assert.equal(saved.businessFailure.code, 'HOST_INPUT_FAILED');
   assert.equal(saved.cleanup.cleanup, 'complete');
-  assert.ok(saved.cleanup.bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete'));
-  assert.equal(saved.environment.peers[0].router.batches.length, 1);
-  assert.equal(saved.environment.peers[1].router.batches.length, 0);
+  assert.ok(saved.cleanup.agents.every(agent => agent.execution === 'stopped' && agent.cleanup === 'complete'));
+  assert.equal(saved.harness.peers[0].router.batches.length, 1);
+  assert.equal(saved.harness.peers[1].router.batches.length, 0);
   assert.ok(!records.some(row => ['waiting', 'queued', 'late'].includes(row.id)));
   assert.equal(records.at(-1).businessFailureCode, 'HOST_INPUT_FAILED');
 });
@@ -80,9 +80,9 @@ test('foreground asynchronous output EPIPE seals commands and retains its saved 
   const { saved, records } = await runWithStreamFailure(t, 'output');
   assert.equal(saved.businessFailure.code, 'HOST_OUTPUT_FAILED');
   assert.equal(saved.cleanup.cleanup, 'complete');
-  assert.ok(saved.cleanup.bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete'));
-  assert.equal(saved.environment.peers[0].router.batches.length, 1);
-  assert.equal(saved.environment.peers[1].router.batches.length, 0);
+  assert.ok(saved.cleanup.agents.every(agent => agent.execution === 'stopped' && agent.cleanup === 'complete'));
+  assert.equal(saved.harness.peers[0].router.batches.length, 1);
+  assert.equal(saved.harness.peers[1].router.batches.length, 0);
   assert.ok(!records.some(row => ['waiting', 'queued', 'late'].includes(row.id)));
 });
 
@@ -90,7 +90,7 @@ test('foreground final-result EPIPE exits safely after preserving the completed 
   const { saved, records, errors } = await runWithStreamFailure(t, 'final');
   assert.equal(saved.businessFailure, null);
   assert.equal(saved.cleanup.cleanup, 'complete');
-  assert.ok(saved.cleanup.bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete'));
+  assert.ok(saved.cleanup.agents.every(agent => agent.execution === 'stopped' && agent.cleanup === 'complete'));
   assert.deepEqual(records.map(row => row.type), ['ready']);
   assert.deepEqual(errors.trim().split('\n').map(JSON.parse), [{ code: 'HOST_OUTPUT_FAILED' }]);
 });
@@ -101,14 +101,14 @@ test('foreground input failure remains first when output and execution cleanup a
   assert.equal(saved.businessFailure.code, 'HOST_INPUT_FAILED');
   assert.equal(saved.cleanupFailure.code, 'CLEANUP_PENDING');
   assert.equal(saved.cleanup.cleanup, 'pending');
-  assert.ok(saved.cleanup.bots.every(bot => bot.execution === 'unknown' && bot.cleanup === 'pending'));
-  assert.equal(saved.environment.peers[1].router.batches.length, 0);
+  assert.ok(saved.cleanup.agents.every(agent => agent.execution === 'unknown' && agent.cleanup === 'pending'));
+  assert.equal(saved.harness.peers[1].router.batches.length, 0);
   assert.ok(!records.some(row => ['waiting', 'queued', 'late'].includes(row.id)));
   assert.deepEqual(errors.trim().split('\n').map(JSON.parse), [{ code: 'HOST_OUTPUT_FAILED' }]);
 });
 
 for (const stream of ['stdin', 'stdout']) {
-  for (const { mode, stage } of [{ mode: 'agensh', stage: 'configuration' }, { mode: 'agensh', stage: 'first Bot startup' }, { mode: 'flat', stage: 'configuration' }]) {
+  for (const { mode, stage } of [{ mode: 'peermesh', stage: 'configuration' }, { mode: 'peermesh', stage: 'first Agent startup' }, { mode: 'taskpool', stage: 'configuration' }]) {
     test(`foreground ${mode} ${stream} failure during ${stage} saves its safe failure and closes admitted resources`, { timeout: 10_000 }, async t => {
       const root = await mkdtemp(join(tmpdir(), 'foreground-startup-io-'));
       t.after(() => rm(root, { recursive: true, force: true }));
@@ -117,7 +117,7 @@ for (const stream of ['stdin', 'stdout']) {
       const fail = `process.${stream}.emit('error', Object.assign(new Error('PRIVATE_STARTUP_IO'), { code: '${stream === 'stdin' ? 'EIO' : 'EPIPE'}' }));`;
       await writeFile(path, `
 import configuration from ${JSON.stringify(new URL('./fixtures/foreground-host-configuration.js', import.meta.url).href)};
-import { transport } from ${JSON.stringify(new URL('./fixtures/core-bot-service-backend.js', import.meta.url).href)};
+import { transport } from ${JSON.stringify(new URL('./fixtures/core-agent-service-backend.js', import.meta.url).href)};
 ${stage === 'configuration' ? `setTimeout(() => { ${fail} }, 5); await new Promise(resolve => setTimeout(resolve, 25));`
   : `transport.onSpawn = async () => { ${fail} await new Promise(resolve => setTimeout(resolve, 25)); };`}
 export default { ...configuration, mode: ${JSON.stringify(mode)} };
@@ -135,7 +135,7 @@ export default { ...configuration, mode: ${JSON.stringify(mode)} };
       const directories = (await readdir(root, { withFileTypes: true })).filter(entry => entry.isDirectory());
       assert.equal(directories.length, 1, 'startup failure must retain one saved run');
       const directory = join(root, directories[0].name);
-      const saved = JSON.parse(await readFile(join(directory, 'environment-report.json'), 'utf8'));
+      const saved = JSON.parse(await readFile(join(directory, 'harness-report.json'), 'utf8'));
       assert.equal(saved.businessFailure.code, expectedCode);
       assert.equal(saved.cleanupFailure, null);
       assert.ok(!JSON.stringify(saved).includes('PRIVATE_STARTUP_IO'));
@@ -145,7 +145,7 @@ export default { ...configuration, mode: ${JSON.stringify(mode)} };
         assert.equal(records.length, 1); assert.equal(records[0].type, 'result');
         assert.equal(records[0].businessFailureCode, expectedCode);
         assert.equal(records[0].runtimeId, saved.runtimeId);
-        assert.equal(records[0].reportPath, join(directory, 'environment-report.json'));
+        assert.equal(records[0].reportPath, join(directory, 'harness-report.json'));
       } else {
         assert.equal(Buffer.concat(stdout).toString(), '');
         assert.deepEqual(diagnostic.trim().split('\n').map(JSON.parse), [{ code: expectedCode }]);
@@ -155,8 +155,8 @@ export default { ...configuration, mode: ${JSON.stringify(mode)} };
       } else {
         const core = JSON.parse(await readFile(join(directory, 'runtime.json'), 'utf8'));
         assert.equal(core.runtimeId, saved.runtimeId); assert.equal(core.status, 'closed');
-        assert.equal(core.cleanup, 'complete'); assert.equal(core.bots.length, 1);
-        assert.deepEqual(core.bots.map(bot => [bot.execution, bot.cleanup]), [['stopped', 'complete']]);
+        assert.equal(core.cleanup, 'complete'); assert.equal(core.agents.length, 1);
+        assert.deepEqual(core.agents.map(agent => [agent.execution, agent.cleanup]), [['stopped', 'complete']]);
       }
     });
   }

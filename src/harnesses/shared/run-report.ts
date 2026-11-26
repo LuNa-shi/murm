@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 
 function describe(error: any) {
   const result: any = { message: typeof error?.message === 'string' ? error.message : typeof error === 'string' ? error : 'Harness operation failed' };
-  for (const key of ['code', 'operation', 'runtimeId', 'botId', 'requestId', 'inputId', 'cleanup', 'reportPath', 'details', 'event', 'receipt']) {
+  for (const key of ['code', 'operation', 'runtimeId', 'agentId', 'requestId', 'inputId', 'cleanup', 'reportPath', 'details', 'event', 'receipt']) {
     if (error?.[key] !== undefined) result[key] = error[key];
   }
   return result;
@@ -43,7 +43,7 @@ export async function runWithReport({ createRuntime, run, afterClose, outputDir,
           Promise.resolve().then(() => runtime.close({ timeoutMs: closeTimeoutMs })), expired,
         ]);
         if (afterClose) await Promise.race([Promise.resolve().then(() => afterClose(report.cleanup)), expired]);
-        if (report.cleanup?.cleanup !== 'complete' || report.cleanup.bots?.some((bot: any) => bot.execution !== 'stopped' || bot.cleanup !== 'complete')) {
+        if (report.cleanup?.cleanup !== 'complete' || report.cleanup.agents?.some((agent: any) => agent.execution !== 'stopped' || agent.cleanup !== 'complete')) {
           report.cleanupFailure = { code: 'CLEANUP_PENDING', message: 'Runtime cleanup remains pending',
             ...(report.cleanup?.reportPath ? { reportPath: report.cleanup.reportPath } : {}) };
         }
@@ -54,8 +54,8 @@ export async function runWithReport({ createRuntime, run, afterClose, outputDir,
   const candidateId = runtime?.id ?? report.businessFailure?.runtimeId;
   report.runtimeId = typeof candidateId === 'string' && /^[A-Za-z0-9_:-][A-Za-z0-9_.:-]{0,127}$/.test(candidateId) ? candidateId : randomUUID();
   const directory = join(resolve(outputDir), report.runtimeId);
-  const reportPath = join(directory, 'environment-report.json');
-  const temporary = join(directory, `.environment-report-${randomUUID()}.tmp`);
+  const reportPath = join(directory, 'harness-report.json');
+  const temporary = join(directory, `.harness-report-${randomUUID()}.tmp`);
   let projected: any;
   try {
     const bytes = `${JSON.stringify(redact(report), null, 2)}\n`;

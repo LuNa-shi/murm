@@ -49,7 +49,7 @@ export async function createSubagentsHarness(config: Config) {
   const common = { image, writable: true, services: { collaboration: collaborationOperations },
     spawnProfiles: ['child'], allowContextFork: true };
   const runtime = await createRuntime({
-    backend: createPiOpenSandboxBackend(config.backend), outputDir, services, maxBots: maxAgents,
+    backend: createPiOpenSandboxBackend(config.backend), outputDir, services, maxAgents: maxAgents,
     profiles: {
       root: { ...common, model: rootModel, prompt: rootPrompt },
       child: { ...common, model: childModel, prompt: childPrompt },
@@ -71,8 +71,8 @@ export async function createSubagentsHarness(config: Config) {
     try {
       const deadlineAt = Date.now() + timeoutMs;
       if (sharedWriters && collect && !sharedDeliveryUnverified) {
-        const children = (await runtime.list()).filter(bot => bot.parentId && bot.status !== 'closed');
-        const stops = await Promise.allSettled(children.map(bot => runtime.stop(bot.id, {
+        const children = (await runtime.list()).filter(agent => agent.parentId && agent.status !== 'closed');
+        const stops = await Promise.allSettled(children.map(agent => runtime.stop(agent.id, {
           timeoutMs: Math.max(1, Math.floor((deadlineAt - Date.now()) * 2 / 3)),
         })));
         sharedDeliveryUnverified = stops.some(stop => stop.status === 'rejected' || stop.value.execution !== 'stopped');
@@ -140,21 +140,21 @@ function reportRedactor(backend: Config['backend']) {
 type Harness = Awaited<ReturnType<typeof createSubagentsHarness>>;
 
 export async function runSubagentsHarness(config: Config, signal?: AbortSignal,
-  interact?: (environment: Harness, signal: AbortSignal) => Promise<unknown>) {
+  interact?: (harness: Harness, signal: AbortSignal) => Promise<unknown>) {
   const timeout = AbortSignal.timeout(deadline(config.workTimeoutMs ?? 120_000, 'workTimeoutMs'));
   const work = signal ? AbortSignal.any([signal, timeout]) : timeout;
-  let environment: Harness | undefined;
+  let harness: Harness | undefined;
   const redact = reportRedactor(config.backend);
   return runWithReport({
     outputDir: config.outputDir, closeTimeoutMs: config.closeTimeoutMs ?? 30_000,
-    redact: (report: object) => redact({ ...report, collaboration: environment?.collaborationState() ?? null }),
+    redact: (report: object) => redact({ ...report, collaboration: harness?.collaborationState() ?? null }),
     createRuntime: async () => {
       work.throwIfAborted();
       if (!interact && !config.goal?.trim()) throw new TypeError('Supply a task in config.goal or use interactive input');
-      environment = await createSubagentsHarness(config);
-      return environment;
+      harness = await createSubagentsHarness(config);
+      return harness;
     },
-    afterClose: () => environment?.afterClose(),
+    afterClose: () => harness?.afterClose(),
     async run(env: Harness) {
       const initial = config.goal?.trim() ? await env.input(config.goal, 'initial-task') : undefined;
       if (initial && (typeof initial !== 'object' || !('status' in initial) || initial.status !== 'accepted')) {

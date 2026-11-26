@@ -15,7 +15,7 @@ import { makeEnvelope } from '../src/protocol/envelope.js';
 async function startPeer(database) {
   const token = 'coordinator-test-credential-private';
   const child = spawn(process.execPath, ['dist/scripts/context-service-peer.js'], {
-    env: { ...process.env, SWARMENV_SERVICE_DATABASE: database, SWARMENV_COORDINATOR_TOKEN: token },
+    env: { ...process.env, MURM_SERVICE_DATABASE: database, MURM_COORDINATOR_TOKEN: token },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stderr = '';
@@ -59,19 +59,19 @@ for (const loseResponse of [false, true]) test(`independent Context preserves re
   let context = connect();
   tasks.contextService = context;
   tasks.createMission({ mission_id: 'mission:one', goal: 'Investigate one question' }, makeEnvelope({ actorRef: 'operator:test' }));
-  tasks.registerBot({ botId: 'bot:one', missionId: 'mission:one', coreId: 'core:one', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+  tasks.registerAgent({ agentId: 'agent:one', missionId: 'mission:one', coreId: 'core:one', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
   const registry = createBuiltinServiceRegistry({ taskService: tasks, contextService: context });
   const bridge = new ServicesBridge({ taskService: tasks, contextService: context, runtime: {}, coreId: 'core:one', registry });
   await bridge.start();
-  const credentials = bridge.startBotIdentity('bot:one');
+  const credentials = bridge.startAgentIdentity('agent:one');
   t.after(() => bridge.stop());
-  tasks.recordBotSandbox('bot:one', { provider: 'controlled', sandboxId: 'sandbox:one' });
-  tasks.markBotReady('bot:one');
-  const task = tasks.createTask({ mission_id: 'mission:one', summary: 'Investigate a bounded question', gap: 'The Mission needs scoped evidence for this bounded question', priority: 'medium', expected_output: 'A Material with evidence', acceptance_conditions: ['Explain the finding'] }, makeEnvelope({ actorRef: 'bot:one' })).task;
-  const taken = tasks.takeTask(task.task_id, { owner_ref: 'bot:one', core_id: 'core:one', take_key: 'take:one' });
+  tasks.recordAgentSandbox('agent:one', { provider: 'controlled', sandboxId: 'sandbox:one' });
+  tasks.markAgentReady('agent:one');
+  const task = tasks.createTask({ mission_id: 'mission:one', summary: 'Investigate a bounded question', gap: 'The Mission needs scoped evidence for this bounded question', priority: 'medium', expected_output: 'A Material with evidence', acceptance_conditions: ['Explain the finding'] }, makeEnvelope({ actorRef: 'agent:one' })).task;
+  const taken = tasks.takeTask(task.task_id, { owner_ref: 'agent:one', core_id: 'core:one', take_key: 'take:one' });
   const env = id => {
     const e = tasks.getExecution(taken.execution.execution_id);
-    return makeEnvelope({ operationId: id, actorRef: 'bot:one', taskId: task.task_id, executionId: e.execution_id,
+    return makeEnvelope({ operationId: id, actorRef: 'agent:one', taskId: task.task_id, executionId: e.execution_id,
       specVersion: e.spec_version, stateVersion: e.state_version, fencingVersion: e.fencing_version });
   };
   // Real public save admission can retain large initial Material manifests.
@@ -96,7 +96,7 @@ for (const loseResponse of [false, true]) test(`independent Context preserves re
     const result = await promisify(execFile)(process.execPath, ['dist/scripts/swarm.js', 'material', 'view', material.material.material_id, '--json'],
       { env: { ...process.env, ...credentials }, timeout: 5000 });
     assert.equal(JSON.parse(result.stdout).material.content, input.content);
-    const denied = await fetch(`${credentials.SWARMENV_BRIDGE_URL}/call`, { method: 'POST',
+    const denied = await fetch(`${credentials.MURM_BRIDGE_URL}/call`, { method: 'POST',
       headers: { authorization: 'Bearer invalid', 'content-type': 'application/json' },
       body: JSON.stringify({ operation: 'context_get_material', payload: { material_id: material.material.material_id } }) });
     assert.equal(denied.status, 401);

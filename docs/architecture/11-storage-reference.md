@@ -28,7 +28,7 @@ The Task-owned `service_commit_gate` holds one unresolved exact command and dige
 |---|---|
 | `missions` | Mission columns are `mission_id`, `goal`, `acceptance_conditions_json`, `merge_required_check_json`, `created_by`, `created_at`, `updated_at`. Initial Materials/resource budgets are not Mission columns. |
 | `tasks` + `task_records` | Durable Task row plus `task_records` Mission ID, short summary, timebox and registration hash. Responsibility keys live on `tasks`; feedback lives in notifications/receipts. The current record projection combines these facts. A Mission may begin with zero Tasks; each Task is explicitly created and taken, with no implicit shared-Mission Task. |
-| `bots` | One Agent run: Mission/Core, state/version, unique optional Execution, selection deadline, resource key, provider/Sandbox IDs, exit request/reason, optional Runtime stop terminal state, and lifecycle timestamps. A partial unique index reserves each Mission/Core until CLOSED. The trusted registration grant is stored in `coordination_permissions_json`; Pi/worker tokens are not stored here. |
+| `agents` | One Agent run: Mission/Core, state/version, unique optional Execution, selection deadline, resource key, provider/Sandbox IDs, exit request/reason, optional Runtime stop terminal state, and lifecycle timestamps. A partial unique index reserves each Mission/Core until CLOSED. The trusted registration grant is stored in `coordination_permissions_json`; Pi/worker tokens are not stored here. |
 | `executions` | One authorization interval: Task/spec/state/fence, owner/Core, lease/deadline, Workspace/checkpoint, Workspace source/check references, input snapshot/Materials, and terminal reason. Only the unregistered compatibility path can retain this Execution across a Session restart. |
 | `execution_finish_intents` | One accepted finish per Execution, unique request ID, immutable payload/outcome, optional wait/replacement references, and acceptance/closure timestamps. Stored atomically with CLOSING and dynamic wait edges; exposed through Task detail. |
 | `task_relations` | Current `depends_on` prerequisite edges and `depends_on` prerequisite edges. |
@@ -139,21 +139,21 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 
 ### Core Runtime model attempts
 
-Source: [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts); source SHA-256: `8f51f8c5bc9832cdd99afe2fe8a337d38068d8aa16a3d0ac83a1c3894d624598`.
+Source: [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts); source SHA-256: `dc0ad90beb3e6569505ae7b9a1236ecb7d9a25b9e3415546b2e544e5b999de2d`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS runtime_model_policies (
         runtime_id TEXT PRIMARY KEY, policy_digest TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS runtime_model_attempts (
-        runtime_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        runtime_id TEXT NOT NULL, agent_id TEXT NOT NULL, request_id TEXT NOT NULL,
         phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER,
         output_tokens INTEGER, cost INTEGER CHECK(cost IS NULL), settled INTEGER NOT NULL DEFAULT 0,
         state TEXT NOT NULL, reason TEXT, receipt BLOB,
         started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
         upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
         upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
-        PRIMARY KEY (runtime_id, bot_id, request_id)
+        PRIMARY KEY (runtime_id, agent_id, request_id)
       );
 ```
 
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS mission_manual_reviews (
 
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `926198b786cf35a7effb7aa19c3f1a282d9346cccc7fd0b568f0efd1154459d9`.
+Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `24d805b1b4c9979194cf2232d855d11e7b8678b2c83ba769c7a1854dc2510664`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (
@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS execution_workspace_state (
 
 ### Task and Execution database
 
-Source: [src/storage/schema.ts](../../src/storage/schema.ts); source SHA-256: `09d2504960d665ea5a9d393bd7b059c7415fb96302e3b27e392c36105e5f6a1e`.
+Source: [src/storage/schema.ts](../../src/storage/schema.ts); source SHA-256: `2d631073a05f87667edad5fdbefbb2ce0c3bebd71d1ce385498b0513b26d1a72`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -464,10 +464,10 @@ CREATE TABLE IF NOT EXISTS execution_finish_intents (
   closed_at TEXT
 );
 
--- Runtime creates Bot identities before there is any Task take. The Task
+-- Runtime creates Agent identities before there is any Task take. The Task
 -- coordinator stores them here so take and lifecycle guards share a transaction.
-CREATE TABLE IF NOT EXISTS bots (
-  bot_id TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS agents (
+  agent_id TEXT PRIMARY KEY,
   mission_id TEXT NOT NULL REFERENCES missions(mission_id),
   core_id TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('STARTING', 'UNBOUND', 'PREPARING', 'ACTIVE', 'CLOSING', 'CLOSED')),
@@ -491,8 +491,8 @@ CREATE TABLE IF NOT EXISTS bots (
   updated_at TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS bots_occupied_core
-  ON bots(mission_id, core_id) WHERE state <> 'CLOSED';
+CREATE UNIQUE INDEX IF NOT EXISTS agents_occupied_core
+  ON agents(mission_id, core_id) WHERE state <> 'CLOSED';
 
 CREATE TABLE IF NOT EXISTS operations (
   operation_id TEXT PRIMARY KEY,
@@ -513,7 +513,7 @@ CREATE TABLE IF NOT EXISTS take_keys (
 
 ### Context database
 
-Source: [src/storage/context-schema.ts](../../src/storage/context-schema.ts); source SHA-256: `beb3d52d141f9d4e0b02aff35f578907b9997835fd3084580ef18bd29a985ae7`.
+Source: [src/storage/context-schema.ts](../../src/storage/context-schema.ts); source SHA-256: `60aad44fff8720a90b9188a79fb27b0d6280ee8006c382d657d79f52bde1ecfa`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -532,7 +532,7 @@ CREATE TABLE IF NOT EXISTS materials (
   version INTEGER NOT NULL,
   producer_task_id TEXT,
   producer_execution_id TEXT,
-  producer_bot_id TEXT,
+  producer_agent_id TEXT,
   provenance_json TEXT NOT NULL,
   supersedes TEXT REFERENCES materials(material_id),
   title TEXT,
@@ -765,7 +765,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `7f7416080dba07dba310dcaa4863e0758ad6bbf45a166b9bf9d3e52501a1e47f`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `73fbacae22379db50b90744840c6e942a12b8b80dcb280ea979ab8294beefc41`.
 
 #### mission_final_check_active
 

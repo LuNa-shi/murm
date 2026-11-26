@@ -8,13 +8,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 if (!process.argv.includes('--inside')) {
-  const mounts = ['sandbox-project.js', 'project-install.js', 'project-processes.js'].flatMap((file: any) => ['--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/' + file, import.meta.url))},target=/opt/swarmenv/${file},readonly`]);
+  const mounts = ['sandbox-project.js', 'project-install.js', 'project-processes.js'].flatMap((file: any) => ['--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/' + file, import.meta.url))},target=/opt/murm/${file},readonly`]);
   const { stdout } = await promisify(execFile)('docker', ['run', '--rm', '--network', 'none', '--cpus', '1', '--memory', '512m', '--pids-limit', '128', '--tmpfs', '/workspace:rw,nosuid,nodev,size=64m', ...mounts,
-    '--mount', `type=bind,source=${fileURLToPath(import.meta.url)},target=/opt/swarmenv/install-probe.mjs,readonly`, '--entrypoint', 'node', 'swarmenv/agent:issue122', '/opt/swarmenv/install-probe.mjs', '--inside'], { timeout: 60_000, maxBuffer: 1024 * 1024 });
+    '--mount', `type=bind,source=${fileURLToPath(import.meta.url)},target=/opt/murm/install-probe.mjs,readonly`, '--entrypoint', 'node', 'murm/agent:issue122', '/opt/murm/install-probe.mjs', '--inside'], { timeout: 60_000, maxBuffer: 1024 * 1024 });
   process.stdout.write(stdout);
 } else {
-  const { SandboxProject, PROJECT_DIR } = await import('/opt/swarmenv/sandbox-project.js' as string);
-  const { canonical } = await import('/opt/swarmenv/project-install.js' as string);
+  const { SandboxProject, PROJECT_DIR } = await import('/opt/murm/sandbox-project.js' as string);
+  const { canonical } = await import('/opt/murm/project-install.js' as string);
   const manifest = (files: any) => Object.fromEntries(Object.entries(files as Record<string, any>).map(([path, content]: any) => [path, { bytes: Buffer.byteLength(content), content_hash: createHash('sha256').update(content).digest('hex') }]));
   const treeState = async () => {
     const result: any = {};

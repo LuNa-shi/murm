@@ -18,7 +18,7 @@ const records = [
   { type: 'end', totalBytes: 4, fileCount: 1, directoryCount: 1 },
 ];
 
-async function runtimeFixture(t, hooks, { collection = collect, maxBots = 1 } = {}) {
+async function runtimeFixture(t, hooks, { collection = collect, maxAgents = 1 } = {}) {
   const provider = await createLifecycleProvider(t, hooks);
   const { createRuntime } = await import('@murm/core');
   const { ServiceRegistry } = await import('@murm/core/services');
@@ -31,7 +31,7 @@ async function runtimeFixture(t, hooks, { collection = collect, maxBots = 1 } = 
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
   }), profiles: { worker: { image: 'fixture', model: 'default', prompt: 'fixture', writable: true, services: {}, collect: collection } },
-  services: new ServiceRegistry(), maxBots, outputDir });
+  services: new ServiceRegistry(), maxAgents, outputDir });
   return { provider, runtime, outputDir: join(outputDir, runtime.id) };
 }
 
@@ -58,10 +58,10 @@ test('required artifacts block deletion and retain the Slot until verified host 
       { code: 'INVALID_CONTRACT' });
     assert.equal(provider.allocations(), 0);
     specification.paths[0] = 'changed-before-spawn';
-    const bot = await spawn('first');
-    const botDir = join(outputDir, bot.id);
-    await writeFile(botDir, 'block file creation');
-    const failed = await runtime.stop(bot.id);
+    const agent = await spawn('first');
+    const agentDir = join(outputDir, agent.id);
+    await writeFile(agentDir, 'block file creation');
+    const failed = await runtime.stop(agent.id);
     assert.equal(failed.execution, 'stopped');
     assert.equal(failed.cleanup, 'pending');
     assert.equal(failed.errors[0].code, 'ARTIFACT_WRITE_FAILED');
@@ -69,23 +69,23 @@ test('required artifacts block deletion and retain the Slot until verified host 
     assert.equal(failed.pending.sandboxId, 'fixture-1');
     assert.equal(uploads, 0);
     await assert.rejects(spawn('blocked-capacity'), { code: 'CONFLICT' });
-    await rm(botDir);
+    await rm(agentDir);
 
-    const earlyStop = runtime.stop(bot.id, { timeoutMs: 25 });
+    const earlyStop = runtime.stop(agent.id, { timeoutMs: 25 });
     await collecting;
     const early = await earlyStop;
     assert.equal(early.execution, 'stopped');
     assert.equal(early.pending.action, 'collect-artifacts');
-    assert.equal(JSON.parse(await readFile(early.sessionArchive, 'utf8')).botId, bot.id);
-    assert.equal((await runtime.get(bot.id)).lastStop.pending.action, 'collect-artifacts');
+    assert.equal(JSON.parse(await readFile(early.sessionArchive, 'utf8')).agentId, agent.id);
+    assert.equal((await runtime.get(agent.id)).lastStop.pending.action, 'collect-artifacts');
     const closing = runtime.close({ timeoutMs: 25 });
     const pendingClose = await closing;
-    assert.ok(pendingClose.pending.some(item => item.kind === 'bot' && item.id === bot.id));
+    assert.ok(pendingClose.pending.some(item => item.kind === 'agent' && item.id === agent.id));
     assert.equal(uploads, 1);
     release();
     await provider.deletionStarted;
     provider.releaseDeletion();
-    const failedDeletion = await runtime.stop(bot.id);
+    const failedDeletion = await runtime.stop(agent.id);
     assert.equal(failedDeletion.cleanup, 'pending');
     assert.equal(failedDeletion.pending.action, 'delete-sandbox');
     const [manifestPath, treePath] = failedDeletion.artifacts;
@@ -97,7 +97,7 @@ test('required artifacts block deletion and retain the Slot until verified host 
     const closed = await runtime.close();
     assert.equal(closed.cleanup, 'complete');
     assert.deepEqual(closed.pending, []);
-    assert.deepEqual(closed.bots[0].artifacts, failedDeletion.artifacts);
+    assert.deepEqual(closed.agents[0].artifacts, failedDeletion.artifacts);
     assert.equal(JSON.parse(await readFile(closed.reportPath, 'utf8')).status, 'closed');
     assert.equal(uploads, 1);
     assert.equal(executionStops, 1);
@@ -120,18 +120,18 @@ test('unknown execution stop prevents collection, and optional invalid artifacts
   }, { collection: { ...collect, required: false } });
   provider.allowDeletion();
   try {
-    const bot = await runtime.spawn({ requestId: 'first', profile: 'worker' });
-    const unknown = await runtime.stop(bot.id);
+    const agent = await runtime.spawn({ requestId: 'first', profile: 'worker' });
+    const unknown = await runtime.stop(agent.id);
     assert.equal(unknown.execution, 'unknown');
     assert.equal(unknown.pending.action, 'stop-execution');
     assert.equal(uploads, 0);
     stopped = true;
     const result = await runtime.close();
     assert.equal(result.cleanup, 'complete');
-    assert.equal(result.bots[0].execution, 'stopped');
-    assert.equal(result.bots[0].cleanup, 'complete');
-    assert.deepEqual(result.bots[0].artifacts, []);
-    assert.equal(result.bots[0].errors[0].code, 'ARTIFACT_INVALID');
+    assert.equal(result.agents[0].execution, 'stopped');
+    assert.equal(result.agents[0].cleanup, 'complete');
+    assert.deepEqual(result.agents[0].artifacts, []);
+    assert.equal(result.agents[0].errors[0].code, 'ARTIFACT_INVALID');
     assert.equal(uploads, 1);
   } finally { stopped = true; await runtime.close(); }
 });
@@ -162,18 +162,18 @@ test('late creation remains registered across the host spawn deadline and a conc
     assert.equal(failure.cleanup, 'pending');
     assert.equal(failure.runtimeId, runtime.id);
     assert.equal(failure.requestId, 'late');
-    assert.ok(failure.botId);
+    assert.ok(failure.agentId);
     clock.mock.restore();
     const pending = await runtime.close({ timeoutMs: 10 });
     assert.equal(pending.cleanup, 'pending');
-    assert.equal(pending.bots[0].pending.id, failure.botId);
-    assert.equal(pending.bots[0].pending.creation, 'pending');
-    assert.equal(pending.bots[0].pending.action, 'await-startup');
+    assert.equal(pending.agents[0].pending.id, failure.agentId);
+    assert.equal(pending.agents[0].pending.creation, 'pending');
+    assert.equal(pending.agents[0].pending.action, 'await-startup');
     release();
     const closed = await runtime.close();
     assert.equal(closed.cleanup, 'complete');
-    assert.equal(closed.bots[0].botId, failure.botId);
-    assert.equal(closed.bots[0].execution, 'stopped');
+    assert.equal(closed.agents[0].agentId, failure.agentId);
+    assert.equal(closed.agents[0].execution, 'stopped');
     assert.equal((await fetch(`${provider.url}/sandboxes/${sandboxId}`)).status, 404);
     assert.equal(provider.allocations(), 1);
   } finally {

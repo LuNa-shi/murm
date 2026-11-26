@@ -309,7 +309,7 @@ export class LeanChecker {
     await mkdir(this.workRoot, { recursive: true });
     const directory = this.logger
       ? join(this.workRoot, `workspace_source-${workspace_sourceHash}-${randomUUID()}`)
-      : await mkdtemp(join(this.workRoot, 'swarmenv-lean-'));
+      : await mkdtemp(join(this.workRoot, 'murm-lean-'));
     await mkdir(directory, { recursive: true });
     const workspace_sourcePath = join(directory, 'WorkspaceSource.lean');
     await writeFile(workspace_sourcePath, workspace_source.content, 'utf8');

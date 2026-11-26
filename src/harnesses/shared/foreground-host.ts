@@ -5,20 +5,20 @@ import { runTaskPoolHarness } from '../taskpool/harness.js';
 const fail = (code: any) => Object.assign(new Error(code), { code });
 const finite = (value: any) => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
 const receipt = (row: any) => Object.fromEntries(['batchId', 'requestId', 'inputId', 'state', 'status', 'code', 'taskId', 'taskState', 'reason'].filter((key: any) => row[key] !== undefined).map((key: any) => [key, row[key]]));
-function botState({ status, cursor, lastError, lastStop }: any) {
+function agentState({ status, cursor, lastError, lastStop }: any) {
   return { status, cursor,
-    ...(lastError ? { lastErrorCode: typeof lastError.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(lastError.code) ? lastError.code : 'BOT_ERROR' } : {}),
+    ...(lastError ? { lastErrorCode: typeof lastError.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(lastError.code) ? lastError.code : 'AGENT_ERROR' } : {}),
     ...(lastStop ? { lastStop: { execution: lastStop.execution, cleanup: lastStop.cleanup } } : {}),
   };
 }
 
 export function isPeerMeshMode(mode: unknown) {
-  return mode === 'peermesh' || mode === 'agensh';
+  return mode === 'peermesh';
 }
 
 /** One foreground host. Mode controllers retain all input and resource authority. */
 export async function runForegroundHarness({ mode, options, timeoutMs = 120_000, signal }: any = {}, interact: any) {
-  if (!(mode === 'taskpool' || mode === 'flat' || isPeerMeshMode(mode)) || !options || typeof options !== 'object' || typeof interact !== 'function' ||
+  if (!(mode === 'taskpool' || isPeerMeshMode(mode)) || !options || typeof options !== 'object' || typeof interact !== 'function' ||
       !finite(timeoutMs) || (options.signal !== undefined && !(options.signal instanceof AbortSignal)) || (signal !== undefined && !(signal instanceof AbortSignal))) throw new TypeError('Foreground host requires a mode, options, interaction and finite timeout');
   const lifetime: any = new AbortController();
   const deadline = AbortSignal.timeout(timeoutMs);
@@ -31,7 +31,7 @@ export async function runForegroundHarness({ mode, options, timeoutMs = 120_000,
     const stopped = new Promise<any>((resolve: any, reject: any) => {
       abort = () => {
         closing = true;
-        if (['AGENSH_TEAM_FENCED', 'HOST_INPUT_FAILED', 'HOST_OUTPUT_FAILED'].includes(workSignal.reason?.code)) reject(workSignal.reason);
+        if (['PEERMESH_TEAM_FENCED', 'HOST_INPUT_FAILED', 'HOST_OUTPUT_FAILED'].includes(workSignal.reason?.code)) reject(workSignal.reason);
         else if (workSignal.reason === deadline.reason && deadline.aborted) reject(fail('HOST_WORK_TIMEOUT'));
         else resolve({ reason: 'host-stop' });
       };
@@ -45,8 +45,8 @@ export async function runForegroundHarness({ mode, options, timeoutMs = 120_000,
     if (isPeerMeshMode(mode)) return await runPeerMeshTeam({ ...options, signal: workSignal }, async (team: any) => {
       const status = async () => {
         const view = team.currentPeers();
-        const peers = await Promise.all(view.peers.map(async (peer: any) => ({ key: peer.key, botId: peer.botId,
-            ...botState(await team.getBot(peer.botId)),
+        const peers = await Promise.all(view.peers.map(async (peer: any) => ({ key: peer.key, agentId: peer.agentId,
+            ...agentState(await team.getAgent(peer.agentId)),
             ready: peer.router.ready, accepting: peer.router.accepting, fenced: peer.router.fenced,
             batches: peer.router.batches.map(receipt) })));
         return team.redact({ mode, runtimeId: team.id, runDirectory: resolve(options.outputDir, team.id), closing: closing || view.closing, peers, ...(options.project ? { project: team.snapshot().project } : {}) });
@@ -78,10 +78,10 @@ export async function runForegroundHarness({ mode, options, timeoutMs = 120_000,
       try {
         await drive({ status: async () => {
           const view = controller.snapshot();
-          const bots = await Promise.all(view.bots.map(async (bot: any) => ({ botId: bot.botId,
-            ...botState(await runtime.get(bot.botId)), released: bot.released, stopReason: bot.stopReason })));
+          const agents = await Promise.all(view.agents.map(async (agent: any) => ({ agentId: agent.agentId,
+            ...agentState(await runtime.get(agent.agentId)), released: agent.released, stopReason: agent.stopReason })));
           return { mode, runtimeId: runtime.id, runDirectory: resolve(options.outputDir, runtime.id),
-            closing: closing || view.closing, completion: view.completion, bots, inputs: view.inputs.map(receipt) };
+            closing: closing || view.closing, completion: view.completion, agents, inputs: view.inputs.map(receipt) };
         }, async input(input: any) { check(); return receipt(await controller.feedback(input)); } });
       } finally { controller.halt(); await ended; }
     } });

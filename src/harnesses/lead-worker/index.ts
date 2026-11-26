@@ -33,14 +33,14 @@ export async function createLeadWorkerHarness(options: any) {
     let publicBoard: any; let boardReadFailure: any;
     try { publicBoard = board?.snapshot(); } catch { boardReadFailure = { code: 'BOARD_READ_FAILED' }; }
     return { runId, runtimeId: runtime?.id, boardPath, team: { ...team }, stages: structuredClone(stages), rejections: structuredClone(rejections), preparation: structuredClone(preparedStages ?? null), git: git?.identities(), board: publicBoard, ...(boardReadFailure ? { boardReadFailure } : {}), inputs: structuredClone(inputs), events: structuredClone(events),
-      delivered: publicBoard?.subtasks.filter((row: any) => row.delivery?.verified) ?? [], unfinished: publicBoard?.subtasks.filter((row: any) => row.state !== 'complete') ?? [], inputUnknown: inputs.filter((row: any) => row.uncertain).map((row: any) => ({ botId: row.botId, requestId: row.requestId, inputId: row.inputId, code: row.code })), resources: resources.snapshot(),
+      delivered: publicBoard?.subtasks.filter((row: any) => row.delivery?.verified) ?? [], unfinished: publicBoard?.subtasks.filter((row: any) => row.state !== 'complete') ?? [], inputUnknown: inputs.filter((row: any) => row.uncertain).map((row: any) => ({ agentId: row.agentId, requestId: row.requestId, inputId: row.inputId, code: row.code })), resources: resources.snapshot(),
       ...(boardFenceFailure ? { boardFenceFailure, pendingBoardFailures: [...pendingFences.values()] } : {}), limitations: ['Local SQLite Board and exclusive turn controller', 'Fixed preconfigured team; no replacement or claim reclamation', 'Upstream scale and performance not verified'] };
   };
   function recordFence(record?: any) {
-    if (record?.botId) pendingFences.set(record.botId, record);
+    if (record?.agentId) pendingFences.set(record.agentId, record);
     try {
       board?.fence(record);
-      if (record?.botId) pendingFences.delete(record.botId);
+      if (record?.agentId) pendingFences.delete(record.agentId);
       if (!pendingFences.size) boardFenceFailure = undefined;
     } catch { boardFenceFailure = { code: 'BOARD_FENCE_FAILED' }; }
   }
@@ -50,18 +50,18 @@ export async function createLeadWorkerHarness(options: any) {
     stop(); if (complete) return structuredClone(complete);
     if (!closeWork) {
       // Public Core closes admission synchronously before the first await.
-      const coreWork = runtime ? runtime.close({ timeoutMs }) : Promise.resolve({ cleanup: 'complete', bots: [], pending: [] });
+      const coreWork = runtime ? runtime.close({ timeoutMs }) : Promise.resolve({ cleanup: 'complete', agents: [], pending: [] });
       closeWork = (async () => {
         const core = await coreWork;
         let recordedFailures: any = {}; let boardReadFailed = false;
         try { recordedFailures = board?.snapshot().failures ?? {}; } catch { boardReadFailed = true; }
         const failures: any = new Map(Object.entries((recordedFailures as Record<string, any>)));
-        for (const [botId, failure] of pendingFences) failures.set(botId, failure);
-        for (const [botId, failure] of failures) recordFence({ botId, code: failure.code, execution: core.bots?.find((row: any) => row.botId === botId)?.execution === 'stopped' ? 'stopped' : 'unknown' });
+        for (const [agentId, failure] of pendingFences) failures.set(agentId, failure);
+        for (const [agentId, failure] of failures) recordFence({ agentId, code: failure.code, execution: core.agents?.find((row: any) => row.agentId === agentId)?.execution === 'stopped' ? 'stopped' : 'unknown' });
         if (boardFenceFailure) recordFence();
-        if (boardReadFailed || boardFenceFailure || pendingFences.size) return { ...core, cleanup: 'pending', environment: { cleanup: 'pending', pending: [{ kind: 'board-evidence', id: boardPath, action: 'persist-failure', error: { code: 'BOARD_FENCE_FAILED' } }], resources: resources.snapshot() } };
-        if (core.cleanup !== 'complete' || core.bots.some((row: any) => row.execution !== 'stopped' || row.cleanup !== 'complete')) return { ...core, environment: { cleanup: 'pending', pending: resources.snapshot().filter((row: any) => !['closed', 'retained'].includes(row.state)) } };
-        unsubscribe?.(); const environment = await resources.close(); const receipt: any = { ...core, cleanup: environment.cleanup, environment }; if (environment.cleanup === 'complete') complete = receipt; return receipt;
+        if (boardReadFailed || boardFenceFailure || pendingFences.size) return { ...core, cleanup: 'pending', harness: { cleanup: 'pending', pending: [{ kind: 'board-evidence', id: boardPath, action: 'persist-failure', error: { code: 'BOARD_FENCE_FAILED' } }], resources: resources.snapshot() } };
+        if (core.cleanup !== 'complete' || core.agents.some((row: any) => row.execution !== 'stopped' || row.cleanup !== 'complete')) return { ...core, harness: { cleanup: 'pending', pending: resources.snapshot().filter((row: any) => !['closed', 'retained'].includes(row.state)) } };
+        unsubscribe?.(); const harness = await resources.close(); const receipt: any = { ...core, cleanup: harness.cleanup, harness }; if (harness.cleanup === 'complete') complete = receipt; return receipt;
       })().finally(() => { closeWork = undefined; });
     }
     return structuredClone(await closeWork);
@@ -70,19 +70,19 @@ export async function createLeadWorkerHarness(options: any) {
     if (workSignal.aborted || closing) throw fail('WORKFLOW_STOPPED');
     const timeoutMs = deadlineAtMs === undefined ? turnTimeoutMs : Math.ceil(deadlineAtMs - performance.now());
     if (timeoutMs < 1) throw fail('WORKFLOW_STOPPED');
-    const row: any = { role, botId: team[role], requestId, source: payload.type }; inputs.push(row); activeInputs.add(team[role]);
+    const row: any = { role, agentId: team[role], requestId, source: payload.type }; inputs.push(row); activeInputs.add(team[role]);
     try {
-      const result = await runInput(runtime, team[role], JSON.stringify(payload), { requestId, timeoutMs, signal: workSignal }); Object.assign(row, { inputId: result.inputId, receipt: result.receipt, state: 'completed', settledSeq: result.settled.seq, settled: { botId: result.settled.botId, seq: result.settled.seq, outcome: result.settled.outcome } }); return result;
-    } catch (error: any) { Object.assign(row, { inputId: error.inputId, receipt: error.receipt, state: 'failed', code: error.code ?? 'INPUT_FAILED', uncertain: !['input_failed', 'input_aborted'].includes(error.code) }); recordFence({ botId: team[role], code: row.code }); lifetime.abort(); throw error; }
+      const result = await runInput(runtime, team[role], JSON.stringify(payload), { requestId, timeoutMs, signal: workSignal }); Object.assign(row, { inputId: result.inputId, receipt: result.receipt, state: 'completed', settledSeq: result.settled.seq, settled: { agentId: result.settled.agentId, seq: result.settled.seq, outcome: result.settled.outcome } }); return result;
+    } catch (error: any) { Object.assign(row, { inputId: error.inputId, receipt: error.receipt, state: 'failed', code: error.code ?? 'INPUT_FAILED', uncertain: !['input_failed', 'input_aborted'].includes(error.code) }); recordFence({ agentId: team[role], code: row.code }); lifetime.abort(); throw error; }
     finally { activeInputs.delete(team[role]); }
   };
   const abortStartup = () => { if (runtime) void runtime.close({ timeoutMs: 1 }).catch(() => {}); };
   startup.addEventListener('abort', abortStartup, { once: true });
   try {
-    if (startup.aborted) throw fail('ENVIRONMENT_START_ABORTED');
+    if (startup.aborted) throw fail('HARNESS_START_ABORTED');
     const facilities = await (options.prepare ?? prepareLeadWorkerGit)({ ...options, helperCount, signal: startup, resources });
     for (const actor of Object.values((facilities.actors ?? {}) as Record<string, any>)) secrets.push(actor.token);
-    if (facilities.runId !== runId || startup.aborted) throw fail('ENVIRONMENT_START_ABORTED');
+    if (facilities.runId !== runId || startup.aborted) throw fail('HARNESS_START_ABORTED');
     git = createLeadWorkerGit(facilities, helperCount);
     const candidate = createBoard({ path: boardPath, runId, helperCount, verifyDelivery: (value: any) => git.verifyDelivery(value) });
     if (candidate.snapshot().team || candidate.snapshot().fenced) { candidate.close(); throw fail('BOARD_ALREADY_OWNED'); }
@@ -95,24 +95,24 @@ export async function createLeadWorkerHarness(options: any) {
         env: { RUN_REPOSITORY: facilities.repositoryUrl, WORK_BRANCH: actor.branch, GITEA_USERNAME: actor.username, GIT_TERMINAL_PROMPT: '0', GIT_AUTHOR_NAME: actor.username, GIT_AUTHOR_EMAIL: `${actor.username}@murm.invalid`, GIT_COMMITTER_NAME: actor.username, GIT_COMMITTER_EMAIL: `${actor.username}@murm.invalid`, RUN_OWNER: facilities.repository.owner, RUN_REPO: facilities.repository.name },
         network: { allow: [new URL(facilities.repositoryUrl).origin] }, services: { board: boardPermissions[role === 'lead' ? 'lead' : 'helper'], gitea: ['pull_request_write'] } }];
     }));
-    runtime = await createRuntime({ backend, services, profiles, maxBots: roles.length, outputDir });
-    if (startup.aborted) throw fail('ENVIRONMENT_START_ABORTED');
+    runtime = await createRuntime({ backend, services, profiles, maxAgents: roles.length, outputDir });
+    if (startup.aborted) throw fail('HARNESS_START_ABORTED');
     unsubscribe = runtime.onEvent((event: any) => {
-      if (events.length < 256) events.push({ botId: event.botId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
+      if (events.length < 256) events.push({ agentId: event.agentId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
       if (events.length >= 256 || event.type === 'error' && event.fatal || event.type === 'settled' && event.outcome !== 'completed' || event.type === 'exit' && !event.expected) {
-        if (!closing) { recordFence({ botId: event.botId, code: 'BOT_FAILED' });
+        if (!closing) { recordFence({ agentId: event.agentId, code: 'AGENT_FAILED' });
           // The exclusive helper owns terminal-event/late-receipt ordering.
           // Its catch cancels the team without replacing that original outcome.
-          if (!activeInputs.has(event.botId)) lifetime.abort(); }
+          if (!activeInputs.has(event.agentId)) lifetime.abort(); }
       }
     });
     for (const role of roles) {
-      if (startup.aborted || lifetime.signal.aborted) throw fail('ENVIRONMENT_START_ABORTED');
-      const actor = facilities.actors[role]; const bot = await runtime.spawn({ requestId: `spawn-${role}`, profile: role, bindings: { board: `${runId}:board`, gitea: actor.binding }, secretEnv: { GITEA_TOKEN: actor.token }, collect: { paths: ['.'], includeGit, maxBytes: exportLimit, required: true } }); team[role] = bot.id;
+      if (startup.aborted || lifetime.signal.aborted) throw fail('HARNESS_START_ABORTED');
+      const actor = facilities.actors[role]; const agent = await runtime.spawn({ requestId: `spawn-${role}`, profile: role, bindings: { board: `${runId}:board`, gitea: actor.binding }, secretEnv: { GITEA_TOKEN: actor.token }, collect: { paths: ['.'], includeGit, maxBytes: exportLimit, required: true } }); team[role] = agent.id;
     }
-    if (startup.aborted || lifetime.signal.aborted) throw fail('ENVIRONMENT_START_ABORTED');
+    if (startup.aborted || lifetime.signal.aborted) throw fail('HARNESS_START_ABORTED');
     board.bindTeam(runtime.id, team); git.bindTeam(runtime.id, team);
-    return Object.freeze({ id: runtime.id, snapshot, redact, close, get: (botId: any) => runtime.get(botId),
+    return Object.freeze({ id: runtime.id, snapshot, redact, close, get: (agentId: any) => runtime.get(agentId),
       async prepareStages({ signal }: any = {}) {
         if (closing || workflowUsed || stageActive || helperCount !== 3 ||
             (signal !== undefined && !(signal instanceof AbortSignal))) throw fail('INVALID_STAGE_PREPARATION');
@@ -124,7 +124,7 @@ export async function createLeadWorkerHarness(options: any) {
             const readyNote = `Ready for staged workload: ${runtime.id}:${role}:${team[role]}`;
             const before = board.snapshot();
             await dispatch(role, `prepare-stage-${role}`, { type: 'prepare-stage', ready_note: readyNote,
-              instruction: 'Read the public Board, verify your own trusted role and Bot identity, then publish exactly ready_note as a public unscoped Board note. Do not claim work or create an artifact. This is setup only.' }, workSignal);
+              instruction: 'Read the public Board, verify your own trusted role and Agent identity, then publish exactly ready_note as a public unscoped Board note. Do not claim work or create an artifact. This is setup only.' }, workSignal);
             const after = board.snapshot();
             const note = after.notes.find((row: any) => row.actor === team[role] && row.text === readyNote && !row.subtask_id && !before.notes.some((old: any) => old.seq === row.seq));
             if (!note || !after.reads.some((row: any) => row.actor === team[role] && !before.reads.some((old: any) => old.seq === row.seq))) throw fail('STAGE_PREPARATION_INVALID');
@@ -187,11 +187,11 @@ export async function createLeadWorkerHarness(options: any) {
                 while (true) {
                   workSignal.throwIfAborted();
                   const task = deliveries[index];
-                  const decision = await verifyCandidate(structuredClone(task), { stage, direction: structuredClone(direction), environment: snapshot(), signal: workSignal });
+                  const decision = await verifyCandidate(structuredClone(task), { stage, direction: structuredClone(direction), harness: snapshot(), signal: workSignal });
                   workSignal.throwIfAborted();
                   if (decision === true) break;
                   if (typeof decision?.correction !== 'string' || !decision.correction.trim() || decision.rejected?.code !== 'STAGE_CANDIDATE_REJECTED') throw fail('STAGE_CANDIDATE_UNCONFIRMED');
-                  const input = structuredClone(inputs.findLast((row: any) => row.botId === team[role]));
+                  const input = structuredClone(inputs.findLast((row: any) => row.agentId === team[role]));
                   const rejection: any = { role, stage, attempt, task: structuredClone(task), input, ...structuredClone(decision.rejected) };
                   rejected.push(rejection); rejections.push(structuredClone(rejection));
                   const nextPath = fixedPaths[role].replace(/\.[^.]+$/, `-correction-${++attempt}.json`);
@@ -218,14 +218,14 @@ export async function createLeadWorkerHarness(options: any) {
           if (feedback.some((row: any) => !row)) throw fail('HELPER_FEEDBACK_INVALID');
           const attemptInputs = structuredClone(inputs.slice(startInput));
           const receipt: any = { stage, paths: fixedPaths, direction, deliveries, feedback, boardRevision: final.history.at(-1).seq,
-            inputs: roles.map((role: any) => attemptInputs.findLast((row: any) => row.botId === team[role])), attemptInputs, rejected };
+            inputs: roles.map((role: any) => attemptInputs.findLast((row: any) => row.agentId === team[role])), attemptInputs, rejected };
           if (stage === 3) {
             receipt.pinnedDeliveries = [];
             for (const prior of [...stages, receipt]) for (const task of prior.deliveries) {
               if (workSignal.aborted || closing) throw fail('WORKFLOW_STOPPED');
               const proof = await git.verifyPinnedDelivery({ actor: task.owner, delivery: task.delivery, direction: prior.direction,
                 requireDirectionText: prior.stage > 0, signal: workSignal });
-              receipt.pinnedDeliveries.push({ stage: prior.stage, botId: task.owner, ...proof });
+              receipt.pinnedDeliveries.push({ stage: prior.stage, agentId: task.owner, ...proof });
             }
           }
           stages.push(receipt);
@@ -255,13 +255,13 @@ export async function createLeadWorkerHarness(options: any) {
           if (later.some((row: any) => row.status === 'rejected')) throw later.find((row: any) => row.status === 'rejected').reason;
           const final = board.snapshot();
           if (helperIds.some((id: any) => !final.subtasks.some((row: any) => row.owner === id && row.state === 'complete' && row.directionId === direction.seq && row.delivery?.verified && !before.some((old: any) => old.id === row.id || old.delivery.commit === row.delivery.commit)))) throw fail('DIRECTION_NOT_ADOPTED');
-          return { originalDirection: original, adjustedDirection: direction, environment: snapshot() };
+          return { originalDirection: original, adjustedDirection: direction, harness: snapshot() };
         } catch (error: any) { stop(); error.details = [...(error.details ?? []), snapshot()]; throw error; }
       },
     });
   } catch (error: any) {
     let receipt: any; if (!runtime && error.cleanup === 'pending') receipt = { cleanup: 'pending' }; else { try { receipt = await close(); } catch { receipt = { cleanup: 'pending' }; } }
-    throw Object.assign(new Error('Lead-helper startup failed'), { code: startup.aborted ? 'ENVIRONMENT_START_ABORTED' : error.code ?? 'ENVIRONMENT_START_FAILED', runtimeId: runtime?.id ?? error.runtimeId, cleanup: receipt.cleanup, details: [snapshot(), receipt, ...(error.name === 'ResourceError' ? redact(error.details ?? []) : [])] });
+    throw Object.assign(new Error('Lead-helper startup failed'), { code: startup.aborted ? 'HARNESS_START_ABORTED' : error.code ?? 'HARNESS_START_FAILED', runtimeId: runtime?.id ?? error.runtimeId, cleanup: receipt.cleanup, details: [snapshot(), receipt, ...(error.name === 'ResourceError' ? redact(error.details ?? []) : [])] });
   } finally { startup.removeEventListener('abort', abortStartup); }
 }
 
@@ -269,5 +269,5 @@ export function runLeadWorker(options: any, input: any) {
   let owned: any;
   return runWithReport({ outputDir: options.outputDir, closeTimeoutMs: options.closeTimeoutMs ?? 30_000,
     createRuntime: async () => { owned = await createLeadWorkerHarness(options); return owned; },
-    run: (environment: any) => environment.runWorkflow(input), redact: (report: any) => owned ? owned.redact(report) : report });
+    run: (harness: any) => harness.runWorkflow(input), redact: (report: any) => owned ? owned.redact(report) : report });
 }

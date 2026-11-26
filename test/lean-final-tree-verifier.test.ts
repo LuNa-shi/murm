@@ -8,14 +8,14 @@ import { LeanChecker } from '../src/judge/lean-adapter.js';
 import { agentCheckResult, normalizeCheckerResult } from '../src/judge/check-result.js';
 import { LeanFinalTreeVerifier } from '../src/judge/lean-final-tree-verifier.js';
 
-const comparatorRoot = process.env.SWARMENV_TEST_COMPARATOR_ROOT;
-const leanRoot = process.env.SWARMENV_TEST_LEAN_ROOT;
+const comparatorRoot = process.env.MURM_TEST_COMPARATOR_ROOT;
+const leanRoot = process.env.MURM_TEST_LEAN_ROOT;
 const identity = { checker_ref: 'lean-final-tree', checker_version: 'test', environment_ref: 'lean-test' };
 
 function fixture(fixtureSource = 'theorem toy : True := by sorry\n', options = {}) {
   const exporter = join(comparatorRoot ?? '/unused', '.lake/packages/lean4export/.lake/build');
   return new LeanFinalTreeVerifier({
-    identity, allowUnboundedDiagnostics: !process.env.SWARMENV_TEST_CHECKER_CGROUP, leanRoot: leanRoot ?? '/unused', comparatorLibraryRoots: [
+    identity, allowUnboundedDiagnostics: !process.env.MURM_TEST_CHECKER_CGROUP, leanRoot: leanRoot ?? '/unused', comparatorLibraryRoots: [
       join(comparatorRoot ?? '/unused', '.lake/build/lib/lean'), join(exporter, 'lib/lean'),
     ],
     exporterPath: join(exporter, 'bin/lean4export'), targetPath: 'Toy.lean', declarationName: 'toy',
@@ -89,12 +89,12 @@ test('root-only final checking accepts a new definition and helper import but re
 });
 
 test('production locked source diagnostics compile the full Mathlib import', {
-  skip: !leanRoot || !process.env.SWARMENV_TEST_PUTNAM_ROOT || !process.env.SWARMENV_TEST_CHECKER_CGROUP,
+  skip: !leanRoot || !process.env.MURM_TEST_PUTNAM_ROOT || !process.env.MURM_TEST_CHECKER_CGROUP,
 }, async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-mathlib-diagnostic-'));
+  const directory = await mkdtemp(join(tmpdir(), 'murm-mathlib-diagnostic-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const source = join(directory, 'source.lean');
-  const root = process.env.SWARMENV_TEST_PUTNAM_ROOT;
+  const root = process.env.MURM_TEST_PUTNAM_ROOT;
   const libraryRoots = ['batteries', 'Qq', 'aesop', 'proofwidgets', 'importGraph', 'LeanSearchClient', 'plausible', 'mathlib']
     .map(pkg => join(root, '.lake/packages', pkg, '.lake/build/lib/lean'));
   const verifier = fixture(undefined, { libraryRoots, allowUnboundedDiagnostics: false });
@@ -109,14 +109,14 @@ test('production locked source diagnostics compile the full Mathlib import', {
 });
 
 test('locked source diagnostics use bounded Lean without host private files or environment', { skip: !leanRoot }, async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-locked-diagnostic-'));
+  const directory = await mkdtemp(join(tmpdir(), 'murm-locked-diagnostic-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const privatePath = join(directory, 'private.txt');
   const source = join(directory, 'proof.lean');
   await writeFile(privatePath, 'operator-local\n');
   await writeFile(source, `import Lean
 def verifyIsolation : IO Unit := do
-  if (← IO.getEnv "SWARMENV_DIAGNOSTIC_TEST_SECRET").isSome then
+  if (← IO.getEnv "MURM_DIAGNOSTIC_TEST_SECRET").isSome then
     throw (IO.userError "inherited host environment")
   if (← (System.FilePath.mk ${JSON.stringify(privatePath)}).pathExists) then
     throw (IO.userError "host file visible")
@@ -131,7 +131,7 @@ theorem toy : True := trivial
   const verifier = fixture();
   const limits = { timeoutMs: 10000, maxOutputBytes: 10000 };
   const before = await readFile(source);
-  process.env.SWARMENV_DIAGNOSTIC_TEST_SECRET = 'present-in-controller';
+  process.env.MURM_DIAGNOSTIC_TEST_SECRET = 'present-in-controller';
   try {
     const version = await verifier.runSourceDiagnostic('lake', ['env', 'lean', '--version'], limits);
     assert.match(version.stdout ?? '', /Lean \(version/);
@@ -143,7 +143,7 @@ theorem toy : True := trivial
     const invalid = await verifier.runSourceDiagnostic('lake', ['env', 'lean', source], limits);
     assert.equal(invalid.exit_code, 1, JSON.stringify(invalid));
   } finally {
-    delete process.env.SWARMENV_DIAGNOSTIC_TEST_SECRET;
+    delete process.env.MURM_DIAGNOSTIC_TEST_SECRET;
   }
 });
 test('real isolated Lean requires the locked named theorem and rejects transitive axioms', lean, async () => {
@@ -156,7 +156,7 @@ test('real isolated Lean requires the locked named theorem and rejects transitiv
   assert.equal(await check('theorem toy : 1 = 1 := rfl\n'), 'FAIL');
   assert.equal(await check('theorem toy : True := by sorry\n'), 'FAIL');
   assert.equal(await check('axiom invented : True\ntheorem helper : True := invented\ntheorem toy : True := helper\n'), 'FAIL');
-  assert.equal(await check('#eval IO.println "SWARMENV_FINAL_TREE_VERIFIED"\ntheorem toy : True := by sorry\n'), 'FAIL');
+  assert.equal(await check('#eval IO.println "MURM_FINAL_TREE_VERIFIED"\ntheorem toy : True := by sorry\n'), 'FAIL');
 });
 
 test('real isolated Lean uses local modules from the complete tree with trusted build order', lean, async () => {
@@ -187,7 +187,7 @@ test('Lake project input rejects sources outside the module layout and trusted n
 });
 
 test('Lake diagnostics distinguish source names from late split resource diagnostics and worker exits', async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-project-diagnostic-test-'));
+  const directory = await mkdtemp(join(tmpdir(), 'murm-project-diagnostic-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const files = { 'src/Killed.lean': 'theorem toy : True := trivial\n' };
   for (const [name, resourceMessage] of [
@@ -257,7 +257,7 @@ test('Lake diagnostics distinguish source names from late split resource diagnos
 });
 
 test('locked raw and JSON Lean diagnostics keep source limits and goal words separate from runtime failures', async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-source-limit-test-'));
+  const directory = await mkdtemp(join(tmpdir(), 'murm-source-limit-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const messages = [
     '(deterministic) timeout at `isDefEq`, maximum number of heartbeats (1) has been reached',
@@ -301,7 +301,7 @@ test('locked raw and JSON Lean diagnostics keep source limits and goal words sep
 });
 
 test('real nested tactic limits stay unassessed in local, project and final checks', lean, async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-nested-resource-'));
+  const directory = await mkdtemp(join(tmpdir(), 'murm-nested-resource-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const source = 'set_option maxRecDepth 32\nexample (n : Nat) : n + 0 = n := by\n  simp only [← Nat.add_zero]\ntheorem toy : True := trivial\n';
   const file = join(directory, 'Nested.lean');
@@ -328,7 +328,7 @@ test('real nested tactic limits stay unassessed in local, project and final chec
 });
 
 test('project process signals, wallclock deadlines and unknown exits remain infrastructure errors', async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-project-runtime-test-'));
+  const directory = await mkdtemp(join(tmpdir(), 'murm-project-runtime-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   for (const mode of ['signal', 'deadline', 'unknown', 'spawn']) {
     const bubblewrap = join(directory, mode);
@@ -347,10 +347,10 @@ test('project process signals, wallclock deadlines and unknown exits remain infr
 });
 
 test('isolated Lake compiles offline Mathlib and all project modules before independent proof checking', {
-  skip: !leanRoot || !comparatorRoot || !process.env.SWARMENV_TEST_PUTNAM_ROOT || !process.env.SWARMENV_TEST_CHECKER_CGROUP,
+  skip: !leanRoot || !comparatorRoot || !process.env.MURM_TEST_PUTNAM_ROOT || !process.env.MURM_TEST_CHECKER_CGROUP,
 }, async () => {
   const libraryRoots = ['batteries', 'Qq', 'aesop', 'proofwidgets', 'importGraph', 'LeanSearchClient', 'plausible', 'mathlib']
-    .map(pkg => join(process.env.SWARMENV_TEST_PUTNAM_ROOT, '.lake/packages', pkg, '.lake/build/lib/lean'));
+    .map(pkg => join(process.env.MURM_TEST_PUTNAM_ROOT, '.lake/packages', pkg, '.lake/build/lib/lean'));
   const verifier = fixture(undefined, { projectChecks: true, targetPath: 'src/Toy.lean', libraryRoots });
   const files = {
     'src/Toy.lean': Buffer.from('import Helpers.Counting\ntheorem toy : True := counting\n'),
@@ -392,7 +392,7 @@ test('isolated Lake compiles offline Mathlib and all project modules before inde
 test('real isolated Lean does not expose the host home, environment, or project write access', lean, async () => {
   const result = await fixture().check({ files: { 'Toy.lean': `
 def inspectSandbox : IO Unit := do
-  if (← IO.getEnv "SWARMENV_TEST_LEAN_ROOT").isSome then
+  if (← IO.getEnv "MURM_TEST_LEAN_ROOT").isSome then
     throw (IO.userError "host environment leaked")
   if ← (System.FilePath.mk "/home/ubuntu").pathExists then
     throw (IO.userError "host home leaked")
@@ -408,9 +408,9 @@ theorem toy : True := True.intro
 });
 
 test('real Lean rejects the original B1 placeholder at its locked declaration', {
-  skip: !leanRoot || !comparatorRoot || !process.env.SWARMENV_TEST_PUTNAM_ROOT,
+  skip: !leanRoot || !comparatorRoot || !process.env.MURM_TEST_PUTNAM_ROOT,
 }, async () => {
-  const root = process.env.SWARMENV_TEST_PUTNAM_ROOT;
+  const root = process.env.MURM_TEST_PUTNAM_ROOT;
   const targetPath = 'src/putnam_2025_b1.lean';
   const fixtureSource = await readFile(join(root, targetPath));
   const libraryRoots = ['batteries', 'Qq', 'aesop', 'proofwidgets', 'importGraph', 'LeanSearchClient', 'plausible', 'mathlib']
@@ -444,7 +444,7 @@ test('aborted or expired work prevents materialization and subprocess launch', a
 });
 
 test('candidate launcher, signal, OOM, and malformed export never become cacheable FAIL', async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-checker-status-'));
+  const directory = await mkdtemp(join(tmpdir(), 'murm-checker-status-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   for (const [code, diagnostic] of [
     [126, ''], [127, ''], [137, ''],

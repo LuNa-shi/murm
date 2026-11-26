@@ -25,17 +25,17 @@ export function createTaskPoolMathlibService({ provider, runtimeId, taskService,
       async invoke({ input, caller, signal, assertAuthorized }) {
         const binding = () => {
           assertAuthorized();
-          const bot = taskService.getBot(caller.botId);
+          const agent = taskService.getAgent(caller.agentId);
           const until = deadline();
-          const execution = bot?.execution_id && taskService.getExecution(bot.execution_id);
-          if (caller.runtimeId !== runtimeId() || caller.profile !== 'researcher' || bot?.mission_id !== missionId ||
-              bot.state !== 'ACTIVE' || execution?.owner_ref !== bot.bot_id || !Number.isFinite(until) || Date.now() >= until ||
+          const execution = agent?.execution_id && taskService.getExecution(agent.execution_id);
+          if (caller.runtimeId !== runtimeId() || caller.profile !== 'researcher' || agent?.mission_id !== missionId ||
+              agent.state !== 'ACTIVE' || execution?.owner_ref !== agent.agent_id || !Number.isFinite(until) || Date.now() >= until ||
               Date.now() >= Date.parse(execution.lease_expires_at) ||
               taskService.getTask(execution.task_id)?.spec_version !== execution.spec_version) {
-            throw new MurmError('NOT_ALLOWED', 'Mathlib search requires the live execution of this Bot');
+            throw new MurmError('NOT_ALLOWED', 'Mathlib search requires the live execution of this Agent');
           }
           taskService.assertMissionResearchOpen(missionId);
-          taskService.assertBotDeadline(bot.bot_id);
+          taskService.assertAgentDeadline(agent.agent_id);
           assertNewExecutionWork(execution);
           return execution.fencing_version;
         };

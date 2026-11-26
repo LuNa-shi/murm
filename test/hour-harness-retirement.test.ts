@@ -26,7 +26,7 @@ for(const name of await readdir(join(root,'dist/test'))) {
 for(const path of ['src/harnesses/taskpool/harness.js','src/harnesses/peermesh/index.js','src/harnesses/substrate/index.js','src/harnesses/lead-worker/index.js',
  'test-support/subagents/stages.js',
  'examples/substrate/main.js','examples/lead-worker/main.js']) await import(pathToFileURL(join(root,'dist',path)));
-for(const name of ['bot-disk-probe','drop-peer-response','judge-peer-fixture','project-install-rollback-probe','sandbox-project-probe']) await access(join(root,'dist/test-support',name+'.js'));
+for(const name of ['agent-disk-probe','drop-peer-response','judge-peer-fixture','project-install-rollback-probe','sandbox-project-probe']) await access(join(root,'dist/test-support',name+'.js'));
 // Notes and Subagents are editable adjacent-module examples; assemble their documented layout.
 await import('./main.mjs');
 await mkdir('subagents');
