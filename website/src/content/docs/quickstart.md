@@ -17,8 +17,8 @@ In `murm`, every **Agent** runs inside an isolated Docker container (**Sandbox**
 Make sure **Node.js `>= 22.19.0`** and Docker are installed, then build the repository:
 
 ```bash
-git clone https://github.com/LuNa-shi/SwarmEnv.git
-cd SwarmEnv
+git clone https://github.com/LuNa-shi/murm.git
+cd murm
 npm ci
 npm run build
 ```
@@ -86,7 +86,7 @@ node dist/examples/notes/main.js \
 To import the runtime package outside this repository:
 
 ```bash
-repo=/absolute/path/to/SwarmEnv
+repo=/absolute/path/to/murm
 mkdir my-murm-harness && cd my-murm-harness
 npm pack "$repo" --pack-destination .
 npm init -y && npm pkg set type=module

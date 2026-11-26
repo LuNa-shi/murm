@@ -21,7 +21,7 @@ Open `http://localhost:4321/` to preview changes live. All documentation Markdow
 
 ## 2. Deploy to GitHub Pages
 
-The repository includes a ready-to-use GitHub Actions workflow at [.github/workflows/deploy-website.yml](https://github.com/LuNa-shi/SwarmEnv/blob/main/.github/workflows/deploy-website.yml).
+The repository includes a ready-to-use GitHub Actions workflow at [.github/workflows/deploy-website.yml](https://github.com/LuNa-shi/murm/blob/main/.github/workflows/deploy-website.yml).
 
 1. In your GitHub repository, open **Settings → Pages → Build and deployment → Source** and select **GitHub Actions**.
 2. Merge the site into `main` or dispatch the workflow from `main`.
