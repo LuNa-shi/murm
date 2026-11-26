@@ -8,6 +8,8 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261126-03` | [Issue #235](https://github.com/LuNa-shi/murm/issues/235) | **SETTLED · GPT-6.1 Sol · orders-a · request cap, partial acceptance** | `df459980` | [Dynamic Lead–Worker recovery](EXP-20261126-03-04-lead-worker-dynamic.md) |
+| `EXP-20261126-04` | [Issue #235](https://github.com/LuNa-shi/murm/issues/235) | **SETTLED · GPT-6.1 Sol · orders-b · request cap, partial acceptance** | `df459980` | [Dynamic Lead–Worker recovery](EXP-20261126-03-04-lead-worker-dynamic.md) |
 | `EXP-20261126-01` | [Issue #235](https://github.com/LuNa-shi/murm/issues/235) | **STOPPED · GPT-6.1 Sol · orders-a · deployment permission failure** | `0ec6770e` | [Dynamic Lead–Worker acceptance](EXP-20261126-01-02-lead-worker-dynamic.md) |
 | `EXP-20261126-02` | [Issue #235](https://github.com/LuNa-shi/murm/issues/235) | **STOPPED · GPT-6.1 Sol · orders-b · recovery before deployment** | `0ec6770e` | [Dynamic Lead–Worker acceptance](EXP-20261126-01-02-lead-worker-dynamic.md) |
 | `EXP-20261125-35` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) | **COMPLETE · ScaleMAS · FATE-M #1 · none · 4 proofs passed, 151.551 s work** | `c1a3480` | [ScaleMAS FATE-M one-problem acceptance](EXP-20261125-scalemas-fate.md) (recorded as `EXP-20261125-09`) |

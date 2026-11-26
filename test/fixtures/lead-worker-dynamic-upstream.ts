@@ -7,7 +7,7 @@ import { streamResponse } from './core-controlled-upstream.js';
 const assignments = ['helper1', 'helper2'];
 function program(initial: boolean) {
   return `python3 - <<'LEAD_WORKER'
-import hashlib,json,os,pathlib,subprocess,time,urllib.request,urllib.error,uuid
+import hashlib,json,os,pathlib,subprocess,tempfile,time,urllib.request,urllib.error,uuid
 initial=${initial ? 'True' : 'False'}
 files=json.loads(${JSON.stringify(JSON.stringify({ calculation, corrected, generatedService, ordersCli }))})
 helpers=${JSON.stringify(assignments)}
@@ -129,11 +129,13 @@ else:
   commit=task['title'].split()[-1]
   git('fetch','origin','lead-'+branch.removeprefix('checker-'))
   assert git('rev-parse','FETCH_HEAD')==commit
-  git('cherry-pick',*git('rev-list','--reverse','origin/main..'+commit).splitlines())
+  archive=subprocess.run(['git','archive',commit],capture_output=True,check=True,timeout=15).stdout
+  with tempfile.TemporaryDirectory(dir=root) as candidate:
+   subprocess.run(['tar','-xf','-','-C',candidate],input=archive,capture_output=True,check=True,timeout=15)
+   good_execution=run('node','orders.mjs',input=valid,cwd=candidate)
+   execution=run('node','orders.mjs',input=mixed,cwd=candidate)
   checked_good=cli(service,'check_orders',{'jsonl':valid},request='review-valid')
   checked_mixed=cli(service,'check_orders',{'jsonl':mixed},request='review-invalid')
-  good_execution=run('node','orders.mjs',input=valid)
-  execution=run('node','orders.mjs',input=mixed)
   assert execution.returncode==1
   actual=json.loads(execution.stdout)
   assert checked_good['totals']=={'USD':100}

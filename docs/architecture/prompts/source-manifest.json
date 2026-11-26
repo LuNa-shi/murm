@@ -155,7 +155,7 @@
     },
     {
       "path": "src/harnesses/lead-worker/prompts.ts",
-      "sha256": "33ce6b72c69aa173d00d230ad2766ea78d968bed615ce782ee37c1d090a211a3"
+      "sha256": "22ffe10d66454452ec90fd9492f1c1483af64d6e9cfe4b98ee7e7a201c026969"
     },
     {
       "path": "src/harnesses/lead-worker/index.ts",
@@ -481,13 +481,13 @@
       "path": "src/harnesses/lead-worker/prompts.ts",
       "anchor": "export const dynamicLeadPrompt = `",
       "line": 8,
-      "sha256": "15829c253a221559209ac08008a856300b9f67cf46227ebed8d4a21d17a2d414"
+      "sha256": "0b2857905c23f7bd6ed84b4c07c59d653c6f68dd81f9c0cf47f8d76bbf10b86e"
     },
     {
       "path": "src/harnesses/lead-worker/prompts.ts",
       "anchor": "export const dynamicWorkerPrompt = `",
       "line": 16,
-      "sha256": "af2a04ea3134fbff632e90aa316dad0f056758e47bc7e9d608ddcd0ccdbc0e95"
+      "sha256": "50f148705ee19eadd67d4ef431c0cdf2dca0c7af53805dcb40c84993c90319f0"
     },
     {
       "path": "src/harnesses/lead-worker/index.ts",
@@ -687,7 +687,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-lead-worker-harness.md",
-      "sha256": "fce1a4fe84b4cd81c19afe930a829f4b061eaee1237a7cfecf7c2cceeb13298d"
+      "sha256": "5f33bbd68fc2e05b4b3d385878da26d3535c3d241b7fa0cdc5633de9e2020d75"
     },
     {
       "path": "docs/architecture/prompts/08-taskpool-harness.md",
