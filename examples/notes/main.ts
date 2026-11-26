@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRuntime } from '@murm/core';
 import { ServiceRegistry, createInProcessAdapter } from '@murm/core/services';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
 import { runInput } from './run-input.js';
 import { runWithReport } from './run-report.js';
 
@@ -91,7 +91,7 @@ export async function runNotesHarness({ backend, model = 'default', image, outpu
     createRuntime: async () => {
       signal?.throwIfAborted();
       const common: any = { model, image, writable: true };
-      return createRuntime({ backend: createPiOpenSandboxBackend(backend), services: notes.services, maxAgents: 2, outputDir,
+      return createRuntime({ backend: createOpenSandboxBackend(backend), services: notes.services, maxAgents: 2, outputDir,
         profiles: {
           writer: { ...common, services: { notes: ['put'] } },
           reader: { ...common, services: { notes: ['get'] },

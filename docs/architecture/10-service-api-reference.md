@@ -40,13 +40,14 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `28570d9b5cfadc3ceaa8136860bb8df2238ce951a144b996e5b2d9d5f2924111` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `24658498abfe7af71dcf97dd5263100283facc11f71bb0040bbd6f71a7ea3254` |
+| [src/core/index.ts](../../src/core/index.ts) | `303e8742d65e0b47e2d87a9d4c8c65e382ec85851e0bc16016ba802eee4d0b63` |
 | [src/core/types.ts](../../src/core/types.ts) | `6be0d8ee5d874eea232c797e6cc32ad0cca9eb1b8f65a1b67fb8d3a1d0d2550e` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `f8cea3ce6983ecd15f81ffe7a5c483f476b728a1421b40961e49073d815d7664` |
 | [src/core/services.ts](../../src/core/services.ts) | `fe9840ec2a5d25e05ac7546c2f236ca72c858d5128a1d8f464c26dd8cb5b5e9c` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
-| [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | `f8167e4c39facba00538c3ebc97cd7c54ad3164bb138303917896aac72c1539b` |
-| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `1dbbc98f826068693373e1bcd9f1372a327dee4dfbd3a586ae72894f881585d2` |
+| [src/core/backends/opensandbox.ts](../../src/core/backends/opensandbox.ts) | `5a0508b36fa7b6e556c9fcce87cda56cbfcf876563874a2a30818069e2ee24ca` |
+| [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | `f6b1d4d2bb9b30253195adfecda5abb24f17e0971c710c0007d6baac23d84734` |
+| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `f193e6ccb9966ef40e3d8fdafaecab967ae8bbea96bf53e4a41f7d0cd7ffe797` |
 
 ### Exact built-in command operation surface
 
@@ -3513,17 +3514,40 @@ export interface ServiceAdapter {
 }
 ```
 
+#### dist/src/core/backends/opensandbox.d.ts
+
+```ts
+export { createOpenSandboxBackend, getOpenSandboxBackendCapabilities } from '../opensandbox-backend.js';
+export type { BackendCapabilities, ExecutorKind, OpenSandboxBackendConfig } from '../backend-config.js';
+```
+
 #### dist/src/core/backends/pi-opensandbox.d.ts
 
 ```ts
-export { createPiOpenSandboxBackend } from '../pi-opensandbox-backend.js';
+import type { Backend } from '../types.js';
+import type { PiOpenSandboxBackendConfig } from '../backend-config.js';
 export type { PiOpenSandboxBackendConfig } from '../backend-config.js';
+/** @deprecated Select Pi through createOpenSandboxBackend and its executor setting. */
+export declare function createPiOpenSandboxBackend(config: PiOpenSandboxBackendConfig): Backend;
 ```
 
 #### dist/src/core/backend-config.d.ts
 
 ```ts
-export interface PiOpenSandboxBackendConfig {
+export type ExecutorKind = 'pi' | 'codex';
+export interface BackendCapabilities {
+    readonly activeSteer: boolean;
+    readonly followUp: boolean;
+    readonly conditionalInput: boolean;
+    readonly queuedInputCancellation: boolean;
+    readonly contextFork: boolean;
+    readonly modelRequestAuthorization: boolean;
+    readonly rawModelRequestTrace: boolean;
+    readonly steeringModes: readonly ('all' | 'one-at-a-time')[];
+}
+export interface OpenSandboxBackendConfig {
+    /** Defaults to Pi. The backend resolves this selection when the handle is created. */
+    executor?: ExecutorKind;
     sandbox: {
         lifecycleBaseUrl: string;
         apiKey?: string;
@@ -3545,7 +3569,7 @@ export interface PiOpenSandboxBackendConfig {
         host: string;
         advertiseHost: string;
         requestTimeoutMs?: number;
-        /** null preserves provider/Pi output parameters without a host token clamp. */
+        /** null preserves executor output parameters without a host token clamp. */
         maxOutputTokens?: number | null;
         /** Sets upstream reasoning effort for requests admitted in the selection phase. */
         selectionReasoningEffort?: 'low';
@@ -3566,6 +3590,7 @@ export interface PiOpenSandboxBackendConfig {
         };
     };
 }
+export type PiOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'>;
 ```
 
 <!-- END GENERATED REFERENCE -->

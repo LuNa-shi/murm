@@ -7,6 +7,9 @@ function required(name: any) {
 const host = process.env.MURM_SUBAGENTS_ADVERTISE_HOST ?? '172.17.0.1';
 const upstream = required('MURM_SUBAGENTS_MODEL_URL');
 const token = process.env.MURM_SUBAGENTS_MODEL_TOKEN;
+const executor = process.env.MURM_SUBAGENTS_EXECUTOR ?? 'pi';
+const provider = process.env.MURM_SUBAGENTS_MODEL_PROVIDER ?? (executor === 'codex' ? 'openai' : 'kimi_proxy');
+const model = executor === 'codex' ? required('MURM_SUBAGENTS_MODEL_ID') : process.env.MURM_SUBAGENTS_MODEL_ID ?? 'k3';
 
 export default {
   model: 'default',
@@ -17,6 +20,7 @@ export default {
   workTimeoutMs: 120_000,
   closeTimeoutMs: 30_000,
   backend: {
+    executor,
     sandbox: {
       lifecycleBaseUrl: process.env.MURM_SUBAGENTS_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       endpointHost: process.env.MURM_SUBAGENTS_ENDPOINT_HOST ?? '127.0.0.1',
@@ -25,8 +29,8 @@ export default {
       commandTimeoutMs: 20_000,
     },
     bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-    modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 25_000, maxOutputTokens: 2048 },
-    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: {
+    modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 25_000, maxOutputTokens: executor === 'codex' ? null : 2048 },
+    models: { default: { provider, model, upstream: {
       url: upstream, headers: token ? { authorization: `Bearer ${token}` } : {},
     } } },
     isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },

@@ -6,7 +6,7 @@ import {
 import { runLocalSmoke } from './local-setup-smoke.js';
 import { loadLocalProjectConfig } from './local-setup-template.js';
 import { prepareWorkerImage } from './local-setup-worker.js';
-import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
+import { createOpenSandboxBackend } from '../src/core/backends/opensandbox.js';
 import type { LocalCommand } from './murm-arguments.js';
 
 const packageRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -37,10 +37,14 @@ function modelState(config: ProjectConfig): Model {
 }
 
 function checkProjectBackend(config: ProjectConfig): DiagnosticCheck {
+  if (config.backend.executor === 'codex') return {
+    id: 'config.executor', ok: false, detail: 'Configured doctor currently supports Pi projects.',
+    remedy: 'Use murm doctor for host checks and the installed Subagents example to run with Codex.',
+  };
   try {
     // The real backend validates every infrastructure field without allocating.
     // Missing model endpoints are reported separately while preparing the host.
-    createPiOpenSandboxBackend({
+    createOpenSandboxBackend({
       ...config.backend,
       models: Object.fromEntries(Object.entries(config.backend.models).map(([alias, route]) => [alias, {
         ...route, upstream: { ...route.upstream, url: 'http://127.0.0.1/v1/responses' },

@@ -1,6 +1,27 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createPiOpenSandboxBackend, claimPiOpenSandboxBackend } from '../src/core/pi-opensandbox-backend.js';
+import { createOpenSandboxBackend, getOpenSandboxBackendCapabilities } from '@murm/core/backends/opensandbox';
+import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { claimOpenSandboxBackend } from '../src/core/opensandbox-backend.js';
+
+test('the configured backend freezes executor selection and exposes its capabilities before Runtime assembly', async () => {
+  const { configuration } = await import('./fixtures/core-input-backend.js');
+  const config = { ...configuration, sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1' }, executor: 'codex' };
+  const codex = createOpenSandboxBackend(config);
+  config.executor = 'pi';
+  const caps = getOpenSandboxBackendCapabilities(codex);
+  assert.equal(caps.contextFork, false);
+  assert.deepEqual(caps.steeringModes, ['all']);
+  assert.ok(Object.isFrozen(caps));
+  const selected = claimOpenSandboxBackend(codex);
+  assert.equal(selected.driver.kind, 'codex');
+  assert.equal(selected.driver.version, '0.172.0');
+  assert.equal(selected.modelGateway.maxOutputTokens, null);
+  assert.equal(claimOpenSandboxBackend(createOpenSandboxBackend({ ...config, executor: undefined })).driver.kind, 'pi');
+  assert.equal(claimOpenSandboxBackend(createPiOpenSandboxBackend(config)).driver.kind, 'pi');
+  assert.throws(() => createOpenSandboxBackend({ ...config, executor: 'toString' }), { code: 'INVALID_CONTRACT' });
+  assert.throws(() => getOpenSandboxBackendCapabilities({}), { code: 'INVALID_CONTRACT' });
+});
 
 test('backend rejects unsupported deployment before allocating resources', () => {
   assert.throws(() => createPiOpenSandboxBackend({ isolation: { network: 'remote' } }), { code: 'INVALID_CONTRACT' });
@@ -34,7 +55,7 @@ test('backend freezes an explicit natural output policy and rejects malformed to
   const config = { ...configuration, sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1' },
     modelGateway: { ...configuration.modelGateway, maxOutputTokens: null } };
   const handle = createPiOpenSandboxBackend(config); config.modelGateway.maxOutputTokens = 16;
-  assert.equal(claimPiOpenSandboxBackend(handle).modelGateway.maxOutputTokens, null);
+  assert.equal(claimOpenSandboxBackend(handle).modelGateway.maxOutputTokens, null);
   for (const value of [false, 'none', 0, 15, NaN, Infinity, 16.5]) {
     assert.throws(() => createPiOpenSandboxBackend({ ...config, modelGateway: { ...config.modelGateway, maxOutputTokens: value } }), { code: 'INVALID_CONTRACT' });
   }
@@ -46,7 +67,7 @@ test('backend snapshots the lifetime before the caller can mutate configuration'
   const config = { ...configuration, sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1', timeoutSeconds: 5100 } };
   const handle = createPiOpenSandboxBackend(config);
   config.sandbox.timeoutSeconds = 7200;
-  const frozen = claimPiOpenSandboxBackend(handle);
+  const frozen = claimOpenSandboxBackend(handle);
   assert.equal(frozen.sandbox.timeoutSeconds, 5100);
   assert.ok(Object.isFrozen(frozen.sandbox));
 });

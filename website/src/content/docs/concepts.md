@@ -133,10 +133,12 @@ A Run has a private directory under `outputDir/<runtimeId>/` containing the effe
 
 Combining the fragments above produces a complete multi-agent Harness skeleton:
 
+For source builds with executor selection, `config.backend.executor` selects `pi` or `codex`. Omitting it selects Pi.
+
 ```ts
 import { createRuntime } from '@murm/core';
 import { ServiceRegistry } from '@murm/core/services';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
 
 // 1. Register shared Services
 const services = new ServiceRegistry();
@@ -144,7 +146,7 @@ services.registerService({ manifest: notesManifest, adapter: createNotesAdapter(
 
 // 2. Start a Runtime (begins a Run)
 const runtime = await createRuntime({
-  backend: createPiOpenSandboxBackend(config.backend),
+  backend: createOpenSandboxBackend(config.backend),
   services,
   profiles: { writer: writerProfile, reader: readerProfile },
   maxAgents: 2,

@@ -1,6 +1,6 @@
 # murm
 
-murm is a TypeScript toolkit for building multi-agent Harnesses. A Harness composes Agent Profiles, shared Services and its coordination policy. The Runtime runs each Agent in an isolated Sandbox and records the execution as a Run. The Core library exposes the Runtime, Service framework and Pi/OpenSandbox backend. [Website](https://luna-shi.github.io/murm/) · [Core concepts](GLOSSARY.md)
+murm is a TypeScript toolkit for building multi-agent Harnesses. A Harness composes Agent Profiles, shared Services and its coordination policy. The Runtime runs each Agent in an isolated Sandbox and records the execution as a Run. The Core library exposes the Runtime, Service framework and OpenSandbox backend with configurable Pi and Codex executors. [Website](https://luna-shi.github.io/murm/) · [Core concepts](GLOSSARY.md)
 
 ## Quick Start
 
@@ -53,7 +53,7 @@ For the Core / Harness stage, the [Phase 0005 design on main](docs/phases/0005-c
 
 ## Implementation map
 
-- `src/core/` — programmable Runtime, Agent lifecycle, Service Bridge and Pi/OpenSandbox backend
+- `src/core/` — programmable Runtime, Agent lifecycle, Service Bridge and configured OpenSandbox backend
 - `src/harnesses/` — TaskPool, PeerMesh, Substrate and Lead-Worker collaboration policies
 - `src/agent/` — capability profiles, Worker launch contracts, model catalog, Responses gateway and Services Bridge
 - `src/task/`, `src/context/`, `src/judge/` — authoritative domain state

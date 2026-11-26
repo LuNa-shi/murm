@@ -25,7 +25,18 @@ In interactive mode, enter a task or a follow-up as a line, use `/status` to ins
 
 The example config defaults to four live Agents including Root and three child edges. Set `MURM_SUBAGENTS_MAX_AGENTS` and `MURM_SUBAGENTS_MAX_DEPTH` to adjust the limits. Models can be configured as `rootModel` and `childModel` on the host. The default work limit is 120 seconds and cleanup has its own 30-second limit. Set `files` to seed Root, and use a required `collect` specification for files that must be exported. Work directories are private by default. Set `workspace.root` and `workspace.child` to supported Core workspace mounts to enable sharing. Private children can send patches as text to Root.
 
-Use `swarm service view collaboration` to see the authenticated operations and arguments. A typical pair of calls looks like this.
+## Use the packaged example with Codex
+
+The generated template defaults to Pi. To use the packaged Codex example from the installed project, set `MURM_SUBAGENTS_EXECUTOR=codex`, `MURM_SUBAGENTS_MODEL_ID`, and `MURM_SUBAGENTS_MODEL_URL` in the host shell. Set `MURM_SUBAGENTS_IMAGE` to the immutable ID of a Worker built with Codex. The optional `MURM_SUBAGENTS_MODEL_PROVIDER` label defaults to `openai` for Codex. Supply any required model or lifecycle token through the host environment.
+
+```sh
+example=node_modules/@murm/core/dist/examples/subagents
+node "$example/main.js" "$example/config.js" --interactive
+```
+
+The configured `doctor --smoke` path covers Pi projects. The installed Codex example runs through the same local OpenSandbox provider and its own executor. [Codex startup and capabilities](../../docs/architecture/16-pi-opensandbox-backend.md#codex-app-server)
+
+Use `--fork-turns none` when delegating with Codex. Use `swarm service view collaboration` to see the authenticated operations and arguments. A typical pair of calls looks like this.
 
 ```sh
 swarm collaboration spawn_agent --task-name reviewer --message 'Check the implementation plan' --fork-turns none --request-id reviewer-start
@@ -36,4 +47,4 @@ A plain notice or child result can reach active work or be taken through a wait.
 
 ## Verification
 
-The [Subagents verification guide](../../test/README.md#subagents-verification) describes the regression and native Pi/OpenSandbox checks. The [ProgramBench fd experiment](../../docs/experiments/EXP-20261125-10-issue199-fd.md) records a real three-Agent run, including the file handoff, follow-up and independent score.
+The [Subagents verification guide](../../test/README.md#subagents-verification) describes the regression and native OpenSandbox checks. The [ProgramBench fd experiment](../../docs/experiments/EXP-20261125-10-issue199-fd.md) records a real three-Agent run, including the file handoff, follow-up and independent score.

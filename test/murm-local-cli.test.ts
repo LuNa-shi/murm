@@ -98,3 +98,21 @@ test('doctor classifies invalid active model routes before allocation', async t 
   assert.ok(report.checks.some(check => check.id === 'config.models' && !check.ok));
   assert.deepEqual(report.timings, []);
 });
+
+test('configured doctor reports Codex as unsupported by the Pi probe before touching the host', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-doctor-codex-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const filename = join(directory, 'config.mjs');
+  await writeFile(filename, `export default {
+    image: 'unused', backend: {
+      executor: 'codex',
+      models: { default: { upstream: { url: 'https://example.com/v1/responses' } } },
+    },
+  }`);
+  const result = spawnSync(process.execPath, [cli, 'doctor', '--config', filename, '--smoke'], { encoding: 'utf8' });
+  assert.equal(result.status, 1, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.ok(report.checks.some(check => check.id === 'config.executor' && !check.ok), result.stdout);
+  assert.equal(report.smoke, undefined);
+  assert.deepEqual(report.timings, []);
+});

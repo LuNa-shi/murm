@@ -8,6 +8,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import { createCoreModelAccess } from '../src/core/model-access.js';
+import { selectExecutorDriver } from '../src/core/executor-driver.js';
 
 function completion(model = 'k3') {
   return `event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed',
@@ -38,6 +39,7 @@ async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, m
     await rm(outputDir, { recursive: true, force: true });
   });
   const config = {
+    driver: selectExecutorDriver(),
     modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs, maxOutputTokens, selectionReasoningEffort },
     models: models ?? { default: { provider, model,
       upstream: { url: upstreamUrl, headers: { authorization: 'Bearer upstream-private' } } } },

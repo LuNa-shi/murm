@@ -6,9 +6,10 @@ const object = (properties: Record<string, unknown>, required: string[] = []) =>
 const target = { type: 'string', minLength: 1, maxLength: 1024 };
 const message = { type: 'string', minLength: 1, maxLength: 65_536 };
 const targetMessage = object({ target, message }, ['target', 'message']);
+const childTask = { task_name: { type: 'string', pattern: '^[a-z0-9_]{1,48}$' }, message };
 const capabilities = [
   ['spawn_agent', 'Create a named child and assign its first task. The default fork_turns is all. Use none for a fresh conversation.', object({
-    task_name: { type: 'string', pattern: '^[a-z0-9_]{1,48}$' }, message, fork_turns: { enum: ['all', 'none'] },
+    ...childTask, fork_turns: { enum: ['all', 'none'] },
   }, ['task_name', 'message'])],
   ['send_message', 'Send information to a team member. A plain notice leaves an idle member idle.', targetMessage],
   ['followup_task', 'Give an existing non-Root member work. It can start an idle member and uses its existing Session and files.', targetMessage],
@@ -32,10 +33,22 @@ const manifest: ServiceManifest = {
   })),
 };
 
+const freshChildDescription = 'Create a named child and assign its first task. Pass fork_turns none to start a fresh conversation.';
+const freshChildManifest: ServiceManifest = {
+  ...manifest,
+  capabilities: manifest.capabilities.map(capability => capability.operation !== 'spawn_agent' ? capability : {
+    ...capability,
+    description: freshChildDescription,
+    help: { when: freshChildDescription },
+    input_schema: object({ ...childTask, fork_turns: { enum: ['none'] } }, ['task_name', 'message', 'fork_turns']),
+  }),
+};
+
 export const collaborationOperations = capabilities.map(([operation]) => operation);
 export function createCollaborationService(
   invoke: (request: ServiceRequest) => Promise<JsonValue>,
   exportState: () => JsonValue,
+  { allowContextFork = true } = {},
 ) {
-  return { manifest, adapter: createInProcessAdapter({ invoke, exportState }) };
+  return { manifest: allowContextFork ? manifest : freshChildManifest, adapter: createInProcessAdapter({ invoke, exportState }) };
 }

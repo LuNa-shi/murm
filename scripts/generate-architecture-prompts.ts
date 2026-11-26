@@ -33,7 +33,7 @@ const sourcePaths = [
   'src/agent/capability-profile.ts',
   'src/agent/services-bridge.ts',
   'src/cli/swarm-cli.ts', 'src/cli/service-command.ts',
-  'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
+  'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts', 'scripts/codex-app-server-driver.ts',
   'scripts/local-setup-smoke.ts', 'scripts/local-setup-upstream.ts',
   'examples/notes/main.ts', 'src/harnesses/shared/run-input.ts', 'src/harnesses/substrate/index.ts', 'src/harnesses/substrate/substrate.ts',
   'src/harnesses/taskpool/controller.ts', 'src/harnesses/taskpool/harness.ts',
@@ -187,8 +187,9 @@ const substrateIndexPath = 'src/harnesses/substrate/index.ts';
 const substratePath = 'src/harnesses/substrate/substrate.ts';
 const fatePath = 'examples/substrate/fate-run.ts';
 output('01-core-startup.md', header('Core startup system prompt',
-  'The backend passes this file through Pi --system-prompt. The current working directory is appended by Pi. Services are rendered from the registered manifest purpose and operation descriptions after Bridge permission filtering. An optional nonblank Profile.prompt is included verbatim inside added_system_prompt.')
-  + block('Profile with no allowed Service operations and no Added System Prompt', renderStartupPrompt([])));
+  'The backend stages this file. Pi receives it through --system-prompt and can append its working directory. Codex receives it as thread/start baseInstructions and can add its own context. Services are rendered from the registered manifest purpose and operation descriptions after Bridge permission filtering. An optional nonblank Profile.prompt is included verbatim inside added_system_prompt.')
+  + block('Profile with no allowed Service operations and no Added System Prompt', renderStartupPrompt([]))
+  + block('Codex Profile with no allowed Service operations or Added System Prompt', renderStartupPrompt([], undefined, 'codex')));
 const fateManifest = fateServiceManifest();
 const fateSharing = evaluate(between(fatePath, 'export const fateSharingPrompt = ', ';\n'));
 const fatePrivate = evaluate(between(fatePath, 'export const fatePrivatePrompt = ', ';\n'));
