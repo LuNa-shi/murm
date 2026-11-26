@@ -290,7 +290,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
 
   function observationAgent(agent: RuntimeAgent): AgentObservation {
     const { id, profile, parentId, status, cursor: agentSeq } = agent.info;
-    const execution = agent.executionStopped ? 'inactive'
+    const execution = agent.executionStopped || status === 'exited' ? 'inactive'
       : agent.fatal ? 'unknown'
       : agent.nativeExecuting ? 'active'
       : agent.activityClaims.size ? 'unknown' : 'inactive';
@@ -399,9 +399,13 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         revoke(info.id, { abortServices: true });
       }
     }
-    if (event.type === 'exit' && info.status !== 'closing' && info.status !== 'closed') {
-      info.status = 'exited';
-      revoke(info.id);
+    if (event.type === 'exit') {
+      agent.nativeExecuting = false;
+      agent.activityClaims.clear();
+      if (info.status !== 'closing' && info.status !== 'closed') {
+        info.status = 'exited';
+        revoke(info.id);
+      }
     }
     records.record('event', { agentId: info.id, event });
     for (const handler of [...handlers]) {
