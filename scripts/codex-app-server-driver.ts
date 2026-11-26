@@ -1,0 +1,225 @@
+import { randomUUID } from 'node:crypto';
+
+interface DriverOptions {
+  model: string;
+  cwd: string;
+  systemPrompt: string;
+  write(message: Record<string, unknown>): void;
+  publish(record: Record<string, unknown>): void;
+}
+
+interface Input {
+  type: string;
+  id?: string;
+  message?: string;
+  streamingBehavior?: string;
+  steeringMode?: string;
+  onlyWhileActive?: boolean;
+}
+
+// The Worker owns process isolation and durable command identities. This adapter
+// owns one App Server connection and its single persistent native thread.
+export function createCodexAppServerDriver(options: DriverOptions) {
+  const pending = new Map<string, { resolve(value: any): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
+  const completionWaiters = new Map<string, { resolve(): void; reject(error: Error): void }>();
+  const completedTurns = new Set<string>();
+  const followUps: Input[] = [];
+  let threadId: string;
+  let activeTurn: string | undefined;
+  let executing = false;
+  let interrupting = false;
+  let closed = false;
+  let output = '';
+  let commands: Promise<unknown> = Promise.resolve();
+
+  const uncertain = (error: Error) => Object.assign(error, { code: 'OPERATION_UNKNOWN' });
+
+  function request(method: string, params: unknown): Promise<any> {
+    if (closed) return Promise.reject(uncertain(new Error('Codex App Server connection is closed')));
+    const id = randomUUID();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(uncertain(new Error(`Codex ${method} acknowledgement timed out`)));
+      }, 30_000);
+      pending.set(id, { resolve, reject, timer });
+      try { options.write({ id, method, params }); }
+      catch (error) { pending.delete(id); clearTimeout(timer); reject(uncertain(error as Error)); }
+    });
+  }
+
+  const ready = (async () => {
+    await request('initialize', { clientInfo: { name: 'murm', version: '0.2.0' },
+      capabilities: { experimentalApi: false, requestAttestation: false } });
+    options.write({ method: 'initialized', params: {} });
+    const result = await request('thread/start', { model: options.model, modelProvider: 'murm', cwd: options.cwd,
+      approvalPolicy: 'never', sandbox: 'danger-full-access', baseInstructions: options.systemPrompt,
+      config: { web_search: 'disabled', 'features.multi_agent': false, 'features.apps': false,
+        'features.response_websockets': false, 'features.response_websockets_v2': false } });
+    if (typeof result?.thread?.id !== 'string' || !result.thread.id) throw new Error('Codex did not return a thread identity');
+    threadId = result.thread.id;
+    return { threadId };
+  })();
+  // The caller awaits ready. Attach a handler immediately for process failures
+  // that can precede that await during Worker startup.
+  void ready.catch(() => {});
+
+  function respond(message: Input, data: unknown = {}, error?: Error & { code?: string }) {
+    options.publish({ type: 'response', id: message.id, command: message.type, success: !error,
+      ...(error ? { error: error.message, code: error.code ?? 'NOT_ALLOWED' } : { data }) });
+  }
+
+  function startExecution() {
+    if (executing) return;
+    executing = true;
+    output = '';
+    options.publish({ type: 'agent_start' });
+  }
+
+  async function startTurn(message: Input) {
+    const result = await request('turn/start', { threadId, input: [{ type: 'text', text: message.message, text_elements: [] }],
+      clientUserMessageId: message.id });
+    if (typeof result?.turn?.id !== 'string' || !result.turn.id) throw new Error('Codex did not return a turn identity');
+    if (!completedTurns.has(result.turn.id)) { activeTurn = result.turn.id; startExecution(); }
+  }
+
+  function settle(turn: any) {
+    const failed = turn.status === 'failed';
+    const aborted = turn.status === 'interrupted';
+    options.publish({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: output }],
+      stopReason: aborted ? 'aborted' : failed ? 'error' : 'stop',
+      ...(failed ? { errorMessage: turn.error?.message ?? 'Codex turn failed' } : {}) } });
+    executing = false;
+    options.publish({ type: 'agent_settled', aborted });
+  }
+
+  function enqueue(operation: () => Promise<void>) {
+    commands = commands.then(operation).catch(error => {
+      options.publish({ type: 'worker_error', message: error.message });
+    });
+  }
+
+  function observe(record: any) {
+    if (record.id !== undefined && !record.method) {
+      const entry = pending.get(String(record.id));
+      if (!entry) return;
+      pending.delete(String(record.id));
+      clearTimeout(entry.timer);
+      if (record.error) entry.reject(new Error(record.error.message ?? 'Codex request failed'));
+      else entry.resolve(record.result);
+      return;
+    }
+    if (typeof record.method !== 'string') return;
+    if (record.id !== undefined) {
+      // Noninteractive profiles have no host approval or dynamic-tool handler.
+      options.write({ id: record.id, error: { code: -32601, message: 'murm does not support this server request' } });
+      return;
+    }
+    const params = record.params ?? {};
+    options.publish({ type: 'native_event', backend: 'codex', method: record.method, params });
+    if (params.threadId && params.threadId !== threadId) return;
+    if (record.method === 'turn/started' && typeof params.turn?.id === 'string') {
+      activeTurn = params.turn.id;
+      startExecution();
+    }
+    if (record.method === 'item/completed' && params.item?.type === 'agentMessage') {
+      if (typeof params.item.text === 'string') output += params.item.text;
+    }
+    if (record.method === 'turn/completed' && typeof params.turn?.id === 'string') {
+      const id = params.turn.id;
+      if (completedTurns.has(id) || activeTurn !== id) return;
+      completedTurns.add(id);
+      if (activeTurn === id) activeTurn = undefined;
+      completionWaiters.get(id)?.resolve();
+      completionWaiters.delete(id);
+      // Schedule queue advancement behind the matching input acknowledgement.
+      // The interrupt fence can clear the queue before another turn is started.
+      enqueue(async () => {
+        const next = interrupting ? undefined : followUps.shift();
+        if (next) await startTurn(next);
+        else settle(params.turn);
+      });
+    }
+  }
+
+  async function interrupt() {
+    interrupting = true;
+    const turnId = activeTurn;
+    if (!turnId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const completed = new Promise<void>((resolve, reject) => {
+      completionWaiters.set(turnId, { resolve, reject });
+      timer = setTimeout(() => reject(new Error('Codex interruption did not reach a terminal turn')), 30_000);
+    });
+    try {
+      await request('turn/interrupt', { threadId, turnId });
+      await completed;
+    } finally {
+      clearTimeout(timer);
+      completionWaiters.delete(turnId);
+    }
+  }
+
+  async function dispatch(message: Input) {
+    await ready;
+    try {
+      if (closed) throw uncertain(new Error('Codex App Server connection is closed'));
+      if (message.steeringMode !== undefined && message.steeringMode !== 'all') {
+        throw Object.assign(new Error('Codex does not support this steering mode'), { code: 'NOT_ALLOWED' });
+      }
+      if (message.type === 'get_state') { respond(message, { isStreaming: executing, sessionId: threadId }); return; }
+      if (message.type === 'clear_queue') {
+        const discarded = followUps.splice(0).map(input => input.message);
+        respond(message, { steering: [], followUp: discarded });
+        return;
+      }
+      if (message.type === 'abort') {
+        await interrupt();
+        interrupting = false;
+        respond(message);
+        return;
+      }
+      if (!['prompt', 'steer', 'follow_up'].includes(message.type) || typeof message.message !== 'string') {
+        throw Object.assign(new Error('Unsupported Codex command'), { code: 'NOT_ALLOWED' });
+      }
+      const queueOnly = message.type !== 'prompt' || message.onlyWhileActive;
+      if (queueOnly && !activeTurn) {
+        throw Object.assign(new Error('Codex has no active execution'), { code: 'NO_ACTIVE_EXECUTION' });
+      }
+      if (!activeTurn) {
+        interrupting = false;
+        await startTurn(message);
+        respond(message, { disposition: 'started' });
+        return;
+      }
+      const followUp = message.type === 'follow_up' || message.streamingBehavior === 'followUp';
+      if (followUp) {
+        followUps.push(message);
+        respond(message, { disposition: 'queued' });
+        return;
+      }
+      await request('turn/steer', { threadId, expectedTurnId: activeTurn,
+        input: [{ type: 'text', text: message.message, text_elements: [] }], clientUserMessageId: message.id });
+      respond(message, { disposition: 'queued' });
+    } catch (error) {
+      if ((error as Error & { code?: string }).code === 'OPERATION_UNKNOWN') {
+        options.publish({ type: 'worker_error', message: (error as Error).message });
+        return;
+      }
+      respond(message, undefined, error as Error);
+    }
+  }
+
+  return {
+    ready,
+    observe,
+    write(message: Input) { enqueue(() => dispatch(message)); },
+    close(error = new Error('Codex App Server exited')) {
+      closed = true;
+      for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(uncertain(error)); }
+      pending.clear();
+      for (const waiter of completionWaiters.values()) waiter.reject(uncertain(error));
+      completionWaiters.clear();
+    },
+  };
+}
