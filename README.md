@@ -80,3 +80,5 @@ Obsolete documentation remains accessible from the [fixed Git history tree](http
 
 murm's original code and documentation are licensed under the [MIT License](LICENSE). Third-party material retains its own terms. [Third-party notices](docs/third-party-notices.md)
 
+
+[Intentional missing file for the required-check probe](ci-gate-probe-file-does-not-exist.md)
