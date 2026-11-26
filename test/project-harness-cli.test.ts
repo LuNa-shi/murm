@@ -334,3 +334,78 @@ test('broken RPC output cancels admitted work and saves the available cleanup ev
   assert.equal(report.stopReason, 'output-failed');
   assert.deepEqual(report.cleanup, { status: 'complete', receipt: { closed: true } });
 });
+
+test('startup rejection records the configuration error and zero allocated resources', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-startup-validation-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const project = join(directory, 'project');
+  await mkdir(project);
+  for (const [id, setting] of [['notes', 'workTimeoutMs: 0'], ['lead-worker', 'turnTimeoutMs: 0']]) {
+    const config = join(directory, id + '.mjs');
+    await writeFile(config, `export default {image:'unused', sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1', endpointHost:'127.0.0.1'}, models:{}, ${setting}};`);
+    await assert.rejects(execute(process.execPath, [cli, '--harness', id, '--cwd', project,
+      '--prompt', 'A task', '--config', config, '--output-dir', join(directory, 'output')],
+    { cwd: directory, timeout: 10_000 }), error => {
+      assert.equal(error.code, 2);
+      const { result } = JSON.parse(error.stdout);
+      assert.equal(result.reason, 'INVALID_RUN_CONFIGURATION');
+      assert.equal(result.outcome, 'failed');
+      assert.equal(result.cleanup.status, 'complete');
+      assert.ok(!result.cleanup.pending);
+      assert.match(result.reportPath, /project-run\.json$/);
+      return true;
+    });
+  }
+});
+
+test('a non-Git chain of empty directories cannot exceed the capture depth bound', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-depth-validation-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const project = join(directory, 'project');
+  await mkdir(join(project, ...Array.from({ length: 129 }, () => 'd')), { recursive: true });
+  const module = join(directory, 'harness.mjs');
+  await writeFile(module, `export default {id:'unreachable',apiVersion:1,run(){throw new Error('allocating a Harness')}};`);
+  await assert.rejects(execute(process.execPath, [cli, '--harness', module, '--cwd', project,
+    '--prompt', 'A task', '--output-dir', join(directory, 'output')], { cwd: directory, timeout: 10_000 }), error => {
+    const { result } = JSON.parse(error.stdout);
+    assert.equal(result.reason, 'PROJECT_PATH_LIMIT');
+    assert.match(result.failure.message, /capture depth limit/);
+    assert.deepEqual(result.cleanup, { status: 'complete' });
+    assert.equal(result.initial, null);
+    return true;
+  });
+});
+
+test('failed report persistence preserves separate business, export and cleanup facts', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-project-report-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const project = join(directory, 'project');
+  await mkdir(project);
+  const module = join(directory, 'harness.mjs');
+  await writeFile(module, `
+    import { mkdir } from 'node:fs/promises';
+    import { join } from 'node:path';
+    export default {id:'report-fixture', apiVersion:1, async run(context) {
+      context.markRunning();
+      await mkdir(join(context.outputDir, 'project-run.json'));
+      return {
+        outcome:'completed', reason:'deadline', result:{work:'done'}, artifacts:[],
+        export:{status:'failed', receipt:{code:'ARTIFACT_UNAVAILABLE'}},
+        cleanup:{status:'pending', receipt:{agentId:'owned', execution:'unknown'}, pending:['owned']},
+      };
+    }};
+  `);
+  await assert.rejects(execute(process.execPath, [cli, '--harness', module, '--cwd', project,
+    '--prompt', 'A task', '--output-dir', join(directory, 'output')], { cwd: directory, timeout: 10_000 }), error => {
+    const { result } = JSON.parse(error.stdout);
+    assert.equal(error.code, 1);
+    assert.equal(result.outcome, 'completed');
+    assert.equal(result.reason, 'deadline');
+    assert.deepEqual(result.result, { work: 'done' });
+    assert.deepEqual(result.export, { status: 'failed', receipt: { code: 'ARTIFACT_UNAVAILABLE' } });
+    assert.deepEqual(result.cleanup, { status: 'pending', receipt: { agentId: 'owned', execution: 'unknown' }, pending: ['owned'] });
+    assert.equal(result.reportSaveFailure.code, 'REPORT_SAVE_FAILED');
+    assert.equal(result.reportPath, undefined);
+    return true;
+  });
+});

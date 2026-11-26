@@ -3,11 +3,11 @@ import { join } from 'node:path';
 import { decodeFileSeed } from '../../scripts/core-file-seed.js';
 import { ContextService } from '../../src/context/context-service.js';
 import { makeEnvelope } from '../../src/protocol/envelope.js';
-import { isPublishedProjectPath } from '../../src/runtime/execution-workspace.js';
 import { MissionWorkspace } from '../../src/runtime/mission-workspace.js';
 import { WorkspaceManager } from '../../src/runtime/workspace-manager.js';
 import { TaskService } from '../../src/task/task-service.js';
 import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
+import { checkGitProject } from '../../src/harnesses/shared/project-git.js';
 import { projectError } from '../../src/harnesses/shared/project-input.js';
 import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
 import { runTaskPoolHarness } from './harness.js';
@@ -38,12 +38,8 @@ const taskpool = {
     } catch {
       throw projectError('INVALID_RUN_CONFIGURATION', 'Invalid TaskPool sandbox configuration');
     }
+    checkGitProject(context.initial.files);
     const entries = decodeFileSeed(context.initial.files).entries;
-    for (const { path } of entries) {
-      if (!isPublishedProjectPath(path)) {
-        throw projectError('PROJECT_PATH_INVALID', `TaskPool Workspace does not admit ${JSON.stringify(path)}`);
-      }
-    }
     const taskService = new TaskService(join(context.outputDir, 'tasks.sqlite'));
     let contextService: ContextService | undefined;
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
@@ -51,7 +47,7 @@ const taskpool = {
     try {
       contextService = new ContextService(join(context.outputDir, 'context.sqlite'), { taskService });
       const workspaceRoot = join(context.outputDir, 'workspace');
-      const missionWorkspace = new MissionWorkspace({ rootDir: workspaceRoot });
+      const missionWorkspace = new MissionWorkspace({ rootDir: workspaceRoot, projectFileTree: true });
       const workspaceManager = new WorkspaceManager({ rootDir: join(context.outputDir, 'agents') });
       const missionId = `mission:${context.runId}`;
       const workspaceId = context.runId;

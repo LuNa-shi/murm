@@ -4,6 +4,7 @@ import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, re
 import { execFile as nodeExecFile, execFileSync, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
+import { isFileTreePath } from '../../scripts/core-file-seed.js';
 import { ERROR_CODES, MurmError } from '../errors.js';
 
 const execFile = promisify(nodeExecFile);
@@ -13,6 +14,10 @@ const JOURNAL = '.swarm-journal.json';
 export const WORKSPACE_HISTORY_DIR = '.swarm-history';
 const ZERO = '0'.repeat(40);
 const GIT_IDENTITY = ['-c', 'user.name=murm Runtime', '-c', 'user.email=runtime@murm.invalid'];
+
+export function isWorkspaceGitPath(path: unknown): path is string {
+  return isFileTreePath(path) && !path.split('/').some(part => part.toLowerCase() === '.git');
+}
 
 function syncDirectory(path: any) {
   const fd = openSync(path, 'r');

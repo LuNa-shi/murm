@@ -23,6 +23,10 @@ const leadWorker = {
         (team === 'dynamic' && config.helperCount !== undefined && config.helperCount !== 2)) {
       throw projectError('INVALID_RUN_CONFIGURATION', 'Choose a static team or a dynamic team with two initial workers');
     }
+    if (config.closeTimeoutMs !== undefined && (!Number.isSafeInteger(config.closeTimeoutMs) ||
+        config.closeTimeoutMs < 1 || config.closeTimeoutMs > 60_000)) {
+      throw projectError('INVALID_RUN_CONFIGURATION', 'Lead–Worker requires a close wait of up to 60 seconds');
+    }
     if (Buffer.byteLength(context.input.prompt) > 64 * 1024) {
       throw projectError('INVALID_HARNESS_INPUT', 'Lead–Worker supports up to 64 KiB of prompt text');
     }

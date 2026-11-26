@@ -158,6 +158,10 @@ async function prepareOutput(runId: string, options: StartupOptions, cwd: string
   throw projectError('INVALID_RUN_CONFIGURATION', 'No default run output directory lies outside the project. Set --output-dir explicitly.');
 }
 
+function isLaunchError(code: string | undefined) {
+  return code === 'INVALID_PROJECT_DIRECTORY' || code === 'INVALID_RUN_CONFIGURATION' || code === 'INVALID_HARNESS_INPUT';
+}
+
 function emptyResult(outcome: 'failed' | 'cancelled', reason: string, enteredHarness: boolean): ProjectHarnessResult {
   return {
     outcome, reason, artifacts: [],
@@ -199,7 +203,7 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
   }
 
   function stop(request: StopReason) {
-    if (reason === null && phase !== 'finished') {
+    if (reason === null && publishing && phase !== 'finished') {
       reason = request;
       if (runId !== null) {
         phase = 'stopping';
@@ -265,10 +269,12 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
       business = await Promise.race([work(), stopDeadline.promise]);
     } catch (error) {
       const code = failureCode(error, enteredHarness ? 'HARNESS_RUN_FAILED' : 'PROJECT_CAPTURE_FAILED');
-      const documented = /^(INVALID_PROJECT_DIRECTORY|INVALID_RUN_CONFIGURATION|PROJECT_(?:FILE_|PATH_|SOURCE_|GIT|LFS)|HARNESS_STOP_TIMEOUT|RUN_STOPPING)/.test(code);
+      const preflight = phase === 'starting' && (isLaunchError(code) || code === 'PROJECT_PATH_INVALID');
+      const documented = isLaunchError(code) ||
+        /^(PROJECT_(?:FILE_|PATH_|SOURCE_|GIT|LFS)|HARNESS_STOP_TIMEOUT|RUN_STOPPING)/.test(code);
       const message = documented && error instanceof Error ? error.message : 'Harness operation failed';
       failure = { code, message };
-      business = emptyResult(reason ? 'cancelled' : 'failed', reason ?? code, enteredHarness);
+      business = emptyResult(reason ? 'cancelled' : 'failed', reason ?? code, enteredHarness && !preflight);
     } finally {
       clearTimeout(stopTimer);
       publishing = false;
@@ -287,7 +293,7 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
     }
     phase = 'finished';
     const code = reason === 'SIGINT' ? 130 : reason === 'SIGTERM' ? 143 :
-      reason ? 1 : failure?.code === 'INVALID_PROJECT_DIRECTORY' || failure?.code === 'INVALID_RUN_CONFIGURATION' ? 2 :
+      reason ? 1 : isLaunchError(failure?.code ?? saved.reason) ? 2 :
       saved.outcome !== 'completed' || saved.cleanup.status !== 'complete' ||
         (saved.export && saved.export.status !== 'complete') || saved.reportSaveFailure ? 1 : 0;
     return { result: saved, code };

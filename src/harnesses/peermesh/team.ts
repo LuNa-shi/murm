@@ -31,7 +31,7 @@ export async function createPeerMeshTeam(options: any) {
   if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir ||
       (options.maxConcurrentInputs !== undefined && (!Number.isSafeInteger(options.maxConcurrentInputs) || options.maxConcurrentInputs < 1 || options.maxConcurrentInputs > peerKeys.length)) ||
       !finite(exportLimit) || exportLimit > 64 * 1024 ** 2 || !finite(readinessTimeoutMs) ||
-      !Array.isArray(peerKeys) || peerKeys.length < 2 || peerKeys.length > 8 || new Set(peerKeys).size !== peerKeys.length || peerKeys.some((key: any) => typeof key !== 'string' || !/^[a-z][a-z0-9-]{0,15}$/.test(key))) throw new TypeError('PeerMesh team needs bounded distinct peers, image, output directory and export');
+      !Array.isArray(peerKeys) || peerKeys.length < 2 || peerKeys.length > 8 || new Set(peerKeys).size !== peerKeys.length || peerKeys.some((key: any) => typeof key !== 'string' || !/^[a-z][a-z0-9-]{0,15}$/.test(key))) throw Object.assign(new TypeError('PeerMesh team needs bounded distinct peers, image, output directory and export'), { code: 'INVALID_RUN_CONFIGURATION' });
   const resources = createOwnedResources(); const lifetime: any = new AbortController();
   if (options.signal !== undefined && !(options.signal instanceof AbortSignal)) throw new TypeError('Team signal must be an AbortSignal');
   const signal = options.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal;

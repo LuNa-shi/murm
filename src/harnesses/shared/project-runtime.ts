@@ -67,8 +67,8 @@ export function projectResult(report: any, context: ProjectHarnessContext, detai
     report.businessFailure || report.reportSaveFailure ? 'failed' : 'completed';
   return {
     outcome,
-    reason: report.businessFailure?.code ?? (report.reportSaveFailure ? 'HARNESS_REPORT_SAVE_FAILED' :
-      context.signal.aborted ? 'cancelled' : 'completed'),
+    reason: report.businessFailure?.code ?? (report.businessFailure ? 'HARNESS_BUSINESS_FAILED' :
+      report.reportSaveFailure ? 'HARNESS_REPORT_SAVE_FAILED' : context.signal.aborted ? 'cancelled' : 'completed'),
     result: json({
       runtimeId: report.runtimeId ?? null, reportPath: report.reportPath ?? null,
       business: report.result ?? null, businessFailure: report.businessFailure ?? null,

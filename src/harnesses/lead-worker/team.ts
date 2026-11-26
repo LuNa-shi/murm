@@ -1,6 +1,6 @@
 export function leadWorkerRoles(helperCount: any = 2) {
   if (!Number.isSafeInteger(helperCount) || helperCount < 2 || helperCount > 7) {
-    throw new TypeError('Lead-Worker requires between two and seven helpers');
+    throw Object.assign(new TypeError('Lead–Worker requires between two and seven helpers'), { code: 'INVALID_RUN_CONFIGURATION' });
   }
   return ['lead', ...Array.from({ length: helperCount }, (_: any, index: any) => `helper${index + 1}`)];
 }

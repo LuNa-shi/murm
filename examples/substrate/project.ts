@@ -14,6 +14,9 @@ const substrate = {
   async run(context) {
     const configuration = await projectConfiguration<Configuration>(context,
       async () => ({ default: (await import('./project-config.js')).substrateConfiguration() }));
+    if (Buffer.byteLength(context.input.prompt) > 8192) {
+      throw projectError('INVALID_HARNESS_INPUT', 'Substrate supports up to 8 KiB of prompt text');
+    }
     const { sandbox, connection, models, image, model, poolSize, maxRounds, workTimeoutMs, turnTimeoutMs, closeTimeoutMs } = configuration;
     let sandboxHandle;
     try {

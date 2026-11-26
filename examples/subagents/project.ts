@@ -10,6 +10,10 @@ const subagents = {
   input: true,
   async run(context) {
     const config = await projectConfiguration<Parameters<typeof runSubagentsHarness>[0]>(context, () => import('./config.js'));
+    if (config.closeTimeoutMs !== undefined && (!Number.isSafeInteger(config.closeTimeoutMs) ||
+        config.closeTimeoutMs < 1 || config.closeTimeoutMs > 2_147_483_647)) {
+      throw projectError('INVALID_RUN_CONFIGURATION', 'Subagents requires a finite close wait');
+    }
     if (config.workspace) throw projectError('INVALID_RUN_CONFIGURATION', 'The project entry uses private Subagents work directories');
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
     try {

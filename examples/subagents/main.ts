@@ -29,7 +29,7 @@ interface Config extends Pick<CreateRuntimeOptions, 'connection' | 'executor' | 
 
 function deadline(value: number, name: string) {
   if (!Number.isSafeInteger(value) || value < 1 || value > 2_147_483_647) {
-    throw new TypeError(`${name} must be a finite positive integer`);
+    throw Object.assign(new TypeError(`${name} must be a finite positive integer`), { code: 'INVALID_RUN_CONFIGURATION' });
   }
   return value;
 }
@@ -46,7 +46,7 @@ export async function createSubagentsHarness(config: Config, controls: ProjectCo
     closeTimeoutMs = 30_000, outputDir, image, files, collect, workspace } = config;
   if (!Number.isSafeInteger(maxAgents) || maxAgents < 1 || maxAgents > 64 ||
       !Number.isSafeInteger(maxDepth) || maxDepth < 0 || maxDepth > 16) {
-    throw new TypeError('Use maxAgents from 1 to 64 (including Root) and maxDepth from 0 to 16');
+    throw Object.assign(new TypeError('Use maxAgents from 1 to 64 (including Root) and maxDepth from 0 to 16'), { code: 'INVALID_RUN_CONFIGURATION' });
   }
   deadline(closeTimeoutMs, 'closeTimeoutMs');
   const services = new ServiceRegistry();

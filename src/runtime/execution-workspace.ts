@@ -4,14 +4,18 @@ import { stableStringify } from '../protocol/envelope.js';
 import { ERROR_CODES, MurmError } from '../errors.js';
 import { assertNewExecutionWork } from '../task/execution-budget.js';
 import { publishWorkspace } from './workspace-publication.js';
+import { isWorkspaceGitPath } from './workspace-repository.js';
 import type { CompleteFileDigest, FileTree } from '../core/types.js';
 
 const hash = (value: any) => createHash('sha256').update(value).digest('hex');
 const json = (value: any) => JSON.stringify(value);
 const invalid = (message: any) => new MurmError(ERROR_CODES.INVALID_CONTRACT, message);
-export const isPublishedProjectPath = (path: string) => !path.includes('\\') && !path.includes('\0') &&
-  !path.split('/').some(part => !part || ['.', '..', '.git', '.pi', '.swarm', '.env', 'node_modules'].includes(part) ||
-    part.startsWith('.swarm-') || part.startsWith('.env.'));
+export function isPublishedProjectPath(path: string, projectFileTree = false) {
+  if (projectFileTree) return isWorkspaceGitPath(path);
+  return !path.includes('\\') && !path.includes('\0') &&
+    !path.split('/').some(part => !part || ['.', '..', '.git', '.pi', '.swarm', '.env', 'node_modules'].includes(part) ||
+      part.startsWith('.swarm-') || part.startsWith('.env.'));
+}
 
 const changed = (before: any, after: any) => [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()
   .filter((path: any) => before[path]?.content_hash !== after[path]?.content_hash || before[path]?.bytes !== after[path]?.bytes);
@@ -89,7 +93,7 @@ export class ExecutionWorkspace {
     const files = Object.create(null), manifest = Object.create(null);
     let total = 0;
     for (const path of Object.keys(snapshot.files).sort()) {
-      if (!isPublishedProjectPath(path)) throw invalid('Snapshot path is outside the project');
+      if (!isPublishedProjectPath(path, this.workspace.projectFileTree)) throw invalid('Snapshot path is outside the project');
       const encoded = snapshot.files[path];
       if (typeof encoded !== 'string' || encoded.length > 4 * Math.ceil(2 * 1024 * 1024 / 3)) throw invalid('Snapshot content must be bounded base64 bytes');
       const bytes = Buffer.from(encoded, 'base64');
@@ -223,7 +227,7 @@ export class ExecutionWorkspace {
             if (Object.keys(snapshot.files).some(path => (snapshot.core!.files[path]?.mode ?? 0o644) !== plan.base_file_modes[path])) {
               throw new MurmError(ERROR_CODES.WORKSPACE_BUSY, 'Save unsaved project mode changes before apply', { apply_blocker: 'dirty' });
             }
-            const privateFiles = Object.entries(snapshot.core.files).filter(([path]) => !isPublishedProjectPath(path));
+            const privateFiles = Object.entries(snapshot.core.files).filter(([path]) => !isPublishedProjectPath(path, this.workspace.projectFileTree));
             captured.core = {
               expectedDigest: snapshot.core.digest,
               files: Object.fromEntries([

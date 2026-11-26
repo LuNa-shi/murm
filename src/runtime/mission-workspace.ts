@@ -4,7 +4,7 @@ import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, w
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { ERROR_CODES, MurmError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
-import { WorkspaceRepository } from './workspace-repository.js';
+import { isWorkspaceGitPath, WorkspaceRepository } from './workspace-repository.js';
 
 export const WORKSPACE_CONFLICT_HELP = Object.freeze({
   guidance: `Workspace apply has unresolved conflicts. The ordinary project tree contains Git's editable merge result.
@@ -111,8 +111,10 @@ export class MissionWorkspace {
   declare clock: any;
   declare fault: any;
   declare rootDir: any;
+  readonly projectFileTree: boolean;
 
-  constructor({ rootDir, fault = null, clock = Date.now }: any) {
+  constructor({ rootDir, fault = null, clock = Date.now, projectFileTree = false }: any) {
+    this.projectFileTree = projectFileTree === true;
     this.repository = new WorkspaceRepository({ fault, clock });
     this.clock = () => new Date(clock()).toISOString();
     this.fault = fault;
@@ -181,7 +183,7 @@ export class MissionWorkspace {
   async history({ signal = null, workspaceId, all = false, sourceTask = null, sourceExecution = null, materialId = null, path = null, limit = 25, cursor = null }: any) {
     if (typeof all !== 'boolean' || !Number.isInteger(limit) || limit < 1 || limit > 100) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'History requires boolean all and limit 1..100');
     for (const value of [sourceTask, sourceExecution, materialId]) if (value !== null) required(value, 'history source filter');
-    const prefix = path === null ? null : safePath(path);
+    const prefix = path === null ? null : this.#projectPath(path);
     const filter = textHash(stableStringify({ workspaceId, all, sourceTask, sourceExecution, materialId, path: prefix }));
     let continuation: any = null;
     if (cursor !== null) {
@@ -238,7 +240,7 @@ export class MissionWorkspace {
     return this.repository.locked(root, async () => {
       const record = await this.#read(root);
       const selected = resolvedRevision(revision, record);
-      const relativePath = safePath(path);
+      const relativePath = this.#projectPath(path);
       const tree = await this.#tree(root, selected);
       if (!Object.hasOwn(tree, relativePath)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'file is unavailable at requested revision');
       if (!Number.isInteger(maxBytes) || maxBytes < 1) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'max_bytes must be positive');
@@ -251,7 +253,7 @@ export class MissionWorkspace {
   }
 
   async files({ signal = null, workspaceId, revision = undefined, prefix = '', limit = 100, cursor = null }: any) {
-    const normalized = prefix ? safePath(prefix) : '';
+    const normalized = prefix ? this.#projectPath(prefix) : '';
     const page = publicPage({ kind: 'files', workspaceId, selectors: { prefix: normalized }, limit, cursor, maxLimit: 100 });
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(root, async () => {
@@ -280,7 +282,7 @@ export class MissionWorkspace {
   async search({ signal = null, workspaceId, revision = undefined, query, prefix = '', maxResults = 100, cursor = null }: any) {
     required(query, 'query');
     if (query.length > 1024) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace search query is too long');
-    const normalized = prefix ? safePath(prefix) : '';
+    const normalized = prefix ? this.#projectPath(prefix) : '';
     const page = publicPage({ kind: 'search', workspaceId, selectors: { prefix: normalized, query }, limit: maxResults, cursor, maxLimit: 500 });
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(root, async () => {
@@ -319,7 +321,7 @@ export class MissionWorkspace {
   async diff({ signal = null, workspaceId, from, to, prefix = '', limit = 100, cursor = null }: any) {
     required(from, 'from');
     required(to, 'to');
-    const normalized = prefix ? safePath(prefix) : '';
+    const normalized = prefix ? this.#projectPath(prefix) : '';
     const page = publicPage({ kind: 'diff', workspaceId, selectors: { prefix: normalized }, limit, cursor, maxLimit: 100 });
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(root, async () => {
@@ -611,7 +613,7 @@ export class MissionWorkspace {
         const stages: any[] = [];
         for (const entry of merged.stages) {
           if (!['100644', '100755'].includes(entry.mode)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Apply conflict contains a non-regular file');
-          const path = safePath(entry.path);
+          const path = this.#projectPath(entry.path);
           const artifact = `${artifacts}/${({ 1: 'base', 2: 'current', 3: 'incoming' } as Record<number, string>)[entry.stage]}/${path}`;
           files[artifact] = await this.repository.readBlob(root, entry.object);
           stages.push({ ...entry, path, artifact_path: artifact });
@@ -717,12 +719,20 @@ export class MissionWorkspace {
     const metadata: any = await this.#revisionMetadata(root, revision);
     return this.repository.readTree(root, metadata.git_tree);
   }
+  #projectPath(value: string) {
+    if (!this.projectFileTree) return safePath(value);
+    if (!isWorkspaceGitPath(value)) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace path is outside the public project tree');
+    }
+    return value;
+  }
+
   #normalizeTree(files: any) {
     if (!files || typeof files !== 'object' || Array.isArray(files)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'save requires a complete file tree');
     const tree = Object.create(null);
     let total = 0;
     for (const [path, content] of Object.entries(files)) {
-      const normalized = safePath(path);
+      const normalized = this.#projectPath(path);
       if (Object.hasOwn(tree, normalized)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace paths collide after normalization');
       if (typeof content !== 'string' && !Buffer.isBuffer(content)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace files must contain actual bytes');
       const bytes = Buffer.byteLength(content);
@@ -791,7 +801,7 @@ export class MissionWorkspace {
   }
   async #materialize(root: any, tree: any) {
     for (const [path, content] of Object.entries(tree)) {
-      const target = join(root, safePath(path));
+      const target = join(root, this.#projectPath(path));
       await this.#assertNoSymlinkDirectories(dirname(target));
       await mkdir(dirname(target), { recursive: true });
       await writeFile(target, content as string | Uint8Array, { flag: 'wx' });

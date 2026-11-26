@@ -158,7 +158,7 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
         const decoded = decodeFileSeed(snapshot.files);
         if (snapshot.scope !== 'complete' || completeDigest(decoded.digest) !== snapshot.digest) fail('INVALID_CONTRACT', 'Core snapshot bytes differ from its digest');
         const digest = (bytes: any) => createHash('sha256').update(bytes).digest('hex');
-        const published = decoded.entries.filter(({ path }) => isPublishedProjectPath(path));
+        const published = decoded.entries.filter(({ path }) => isPublishedProjectPath(path, missionWorkspace.projectFileTree));
         const files = Object.fromEntries(published.map(({ path, bytes }) => [path, bytes.toString('base64')]));
         const manifest = Object.fromEntries(published.map(({ path, bytes }) => [path, { bytes: bytes.length, content_hash: digest(bytes) }]));
         return { execution_id: executionId, binding_version: execution.fencing_version, state: 'ACTIVE', files, manifest, content_hash: digest(stableStringify(manifest)),

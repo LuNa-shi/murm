@@ -67,11 +67,11 @@
     },
     {
       "path": "examples/taskpool/project.ts",
-      "sha256": "8fde6bf87bc354724e9f57822c2fda0cbb62e3a4edbb03937666e49f08aa589a"
+      "sha256": "7324b00c8412c9a35b5716852a256c8b2dc08b6727e4f79aa1fa2c4f45a0d400"
     },
     {
       "path": "src/harnesses/shared/project-git.ts",
-      "sha256": "af9fc7c6109ec60fd828f98f88d6b3fb8ce645d7cdcb4aae51a475ac599ce556"
+      "sha256": "543888a465c5ed14cc87ece646fa9e2b53b704cf90900804657363f3ead3a049"
     },
     {
       "path": "src/harnesses/shared/run-input.ts",
@@ -79,11 +79,11 @@
     },
     {
       "path": "src/harnesses/substrate/index.ts",
-      "sha256": "a5eea29adce085b69cf494e180c1334c37710c79c94d336a0a770d9223efe178"
+      "sha256": "2e99dcb6df660011e6e1d13d12e927fc2d6e83ad945604b12d686c7fcfad9c23"
     },
     {
       "path": "src/harnesses/substrate/substrate.ts",
-      "sha256": "ab41a657a98dc7418b37c3b5d59d210be47e6e4eab16b3dc143ca915bc0489e1"
+      "sha256": "b615779757e7229bc60eef1e2aa968d3227f18befbd7fb2c415b7e4541a0d6b6"
     },
     {
       "path": "examples/taskpool/controller.ts",
@@ -115,7 +115,7 @@
     },
     {
       "path": "examples/subagents/main.ts",
-      "sha256": "107fdce3099e8cc018a1e665d91fc0174e558b62debeaa7a6cf45a92873a03fa"
+      "sha256": "ba022bb6b40f8f8e0cc4a54a7ce2780c6e927ec1398fe61e9aee2f727db5ae75"
     },
     {
       "path": "examples/subagents/controller.ts",
@@ -155,7 +155,7 @@
     },
     {
       "path": "src/harnesses/peermesh/team.ts",
-      "sha256": "73d7e5b6930bdbadce9f9efb99997a2595d49ba36e5713ee023054792f37566f"
+      "sha256": "38338b5a4c7a49dc3587d63688dac63cdf3a3af9fd0ef6a00419e40689cc2c0d"
     },
     {
       "path": "test/fixtures/peermesh-team-kimi.ts",
@@ -171,7 +171,7 @@
     },
     {
       "path": "src/harnesses/lead-worker/index.ts",
-      "sha256": "fcac9be8fea56ff3134f4e9722979820a189498a0a9336fb137b128600feff60"
+      "sha256": "7176668e5c5be92e4b52b3dc210be2b08011071ecf416804332e66f17d735d79"
     },
     {
       "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",
@@ -195,7 +195,7 @@
     },
     {
       "path": "src/runtime/mission-workspace.ts",
-      "sha256": "1de58be535e574587ef8de64f978427782cf09a762733c7220962e4d221d2695"
+      "sha256": "1c7677ce75300646ee7207341be21940b7490c5d233b7b755f1491b83f83188d"
     },
     {
       "path": "src/sdk/service-catalog.ts",
@@ -564,7 +564,7 @@
     {
       "path": "src/harnesses/lead-worker/index.ts",
       "anchor": "                  const nextPath =",
-      "line": 251,
+      "line": 252,
       "sha256": "d899bf6da9a12ab775120db5f1068857fe565eb414938a7dc3d584039e096f28"
     },
     {
@@ -600,7 +600,7 @@
     {
       "path": "examples/taskpool/project.ts",
       "anchor": "discoveryWorkflow: '",
-      "line": 74,
+      "line": 70,
       "sha256": "73ab49e2d714b512d60b202d907d936aeef6878330a345eaf517063aaf7849ae"
     },
     {

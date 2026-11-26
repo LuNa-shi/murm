@@ -9,6 +9,8 @@ import type { FileEntry } from '../../core/types.js';
 const git = promisify(execFile);
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 const maxPathBytes = 4095;
+const maxPathDepth = 128;
+const maxDirectoryEntries = 50_000;
 const directoryFlags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_DIRECTORY;
 const fileFlags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
@@ -38,6 +40,9 @@ function normalizedPath(path: string) {
   const parts = path.split('/');
   if (!isFileTreePath(path)) {
     throw projectError('PROJECT_PATH_INVALID', `Invalid relative project path ${JSON.stringify(path)}`);
+  }
+  if (parts.length > maxPathDepth) {
+    throw projectError('PROJECT_PATH_LIMIT', `Project path exceeds the capture depth limit: ${JSON.stringify(path)}`);
   }
   return parts;
 }
@@ -116,12 +121,26 @@ export async function resolveProjectDirectory(cwd: string) {
 }
 
 export async function captureProject(cwd: string, outputDir: string, signal: AbortSignal) {
+  const deadline = AbortSignal.timeout(30_000);
+  const bounded = AbortSignal.any([signal, deadline]);
+  try {
+    return await readProject(cwd, outputDir, bounded);
+  } catch (error) {
+    if (bounded.aborted && bounded.reason === deadline.reason) {
+      throw projectError('PROJECT_FILE_LIMIT', 'Project capture exceeded its 30-second time limit');
+    }
+    throw error;
+  }
+}
+
+async function readProject(cwd: string, outputDir: string, signal: AbortSignal) {
   const excluded = isInside(cwd, outputDir) ? relative(cwd, outputDir) : null;
   const entries: Record<string, FileEntry> = Object.create(null);
   const skip = (path: string) => isGitPath(path) ||
     (excluded !== null && (path === excluded || path.startsWith(excluded + '/')));
   let bytes = 0;
   let count = 0;
+  let enumerated = 0;
 
   async function openChecked(path: string, before: BigIntStats, flags: number, label: string) {
     const handle = await open(path, flags).catch(() => { throw sourceChanged(label); });
@@ -212,6 +231,9 @@ export async function captureProject(cwd: string, outputDir: string, signal: Abo
       signal.throwIfAborted();
       const name = decodePath(entry.name);
       const path = prefix + name;
+      if (++enumerated > maxDirectoryEntries) {
+        throw projectError('PROJECT_FILE_LIMIT', `Project exceeds the directory enumeration limit at ${JSON.stringify(path)}`);
+      }
       if (skip(path)) continue;
       normalizedPath(path);
       const info = await lstat(accessPath(directory, name), { bigint: true }).catch(() => { throw sourceChanged(path); });
