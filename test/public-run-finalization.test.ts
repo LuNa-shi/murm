@@ -109,3 +109,49 @@ test('a host timeout reports unknown and a late Core receipt cannot release faci
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(await readFile(report.reportPath, 'utf8'), saved);
 });
+
+test('invalid business data fails before close or claiming finalization', async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-public-finalization-'));
+  t.after(() => rm(outputDir, { recursive: true, force: true }));
+  let closed = 0;
+  const runtime = { id: 'public-invalid', async close(): Promise<CloseReceipt> {
+    closed++;
+    return { agents: [], cleanup: 'complete', errors: [], pending: [], outputDir,
+      evidence: { recorded: 0, lost: 0, pending: 0 } };
+  } };
+  await assert.rejects(finalizeRun({ runtime, outputDir, business: { status: 'completed', value: Infinity } }),
+    { code: 'INVALID_CONTRACT' });
+  await assert.rejects(finalizeRun({ runtime, outputDir, business: { status: 'failed' } }),
+    { code: 'INVALID_CONTRACT' });
+  assert.equal(closed, 0);
+  await finalizeRun({ runtime, outputDir, business: { status: 'completed', value: true } });
+  assert.equal(closed, 1);
+});
+
+test('a late owned-facility result can be verified by original identity without changing the initial report', async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-public-finalization-'));
+  t.after(() => rm(outputDir, { recursive: true, force: true }));
+  const released = Promise.withResolvers<void>();
+  const runtime = { id: 'public-late-facility', async close(): Promise<CloseReceipt> {
+    return { agents: [], cleanup: 'complete', errors: [], pending: [], outputDir,
+      evidence: { recorded: 0, lost: 0, pending: 0 } };
+  } };
+  const report = await finalizeRun({ runtime, outputDir,
+    business: { status: 'completed', value: null },
+    cleanupTimeoutMs: 5,
+    ownedFacilities: [{ id: 'late-gateway', close: () => released.promise }],
+  });
+  assert.equal(report.facilities[0].status, 'pending');
+  assert.ok(report.lateFacilityReportPath);
+  assert.ok(report.lateFacilityCleanup);
+  assert.equal(report.lateFacilityCleanup.current(), undefined);
+  const saved = await readFile(report.reportPath!, 'utf8');
+
+  released.resolve();
+  const late = await report.lateFacilityCleanup.result;
+  assert.deepEqual(late.facility, { id: 'late-gateway', status: 'complete' });
+  assert.equal(late.reportPath, report.lateFacilityReportPath);
+  assert.deepEqual(JSON.parse(await readFile(late.reportPath!, 'utf8')).facility, late.facility);
+  assert.deepEqual(report.lateFacilityCleanup.current()?.facility, late.facility);
+  assert.equal(await readFile(report.reportPath!, 'utf8'), saved);
+});

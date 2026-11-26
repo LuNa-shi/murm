@@ -1240,6 +1240,14 @@
       "role": "Runtime assembly, Agent admission, input and bounded lifecycle"
     },
     {
+      "path": "src/core/run-finalization.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "Public Run finalization, bounded cleanup and late facility receipts"
+    },
+    {
       "path": "src/core/config.ts",
       "category": "programmable Core",
       "chapters": [
@@ -1450,7 +1458,7 @@
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Public Run finalization and compatibility Harness reporting with independent outcome, cleanup and save receipts"
+      "role": "Compatibility Harness reporting and shared atomic persistence for application outcome reports"
     },
     {
       "path": "src/harnesses/taskpool/coordination-permissions.ts",

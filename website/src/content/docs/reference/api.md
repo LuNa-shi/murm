@@ -22,7 +22,7 @@ Import `finalizeRun` from `@murm/core` after classifying the application outcome
 
 `verifyArtifacts` may inspect the exported artifacts using the Core close receipt. Supply `ownedFacilities` only for facilities this application owns. Their close callbacks run after verification and confirmed Core cleanup. If Core returns a pending receipt, the report carries its pending resource identities and retains the facilities. The cleanup wait has its own `cleanupTimeoutMs` (default 60,000 ms) and the callbacks receive its AbortSignal. If the host wait ends before Core returns a receipt, the close status is `unknown`. Confirmed save returns the path to `outputDir/<runtime.id>/run-finalization.json`.
 
-One call finalizes a Runtime object. A second call fails with `CONFLICT`. For pending work, query the same Runtime using `close` and reconcile the original facility handles.
+If an owned facility's close callback is still in flight at the deadline, `lateFacilityCleanup.current()` can read its eventual receipt. `lateFacilityReportPath` identifies where that separate receipt will be saved when the invocation settles. One call finalizes a Runtime object. A second call fails with `CONFLICT`. For pending work, query the same Runtime using `close` and reconcile the original facility handles.
 
 ## `createRuntime(options)`
 

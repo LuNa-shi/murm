@@ -22,7 +22,7 @@ order: 12
 
 可选的 `verifyArtifacts` 读取 Core 关闭回执并检查导出文件。只把本次应用拥有的设施登记到 `ownedFacilities`。确认 Core 清理完成后，收尾先验证产物，再调用这些设施的关闭回调。Core 返回 pending 时，报告保留待处理资源身份和相关设施。收尾有独立的 `cleanupTimeoutMs`，默认 60,000 ms，回调会收到对应 AbortSignal。宿主等待到期时若尚无 Core 回执，关闭状态为 `unknown`。报告保存成功时返回 `outputDir/<runtime.id>/run-finalization.json` 的路径。
 
-每个 Runtime 对象只接受一次收尾调用，重复调用报 `CONFLICT`。如需核对待处理工作，应调用同一 Runtime 的 `close` 并核对原来的设施句柄。
+如果设施关闭回调在期限到期时已经发出，`lateFacilityCleanup.current()` 可查询其晚到回执，`lateFacilityReportPath` 指向回调结束后保存的独立记录。每个 Runtime 对象只接受一次收尾调用，重复调用报 `CONFLICT`。如需核对待处理工作，应调用同一 Runtime 的 `close` 并核对原来的设施句柄。
 
 ## `createRuntime(options)`
 

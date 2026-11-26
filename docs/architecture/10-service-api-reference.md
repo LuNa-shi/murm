@@ -40,8 +40,8 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `28570d9b5cfadc3ceaa8136860bb8df2238ce951a144b996e5b2d9d5f2924111` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `33172493514ba3cc7c6660306aacc98824cdb2c2552a9cd6109325e5043e639c` |
-| [src/core/types.ts](../../src/core/types.ts) | `63fba8670a5b72ee34136b366312210c03ec87ee40b43d73579043eaf0f604b7` |
+| [src/core/index.ts](../../src/core/index.ts) | `d517fdb35211f784dd63c397cb01857b95a81f65700e2a1313973d7aaf6a1d40` |
+| [src/core/types.ts](../../src/core/types.ts) | `8bcb68cda154fe2d876261ac047f2d3945ce5baaded4cc4286b2181bf6a52cc5` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `f8cea3ce6983ecd15f81ffe7a5c483f476b728a1421b40961e49073d815d7664` |
 | [src/core/services.ts](../../src/core/services.ts) | `8c1d64489bd31ab3cec3b3b295a36ebaa2e8a9982f0a4aa059a05c405f41b6d1` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
@@ -3092,7 +3092,7 @@ These are the package entrypoint declarations and the declarations they referenc
 
 ```ts
 import type { CreateRuntimeOptions, Runtime } from './types.js';
-export { finalizeRun } from '../harnesses/shared/run-report.js';
+export { finalizeRun } from './run-finalization.js';
 export type * from './types.js';
 export declare function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
 ```
@@ -3372,6 +3372,12 @@ export interface RunFinalizationOptions<Result extends JsonValue = JsonValue> {
         close(signal: AbortSignal): void | Promise<void>;
     }[];
 }
+export interface RunLateFacilityCleanup {
+    runtimeId: string;
+    facility: RunFacilityCleanup;
+    reportSaveFailure: RunFinalizationError | null;
+    reportPath?: string;
+}
 export interface RunFinalization<Result extends JsonValue = JsonValue> {
     runtimeId: string;
     business: RunBusinessOutcome<Result>;
@@ -3380,6 +3386,11 @@ export interface RunFinalization<Result extends JsonValue = JsonValue> {
     facilities: readonly RunFacilityCleanup[];
     reportSaveFailure: RunFinalizationError | null;
     reportPath?: string;
+    lateFacilityReportPath?: string;
+    lateFacilityCleanup?: {
+        current(): RunLateFacilityCleanup | undefined;
+        readonly result: Promise<RunLateFacilityCleanup>;
+    };
 }
 export interface Runtime {
     readonly id: string;

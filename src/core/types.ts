@@ -249,6 +249,13 @@ export interface RunFinalizationOptions<Result extends JsonValue = JsonValue> {
   ownedFacilities?: readonly { id: string; close(signal: AbortSignal): void | Promise<void> }[];
 }
 
+export interface RunLateFacilityCleanup {
+  runtimeId: string;
+  facility: RunFacilityCleanup;
+  reportSaveFailure: RunFinalizationError | null;
+  reportPath?: string;
+}
+
 export interface RunFinalization<Result extends JsonValue = JsonValue> {
   runtimeId: string;
   business: RunBusinessOutcome<Result>;
@@ -257,6 +264,11 @@ export interface RunFinalization<Result extends JsonValue = JsonValue> {
   facilities: readonly RunFacilityCleanup[];
   reportSaveFailure: RunFinalizationError | null;
   reportPath?: string;
+  lateFacilityReportPath?: string;
+  lateFacilityCleanup?: {
+    current(): RunLateFacilityCleanup | undefined;
+    readonly result: Promise<RunLateFacilityCleanup>;
+  };
 }
 
 export interface Runtime {
