@@ -50,15 +50,32 @@ Harness 从调用者自己的工作目录捕获受限路径与大小的源码/ma
 
 ## 任务与关闭条件
 
-[订单任务规格](../../examples/lead-worker/fixtures/spec.md)定义 JSONL 程序的接口和边界。[独立 oracle](../../examples/lead-worker/fixtures/oracle.mjs)固定验收输入、期望和比较规则；宿主在隔离环境从最终 commit 执行候选，只向 oracle 提供真实退出码及 stdout/stderr。规格、oracle 和两套公开输入随候选冻结，Agent 无权修改宿主评判。Lead 自行生成检查 Service 源码；宿主另核对该 Service 对合法及重复/非法输入的实际返回。
+[JSONL 订单规格](../../examples/lead-worker/fixtures/spec.md)和[独立 oracle](../../examples/lead-worker/fixtures/oracle.mjs)保留为 L1/L2 的小型回归。宿主隔离执行固定 commit，将真实退出码和 stdout/stderr 交给 oracle。历史真实模型订单 Run 按当时的题目和候选记录。
 
 两名原 Worker 均先开始工作并各有实质成果。Lead 经真实 CLI 部署 Service、登记新 Profile、加入 checker。checker 领取任务并检查本轮固定 Git 候选，提交带具体依据的反馈。原 Worker 经 CLI 先探测不可用，grant 后在原身份、Session、目录及 Git 身份下实际调用，revoke 后再次不可用，checker 仍可用。Lead 读取反馈，安排原 Worker 在原 Session 继续，最终代码或测试出现可追踪的变化。Lead 整合固定 commit，宿主独立验收。宿主负责设施、真实通知和判题，Lead 决定分工、管理调用、修订与整合。
+
+### ProgramBench Pastel 真实任务
+
+L3 使用 [#209](https://github.com/LuNa-shi/murm/issues/209) 已接入的 [ProgramBench Pastel](../../benchmarks/programbench-pastel/README.md)，实例为 `sharkdp__pastel.b60e899`。团队重建完整颜色 CLI，从新 Git 项目开始，交付原创源码和根目录 `compile.sh`。构建在离线环境生成 `./executable`。复用该实例的完整题面、公开说明和可执行参考程序。Agent 只能运行参考程序来观察行为。评测数据、已有解法及其他 Run 的产物留在宿主侧。分工由 Lead 决定。
+
+| 固定输入 | 版本 |
+| --- | --- |
+| Pastel 源任务 | `b60e89932629b2d162e1ff9f3976a5a0ef1e5db9` |
+| ProgramBench 评测器 | `895f65916bc5ba34a915d36da321fde0301125ad` |
+| 官方测试数据 | `5954a1957b5e0d770ec2c5523506abd212806315` |
+| 参考程序及评测镜像 | `programbench/sharkdp_1776_pastel.b60e899@sha256:e75597f4307bf02746598d2b7eb8ae136b9978f0c2551e04b065b14e9e5f9c4e` |
+
+Pastel 模式为同一个动态 Lead–Worker Harness 配置任务提示、`compile.sh` 交付路径和受限的颜色检查 operation。Lead 自己编写并部署检查 Service。它接收一种公开的 Pastel 格式和颜色输入，返回独立计算的结果。宿主通过固定参考程序核对一组合法与非法输入。checker 在独立临时目录构建和运行 Lead 的固定 Git 候选，记录相同公开输入上的实际 CLI 和 Service 结果，提交带 Git 版本、差异和修订建议的反馈。第二次 Run 更换公开检查输入，保留同一道完整 ProgramBench 题、同一官方评测集和全新的 Run 资源。Core 的授权、受限部署和 Board/Git 成员入口沿用上文合同。
+
+宿主从截止前通过 Board 提交的固定 Git 版本提取源码，在 Run 关闭后制作 `submission.tar.gz`。复用现有 ProgramBench 源码打包与独立评测，清除预编译程序，并在固定 cleanroom 中构建和运行官方测试。记录构建结果、已通过及总用例数、官方分数和基础设施错误。协作、动态权限和资源回收单独核对。部分得分保留为结果证据。任务正确性要求这次固定提交通过完整官方评测。
 
 | 层 | 需要的证据 |
 | --- | --- |
 | L1 无 key 合同与故障 | 登记/授权/退役、幂等、回执丢失、并发、拒绝、未 ready、通知和任务 owner、部署失败、关闭竞争、外部服务归属、可恢复清理重试、oracle 负例及静态兼容。并发点使用明确事件/barrier。 |
 | L2 原生设施和脚本模型 | 从候选包启动，使用实际 Pi/OpenSandbox、CLI/Bridge、Board/Gitea 和独立服务容器，核对并行工作、Session 连续、调用顺序、源码摘要及物理回收。L1/L2 另以合法同 Agent Bridge 绑定证明 dispatch 授权拒绝且 adapter 未执行；CLI 的目录或 manifest 拒绝按实际阶段记录。 |
-| L3 真实模型任务 | 同一冻结候选完成两次独立干净 Run。第二次使用新 Run ID、冻结的同规格输入变体及全新动态资源。每次分别核对动态工程链、实际协作、独立任务正确性、正常清理 complete。至少一次从仓库外安装的候选包启动。 |
-| L4 包外与离线复验 | 从实际 tarball 严格检查公开导入并运行附带示例。关闭后从固定提交独立复验，在无动态服务和模型调用时运行全部必需用例；缺证据或任何必需项失败返回非零。历史物理清理由保存的资源回执支持。 |
+| L3 真实模型任务 | 同一冻结候选完成两次独立干净的 Pastel Run。第二次使用新 Run ID、冻结的公开检查输入变体及全新动态资源。每次分别核对动态工程链、实际协作、独立任务正确性和正常清理 complete。至少一次从仓库外安装的候选包启动。 |
+| L4 包外与离线复验 | 从实际 tarball 严格检查公开导入并运行附带示例。从保存的 Pastel Git 提交或等价冻结源码归档独立复验。复验在 Run 关闭、无动态 Service 和模型调用时运行固定官方评测。缺证据或任何必需项失败返回非零。历史物理清理由保存的资源回执支持。 |
 
-正式运行缺少有效授权、设施或预算时保持未通过。启动前固定并记录 provider/model、候选提交/包、镜像和执行者、提示词、任务及 oracle；记录 4 Agent/1 动态 Service 上限、CPU/内存/磁盘上限、工作/请求/清理期限、请求/token/费用界限和整批尝试上限。保留全部尝试和失败原因。相关代码、任务、提示、oracle 或模型改变后重新标识候选，两次验证属于同一候选。四层均有证据、两次 L3 四项均过线、正常路径物理回收完成且文档与包一致，才满足 #235 关闭要求。实现同时更新 Architecture、实际提示词、生成的 API/存储引用、source-map 和相关中英文用户文档。
+真实模型批次使用 GPT‑6.1 Sol，每轮工作窗口为 15 分钟。用单调时钟封锁截止后的模型请求、工作投递及候选写入。保留平台的单次请求超时及独立清理期限，本批次采用时间作为模型用量上界，不另外设置宿主请求次数或输出 token 额度。记录实际模型请求、token 用量与未知用量回执。缺少有效授权、设施或预算时保持未通过。
+
+启动前固定并记录 provider/model、候选提交/包、镜像和执行者、提示词、任务及评测器，以及 4 Agent/1 动态 Service 上限、CPU/内存/磁盘上限、工作/请求/清理期限、适用的 provider 额度和整批尝试上限。保留全部尝试和失败原因。相关代码、任务、提示、评测器或模型改变后重新标识候选，两次验证属于同一候选。四层均有证据、两次 L3 四项均过线、正常路径物理回收完成且文档与包一致，才满足 #235 关闭要求。实现同时更新 Architecture、实际提示词、生成的 API/存储引用、source-map 和相关中英文用户文档。
