@@ -1,6 +1,6 @@
 import type { AgentInfo, ErrorInfo, ModelAccessPolicy, PendingCleanup } from './types.js';
 import type { createModelTrace } from './model-trace.js';
-import type { PiOpenSandboxBackendConfig } from './backend-config.js';
+import type { OpenSandboxBackendConfig } from './backend-config.js';
 
 interface ModelAgent {
   status: AgentInfo['status'];
@@ -18,7 +18,7 @@ interface ModelOwner {
 interface ModelOptions {
   runtimeId: string;
   outputDir: string;
-  config: PiOpenSandboxBackendConfig;
+  config: OpenSandboxBackendConfig;
   getAgent(id: string): ModelAgent | undefined;
   modelAccessPolicy?: ModelAccessPolicy;
   modelTrace?: ReturnType<typeof createModelTrace>;
@@ -26,8 +26,8 @@ interface ModelOptions {
 }
 
 interface ModelAlias {
-  model: PiOpenSandboxBackendConfig['models'][string];
-  catalogResource: Readonly<{ path: string; sha256: string }>;
+  model: OpenSandboxBackendConfig['models'][string];
+  catalogResource?: Readonly<{ path: string; sha256: string }>;
   ledgerPath?: string;
   db?: DatabaseSync;
   gateway?: ResponsesBudgetGateway;
@@ -122,8 +122,9 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
   const aliases = new Map<string, ModelAlias>();
   for (const [alias, model] of Object.entries(structuredClone(config.models))) {
     if (!alias || !model?.upstream) throw invalid('Each model alias requires a configured upstream');
-    const catalogResource = await assertShippedModelPair(model).catch(error => { throw invalid(error.message); });
-    aliases.set(alias, { model, catalogResource: Object.freeze(catalogResource) });
+    const catalogResource = config.executor?.kind === 'codex' ? undefined
+      : await assertShippedModelPair(model).catch(error => { throw invalid(error.message); });
+    aliases.set(alias, { model, catalogResource: catalogResource && Object.freeze(catalogResource) });
   }
   const directory = join(outputDir, 'model-access');
   await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -176,7 +177,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
       entry.db = new DatabaseSync(path);
       entry.ledgerPath = path;
       await chmod(path, 0o600);
-      const gatewayOptions = { db: entry.db,
+      const gatewayOptions = { db: entry.db, executor: config.executor?.kind ?? 'pi',
         upstream: { ...entry.model.upstream, model: entry.model.model }, timeBounds: gatewayConfig,
         ...(entry.model.provider === 'kimi_proxy' && entry.model.model === 'k3' ? { transformPayload: kimiResponsesPayload } : {}),
         beginTrace: modelTrace ? (request: Record<string, unknown>) => modelTrace.begin({ ...request, modelAlias: alias, provider: entry.model.provider }) : undefined,
@@ -219,7 +220,8 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
       const token = entry.gateway!.issueToken({ runtimeId, agentId });
       tokens.set(agentId, { token, gateway: entry.gateway! });
       const prefix = `PI_${entry.model.provider.toUpperCase().replaceAll('-', '_')}`;
-      return { environment: { [`${prefix}_BASE_URL`]: entry.baseUrl }, secretEnvironment: { [`${prefix}_API_KEY`]: token },
+      return { environment: config.executor?.kind === 'codex' ? {} : { [`${prefix}_BASE_URL`]: entry.baseUrl },
+        secretEnvironment: config.executor?.kind === 'codex' ? { OPENAI_API_KEY: token } : { [`${prefix}_API_KEY`]: token },
         baseUrl: entry.baseUrl!, catalogResource: entry.catalogResource };
     },
     revokeAgent(agentId: string) {

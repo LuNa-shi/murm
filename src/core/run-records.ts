@@ -1,7 +1,8 @@
 import type { Profile, ModelAccessPolicy, ErrorInfo } from './types.js';
-import type { PiOpenSandboxBackendConfig } from './backend-config.js';
+import type { OpenSandboxBackendConfig } from './backend-config.js';
 import type { ServiceRegistration } from './services.js';
 
+import { executorDriver } from './executor-driver.js';
 import { createHash } from 'node:crypto';
 import { appendFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -122,7 +123,7 @@ export function createRedactor(values: readonly unknown[] = []) {
 }
 
 export function runtimeConfiguration({ config, profiles, registrations, maxAgents, modelAccessPolicy, defaultTimeoutMs }: {
-  config: PiOpenSandboxBackendConfig;
+  config: OpenSandboxBackendConfig;
   profiles: ReadonlyMap<string, Profile>;
   registrations: ReadonlyMap<string, ServiceRegistration>;
   maxAgents: number;
@@ -130,12 +131,14 @@ export function runtimeConfiguration({ config, profiles, registrations, maxAgent
   defaultTimeoutMs: number;
 }, redact: (value: string) => string) {
   const { sandbox, isolation, models, modelGateway } = config;
+  const driver = executorDriver(config);
   return {
     schemaVersion: 1,
     coreVersion: packageInfo.version,
     maxAgents,
     backend: {
-      type: 'pi-opensandbox', piVersion: '1.3.0', network: isolation.network, disk: isolation.disk,
+      type: `${driver.kind}-opensandbox`, [`${driver.kind}Version`]: driver.version,
+      authMode: 'api-key', capabilities: driver.capabilities, network: isolation.network, disk: isolation.disk,
       cpu: redact(sandbox.resourceLimits?.cpu ?? '2'), memory: redact(sandbox.resourceLimits?.memory ?? '2Gi'),
     },
     waiting: {
