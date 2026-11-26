@@ -71,7 +71,9 @@ test('write output violation and lost reply retain unknown operation identity an
   const { call } = await setup(t, { invoke() { writes++; return { invalid: 'private-secret' }; } }, { bridge: { recordService: row => rows.push(row) } });
   assert.equal((await call('put', { key: 'one', text: 'fixed' })).error.code, 'SERVICE_OUTPUT_INVALID');
   assert.equal(writes, 1);
-  assert.deepEqual(rows.at(-1), { runtimeId: 'run-one', agentId: 'agent-one', profile: 'writer', serviceId: 'notes', operation: 'put', operationId: 'fixed-request', state: 'settled', outcome: 'unknown', error: { code: 'SERVICE_OUTPUT_INVALID', retryable: false } });
+  const { attemptId, ...settled } = rows.at(-1);
+  assert.equal(typeof attemptId, 'string');
+  assert.deepEqual(settled, { runtimeId: 'run-one', agentId: 'agent-one', profile: 'writer', serviceId: 'notes', operation: 'put', operationId: 'fixed-request', state: 'settled', outcome: 'unknown', error: { code: 'SERVICE_OUTPUT_INVALID', retryable: false } });
   assert.equal(JSON.stringify(rows).includes('private-secret'), false);
   const lost = [];
   const held = await setup(t, { invoke() { writes++; return new Promise(() => {}); } }, { bridge: { serviceTimeoutMs: 10, recordService: row => lost.push(row) } });

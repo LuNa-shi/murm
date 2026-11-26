@@ -1,0 +1,854 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import {
+  link,
+  mkdtemp,
+  writeFile,
+  appendFile,
+  mkdir,
+  symlink,
+  rm,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createTraceReader } from "../reader.mjs";
+
+test("the offline demo links a child result to the Root request and exported note", async () => {
+  const root = fileURLToPath(new URL("../../test/fixtures/trace-viewer/runs/", import.meta.url));
+  const reader = await createTraceReader({ root });
+  const runs = await reader.listRuns();
+  assert.deepEqual(runs.map((run) => run.id), ["release-notes"]);
+  const [{ id }] = runs;
+  const summary = await reader.summary(id);
+  assert.equal(summary.status, "closed");
+  assert.equal(summary.cleanup, "complete");
+  assert.equal(summary.agents.length, 2);
+  assert.deepEqual(summary.gaps, []);
+  assert.equal(
+    summary.files.filter((file) => file.kind === "session" && file.path.endsWith(".jsonl")).length,
+    2,
+  );
+
+  const executions = summary.spans.filter((span) => span.kind === "execution");
+  assert.equal(executions.length, 2);
+  const [first, second] = executions;
+  assert.ok(first.startedAt < second.endedAt && second.startedAt < first.endedAt);
+  assert.ok(summary.spans.some((span) => span.kind === "tool"));
+  assert.equal(summary.spans.filter((span) => span.kind === "model").length, 6);
+
+  assert.ok(summary.relations.some((relation) => relation.kind === "spawn"));
+  const result = summary.relations.find((relation) => relation.kind === "result");
+  assert.ok(result);
+  assert.equal(result.evidenceIds.length, 3);
+  const handoff = await reader.detail(id, result.id);
+  assert.ok(handoff.contextMatches.length > 0);
+  const request = await reader.detail(id, handoff.contextMatches[0].recordId);
+  assert.equal(request.record.agentId, result.toAgentId);
+  assert.equal(request.record.seq, 5);
+  const response = request.files.find((file) => file.path.endsWith("/response.txt"));
+  assert.ok(response);
+  assert.match((await reader.file(id, response.path)).text, /event: response\.completed/);
+
+  const note = summary.files.find((file) => file.path.endsWith("/release-note.md"));
+  assert.ok(note);
+  assert.match((await reader.file(id, note.path)).text, /CSV export includes the active filters/);
+});
+
+test("historical Core Run preserves Agent identity, evidence and separate status", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "murm-reader-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "run"));
+  await writeFile(
+    join(root, "run/runtime.json"),
+    JSON.stringify({
+      runtimeId: "r",
+      status: "closed",
+      cleanup: "pending",
+      bots: [{ botId: "a", execution: "stopped", cleanup: "pending" }],
+      config: { schemaVersion: 1 },
+    }),
+  );
+  await writeFile(
+    join(root, "run/evidence.jsonl"),
+    JSON.stringify({
+      type: "input",
+      botId: "a",
+      state: "accepted",
+      seq: 1,
+      at: "2026-01-01T00:00:00Z",
+      runtimeId: "r",
+    }) + "\n",
+  );
+  const reader = await createTraceReader({ root });
+  assert.equal((await reader.listRuns()).length, 1);
+  const summary = await reader.summary("run");
+  assert.equal(summary.cleanup, "pending");
+  assert.equal(summary.agents[0].id, "a");
+  assert.equal(summary.agents[0].execution, "stopped");
+  assert.equal(summary.agents[0].inputs, "accepted");
+  const page = await reader.events("run");
+  assert.equal(page.events[0].status, "accepted");
+  const detail = await reader.detail("run", page.events[0].id);
+  assert.equal(detail.record.botId, "a");
+  assert.equal(detail.event.source.path, "evidence.jsonl");
+});
+
+test("append, partial lines and cursor survive a fresh reader without skipping records", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "murm-reader-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    join(root, "runtime.json"),
+    JSON.stringify({ runtimeId: "r", config: { schemaVersion: 1 } }),
+  );
+  const first =
+    JSON.stringify({ type: "input", agentId: "a", state: "accepted", seq: 1 }) +
+    "\n";
+  await writeFile(join(root, "evidence.jsonl"), first);
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  const page = await reader.events(id);
+  const second = JSON.stringify({
+    type: "native",
+    agentId: "a",
+    eventType: "agent_start",
+    seq: 3,
+  });
+  await appendFile(join(root, "evidence.jsonl"), second.slice(0, 15));
+  assert.equal(
+    (await reader.events(id, { cursor: page.cursor })).events.length,
+    0,
+  );
+  await appendFile(join(root, "evidence.jsonl"), second.slice(15) + "\n");
+  const restarted = await createTraceReader({ root });
+  const next = await restarted.events(id, { cursor: page.cursor });
+  assert.equal(next.events.length, 1);
+  assert.equal(next.events[0].type, "native");
+  assert.equal(
+    (await restarted.events(id, { cursor: next.cursor })).events.length,
+    0,
+  );
+  assert.ok(
+    (await restarted.summary(id)).gaps.some(
+      (gap) => gap.kind === "sequence-gap",
+    ),
+  );
+});
+
+test("file reads reject traversal and symlinks without changing source files", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "murm-reader-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    join(root, "runtime.json"),
+    JSON.stringify({ runtimeId: "r" }),
+  );
+  await symlink("/etc/passwd", join(root, "escape"));
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  await assert.rejects(reader.file(id, "../secret"), /escapes/);
+  await assert.rejects(reader.file(id, "escape"), /Symbolic/);
+});
+
+test("100,000 event Run is paginated to 1,000 and refresh only reads appended JSONL bytes", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "murm-reader-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    join(root, "runtime.json"),
+    JSON.stringify({ runtimeId: "large" }),
+  );
+  const lines = Array.from(
+    { length: 100000 },
+    (_, i) =>
+      JSON.stringify({
+        type: "input",
+        agentId: "a",
+        state: "accepted",
+        seq: i + 1,
+      }) + "\n",
+  ).join("");
+  await writeFile(join(root, "evidence.jsonl"), lines);
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  assert.equal((await reader.events(id, { limit: 90000 })).events.length, 1000);
+  const before = await reader.summary(id);
+  const line =
+    JSON.stringify({
+      type: "input",
+      agentId: "a",
+      state: "unknown",
+      seq: 100001,
+    }) + "\n";
+  await appendFile(join(root, "evidence.jsonl"), line);
+  const next = await reader.events(id, { cursor: before.cursor });
+  assert.equal(next.events.length, 1);
+  assert.equal(next.events[0].status, "unknown");
+  assert.equal(
+    (await reader.summary(id)).index.bytesRead - before.index.bytesRead,
+    Buffer.byteLength(line),
+  );
+});
+
+test("the timeline caps completed intervals, open intervals and input points together", async (t) => {
+  const root = await fixture(t, {
+    runtimeId: "bounded-timeline",
+    agents: [{ agentId: "a" }, { agentId: "b" }],
+  });
+  const at = (index) => new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString();
+  const rows = Array.from({ length: 1050 }, (_, index) => ({
+    type: "input",
+    agentId: "a",
+    state: "accepted",
+    at: at(index),
+    seq: index + 1,
+  }));
+  rows.push(
+    { type: "native", agentId: "a", eventType: "agent_start", workerAt: at(1050), seq: 1051 },
+    { type: "native", agentId: "a", eventType: "agent_settled", outcome: "completed", workerAt: at(1051), seq: 1052 },
+    { type: "native", agentId: "b", eventType: "agent_start", workerAt: at(1052), seq: 1053 },
+  );
+  await jsonLines(root, "evidence.jsonl", rows);
+  const reader = await createTraceReader({ root });
+  const [run] = await reader.listRuns();
+  const summary = await reader.summary(run.id);
+  assert.equal(summary.spansTruncated, true);
+  assert.equal(summary.points.length, 998);
+  assert.deepEqual(summary.spans.map(({ status }) => status), ["completed", "open"]);
+  const page = await reader.events(run.id, { limit: 1 });
+  assert.equal(page.events[0].time, at(0));
+});
+
+test("native boundaries, unknown service calls and exact Subagents identities have evidence", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "murm-reader-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    join(root, "runtime.json"),
+    JSON.stringify({
+      runtimeId: "relations",
+      agents: [{ agentId: "a" }, { agentId: "b" }],
+    }),
+  );
+  const rows = [
+    {
+      type: "native",
+      agentId: "a",
+      eventType: "agent_start",
+      workerAt: "2026-01-01T00:00:00Z",
+      seq: 1,
+    },
+    {
+      type: "native",
+      agentId: "a",
+      eventType: "agent_settled",
+      workerAt: "2026-01-01T00:00:01Z",
+      seq: 2,
+    },
+    {
+      type: "input",
+      agentId: "b",
+      state: "accepted",
+      requestId: "child-initial",
+      inputId: "child-input",
+      source: "/root",
+      seq: 3,
+    },
+  ];
+  await writeFile(
+    join(root, "evidence.jsonl"),
+    rows.map((x) => JSON.stringify(x) + "\n").join(""),
+  );
+  const calls = [
+    {
+      caller: { agentId: "a" },
+      service: "collaboration",
+      operation: "spawn_agent",
+      operation_id: "1",
+      phase: "started",
+      seq: 1,
+    },
+    {
+      caller: { agentId: "a" },
+      service: "collaboration",
+      operation: "spawn_agent",
+      operation_id: "1",
+      phase: "settled",
+      seq: 2,
+      output: {
+        agentId: "b",
+        task_name: "/root/child",
+        inputId: "child-input",
+      },
+    },
+    {
+      caller: { agentId: "b" },
+      service: "custom",
+      operation: "new_operation",
+      phase: "settled",
+      seq: 3,
+    },
+  ];
+  await writeFile(
+    join(root, "service-calls.jsonl"),
+    calls.map((x) => JSON.stringify(x) + "\n").join(""),
+  );
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  const summary = await reader.summary(id);
+  assert.equal(summary.spans[0].startedAt, "2026-01-01T00:00:00Z");
+  assert.equal(summary.relations[0].fromAgentId, "a");
+  assert.equal(summary.relations[0].toAgentId, "b");
+  assert.equal(summary.relations[0].evidenceIds.length, 3);
+  assert.ok(
+    (await reader.events(id)).events.some(
+      (event) => event.label === "new_operation",
+    ),
+  );
+});
+
+test("model results create a new cursor record after requests have been consumed", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "murm-reader-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    join(root, "runtime.json"),
+    JSON.stringify({ runtimeId: "r" }),
+  );
+  await mkdir(join(root, "model-trace/request"), { recursive: true });
+  await writeFile(
+    join(root, "model-trace/request/request.json"),
+    JSON.stringify({
+      agentId: "a",
+      requestId: "q",
+      startedAt: "2026-01-01T00:00:00Z",
+      before: { input: [] },
+    }),
+  );
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  const first = await reader.events(id);
+  await writeFile(
+    join(root, "model-trace/request/result.json"),
+    JSON.stringify({ endedAt: "2026-01-01T00:00:01Z", state: "completed" }),
+  );
+  const next = await reader.events(id, { cursor: first.cursor });
+  assert.equal(next.events.length, 1);
+  assert.equal(next.events[0].status, "completed");
+});
+
+test("Run files endpoint admits recorded evidence and rejects unrelated private files", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "murm-reader-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    join(root, "runtime.json"),
+    JSON.stringify({ runtimeId: "r" }),
+  );
+  await writeFile(join(root, ".env"), "SECRET=private");
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  assert.match((await reader.file(id, "runtime.json")).text, /runtimeId/);
+  await assert.rejects(reader.file(id, ".env"), /recorded evidence/);
+});
+
+test("message handoff links to the target actual model input by immutable message identity", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "murm-reader-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    join(root, "runtime.json"),
+    JSON.stringify({
+      runtimeId: "r",
+      agents: [{ agentId: "a" }, { agentId: "b" }],
+    }),
+  );
+  await writeFile(
+    join(root, "harness-report.json"),
+    JSON.stringify({
+      runtimeId: "r",
+      collaboration: {
+        members: [
+          { agentId: "a", path: "/root" },
+          { agentId: "b", path: "/root/child" },
+        ],
+      },
+      result: { done: true },
+    }),
+  );
+  await jsonLines(root, "evidence.jsonl", [
+    {
+      type: "input",
+      agentId: "a",
+      state: "accepted",
+      requestId: "message-42",
+      source: "/root/child",
+      seq: 1,
+    },
+  ]);
+  const calls = [
+    {
+      caller: { agentId: "b" },
+      service: "collaboration",
+      operation: "send_message",
+      phase: "started",
+      operation_id: "q",
+      seq: 1,
+      input: { target: "/root", message: "verified answer" },
+    },
+    {
+      caller: { agentId: "b" },
+      service: "collaboration",
+      operation: "send_message",
+      phase: "settled",
+      operation_id: "q",
+      seq: 2,
+      output: { messageId: "message-42", status: "queued" },
+    },
+  ];
+  await writeFile(
+    join(root, "service-calls.jsonl"),
+    calls.map((x) => JSON.stringify(x) + "\n").join(""),
+  );
+  await mkdir(join(root, "model-trace/request"), { recursive: true });
+  await writeFile(
+    join(root, "model-trace/request/request.json"),
+    JSON.stringify({
+      agentId: "a",
+      requestId: "rq",
+      startedAt: "2026-01-01T00:00:01Z",
+      before: { input: [] },
+      after: {
+        input: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: JSON.stringify({
+                  id: "message-42",
+                  kind: "message",
+                  from: "/root/child",
+                  text: "verified answer",
+                }),
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  const summary = await reader.summary(id);
+  assert.ok(summary.files.some((file) => file.path === "harness-report.json"));
+  assert.equal(summary.outcome.status, "recorded");
+  assert.equal(summary.outcome.report, "harness-report.json");
+  const detail = await reader.detail(id, summary.relations[0].id);
+  assert.equal(detail.contextMatches.length, 1);
+  assert.equal(detail.contextMatches[0].requestId, "rq");
+  assert.equal(detail.contextMatches[0].agentId, "a");
+});
+
+test("FIFO and hard links cannot make evidence reads block or leave the Run boundary", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "murm-reader-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    join(root, "runtime.json"),
+    JSON.stringify({ runtimeId: "r" }),
+  );
+  await writeFile(join(root, "private"), "outside evidence");
+  await link(join(root, "private"), join(root, "linked"));
+  execFileSync("mkfifo", [join(root, "fifo")]);
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  await assert.rejects(reader.file(id, "fifo"), /regular file/);
+  await assert.rejects(reader.file(id, "linked"), /Hard links/);
+});
+
+async function fixture(t, runtime = { runtimeId: "r" }) {
+  const root = await mkdtemp(join(tmpdir(), "murm-reader-review-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "runtime.json"), JSON.stringify(runtime));
+  return root;
+}
+
+async function jsonLines(root, path, rows) {
+  await writeFile(
+    join(root, path),
+    rows.map((row) => JSON.stringify(row) + "\n").join(""),
+  );
+}
+
+test("native failed and aborted outcomes survive execution settlement", async (t) => {
+  const root = await fixture(t);
+  await jsonLines(root, "evidence.jsonl", [
+    { type: "native", agentId: "a", eventType: "agent_start", seq: 1 },
+    {
+      type: "native",
+      agentId: "a",
+      eventType: "agent_settled",
+      outcome: "failed",
+      seq: 2,
+    },
+    { type: "native", agentId: "b", eventType: "agent_start", seq: 3 },
+    {
+      type: "native",
+      agentId: "b",
+      eventType: "agent_settled",
+      outcome: "aborted",
+      seq: 4,
+    },
+  ]);
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  const summary = await reader.summary(id);
+  assert.equal(
+    summary.agents.find((agent) => agent.id === "a").outcome,
+    "failed",
+  );
+  assert.equal(
+    summary.agents.find((agent) => agent.id === "b").outcome,
+    "aborted",
+  );
+  assert.deepEqual(
+    summary.spans.map((span) => span.status),
+    ["failed", "aborted"],
+  );
+});
+
+test("empty and partially written model requests recover when the final record arrives", async (t) => {
+  const root = await fixture(t);
+  await mkdir(join(root, "model-trace/q"), { recursive: true });
+  const path = join(root, "model-trace/q/request.json");
+  await writeFile(path, "");
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  assert.equal((await reader.events(id)).events.length, 0);
+  const request = JSON.stringify({
+    agentId: "a",
+    requestId: "q",
+    startedAt: "2026-01-01T00:00:00Z",
+    before: { input: [] },
+  });
+  await writeFile(path, request.slice(0, -5));
+  assert.equal((await reader.events(id)).events.length, 0);
+  await writeFile(path, request + "\n");
+  const events = (await reader.events(id)).events;
+  assert.equal(events.length, 1);
+  assert.equal(events[0].requestId, "q");
+});
+
+test("record detail rejects overwritten, replaced and truncated source files", async (t) => {
+  const root = await fixture(t);
+  const path = join(root, "evidence.jsonl");
+  const rows = [
+    { type: "input", agentId: "a", state: "accepted", seq: 1 },
+    { type: "input", agentId: "a", state: "accepted", seq: 2 },
+  ];
+  await jsonLines(root, "evidence.jsonl", rows);
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  const event = (await reader.events(id)).events[0];
+  // The inode and byte count survive an in-place overwrite.
+  await jsonLines(
+    root,
+    "evidence.jsonl",
+    rows.map((row) => ({ ...row, agentId: "b" })),
+  );
+  await assert.rejects(
+    reader.detail(id, event.id),
+    /source.*changed|source.*replaced/i,
+  );
+  // Retaining the first record while truncating the suffix still invalidates its original source identity.
+  await jsonLines(root, "evidence.jsonl", [rows[0]]);
+  assert.equal((await reader.events(id)).events.length, 0);
+  await assert.rejects(
+    reader.detail(id, event.id),
+    /source.*changed|source.*replaced/i,
+  );
+  await rm(path);
+  await jsonLines(root, "evidence.jsonl", rows);
+  await assert.rejects(
+    reader.detail(id, event.id),
+    /source.*changed|source.*replaced/i,
+  );
+});
+
+test("custom Services and unregistered identities cannot manufacture Subagents relations", async (t) => {
+  const root = await fixture(t, {
+    runtimeId: "r",
+    agents: [{ agentId: "a" }, { agentId: "b" }],
+  });
+  await jsonLines(root, "evidence.jsonl", [
+    {
+      type: "input",
+      runtimeId: "another",
+      agentId: "ghost",
+      state: "accepted",
+      requestId: "spoofed",
+      seq: 1,
+    },
+  ]);
+  await jsonLines(root, "service-calls.jsonl", [
+    {
+      caller: { agentId: "a" },
+      service: "custom",
+      operation: "spawn_agent",
+      phase: "settled",
+      seq: 1,
+      output: { agentId: "b" },
+    },
+    {
+      caller: { agentId: "ghost" },
+      service: "collaboration",
+      operation: "spawn_agent",
+      phase: "settled",
+      seq: 2,
+      output: { agentId: "b" },
+    },
+  ]);
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  const summary = await reader.summary(id);
+  assert.equal(summary.relations.length, 0);
+  assert.ok(summary.gaps.some((gap) => gap.kind === "runtime-mismatch"));
+  assert.ok(
+    !(await reader.events(id)).events.some((event) => event.type === "input"),
+  );
+  assert.equal((await reader.events(id)).events.length, 2);
+});
+
+test("result return requires the child event, accepted target input and exact archived envelope", async (t) => {
+  const root = await fixture(t, {
+    runtimeId: "r",
+    agents: [{ agentId: "parent" }, { agentId: "child" }],
+  });
+  await writeFile(
+    join(root, "harness-report.json"),
+    JSON.stringify({
+      collaboration: {
+        members: [
+          { agentId: "parent", path: "/root" },
+          { agentId: "child", path: "/root/helper" },
+        ],
+      },
+    }),
+  );
+  await jsonLines(root, "evidence.jsonl", [
+    {
+      type: "event",
+      agentId: "child",
+      seq: 1,
+      event: { type: "settled", seq: 8, outcome: "completed" },
+    },
+    {
+      type: "input",
+      agentId: "parent",
+      seq: 2,
+      state: "accepted",
+      requestId: "result-1",
+      source: "/root/helper",
+    },
+  ]);
+  await mkdir(join(root, "parent/session/files"), { recursive: true });
+  await writeFile(
+    join(root, "parent/session/manifest.json"),
+    JSON.stringify({ files: [{ path: "session.jsonl" }] }),
+  );
+  const envelope = {
+    id: "result-1",
+    kind: "result",
+    from: "/root/helper",
+    eventSeq: 8,
+    outcome: "completed",
+  };
+  await jsonLines(root, "parent/session/files/session.jsonl", [
+    {
+      type: "message",
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: JSON.stringify({ ...envelope, eventSeq: 99 }) },
+        ],
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "user",
+        content: [{ type: "text", text: JSON.stringify(envelope) }],
+      },
+    },
+  ]);
+  await mkdir(join(root, "model-trace/request"), { recursive: true });
+  await writeFile(
+    join(root, "model-trace/request/request.json"),
+    JSON.stringify({
+      agentId: "parent",
+      requestId: "model-q",
+      startedAt: "2026-01-01T00:00:00Z",
+      before: {},
+      after: {
+        input: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: JSON.stringify({ ...envelope, id: "result-1-extra" }),
+              },
+            ],
+          },
+          {
+            role: "user",
+            content: [{ type: "input_text", text: JSON.stringify(envelope) }],
+          },
+        ],
+      },
+    }),
+  );
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  const summary = await reader.summary(id);
+  assert.equal(summary.relations.length, 1);
+  assert.equal(summary.relations[0].kind, "result");
+  assert.equal(summary.relations[0].eventSeq, 8);
+  assert.equal(summary.relations[0].evidenceIds.length, 3);
+  const detail = await reader.detail(id, summary.relations[0].id);
+  assert.equal(detail.contextMatches.length, 1);
+  assert.equal(detail.contextMatches[0].requestId, "model-q");
+});
+
+test("malformed artifact manifest paths cannot register unrelated files", async (t) => {
+  const root = await fixture(t, { runtimeId: "r", agents: [{ agentId: "a" }] });
+  await mkdir(join(root, "a/artifacts"), { recursive: true });
+  await writeFile(
+    join(root, "a/artifacts/manifest.json"),
+    JSON.stringify({ files: [{ path: "../../../private.env" }] }),
+  );
+  await writeFile(join(root, "private.env"), "private");
+  const reader = await createTraceReader({ root });
+  const id = (await reader.listRuns())[0].id;
+  const summary = await reader.summary(id);
+  assert.ok(summary.gaps.some((gap) => gap.kind === "invalid-path"));
+  await assert.rejects(
+    reader.file(id, "a/artifacts/files/../../../private.env"),
+    /recorded evidence/,
+  );
+});
+
+test("historical summary exposes points for inputs and archived Session tool results plus Substrate peer labels", async (t) => {
+  const root = await fixture(t, {
+    runtimeId: "sub-1",
+    agents: [{ agentId: "f3eec208-aaaa-bbbb-cccc-000000000001" }],
+    modelTrace: { recorded: 1 },
+    evidence: { recorded: 1 },
+  });
+  await writeFile(
+    join(root, "harness-report.json"),
+    JSON.stringify({
+      runtimeId: "sub-1",
+      peers: [{ agentId: "f3eec208-aaaa-bbbb-cccc-000000000001", index: 0 }],
+    }),
+  );
+  await jsonLines(root, "evidence.jsonl", [
+    {
+      type: "input",
+      agentId: "f3eec208-aaaa-bbbb-cccc-000000000001",
+      state: "accepted",
+      source: "host",
+      at: "2026-01-01T00:00:01Z",
+      seq: 1,
+    },
+  ]);
+  await mkdir(join(root, "f3eec208-aaaa-bbbb-cccc-000000000001/session/files"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(root, "f3eec208-aaaa-bbbb-cccc-000000000001/session/manifest.json"),
+    JSON.stringify({ files: [{ path: "session.jsonl" }] }),
+  );
+  await jsonLines(
+    root,
+    "f3eec208-aaaa-bbbb-cccc-000000000001/session/files/session.jsonl",
+    [
+      {
+        type: "message",
+        timestamp: "2026-01-01T00:00:02Z",
+        message: { role: "toolResult", toolName: "bash", isError: false },
+      },
+      {
+        type: "message",
+        timestamp: "2026-01-01T00:00:03Z",
+        message: { role: "toolResult", toolName: "edit", isError: true },
+      },
+    ],
+  );
+  await mkdir(join(root, "model-trace/m1"), { recursive: true });
+  await writeFile(
+    join(root, "model-trace/m1/request.json"),
+    JSON.stringify({
+      agentId: "f3eec208-aaaa-bbbb-cccc-000000000001",
+      requestId: "m1",
+      startedAt: "2026-01-01T00:00:01.500Z",
+      after: { model: "gpt-test", input: [] },
+    }),
+  );
+  await writeFile(
+    join(root, "model-trace/m1/result.json"),
+    JSON.stringify({
+      endedAt: "2026-01-01T00:00:02.500Z",
+      state: "completed",
+      usage: { input_tokens: 120, output_tokens: 45 },
+    }),
+  );
+
+  const reader = await createTraceReader({ root });
+  const [run] = await reader.listRuns();
+  assert.equal(run.modelCount, 1);
+  assert.equal(run.evidenceCount, 1);
+
+  const summary = await reader.summary(run.id);
+  assert.equal(summary.harness, "Substrate");
+  assert.equal(summary.hasNative, false);
+  assert.equal(summary.agents[0].label, "peer-0 (f3eec2)");
+
+  const inputPoints = summary.points.filter((p) => p.kind === "input");
+  const toolPoints = summary.points.filter((p) => p.kind === "tool");
+  assert.equal(inputPoints.length, 1);
+  assert.equal(inputPoints[0].label, "host");
+  assert.equal(toolPoints.length, 2);
+  assert.deepEqual(
+    toolPoints.map((p) => [p.label, p.status, p.sourceKind]),
+    [
+      ["bash", "returned", "session"],
+      ["edit", "failed", "session"],
+    ],
+  );
+
+  const modelSpan = summary.spans.find((s) => s.kind === "model");
+  assert.equal(modelSpan.model, "gpt-test");
+  assert.deepEqual(modelSpan.usage, { inputTokens: 120, outputTokens: 45 });
+
+  // Historical session tool point must resolve back to the archived session record.
+  const toolDetail = await reader.detail(run.id, toolPoints[0].id);
+  assert.equal(toolDetail.record.message.toolName, "bash");
+});
+
+test("Subagents relations expose descriptive evidenceLabels", async () => {
+  const root = fileURLToPath(
+    new URL("../../test/fixtures/trace-viewer/runs/", import.meta.url),
+  );
+  const reader = await createTraceReader({ root });
+  const summary = await reader.summary("release-notes");
+  assert.equal(summary.harness, "Subagents");
+  assert.equal(summary.hasNative, true);
+  const spawn = summary.relations.find((r) => r.kind === "spawn");
+  const result = summary.relations.find((r) => r.kind === "result");
+  assert.deepEqual(spawn.evidenceLabels, [
+    "Service start",
+    "Service settled",
+    "Child initial input",
+  ]);
+  assert.deepEqual(result.evidenceLabels, [
+    "Child settled",
+    "Core input admission",
+    "Destination Session envelope",
+  ]);
+});

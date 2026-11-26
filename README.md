@@ -61,7 +61,7 @@ For the Core / Harness stage, the [Phase 0005 design on main](docs/phases/0005-c
 - `src/agent/` — capability profiles, Worker launch contracts, model catalog, Responses gateway and Services Bridge
 - `src/task/`, `src/context/`, `src/judge/` — authoritative domain state
 - `src/runtime/` — Execution processes, resources and Workspaces
-- `src/observability/` — read-only JSON/SSE event and state inspection; [terminal and Observer migration](docs/architecture/07-run-configuration.md#optional-services-and-observer-migration)
+- `trace-viewer/` — standalone web UI for saved and live Core Runs. See [install and launch](docs/operations/trace-viewer.md).
 - `scripts/`, `config/`, `services/`, `test/` — operation, configuration, integrations and tests
 
 Operational references: [built-in services](services/builtin/README.md), and [Mathlib Search](services/mathlib-search/README.md).

@@ -1,14 +1,15 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "1c2d5d5825d3511aa47d0964c11f44d107d28da5",
-  "reviewed_date": "2026-11-16",
+  "runtime_baseline": "86dfce6a1497fd1355d9d426a09c7c274ed6e389",
+  "reviewed_date": "2026-11-25",
   "scope_roots": [
     "src",
     "scripts",
     "services",
     "integrations",
     "test-support/subagents",
-    "website"
+    "website",
+    "trace-viewer"
   ],
   "scope_root_files": [
     "package.json",
@@ -433,15 +434,6 @@
       "role": "Trusted worker-owned project directory preparation, manifest validation, grant and revocation"
     },
     {
-      "path": "scripts/serve-observability.ts",
-      "category": "observation and analysis",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Persistent observer, root/worktree/database discovery and metadata lifecycle"
-    },
-    {
       "path": "scripts/service-host-entrypoint.sh",
       "category": "launch and composition",
       "chapters": [
@@ -787,60 +779,6 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Isolated module identity/completion verification and kernel replay of new safe declarations without candidate initializers"
-    },
-    {
-      "path": "src/observability/format.ts",
-      "category": "observability and reporting",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Human-facing time, IDs, state and value formatting"
-    },
-    {
-      "path": "src/observability/observation-projection.ts",
-      "category": "observability and reporting",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Shared observation projection for events, timelines and derived views"
-    },
-    {
-      "path": "src/observability/durable-event-log.ts",
-      "category": "observation and analysis",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Append component NDJSON with raw/sanitized logging modes"
-    },
-    {
-      "path": "src/observability/observability-server.ts",
-      "category": "observation and analysis",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "HTTP routes, SSE, multi-store queries, reports and bounded operator reads"
-    },
-    {
-      "path": "src/observability/observation-store.ts",
-      "category": "observation and analysis",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "SQLite event/projection schema, visibility and multi-database collections"
-    },
-    {
-      "path": "src/observability/workspace-provider.ts",
-      "category": "observation and analysis",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Workspace inspection adapter for observation routes"
     },
     {
       "path": "src/protocol/envelope.ts",
@@ -2707,6 +2645,150 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Build, upload and deploy the static website to GitHub Pages from main"
+    },
+    {
+      "path": "trace-viewer/package.json",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Independent package and host command declaration"
+    },
+    {
+      "path": "trace-viewer/murm.mjs",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Thin host command and trace server startup"
+    },
+    {
+      "path": "trace-viewer/server.mjs",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Loopback static assets, read-only API and resumable SSE"
+    },
+    {
+      "path": "trace-viewer/README.md",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Candidate package and remote viewing instructions"
+    },
+    {
+      "path": "trace-viewer/server.test.mjs",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Standalone CLI and HTTP/SSE verification"
+    },
+    {
+      "path": "trace-viewer/reader.mjs",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Versioned evidence discovery, indexing, projection and bounded raw reads"
+    },
+    {
+      "path": "trace-viewer/test/reader.test.mjs",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Reader contract verification with synthetic saved and live Core Runs"
+    },
+    {
+      "path": "trace-viewer/public/index.html",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Run list, timeline, evidence and result interface markup"
+    },
+    {
+      "path": "trace-viewer/public/app.js",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Run navigation, rendering, filtering, stream updates and evidence inspector"
+    },
+    {
+      "path": "trace-viewer/public/style.css",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Responsive layout, timeline layers and murm color themes"
+    },
+    {
+      "path": "trace-viewer/public/fonts/departure-mono.woff2",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Self-hosted departure-mono font"
+    },
+    {
+      "path": "trace-viewer/public/licenses/departure-mono.txt",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "License for the bundled departure-mono font"
+    },
+    {
+      "path": "trace-viewer/public/fonts/inter.woff2",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Self-hosted inter font"
+    },
+    {
+      "path": "trace-viewer/public/licenses/inter.txt",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "License for the bundled inter font"
+    },
+    {
+      "path": "trace-viewer/public/fonts/space-grotesk.woff2",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Self-hosted space-grotesk font"
+    },
+    {
+      "path": "trace-viewer/public/licenses/space-grotesk.txt",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "License for the bundled space-grotesk font"
+    },
+    {
+      "path": "trace-viewer/command.mjs",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Optional host trace subcommand parsing and server launch"
+    },
+    {
+      "path": "trace-viewer/LICENSE",
+      "category": "Trace Viewer",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "MIT terms bundled with the standalone package"
     },
     {
       "path": "scripts/setup",

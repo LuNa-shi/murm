@@ -23,11 +23,11 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "303e8742d65e0b47e2d87a9d4c8c65e382ec85851e0bc16016ba802eee4d0b63"
+      "sha256": "0b63a750902e565932027a182e942b9adc3edcdb3b8718a09faeb82ccdceedf2"
     },
     {
       "path": "src/core/bridge.ts",
-      "sha256": "a8c872112b7e059bb3a36758c4d5a1ce0ea80f694cd0ffff640357e9d4c1ac98"
+      "sha256": "ba92a8c29e06d5bbe59670d1be49d580bda17bd54b2807d204138d5689f661ef"
     },
     {
       "path": "src/core/startup-prompt.ts",
@@ -35,11 +35,11 @@
     },
     {
       "path": "src/core/opensandbox-backend.ts",
-      "sha256": "a1e5745fb96a4fa52633d43ec40d17bfe32d1f442fa93d69a6e135590d7be917"
+      "sha256": "b33540f4fbd04be267193efc79d432b9b125df45837d0cfce39eff788789b1a0"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "44e862e1732aea83c9319fe2cfe1a1ef83ed1bb57892b410b5719c31b3a8a3da"
+      "sha256": "81c5a670e9099ef85f57a92b437ca7a0ba80aecab668c528959aeff29bbe1a60"
     },
     {
       "path": "scripts/codex-app-server-driver.ts",

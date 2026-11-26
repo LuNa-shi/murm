@@ -37,6 +37,7 @@ interface BackendAgent {
   manager: SandboxManager;
   onEvent(event: BackendEvent): void;
   onExecutionStart?: () => void;
+  onTrace?: (record: Readonly<Record<string, unknown>>) => void;
   cursor: number;
   output: string;
   error: ErrorInfo | null;
@@ -53,7 +54,7 @@ interface BackendAgent {
   executionStopped?: boolean;
 }
 
-type WorkerRecord = { worker_sequence: number } & (
+type WorkerRecord = { worker_sequence: number; worker_at?: string } & (
   | { type: 'message_end'; message: {
       role: string;
       content?: { type: string; text: string }[];
@@ -63,6 +64,8 @@ type WorkerRecord = { worker_sequence: number } & (
   | { type: 'worker_error'; message: string }
   | { type: 'worker_exit'; code?: string | number; signal?: string }
   | { type: 'agent_start' | 'agent_settled'; aborted?: boolean }
+  | { type: 'tool_execution_start' | 'tool_execution_update' | 'tool_execution_end';
+      toolCallId: string; toolName?: string; args?: unknown; result?: unknown; partialResult?: unknown; isError?: boolean }
 );
 
 interface WorkerReply {
@@ -138,6 +141,7 @@ interface BackendSpawnOptions {
   signal?: AbortSignal;
   onEvent(event: BackendEvent): void;
   onExecutionStart?: () => void;
+  onTrace?: (record: Readonly<Record<string, unknown>>) => void;
   recordAllocation(record: AllocationRecord): void;
 }
 
@@ -240,6 +244,11 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
   const network = new DockerAgentNetwork() as unknown as AgentNetwork;
   const disk = new DockerAgentDisk(config.isolation.disk);
 
+  function trace(agent: BackendAgent, record: Readonly<Record<string, unknown>>) {
+    // Trace persistence is observational and cannot fail an Agent's execution.
+    try { agent.onTrace?.(record); } catch {}
+  }
+
   function consume(agent: BackendAgent, records: WorkerRecord[]) {
     if (agent.historyLost) return;
     for (const record of records) {
@@ -248,10 +257,17 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (!Number.isSafeInteger(sequence) || sequence !== agent.cursor + 1) {
         agent.historyLost = true;
         agent.eventPoll.stop();
+        trace(agent, { type: 'trace-gap', schemaVersion: 1, expectedWorkerSequence: agent.cursor + 1, observedWorkerSequence: sequence });
         agent.onEvent({ type: 'error', error: { code: 'SERVICE_UNAVAILABLE', message: 'Worker event history has a gap', retryable: false }, fatal: true });
         return;
       }
       agent.cursor = sequence;
+      if (['agent_start', 'agent_settled', 'tool_execution_start', 'tool_execution_update', 'tool_execution_end'].includes(record.type)) {
+        const { worker_sequence, worker_at, ...event } = record;
+        trace(agent, { type: 'native', schemaVersion: 1, workerSequence: worker_sequence,
+          ...(worker_at ? { workerAt: worker_at } : {}), eventType: record.type, event,
+          ...(record.type === 'agent_settled' ? { outcome: record.aborted ? 'aborted' : agent.outcome ?? 'completed' } : {}) });
+      }
       if (record.type === 'agent_start') {
         agent.nativeExecuting = true;
         agent.onExecutionStart?.();
@@ -310,7 +326,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
   }
 
   return {
-    async spawn({ agentId, profile, options = {} as SpawnOptions, signal, onEvent, onExecutionStart, recordAllocation }: BackendSpawnOptions) {
+    async spawn({ agentId, profile, options = {} as SpawnOptions, signal, onEvent, onExecutionStart, onTrace, recordAllocation }: BackendSpawnOptions) {
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
       if (options.forkFrom !== undefined && !driver.capabilities.contextFork) throw Object.assign(new Error('Backend does not support Context Fork'), { code: 'NOT_ALLOWED' });
       let forkSession;
@@ -321,7 +337,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         if (source.stopping || source.exited || source.historyLost || signal?.aborted || closing) throw Object.assign(new Error('Context Fork source stopped during capture'), { code: 'NOT_ALLOWED' });
       }
       const manager = new (OpenSandboxManager as unknown as SandboxManagerConstructor)({ ...config.sandbox, image: profile.image });
-      const agent: BackendAgent = { id: agentId, manager, onEvent, onExecutionStart, cursor: 0, output: '', error: null,
+      const agent: BackendAgent = { id: agentId, manager, onEvent, onExecutionStart, onTrace, cursor: 0, output: '', error: null,
         stopping: false, exited: false, eventPoll: createWorkerEventPoll(), nativeExecuting: false, pendingInputs: 0 };
       agents.set(agentId, agent);
       const workspace = options.workspace?.mode !== 'frozen-copy' ? options.workspace : undefined;

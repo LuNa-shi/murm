@@ -40,10 +40,10 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `28570d9b5cfadc3ceaa8136860bb8df2238ce951a144b996e5b2d9d5f2924111` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `303e8742d65e0b47e2d87a9d4c8c65e382ec85851e0bc16016ba802eee4d0b63` |
+| [src/core/index.ts](../../src/core/index.ts) | `0b63a750902e565932027a182e942b9adc3edcdb3b8718a09faeb82ccdceedf2` |
 | [src/core/types.ts](../../src/core/types.ts) | `6be0d8ee5d874eea232c797e6cc32ad0cca9eb1b8f65a1b67fb8d3a1d0d2550e` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `f8cea3ce6983ecd15f81ffe7a5c483f476b728a1421b40961e49073d815d7664` |
-| [src/core/services.ts](../../src/core/services.ts) | `fe9840ec2a5d25e05ac7546c2f236ca72c858d5128a1d8f464c26dd8cb5b5e9c` |
+| [src/core/services.ts](../../src/core/services.ts) | `8c1d64489bd31ab3cec3b3b295a36ebaa2e8a9982f0a4aa059a05c405f41b6d1` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
 | [src/core/backends/opensandbox.ts](../../src/core/backends/opensandbox.ts) | `5a0508b36fa7b6e556c9fcce87cda56cbfcf876563874a2a30818069e2ee24ca` |
 | [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | `f6b1d4d2bb9b30253195adfecda5abb24f17e0971c710c0007d6baac23d84734` |
@@ -3410,6 +3410,8 @@ export interface ServiceInvocation {
     assertAuthorized?: () => void;
 }
 export interface ServiceInvocationRecord {
+    /** One Bridge HTTP attempt, independent of the logical operation identity. */
+    attemptId?: string;
     runtimeId: string;
     agentId: string;
     profile: string;

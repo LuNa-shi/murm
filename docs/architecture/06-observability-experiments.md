@@ -1,142 +1,47 @@
-# 06. Observability, reports and what their evidence means
+# 06. Trace Viewer and Run evidence
 
-Observability records and projects execution facts. Task, Execution, Material, Workspace and Judge authority remain with their owning services. This chapter explains the complete evidence path: where a record comes from, how it is stored, what the HTTP projections expose, how a report is reconstructed, and where the projection loses information.
+## Process and read boundary
 
-The exact observation tables are in [11 Storage](11-storage-reference.md). Startup/configuration and report finalization are covered by [07 Run configuration](07-run-configuration.md); exact prompt sources and send-path limitations are in [08 Prompts](08-prompts.md).
+The standalone `@murm/trace-viewer` package provides the thin `murm` host command. Selecting `trace` loads the reader and HTTP server. A Run root is required via `--root <dir>` or as the first positional argument, and `--port` defaults to 8787. Port 0 asks the OS to select an available port. `--open` opens the local URL in the host browser when not running inside an SSH session. The server binds IPv4 loopback (`127.0.0.1`) and prints its URL; when an SSH session is detected (`SSH_CONNECTION` or `SSH_CLIENT`), it also prints the matching `ssh -N -L` port-forwarding command. Run the Viewer on the machine with the Run files and forward the port with the browser machine's SSH client. Core's package and Sandbox's Agent-side `swarm` CLI install independently. The package exports `@murm/trace-viewer/command` for a host dispatcher. `runTraceCommand(args)` accepts the arguments after `trace`, prints the listening URL and returns a close handle. The standalone bin registers that handle for process signals.
 
-## 1. Evidence sources during a run
+Each browser request must use a loopback Host header. Browser cross-site requests and differing Origins are rejected. The viewer serves GET, with no cross-origin sharing or runtime mutation surface. Records are inserted into the DOM as text. The browser's content security policy restricts loaded assets and connections to the viewer origin. SIGINT and SIGTERM close the listener and active connections. The viewer can start after the Harness has exited, model access has ended, and its Sandboxes have been deleted.
 
-| Source | Records produced | Interpretation |
-|---|---|---|
-| Pi adapter/Agent trace | RPC commands and records, tool starts/results, process/turn events and local conversation data | What was sent/received on the adapter boundary; raw traces are private run evidence. |
-| Bridge | Operation, current Task/Execution, request/result/error, response-sent and deferred-lifecycle boundaries | Whether a tool crossed the authenticated bound interface and what returned. |
-| Runtime | Core/Session/Execution binding, releases, owned provider cleanup, progress, timeouts and cleanup | Physical liveness and the lifecycle action selected by Runtime or its caller. |
-| Task/Context/Registry | Dispatch starts/completions, durable state/material changes, routing and registration facts | Service outcome; use the database for authoritative current records. |
-| Judge/checker | Requests, preflight, checker result/process class, application and feedback | Distinguish compiler source feedback from an unavailable checker. |
-| Workspace metadata/Git | Revision, file hashes, checkpoint, lineage and commit references | What was saved for future execution; shell work can exist before a saved revision. |
-| Run metadata/report | Repository/provider/prompt/config identity, aggregate outcome and selected evidence references | A generated summary with its own sampling, redaction and compatibility limits. |
+## Reader and API
 
-The legacy Bridge emits its normal operation logs without a separate work-unit observer callback. Judge receipts remain durable independently of response delivery; benchmark callback counters are not an observation or progress API. Current Core Service records and TaskPool controller decisions retain their own implemented recording paths.
+The reader discovers `runtime.json` in the configured directory and its nested Run output directories. It caches a rebuildable in-memory metadata index per opened Run and retains the Runtime identity plus each indexed record's relative file and byte or line reference. The reader decodes schema 1, including the historical `bots`, `botId` and `environment-report.json` fields and current `agents`, `agentId` and `harness-report.json` fields. Legacy records without native timing or archive data expose those gaps. Unknown Service operations keep their generic identities and raw evidence.
 
-`DurableEventLog` appends NDJSON synchronously, adds a timestamp/scope, and redacts sensitive field names by default into `{redacted:true,sha256}`. Agent/checker loggers can use `raw:true`; those files stay in the private experiment directory. The redaction is a field-name transformation, not a proof that arbitrary prose cannot contain sensitive information. A log append failure can surface to its caller; this logger is not an asynchronous remote delivery queue.
+The reader allows file access to discovered evidence. Raw detail rejects an invalidated source identity after truncation, replacement or changed record bytes. It rejects path escapes, symlinks, hard links and non-regular files. The Viewer server runs on Linux and checks the opened descriptor's path via `/proc/self/fd` to enforce containment after opening a file. Browsers connect over HTTP from any OS. See [Runtime evidence and Harness reports](17-harness-reporting.md) for producer details.
 
-The run also appends observations to `ObservationStore`. Each event has an ID, experiment-local sequence, timestamp, source/kind, optional Core/Session/Task/Execution/correlation IDs, visibility, original payload, Agent payload and original payload hash. Sequence has a unique `(experiment_id, sequence)` constraint and normally uses the current maximum plus one. Duplicate IDs/sequences are not silently merged by `append`. Append emits in-process events after writing; the long-lived HTTP observer also reads SQLite because its writer commonly lives in another process.
+All routes are relative to the viewer origin. Run and record IDs are URL-encoded path segments.
 
-Sources: [durable logger](../../src/observability/durable-event-log.ts), [Observation Store](../../src/observability/observation-store.ts), [Runtime](../../src/runtime/runtime.ts).
+| GET route | Data |
+| --- | --- |
+| `/api/runs` | Run summaries discovered below the root |
+| `/api/runs/:id` | Runtime identity, Agent lanes, intervals, collaboration, status, gaps and file references |
+| `/api/runs/:id/events` | Paged record metadata, optionally filtered by `agentId` or `type`, limited to 1,000 per page |
+| `/api/runs/:id/records/:recordId` | A selected source record, links to related raw files and available cross-record evidence |
+| `/api/runs/:id/files?path=…` | A bounded range of a known evidence file read as UTF-8 text |
+| `/api/runs/:id/live` | Resumable SSE batches plus periodic report and file refresh notifications |
 
-## 2. Store, redaction and projections
+The event API cursor is opaque. Start with no cursor and pass the returned cursor to request the next page. For live subscriptions the server pulls up to 250 new records per batch, then waits 500 ms once it reaches the indexed tail. SSE includes an event ID suitable for `Last-Event-ID`. On reconnect that header takes precedence over the query cursor. Quiet streams get a `refresh` event every ten seconds so the browser can pick up report and archive changes. The listener waits for a slow client to drain its response before sending another batch. New complete JSONL lines are indexed incrementally and incomplete trailing lines wait for their newline. The index has no file writes in the source Run.
 
-The Observation database uses WAL, foreign keys and a 5-second busy timeout. Experiment status is `CREATED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED` or `FINISHED`; it is not a Task state. `registerExperiment` updates an existing nonconflicting root/status but does not replace all metadata. `finishExperiment` stamps end/status. A shared database connection allows an observation insert to compose with an existing caller transaction.
+## Timeline and evidence inspection
 
-Each observation stores two payload columns. Agent projection recursively redacts sensitive keys, bounds strings to 4000 characters, and keeps at most 100 array elements plus a truncation marker. `visibility` (`private`, `operator`, `agent`) is descriptive metadata: an Agent-view query selects `agent_payload_json`, and does not exclude every row labeled private. Direct operator-view reads obtain the original payload. The generated report has another separate sanitization pass.
+The viewer shows execution, tool, model, Service and input activity against a common time scale with explicit per-Agent sub-tracks (`Input`, `Model`, `Tools`, and `Service` when present). An overview minimap navigator and NLE-style pointer controls (wheel to zoom around the cursor, horizontal swipe or drag to pan, `W`/`S`/`A`/`D`/`0` shortcuts, plus `Duration` and equal-width `Sequence` modes) let operators inspect dense multi-hour runs without visual bar overlap; dense back-to-back spans at wide zoom merge into click-to-zoom sequential clusters instead of overlapping. Agent filters, the window-synced trajectory list, and the paged events table keep individual records selectable. Run summaries include up to 1,000 timeline entries total across recorded intervals, open intervals and point observations. Points include accepted Core inputs and, for historical runs without native tool boundaries, archived Session `toolResult` timestamps. The timeline indicates when entries fall outside that view and the event pages retain their records. Clicking an interval, point or event opens its associated source records in a Structured / Raw JSON evidence inspector. Clicking a collaboration link opens its evidence and model-context matches. Files and report contents are retrieved only when selected. The Run status, business outcome and cleanup receipts are distinct views.
 
-| Query | Implemented bounds and behavior |
-|---|---|
-| `listEvents` | Ascending sequence after a cursor; optional Execution/Task/Core/Session/source/kinds; 1–1000 results. Reads limit+1 to report `has_more` and `next_cursor`. |
-| `listRecentEvents` | Tail query in descending SQL order, then returned ascending; up to 2000 events. |
-| `listLatestEntityEvents` | Latest matching row per Task, Execution and Core, de-duplicated and capped; seeds state from entities older than the recent window. |
-| `listActiveTimelineEvents` | Latest assignments without a later release plus latest Core states; bounded seed set for long-lived active work. |
-| `getEvent`/operator API | Can request either stored payload form directly; this is a local store API, not the default generic HTTP event stream. |
+The execution layer uses native `agent_start` and `agent_settled` observations for intervals. Each boundary retains its timestamp source. Agent input admission, readiness and settlement observations remain separately visible. A Run with no native start evidence can still show actual recorded model and Service activity. An accepted input does not establish execution or consumption. Unknown records, missing edges and ledger or Worker trace gaps remain explicit.
 
-An `ObservationStoreCollection` discovers several stores and supplies a read projection. The experiment list de-duplicates IDs using newer metadata, but event retrieval uses the first store containing the experiment; it does not merge two complete histories with the same experiment ID. This matters when copying/importing the same run into several roots.
+Subagents links use authenticated caller and parent or destination identities, and matching request, input, operation or message IDs where the records supply them. For a returned child result, the reader matches the archived destination Session envelope to the original accepted Core input and the child's original event sequence. This relationship becomes available when the destination Session archive is readable. A message receipt is independent of evidence that its payload entered the recipient's model context. Selecting the handoff checks structured message identities in the recipient's saved model inputs and links the original requests. This lookup reads at most 8 MiB per candidate request and skips unavailable or larger bodies. Inspect the model request and final artifact or checker result separately to assess adoption. All other Service operations remain inspectable as generic calls.
 
-Sources: [store and collection](../../src/observability/observation-store.ts), [store tests](../../test/observation-store.test.ts).
-
-## 3. Server lifecycle and complete HTTP surface
-
-The persistent entry is `dist/scripts/serve-observability.js`. It defaults to `experiments`, loopback host, port 8787, database `<root>/.observability/observability.sqlite`, and metadata `<root>/.observability/server.json`. Repeated `--root` and `--scan-root` add roots; conventional `.worktrees`/`.worktree` paths are inferred even before they exist. Discovery scans for `observability.sqlite` to depth 5, excluding `.git` and `node_modules` directories. This keeps worktree-local historical runs visible to one server.
-
-A healthy existing daemon identified by metadata is reused when its host, access mode and authentication version match the requested listener. Reuse returns that daemon's metadata with `reused: true` and exits without importing files or changing its registered observations. A new server returns its listener, database and discovery roots. New daemon metadata is written through temporary-file rename. SIGINT/SIGTERM closes the server/stores and removes metadata only if it still belongs to that process.
-
-The standalone server accepts `--name value` or `--name=value` for these options. Unknown options, including the retired `--report`, `--experiment-dir` and `--no-raw-logs` import flags, fail during argument parsing before creating database or metadata directories. This launcher does not implement a `--help` branch.
-
-| Option | Default / meaning |
-|---|---|
-| `--root` | `experiments`; first explicit value selects the primary root, later values add roots. |
-| `--scan-root` | Repeatable additional worktree/repository discovery roots. |
-| `--db` | `<primary root>/.observability/observability.sqlite`. |
-| `--metadata` | `<primary root>/.observability/server.json`. |
-| `--host` | `127.0.0.1`. |
-| `--advertise-host` | Null; optional published address distinct from the bind host. |
-| `--port` | `8787`; integer 0–65535, with 0 allowing an ephemeral port. |
-
-Healthy-daemon reuse returns the existing metadata and exits; passing a different bind address to this invocation does not reconfigure that existing process.
-
-The HTTP server accepts GET only; writes return 405. Defaults remain read-only: there is no HTTP action to take, complete, restart or modify a Task. The retired React client, static assets and Vite entry have been removed. After operator admission, `/`, `/index.html`, `/app.js`, `/styles.css` and other non-API paths return JSON 404 with `NOT_FOUND`; no filesystem static fallback remains. `/health` and the authenticated JSON/SSE surface below remain available. The server does not allocate Agents, send model inputs or change lifecycle state.
-
-### Routes
-
-| GET route | Main result |
-|---|---|
-| `/health` | Observer liveness. |
-| `/api/experiments?limit=...` | Experiment summaries and registry revision hash. |
-| `/api/experiments/stream` | SSE registry updates named `experiments`. |
-| `/api/experiments/changes?since=...` | Long request waiting for registry revision change or timeout. |
-| `/api/experiments/<id>` | Sanitized experiment metadata, event count, Core IDs, latest sequence. |
-| `/api/experiments/<id>/events` | Cursor page with common filters and forced Agent payload. |
-| `/api/experiments/<id>/overview` | Bounded seed/tail events, timeline, tool counts and truncation metadata. |
-| `/api/experiments/<id>/stream` | SSE observations after explicit cursor, optional compact `overview=1`. |
-| `/api/experiments/<id>/timeline` | Core lanes, states and assignment/release segments. |
-| `/api/experiments/<id>/execution-detail?execution_id=...` | Bounded lifecycle and tool start/result records for one Execution. |
-| `/api/experiments/<id>/execution-insight?execution_id=...` | Best-effort initial prompt/Task instructions/Workspace/tool-surface projection. |
-| `/api/experiments/<id>/tasks/<task_id>` | Reconstructed Task fields, Execution IDs and truncation indicator. |
-| `/api/experiments/<id>/materials/<material_id>` | Readable Material summary/preview plus provenance from stored events. |
-| `/api/experiments/<id>/report` | Report summary, selected raw summary fields, and adjacent analysis Markdown/text. |
-| `/api/executions/<execution_id>?experiment_id=...` | Execution projection plus filtered observations. |
-| `/api/executions/<execution_id>/workspace?experiment_id=...` | Runtime/observed Workspace metadata, file inventory and revision list. |
-| `/api/tasks/<task_id>` | Attached Task Service's Task/children/Executions, or an event projection requiring experiment ID. |
-| `/api/context/materials` | Attached Context Service read, or published-Material projection requiring experiment ID. |
-| `/api/services` | Static built-in catalog service summaries, not a captured per-run dynamic Registry/profile. |
-
-Common event filters include `after_sequence`, `execution_id` on the event route, `task_id`, `core_id`, `session_id`, `source`, comma-separated `kinds`, and `limit`. Invalid cursor/limit produces an error. The generic HTTP event surface always uses Agent projection, even when `view=operator` is requested. Unknown experiment is 404; malformed query/handler failure generally returns 400. An unmatched subroute beneath an existing experiment currently falls back to its summary.
-
-### Exposure boundary
-
-Operator admission covers event, detail, report and owner-service routes. A denied request with operator authentication configured receives a Basic challenge with the `murm Operator` realm. Direct attached Task/Context routes can return owner-service data, Workspace projections can include path metadata, and report analysis Markdown is capped at 80,000 characters per file. Operator access grants access to those route-specific projections.
-
-Sources: [server](../../src/observability/observability-server.ts), [daemon entry/discovery](../../scripts/serve-observability.ts), [server tests](../../test/observability-server.test.ts), [worktree discovery tests](../../test/observability-worktree-discovery.test.ts).
-
-## 4. Bounds, SSE and non-UI consumers
-
-The initial overview combines the last 2000 relevant events, at most 750 latest-entity seeds, and a recent tool projection. It compacts records and caps the overview at 50,000 events/4,000,000 bytes; its normal candidate set is much smaller because of the tail/seed limits. Returned metadata distinguishes payload truncation, history-window truncation, start/end sequence, seed count and whether tool counts are windowed. Tool counts deduplicate start/end records by Execution plus tool-call ID in the server's recent window. They are not necessarily all-run counts.
-
-The timeline combines the last 1000 lifecycle events with up to 1000 active assignment/latest-state seeds, so an Execution assigned long before the recent tail can remain visible. Core-state intervals and assignment/release segments are reconstructed independently. Missing historic releases/assignments and imported synthetic timestamps can limit precision.
-
-Execution detail scans at most 10,000 observations and returns selected lifecycle/tool events within 4,000,000 bytes, with explicit truncation metadata. Execution insight uses a bounded scan and recognizes older tool-return shapes such as `murm_task_get` and `murm_execution_get`; it is not a canonical concatenation of every prompt sent to the model. Modern flows, redaction, omitted calls or window limits can leave its prompt/instruction fields empty. Use the prompt catalog and private adapter records for exact send-path analysis.
-
-SSE reads SQLite every 250 ms in batches of up to 1000 new events and sends a keepalive every 15 seconds. This crosses process boundaries that an in-memory EventEmitter would miss. The cursor is the explicit `after_sequence` query; the stream does not implement a complete Last-Event-ID protocol. A consumer owns its reconnect cursor and sequence deduplication. The overview stream selects only the overview event kinds; it is not a full transcript export.
-
-Registry updates use filesystem watches debounced by 50 ms, plus a 2-second rescan while subscribers/waiters exist. SSE publishes registry revision changes; the fallback long request waits up to 25 seconds. Watches are advisory and can miss an inaccessible/removed path; rescan/restart supplies later recovery.
-
-The retained pure `src/observability/observation-projection.ts` folds bounded Task, Execution and Material observations plus a timeline into data objects. It derives queues, correlates tool calls and creates Core trace data, using plain JavaScript format helpers. Node consumers can import these modules directly; they are not new public Core package exports, and the HTTP server keeps its existing bounded projections. Material consumers are inferred from read/consume/use/action-like event names and references, rather than certified useful reuse. These functions remain covered by the Node projection test after removal of the React hook and components.
-
-For registered Observation Stores, the following loopback commands access the same retained query and streaming endpoints without a browser. Select an actual ID from the experiment registry before running the ID-specific commands. A remote or password-protected listener still requires its configured operator authentication.
-
-```sh
-node dist/scripts/serve-observability.js --root experiments --port 8787
-curl --fail http://127.0.0.1:8787/api/experiments
-curl --fail "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/overview"
-curl --fail "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/events?after_sequence=0&limit=100"
-curl --no-buffer "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/stream?after_sequence=0"
-```
-
-These APIs inspect registered observation databases; they do not automatically import a Core Runtime's evidence or replace live Harness control. Current-run input, status, stop and saved-result commands are documented in [Harness reporting](17-harness-reporting.md#foreground-harness-control). The old graphical navigation, theme, chart rendering and browser-local refresh/cache policy have no replacement UI. Their required data access remains in the documented APIs and pure modules. [Launch and migration](07-run-configuration.md#optional-services-and-observer-migration) maps each retired group to its retained owner and checks.
-
-Sources: [server projection](../../src/observability/observability-server.ts), [observation projection](../../src/observability/observation-projection.ts), [format](../../src/observability/format.ts), [projection test](../../test/observation-projection.test.ts).
-
-## 5. Workspace views
-
-`FileWorkspaceProvider` follows only a `workspace_ref` already present in the selected Execution's observed assignment/Workspace events. It reads `.swarm/workspace.json` and numeric revision JSON files, returning file metadata and revision/checkpoint lineage. It does not expose an arbitrary path-reading endpoint. Its initial event lookup is one 1000-row page, so an older/sparse projection can fail to find the latest Workspace. A deleted/moved local Workspace cannot be reconstructed from a path string alone.
-
-Sources: [Workspace provider](../../src/observability/workspace-provider.ts), [Workspace observer tests](../../test/observability-workspace.test.ts).
+The [offline demo](../operations/trace-viewer.md#replay-the-included-demo) exercises this path with a synthetic Subagents Run. The same reader opens the fixture's Core ledger, Service calls, raw model exchanges, Session archives and final file directly from disk.
 
 ## Historical research tooling
 
-The research tree at `dc011003fa0354a881b7a3ba9ba901fe36cbcac9` preserves benchmark report construction, parallelism accounting, offline research analysis, historical importer and their tests. Current observation queries read actual registered event stores. They no longer synthesize observations from benchmark JSON. Historical report fields and results retain the semantics of their recorded source revision.
+The research tree at `dc011003fa0354a881b7a3ba9ba901fe36cbcac9` preserves benchmark report construction, parallelism accounting, offline research analysis, historical importer and their tests. Historical report fields and results retain the semantics of their recorded source revision.
 
 Historical implementation details remain in the [research observation manual](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/docs/architecture/06-observability-experiments.md). Formal evidence structure follows the [experiment workflow](../workflows/experiment.md) and [report template](../experiments/TEMPLATE.md).
 
-## 8. What must be captured to answer a runtime question
+## Evidence needed for runtime questions
 
 | Question | Evidence needed |
 |---|---|
@@ -153,10 +58,6 @@ Missing evidence is `unknown`. Generated docs and schema checks make source chan
 ## Runtime and Harness finalization evidence
 
 Public Core records input admission, events, Service requests and cleanup under their original Runtime/Agent/request identities. The Harness report retains business failure, Core cleanup, cleanup failure and report-save failure independently. An Agent's `settled` event describes its execution boundary. The saved-result and foreground projections expose actual statuses and receipts, including unknown execution and pending cleanup. [Harness reporting](17-harness-reporting.md) explains the storage, redaction and return paths.
-
-The standalone Observer defaults to loopback. Remote binding requires its operator credential before state is read. Daemon reuse checks the current health/authentication protocol, and metadata omits the password. Its actual access policy and API routes are described above.
-
-`DurableEventLog` supports explicitly requested raw audit files with owner-private permissions. Its open path rejects symbolic links and hard-linked targets before appending. Core and Harness reports retain the original run identities and cleanup receipts described above. The embedded benchmark audit directory owner, seven-day retention sweep and pruning CLI have been retired with their launcher. Run data retention belongs to the host that owns its output directory.
 
 ## Independent service evidence
 

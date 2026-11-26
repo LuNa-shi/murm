@@ -708,61 +708,6 @@ CREATE TABLE IF NOT EXISTS checker_preflights (
 );
 ```
 
-### Observation database
-
-Source: [src/observability/observation-store.ts](../../src/observability/observation-store.ts); source SHA-256: `a4247af39e55b8146a85d0689ecb5a7397d83376daa2a757cf0b2082de7ec206`.
-
-```sql
-PRAGMA foreign_keys = ON;
-PRAGMA busy_timeout = 5000;
-PRAGMA journal_mode = WAL;
-
-CREATE TABLE IF NOT EXISTS experiments (
-  experiment_id TEXT PRIMARY KEY,
-  status TEXT NOT NULL CHECK (status IN ('CREATED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'FINISHED')),
-  started_at TEXT NOT NULL,
-  ended_at TEXT,
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS observation_events (
-  event_id TEXT PRIMARY KEY,
-  experiment_id TEXT NOT NULL REFERENCES experiments(experiment_id),
-  sequence INTEGER NOT NULL,
-  occurred_at TEXT NOT NULL,
-  source TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  core_id TEXT,
-  session_id TEXT,
-  task_id TEXT,
-  execution_id TEXT,
-  correlation_id TEXT,
-  visibility TEXT NOT NULL CHECK (visibility IN ('private', 'operator', 'agent')),
-  payload_json TEXT NOT NULL,
-  agent_payload_json TEXT NOT NULL,
-  payload_hash TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  UNIQUE (experiment_id, sequence)
-);
-
-CREATE INDEX IF NOT EXISTS observation_events_experiment_sequence
-  ON observation_events(experiment_id, sequence);
-CREATE INDEX IF NOT EXISTS observation_events_execution_sequence
-  ON observation_events(execution_id, sequence);
-CREATE INDEX IF NOT EXISTS observation_events_kind_sequence
-  ON observation_events(kind, sequence);
-CREATE INDEX IF NOT EXISTS observation_events_experiment_kind_sequence
-  ON observation_events(experiment_id, kind, sequence);
-CREATE INDEX IF NOT EXISTS observation_events_experiment_task_sequence
-  ON observation_events(experiment_id, task_id, sequence);
-CREATE INDEX IF NOT EXISTS observation_events_experiment_execution_sequence
-  ON observation_events(experiment_id, execution_id, sequence);
-CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
-  ON observation_events(experiment_id, core_id, sequence);
-```
-
 ### Constructor-added schema objects
 
 Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `73d37d53b15d4a745ccfa0354b0f93d365de0c33af8de0139b7683291233614d`.

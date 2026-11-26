@@ -22,6 +22,14 @@ The append writer uses a bounded queue of 4,096 rows or 8 MiB alongside a batch 
 
 Core scrubs the known upstream header, sandbox, Worker, Bridge, model and explicit `secretEnv` credential values from Agent output/errors and public diagnostic snapshots. The ledger stores Profile environment keys and a prompt digest. It projects Service results to their observation fields and excludes their bodies and bindings. The scrubber matches configured literal values and bearer/basic credential portions. Transformed secrets, newly discovered secrets and bytes written into private artifacts require separate inspection.
 
+## Native Trace and Bridge attempts
+
+The Worker timestamps each published record as it assigns `worker_sequence`. The shared OpenSandbox backend reads Pi and Codex Worker history through the regular RPC poll and input receipt paths. It discards duplicate prefixes. On a fatal history gap it stops polling, sends the expected and observed sequence to its internal Trace callback, and reports the gap to Core. Both executors publish `agent_start` and `agent_settled`. Pi also publishes the three `tool_execution_*` events, which preserve the original `toolCallId`. The callback retains those events and the backend's observed outcome on each settlement.
+
+Core redacts each callback payload, binds the host-owned Agent ID and appends a `native` or `trace-gap` evidence row with `schemaVersion: 1`. The ledger's `at` is the Core observation time. Native `workerAt`, when present, is the Worker publication time. Workers built before the timestamp field can still send the existing records, which preserve the Core observation timestamp. Deploy a rebuilt Worker to collect the Worker timestamps. Neither callback delivery nor evidence persistence changes the public Runtime event stream or the Agent's queue, execution or cleanup behavior. Trace uses the existing bounded evidence queue, including the loss counters in the Runtime summary.
+
+The Bridge assigns an `attemptId` for each incoming HTTP attempt. Authenticated Service invocation observations and private Service Trace records carry that ID. Start and settle can be correlated within the attempt while `operation_id` keeps its existing logical identity. An adapter retry inside one Bridge attempt shares the same ID. Client disconnect and authorization still use the existing mechanisms, with unknown outcomes remaining unknown. Earlier records without attempt IDs can only be paired when their original identity admits a unique pair.
+
 ## Private complete traces
 
 Runtime close joins the native Session exports and drains the Gateway and Bridge trace writers. The optional Service state hooks run once after the Bridge closes. These files are private run data and can contain work text, tool commands, source, or Service results. Keep them in the ignored experiments directory or a separate private output root.

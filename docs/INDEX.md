@@ -19,7 +19,7 @@ This is the entry point to current maintained documentation. Historical design d
 | What are the murm-specific working rules? | [workflows/development.md](workflows/development.md), [workflows/experiment.md](workflows/experiment.md), [TypeScript migration inventory](workflows/typescript-migration-inventory.md) | Repo conventions, verification and experiment boundaries |
 | Where are formal experiments? | [experiments/INDEX.md](experiments/INDEX.md) | Run IDs, evidence and report template |
 | Why was a major design decision made? | [adr/INDEX.md](adr/INDEX.md) | Decision rationale |
-| How are tools operated? | [operations/observability.md](operations/observability.md) | Operational references |
+| How are tools operated? | [Trace Viewer](operations/trace-viewer.md) | Operational references |
 
 Root [GLOSSARY.md](../GLOSSARY.md) defines the Mission/Task/Agent/Execution/Material/Workspace vocabulary shared by the approved [Phase 02 design](phases/0002-task-material-workspace/01-model-and-runtime.md) and current implementation. Architecture explains the registered Agent path and explicitly labels retained compatibility APIs. Historical experimental reconstruction guidance is preserved in the [research tree](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/.codex/skills/experiment-analysis/SKILL.md).
 

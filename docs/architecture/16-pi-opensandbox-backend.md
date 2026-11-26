@@ -28,6 +28,8 @@ The gateway applies the same per-request authorization, revocation, deadline, tr
 
 The following sections describe shared Sandbox controls and the original Pi-specific transport where named.
 
+The [Native Trace contract](17-harness-reporting.md#native-trace-and-bridge-attempts) describes the internal callback at the Worker history consumer and how Core persists the evidence. Worker prep and execution can proceed independently of a running Trace Viewer.
+
 ## Startup and ownership
 
 The Runtime opens the backend with its own identity, Bridge and model access. The backend keeps one provider manager per Agent, allowing the selected Profile to supply its image. Spawn registers the manager before its first provider request. The provider metadata contains hashed Runtime, Agent and resource identities. The internal manager argument named `executionId` carries the Agent resource key on this path. It does not create a TaskPool Execution.

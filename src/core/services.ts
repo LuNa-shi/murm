@@ -25,6 +25,8 @@ export interface ServiceInvocation {
 }
 
 export interface ServiceInvocationRecord {
+  /** One Bridge HTTP attempt, independent of the logical operation identity. */
+  attemptId?: string;
   runtimeId: string;
   agentId: string;
   profile: string;

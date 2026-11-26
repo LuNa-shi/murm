@@ -449,6 +449,8 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         agent.controller.signal.throwIfAborted();
         const resource = await backend.spawn({ agentId: info.id, profile: agent.profile, options: parameters,
           signal: agent.controller.signal, onEvent: (event: any) => emit(agent, event),
+          onTrace: ({ type, ...record }: Readonly<Record<string, unknown>>) => records.record(String(type),
+            redactor.value({ ...record, agentId: info.id }) as Record<string, unknown>),
           recordAllocation: (allocation: any) => records.record('spawn', { ...allocation, agentId: info.id,
             requestId: redactor.text(requestId), sandboxId: redactor.text(allocation.sandboxId) }),
           onExecutionStart: () => {
