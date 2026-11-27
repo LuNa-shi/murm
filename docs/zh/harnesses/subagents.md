@@ -5,6 +5,15 @@ section: 协作机制
 order: 7
 ---
 
+## 在普通项目中运行
+
+```sh
+cd my-project
+murm --harness subagents --prompt "根据解析测试修复当前项目"
+```
+
+Subagents 将 prompt 发给 Root，并为 Root 和每个 Child 安装固定的项目树。进程内 RPC 可选输入发给 Root。 调用 TS SDK 的旧示例和基准测试专用参数见下文。
+
 **Subagents** 建模了一套层级协作团队：由主 Agent（`/root`）拆解目标、递归派生命名子 Agent（最多 `maxDepth` 层）、通过消息实时协同并最终整合交付。源码：[examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents)。
 
 宿主统一从 `@murm/core` 导入公开 SDK。 `createSubagentsHarness` 是示例源码。安装步骤见 [SDK 指南](../sdk.md)。

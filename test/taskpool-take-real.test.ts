@@ -6,9 +6,9 @@ import { join } from 'node:path';
 import { createRuntime } from '@murm/core';
 
 import { ServiceRegistry } from '@murm/core';
-import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../src/harnesses/taskpool/task-service.js';
-import { createTaskPoolAgentCoordinator } from '../src/harnesses/taskpool/agent-coordinator.js';
-import { executionEnvelope } from '../src/harnesses/taskpool/prepare-inputs.js';
+import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../examples/taskpool/task-service.js';
+import { createTaskPoolAgentCoordinator } from '../examples/taskpool/agent-coordinator.js';
+import { executionEnvelope } from '../examples/taskpool/prepare-inputs.js';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { createTaskPoolTakeUpstream } from './fixtures/taskpool-task-upstream.js';
 import { createAcceptanceDeadline } from './fixtures/taskpool-model-acceptance.js';

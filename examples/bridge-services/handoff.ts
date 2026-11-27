@@ -4,11 +4,10 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry } from '@murm/core';
-import type { CloseReceipt, RuntimeEvent } from '@murm/core';
+import type { CloseReceipt, FileTree, Runtime, RuntimeEvent } from '@murm/core';
 import { handoffConfig, type HandoffConfig } from './handoff-config.js';
 import { createMessageService } from './messages.js';
 
-const receivedFile = 'received.txt';
 const writerPrompt = 'Publish the input file through the messages Service.';
 const readerPrompt = 'Read the messages Service and save the received text.';
 const failure = (code: string) => Object.assign(new Error(code), { code });
@@ -17,15 +16,18 @@ export async function runMessageHandoff(
   config: HandoffConfig,
   abort: AbortSignal,
   onEvent: (event: RuntimeEvent) => void = () => {},
+  project?: { files: FileTree; prompt: string; artifact: string; ready(): void; observe(runtime: Runtime): () => void },
 ) {
   abort.throwIfAborted();
   const signal = AbortSignal.any([abort, AbortSignal.timeout(config.workTimeoutMs)]);
+  const receivedFile = project?.artifact ?? 'received.txt';
   const key = `handoff-${randomUUID()}`;
-  const expected = randomBytes(24).toString('hex');
-  const calls = new Set<string>();
+  const expected = project ? undefined : randomBytes(24).toString('hex');
+  type ObservedCall = Parameters<NonNullable<Parameters<typeof createMessageService>[1]>>[0];
+  const calls = new Map<string, ObservedCall>();
   const callKey = (agentId: string, operation: string, operationId: string) => JSON.stringify([agentId, operation, operationId]);
   const messages = createMessageService(config.externalMessages, call => {
-    calls.add(callKey(call.agentId, call.operation, call.operationId));
+    if (call.key === key) calls.set(callKey(call.agentId, call.operation, call.operationId), call);
   });
   const services = new ServiceRegistry();
   services.registerService(messages);
@@ -42,10 +44,12 @@ export async function runMessageHandoff(
   });
 
   const unsubscribe = runtime.onEvent(onEvent);
+  const closeObservation = project?.observe(runtime);
   const cancelled = Promise.withResolvers<never>();
   void cancelled.promise.catch(() => {});
   const abortListener = addAbortListener(signal, () => cancelled.reject(signal.reason));
   let readerId: string | undefined;
+  let writtenText: string | undefined;
   const submissions: { agentId: string; requestId: string; inputId?: string }[] = [];
 
   async function runRole(agentId: string, operation: 'put' | 'get', input: string) {
@@ -72,7 +76,9 @@ export async function runMessageHandoff(
       });
       await Promise.race([Promise.all([admission, execution.promise]), cancelled.promise]);
       signal.throwIfAborted();
-      if (!calls.has(callKey(agentId, operation, operationId))) throw failure('HANDOFF_SERVICE_UNCONFIRMED');
+      const call = calls.get(callKey(agentId, operation, operationId));
+      if (!call || (operation === 'put' ? call.author !== agentId : call.text !== writtenText)) throw failure('HANDOFF_SERVICE_UNCONFIRMED');
+      return call.text;
     } finally {
       unsubscribeRole();
     }
@@ -84,15 +90,18 @@ export async function runMessageHandoff(
   try {
     signal.throwIfAborted();
     const writer = await Promise.race([runtime.spawn({ requestId: 'writer', profile: 'writer',
-      files: { 'handoff-input.json': { encoding: 'utf8', data: JSON.stringify({ key, text: expected }) } } }), cancelled.promise]);
+      files: project?.files ?? { 'handoff-input.json': { encoding: 'utf8', data: JSON.stringify({ key, text: expected }) } } }), cancelled.promise]);
     signal.throwIfAborted();
-    await runRole(writer.id, 'put',
-      `Publish ${key}: run swarm messages put --input handoff-input.json --request-id ${key}-put, then finish.`);
+    project?.ready();
+    writtenText = await runRole(writer.id, 'put', project
+      ? JSON.stringify({ task: project.prompt, instruction: `Inspect the local project. Use swarm messages put to publish a concrete observation for this task under key ${key} with --request-id ${key}-put. Then finish.` })
+      : `Publish ${key}: run swarm messages put --input handoff-input.json --request-id ${key}-put, then finish.`);
     signal.throwIfAborted();
-    const reader = await Promise.race([runtime.spawn({ requestId: 'reader', profile: 'reader' }), cancelled.promise]);
+    const reader = await Promise.race([runtime.spawn({ requestId: 'reader', profile: 'reader', ...(project ? { files: project.files } : {}) }), cancelled.promise]);
     readerId = reader.id;
-    await runRole(reader.id, 'get',
-      `Receive ${key}: run swarm messages get --key ${key} --request-id ${key}-get | jq -er .text > ${receivedFile}, then finish.`);
+    await runRole(reader.id, 'get', project
+      ? JSON.stringify({ task: project.prompt, instruction: `Check the project context for the writer's observation. Run swarm messages get --key ${key} --request-id ${key}-get | jq -er .text > ${receivedFile} to preserve the exact Service handoff. Then finish.` })
+      : `Receive ${key}: run swarm messages get --key ${key} --request-id ${key}-get | jq -er .text > ${receivedFile}, then finish.`);
     business = { status: 'completed', value: { handoffObserved: true } };
   } catch (error) {
     const code = signal.aborted ? (abort.aborted ? 'HANDOFF_CANCELLED' : 'HANDOFF_TIMEOUT')
@@ -110,6 +119,7 @@ export async function runMessageHandoff(
   } catch {
     coreClose = { status: 'unknown' };
   }
+  closeObservation?.();
   let artifactVerification: { status: 'not-requested' | 'passed' | 'pending' | 'failed' } = { status: 'not-requested' };
   const handoffMissing = business.status === 'failed' && business.error.code === 'HANDOFF_SERVICE_UNCONFIRMED';
   if (readerId !== undefined || handoffMissing) {
@@ -121,7 +131,7 @@ export async function runMessageHandoff(
         const actual = await readFile(join(files, receivedFile), {
           encoding: 'utf8', signal: AbortSignal.timeout(config.cleanupTimeoutMs),
         });
-        artifactVerification = { status: actual === `${expected}\n` ? 'passed' : 'failed' };
+        artifactVerification = { status: actual === `${expected ?? writtenText}\n` ? 'passed' : 'failed' };
       } catch { /* The expected bytes could not be verified. */ }
     }
   }

@@ -66,7 +66,9 @@ function serial<T>(member: Member, work: () => Promise<T>) {
 
 export function createSubagentsController(
   runtime: Runtime,
-  { maxDepth, childWorkspace }: { maxDepth: number; childWorkspace?: SpawnOptions['workspace'] },
+  {
+    maxDepth, childWorkspace, childFiles, startupSignal,
+  }: { maxDepth: number; childWorkspace?: SpawnOptions['workspace']; childFiles?: SpawnOptions['files']; startupSignal?: AbortSignal },
 ) {
   const root = createMember('/root');
   const byPath = new Map([[root.path, root]]);
@@ -330,10 +332,12 @@ export function createSubagentsController(
           const child = entry.destination;
           try {
             if (!child.id) {
+              startupSignal?.throwIfAborted();
               const agent = await runtime.spawn({ profile: 'child', requestId: entry.id, parentId: caller.id,
-                ...(call.fork_turns === 'none' ? {} : { forkFrom: caller.id }), workspace: childWorkspace });
+                ...(call.fork_turns === 'none' ? {} : { forkFrom: caller.id }), workspace: childWorkspace, files: childFiles });
               child.id = agent.id;
               byId.set(agent.id, child);
+              startupSignal?.throwIfAborted();
             }
           } catch (error) {
             if ((error as { code?: string }).code !== 'OPERATION_UNKNOWN') byPath.delete(path);

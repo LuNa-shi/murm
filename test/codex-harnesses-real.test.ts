@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
@@ -19,7 +19,22 @@ test('installed normal Subagents adopts a Service handoff through two overlappin
   assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
   const evidenceDir = await createNativeEvidenceDirectory('codex-subagents');
   const installed = await installNativeNotesExample();
-  const outputDir = join(evidenceDir, 'output');
+  const outputRoot = join(evidenceDir, 'output');
+  const project = join(installed.directory, 'plain-project');
+  await mkdir(project);
+  await writeFile(join(project, '.settings'), 'seed configuration');
+  await writeFile(join(project, 'seed.bin'), Buffer.from([0, 179, 255]));
+  await chmod(join(project, 'seed.bin'), 0o755);
+  const uuid = /^[a-f0-9-]{36}$/;
+  let runtimeOutput = outputRoot;
+  async function currentRuntimes() {
+    const runs = (await readdir(outputRoot).catch(() => [])).filter(id => uuid.test(id));
+    if (runs.length !== 1) return [];
+    runtimeOutput = join(outputRoot, runs[0]);
+    return (await readdir(runtimeOutput)).filter(id => uuid.test(id));
+  }
+  const initialFileCheck = "test \"$(pwd)\" = /workspace/project && test -x seed.bin && test \"$(od -An -tx1 seed.bin | tr -d ' \\n')\" = 00b3ff && grep -qx 'seed configuration' .settings";
+
   const handoff = 'SERVICE_HANDOFF_225';
   let arrivals = 0;
   let childStarted = false;
@@ -48,7 +63,7 @@ test('installed normal Subagents adopts a Service handoff through two overlappin
     const ordinal = ++arrivals;
     let stage = 'bounds';
     try {
-      assert.ok(!failure && ordinal <= 12);
+      assert.ok(!failure && ordinal <= 14);
       assert.equal(request.method, 'POST');
       assert.equal(request.url, '/v1/responses');
       const chunks = [];
@@ -71,7 +86,7 @@ test('installed normal Subagents adopts a Service handoff through two overlappin
             childStarted = true;
             await childMayProceed;
           }
-          item = tool('child-work', "printf '%s' CHILD_FILE_225 > child.txt; sleep 0.2");
+          item = tool('child-work', initialFileCheck + " && printf '%s' CHILD_FILE_225 > child.txt && sleep 0.2");
         } else {
           stage = 'child-handoff';
           outputText(output('child-work'));
@@ -82,8 +97,14 @@ test('installed normal Subagents adopts a Service handoff through two overlappin
         }
       } else {
         assert.ok(users.includes('ROOT_TASK_225'));
-        if (!output('spawn-worker')) {
+        if (!output('root-initial-files')) {
+          stage = 'root-initial-files';
+          item = tool('root-initial-files', initialFileCheck + ' && printf ROOT_INITIAL_VERIFIED');
+        } else if (!output('spawn-worker')) {
           stage = 'root-spawn';
+          assert.equal(outputText(output('root-initial-files')), 'ROOT_INITIAL_VERIFIED');
+          await writeFile(join(project, 'seed.bin'), Buffer.from([1]));
+          await writeFile(join(project, '.settings'), 'host changed after capture');
           item = call('spawn_agent', { task_name: 'worker', message: 'CHILD_TASK_225', fork_turns: 'none' }, 'spawn-worker');
         } else if (!output('handoff-worker')) {
           stage = 'root-overlap';
@@ -93,7 +114,7 @@ test('installed normal Subagents adopts a Service handoff through two overlappin
           while (!childStarted && Date.now() < deadline) await delay(25);
           assert.ok(childStarted && !childAdopted, 'Root and Child must have overlapping native execution');
           overlapped = true;
-          const runtimeIds = (await readdir(outputDir)).filter(id => /^[a-f0-9-]{36}$/.test(id));
+          const runtimeIds = await currentRuntimes();
           assert.equal(runtimeIds.length, 1);
           const containers = (await ownedContainers(runtimeIds[0])).sort();
           assert.equal(containers.length, 2);
@@ -137,7 +158,7 @@ test('installed normal Subagents adopts a Service handoff through two overlappin
     await new Promise(resolve => server.close(resolve));
   });
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-  const config = { image, outputDir, goal: 'ROOT_TASK_225', maxAgents: 2, maxDepth: 1,
+  const config = { image, maxAgents: 2, maxDepth: 1,
     workTimeoutMs: 90000, closeTimeoutMs: 25000,
     collect: { paths: ['delivery.txt'], includeGit: false, maxBytes: 4096, required: true },
     executor: 'codex',
@@ -156,7 +177,7 @@ config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;\n`, { mode: 0o600 });
   const proof = { package: installed.metadata, image, executor: 'codex', failure: true };
   t.after(async () => {
-    const ids = (await readdir(outputDir).catch(() => [])).filter(id => /^[a-f0-9-]{36}$/.test(id));
+    const ids = await currentRuntimes();
     proof.resources = {};
     for (const id of ids) proof.resources[id] = { empty: (await ownedContainers(id)).length === 0 };
     proof.upstream = { arrivals, failure, overlapped, childAdopted, childInitialRequests };
@@ -169,7 +190,8 @@ export default config;\n`, { mode: 0o600 });
   });
   let stdout = ''; let stderrBytes = 0; let expired = false;
   const outcome = await new Promise((resolve, reject) => {
-    child = spawn(process.execPath, ['node_modules/@murm/core/dist/examples/subagents/main.js', join(evidenceDir, 'config.mjs')],
+    child = spawn(process.execPath, ['node_modules/.bin/murm', '--harness', 'subagents', '--cwd', project,
+      '--prompt', 'ROOT_TASK_225', '--config', join(evidenceDir, 'config.mjs'), '--output-dir', outputRoot],
       { cwd: installed.directory, env: installed.env, stdio: ['ignore', 'pipe', 'pipe'] });
     const timer = setTimeout(() => { expired = true; child.kill('SIGTERM'); }, 120000);
     const hardTimer = setTimeout(() => { expired = true; child.kill('SIGKILL'); }, 150000);
@@ -181,7 +203,12 @@ export default config;\n`, { mode: 0o600 });
     child.once('error', error => { clearTimeout(timer); clearTimeout(hardTimer); reject(error); });
     child.once('close', code => { clearTimeout(timer); clearTimeout(hardTimer); resolve(code); });
   });
-  const report = JSON.parse(stdout.trim());
+  const outer = JSON.parse(stdout.trim()).result;
+  assert.equal(outer.harness.id, 'subagents');
+  assert.equal(outer.initial.fileCount, 2);
+  assert.equal(await readFile(outer.prompt.path, 'utf8'), 'ROOT_TASK_225');
+  await currentRuntimes();
+  const report = JSON.parse(await readFile(outer.result.reportPath, 'utf8'));
   proof.report = report;
   assert.equal(outcome, 0, `Harness exited with ${stderrBytes} diagnostic bytes; ${JSON.stringify(failure)}`);
   assert.equal(expired, false);
@@ -195,8 +222,11 @@ export default config;\n`, { mode: 0o600 });
   const root = report.cleanup.agents.find(agent => agent.agentId === report.result.rootId);
   const files = root.artifacts.find(path => path.endsWith('/artifacts/files'));
   assert.equal(await readFile(join(files, 'delivery.txt'), 'utf8'), handoff + '\n');
-  const trace = (await readFile(join(outputDir, report.runtimeId, 'service-calls.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  const trace = (await readFile(join(runtimeOutput, report.runtimeId, 'service-calls.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
   assert.ok(trace.length >= 3);
   assert.equal((await ownedContainers(report.runtimeId)).length, 0);
+  assert.deepEqual(await readFile(join(project, 'seed.bin')), Buffer.from([1]));
+  assert.equal(await readFile(join(project, '.settings'), 'utf8'), 'host changed after capture');
+  proof.project = { capturedDigest: outer.initial.digest, rootAndChildFilesVerified: true, sourceUnchangedByAgents: true };
   proof.failure = false;
 });

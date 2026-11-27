@@ -29,20 +29,23 @@ export const dynamicBoardPermissions = Object.freeze({
   helper: boardPermissions.helper.filter(operation => operation !== 'create_subtask'),
 });
 
+export const projectBoardPermissions = Object.freeze({ ...boardPermissions, lead: [...boardPermissions.lead, 'submit'] });
+
 const dynamicSchemas = { ...schemas,
   create_subtask: object({ id, title: text, path, assignee_ids: assignees }),
   submit: object({ delivery: proof, feedback_ids: feedback }),
 };
 
 /** One bounded durable run. No lease expiry, reassignment or owner reclamation. */
-export function createBoard({ path: databasePath, runId, helperCount, verifyDelivery, dynamic = false }: any) {
+export function createBoard({ path: databasePath, runId, helperCount, verifyDelivery, dynamic = false, project = false, submissionPath }: any) {
   const roles = leadWorkerRoles(helperCount);
   const helperRoles = roles.slice(1);
-  const permissions = dynamic ? dynamicBoardPermissions : boardPermissions;
+  const permissions = dynamic ? dynamicBoardPermissions : project ? projectBoardPermissions : boardPermissions;
+  const capabilities = dynamic ? dynamicSchemas : project ? { ...schemas, submit: dynamicSchemas.submit } : schemas;
   const listeners = new Set<() => void>();
   if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof databasePath !== 'string' || typeof verifyDelivery !== 'function') throw new TypeError('Board requires run, database and delivery verifier');
   const db: any = new DatabaseSync(databasePath); db.exec('PRAGMA busy_timeout=1000; PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS board_state (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS receipts (actor TEXT, request TEXT, fingerprint TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(actor,request));');
-  const initial: any = { runId, team: null, runtimeId: null, directions: [], assignments: [], subtasks: [], notes: [], reads: [], userInputs: [], history: [], failures: {}, fenced: false, ...(dynamic ? { members: {}, submitted: null } : {}) };
+  const initial: any = { runId, team: null, runtimeId: null, directions: [], assignments: [], subtasks: [], notes: [], reads: [], userInputs: [], history: [], failures: {}, fenced: false, ...(dynamic ? { members: {} } : {}), ...(dynamic || project ? { submitted: null } : {}) };
   db.prepare('INSERT OR IGNORE INTO board_state VALUES (1, ?)').run(JSON.stringify(initial));
   let closed = false; let retained: any; let memoryFenced = false;
   const load = () => closed ? structuredClone(retained) : JSON.parse(db.prepare('SELECT body FROM board_state WHERE id=1').get().body);
@@ -80,7 +83,7 @@ export function createBoard({ path: databasePath, runId, helperCount, verifyDeli
     return row;
   }
   const registration: any = { manifest: { id: 'board', title: 'Lead-Worker Board', purpose: 'Durable direction, exclusive ownership and verified delivery', provider_version: 'lead-worker-board-1', contract_version: '2', endpoint: { transport: 'in-process' },
-    capabilities: Object.entries((dynamic ? dynamicSchemas : schemas) as Record<string, any>).map(([operation, input_schema]: any) => ({ name: operation, operation, description: `Public Board ${operation}`, help: { when: 'Read direction before claiming or completing work; never reclaim an owner' }, side_effect: ['read', 'list_subtasks'].includes(operation) ? 'read' : 'write', idempotent: true, input_schema,
+    capabilities: Object.entries(capabilities as Record<string, any>).map(([operation, input_schema]: any) => ({ name: operation, operation, description: `Public Board ${operation}`, help: { when: 'Read direction before claiming or completing work; never reclaim an owner' }, side_effect: ['read', 'list_subtasks'].includes(operation) ? 'read' : 'write', idempotent: true, input_schema,
       output_schema: { type: 'object', additionalProperties: true }, errors: ['NOT_ALLOWED', 'CONFLICT', 'NOT_FOUND', 'BOARD_FENCED', 'BOARD_LIMIT', 'FEEDBACK_NOT_READ', 'DIRECTION_NOT_READ', 'DELIVERY_INVALID'].map((code: any) => ({ code, retryable: false })) })) },
     adapter: { async invoke({ capability, input, envelope, caller, signal, assertAuthorized }: any) {
       const operation = capability.operation; const state = load(); const role = authorize(state, caller, operation);
@@ -91,7 +94,7 @@ export function createBoard({ path: databasePath, runId, helperCount, verifyDeli
       let delivery: any;
       if (['landed', 'complete', 'submit'].includes(operation)) {
         const subtask = operation === 'submit' ? null : deliveryGuard(state, caller, input, role);
-        try { delivery = await verifyDelivery({ actor: caller.agentId, subtask: structuredClone(subtask), delivery: structuredClone(input.delivery), direction: structuredClone(state.directions.at(-1)), requireDirectionText: !dynamic && state.directions.length > 1, signal }); }
+        try { delivery = await verifyDelivery({ actor: caller.agentId, subtask: structuredClone(subtask), delivery: structuredClone(input.delivery), direction: structuredClone(state.directions.at(-1)), requireDirectionText: !dynamic && !project && state.directions.length > 1, signal }); }
         catch { throw error('DELIVERY_INVALID'); }
         if (!delivery || delivery.verified !== true || !Object.entries((input.delivery as Record<string, any>)).every(([key, value]: any) => delivery[key] === value)) throw error('DELIVERY_INVALID');
       }
@@ -130,7 +133,9 @@ export function createBoard({ path: databasePath, runId, helperCount, verifyDeli
           if (current.notes.length >= 64) throw error('BOARD_LIMIT'); result = event(current, operation, caller.agentId, input); current.notes.push(result);
         } else if (operation === 'submit') {
           if (current.submitted || !current.subtasks.length || current.subtasks.some((row: any) => row.state !== 'complete')) throw error('CONFLICT');
-          if (input.delivery.path !== 'orders.mjs' || !input.feedback_ids.length || input.feedback_ids.some((seq: number) =>
+          if ((submissionPath ?? (dynamic && !project ? 'orders.mjs' : undefined)) !== undefined &&
+              input.delivery.path !== (submissionPath ?? 'orders.mjs')) throw error('DELIVERY_INVALID');
+          if (!input.feedback_ids.length || input.feedback_ids.some((seq: number) =>
             !current.notes.some((note: any) => note.seq === seq && note.actor !== caller.agentId) ||
             !current.reads.some((read: any) => read.actor === caller.agentId && read.notesThrough >= seq))) throw error('FEEDBACK_NOT_READ');
           result = event(current, 'submit', caller.agentId, { delivery, feedbackIds: input.feedback_ids });

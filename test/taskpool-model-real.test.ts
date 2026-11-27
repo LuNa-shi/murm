@@ -10,7 +10,7 @@ import { createRuntime } from '@murm/core';
 import { ServiceRegistry } from '@murm/core';
 import { TaskService } from '../src/task/task-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
-import { createTaskPoolAgentCoordinator } from '../src/harnesses/taskpool/agent-coordinator.js';
+import { createTaskPoolAgentCoordinator } from '../examples/taskpool/agent-coordinator.js';
 import { createCappedUpstream } from './fixtures/core-capped-upstream.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';

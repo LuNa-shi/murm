@@ -8,7 +8,7 @@ test('installed Substrate host resolves the public backend and saves an aborted 
   const main = join(installed.directory, 'node_modules/@murm/core/dist/examples/substrate/main.js');
   const script = `import assert from 'node:assert/strict';
     import {readFile} from 'node:fs/promises';import {pathToFileURL} from 'node:url';
-    const {runSubstrateExample}=await import(pathToFileURL(${JSON.stringify(main)}));
+    const {runSubstrateExample,runFateExample}=await import(pathToFileURL(${JSON.stringify(main)}));
     const signal=AbortSignal.abort(Object.assign(new Error('Controlled stop'),{code:'CONTROLLED_ABORT'}));
     process.env.MURM_SUBSTRATE_RUN='installed-abort';process.env.MURM_SUBSTRATE_IMAGE='no-allocation';
     process.env.MURM_SUBSTRATE_MODEL_URL='http://127.0.0.1:1/v1/responses';
@@ -28,9 +28,9 @@ test('installed Substrate host resolves the public backend and saves an aborted 
       ...fate,
       models: {default: {...fate.models.default, provider, model}},
     });
-    await assert.rejects(runSubstrateExample(fate,signal),{code:'CONTROLLED_ABORT'});
-    await assert.rejects(runSubstrateExample(withModel('gpt_proxy','gpt-6.1-sol'),signal),{code:'CONTROLLED_ABORT'});
-    await assert.rejects(runSubstrateExample(withModel('kimi_proxy','gpt-6.1-sol'),signal),{code:'FATE_MODEL_INVALID'});
+    await assert.rejects(runFateExample(fate,signal),{code:'CONTROLLED_ABORT'});
+    await assert.rejects(runFateExample(withModel('gpt_proxy','gpt-6.1-sol'),signal),{code:'CONTROLLED_ABORT'});
+    await assert.rejects(runFateExample(withModel('kimi_proxy','gpt-6.1-sol'),signal),{code:'FATE_MODEL_INVALID'});
     console.log(JSON.stringify({aborted:true}));`;
   const child = await execute(process.execPath, ['--input-type=module', '-e', script], {
     cwd: installed.directory, env: installed.env, timeout: 15_000, maxBuffer: 1024 ** 2,

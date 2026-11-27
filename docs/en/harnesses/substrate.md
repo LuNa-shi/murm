@@ -5,6 +5,15 @@ section: HARNESSES
 order: 10
 ---
 
+## Run an ordinary project
+
+```sh
+cd my-project
+murm --harness substrate --prompt "Fix the parser using the project tests"
+```
+
+Each peer receives the captured files and uses the prompt as the question in every cycle. FATE remains an explicit benchmark through prepare, run, matrix and rescore flags. The sections below also cover direct SDK embedding and explicit benchmark fixtures.
+
 **Substrate** (`src/harnesses/substrate/`) shows how small a multi-agent Harness can be: no task queue, no manager, and no private messages. Three to eight equal peers explore concurrently around one **immutable SQLite substrate** — searching and reading each other's publications, then publishing self-contained follow-ups with explicit citations.
 
 The example host creates its Runtime through the [SDK](../sdk.md) and uses the generic OpenSandbox backend. The `runSubstrate` runner and SQLite Service are editable repository modules, not package exports. The basic example below and the FATE runner share the publication-based coordination idea, but use different Service schemas and retrieval policies.
@@ -114,7 +123,7 @@ export MURM_FATE_PROJECT=/path/to/fate-x
 export MURM_FATE_LEAN=/path/to/lean-4.28.0
 
 node dist/examples/substrate/main.js --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-X
-node dist/examples/substrate/main.js dist/examples/substrate/fate-config.js
+node dist/examples/substrate/main.js --fate-run dist/examples/substrate/fate-config.js
 ```
 
 ## Source files

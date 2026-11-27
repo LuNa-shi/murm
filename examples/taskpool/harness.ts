@@ -1,9 +1,9 @@
 import { taskPoolCoordinationPermissions } from './coordination-permissions.js';
 import { createTaskPoolMissionService } from './mission-service.js';
-import { createRuntime } from '../../core/index.js';
-import { ServiceRegistry } from '../../core/services.js';
-import { MurmError } from '../../errors.js';
-import { runWithReport } from '../shared/run-report.js';
+import { createRuntime } from '../../src/core/index.js';
+import { ServiceRegistry } from '../../src/core/services.js';
+import { MurmError } from '../../src/errors.js';
+import { runWithReport } from '../../src/harnesses/shared/run-report.js';
 import { createTaskPoolTaskService, taskPoolResearcherProfile } from './task-service.js';
 import { createTaskPoolPublicationServices } from './publication-services.js';
 import { createTaskPoolController } from './controller.js';
@@ -14,8 +14,8 @@ export const TASKPOOL_WITHOUT_WORKSPACE_SAVE_PROMPT = '当前配置支持读取�
 /** Trusted host entry point. Domain stores remain caller-owned and readable. */
 export async function runTaskPoolHarness({sandbox, executor, models, connection,model,image,prompt='',
   outputDir,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,deadlineAt,
-  capacity=2,autonomousTasks=false,completionPolicy='tasks',coordinationPermissions=[],missionCoordination=null,snapshotProject,workspaceCapture,mathlibSearch=null,activeDeadline,judgeService=null,workspaceProjectCheck=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
-  closeTimeoutMs=30_000,redact=(value: any)=>value,signal}: any) {
+  capacity=2,autonomousTasks=false,completionPolicy='tasks',coordinationPermissions=[],missionCoordination=null,snapshotProject,workspaceCapture,mathlibSearch=null,activeDeadline,judgeService=null,workspaceProjectCheck=false,workspaceMergeEnabled=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
+  onRuntime,closeTimeoutMs=30_000,redact=(value: any)=>value,signal}: any) {
   if(signal!==undefined && !(signal instanceof AbortSignal)) throw new TypeError('TaskPool host signal must be an AbortSignal');
   if(typeof autonomousTasks!=='boolean' || !['tasks','mission'].includes(completionPolicy)) throw new TypeError('TaskPool requires an explicit supported completion policy and autonomous Task flag');
   if(completionPolicy==='mission' && !missionCoordination) throw new TypeError('Mission completion policy requires trusted Mission coordination');
@@ -39,7 +39,7 @@ export async function runTaskPoolHarness({sandbox, executor, models, connection,
       if (workspace.mission_id !== missionId) throw new MurmError('NOT_ALLOWED', 'TaskPool Workspace belongs to another Mission');
       taskService.contextService=contextService;
       discovery=createTaskPoolTaskService({...handoffOptions,runtime:()=>runtime,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,missionDeadline:deadline,coordinationPermissions:permissions,autonomousTasks});
-      publication=createTaskPoolPublicationServices({runtime:()=>runtime,taskService,contextService,missionWorkspace,missionId,workspaceId,deadline,coordinationPermissions:permissions,snapshotProject,workspaceCapture,judgeService,workspaceProjectCheck,workspaceMergeChecker,
+      publication=createTaskPoolPublicationServices({runtime:()=>runtime,taskService,contextService,missionWorkspace,missionId,workspaceId,deadline,coordinationPermissions:permissions,snapshotProject,workspaceCapture,judgeService,workspaceProjectCheck,workspaceMergeEnabled,workspaceMergeChecker,
         onFinish:()=>controller?.notify()});
       const services: any=new ServiceRegistry();
       services.registerService(publication.composeTask(discovery));
@@ -63,6 +63,7 @@ export async function runTaskPoolHarness({sandbox, executor, models, connection,
       try {
         controller=createTaskPoolController({...controllerOptions,autonomousTasks,completionPolicy,runtime,taskService,missionId,capacity,deadlineAt,activeDeadline:deadline,coordinationPermissions:permissions,
           workspaceSaveAvailable,afterStopped:(id: any,options: any)=>publication.reconcileWorkspace(id,options)});
+        onRuntime?.(runtime, controller);
       } catch(error: any) {
         try {
           const receipt=await runtime.close({timeoutMs:closeTimeoutMs});
@@ -80,7 +81,7 @@ export async function runTaskPoolHarness({sandbox, executor, models, connection,
         closeDeadline=Date.now()+Math.min(closeTimeoutMs,options.timeoutMs);
         const judgeStatus=publication.close();
         if(judgeService) result.judge=judgeStatus;
-        if(workspaceMergeChecker) result.workspaceMerge=publication.mergeStatus();
+        if(workspaceMergeEnabled || workspaceMergeChecker) result.workspaceMerge=publication.mergeStatus();
         await discovery.close({timeoutMs:Math.min(closeTimeoutMs,options.timeoutMs)});
         return runtime.close(options);
       }};
@@ -88,7 +89,7 @@ export async function runTaskPoolHarness({sandbox, executor, models, connection,
     async afterClose(receipt: any) {
       try {
         await controller.reconcileClose(receipt);
-        if(workspaceMergeChecker) {
+        if(workspaceMergeEnabled || workspaceMergeChecker) {
           result.workspaceMerge=await publication.waitForMerges({timeoutMs:Math.max(1,closeDeadline-Date.now()-1)});
           if(result.workspaceMerge.cleanup!=='complete') throw new MurmError('TASKPOOL_MERGE_CLEANUP_PENDING','TaskPool final-tree merge checker has no confirmed completion receipt',result.workspaceMerge);
         }

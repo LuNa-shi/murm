@@ -1,5 +1,17 @@
 # Connect existing Services through Bridge
 
+## Run from your project
+
+```sh
+cd my-project
+murm --harness messages --prompt "Inspect this project and explain how to verify it"
+```
+
+The writer publishes a project observation to the Messages Service. The reader verifies it against the project and saves the exact transmitted text. Existing authenticated HTTP Services can be supplied in configuration.
+
+After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
+
+
 Two Agents exchange a value through a Service, and the host verifies the exported file independently. The same TypeScript example imports the Runtime, Sandbox and Service APIs from `@murm/core` in a checkout or an installed project.
 
 ## Define and grant a Service

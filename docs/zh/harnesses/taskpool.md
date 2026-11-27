@@ -5,9 +5,18 @@ section: 协作机制
 order: 8
 ---
 
+## 在普通项目中运行
+
+```sh
+cd my-project
+murm --harness taskpool --prompt "根据解析测试修复当前项目"
+```
+
+TaskPool 在运行目录创建 Mission 和 Workspace。prompt 成为 Mission 目标。Discovery 使用只读项目，领取 Task 后按所选 Workspace 版本获得可写目录。 调用 TS SDK 的旧示例和基准测试专用参数见下文。
+
 TaskPool 让一组研究者在个别 Agent 完工、超时或轮换后继续推进项目。每个 Agent 自主发现并选择 Task，发布可复用的 Material，将成果保存到公共 Workspace。宿主负责维持并发数量，并通过租约落实任务归属。
 
-实现位于 `src/harnesses/taskpool/`，组合了 [Core SDK](../sdk.md) 与仓库现有的 Mission、Task、Material、Workspace 存储。`runTaskPoolHarness` 是仓库中的宿主函数，没有从 `@murm/core` 导出。调用它需要提供这些存储和已准备好的 Mission/Workspace，不能只传一个普通配置文件就建立完整任务池。
+实现位于 `examples/taskpool/`，组合了 [Core SDK](../sdk.md) 与仓库现有的 Mission、Task、Material、Workspace 存储。`runTaskPoolHarness` 是仓库中的宿主函数，没有从 `@murm/core` 导出。调用它需要提供这些存储和已准备好的 Mission/Workspace，不能只传一个普通配置文件就建立完整任务池。
 
 ## 研究者可用的 Service
 
@@ -35,7 +44,7 @@ swarm task take TASK_ID_FROM_LIST --request-id take-selected-task
 
 ## 从发现任务到获得写权限
 
-研究者以 `writable: false` 启动。它可以通过 Service 阅读公共 Task、Material 和 Workspace，项目目录保持只读。成功预留 Task 后，[task-handoff.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/task-handoff.ts) 执行交接：
+研究者以 `writable: false` 启动。它可以通过 Service 阅读公共 Task、Material 和 Workspace，项目目录保持只读。成功预留 Task 后，[task-handoff.ts](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/task-handoff.ts) 执行交接：
 
 1. 固定公共 Workspace 修订和引用的 Material 输入，准备期间通过心跳保持预留有效。
 
@@ -50,11 +59,11 @@ swarm task take TASK_ID_FROM_LIST --request-id take-selected-task
 
 TaskPool 控制器在可信 TaskService 提交后检查 Mission、归属与截止时间，并调整计时器。归属失效、到期或收到停止请求时，控制器立即调用 `runtime.stop`。Core 撤销该 Agent 的模型权限并中止活动连接。TaskPool 依据执行停止回执释放任务归属，清理完成后才复用 Slot。
 
-这层控制与 Service 鉴权和文件权限共同工作：即使容器尚未完全停止，过期 Agent 也不能继续使用模型。完整判断见 [model-access-policy.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/model-access-policy.ts)。
+这层控制与 Service 鉴权和文件权限共同工作：即使容器尚未完全停止，过期 Agent 也不能继续使用模型。完整判断见 [model-access-policy.ts](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/model-access-policy.ts)。
 
 ## 继续执行、退出与补位
 
-[控制器](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/controller.ts) 同时观察 Runtime 事件与领域截止时间。`settled` 的 completed 结果表示 Agent 的一轮执行结束，不能据此认定 Task 已完成。仍在执行中的 Execution 可以收到继续工作的输入，未绑定任务的 Agent 可以收到更多发现提示。失败或中断的轮次进入失败处理。
+[控制器](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/controller.ts) 同时观察 Runtime 事件与领域截止时间。`settled` 的 completed 结果表示 Agent 的一轮执行结束，不能据此认定 Task 已完成。仍在执行中的 Execution 可以收到继续工作的输入，未绑定任务的 Agent 可以收到更多发现提示。失败或中断的轮次进入失败处理。
 
 心跳为当前租约续期，并协调截止时间、结束请求和空闲容量。Task 进入收尾后，控制器停止 Agent、协调已保存成果并完成领域状态更新，再在容量释放后启动替补。执行状态未知或清理仍待完成时，Slot 不会被当成已经释放。
 
@@ -82,7 +91,7 @@ node dist/scripts/read-harness-result.js \
 
 ## 实现参考
 
-- [Harness 装配与收尾](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/harness.ts)
-- [Task 接纳与文件交接](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/task-service.ts)
-- [Material 发布、采集与任务结束](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/taskpool/publication-services.ts)
+- [Harness 装配与收尾](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/harness.ts)
+- [Task 接纳与文件交接](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/task-service.ts)
+- [Material 发布、采集与任务结束](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/publication-services.ts)
 - [TaskPool 实现手册](../../architecture/15-core-runtime.md#taskpool-model-authority-and-trusted-identity-startup)

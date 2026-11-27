@@ -1,8 +1,8 @@
-import { makeEnvelope, stableStringify } from '../../protocol/envelope.js';
-import { MurmError } from '../../errors.js';
+import { makeEnvelope, stableStringify } from '../../src/protocol/envelope.js';
+import { MurmError } from '../../src/errors.js';
 import { taskPoolCoordinationPermissions } from './coordination-permissions.js';
 import { executionEnvelope, inputFingerprint } from './prepare-inputs.js';
-import { listTools } from '../../sdk/service-catalog.js';
+import { listTools } from '../../src/sdk/service-catalog.js';
 import { runTaskPoolHandoff, stopFailedHandoff } from './task-handoff.js';
 
 const coordinationOperations = ['task_revise', 'task_cancel'];

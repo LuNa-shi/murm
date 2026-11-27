@@ -5,6 +5,15 @@ section: 协作机制
 order: 9
 ---
 
+## 在普通项目中运行
+
+```sh
+cd my-project
+murm --harness peermesh --prompt "根据解析测试修复当前项目"
+```
+
+PeerMesh 根据目录和 prompt 建立团队仓库与 issue。各 peer 使用独立 Sandbox。启动前配置 Gitea、Mattermost 和 Board。 调用 TS SDK 的旧示例和基准测试专用参数见下文。
+
 **PeerMesh**（`src/harnesses/peermesh/`）建模了一个 2–8 人的扁平对等工程团队，没有中心调度器也没有独占任务锁。每位成员拥有独立的 Gitea 账号、Mattermost 账号、持久化 Pi 会话和本地 Git 仓库：大家在个人分支开发、在共享 Board 发布软意向（`CLAIM`）与进展、通过群聊和私信协商分工，最后由宿主验证并合并 PR 到受保护的 `main`。
 
 随仓库提供的宿主使用通用 OpenSandbox 后端运行 Pi，并围绕 Core 组合 Service。`src/harnesses/peermesh/` 下的团队和 Router 工厂属于仓库模块，没有作为 SDK 工厂导出。构建新 Harness 请参考 [SDK 指南](../sdk.md)，运行这种具体协作策略则使用下面的示例。

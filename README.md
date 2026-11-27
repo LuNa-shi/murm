@@ -45,20 +45,29 @@ npm pack
 npm install --save-exact /absolute/path/to/murm-core-0.2.0.tgz
 ```
 
-One package provides three primary import paths:
-
 Import the public Runtime, Sandbox, events, file controls, Service registration, adapters and their types from `@murm/core`. Configure OpenSandbox with `createSandbox` and select Pi or Codex on `createRuntime`.
 
 The [SDK guide](docs/en/sdk.md) follows a complete two-Agent Messages handoff. Its [TypeScript example](examples/bridge-services/README.md#run-the-typescript-handoff) runs from both the checkout and an independently installed archive. It registers a Service, starts a writer and reader, observes Service calls and execution settlement, verifies the exported file, and saves the finalization report. It also demonstrates connecting an existing HTTP Service while keeping its credential on the host.
 
 ## Choose a collaboration mechanism
 
+Install the built CLI on your PATH, then run it from the project directory.
+
+```sh
+npm install --global /absolute/path/to/murm-core-0.2.0.tgz
+cd my-project
+murm --harness subagents --prompt "Fix the parser and add tests"
+```
+
+Use `--harness` to choose another built-in, a local ESM module or an installed package. In `--mode rpc` the same task arrives over JSONL, with status and stop available during execution. [Choose a Harness](docs/en/harnesses/index.md) · [Load your own module](docs/en/build-your-harness.md)
+
+
 The repository includes five substantial Harnesses. They share the Runtime but make different choices about ownership, communication and durable results.
 
 | Harness | How Agents coordinate | Start here |
 | --- | --- | --- |
 | Subagents | A parent creates and directs children through a scoped Service; Pi can fork conversation context. | [Guide](docs/en/harnesses/subagents.md) · [Example](examples/subagents/README.md) |
-| TaskPool | Agents exclusively take Tasks and publish Materials and Workspace revisions toward a shared Mission. | [Guide](docs/en/harnesses/taskpool.md) · [TaskPool benchmark](benchmarks/putnambench-taskpool/README.md) |
+| TaskPool | Agents exclusively take Tasks and publish Materials and Workspace revisions toward a shared Mission. | [Guide](docs/en/harnesses/taskpool.md) · [Example](examples/taskpool/README.md) |
 | PeerMesh | Peers use Git, messages and a shared Board, each with its own identity and branch. | [Guide](docs/en/harnesses/peermesh.md) · [Example](examples/peermesh/README.md) |
 | Substrate | A fixed peer pool publishes, searches, reads and cites durable contributions. | [Guide](docs/en/harnesses/substrate.md) · [Example](examples/substrate/README.md) |
 | Lead-Worker | A lead and fixed helpers coordinate through a Board and retain deliveries in Git. | [Guide](docs/en/harnesses/lead-worker.md) · [Example](examples/lead-worker/README.md) |

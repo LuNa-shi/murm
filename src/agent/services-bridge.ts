@@ -5,8 +5,8 @@ import { ERROR_CODES, MurmError } from '../errors.js';
 import { createBuiltinServiceRegistry, MISSION_WORKSPACE_READS } from '../sdk/builtin-registry.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { AGENT_ROLES, buildCapabilityProfile } from './capability-profile.js';
-import { prepareWorkspaceCheckSource } from '../harnesses/taskpool/workspace-check-source.js';
-import { createMissionSubmissionAccess } from '../harnesses/taskpool/mission-coordination.js';
+import { prepareWorkspaceCheckSource } from '../judge/workspace-check-source.js';
+import { createMissionSubmissionAccess } from '../runtime/mission-submission-access.js';
 import { agentCheckResult } from '../judge/check-result.js';
 import { isSoftCloseout } from '../task/execution-budget.js';
 

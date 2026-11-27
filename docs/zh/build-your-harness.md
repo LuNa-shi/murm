@@ -5,6 +5,30 @@ section: 基于 MURM 构建
 order: 6
 ---
 
+## 通过共同 CLI 加载模块
+
+已编译的 ESM 文件可以直接交给 `murm --harness ./tools/harness.mjs --prompt '检查构建输入'`。本地相对路径与 npm 包名从命令启动目录解析。模块可通过 `import.meta.url` 读取自己的资源。包入口使用同样的默认导出，调用方需预先安装。宿主向 `run` 提供 `input`、`initial.files`、`initial.digest`、`configuration`、`runId`、`outputDir`、`signal` 及状态回调。
+
+```js
+export default {
+  id: 'inspect-input',
+  apiVersion: 1,
+  async run(context) {
+    context.signal.throwIfAborted();
+    context.markRunning();
+    return {
+      outcome: 'completed',
+      reason: 'file-list-ready',
+      result: { files: Object.keys(context.initial.files) },
+      artifacts: [],
+      cleanup: { status: 'complete' },
+    };
+  },
+};
+```
+
+实际运行 Agent 时，把 `initial.files` 传给 Core 的 `spawn`。在 spawn 前订阅 `onEvent`，在发出首个任务前调用 `markRunning()`，并在停止后返回 Core 的回执和产物。`--mode rpc` 先发 `ready`，随后接受一次 `run`，其 `input` 包含 `cwd` 和 `prompt`。用 `status`、`stop` 查询和控制。声明 `input: true` 的模块可通过 `registerInput` 登记运行中输入。标准输出用于 JSONL，诊断写入 stderr。
+
 Harness 是使用 SDK 构建的应用。它决定谁来工作、Agent 如何共享信息，以及什么证据能够证明本次 Run 成功。可以先跑通 [SDK 指南](sdk.md) 中的 [Messages 交接示例](https://github.com/LuNa-shi/murm/tree/main/examples/bridge-services)，再按照本文改变协作机制。
 
 角色提示词、Service 契约和宿主调度可以在应用代码中修改。如果任务还需要 Sandbox 内新增可执行程序、语言运行时或系统依赖，则需要把它们加入兼容的 Worker 镜像。

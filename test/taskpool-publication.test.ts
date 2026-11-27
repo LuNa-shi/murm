@@ -5,11 +5,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
-import { createTaskPoolPublicationServices } from '../src/harnesses/taskpool/publication-services.js';
+import { createTaskPoolPublicationServices } from '../examples/taskpool/publication-services.js';
 import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/core/services.js';
 import { completeDigest, decodeFileSeed } from '../scripts/core-file-seed.js';
 import { createHash } from 'node:crypto';
-import { prepareTaskPoolInputs } from '../src/harnesses/taskpool/prepare-inputs.js';
+import { prepareTaskPoolInputs } from '../examples/taskpool/prepare-inputs.js';
 import { MurmError } from '../src/errors.js';
 import { stableStringify, makeEnvelope } from '../src/protocol/envelope.js';
 

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { buildAgentContinuationMessage, buildAgentNotification } from '../../agent/agent-contract.js';
-import { MurmError } from '../../errors.js';
-import { stableStringify } from '../../protocol/envelope.js';
+import { buildAgentContinuationMessage, buildAgentNotification } from '../../src/agent/agent-contract.js';
+import { MurmError } from '../../src/errors.js';
+import { stableStringify } from '../../src/protocol/envelope.js';
 import { createTaskPoolAgentCoordinator } from './agent-coordinator.js';
 import { executionEnvelope } from './prepare-inputs.js';
 
@@ -38,7 +38,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
   selectionMs=60_000,hardBudgetMs=300_000,heartbeatMs=10_000,stallMs=120_000,continuationLimit=20,discoveryLimit=20,
   stopTimeoutMs=30_000,autonomousTasks=false,discoveryPrompt,discoveryContext,discoveryWorkflow,
   continuationPrompt,workspaceSaveAvailable=true,completionPolicy='tasks',deliverNotifications=true,materialNotificationMode='followUp',
-  afterStopped=async()=>{}, beforeInitialDispatch, automaticContinuation=true, refillWhenNoReadyTask=true }: any) {
+  initialProject, afterStopped=async()=>{}, beforeInitialDispatch, automaticContinuation=true, refillWhenNoReadyTask=true }: any) {
   if ([discoveryContext, discoveryWorkflow].some(value => value !== undefined && typeof value !== 'string')) {
     throw new TypeError('TaskPool discovery context and workflow must be host-supplied text');
   }
@@ -288,9 +288,9 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       const serial=++generation,now=Date.now(),hard=Math.min(workDeadline(),now+hardBudgetMs),selection=Math.min(hard,now+selectionMs);
       if(selection<=now) return;
       const legacySlotId=`taskpool:slot:${index}`,requestId=`taskpool:spawn:${serial}`;
-      const agent=await coordinator.spawn({legacySlotId,requestId,profile,writable:false,selectionDeadline:new Date(selection).toISOString(),hardDeadline:new Date(hard).toISOString()});
+      const agent=await coordinator.spawn({legacySlotId,requestId,profile,writable:false,files:initialProject?.files,selectionDeadline:new Date(selection).toISOString(),hardDeadline:new Date(hard).toISOString()});
       const row: any={agentId:agent.id,legacySlotId,slot:index,generation:serial,continuations:0,discoveries:1,lastActivityAt:Date.now(),released:false};
-      agents.set(agent.id,row);spawned++;record('spawn-readonly-discovery',row);
+      agents.set(agent.id,row);spawned++;record('spawn-readonly-discovery',row,initialProject ? { fileTreeDigest: initialProject.digest, workspaceRevision: initialProject.revision } : {});
       armAgent(row);
       if(closing) await stop(row,'controller-closing');
       else if(beforeInitialDispatch) awaitingDiscovery.push(row);

@@ -55,10 +55,10 @@ export async function runWithReport({ createRuntime, run, afterClose, outputDir,
   return saveReport(outputDir, 'harness-report.json', report, redact);
 }
 
-export async function saveReport<R extends { runtimeId: string; reportSaveFailure: { code: string; message: string; details?: readonly unknown[] } | null }>(
+export async function saveReport<R extends ({ runtimeId: string } | { runId: string }) & { reportSaveFailure: { code: string; message: string; details?: readonly unknown[] } | null }>(
   outputDir: string, filename: string, report: R, redact: (report: R) => R = value => value,
 ): Promise<R & { reportPath?: string }> {
-  const directory = join(resolve(outputDir), report.runtimeId);
+  const directory = join(resolve(outputDir), 'runtimeId' in report ? report.runtimeId : report.runId);
   const reportPath = join(directory, filename);
   const temporary = join(directory, `.${filename}-${randomUUID()}.tmp`);
   let projected: R | undefined;

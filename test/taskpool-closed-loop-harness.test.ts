@@ -17,7 +17,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
-const { runTaskPoolHarness } = await import('../src/harnesses/taskpool/harness.js');
+const { runTaskPoolHarness } = await import('../examples/taskpool/harness.js');
 hooks.deregister();
 const execute = promisify(execFile);
 const hash = value => createHash('sha256').update(value).digest('hex');

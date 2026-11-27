@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { createSubstrateService } from './substrate.js';
 import { runInput } from '../shared/run-input.js';
 import { createInputAdmission } from '../shared/input-admission.js';
+import { ProjectPreflightError } from '../shared/project-input.js';
 import { runWithReport } from '../shared/run-report.js';
 
 export const peerPrompt = 'Work as one peer in a fixed pool. Preserve private work between turns. Read and verify any shared contribution before citing it in a new publication.';
@@ -19,19 +20,19 @@ function waitFor(promise: any, signal: any) {
   })]).finally(() => signal.removeEventListener('abort', abort));
 }
 
-export function substratePeerProfile({ image, model = 'default' }: any) {
+export function substratePeerProfile({ image, model = 'default', exportLimit = 2 * 1024 ** 2 }: any) {
   return { image, model, prompt: peerPrompt, writable: true, services: { substrate: ['publish', 'search', 'visit'] },
-    collect: { paths: ['.'], includeGit: false, maxBytes: 2 * 1024 ** 2, required: true } };
+    collect: { paths: ['.'], includeGit: false, maxBytes: exportLimit, required: true } };
 }
 
 /** Fixed no-Task pool. Harness owns content and drivers; Core owns all Agents. */
 export async function runSubstrate({ sandbox, executor, models, connection, runId, image, outputDir, question, model = 'default', poolSize = 3, maxRounds = 2,
-  workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle, maxConcurrentInputs }: any, signal: any) {
+  workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000, files, onRuntime, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle, maxConcurrentInputs }: any, signal: any) {
   if (typeof outputDir !== 'string' || !outputDir || typeof question !== 'string' || !question.trim() || Buffer.byteLength(question) > 8192 ||
       typeof image !== 'string' || !image || !Number.isSafeInteger(maxRounds) || maxRounds < 2 || maxRounds > 32 ||
       ![workTimeoutMs, turnTimeoutMs, closeTimeoutMs].every(finite) || (signal !== undefined && !(signal instanceof AbortSignal)) ||
       (maxConcurrentInputs !== undefined && (!Number.isSafeInteger(maxConcurrentInputs) || maxConcurrentInputs < 1 || maxConcurrentInputs > poolSize)) ||
-      [beforeCycle, onReady, onCycle, onPeerStop, questionForCycle].some((hook: any) => hook !== undefined && typeof hook !== 'function')) throw new TypeError('Substrate requires a question, image, output directory, two to 32 rounds, finite waits and an optional trusted host lifecycle functions');
+      [onRuntime, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle].some((hook: any) => hook !== undefined && typeof hook !== 'function')) throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Substrate requires a question, image, output directory, two to 32 rounds, finite waits and an optional trusted host lifecycle functions');
   const substrate = createSubstrateService({ databasePath: join(outputDir, 'substrate.sqlite'), runId, poolSize });
   const peers: any[] = [], events: any[] = [];
   const controller: any = new AbortController();
@@ -40,6 +41,7 @@ export async function runSubstrate({ sandbox, executor, models, connection, runI
   const deadlineAt = Date.now() + workTimeoutMs;
   const timer = setTimeout(() => controller.abort(), workTimeoutMs);
   let runtime: any; let workClosed = false;
+  let keepStore = false;
   const remaining = () => {
     workSignal.throwIfAborted();
     const value = deadlineAt - Date.now();
@@ -49,14 +51,14 @@ export async function runSubstrate({ sandbox, executor, models, connection, runI
   const abort = () => { if (runtime) void runtime.close({ timeoutMs: 1 }).catch(() => {}); };
   workSignal.addEventListener('abort', abort, { once: true });
   try {
-    return await runWithReport({ outputDir, closeTimeoutMs,
+    const report = await runWithReport({ outputDir, closeTimeoutMs,
       redact: (report: any) => ({ ...report, peers, events, substrate: substrate.snapshot(), databasePath: join(outputDir, 'substrate.sqlite'),
         policy: { poolSize, maxRounds, workTimeoutMs, turnTimeoutMs, closeTimeoutMs, replacement: false,
           ranking: 'token occurrences descending, incoming references descending, stable address ascending', maxSearchResults: 8 } }),
       createRuntime: async () => {
         remaining();
         runtime = await createRuntime({ sandbox, executor, models, connection, outputDir, services: substrate.services, maxAgents: poolSize, profiles: {
-          peer: substratePeerProfile({ image, model }),
+          peer: substratePeerProfile({ image, model, ...(files === undefined ? {} : { exportLimit: 64 * 1024 ** 2 }) }),
         } });
         return runtime;
       },
@@ -64,9 +66,10 @@ export async function runSubstrate({ sandbox, executor, models, connection, runI
         substrate.bindRuntime(core.id);
         const unsubscribe = core.onEvent((event: any) => events.push({ agentId: event.agentId, seq: events.length + 1, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) }));
         try {
+          onRuntime?.(core);
           for (let index = 0; index < poolSize; index++) {
             remaining();
-            const agent = await waitFor(core.spawn({ requestId: `peer:${index}`, profile: 'peer', files: {
+            const agent = await waitFor(core.spawn({ requestId: `peer:${index}`, profile: 'peer', files: files ?? {
               'question.txt': { data: question, encoding: 'utf8' },
             } }), workSignal);
             remaining(); substrate.bindPeer(agent.id);
@@ -139,7 +142,12 @@ export async function runSubstrate({ sandbox, executor, models, connection, runI
         } finally { workClosed = true; clearTimeout(timer); unsubscribe(); }
       },
     });
+    keepStore = Boolean(report.cleanupFailure);
+    return report;
   } finally {
-    admission?.close(); clearTimeout(timer); workSignal.removeEventListener('abort', abort); substrate.close();
+    admission?.close();
+    clearTimeout(timer);
+    workSignal.removeEventListener('abort', abort);
+    if (!keepStore) substrate.close();
   }
 }

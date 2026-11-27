@@ -13,6 +13,7 @@ Start with [00 System overview](00-overview.md). For an SDK application, continu
 | [16 OpenSandbox backend](16-pi-opensandbox-backend.md) | How do Pi and Codex run in a Sandbox? How are model access, guest transport, stop, archives and deletion handled? |
 | [04 Services](04-services.md) | How do manifests, adapters, Bridge authorization, local and external Services work? How do the domain Services apply their own state rules? |
 | [17 Runtime evidence and Harness reports](17-harness-reporting.md) | How do SDK finalization, Messages, Notes, Subagents and foreground hosts record inputs, outputs, errors and cleanup? |
+| [23 Project Harness entry](23-project-harness.md) | How does the installed CLI load a Harness, capture a project, run or stop it, and report results? |
 | [07 Launch and configuration](07-run-configuration.md) | How are the package, Worker, host, model endpoints, CLI, local setup and optional Services configured? |
 | [06 Trace Viewer and evidence](06-observability-experiments.md) | How are saved and active Runs inspected, and what do those records establish? |
 | [09 Known boundaries](09-known-boundaries.md) | Which current limitations would otherwise make the SDK or architecture misleading? |
@@ -53,7 +54,7 @@ Generated references and fingerprints are coverage aids. They reproduce code-con
 
 ## Current architecture and future changes
 
-Current behavior is maintained here and in the user guides. Human-approved Issues and explicit user instructions define intended changes and their acceptance. A linked design describes a future target until implementation and validation establish it. The [dynamic Lead-Worker extension](../designs/dynamic-lead-worker.md) is still such a target: it does not add registration or access mutation methods to the current Runtime.
+Current behavior is maintained here and in the user guides. Human-approved Issues and explicit user instructions define intended changes and their acceptance. A linked design describes a future target until implementation and validation establish it. The [dynamic Lead-Worker design](../designs/dynamic-lead-worker.md) describes the target requirements. The [implemented dynamic and project paths](20-lead-worker-harness.md) document the current enablement and permissions.
 
 Superseded phase plans and migration requirements are retained in Git history, rather than beside this manual as competing current contracts. Documentation cleanup does not change an ongoing Issue's approved acceptance or resource budget.
 

@@ -4,14 +4,18 @@ import { stableStringify } from '../protocol/envelope.js';
 import { ERROR_CODES, MurmError } from '../errors.js';
 import { assertNewExecutionWork } from '../task/execution-budget.js';
 import { publishWorkspace } from './workspace-publication.js';
+import { isWorkspaceGitPath } from './workspace-repository.js';
 import type { CompleteFileDigest, FileTree } from '../core/types.js';
 
 const hash = (value: any) => createHash('sha256').update(value).digest('hex');
 const json = (value: any) => JSON.stringify(value);
 const invalid = (message: any) => new MurmError(ERROR_CODES.INVALID_CONTRACT, message);
-export const isPublishedProjectPath = (path: string) => !path.includes('\\') && !path.includes('\0') &&
-  !path.split('/').some(part => !part || ['.', '..', '.git', '.pi', '.swarm', '.env', 'node_modules'].includes(part) ||
-    part.startsWith('.swarm-') || part.startsWith('.env.'));
+export function isPublishedProjectPath(path: string, projectFileTree = false) {
+  if (projectFileTree) return isWorkspaceGitPath(path);
+  return !path.includes('\\') && !path.includes('\0') &&
+    !path.split('/').some(part => !part || ['.', '..', '.git', '.pi', '.swarm', '.env', 'node_modules'].includes(part) ||
+      part.startsWith('.swarm-') || part.startsWith('.env.'));
+}
 
 const changed = (before: any, after: any) => [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()
   .filter((path: any) => before[path]?.content_hash !== after[path]?.content_hash || before[path]?.bytes !== after[path]?.bytes);
@@ -89,7 +93,7 @@ export class ExecutionWorkspace {
     const files = Object.create(null), manifest = Object.create(null);
     let total = 0;
     for (const path of Object.keys(snapshot.files).sort()) {
-      if (!isPublishedProjectPath(path)) throw invalid('Snapshot path is outside the project');
+      if (!isPublishedProjectPath(path, this.workspace.projectFileTree)) throw invalid('Snapshot path is outside the project');
       const encoded = snapshot.files[path];
       if (typeof encoded !== 'string' || encoded.length > 4 * Math.ceil(2 * 1024 * 1024 / 3)) throw invalid('Snapshot content must be bounded base64 bytes');
       const bytes = Buffer.from(encoded, 'base64');
@@ -202,6 +206,9 @@ export class ExecutionWorkspace {
           state_version: current.version, manifest: snapshot.manifest, files: Object.fromEntries(Object.entries(snapshot.files).map(([path, bytes]: any) => [path, bytes.toString('base64')])),
           source: { mission_id: this.tasks.getTask(execution.task_id).mission_id, task_id: execution.task_id, execution_id: execution.execution_id, agent_id: execution.owner_ref, fencing_version: execution.fencing_version },
           conflicts: current.conflicts };
+        if (operation === 'save' && snapshot.core) {
+          captured.file_modes = Object.fromEntries(Object.keys(snapshot.files).map(path => [path, snapshot.core!.files[path]?.mode ?? 0o644]));
+        }
         if (operation === 'save' && input.material_ids?.length) {
           const context = this.context ?? this.tasks.contextService;
           if (!context?.readWorkspaceMaterialUses) throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Workspace Material use authority is unavailable');
@@ -211,19 +218,22 @@ export class ExecutionWorkspace {
         if (operation === 'apply') {
           assertNewExecutionWork(active);
           if (this.#view(current, snapshot).dirty) throw new MurmError(ERROR_CODES.WORKSPACE_BUSY, 'Save unsaved project changes before apply', { apply_blocker: 'dirty' });
-          const plan = await this.workspace.planApply({ workspaceId: current.workspace_id, baseRevision: captured.base_revision, fromRevision: input.from, requestId });
+          const plan = await this.workspace.planApply({ workspaceId: current.workspace_id, baseRevision: captured.base_revision, fromRevision: input.from, requestId, withModes: Boolean(snapshot.core) });
           if (plan.expected_content_hash !== snapshot.content_hash) throw invalid('Apply base differs from the current saved project');
           captured = { kind: 'apply', state_version: current.version, source: captured.source, ...plan,
             snapshot_request_id: `taskpool:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}`,
             files: Object.fromEntries(Object.entries(plan.files).map(([path, bytes]: any) => [path, Buffer.from(bytes).toString('base64')])) };
           if (snapshot.core) {
-            const privateFiles = Object.entries(snapshot.core.files).filter(([path]) => !isPublishedProjectPath(path));
+            if (Object.keys(snapshot.files).some(path => (snapshot.core!.files[path]?.mode ?? 0o644) !== plan.base_file_modes[path])) {
+              throw new MurmError(ERROR_CODES.WORKSPACE_BUSY, 'Save unsaved project mode changes before apply', { apply_blocker: 'dirty' });
+            }
+            const privateFiles = Object.entries(snapshot.core.files).filter(([path]) => !isPublishedProjectPath(path, this.workspace.projectFileTree));
             captured.core = {
               expectedDigest: snapshot.core.digest,
               files: Object.fromEntries([
                 ...privateFiles,
                 ...Object.entries(captured.files).map(([path, data]) => [
-                  path, { encoding: 'base64', data, mode: snapshot.core!.files[path]?.mode ?? 0o644 },
+                  path, { encoding: 'base64', data, mode: plan.file_modes[path] ?? 0o644 },
                 ]),
               ]),
             };
@@ -453,7 +463,7 @@ export class ExecutionWorkspace {
     if (captured.source.execution_id !== execution.execution_id || captured.source.agent_id !== execution.owner_ref || captured.source.fencing_version !== identity.fencingVersion) throw invalid('Captured request identity does not match its E');
     const files = Object.fromEntries(Object.entries(captured.files).map(([path, encoded]: any) => [path, Buffer.from(encoded, 'base64')]));
     const options = { workspaceId: captured.workspace_id, baseRevision: captured.base_revision, parentRevisions: captured.parents,
-      files, source: captured.source, conflicts: captured.conflicts, requestId: `execution:${row.execution_id}:save:${row.request_id}`, guard: () => this.guard(identity),
+      files, fileModes: captured.file_modes, source: captured.source, conflicts: captured.conflicts, requestId: `execution:${row.execution_id}:save:${row.request_id}`, guard: () => this.guard(identity),
       withPublication: (publish: any) => publishWorkspace(this.db, publish) };
     let result;
     try {

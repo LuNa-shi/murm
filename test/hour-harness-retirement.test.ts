@@ -12,7 +12,7 @@ import {access,readdir,copyFile,mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 const root=new URL('./node_modules/@murm/core/',import.meta.url).pathname;
-for(const path of ['src/harnesses/endurance','src/harnesses/shared/hour-window.js','examples/hour-matrix',
+for(const path of ['src/harnesses/endurance','src/harnesses/taskpool','src/harnesses/shared/hour-window.js','examples/hour-matrix',
  'examples/subagents/hour.mjs','examples/subagents/hour-config.mjs','examples/subagents/hour-artifacts.mjs',
  'examples/subagents/communication-fixture.js','examples/subagents/communication-fixture-controller.js',
  'examples/subagents/communication-fixture-prompts.js','examples/subagents/stages.js',
@@ -23,7 +23,7 @@ for(const path of ['src/harnesses/endurance','src/harnesses/shared/hour-window.j
 for(const name of await readdir(join(root,'dist/test'))) {
  assert.ok(!/^hour-(?!harness-retirement)/.test(name)&&!/^subagents-hour/.test(name));
 }
-for(const path of ['src/harnesses/taskpool/harness.js','src/harnesses/peermesh/index.js','src/harnesses/substrate/index.js','src/harnesses/lead-worker/index.js',
+for(const path of ['examples/taskpool/harness.js','src/harnesses/peermesh/index.js','src/harnesses/substrate/index.js','src/harnesses/lead-worker/index.js',
  'test-support/subagents/stages.js',
  'examples/substrate/main.js','examples/lead-worker/main.js']) await import(pathToFileURL(join(root,'dist',path)));
 for(const name of ['agent-disk-probe','drop-peer-response','judge-peer-fixture','project-install-rollback-probe','sandbox-project-probe']) await access(join(root,'dist/test-support',name+'.js'));

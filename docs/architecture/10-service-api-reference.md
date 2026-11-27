@@ -33,11 +33,11 @@ This section is generated from executable exports and checked against the source
 | Source | SHA-256 |
 |---|---|
 | [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `34da62ab9a42462e3a08837efa890009b1bfb4ca4bfb961319c2369cbb1df01d` |
-| [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `c080a6cec3a3f12ed5f9b0529b46db2d2aea8c217b99b8d29b5a48b1d52249a5` |
+| [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `50f7a1132a0923a41174714489f7220215df9a30a3af59e3df75377d8fafe52a` |
 | [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `3759b5509820d4ee1793c802e1e5c99aee0f7095fc6d43244d1ca0a773776dd0` |
 | [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `ee72fba940f1e45926b4f8c04a13c355868e6d15b84df6cade45f2371b4db770` |
 | [src/agent/capability-profile.ts](../../src/agent/capability-profile.ts) | `53a57335eb59af29119a889b12044d94d838c5df9d138cc86e2d0da5bd01f0c5` |
-| [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `28570d9b5cfadc3ceaa8136860bb8df2238ce951a144b996e5b2d9d5f2924111` |
+| [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `af9fd45a15bdf6edceccde3558264adec75c60c8709b60bee402c0388e4bb28f` |
 | [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
 | [src/core/index.ts](../../src/core/index.ts) | `a3ab2b5d81c55ae629577438eab2f6483b5dcd7a9b6126cf6360d32fd26b7a8c` |

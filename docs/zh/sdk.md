@@ -9,6 +9,8 @@ order: 5
 
 本篇从仓库中的 [Messages 交接示例](https://github.com/LuNa-shi/murm/tree/main/examples/bridge-services) 开始。它在两个独立沙箱中运行 Agent，通过 Service 传递一段内容，检查导出的结果，再保存最终报告。完整 TypeScript 源码随包提供，也参与仓库构建时的编译检查。
 
+直接用初始项目和 prompt 启动 Messages 或其他内置 Harness，请见[项目入口](harnesses/index.md)。以下示例演示嵌入 SDK 和固定交接的验证。
+
 ## 安装当前版本
 
 当前包名是 `@murm/core`，版本为 `0.2.0`，清单中仍有 `private: true`。这里采用从可访问的源码检出构建 tarball，再安装到外部项目的方式。

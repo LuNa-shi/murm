@@ -33,3 +33,21 @@ Body SHA-256: `bf272664f105ca982d2332d87bd8868b25f156f123e261bf60f4d98c572e4601`
 ````text
 Receive handoff-example: run swarm messages get --key handoff-example --request-id handoff-example-get | jq -er .text > received.txt, then finish.
 ````
+## Project Writer instruction
+
+This instruction accompanies task, the unmodified user prompt, in the role input JSON. The named key uses the actual fresh UUID.
+
+Body SHA-256: `fb9d53c530c658c965b85f2794935dcb45dcd78b0faed814cd1f7872066173b9`
+
+````text
+Inspect the local project. Use swarm messages put to publish a concrete observation for this task under key handoff-example with --request-id handoff-example-put. Then finish.
+````
+## Project Reader instruction
+
+This instruction accompanies task in the Reader input JSON. The filename is set to the actual Run-specific reader output.
+
+Body SHA-256: `85741537e69da9353c927171673736d73e48f85a9a880c28f3736e6a336bae8e`
+
+````text
+Check the project context for the writer's observation. Run swarm messages get --key handoff-example --request-id handoff-example-get | jq -er .text > received.txt to preserve the exact Service handoff. Then finish.
+````

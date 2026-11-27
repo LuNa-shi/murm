@@ -1,6 +1,6 @@
-import { MurmError } from '../../errors.js';
-import { listTools } from '../../sdk/service-catalog.js';
-import { makeEnvelope } from '../../protocol/envelope.js';
+import { MurmError } from '../../src/errors.js';
+import { listTools } from '../../src/sdk/service-catalog.js';
+import { makeEnvelope } from '../../src/protocol/envelope.js';
 import { executionEnvelope, inputFingerprint } from './prepare-inputs.js';
 import { taskPoolCoordinationPermissions } from './coordination-permissions.js';
 

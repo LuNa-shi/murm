@@ -4,14 +4,14 @@ import { once } from 'node:events';
 import { streamResponse } from './core-controlled-upstream.js';
 
 export const sourceContent = 'ARITHMETIC_SEED: 7+5=12.\n';
-export function substrateCommand(peer, cycle, { poolSize = 3 } = {}) {
+export function substrateCommand(peer, cycle, { poolSize = 3, projectSource } = {}) {
   assert.ok([3, 6].includes(poolSize));
   assert.ok(Number.isSafeInteger(peer) && peer >= 0 && peer < poolSize && [0, 1].includes(cycle));
   return `python3 - <<'SUBSTRATE_FIXED'
 import json,os,pathlib,re,subprocess,time
 peer=${peer}
 cycle=${cycle}
-source=${JSON.stringify(sourceContent)}
+source=${projectSource ? 'pathlib.Path(' + JSON.stringify(projectSource.file) + ').read_text()' : JSON.stringify(sourceContent)}
 def cli(operation,value,request_id):
  path=pathlib.Path('request.json'); path.write_text(json.dumps(value))
  result=subprocess.run(['swarm','substrate',operation,'--input',str(path),'--request-id',request_id],capture_output=True,text=True,timeout=10)
@@ -68,7 +68,7 @@ print(json.dumps(row))
 SUBSTRATE_FIXED`;
 }
 
-export async function createSubstrateUpstream({ deadlineAt, poolSize = 3, observe = async () => {}, onFailure = () => {} }) {
+export async function createSubstrateUpstream({ deadlineAt, poolSize = 3, projectSource, observe = async () => {}, onFailure = () => {} }) {
   assert.ok([3, 6].includes(poolSize));
   const maxRequests = poolSize * 4;
   let arrivals = 0, accepted = 0, failure;
@@ -85,6 +85,7 @@ export async function createSubstrateUpstream({ deadlineAt, poolSize = 3, observ
       stage = 'fixed-input';
       const user = body.input.filter(row => row.role === 'user').at(-1);
       const text = typeof user?.content === 'string' ? user.content : user?.content?.map(row => row.text ?? '').join('');
+      if (projectSource) assert.ok(text.includes(projectSource.prompt));
       const match = /^Substrate peer=([0-9]+) cycle=([01])\n/.exec(text); assert.ok(match);
       const peer = Number(match[1]), cycle = Number(match[2]), key = `${peer}:${cycle}`;
       assert.ok(Number.isSafeInteger(peer) && peer < poolSize);
@@ -98,7 +99,7 @@ export async function createSubstrateUpstream({ deadlineAt, poolSize = 3, observ
           }
         }
         if (cycle === 1) await observe({ phase: 'before', peer, previous: evidence.find(row => row.peer === peer && row.cycle === 0) });
-        item = { type: 'function_call', id: `fc_${callId}`, call_id: callId, name: 'bash', arguments: JSON.stringify({ command: substrateCommand(peer, cycle, { poolSize }), timeout: 40 }) };
+        item = { type: 'function_call', id: `fc_${callId}`, call_id: callId, name: 'bash', arguments: JSON.stringify({ command: substrateCommand(peer, cycle, { poolSize, projectSource }), timeout: 40 }) };
       } else {
         stage = 'tool-result';
         const outputs = body.input.filter(row => row.type === 'function_call_output' && row.call_id === callId); assert.equal(outputs.length, 1);
@@ -111,11 +112,11 @@ export async function createSubstrateUpstream({ deadlineAt, poolSize = 3, observ
           assert.deepEqual(row.process, previous.process); assert.equal(row.published.author, previous.published.author);
           assert.match(row.sessionId, /^[a-f0-9-]{36}$/); await observe({ phase: 'after', peer, row });
         }
-        if (peer === 0 && cycle === 0) assert.equal(row.published.content, sourceContent);
+        if (peer === 0 && cycle === 0) assert.equal(row.published.content, projectSource?.content ?? sourceContent);
         if (peer === 1) {
           const source = evidence.find(value => value.peer === 0 && value.cycle === 0); assert.ok(source);
           assert.deepEqual(row.adopted, source.published); assert.ok(row.published.references.includes(source.published.address));
-          assert.ok(row.published.content.includes(sourceContent));
+          assert.ok(row.published.content.includes(projectSource?.content ?? sourceContent));
         }
         evidence.push(row);
         item = { type: 'message', id: `msg_${callId}`, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'FIXED_CYCLE_OK', annotations: [] }] };

@@ -16,7 +16,7 @@ import { AGENT_CONTINUATION_MESSAGE, AGENT_SOFT_CLOSEOUT_MESSAGE, AGENT_MATERIAL
 import { runSwarmCli } from '../src/cli/swarm-cli.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
-import { buildTaskPoolAutonomousDiscoveryMessage } from '../src/harnesses/taskpool/controller.js';
+import { buildTaskPoolAutonomousDiscoveryMessage } from '../examples/taskpool/controller.js';
 import { renderStartupPrompt } from '../src/core/startup-prompt.js';
 import { fateServiceManifest } from '../examples/substrate/fate-service.js';
 import { fateVerificationContinuation, fateVerifiedInput } from '../examples/substrate/fate-run.js';
@@ -36,8 +36,8 @@ const sourcePaths = [
   'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts', 'scripts/codex-app-server-driver.ts',
   'scripts/local-setup-smoke.ts', 'scripts/local-setup-upstream.ts',
   'examples/bridge-services/handoff.ts',
-  'examples/notes/main.ts', 'src/harnesses/shared/run-input.ts', 'src/harnesses/substrate/index.ts', 'src/harnesses/substrate/substrate.ts',
-  'src/harnesses/taskpool/controller.ts', 'src/harnesses/taskpool/harness.ts',
+  'examples/notes/main.ts', 'examples/notes/project.ts', 'examples/taskpool/project.ts', 'src/harnesses/shared/project-git.ts', 'src/harnesses/shared/run-input.ts', 'src/harnesses/substrate/index.ts', 'src/harnesses/substrate/substrate.ts',
+  'examples/taskpool/controller.ts', 'examples/taskpool/harness.ts',
   'examples/substrate/fate-run.ts', 'examples/substrate/fate-service.ts', 'src/harnesses/substrate/paper-substrate.ts',
   'benchmarks/putnambench-taskpool/run.ts',
   'benchmarks/programbench-pastel/subagents-example.ts',
@@ -168,7 +168,11 @@ output('07-notes-harness.md', header('Installed Notes Harness prompts',
   'The Writer and Reader use the default Core system prompt with their own Notes grants and an empty Added System Prompt. The host supplies three fixed user inputs through its exclusive input helper. The seeded fact enters the model transcript when a Agent reads its file or receives it in a Service result.')
   + block('Writer publication', notesInput.put)
   + block('Reader retrieval', notesInput.get)
-  + block('Reader follow-up', notesInput.follow));
+  + block('Reader follow-up', notesInput.follow)
+  + block('Project Writer Profile prompt', between('examples/notes/project.ts', "export const projectNotesWriterPrompt = '", "';"),
+    'The writer receives the original user prompt directly through followUp after the project FileTree is installed.')
+  + block('Project Reader Profile prompt', between('examples/notes/project.ts', "export const projectNotesReaderPrompt = '", "';"),
+    'The reader receives JSON with task equal to the original user prompt and artifact equal to the Run-specific result filename.'));
 const handoffPath = 'examples/bridge-services/handoff.ts';
 const handoffVariables = { key: 'handoff-example', receivedFile: 'received.txt' };
 output('14-sdk-handoff.md', header('Installed public SDK handoff prompts',
@@ -176,7 +180,11 @@ output('14-sdk-handoff.md', header('Installed public SDK handoff prompts',
   + block('Writer Profile prompt', evaluate(between(handoffPath, 'const writerPrompt = ', ';\n')))
   + block('Reader Profile prompt', evaluate(between(handoffPath, 'const readerPrompt = ', ';\n')))
   + block('Writer follow-up', evaluate('`Publish' + between(handoffPath, '`Publish', '`);') + '`', handoffVariables))
-  + block('Reader follow-up', evaluate('`Receive' + between(handoffPath, '`Receive', '`);') + '`', handoffVariables)));
+  + block('Reader follow-up', evaluate('`Receive' + between(handoffPath, '`Receive', '`);') + '`', handoffVariables))
+  + block('Project Writer instruction', evaluate('`Inspect' + between(handoffPath, '`Inspect', '` })') + '`', handoffVariables),
+    'This instruction accompanies task, the unmodified user prompt, in the role input JSON. The named key uses the actual fresh UUID.')
+  + block('Project Reader instruction', evaluate('`Check' + between(handoffPath, '`Check', '` })') + '`', handoffVariables),
+    'This instruction accompanies task in the Reader input JSON. The filename is set to the actual Run-specific reader output.'));
 const subagentsPath = 'test-support/subagents/communication-fixture-prompts.ts';
 output('08-subagents-harness.md', header('Subagents Harness prompts',
   'The ordinary Harness stages the Root and Child Profile prompts verbatim and sends user or model-authored task text through the collaboration controller. The separate communication fixture stages its own Profile prompts. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in communication-fixture-controller.ts with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Agent Service requests.')
@@ -227,7 +235,9 @@ output('09-substrate-harness.md', header('Substrate peer prompts',
 output('08-peermesh-harness.md', header('PeerMesh peer, batch and notice prompts',
   'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper. The project path uses Core start for ordinary batches and Core steer for eligible peer notices during an active batch. The compatibility paths use explicit followUp.')
   + block('Compatibility peer Profile prompt', between('src/harnesses/peermesh/index.ts', 'export const peerPrompt = `', '`;'))
-  + block('Project peer Profile prompt', between('src/harnesses/peermesh/index.ts', 'export const projectPeerPrompt = `', '`;'))
+  + block('Project fixture peer Profile prompt', between('src/harnesses/peermesh/index.ts', 'export const projectPeerPrompt = `', '`;'))
+  + block('Seeded checkout instruction', between('src/harnesses/shared/project-git.ts', "export const seededCheckoutInstruction = '", "';"),
+    'In the project command this replaces the clone clause in the PeerMesh Profile and is appended to all project Lead–Worker Profiles. The host sets RUN_INITIAL_COMMIT to the commit of the fixed FileTree.')
   + block('Project kickoff text', between('src/harnesses/peermesh/team.ts', 'router.kickoff(', ');'),
     'All peers receive the same trusted project body as the kickoff user input. The provisioned Gitea issue stores the same body and its title.')
   + block('Exact serial input composition', between('src/harnesses/peermesh/router.ts', 'const input = `', '`;'),
@@ -246,7 +256,7 @@ output('08-peermesh-harness.md', header('PeerMesh peer, batch and notice prompts
     'The host supplies two distinct provisioned peer usernames and a fresh 24-character seed. Only A receives the seed. The user comment names only A and appends liveAUser. Negotiation and agreement text are actual model-authored Mattermost posts, delivered by the normal authenticated subscription. The fixture injects no model tool program or terminal response.'));
 const leadWorkerPath = 'src/harnesses/lead-worker/prompts.ts';
 let leadWorkerDoc = header('Lead-Worker role and turn instructions', 'The Harness serializes the selected instruction or Board update before exclusive followUp delivery. The output quotes source templates and composition paths.');
-for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'helperInitialInstruction', 'leadAdjustmentInstruction', 'helperFollowupInstruction', 'dynamicLeadPrompt', 'dynamicWorkerPrompt']) {
+for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'helperInitialInstruction', 'leadAdjustmentInstruction', 'helperFollowupInstruction', 'dynamicLeadPrompt', 'dynamicWorkerPrompt', 'projectLeadPrompt', 'projectStaticWorkerPrompt', 'projectDynamicLeadPrompt', 'projectDynamicWorkerPrompt', 'projectIntegrationInstruction']) {
   const source = sources.get(leadWorkerPath)!;
   const start = `export const ${name} = `;
   const from = source.indexOf(start);
@@ -254,11 +264,11 @@ for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'help
   leadWorkerDoc += block(name, between(leadWorkerPath, start + delimiter, delimiter + ';'));
 }
 leadWorkerDoc += block('Staged corrective input composition and send', between('src/harnesses/lead-worker/index.ts', '                  const nextPath =', '\n                  final = board.snapshot();'), 'The trusted host checker must explicitly return STAGE_CANDIDATE_REJECTED. Actual stage, helper role and attempt derive the fresh path and request ID; the original task and monotonic deadline remain fixed. No reference answer or new permission is supplied.');
-leadWorkerDoc += block('Dynamic goal and dispatch', between('src/harnesses/lead-worker/dynamic-scheduler.ts', "    send(lead, { type: 'dynamic-goal'", '\n  } finally'), 'The initial goal contains the frozen task specification and selected public JSONL data. Later inputs contain committed Board sequence numbers, member and task identities, and the current revision. Each ready recipient receives an exclusive followUp in its original Session.');
+leadWorkerDoc += block('Dynamic goal and dispatch', between('src/harnesses/lead-worker/dynamic-scheduler.ts', "    send(lead, { type: 'dynamic-goal'", '\n  } finally'), 'The ordinary project path sends the original user prompt in goal. The Orders fixture uses its frozen task specification and selected public JSONL data. Later inputs contain committed Board sequence numbers, member and task identities, and the current revision. Each ready recipient receives an exclusive followUp in its original Session.');
 leadWorkerDoc += block('Dynamic checker Profile composition', between('src/harnesses/lead-worker/dynamic.ts', '                model, image, writable: true, prompt:', '\n                network:'), 'The shared Worker instructions precede the Lead-authored Profile instructions. The composed string becomes the startup Profile prompt for the new Agent.');
 output('08-lead-worker-harness.md', leadWorkerDoc);
-const flatControllerPath = 'src/harnesses/taskpool/controller.ts';
-const taskPoolHarnessPath = 'src/harnesses/taskpool/harness.ts';
+const flatControllerPath = 'examples/taskpool/controller.ts';
+const taskPoolHarnessPath = 'examples/taskpool/harness.ts';
 const putnamPath = 'benchmarks/putnambench-taskpool/run.ts';
 const discoveryFields = {
   mission: { mission_id: '<MISSION_ID>', goal: '<MISSION_GOAL>', acceptance_conditions: '<MISSION_ACCEPTANCE>' },
@@ -284,6 +294,8 @@ const flatCliHelp = await Promise.all(['create', 'link'].map(async command => {
 }));
 output('08-taskpool-harness.md', header('TaskPool discovery and continuation prompts',
   'After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. The current Execution determines whether the controller sends the ordinary continuation or the soft-closeout body. The trusted Core capture or explicit snapshot binding selects the guidance for the available Workspace operations. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller.')
+  + block('Project discovery workflow', between('examples/taskpool/project.ts', "discoveryWorkflow: '", "',"),
+    'The project entry also gives discovery the exact user prompt as the Mission goal. The controller sends the discovery input after installing the read-only initial tree.')
   + block('Profile suffix when live Workspace save is unavailable', between(taskPoolHarnessPath, "export const TASKPOOL_WITHOUT_WORKSPACE_SAVE_PROMPT = '", "';"),
     'The default Added System Prompt is empty. Without a Core or injected live capture binding, the host includes this explanation after any supplied Profile text.')
   + block('Default discovery input', between(flatControllerPath, "export const TASKPOOL_DISCOVERY_MESSAGE='", "';"))

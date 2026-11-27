@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { ContextService } from '../src/context/context-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
-import { createMissionCoordination, createMissionSubmissionAccess } from '../src/harnesses/taskpool/mission-coordination.js';
+import { createMissionCoordination } from '../examples/taskpool/mission-coordination.js';
+import { createMissionSubmissionAccess } from '../src/runtime/mission-submission-access.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { TaskService } from '../src/task/task-service.js';
 

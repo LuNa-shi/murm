@@ -8,10 +8,10 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { controls, transport } from './fixtures/taskpool-controller-backend.js';
-import { createTaskPoolMissionService } from '../src/harnesses/taskpool/mission-service.js';
-import { createMissionCoordination } from '../src/harnesses/taskpool/mission-coordination.js';
-import { createTaskPoolTaskService } from '../src/harnesses/taskpool/task-service.js';
-import { createTaskPoolAgentCoordinator } from '../src/harnesses/taskpool/agent-coordinator.js';
+import { createTaskPoolMissionService } from '../examples/taskpool/mission-service.js';
+import { createMissionCoordination } from '../examples/taskpool/mission-coordination.js';
+import { createTaskPoolTaskService } from '../examples/taskpool/task-service.js';
+import { createTaskPoolAgentCoordinator } from '../examples/taskpool/agent-coordinator.js';
 import { ServiceRegistry } from '../src/core/services.js';
 const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
@@ -116,7 +116,7 @@ for(const boundary of ['stop','deadline','binding']) test(`Mission submission re
 });
 
 test('normal TaskPool host keeps the explicit Mission checker caller-owned after its Agents close',async t=>{
-  const {runTaskPoolHarness}=await import('../src/harnesses/taskpool/harness.js');
+  const {runTaskPoolHarness}=await import('../examples/taskpool/harness.js');
   for(const {coordinationPermissions,enabled} of [{coordinationPermissions:[],enabled:false},{coordinationPermissions:[],enabled:true},{coordinationPermissions:['mission_submit'],enabled:true}]) {
     const root=await mkdtemp(join(tmpdir(),'taskpool-mission-host-')),stores=await createTaskPoolStores(root);
     stores.tasks.db.prepare('UPDATE missions SET acceptance_conditions_json=? WHERE mission_id=?').run(JSON.stringify({required_check:checkerIdentity}),stores.missionId);
@@ -155,7 +155,7 @@ test('normal TaskPool host keeps the explicit Mission checker caller-owned after
 
 
 test('normal math TaskPool reports a trusted accepted Mission as business success with an active Task', async t => {
-  const { runTaskPoolHarness } = await import('../src/harnesses/taskpool/harness.js');
+  const { runTaskPoolHarness } = await import('../examples/taskpool/harness.js');
   const root = await mkdtemp(join(tmpdir(), 'taskpool-math-acceptance-'));
   const stores = await createTaskPoolStores(root);
   stores.tasks.db.prepare('UPDATE missions SET acceptance_conditions_json=? WHERE mission_id=?').run(JSON.stringify({ required_check: checkerIdentity }), stores.missionId);

@@ -1,5 +1,17 @@
 # Editable Substrate host
 
+## Run from your project
+
+```sh
+cd my-project
+murm --harness substrate --prompt "Inspect this project and explain how to verify it"
+```
+
+Each peer receives the captured files and uses the prompt as the question in every cycle. FATE remains an explicit benchmark through prepare, run, matrix and rescore flags.
+
+After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
+
+
 The host imports only from `@murm/core` for Runtime, Sandbox and Service author APIs. See the [SDK guide](../../docs/en/sdk.md) for configuration and resource ownership.
 
 The package is currently private and distributed as a checkout-built tarball. Install checkout dependencies with `npm ci` first. TypeScript sources compile with `npm run build` into `dist/`; `npm pack` builds JavaScript and declarations before archiving.
@@ -103,7 +115,7 @@ Prepare [FATE-X at `a6fb49e`](https://github.com/frenzymath/FATE-X/tree/a6fb49ee
 ```sh
 export MURM_FATE_BENCHMARK=FATE-X
 node "$example/main.js" --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-X
-node "$example/main.js" "$example/fate-config.js"
+node "$example/main.js" --fate-run "$example/fate-config.js"
 ```
 
 A host configuration can set `fate.verifiedCompletion: true` for a sustained attempt. The first task input tells the peer its work window. To finish early, the peer must first get `passed` from `check_lean` on the exact proof it submits. After an unfinished natural reply, the host continues the same Session only while its remaining Service and Lean-check allowances still permit a verified submission. A peer with an already checked proof can use its last Service operation to submit the same bytes.

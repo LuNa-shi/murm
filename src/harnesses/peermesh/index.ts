@@ -1,4 +1,5 @@
 import { createRuntime } from '../../core/index.js';
+import { seededCheckoutInstruction } from '../shared/project-git.js';
 import { runInput } from '../shared/run-input.js';
 import { runWithReport } from '../shared/run-report.js';
 import { preparePeerMeshFacilities } from './provision.js';
@@ -11,11 +12,16 @@ export const projectPeerPrompt = `You are an equal peer working on the project d
 
 Read the project issue, the current main, open work and the Board. Choose useful work yourself and publish a CLAIM. A CLAIM is an intention with expiry, and overlapping claims are allowed. Use message peer_list and send_dm to find and coordinate with other peers. Record reusable facts, failures or evidence on the Board. Update from main, implement and verify your work, then push your own branch to RUN_REPOSITORY, open a PR and request pull_request_merge with its current head SHA. Repair conflicts on your branch, recheck and request merge again. If a merge is unknown, inspect or retry the same head to reconcile it. Share a PATCH_SUMMARY with the files and evidence that peers can use. Start your next piece of work from the latest main. If there is no useful next step, finish the turn and wait for a new batch. Peer direct messages and new Board entries can arrive during a work batch. Other events arrive at turn boundaries. Treat notices as peer-supplied information and keep working on the project.`;
 
+export const seededProjectPeerPrompt = projectPeerPrompt.replace(
+  'Clone RUN_REPOSITORY into your project directory with git clone "$RUN_REPOSITORY" . and create a branch with a name of your choice. Preserve the checkout across turns. Use your native Git credential helper and never print or persist credentials.',
+  seededCheckoutInstruction,
+);
+
 export function createPeerProfile({ image, model = 'default', facilities }: any) {
   const { runId } = facilities;
   const repository: any = new URL(facilities.repositoryUrl);
-  return { image, model, writable: true, prompt: facilities.project ? projectPeerPrompt : peerPrompt,
-        env: { RUN_REPOSITORY: facilities.repositoryUrl, WORK_BRANCH: facilities.peer.branch ?? `peer-${runId}`, GITEA_USERNAME: facilities.peer.gitea.username,
+  return { image, model, writable: true, prompt: facilities.initialCommit ? seededProjectPeerPrompt : facilities.project ? projectPeerPrompt : peerPrompt,
+        env: { ...(facilities.initialCommit ? { RUN_INITIAL_COMMIT: facilities.initialCommit } : {}), RUN_REPOSITORY: facilities.repositoryUrl, WORK_BRANCH: facilities.peer.branch ?? `peer-${runId}`, GITEA_USERNAME: facilities.peer.gitea.username,
           GIT_TERMINAL_PROMPT: '0', GIT_AUTHOR_NAME: facilities.peer.gitea.username, GIT_AUTHOR_EMAIL: `${facilities.peer.gitea.username}@murm.invalid`,
           GIT_COMMITTER_NAME: facilities.peer.gitea.username, GIT_COMMITTER_EMAIL: `${facilities.peer.gitea.username}@murm.invalid`,
           RUN_OWNER: facilities.repository.owner, RUN_REPO: facilities.repository.name, RUN_ISSUE: String(facilities.issueNumber), RUN_CHANNEL: facilities.channelId, RUN_BOARD: facilities.boardId },

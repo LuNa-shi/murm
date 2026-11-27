@@ -4,19 +4,21 @@ import { isFateBenchmark } from './fate-checker.js';
 
 export async function runSubstrateExample(config: any, signal: any) {
   const { createSandbox } = await import('@murm/core');
-  if (config.fate !== undefined) {
-    const selected = config.models[config.model ?? 'default'];
-    const supportedModel = (selected?.provider === 'kimi_proxy' && selected.model === 'k3') ||
-      (selected?.provider === 'gpt_proxy' && selected.model === 'gpt-6.1-sol');
-    if (!supportedModel) {
-      throw Object.assign(new Error('The FATE example supports kimi_proxy/k3 and gpt_proxy/gpt-6.1-sol'), { code: 'FATE_MODEL_INVALID' });
-    }
-    const { runFateSubstrate } = await import('./fate-run.js');
-    return runFateSubstrate({ ...config, sandbox: createSandbox(config.sandbox),
-      connection: { ...config.connection, modelGateway: { ...config.connection?.modelGateway, maxOutputTokens: null } } }, signal);
-  }
   const { runSubstrate } = await import('../../src/harnesses/substrate/index.js');
   return runSubstrate({ ...config, sandbox: createSandbox(config.sandbox) }, signal);
+}
+
+export async function runFateExample(config: any, signal: AbortSignal) {
+  const { createSandbox } = await import('@murm/core');
+  const selected = config.models[config.model ?? 'default'];
+  const supportedModel = (selected?.provider === 'kimi_proxy' && selected.model === 'k3') ||
+    (selected?.provider === 'gpt_proxy' && selected.model === 'gpt-6.1-sol');
+  if (!supportedModel) {
+    throw Object.assign(new Error('The FATE example supports kimi_proxy/k3 and gpt_proxy/gpt-6.1-sol'), { code: 'FATE_MODEL_INVALID' });
+  }
+  const { runFateSubstrate } = await import('./fate-run.js');
+  return runFateSubstrate({ ...config, sandbox: createSandbox(config.sandbox),
+    connection: { ...config.connection, modelGateway: { ...config.connection?.modelGateway, maxOutputTokens: null } } }, signal);
 }
 
 const failed = (report: any) => report.businessFailure || report.cleanupFailure || report.reportSaveFailure ||
@@ -29,7 +31,7 @@ async function runMatrix(config: any, signal: AbortSignal) {
   const groups = [];
   for (const mode of ['shared', 'private', 'none'] as const) {
     signal.throwIfAborted();
-    const report = await runSubstrateExample({ ...config, runId: `${config.runId}-${mode}`, fate: { ...config.fate, mode } }, signal);
+    const report = await runFateExample({ ...config, runId: `${config.runId}-${mode}`, fate: { ...config.fate, mode } }, signal);
     groups.push({ mode, runtimeId: report.runtimeId, reportPath: report.reportPath, bundlePath: report.bundlePath,
       teamSuccess: report.scoring?.teamSuccess ?? null, failure: Boolean(failed(report)) });
     if (report.cleanupFailure) break;
@@ -38,7 +40,7 @@ async function runMatrix(config: any, signal: AbortSignal) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const usage = 'node main.js <config.mjs>\nnode main.js --result <run-directory> --runtime-id <expected-id>\nnode main.js --fate-prepare <project-root> <lean-root> [FATE-M|FATE-H|FATE-X]\nnode main.js --fate-matrix <config.mjs>\nnode main.js --fate-rescore <project-root> <lean-root> <frozen-bundle.json>';
+  const usage = 'node main.js <config.mjs>\nnode main.js --result <run-directory> --runtime-id <expected-id>\nnode main.js --fate-prepare <project-root> <lean-root> [FATE-M|FATE-H|FATE-X]\nnode main.js --fate-run <config.mjs>\nnode main.js --fate-matrix <config.mjs>\nnode main.js --fate-rescore <project-root> <lean-root> <frozen-bundle.json>';
   const args = process.argv.slice(2);
   const lifetime: any = new AbortController();
   const stop = () => lifetime.abort();
@@ -63,6 +65,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const scores = await rescoreFate({ projectRoot: args[1], leanRoot: args[2] }, args[3]);
       process.stdout.write(`${JSON.stringify(scores)}\n`);
       process.exitCode = scores.candidates.some(candidate => ['timeout', 'checker_error', 'aborted'].includes(candidate.status)) ? 1 : 0;
+    } else if (args.length === 2 && args[0] === '--fate-run') {
+      const configuration = (await import(pathToFileURL(resolve(args[1])).href)).default;
+      const report = await runFateExample(configuration, lifetime.signal);
+      process.stdout.write(`${JSON.stringify(report)}\n`);
+      process.exitCode = failed(report) ? 1 : 0;
     } else if (args.length === 2 && args[0] === '--fate-matrix') {
       const configuration = (await import(pathToFileURL(resolve(args[1])).href)).default;
       const groups = await runMatrix(configuration, lifetime.signal);

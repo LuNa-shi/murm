@@ -1,4 +1,4 @@
-import { MurmError } from '../../errors.js';
+import { MurmError } from '../../src/errors.js';
 
 /** Host policy only. These are existing domain grants, never Profile inference. */
 export function taskPoolCoordinationPermissions(permissions: any = []) {

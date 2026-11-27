@@ -22,8 +22,8 @@ test('TaskPool recovers exact binary workDir bytes through Core after a lost sna
   const { createRuntime } = await import('../src/core/index.js');
   const { ServiceRegistry, snapshotServiceRegistry, invokeService } = await import('../src/core/services.js');
   const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
-  const { prepareTaskPoolInputs } = await import('../src/harnesses/taskpool/prepare-inputs.js');
-  const { createTaskPoolPublicationServices } = await import('../src/harnesses/taskpool/publication-services.js');
+  const { prepareTaskPoolInputs } = await import('../examples/taskpool/prepare-inputs.js');
+  const { createTaskPoolPublicationServices } = await import('../examples/taskpool/publication-services.js');
   const { makeEnvelope } = await import('../src/protocol/envelope.js');
   provider.allowDeletion();
   const outputDir = await mkdtemp(join(tmpdir(), 'taskpool-core-capture-'));

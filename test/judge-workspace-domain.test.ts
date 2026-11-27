@@ -11,7 +11,7 @@ import { makeEnvelope } from '../src/protocol/envelope.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { TaskService } from '../src/task/task-service.js';
-import { prepareTaskPoolInputs } from '../src/harnesses/taskpool/prepare-inputs.js';
+import { prepareTaskPoolInputs } from '../examples/taskpool/prepare-inputs.js';
 
 const checkerIdentity = { checker_ref: 'lean', checker_version: 'test', environment_ref: 'test-project' };
 const initialFiles = {

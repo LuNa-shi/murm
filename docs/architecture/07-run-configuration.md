@@ -1,5 +1,7 @@
 # 07. Launch, configuration and finalization
 
+The installed project command runs with a captured directory and the initial prompt. Follow its startup, domain setup, and receipts in [Project Harness entry](23-project-harness.md).
+
 The host selects a Harness and supplies its model, image, Service and resource configuration. The programmable Core owns Agent identity, input delivery, private resources, artifact collection and close. Domain state transitions are described in [Execution](02-execution.md), [Mission and Task](03-mission-task.md) and [Services](04-services.md). The full prompt composition is in [Prompts](08-prompts.md).
 
 ## TypeScript build and installation

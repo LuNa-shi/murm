@@ -21,6 +21,7 @@ GitHub Issue 记录实施切片、依赖、进度、PR 和验收证据。每张�
 | [推进、验收与发布](03-delivery-and-validation.md) | 开发、本人的使用验收、条件启动的外部试用与发布、时间窗口和收尾检查 |
 | [TaskPool 数学形式化](04-taskpool-math.md) | #200 后续范围、实时文件接续和真实数学题验收 |
 | [ScaleMAS 论文机制与 FATE](05-substrate-fate.md) | #202 后续范围、成果库、原题与三组单题验收 |
+| [项目 Harness 的共同入口](06-project-harness.md) | #257 的项目目录与 prompt、模块加载、前台 CLI / RPC 和结果合同 |
 | [动态 Core 与 Lead–Worker](../dynamic-lead-worker.md) | #235 的 Q2 后续扩展、可选动态团队模式与真实模型验收 |
 
 Core 文档定义公共接口及其最低保证；Harness 文档在此保证内定义各模式。推进计划安排交付顺序，不改变技术合同。单次宿主等待的 60 秒是建议默认值，具体配置需要有界且可检验，不是整个项目的耗时承诺。

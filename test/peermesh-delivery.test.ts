@@ -252,3 +252,37 @@ test('a failed archive download keeps the already fixed main revision for close 
   assert.equal(archivePaths[0], archivePaths[1]);
   assert.deepEqual(await readFile(result.archive), archive);
 });
+
+test('a definitive Gitea rechecking refusal admits one bounded retry of the same checked head', async t => {
+  let writes = 0;
+  let reads = 0;
+  const head = 'a'.repeat(40);
+  const merged = 'b'.repeat(40);
+  const server = createServer(async (req, res) => {
+    if (req.method === 'POST') {
+      assert.equal((await new Response(req).json()).head_commit_id, head);
+      if (++writes === 1) {
+        res.writeHead(405);
+        res.end(JSON.stringify({ message: 'Please try again later' }));
+      } else {
+        res.writeHead(200);
+        res.end();
+      }
+      return;
+    }
+    reads++;
+    res.end(JSON.stringify({ user: { id: 1 }, head: { ref: 'branch-a', sha: head }, base: { ref: 'main' },
+      mergeable: true, merged: writes === 2, merge_commit_sha: merged }));
+  }).listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const delivery = createPeerMeshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` },
+    repository: { owner: 'owner', name: 'repo' }, peers: [{ key: 'a', branch: 'branch-a', gitea: { accountId: '1' } }] },
+  adminToken: 'host', readinessIntervalMs: 1 });
+  const input = { peerKey: 'a', number: 1, headSha: head, requestId: 'merge-a' };
+  assert.equal((await delivery.merge(input)).mergeSha, merged);
+  assert.equal((await delivery.merge(input)).mergeSha, merged);
+  assert.equal(writes, 2);
+  assert.equal(reads, 3);
+  assert.deepEqual(delivery.snapshot()[0].recheckRejection, { phase: 'submit', code: 'GITEA_MERGE_RECHECKING', status: 405 });
+});

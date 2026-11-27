@@ -5,6 +5,30 @@ section: BUILD ON MURM
 order: 6
 ---
 
+## Load a module with the shared CLI
+
+Pass a built ESM file to `murm --harness ./tools/harness.mjs --prompt 'Audit the build inputs'`. Local paths and installed packages resolve from the invocation directory. A module can use `import.meta.url` to find its own resources. The runner supplies `input`, `initial.files`, `initial.digest`, `configuration`, `runId`, `outputDir`, `signal` and observation callbacks.
+
+```js
+export default {
+  id: 'inspect-input',
+  apiVersion: 1,
+  async run(context) {
+    context.signal.throwIfAborted();
+    context.markRunning();
+    return {
+      outcome: 'completed',
+      reason: 'file-list-ready',
+      result: { files: Object.keys(context.initial.files) },
+      artifacts: [],
+      cleanup: { status: 'complete' },
+    };
+  },
+};
+```
+
+When starting Agents, pass `initial.files` to Core `spawn`. Subscribe with `onEvent` before spawn, call `markRunning()` when ready to send the first task, and return the Core close evidence and artifacts after stopping. In `--mode rpc`, wait for `ready` then send one `run` with `cwd` and `prompt` in `input`. Use `status` and `stop` during the run. A module that declares `input: true` can call `registerInput` to opt into follow-up requests. Stdout is JSONL and stderr carries diagnostics.
+
 A Harness is an application built with the SDK. It decides who works, how Agents share information, and what proves that the Run succeeded. Start from the [SDK guide](sdk.md) and the runnable [Messages handoff](https://github.com/LuNa-shi/murm/tree/main/examples/bridge-services); this page explains how to change the collaboration mechanism.
 
 Role prompts, Service contracts, and host scheduling can be changed in application code. If the task also needs a new executable, language runtime, or system library inside the Sandbox, provide it in a compatible Worker image.

@@ -8,8 +8,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { controls, transport } from './fixtures/taskpool-controller-backend.js';
-import { createTaskPoolAgentCoordinator } from '../src/harnesses/taskpool/agent-coordinator.js';
-import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../src/harnesses/taskpool/task-service.js';
+import { createTaskPoolAgentCoordinator } from '../examples/taskpool/agent-coordinator.js';
+import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../examples/taskpool/task-service.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next) {
@@ -130,7 +130,7 @@ test('dependency repair keeps Mission, target ownership and latest execution fen
 });
 
 test('actual TaskPool host threads only explicit grants into frozen Profile, Service and registered Agents',async t=>{
-  const {runTaskPoolHarness}=await import('../src/harnesses/taskpool/harness.js');
+  const {runTaskPoolHarness}=await import('../examples/taskpool/harness.js');
   for(const coordinationPermissions of [[],['task_dependency_replace']]) {
     const root=await mkdtemp(join(tmpdir(),'taskpool-host-coordination-'));
     const stores=await createTaskPoolStores(root);

@@ -70,7 +70,7 @@ let createRuntime,ServiceRegistry,createSandbox,getExecutorCapabilities;
 try {
  ({createRuntime,ServiceRegistry,createSandbox,getExecutorCapabilities}=await import('@murm/core'));
 } finally {hooks.deregister()}
-const domainRoots=['dist/src/task/','dist/src/context/','dist/src/judge/','dist/src/harnesses/taskpool/'];
+const domainRoots=['dist/src/task/','dist/src/context/','dist/src/judge/','dist/examples/taskpool/'];
 assert.deepEqual([...loaded].filter(path=>path==='dist/src/agent/agent-contract.js'||domainRoots.some(root=>path.startsWith(root))),[],
  'Public Core imports must load independently of flat Task, Mission and role contracts');
 const {runNotesHarness,createNotes,fixedFact}=await import('./main.mjs');

@@ -1,3 +1,4 @@
+import { ProjectPreflightError } from '../shared/project-input.js';
 import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { mkdirSync, chmodSync } from 'node:fs';
@@ -20,7 +21,7 @@ const capability = (operation: 'publish' | 'search' | 'visit', description: stri
 /** Harness-owned persistent content; no Task/Execution or private directory access. */
 export function createSubstrateService({ databasePath, runId, poolSize = 3 }: any) {
   if (typeof databasePath !== 'string' || !databasePath || typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(runId)) throw new TypeError('Substrate requires a database path and bounded run ID');
-  if (!Number.isSafeInteger(poolSize) || poolSize < 3 || poolSize > 8) throw new TypeError('Substrate pool size must be an integer from three to eight');
+  if (!Number.isSafeInteger(poolSize) || poolSize < 3 || poolSize > 8) throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Substrate pool size must be an integer from three to eight');
   mkdirSync(dirname(databasePath), { recursive: true, mode: 0o700 });
   const db: any = new DatabaseSync(databasePath); chmodSync(databasePath, 0o600);
   db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;

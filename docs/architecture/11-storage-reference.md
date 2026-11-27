@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS mission_manual_reviews (
 
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `59db288d6a8d6de972a517790059293f3aa5bf93d6bffc44859cd1afc234002f`.
+Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `30f200bfd669d15dcf20bde5dba7917adaf698697fa3af4a320aead3748b14d3`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (
