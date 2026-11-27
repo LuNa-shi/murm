@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { access, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
-import { isIP } from 'node:net';
+import { createConnection, isIP } from 'node:net';
 import { homedir, networkInterfaces, platform } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -263,11 +263,25 @@ export async function ensureLocalProvider(config: LocalEnvironmentConfig, { sign
   }, signal);
 }
 
+function localPortInUse(url: URL) {
+  return new Promise<boolean>(resolve => {
+    const socket = createConnection({ host: '127.0.0.1', port: Number(url.port || 80), timeout: 1000 });
+    const finish = (occupied: boolean) => { socket.destroy(); resolve(occupied); };
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(true));
+    socket.once('error', error => finish((error as NodeJS.ErrnoException).code !== 'ECONNREFUSED'));
+  });
+}
+
 async function ensureLocalProviderLocked(config: LocalEnvironmentConfig, { signal }: { signal?: AbortSignal } = {}): Promise<LocalProviderHandle> {
   const url = lifecycleUrl(config);
   if (!url) throw Object.assign(new Error('Local loopback OpenSandbox /v1 URL required'), { code: 'PROVIDER_CONFIGURATION_INVALID' });
   signal?.throwIfAborted();
   const socket = (await resolveLocalDocker()).socket;
+  const existing = await inspectProvider(config);
+  if (!existing && await localPortInUse(url)) {
+    throw Object.assign(new Error('The local OpenSandbox port is already occupied'), { code: 'PROVIDER_PORT_IN_USE' });
+  }
   if (!config.apiKey) {
     const filename = localApiKeyPath(url);
     try { await writeFile(filename, randomBytes(32).toString('hex'), { mode: 0o600, flag: 'wx' }); }
@@ -275,13 +289,11 @@ async function ensureLocalProviderLocked(config: LocalEnvironmentConfig, { signa
     config = { ...config, apiKey: resolveSandboxConnection({ lifecycleBaseUrl: config.lifecycleBaseUrl }).apiKey };
   }
   if (!config.apiKey) throw new Error('Could not load the owner-only OpenSandbox lifecycle key.');
-  const existing = await inspectProvider(config);
   if (existing && await providerHealthy(config, true)) {
     await run('docker', ['image', 'inspect', localExecdImage], signal).catch(async () => { await run('docker', ['pull', localExecdImage], signal); });
     return reuse(existing);
   }
   if (existing) throw Object.assign(new Error('The pinned OpenSandbox provider exists but its lifecycle API is unavailable or unauthorized'), { code: 'PROVIDER_UNHEALTHY' });
-  if (await providerHealthy(config, true)) throw Object.assign(new Error('The existing endpoint does not match the pinned OpenSandbox profile'), { code: 'PROVIDER_PROFILE_MISMATCH' });
   const token = randomUUID();
   const stateDir = join(homedir(), '.cache/murm/opensandbox', token);
   const name = `murm-opensandbox-${url.port || 80}`;

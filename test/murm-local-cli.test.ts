@@ -150,3 +150,37 @@ test('configured doctor preserves shell values while loading an adjacent environ
   assert.equal(report.lifecycleSource, 'config');
   assert.doesNotMatch(stdout, /shell-test-key|file-test-credential/);
 });
+
+test('local setup preserves a port conflict without sending it a lifecycle key', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-setup-port-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, 'docker'), `#!/bin/sh
+case "$1" in
+  context) printf '[{"Endpoints":{"docker":{"Host":"unix:///dev/null"}}}]';;
+  info) printf '{"OSType":"linux","SecurityOptions":[]}';;
+  network) printf '[]';;
+  *) exit 1;;
+esac
+`, { mode: 0o700 });
+  let requests = 0;
+  const occupant = createServer((_request, response) => { requests++; response.end('still running'); });
+  occupant.listen(0, '127.0.0.1');
+  await once(occupant, 'listening');
+  t.after(() => occupant.close());
+  const address = occupant.address() as { port: number };
+  const url = `http://127.0.0.1:${address.port}`;
+  await assert.rejects(promisify(execFile)(process.execPath, [cli, 'setup', '--mode', 'local'], {
+    env: { ...process.env, PATH: `${directory}:${process.env.PATH}`,
+      DOCKER_CONTEXT: 'test', MURM_LIFECYCLE_URL: `${url}/v1`, MURM_LIFECYCLE_TOKEN: 'local-test-credential' },
+  }), error => {
+    const { stdout, code } = error as { stdout: string; code: number };
+    assert.equal(code, 1);
+    const report = JSON.parse(stdout);
+    assert.match(report.checks.find(check => !check.ok).detail, /port is already occupied/);
+    assert.equal(report.smoke, undefined);
+    assert.doesNotMatch(stdout, /local-test-credential/);
+    return true;
+  });
+  assert.equal(requests, 0);
+  assert.equal(await (await fetch(url)).text(), 'still running');
+});

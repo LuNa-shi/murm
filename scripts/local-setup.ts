@@ -108,6 +108,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
   }
 
   let provider: Provider | undefined;
+  let rootlessDocker = false;
   let stage = 'config';
   try {
     const config = command.configPath
@@ -147,6 +148,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       const docker = await timed('host', checkLocalDocker);
       checks.push(docker.diagnostic);
       if (!docker.docker) return report;
+      rootlessDocker = docker.docker.rootless;
       advertiseHost ??= docker.docker.advertiseHost;
     }
     if (strict) {
@@ -202,7 +204,13 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       provider: ['Could not prepare or verify a compatible OpenSandbox provider.', 'Run murm doctor to check lifecycle authentication. Ensure the requested endpoint or local port is available.'],
       smoke: ['Could not complete the infrastructure probe.', 'Check the local OpenSandbox service, Worker image and host network.'],
     };
-    const [detail, remedy] = failure[stage];
+    let [detail, remedy] = failure[stage];
+    if (stage === 'provider' && (error as { code?: string })?.code === 'PROVIDER_PORT_IN_USE') {
+      detail = 'The local Lifecycle port is already occupied.';
+      remedy = 'Set MURM_LIFECYCLE_URL to a free loopback port and rerun local setup, or use existing mode for a service you operate.';
+    } else if (stage === 'provider' && rootlessDocker) {
+      remedy = 'Verify that the selected rootless Docker context can start containers and expose the Lifecycle address. Check delegated CPU and memory controllers before retrying.';
+    }
     if (!signal.aborted) checks.push({ id: stage, ok: false, detail, remedy });
     // A provider deployment can fail before returning its ownership handle.
     if (stage === 'provider' && error && typeof error === 'object' && 'cleanup' in error && error.cleanup && typeof error.cleanup === 'object' &&
