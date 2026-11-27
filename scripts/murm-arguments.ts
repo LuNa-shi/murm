@@ -1,8 +1,8 @@
 import { parseArgs } from 'node:util';
 
-export const setupUsage = 'Usage: murm setup';
+export const setupUsage = 'Usage: murm setup [--mode existing|local] [--config <module>]';
 export const initUsage = 'Usage: murm init --template subagents --dir <directory>';
-export const doctorUsage = 'Usage: murm doctor [--config <config.js>] [--smoke]';
+export const doctorUsage = 'Usage: murm doctor [--config <module>] [--smoke]';
 const projectUsage = [
   'Usage: murm --harness <module> --prompt <text> [--cwd <directory>] [--config <module>] [--output-dir <directory>]',
   '       murm --harness <module> --mode rpc [--config <module>] [--output-dir <directory>]',
@@ -17,7 +17,7 @@ export const murmUsage = [
 ].join('\n');
 
 export type LocalCommand =
-  | { command: 'setup' }
+  | { command: 'setup'; mode?: 'existing' | 'local'; configPath?: string }
   | { command: 'doctor'; configPath?: string; smoke: boolean };
 
 export type ProjectCommand = {
@@ -49,7 +49,12 @@ export function parseMurmCommand(args: string[]): MurmCommand | { help: string }
         return { ...project, mode: 'foreground', cwd: values.cwd, prompt: values.prompt };
       }
     }
-    if (command === 'setup' && options.length === 0) return { command };
+    if (command === 'setup') {
+      const { values } = parseArgs({ args: options, options: { mode: { type: 'string' }, config: { type: 'string' } } });
+      if (values.config !== '' && (values.mode === undefined || values.mode === 'existing' || values.mode === 'local')) {
+        return { command, mode: values.mode, configPath: values.config };
+      }
+    }
     if (command === 'init') {
       const { values } = parseArgs({
         args: options, options: { template: { type: 'string' }, dir: { type: 'string' } },

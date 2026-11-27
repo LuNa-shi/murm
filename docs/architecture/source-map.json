@@ -1307,7 +1307,16 @@
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Internal OpenSandbox target, local connection, and trusted network and workspace preparation"
+      "role": "Public Sandbox Provider contract, API and strict OpenSandbox preparation, and shared workspace capabilities"
+    },
+    {
+      "path": "src/core/sandbox-connection.ts",
+      "category": "Core runtime",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Connection precedence, owner-only local key discovery, and adjacent environment loading"
     },
     {
       "path": "src/core/worker-event-poll.ts",

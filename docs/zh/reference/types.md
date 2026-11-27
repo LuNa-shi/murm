@@ -369,13 +369,13 @@ export interface SandboxConfig {
   apiKey?: string;
   execdToken?: string;
   endpointHost?: string;
+  useServerProxy?: boolean;
   resourceLimits?: { cpu: string; memory: string };
   commandTimeoutMs?: number;
   timeoutSeconds?: number;
-  isolation: {
-    network?: 'local-docker';
-    disk: { bytes: number; inodes: number };
-  };
+  isolation?:
+    | { network?: 'local-docker'; disk: { bytes: number; inodes: number } }
+    | { network?: 'api'; disk?: { bytes: number; inodes?: never } };
 }
 
 export type ExecutorKind = 'pi' | 'codex';
@@ -402,6 +402,7 @@ export interface RuntimeConnectionOptions {
   modelGateway?: {
     host?: string;
     advertiseHost?: string;
+    publicUrl?: string;
     requestTimeoutMs?: number;
     maxOutputTokens?: number | null;
     maxRequests?: number;

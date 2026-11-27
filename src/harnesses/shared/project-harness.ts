@@ -1,3 +1,4 @@
+import { loadMurmConfig } from '../../core/sandbox-connection.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises';
 import { registerHooks } from 'node:module';
@@ -120,7 +121,7 @@ async function loadConfiguration(directory: string, path: string | undefined): P
   if (!path) return undefined;
   let value: unknown;
   try {
-    value = (await import(pathToFileURL(resolve(directory, path)).href)).default;
+    value = await loadMurmConfig(resolve(directory, path));
   } catch {
     throw projectError('INVALID_RUN_CONFIGURATION', 'Could not load the run configuration module');
   }

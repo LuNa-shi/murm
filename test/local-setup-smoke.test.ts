@@ -11,7 +11,6 @@ test('an interrupted setup probe reports complete cleanup before creating any re
   assert.equal(receipt.interrupted, true);
   assert.equal(receipt.cleanup, 'complete');
   assert.equal(receipt.runtimeId, undefined);
-  assert.deepEqual(receipt.containerIds, []);
 });
 
 test('the setup probe verifies real local infrastructure and confirms exported bytes and deletion', {
@@ -25,7 +24,6 @@ test('the setup probe verifies real local infrastructure and confirms exported b
     advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1' });
   assert.equal(receipt.ok, true, JSON.stringify(receipt));
   assert.equal(receipt.cleanup, 'complete');
-  assert.deepEqual(receipt.containerIds, []);
   assert.ok(receipt.checks.some(check => check.id === 'artifact-export' && check.status === 'passed'));
   assert.ok(receipt.checks.some(check => check.id === 'sandbox-deletion' && check.status === 'passed'));
 });
@@ -46,6 +44,5 @@ test('interrupting an active local probe closes its owned resources', {
     assert.equal(receipt.interrupted, true);
     assert.ok(receipt.runtimeId);
     assert.equal(receipt.cleanup, 'complete', JSON.stringify(receipt));
-    assert.deepEqual(receipt.containerIds, []);
   } finally { clearTimeout(timer); }
 });

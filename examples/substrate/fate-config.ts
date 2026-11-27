@@ -1,9 +1,11 @@
+import { resolveSandboxConnection } from '../../src/core/index.js';
 function required(name: string) {
   const value = process.env[name];
   if (!value) throw new Error(`Set ${name}`);
   return value;
 }
-const host = process.env.MURM_SUBSTRATE_HOST ?? '172.17.0.1';
+const { lifecycleBaseUrl, endpointHost, apiKey, advertiseHost, image } = resolveSandboxConnection({}, 'SUBSTRATE');
+const host = process.env.MURM_ADVERTISE_HOST ?? process.env.MURM_SUBSTRATE_HOST ?? advertiseHost ?? '172.17.0.1';
 const token = process.env.MURM_SUBSTRATE_MODEL_TOKEN;
 const benchmark = process.env.MURM_FATE_BENCHMARK ?? 'FATE-M';
 const hard = benchmark === 'FATE-H';
@@ -11,7 +13,7 @@ const workTimeoutMs = hard ? 2_700_000 : 1_800_000;
 
 export default {
   runId: required('MURM_SUBSTRATE_RUN'),
-  image: required('MURM_SUBSTRATE_IMAGE'),
+  image: image ?? required('MURM_SUBSTRATE_IMAGE'),
   outputDir: process.env.MURM_SUBSTRATE_OUTPUT ?? './experiments/substrate-fate',
   model: 'default',
   poolSize: 4,

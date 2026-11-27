@@ -37,20 +37,24 @@
 ## Why murm
 
 - **One Runtime, any topology** — Swap between recursive Subagents, leased TaskPool, PeerMesh, Substrate, or Lead-Worker without modifying the Runtime.
-- **Strict host/sandbox boundary** — Each Agent runs in its own Linux Docker sandbox (OpenSandbox + `tmpfs` disk quota + Landlock ABI 5+ + `nftables` egress policy). Model API keys and external Service tokens stay on the host.
+- **Sandbox Provider interface** — Use OpenSandbox on the same Linux host or connect to an existing service through its API. Supply a custom Provider through the root SDK when you need a different Sandbox integration. Model API keys and external Service tokens stay on the trusted Controller.
 - **Dual executors, open model support** — Runs **Pi (`1.3.0`)** (default, with session context forking and dynamic OpenAI Responses model catalogs) or **Codex CLI (`0.172.0`)** behind the same host Model Gateway.
 - **Single unified package** — `@luna-shi/murm` bundles the TypeScript SDK, `murm` CLI, `swarm` container CLI, built-in Harnesses, and the zero-dependency browser Trace Viewer (`murm trace`).
 
 ## Quick start
 
-On a Linux host with Node.js 22.19+, rootful Docker Engine, Landlock ABI 5+, and the host isolation utilities (`python3`, `nftables`, `util-linux`, `iproute2`, plus non-interactive `sudo` rules — see [Prerequisites](docs/en/quickstart.md#1-prerequisites-execution-host)):
+Use Node.js 22.19+ on Linux. This example uses a build of the current checkout. The [Quickstart](docs/en/quickstart.md) covers local deployment and connecting to an existing service. For the released CLI, follow the [v0.2.0 guide](docs/en/latest.md).
 
 ```sh
-# 1. Install the CLI globally from the latest GitHub Release
-curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
+# 1. Build and install the CLI from this checkout
+npm ci
+pack_dir=$(mktemp -d)
+npm pack --pack-destination "$pack_dir"
+npm install -g --prefix "$HOME/.local" --ignore-scripts "$pack_dir"/*.tgz
+export PATH="$HOME/.local/bin:$PATH"
 
-# 2. Verify host prerequisites, start local OpenSandbox, pull/build the Worker image, and run a smoke probe
-murm setup
+# 2. Prepare OpenSandbox, then prepare and verify the Worker
+murm setup --mode local
 
 # 3. Point murm at any streaming OpenAI Responses-compatible endpoint
 export MURM_MODEL_URL="https://api.openai.com/v1/responses"
@@ -64,27 +68,17 @@ murm --harness subagents --prompt "Fix the parser and add tests"
 murm trace --root ./subagents-runs --port 8787
 ```
 
-To install the CLI directly with npm instead of `install.sh`:
-
-```sh
-npm install -g --ignore-scripts --allow-remote=root \
-  https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz
-```
-
-For an unpublished revision, [install the candidate from a checkout](docs/en/quickstart.md#install-a-candidate-from-a-checkout) before running `murm setup`.
-
 `Subagents`, `TaskPool`, `Notes`, and `Messages` default to the matching prebuilt Worker image (`ghcr.io/luna-shi/murm-worker:0.2.0`, exported as `DEFAULT_WORKER_IMAGE`). Override it with `MURM_WORKER_IMAGE` when using a custom image. Use `--harness` to select any built-in (`subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes`, `messages`), a local ESM module, or an installed package. In `--mode rpc`, tasks arrive over JSONL with live `status` and `stop` control.
 
 ## Build with the TypeScript SDK
 
-Install the versioned `v0.2.0` Release asset in your project:
+Install the archive from this checkout in your project:
 
 ```sh
-npm install --ignore-scripts --allow-remote=root \
-  https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+npm install --ignore-scripts /path/to/luna-shi-murm-0.2.0.tgz
 ```
 
-Import all seven public runtime exports (`createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`) and all public types from `@luna-shi/murm`.
+Import Runtime, Service and Sandbox Provider APIs from `@luna-shi/murm`.
 
 - Self-contained runnable `handoff.ts`: [Quickstart — Option B](docs/en/quickstart.md#5-option-b-use-the-sdk-in-your-own-typescript-project)
 - Observation, file controls, external HTTP Services, and cleanup receipts: [SDK Guide](docs/en/sdk.md)

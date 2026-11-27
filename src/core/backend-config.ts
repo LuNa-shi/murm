@@ -4,19 +4,26 @@ export interface Sandbox {
   readonly [sandboxBrand]: true;
 }
 
+import type { OpenSandboxProvider, SandboxProvider } from './opensandbox-provider.js';
+
+export interface SandboxProviderConfig {
+  provider: SandboxProvider;
+  timeoutSeconds?: number;
+}
+
 export interface SandboxConfig {
   kind?: 'opensandbox';
   lifecycleBaseUrl: string;
   apiKey?: string;
   execdToken?: string;
   endpointHost?: string;
+  useServerProxy?: boolean;
   resourceLimits?: { cpu: string; memory: string };
   commandTimeoutMs?: number;
   timeoutSeconds?: number;
-  isolation: {
-    network?: 'local-docker';
-    disk: { bytes: number; inodes: number };
-  };
+  isolation?:
+    | { network?: 'local-docker'; disk: { bytes: number; inodes: number } }
+    | { network?: 'api'; disk?: { bytes: number; inodes?: never } };
 }
 
 export type ExecutorKind = 'pi' | 'codex';
@@ -43,6 +50,7 @@ export interface RuntimeConnectionOptions {
   modelGateway?: {
     host?: string;
     advertiseHost?: string;
+    publicUrl?: string;
     requestTimeoutMs?: number;
     maxOutputTokens?: number | null;
     /** Maximum new upstream attempts per Runtime and model alias, including unknown outcomes. */
@@ -54,10 +62,11 @@ export interface OpenSandboxBackendConfig {
   /** Defaults to Pi. Runtime resolves this selection at assembly. */
   executor?: ExecutorKind;
   sandbox: {
-    lifecycleBaseUrl: string;
+    lifecycleBaseUrl?: string;
     apiKey?: string;
     execdToken?: string;
     endpointHost?: string;
+    useServerProxy?: boolean;
     resourceLimits?: { cpu: string; memory: string };
     commandTimeoutMs?: number;
     /** Sandbox creation lifetime in seconds; safe integer >= 60, default 3600. Provider limits also apply. */
@@ -66,7 +75,8 @@ export interface OpenSandboxBackendConfig {
   bridge: { host: string; publicUrl: string };
   modelGateway: {
     host: string;
-    advertiseHost: string;
+    advertiseHost?: string;
+    publicUrl?: string;
     requestTimeoutMs?: number;
     /** Cap new upstream attempts per Runtime and model alias, including unknown outcomes. */
     maxRequests?: number;
@@ -74,8 +84,8 @@ export interface OpenSandboxBackendConfig {
     maxOutputTokens?: number | null;
   };
   models: Readonly<Record<string, ModelConfig>>;
-  isolation: {
-    network: 'local-docker';
-    disk: { bytes: number; inodes: number };
-  };
+  provider?: SandboxProvider & OpenSandboxProvider;
+  isolation:
+    | { network: 'local-docker'; disk: { bytes: number; inodes: number } }
+    | { network: 'api' | 'provider'; disk?: { bytes: number; inodes?: never } };
 }

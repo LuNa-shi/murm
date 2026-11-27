@@ -92,3 +92,7 @@ TaskPool 现有宿主注入 `snapshotProject` 和已支持的公共 Workspace、
 第一条真实无 Task 路径、TaskPool 兼容回归、PeerMesh 单 peer 到双 peer 协作、仓库外自定义 Harness，逐项以运行证据判断完成。基本版本先由文翔按说明在自己的任务与环境中使用，通过后再交给外部用户；对外发布前处理主要使用阻塞。
 
 “前三天 Core”“一周版”“第 5–7 天可运行”“第 8–10 天本人验收”是计划窗口，应按真实阻塞校准，不是逐票承诺。**2026-12-07 是收尾检查点，不能以日期到达替代验收，也不意味着此次文档 PR 已安排自动提醒或实际发布。**
+
+### Linux Sandbox Provider 与安装
+
+[#262](https://github.com/LuNa-shi/murm/issues/262) 更新 [Core 配置与资源归属](01-core.md#33-配置与资源归属)。OpenSandbox API 成为默认接入，支持本机或远端服务与仓库外 Sandbox Provider。严格 Docker 配额、Landlock 与 UID 网络策略留在显式同机模式。Pi 和 Codex 继续使用 Responses。相关旧描述和验收证据按原修订解释。

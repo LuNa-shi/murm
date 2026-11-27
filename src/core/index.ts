@@ -21,10 +21,13 @@ import { createServiceTrace, exportServiceStates } from './service-trace.js';
 import { registerServicePrivateValues, snapshotServiceRegistry, type ServiceRegistration } from './services.js';
 
 export { createSandbox } from './opensandbox-backend.js';
+export { resolveSandboxConnection } from './sandbox-connection.js';
 export { getExecutorCapabilities } from './executor-driver.js';
 export { DEFAULT_WORKER_IMAGE } from './worker-image.js';
 export { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from './services.js';
-export type { ExecutorCapabilities, ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SandboxConfig, SteeringMode } from './backend-config.js';
+export type { ExecutorCapabilities, ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SandboxConfig, SandboxProviderConfig, SteeringMode } from './backend-config.js';
+export type { SandboxPreparation, SandboxProvider } from './opensandbox-provider.js';
+export type { SandboxManager } from './opensandbox-backend.js';
 export type { HttpJsonAdapterOptions, ServiceRegistration } from './services.js';
 export type { JsonValue, ServiceAdapter, ServiceCaller, ServiceCapability, ServiceManifest, ServiceRequest } from './service-types.js';
 export type {
@@ -139,6 +142,9 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   }
 
   const maxAgents = options.maxAgents;
+  // Transport retention bounds apply independently of provider disk quotas.
+  const artifactBounds = config.isolation.network === 'local-docker' ? config.isolation.disk :
+    { bytes: 256 * 1024 ** 2, inodes: 16_384 };
   const assemblyDeadline = performance.now() + defaultTimeoutMs;
   const agents = new Map<any, any>();
   const reportPath = join(outputDir, 'runtime.json');
@@ -146,8 +152,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const modelTrace = createModelTrace(outputDir, redactor);
   const serviceTrace = createServiceTrace(outputDir, redactor.value);
   const effectiveConfig = runtimeConfiguration({ config, profiles, registrations, maxAgents, defaultTimeoutMs }, redactor.text);
+  const sandboxObservations = new Map<string, unknown>();
   const saveSummary = (status: any, data: any = {}) => writeRecord(reportPath, {
     runtimeId, status, maxAgents, config: effectiveConfig, evidence: records.snapshot(),
+    sandboxes: Object.fromEntries(sandboxObservations),
     modelLedgers: modelAccess?.ledgerPaths?.() ?? [], modelTrace: modelTrace.snapshot(), ...data,
   });
   const getAgent = (agentId: any) => {
@@ -459,9 +467,9 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         }
         if (agent.collectable && !agent.sessionArchive && backend.collectSession) {
           stopPhase(agent, 'archive-session');
-          const collect = { paths: ['.'], includeGit: false, maxBytes: config.isolation.disk.bytes, required: true };
+          const collect = { paths: ['.'], includeGit: false, maxBytes: artifactBounds.bytes, required: true };
           [agent.sessionArchive] = await saveAgentArtifacts({ outputDir, agentId: info.id, collect,
-            bounds: config.isolation.disk, records: () => backend.collectSession(info.id),
+            bounds: artifactBounds, records: () => backend.collectSession(info.id),
             destination: 'session', redactStream: redactor.jsonl, privateFiles: true });
           records.record('session-archive', { agentId: info.id, manifestPath: agent.sessionArchive });
         }
@@ -469,7 +477,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           stopPhase(agent, 'collect-artifacts');
           try {
             agent.artifacts = await saveAgentArtifacts({ outputDir, agentId: info.id, collect: agent.collect,
-              bounds: config.isolation.disk, records: () => backend.collect(info.id, agent.collect) });
+              bounds: artifactBounds, records: () => backend.collect(info.id, agent.collect) });
           } catch (error: any) {
             if (agent.collect.required) throw error;
             agent.optionalCollectionError = errorInfo(error);
@@ -553,6 +561,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           } });
         if (agent.fatal || info.status !== 'starting') throw new Error('Agent stopped before becoming idle');
         info.status = 'idle';
+        sandboxObservations.set(info.id, redactor.value({
+          providerId: resource.providerId, providerVersion: resource.providerVersion,
+          sandboxId: resource.sandboxId, image: agent.profile.image, effective: resource.effective,
+        }));
         records.record('spawn', { state: 'ready', agentId: info.id, requestId: redactor.text(requestId),
           providerId: resource.providerId, resourceKey: resource.resourceKey, sandboxId: redactor.text(resource.sandboxId),
           versions: resource.versions, ...(resource.backend ? { backend: resource.backend } : {}) });

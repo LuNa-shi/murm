@@ -78,7 +78,7 @@ Runtime、Bridge 和 Harness 在同一宿主进程内运行；业务 Service 可
 
 ### 3.1 模块入口
 
-[#255](https://github.com/LuNa-shi/murm/issues/255) 更新本阶段的 SDK 合同。npm 包 `@luna-shi/murm` 只公开根入口，JS 与 TS 的运行时导出为 `createSandbox`、`createRuntime`、`getExecutorCapabilities`、`ServiceRegistry`、`createInProcessAdapter`、`createHttpJsonAdapter`。附录 A 枚举全部基础公共类型。子路径、旧工厂/能力查询、Service 内部装配函数和应用收尾函数从包入口移除。CLI 继续通过包的 bin 安装。
+[#255](https://github.com/LuNa-shi/murm/issues/255) 更新本阶段的 SDK 合同。npm 包 `@luna-shi/murm` 只公开根入口，JS 与 TS 的运行时导出为 `createSandbox`、`createRuntime`、`getExecutorCapabilities`、`ServiceRegistry`、`createInProcessAdapter`、`createHttpJsonAdapter`。后续根入口增加 `DEFAULT_WORKER_IMAGE` 与 #262 的 `resolveSandboxConnection`，Sandbox Provider 类型也从根入口公开。附录 A 枚举全部基础公共类型。子路径、旧工厂/能力查询、Service 内部装配函数和应用收尾函数从包入口移除。CLI 继续通过包的 bin 安装。
 
 ### 3.2 创建 Runtime
 
@@ -109,13 +109,13 @@ const runtime = await createRuntime({
 
 | 所属 | 参数及默认值 |
 | --- | --- |
-| Sandbox | `kind` 默认 `opensandbox`；服务 URL 和磁盘字节/inode 上限必填；管理凭据与 endpointHost 可选；同机 `local-docker` 为唯一隔离模式且是默认值。资源默认 2 CPU、2 GiB，命令期限 120 秒，Sandbox 生命周期 3600 秒且至少 60 秒。 |
+| Sandbox | `kind` 默认 `opensandbox`；默认通过 OpenSandbox API 接入本机或远端服务，管理与回连地址分别配置。也可经 `{ provider }` 接入外部 Provider。严格同机 `local-docker` 要求磁盘字节和 inode 上限，由显式配置或兼容的旧配额写法选择。资源默认 2 CPU、2 GiB，命令期限 120 秒，Sandbox 生命周期 3600 秒且至少 60 秒。 |
 | Runtime | `executor` 默认 Pi，可显式选 Codex。非空模型表、Profiles、Services、maxAgents 和专用 outputDir 由宿主提供。模型上游为无内嵌凭据的 HTTP(S) `/v1/responses`，用 headers 携带凭据。 |
-| Runtime 连接 | `connection.advertiseHost` 接收 setup/项目配置确定的同机可达 IPv4。Bridge 和网关监听地址默认 `0.0.0.0`；Bridge 默认 `http://<advertiseHost>:{port}`，网关默认用同一可达地址。可分别显式覆盖；两个目的地址均须可解析为当前支持的非 loopback IPv4 字面量。若两个可达地址都已有显式配置，可省略共同地址；无法确定时在装配阶段指出缺失字段。 |
+| Runtime 连接 | `connection.advertiseHost` 接收 setup/项目配置确定的由 Agent 可达的 IP 或主机名。Bridge 和网关监听地址默认 `0.0.0.0`，两者都可分别使用带 `{port}` 的 HTTP(S) origin 模板。两处都已配置回连地址时可省略共同地址。严格本地模式仍要求可供 UID 网络规则验证的同机非回环 IPv4。 |
 | 模型请求 | 网关默认 120 秒；Pi 默认最多 32768 输出 token，Codex 默认保留执行器参数。显式 `null` 保留参数，数值须为不小于 16 的安全整数。 |
 | Profile / spawn | Profile 选择模型别名、镜像、提示、服务权限、初始 writable、网络附加目标与产物政策；spawn 可提供父子关系、fork、文件、bindings、secretEnv 或共享挂载，以及允许的 writable/collect 覆盖。 |
 
-`createSandbox` 校验并复制本地配置，返回不透明的接入对象。Runtime 为自己的 Agent 持有实际 Sandbox 和清理记录；在创建派发前记录原请求和服务身份，获得 ID 后按服务身份与 Sandbox ID 的组合寻址。响应丢失、查询、文件操作与删除均回原服务核对。继续遵守 [#236](https://github.com/LuNa-shi/murm/issues/236) 的资源路由与同机边界。OpenSandbox 管理凭据和模型上游 headers 留在可信宿主，Agent 仅使用自身的 Bridge/网关凭据；日志和返回对象脱敏。现有 setup/doctor/模板迁移配置来源，SDK 没有第二套 executor 或 models 值。
+`createSandbox` 校验并捕获部署配置或外部 Provider，返回不透明的接入对象。Runtime 为自己的 Agent 持有实际 Sandbox 和清理记录；在创建派发前记录原请求和服务身份，获得 ID 后按服务身份与 Sandbox ID 的组合寻址。响应丢失、查询、文件操作与删除均回原服务核对。沿用 [#236](https://github.com/LuNa-shi/murm/issues/236) 的资源归属；默认接入取消同机限制。Provider 声明、检查和落实可选隔离能力。默认 OpenSandbox 核验 Lifecycle、Execd 和 Worker 管理鉴权，并在启动前以低权限 UID 检查凭据隔离、回环访问及实测 CPU/内存上限。它依赖部署提供网络策略，对工作区磁盘上限、显式网络白名单和共享挂载在能力缺失时提前报错。严格本地模式继续要求同机 Docker、Landlock ABI 5 与管理员准备的隔离能力。OpenSandbox 管理凭据和模型上游 headers 留在可信宿主，Agent 仅使用自身的 Bridge/网关凭据；日志和返回对象脱敏。setup/doctor/init/run 共用连接配置解析，已有 endpoint 路径仅需 Linux Controller 的 JS 环境，本地路径先验证 OpenSandbox 然后启动所选 Pi 或 Codex Worker。普通 doctor 不分配 Sandbox。
 
 `getExecutorCapabilities(executor)` 同步读取静态能力，无网络、监听器和资源分配。Pi 支持上下文分支及 `all`、`one-at-a-time`；Codex 不支持分支且仅支持 `all`。两者报告 active steer、follow-up、条件输入、已排队输入清除能力。Profile 或 spawn 请求不支持的能力时前置拒绝。两个执行器继续使用各自原生 Session 归档格式。
 
@@ -225,7 +225,7 @@ Profile 由宿主建立并冻结。`model` 选择 Runtime 模型表中的别名�
 
 `Profile.env` 是宿主显式给该角色的非秘密环境变量；不会任意继承宿主环境。`SpawnOptions.secretEnv` 是宿主发给特定 Agent 使用的受限凭据。目标 Agent 能读取这些凭据；其值不进入 AgentInfo、事件和普通日志。真正的模型 upstream 凭据、Worker 管理 token 和 Core 保留字段由受信侧管理，禁止覆盖。
 
-`Profile.network.allow` 指定额外目标；Bridge 与模型 gateway 自动加入。当前 backend 首版只接受非 loopback IPv4 字面量的 HTTP(S) origin，按目标 IP/port 放行。Gitea 同一端点的 REST 操作仍受该账户的 upstream ACL 约束，不提供 Git-only 路径限制。此能力需要修改当前只允许 Bridge 与 gateway 的网络规则。[当前网络隔离](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/runtime/docker-bot-network.js)
+`Profile.network.allow` 指定额外目标；Bridge 与模型 gateway 自动加入。严格本地模式只接受非回环 IPv4 字面量的 HTTP(S) origin，按目标 IP 和端口放行。API 模式由部署提供出站策略，只有声明并落实该能力的 Provider 才接收显式 allowlist。Gitea 同一端点的 REST 操作仍受该账户的 upstream ACL 约束，不提供 Git-only 路径限制。此能力需要修改当前只允许 Bridge 与 gateway 的网络规则。[当前网络隔离](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/runtime/docker-bot-network.js)
 
 #### Core 启动提示与 Service 发现
 
@@ -449,7 +449,7 @@ Q1–Q8 已批准为首版产品决策；上述工程合同仍需实现与验收
 
 ## 附录 A：公共类型清单
 
-下列声明是 #255 的基础 SDK 目标清单。代码只从根入口显式导出这些名称。#235 生效时另按其固定合同加入动态管理成员及必要类型，仍经同一根入口与事件入口。
+下列声明是 #255 的基础 SDK 目标清单，Sandbox 配置按 #262 更新。Provider 生命周期类型以包根声明为准。代码只从根入口显式导出这些名称。#235 生效时另按其固定合同加入动态管理成员及必要类型，仍经同一根入口与事件入口。
 
 ```ts
 declare const sandboxBrand: unique symbol;
@@ -463,13 +463,18 @@ export interface SandboxConfig {
   apiKey?: string;
   execdToken?: string;
   endpointHost?: string;
+  useServerProxy?: boolean;
   resourceLimits?: { cpu: string; memory: string };
   commandTimeoutMs?: number;
   timeoutSeconds?: number;
-  isolation: {
-    network?: "local-docker";
-    disk: { bytes: number; inodes: number };
-  };
+  isolation?:
+    | { network?: "local-docker"; disk: { bytes: number; inodes: number } }
+    | { network?: "api"; disk?: { bytes: number; inodes?: never } };
+}
+
+export interface SandboxProviderConfig {
+  provider: SandboxProvider;
+  timeoutSeconds?: number;
 }
 
 export type ExecutorKind = "pi" | "codex";
@@ -511,7 +516,7 @@ export interface CreateRuntimeOptions {
   outputDir: string;
 }
 
-export declare function createSandbox(config: SandboxConfig): Sandbox;
+export declare function createSandbox(config: SandboxConfig | SandboxProviderConfig): Sandbox;
 export declare function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
 export declare function getExecutorCapabilities(executor: ExecutorKind): ExecutorCapabilities;
 

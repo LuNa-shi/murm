@@ -2,7 +2,9 @@
 
 ## Trust model
 
-`murm` enforces a strict boundary between the **trusted host** (which runs your Harness, holds upstream model credentials and external Service tokens, and enforces access control) and **isolated Agent sandboxes** (unprivileged containers bounded by Linux namespaces, `tmpfs` disk quotas, Landlock ABI 5+, and `nftables` egress rules).
+The trusted Controller runs the Harness, holds model upstream and external Service credentials, and binds each Bridge and Gateway request to its Agent. Each Agent runs in a separate Linux Sandbox under an unprivileged UID with no new privileges and a cleared capability set. Deploy OpenSandbox with an authenticated Lifecycle API and a trusted Worker image. Use TLS for connections across untrusted networks.
+
+The default API policy checks management authentication on controller routes and from the Agent UID in the sandbox. The Controller keeps per-Sandbox Execd and Worker control credentials outside the Agent environment. Deployment-level network policy governs general egress. For explicitly administered local deployments, the strict Docker policy additionally uses a UID-based nftables allowlist, a bounded tmpfs, shared mount checks and Landlock ABI 5+.
 
 Run output directories (`outputDir/<runtimeId>/`) contain prompts, model traces, Service call logs, native Sessions, and collected workspace artifacts — treat them as private operational data and never publish them publicly.
 

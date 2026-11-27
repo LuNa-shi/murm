@@ -1,3 +1,4 @@
+import { resolveSandboxConnection } from '../../src/core/index.js';
 import { resolve } from 'node:path';
 import { createBoardLauncher } from '../../src/harnesses/peermesh/board-process.js';
 
@@ -9,7 +10,8 @@ function required(name: any) {
 }
 
 export function peerMeshConfig(durationMs = Number(setting('DURATION_MS') ?? 120_000)) {
-const image = required('IMAGE');
+const { lifecycleBaseUrl, endpointHost, apiKey, advertiseHost, image: defaultImage } = resolveSandboxConnection({}, 'PEERMESH');
+const image = defaultImage ?? required('IMAGE');
 const peerCount = Number(setting('PEERS') ?? '2');
 if (!Number.isSafeInteger(peerCount) || peerCount < 2 || peerCount > 8 || !Number.isSafeInteger(durationMs) || durationMs < 1 || durationMs > 86_400_000) {
   throw Object.assign(new Error('Invalid peer count or project duration'), { code: 'PEERMESH_CONFIG_PROJECT_INVALID' });
@@ -28,11 +30,9 @@ const startBoard = createBoardLauncher({
   python: setting('BOARD_PYTHON') ?? 'python3',
 });
 
-const host = setting('HOST') ?? '172.17.0.1';
+const host = process.env.MURM_ADVERTISE_HOST ?? setting('HOST') ?? advertiseHost ?? '172.17.0.1';
 const sandbox = {
-  lifecycleBaseUrl: setting('LIFECYCLE_URL') ?? 'http://127.0.0.1:8080/v1',
-  endpointHost: setting('ENDPOINT_HOST') ?? '127.0.0.1',
-  apiKey: setting('LIFECYCLE_TOKEN'),
+  lifecycleBaseUrl, endpointHost, apiKey,
   timeoutSeconds: Math.ceil((timeoutMs + closeTimeoutMs) / 1_000),
   resourceLimits: { cpu: '1', memory: '1Gi' },
   commandTimeoutMs: 20_000,

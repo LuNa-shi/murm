@@ -22,7 +22,7 @@ The default `fact` is a fixture pinned to an earlier source revision. It is copi
 
 ## Install and configure
 
-This example requires Node.js 22.19 or newer, a running local Docker OpenSandbox provider with the Core project limits enabled, and a compatible worker image containing the selected executor. The repository Worker image ships Pi 1.3.0 and Codex CLI 0.172.0. Use an absolute path to the checkout of the tested implementation to build the tarball. The rest of the example runs in an independent directory from that tarball.
+This example requires Node.js 22.19 or newer, an authenticated OpenSandbox service reachable from the Controller, and a compatible worker image containing the selected executor. The repository Worker image ships Pi 1.3.0 and Codex CLI 0.172.0. Use an absolute path to the checkout of the tested implementation to build the tarball. The rest of the example runs in an independent directory from that tarball.
 
 ```sh
 repo=/absolute/path/to/murm

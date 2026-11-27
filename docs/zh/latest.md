@@ -122,4 +122,4 @@ npm install --ignore-scripts --allow-remote=root \
 
 ## 宿主机要求
 
-OpenSandbox 隔离后端需要单台 Linux 宿主机（`x86_64` 或 `aarch64`），具备 **Linux 内核 Landlock ABI >= 5**、**Node.js 22.19+**、本地 **rootful Docker Engine**、系统工具（`python3`、`nftables`、`util-linux`、`coreutils`、`iproute2`）以及最小权限免密 `sudo` 规则。完整检查命令与 `sudoers` 模板见 [快速上手](quickstart.md)。
+v0.2.0 已发行版的 OpenSandbox 隔离后端需要单台 Linux 宿主机（`x86_64` 或 `aarch64`），具备 **Linux 内核 Landlock ABI >= 5**、**Node.js 22.19+**、本地 **rootful Docker Engine**、系统工具（`python3`、`nftables`、`util-linux`、`coreutils`、`iproute2`）以及最小权限免密 `sudo` 规则。该发行版的安装说明见 [v0.2.0 快速上手](https://github.com/LuNa-shi/murm/blob/v0.2.0/docs/zh/quickstart.md)。

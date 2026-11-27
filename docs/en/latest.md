@@ -122,4 +122,4 @@ Compare them side by side in [Choose a Harness](harnesses/index.md).
 
 ## Host requirements
 
-The OpenSandbox isolation backend requires a single Linux host (`x86_64` or `aarch64`) with **Linux kernel Landlock ABI >= 5**, **Node.js 22.19+**, local **rootful Docker Engine**, host utilities (`python3`, `nftables`, `util-linux`, `coreutils`, `iproute2`), and least-privilege non-interactive `sudo` rules. See [Quickstart](quickstart.md) for the exact check commands and `sudoers` template.
+The released v0.2.0 OpenSandbox isolation backend requires a single Linux host (`x86_64` or `aarch64`) with **Linux kernel Landlock ABI >= 5**, **Node.js 22.19+**, local **rootful Docker Engine**, host utilities (`python3`, `nftables`, `util-linux`, `coreutils`, `iproute2`), and least-privilege non-interactive `sudo` rules. See the [v0.2.0 Quickstart](https://github.com/LuNa-shi/murm/blob/v0.2.0/docs/en/quickstart.md) for this release’s installation instructions.

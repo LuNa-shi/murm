@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { access, readFile, readdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -57,7 +57,7 @@ function child(file: string, args: string[], env = process.env, forwardStdout = 
   }).finally(() => signal.removeEventListener('abort', cancel));
 }
 
-async function lockedSetup(startedAt: number) {
+async function lockedSetup(startedAt: number, options: string[]) {
   const bootstrap: { startedAt: number; timings: { id: string; elapsedMs: number; cached: boolean }[] } = { startedAt, timings: [] };
   const manifest = await readFile(join(root, 'package.json'));
   const shrinkwrap = await readFile(join(root, 'npm-shrinkwrap.json'));
@@ -89,7 +89,7 @@ async function lockedSetup(startedAt: number) {
   }
   bootstrap.timings.push({ id: 'build', elapsedMs: Math.round(performance.now() - start), cached: buildCached });
 
-  return child(process.execPath, [cli, 'setup'],
+  return child(process.execPath, [cli, 'setup', ...options],
     { ...process.env, MURM_SETUP_BOOTSTRAP: JSON.stringify(bootstrap) }, true);
 }
 
@@ -97,25 +97,24 @@ const args = process.argv.slice(2);
 const lockInvocation = args[0] === '--under-checkout-lock';
 try {
   if (lockInvocation) {
-    process.exitCode = await lockedSetup(Number(args[1]));
+    process.exitCode = await lockedSetup(Number(args[1]), args.slice(2));
   } else {
     const startedAt = Date.now();
     const command = parseMurmCommand(['setup', ...args]);
     if ('help' in command) {
       console.log(command.help);
     } else {
-      const { resolveSubagentsEnvironment, checkLocalHost } = await import(sourceModule('local-environment.ts')) as typeof import('./local-environment.js');
-      const config = await resolveSubagentsEnvironment();
-      signal.throwIfAborted();
-      const checks = await checkLocalHost(config);
-      signal.throwIfAborted();
-      if (checks.some(check => !check.ok)) {
-        console.log(JSON.stringify({ command: 'setup', ok: false, checks, elapsedMs: Date.now() - startedAt }, null, 2));
+      if (process.platform !== 'linux') {
+        failure('host.linux', 'Setup requires Linux.', 'Run this command on Linux.');
         process.exitCode = 1;
-      } else {
+      } else if (command.command === 'setup') {
+        const options = [
+          ...(command.mode ? ['--mode', command.mode] : []),
+          ...(command.configPath ? ['--config', resolve(command.configPath)] : []),
+        ];
         process.exitCode = await child('flock', ['--no-fork', '--exclusive', '--timeout', '180', '--conflict-exit-code', '73',
           root, process.execPath, '--disable-warning=ExperimentalWarning', script, '--under-checkout-lock',
-          String(startedAt)], process.env, true);
+          String(startedAt), ...options], process.env, true);
         if (process.exitCode === 73) {
           failure('checkout-lock', 'Another setup still holds the checkout lock.', 'Wait for the other invocation and rerun setup.');
           process.exitCode = 1;

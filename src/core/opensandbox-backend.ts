@@ -52,6 +52,7 @@ interface BackendAgent {
   pendingInputs: number;
   historyLost?: boolean;
   started?: boolean;
+  workerStartDispatched?: boolean;
   polling?: Promise<void>;
   submissions?: Map<string, InputSubmission>;
   executionStopped?: boolean;
@@ -95,7 +96,12 @@ export interface SandboxManager {
   collectCoreSession(agentId: string): AsyncIterable<import('./artifact-collection.js').ArtifactRecord>;
   ensureExecution(options: Record<string, unknown>): Promise<{ sandbox_id: string }>;
   agentVersions(options: { executionId: string; executor?: 'pi' | 'codex' }): Promise<{ piVersion?: string; [key: string]: unknown }>;
-  startAgent(options: Record<string, unknown>): Promise<{ backend?: { kind: 'codex'; version: string; authMode: 'api-key'; threadId: string } } | undefined>;
+  startAgent(options: Record<string, unknown>): Promise<{
+    backend?: { kind: 'codex'; version: string; authMode: 'api-key'; threadId: string };
+    isolation?: { cpu: number; memoryBytes: number; managementAuthentication: boolean };
+  } | undefined>;
+  /** Return true only when confirmed stopped. Return false for no running executor before start dispatch.
+   * Throw or return false for an unconfirmed stop after start dispatch, retaining the resource for retry. */
   stopAgent(agentId: string, signal: string, options: { preserveWorker: boolean }): Promise<boolean>;
   collectCoreFiles(agentId: string, specification: NonNullable<Profile['collect']>): AsyncIterable<import('./artifact-collection.js').ArtifactRecord>;
   coreResource(agentId: string): {
@@ -104,6 +110,7 @@ export interface SandboxManager {
     creation: 'created' | 'pending' | 'absent';
     executionStopped: boolean;
   } | undefined;
+  /** Resolve after confirmed deletion or absence. Throw while the deletion outcome is uncertain. */
   stopExecution(agentId: string): Promise<unknown>;
 }
 
@@ -138,17 +145,18 @@ interface BackendSpawnOptions {
 }
 
 import type { CreateRuntimeOptions } from './types.js';
-import type { OpenSandboxBackendConfig, Sandbox, SandboxConfig } from './backend-config.js';
+import type { OpenSandboxBackendConfig, Sandbox, SandboxConfig, SandboxProviderConfig } from './backend-config.js';
 import { selectExecutorDriver, type ExecutorDriver } from './executor-driver.js';
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import { createWorkerEventPoll } from './worker-event-poll.js';
+import { resolveSandboxConnection } from './sandbox-connection.js';
 import { validId } from './config.js';
-import { checkLocalWorkspaceQuota, createLocalOpenSandboxProvider, type OpenSandboxProvider } from './opensandbox-provider.js';
+import { adaptSandboxProvider, checkLocalWorkspaceQuota, createApiOpenSandboxProvider, createLocalOpenSandboxProvider, type OpenSandboxProvider } from './opensandbox-provider.js';
 
 export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'> & { readonly driver: Readonly<ExecutorDriver> };
 
-type SandboxSettings = Pick<OpenSandboxBackendConfig, 'sandbox' | 'isolation'>;
+type SandboxSettings = Pick<OpenSandboxBackendConfig, 'sandbox' | 'isolation' | 'provider'>;
 const sandboxes = new WeakMap<Sandbox, SandboxSettings>();
 
 function invalid(message: string) {
@@ -176,29 +184,62 @@ function sandboxExpiry(value: unknown) {
   return new Date(instant).toISOString();
 }
 
-export function createSandbox(config: SandboxConfig): Sandbox {
-  if (!config || (config.kind !== undefined && config.kind !== 'opensandbox') ||
-      Object.keys(config).some(key => !['kind', 'lifecycleBaseUrl', 'apiKey', 'execdToken', 'endpointHost',
+export function createSandbox(config: SandboxConfig | SandboxProviderConfig): Sandbox {
+  if (!config || typeof config !== 'object') throw invalid('createSandbox requires Sandbox settings');
+  const timeoutSeconds = config.timeoutSeconds === undefined ? 3600 : config.timeoutSeconds;
+  if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 60) {
+    throw invalid('sandbox.timeoutSeconds must be a safe integer of at least 60');
+  }
+  const handle = Object.freeze({}) as Sandbox;
+  if ('provider' in config) {
+    const { provider } = config;
+    if (Object.keys(config).some(key => !['provider', 'timeoutSeconds'].includes(key)) ||
+        !validId(provider?.id) || typeof provider.version !== 'string' || !provider.version ||
+        !provider.capabilities || typeof provider.preflight !== 'function' || typeof provider.openManager !== 'function' ||
+        typeof provider.prepareSandbox !== 'function' || (provider.capabilities.sharedWorkspace &&
+          (typeof provider.createSharedWorkspace !== 'function' || typeof provider.deleteSharedWorkspace !== 'function'))) {
+      throw invalid('Sandbox Provider requires a stable identity, capabilities and the lifecycle operations');
+    }
+    sandboxes.set(handle, Object.freeze({ provider: adaptSandboxProvider(provider),
+      sandbox: Object.freeze({ timeoutSeconds }), isolation: Object.freeze({ network: 'provider' as const }) }));
+    return handle;
+  }
+  if ((config.kind !== undefined && config.kind !== 'opensandbox') ||
+      Object.keys(config).some(key => !['kind', 'lifecycleBaseUrl', 'apiKey', 'execdToken', 'endpointHost', 'useServerProxy',
         'resourceLimits', 'commandTimeoutMs', 'timeoutSeconds', 'isolation'].includes(key))) {
     throw invalid('createSandbox requires an OpenSandbox configuration with only Sandbox settings');
   }
   const { kind: _kind, isolation, ...sandbox } = config;
-  if (!isolation || (isolation.network !== undefined && isolation.network !== 'local-docker')) {
-    throw invalid('OpenSandbox requires local-docker isolation');
+  const url = httpUrl(sandbox.lifecycleBaseUrl, 'sandbox.lifecycleBaseUrl');
+  if (url.search || url.hash) throw invalid('sandbox.lifecycleBaseUrl cannot contain a query or fragment');
+  if (isolation?.network !== undefined && isolation.network !== 'api' && isolation.network !== 'local-docker') {
+    throw invalid('Unsupported OpenSandbox isolation policy');
   }
-  httpUrl(sandbox.lifecycleBaseUrl, 'sandbox.lifecycleBaseUrl');
-  const timeoutSeconds = sandbox.timeoutSeconds === undefined ? 3600 : sandbox.timeoutSeconds;
-  if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 60) {
-    throw invalid('sandbox.timeoutSeconds must be a safe integer of at least 60');
+  if (sandbox.resourceLimits !== undefined) {
+    const { cpu, memory } = sandbox.resourceLimits;
+    if (typeof cpu !== 'string' || !/^\d+(?:\.\d+)?m?$/.test(cpu) || !(Number.parseFloat(cpu) > 0) || !Number.isFinite(Number.parseFloat(cpu)) ||
+        typeof memory !== 'string' || !/^[1-9]\d*(?:[kmgt](?:i|b)?|b)?$/i.test(memory)) {
+      throw invalid('OpenSandbox resource limits require positive CPU and memory quantities, for example 500m and 512Mi');
+    }
   }
-  if (!Number.isSafeInteger(isolation.disk?.bytes) || !Number.isSafeInteger(isolation.disk?.inodes)) {
-    throw invalid('Explicit disk byte and inode limits are required');
+  const disk = isolation?.disk;
+  const strict = isolation?.network === 'local-docker' || disk?.inodes !== undefined;
+  let effective: SandboxSettings['isolation'] = { network: 'api' };
+  if (strict) {
+    if (isolation?.network === 'api' || !disk || !Number.isSafeInteger(disk.bytes) || !Number.isSafeInteger(disk.inodes)) {
+      throw invalid('Strict local Docker isolation requires explicit disk byte and inode limits');
+    }
+    const quota = { bytes: disk.bytes, inodes: disk.inodes! };
+    try { checkLocalWorkspaceQuota(quota); }
+    catch (error) { throw invalid((error as Error).message); }
+    effective = { network: 'local-docker', disk: quota };
+  } else if (disk !== undefined) {
+    throw invalid('The OpenSandbox API policy cannot enforce a workspace disk limit. Select a Provider that implements the requested storage policy.');
   }
-  try { checkLocalWorkspaceQuota(isolation.disk); }
-  catch (error) { throw invalid((error as Error).message); }
-  const handle = Object.freeze({}) as Sandbox;
+  const connection = resolveSandboxConnection(sandbox);
   sandboxes.set(handle, freeze(structuredClone({
-    sandbox: { ...sandbox, timeoutSeconds }, isolation: { network: 'local-docker' as const, disk: isolation.disk },
+    sandbox: { ...sandbox, lifecycleBaseUrl: connection.lifecycleBaseUrl, apiKey: connection.apiKey,
+      endpointHost: connection.endpointHost, timeoutSeconds }, isolation: effective,
   })));
   return handle;
 }
@@ -208,21 +249,21 @@ export function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRun
   if (!settings) throw invalid('A createSandbox handle is required');
   const { executor, models, connection } = options;
   const driver = selectExecutorDriver(executor);
-  const publicUrl = connection?.bridge?.publicUrl ?? (connection?.advertiseHost && `http://${connection.advertiseHost}:{port}`);
-  const advertiseHost = connection?.modelGateway?.advertiseHost ?? connection?.advertiseHost;
-  if (typeof publicUrl !== 'string' || !publicUrl.includes('{port}')) {
-    throw invalid('Runtime requires connection.advertiseHost or connection.bridge.publicUrl containing {port}');
-  }
-  if (typeof advertiseHost !== 'string') {
-    throw invalid('Runtime requires connection.advertiseHost or connection.modelGateway.advertiseHost');
-  }
-  const bridgeOrigin = httpUrl(publicUrl.replaceAll('{port}', '12345'), 'connection.bridge.publicUrl');
-  for (const host of [bridgeOrigin.hostname, advertiseHost]) {
-    if (isIP(host) !== 4 || host.startsWith('127.') || host === '0.0.0.0') {
-      throw invalid('Sandbox destinations require concrete non-loopback IPv4 addresses');
+  const workerHost = connection?.advertiseHost ?? resolveSandboxConnection().advertiseHost ?? '172.17.0.1';
+  const urlHost = workerHost.includes(':') ? `[${workerHost}]` : workerHost;
+  const publicUrl = connection?.bridge?.publicUrl ?? `http://${urlHost}:{port}`;
+  const gateway = connection?.modelGateway;
+  const advertiseHost = gateway?.advertiseHost ?? workerHost;
+  const publicGateway = gateway?.publicUrl;
+  for (const [template, label] of [[publicUrl, 'connection.bridge.publicUrl'], [publicGateway ?? `http://${advertiseHost.includes(':') ? `[${advertiseHost}]` : advertiseHost}:{port}`, 'connection.modelGateway.publicUrl']]) {
+    if (!template.includes('{port}')) throw invalid(`${label} must contain {port}`);
+    const url = httpUrl(template.replaceAll('{port}', '12345'), label);
+    if (url.search || url.hash || ['0.0.0.0', '[::]'].includes(url.hostname)) throw invalid(`${label} requires a reachable origin`);
+    if (settings.isolation.network === 'local-docker' &&
+        (isIP(url.hostname) !== 4 || url.hostname.startsWith('127.'))) {
+      throw invalid('Strict local Docker destinations require concrete non-loopback IPv4 addresses');
     }
   }
-  const gateway = connection?.modelGateway;
   const requestLimit = gateway?.maxRequests;
   if (requestLimit !== undefined && (!Number.isSafeInteger(requestLimit) || requestLimit < 1)) {
     throw invalid('modelGateway.maxRequests must be a positive safe integer');
@@ -241,14 +282,15 @@ export function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRun
   }
   const snapshot = freeze(structuredClone({
     bridge: { host: connection?.bridge?.host ?? '0.0.0.0', publicUrl },
-    modelGateway: { requestTimeoutMs: gateway?.requestTimeoutMs, host: gateway?.host ?? '0.0.0.0', advertiseHost, maxOutputTokens: outputPolicy, maxRequests: requestLimit },
+    modelGateway: { requestTimeoutMs: gateway?.requestTimeoutMs, host: gateway?.host ?? '0.0.0.0', advertiseHost, publicUrl: publicGateway, maxOutputTokens: outputPolicy, maxRequests: requestLimit },
     models,
   }));
   return Object.freeze({ ...settings, ...snapshot, driver });
 }
 
 export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, {
-  runtimeId, bridge, modelAccess, registerPrivateValues = () => {}, providers = [createLocalOpenSandboxProvider(config)],
+  runtimeId, bridge, modelAccess, registerPrivateValues = () => {}, providers = [config.provider ?? (
+    config.isolation.network === 'local-docker' ? createLocalOpenSandboxProvider(config) : createApiOpenSandboxProvider(config))],
 }: BackendOptions) {
   const { driver } = config;
   const agents = new Map<string, BackendAgent>();
@@ -257,6 +299,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
   if (!targets.length || targets.some(target => !validId(target.id)) || new Set(targets.map(target => target.id)).size !== targets.length) {
     throw invalid('OpenSandbox targets require distinct service identities');
   }
+  await Promise.all(targets.map(target => target.preflight?.()));
   let closing = false;
   let nextTarget = 0;
 
@@ -361,6 +404,10 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
       const provider = entry?.provider ?? targets[nextTarget];
       if (!entry) nextTarget = (nextTarget + 1) % targets.length;
+      if (workspace && provider.capabilities && !provider.capabilities.sharedWorkspace) throw invalid('The selected Sandbox Provider does not support live shared workspaces');
+      if (profile.network?.allow.length && provider.capabilities && !provider.capabilities.networkAllowlist) {
+        throw invalid('The selected Sandbox Provider cannot enforce the requested network allowlist');
+      }
       const manager = provider.openManager(profile.image);
       const agent: BackendAgent = { id: agentId, provider, manager, onEvent, onExecutionStart, onTrace, cursor: 0, output: '', error: null,
         stopping: false, exited: false, eventPoll: createWorkerEventPoll(), nativeExecuting: false, pendingInputs: 0 };
@@ -380,7 +427,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       };
       assertOpen();
       const allocation = { providerId: provider.id, resourceKey: agentId };
-      const sandbox = await manager.ensureExecution({ executionId: agentId, agentId, timeoutSeconds: config.sandbox.timeoutSeconds ?? 3600, projectQuotaRequired: true, cleanupOnFailure: false,
+      const sandbox = await manager.ensureExecution({ executionId: agentId, agentId, timeoutSeconds: config.sandbox.timeoutSeconds ?? 3600, projectQuotaRequired: provider.projectQuotaRequired ?? true, cleanupOnFailure: false,
         metadata: { runtime_id: runtimeId }, onWorkerToken: (token: string) => registerPrivateValues([token]),
         onCreateDispatch: (entry: { timeout_seconds: number }) => recordAllocation({ ...allocation, state: 'allocation-dispatched', timeoutSeconds: entry.timeout_seconds }),
         onCreated: (entry: { sandbox_id: string; expires_at?: string }) => recordAllocation({ ...allocation, state: 'allocation-observed', sandboxId: entry.sandbox_id,
@@ -397,6 +444,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (versions[`${driver.kind}Version`] !== driver.version) throw invalid(`Backend requires ${driver.kind} ${driver.version}`);
       assertOpen();
       const model = config.models[profile.model];
+      agent.workerStartDispatched = true;
       const startup = await manager.startAgent({ executionId: agentId,
         ...driver.start({ model, baseUrl: credentials.baseUrl, forkSession: Boolean(forkSession) }),
         systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt, driver.kind),
@@ -408,13 +456,20 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         requireCoreFileProtocol: true, projectQuota: quota, modelCatalogResource: credentials.catalogResource,
         ...(credentials.catalogContent !== undefined ? { modelCatalogContent: credentials.catalogContent } : {}),
         beforeAgentStart: assertOpen });
+      const effective = startup?.isolation || quota ? {
+        ...startup?.isolation,
+        ...(quota ? { disk: { ...quota, scope: 'workspace' as const } } : {}),
+      } : undefined;
+      if (effective) trace(agent, { type: 'sandbox-isolation', providerId: provider.id,
+        sandboxId: sandbox.sandbox_id, effective });
       agent.started = true;
       const ready = await manager.agentRpc(agentId, { type: 'get_state', id: `ready-${randomUUID()}` }, { timeoutMs: 10_000, since: 0 });
       if (ready.response?.success !== true || ready.response.command !== 'get_state') throw invalid('Executor readiness response was not confirmed');
       consume(agent, ready.records ?? []);
       assertOpen();
       agent.polling = agent.eventPoll.run(signal => readWorkerEvents(agent, signal));
-      return { ...allocation, sandboxId: sandbox.sandbox_id, versions, ...(startup?.backend ? { backend: startup.backend } : {}) };
+      return { ...allocation, sandboxId: sandbox.sandbox_id, versions,
+        providerVersion: provider.version, effective, ...(startup?.backend ? { backend: startup.backend } : {}) };
     },
     async snapshotFiles(agentId: string, input: FileSnapshotOptions) {
       const agent = agents.get(agentId);
@@ -529,6 +584,10 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       agent.stopping = true;
       agent.eventPoll.wake();
       const stopped = await agent.manager.stopAgent(agentId, 'SIGTERM', { preserveWorker: true });
+      // The built-in manager returns false only before it has dispatched a Worker start.
+      if (!stopped && (agent.started || (config.provider && agent.workerStartDispatched))) {
+        throw Object.assign(new Error('Sandbox Provider did not confirm execution stop'), { code: 'SERVICE_UNAVAILABLE', retryable: true });
+      }
       agent.executionStopped = true;
       agent.eventPoll.stop();
       await agent.polling;
@@ -566,7 +625,10 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (!agent) return;
       if (!agent.executionStopped) throw Object.assign(new Error('Sandbox deletion requires confirmed execution stop'), { code: 'NOT_ALLOWED' });
       agent.eventPoll.stop();
-      await agent.manager.stopExecution(agentId);
+      const deletion = await agent.manager.stopExecution(agentId);
+      if (config.provider && deletion === false && agent.manager.coreResource(agentId)?.creation !== 'absent') {
+        throw Object.assign(new Error('Sandbox Provider did not confirm deletion'), { code: 'SERVICE_UNAVAILABLE', retryable: true });
+      }
       await agent.polling;
       if (agent.workspace) {
         const workspaceId = agent.workspace.id;

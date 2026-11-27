@@ -128,15 +128,24 @@ export function runtimeConfiguration({ config, profiles, registrations, maxAgent
   maxAgents: number;
   defaultTimeoutMs: number;
 }, redact: (value: string) => string) {
-  const { sandbox, isolation, models, modelGateway, driver } = config;
+  const { sandbox, isolation, models, modelGateway, driver, provider } = config;
+  const cpu = sandbox.resourceLimits?.cpu ?? '2';
+  const memory = sandbox.resourceLimits?.memory ?? '2Gi';
   return {
     schemaVersion: 1,
     coreVersion: packageInfo.version,
     maxAgents,
     backend: {
-      type: `${driver.kind}-opensandbox`, [`${driver.kind}Version`]: driver.version,
+      type: `${driver.kind}-${provider?.id ?? 'opensandbox'}`, [`${driver.kind}Version`]: driver.version,
       authMode: 'api-key', capabilities: driver.capabilities, network: isolation.network, disk: isolation.disk,
-      cpu: redact(sandbox.resourceLimits?.cpu ?? '2'), memory: redact(sandbox.resourceLimits?.memory ?? '2Gi'),
+      ...(provider ? {} : { cpu: redact(cpu), memory: redact(memory) }),
+      provider: provider ? { id: provider.id, version: redact(provider.version), capabilities: provider.capabilities } :
+        { id: isolation.network === 'local-docker' ? 'local' : 'opensandbox', version: isolation.network === 'local-docker' ? 'strict-local-docker' : 'lifecycle-v1' },
+      constraints: {
+        requested: { ...sandbox.resourceLimits, ...(isolation.disk ? { disk: isolation.disk } : {}) },
+        ...(provider ? {} : { configured: { cpu: redact(cpu), memory: redact(memory),
+          ...(isolation.network === 'local-docker' ? { disk: { ...isolation.disk, scope: 'workspace' } } : {}) } }),
+      },
     },
     waiting: {
       hostDefaultMs: defaultTimeoutMs, workerStartupMs: 30_000, piReadyMs: 10_000, piSubmitMs: 30_000,

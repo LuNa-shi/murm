@@ -20,7 +20,7 @@ Give Root a task. Root looks for independent work it can delegate early, chooses
 
 ## Run from the checkout
 
-Use Node.js 22.19 or newer and npm on the Linux host running Docker and OpenSandbox. If you have a compatible Worker image and an OpenSandbox provider, build from the checkout root.
+Use Node.js 22.19 or newer and npm on the Linux Controller. If you have a compatible Worker image and an OpenSandbox provider, build from the checkout root.
 
 ```sh
 npm ci

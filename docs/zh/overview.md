@@ -48,6 +48,6 @@ GitHub Release 用同一个 `@luna-shi/murm` tarball 同时分发 CLI、TypeScri
 
 [API 参考](reference/api.md) 包含方法签名、输入回执、运行观察、文件控制、Service 调用与配置。[Run 生命周期](run-lifecycle.md) 解释操作何时被接纳、执行何时收束、资源何时完成清理。[类型与源码映射](reference/types.md) 将这些契约对应到实现。
 
-当前 OpenSandbox 后端运行在 Linux 与同宿主机的 rootful Docker 上，支持 Pi 和 Codex，两者的具体能力有所区别。Run 目录包含提示词、模型与 Service 调用轨迹、原生会话和导出文件，应保存在私有存储中。相关运行边界和凭证流向见 [系统架构](architecture.md)。
+Linux Controller 通过 OpenSandbox API 连接本地或远端 Sandbox，支持 Pi 和 Codex，两者的具体能力有所区别。Run 目录包含提示词、模型与 Service 调用轨迹、原生会话和导出文件，应保存在私有存储中。相关运行边界和凭证流向见 [系统架构](architecture.md)。
 
 网站直接使用 `docs/en/` 与 `docs/zh/` 中的中英文指南。[仓库实现手册](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/INDEX.md) 进一步解释底层执行路径、生成的协议参考和提示词组合方式。

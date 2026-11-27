@@ -149,11 +149,17 @@ function endpointUrl(value: any) {
   return null;
 }
 
-function endpointForHost(value: any, host: any) {
+function endpointForHost(value: any, host: string | null, proxyBase?: string) {
   const endpoint = endpointUrl(value);
-  if (!endpoint || !host) return endpoint;
+  if (!endpoint) return null;
   const url = new URL(endpoint);
-  url.hostname = host;
+  if (proxyBase) {
+    const base = new URL(proxyBase);
+    if (url.host === base.host || (url.hostname === base.hostname && !url.port)) url.protocol = base.protocol;
+    if (url.origin !== base.origin || !url.pathname.startsWith(`${base.pathname.replace(/\/$/, '')}/sandboxes/`)) return null;
+  }
+  if (host) url.hostname = host;
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) return null;
   return url.toString().replace(/\/$/, '');
 }
 
@@ -185,6 +191,8 @@ export class OpenSandboxManager {
   declare volumes: any;
   declare execdPort: any;
   declare endpointHost: any;
+  declare requireManagementAuth: boolean;
+  declare useServerProxy: boolean;
   declare workerPort: any;
   declare workerCommand: any;
   declare foregroundSession: any;
@@ -213,6 +221,8 @@ export class OpenSandboxManager {
     volumes = [],
     execdPort = DEFAULT_EXECd_PORT,
     endpointHost = null,
+    requireManagementAuth = false,
+    useServerProxy = false,
     workerPort = 44100,
     workerCommand = ['node', '/opt/murm/agent-worker.mjs'],
     foregroundSession = false,
@@ -241,6 +251,9 @@ export class OpenSandboxManager {
     this.execdPort = execdPort;
     if (endpointHost !== null && (typeof endpointHost !== 'string' || endpointHost.length === 0 || endpointHost.includes('/') || endpointHost.includes(':'))) throw new TypeError('endpointHost must be a hostname or IP address');
     this.endpointHost = endpointHost;
+    this.requireManagementAuth = requireManagementAuth === true;
+    this.useServerProxy = useServerProxy === true;
+    if (this.useServerProxy && endpointHost !== null) throw new TypeError('A server proxy URL cannot be combined with endpointHost');
     if (!Number.isInteger(workerPort) || workerPort < 1 || workerPort > 65_535) throw new TypeError('workerPort must be an integer from 1 to 65535');
     if (!Array.isArray(workerCommand) || workerCommand.length === 0 || !workerCommand.every((part: any) => typeof part === 'string')) throw new TypeError('workerCommand must be a non-empty string array');
     this.workerPort = workerPort;
@@ -265,7 +278,17 @@ export class OpenSandboxManager {
   }
 
   async preflight({ timeoutMs = 20_000 }: any = {}) {
-    const response = await this.#request('/sandboxes?pageSize=1', { method: 'GET', timeoutMs });
+    const path = '/sandboxes?pageSize=1';
+    if (this.requireManagementAuth && !this.apiKey) {
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'OpenSandbox API requires a trusted Lifecycle API key');
+    }
+    const response = await this.#request(path, { method: 'GET', timeoutMs });
+    if (this.requireManagementAuth) {
+      const unauthenticated = await this.#request(path, { timeoutMs, allowStatuses: [401, 403], omitLifecycleKey: true });
+      if (![401, 403].includes(unauthenticated.status) || !Array.isArray(response.body?.items)) {
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'OpenSandbox Lifecycle authentication could not be confirmed');
+      }
+    }
     this.verified = { lifecycle_url: this.lifecycleBaseUrl, provider: 'opensandbox', verified_at: this.now(), status: response.status };
     this.logger?.({ event: 'sandbox.provider_preflight', provider: 'opensandbox', lifecycle_url: this.lifecycleBaseUrl });
     return { ...this.verified, ok: true };
@@ -430,9 +453,11 @@ export class OpenSandboxManager {
     const creation = { agent_id: agentId, resource_key: id, mission_id: configuredMission, runtime_id: configuredRuntime, inFlight: true, onCreated };
     if (creation) this.pendingCreations.set(id, creation);
     const workerToken = randomUUID();
+    const execdAccessToken = this.requireManagementAuth ? randomUUID() : null;
     const workerEntrypoint = [...this.workerCommand, '--port', String(this.workerPort), ...(projectQuotaRequired ? ['--require-project-quota'] : [])];
     try {
       onWorkerToken?.(workerToken);
+      if (execdAccessToken) onWorkerToken?.(execdAccessToken);
       const admission = onCreateDispatch?.({ provider: 'opensandbox', timeout_seconds: timeoutSeconds });
       if (typeof admission?.then === 'function') await admission;
     } catch (error: any) {
@@ -446,7 +471,7 @@ export class OpenSandboxManager {
         image: { uri: this.image },
         entrypoint: workerEntrypoint,
         resourceLimits: this.resourceLimits,
-        env: { ...launchBody, MURM_WORKER_TOKEN: workerToken },
+        env: { ...launchBody, MURM_WORKER_TOKEN: workerToken, ...(execdAccessToken ? { EXECD_ACCESS_TOKEN: execdAccessToken } : {}) },
         ...(this.volumes.length > 0 ? { volumes: this.volumes } : {}),
         metadata: {
           ...labels,
@@ -476,35 +501,35 @@ export class OpenSandboxManager {
     if (typeof sandboxId !== 'string' || sandboxId.length === 0) {
       throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return a sandbox id', { response: created });
     }
-    const suppliedExecdEndpoint = created?.execd_endpoint ?? created?.endpoint;
+    const suppliedExecdEndpoint = this.useServerProxy ? undefined : created?.execd_endpoint ?? created?.endpoint;
     let execdUrl = endpointForHost(suppliedExecdEndpoint, this.endpointHost);
     let execdHeaders = suppliedExecdEndpoint?.headers ?? {};
     // Retain the resource as soon as its provider ID exists. Endpoint/health
     // preparation failures must not erase responsibility for deletion.
-    const record: any = { executionId: id, agentId, projectQuotaRequired, boundExecutionId: null, sandboxId, execdUrl: null, execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), workerToken, preparing: true };
+    const record: any = { executionId: id, agentId, projectQuotaRequired, boundExecutionId: null, sandboxId, execdUrl: null, execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), workerToken, onWorkerToken, preparing: true };
     this.executions.set(id, record);
     this.pendingCreations.delete(id);
     try {
       await onCreated?.({ ...this.#snapshot(record), expires_at: created.expiresAt ?? null });
       if (!execdUrl) {
-        const endpointResponse = await this.#request(`/sandboxes/${encodeURIComponent(sandboxId)}/endpoints/${this.execdPort}`, { method: 'GET', timeoutMs: 30_000 });
+        const endpointResponse = await this.#request(`/sandboxes/${encodeURIComponent(sandboxId)}/endpoints/${this.execdPort}${this.useServerProxy ? '?use_server_proxy=true' : ''}`, { method: 'GET', timeoutMs: 30_000 });
         const endpoint = responseValue(endpointResponse.body);
-        execdUrl = endpointForHost(endpoint, this.endpointHost);
+        execdUrl = endpointForHost(endpoint, this.endpointHost, this.useServerProxy ? this.lifecycleBaseUrl : undefined);
         execdHeaders = endpoint?.headers ?? {};
       }
       if (!execdUrl) throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return an Execd endpoint', { sandbox_id: sandboxId, port: this.execdPort });
+      record.execdUrl = execdUrl.replace(/\/$/, '');
+      record.execdHeaders = this.#dataPlaneHeaders(execdUrl, execdHeaders);
+      const activeToken = record.execdHeaders['x-execd-access-token'] ?? execdAccessToken ?? this.execdToken;
+      delete record.execdHeaders['x-execd-access-token'];
+      if (activeToken) record.execdHeaders['X-EXECD-ACCESS-TOKEN'] = activeToken;
+      for (const value of Object.values(record.execdHeaders) as string[]) onWorkerToken?.(value);
+      if (this.waitForExecdReady) await this.#waitExecd(record);
+      if (this.requireManagementAuth) await this.#checkExecdAuthentication(record);
     } catch (error: any) {
       if (cleanupOnFailure) await this.stopExecution(id).catch((cleanupError: any) => {
         this.logger?.({ event: 'sandbox.prepare_cleanup_error', provider: 'opensandbox', execution_id: id, sandbox_id: sandboxId, error_class: cleanupError?.code ?? cleanupError?.name });
       });
-      throw error;
-    }
-    record.execdUrl = execdUrl.replace(/\/$/, '');
-    record.execdHeaders = execdHeaders;
-    try {
-      if (this.waitForExecdReady) await this.#waitExecd(record);
-    } catch (error: any) {
-      if (cleanupOnFailure) await this.stopExecution(id).catch(() => undefined);
       throw error;
     }
     record.preparing = false;
@@ -623,11 +648,31 @@ export class OpenSandboxManager {
     record.executionStopped = false;
     const workerToken = record.workerToken;
     if (typeof workerToken !== 'string' || workerToken.length === 0) throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox worker token is unavailable for this Execution');
-    let endpoint = endpointForHost((await this.#request(`/sandboxes/${encodeURIComponent(record.sandboxId)}/endpoints/${this.workerPort}`, { method: 'GET', timeoutMs: 30_000 })).body, this.endpointHost);
+    const endpointInfo = responseValue((await this.#request(
+      `/sandboxes/${encodeURIComponent(record.sandboxId)}/endpoints/${this.workerPort}${this.useServerProxy ? '?use_server_proxy=true' : ''}`,
+      { method: 'GET', timeoutMs: 30_000 })).body);
+    let endpoint = endpointForHost(endpointInfo, this.endpointHost, this.useServerProxy ? this.lifecycleBaseUrl : undefined);
     if (!endpoint) throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return the Agent worker endpoint', { sandbox_id: record.sandboxId, port: this.workerPort });
     endpoint = endpoint.replace(/\/$/, '');
-    const workerHeaders = { authorization: `Bearer ${workerToken}` };
+    const routingHeaders = this.#dataPlaneHeaders(endpoint, endpointInfo?.headers);
+    for (const value of Object.values(routingHeaders)) record.onWorkerToken?.(value);
+    const execdProxy = record.execdUrl.endsWith(`/proxy/${this.execdPort}`) &&
+      endpoint === record.execdUrl.slice(0, -String(this.execdPort).length) + this.workerPort;
+    if (execdProxy && record.execdHeaders['X-EXECD-ACCESS-TOKEN']) {
+      routingHeaders['x-execd-access-token'] = record.execdHeaders['X-EXECD-ACCESS-TOKEN'];
+    }
+    const workerHeaders = {
+      ...routingHeaders, ...(this.useServerProxy ? { 'X-Murm-Worker-Token': workerToken } : { authorization: `Bearer ${workerToken}` }),
+    };
     await this.#waitWorker(endpoint, workerHeaders);
+    if (this.requireManagementAuth) {
+      const denied = await this.#request(`${endpoint}/core/contract`, {
+        absolute: true, extraHeaders: routingHeaders, timeoutMs: 5000, allowStatuses: [401, 403],
+      });
+      if (![401, 403].includes(denied.status)) {
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Worker management authentication could not be confirmed');
+      }
+    }
     if (requireCoreFileProtocol) {
       const probe = await this.#request(`${endpoint}/core/contract`, {
         absolute: true, method: 'GET', extraHeaders: workerHeaders, timeoutMs: 15_000, allowStatuses: [400, 404],
@@ -638,9 +683,10 @@ export class OpenSandboxManager {
           `Core requires Worker file protocol ${fileProtocol}; detected ${supported ?? 'none'}`);
       }
     }
+    const isolation = this.requireManagementAuth ? await this.#checkAgentBoundary(executionId) : undefined;
     beforeAgentStart?.();
     record.coreAgent = true;
-    record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), starting: true };
+    record.agent = { endpoint, token: workerToken, headers: workerHeaders, worker_port: this.workerPort, started_at: this.now(), starting: true };
     const startup = await this.#request(`${endpoint}/start`, {
       absolute: true,
       workerStart: true,
@@ -691,11 +737,11 @@ export class OpenSandboxManager {
     if (!workspace && (fileReceipt?.version !== expectedVersion || fileReceipt.writable !== writable || fileReceipt.digest !== expectedDigest)) {
       throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest initial Core files and workDir permissions');
     }
-    record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), contract: receipt,
+    record.agent = { endpoint, token: workerToken, headers: workerHeaders, worker_port: this.workerPort, started_at: this.now(), contract: receipt,
       ...(codex ? { backend: { kind: backend.kind, version: backend.version, authMode: backend.authMode, threadId: backend.threadId } } : {}),
     };
     this.logger?.({ event: 'sandbox.agent_started', provider: 'opensandbox', execution_id: executionId, sandbox_id: record.sandboxId, worker_port: this.workerPort });
-    return { ...record.agent };
+    return { ...record.agent, isolation };
   }
 
   /**
@@ -766,7 +812,7 @@ export class OpenSandboxManager {
     if (!record.agentId || record.boundExecutionId !== executionId || !record.agent || record.stopPromise) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Project control requires the live bound Agent worker');
     const body = { ...input, execution_id: executionId, binding_version: record.bindingVersion, ...(manifest ? { manifest } : {}) };
     const response = await this.#request(`${record.agent.endpoint}/project/${action}`, { absolute: true, method: 'POST',
-      extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body, timeoutMs: action.startsWith('install') ? 5000 : 30_000 });
+      extraHeaders: this.#workerHeaders(record), body, timeoutMs: action.startsWith('install') ? 5000 : 30_000 });
     const result: any = responseValue(response.body);
     const expected = action === 'prepare' ? 'PREPARED' : 'ACTIVE';
     if ((!action.startsWith('install') && result?.state !== expected) || result?.execution_id !== executionId || result?.binding_version !== record.bindingVersion) throw new MurmError(ERROR_CODES.START_FAILED, 'Worker did not confirm the expected project permission state');
@@ -784,7 +830,7 @@ export class OpenSandboxManager {
       throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Context Fork requires a live Agent Worker');
     }
     const response = await this.#request(`${record.agent.endpoint}/core/session/snapshot`, {
-      absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` },
+      absolute: true, method: 'POST', extraHeaders: this.#workerHeaders(record),
       body: {}, timeoutMs: 15_000,
     });
     return responseValue(response.body);
@@ -796,7 +842,7 @@ export class OpenSandboxManager {
       throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Core files require the live Agent Worker');
     }
     const response = await this.#request(`${record.agent.endpoint}/core/files/${action}`, {
-      absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` },
+      absolute: true, method: 'POST', extraHeaders: this.#workerHeaders(record),
       body: input, timeoutMs: 30_000, allowStatuses: [400],
     });
     if (response.status === 400) {
@@ -822,7 +868,7 @@ export class OpenSandboxManager {
   async agentRpc(executionId: any, message: any, { timeoutMs = 600_000, since, transportTimeoutMs = timeoutMs + 10_000, signal }: any = {}) {
     const record: any = this.#record(executionId);
     if (!record.agent) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent worker is not started', { execution_id: executionId });
-    const response = await this.#request(`${record.agent.endpoint}/rpc`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { message, timeout_ms: timeoutMs, ...(since === undefined ? {} : { since }) }, timeoutMs: transportTimeoutMs, signal });
+    const response = await this.#request(`${record.agent.endpoint}/rpc`, { absolute: true, method: 'POST', extraHeaders: this.#workerHeaders(record), body: { message, timeout_ms: timeoutMs, ...(since === undefined ? {} : { since }) }, timeoutMs: transportTimeoutMs, signal });
     return responseValue(response.body);
   }
 
@@ -833,7 +879,7 @@ export class OpenSandboxManager {
       if (!preserveWorker) record.agent = null;
       return true;
     }
-    const response = await this.#request(`${record.agent.endpoint}/stop`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { signal }, timeoutMs: 15_000 });
+    const response = await this.#request(`${record.agent.endpoint}/stop`, { absolute: true, method: 'POST', extraHeaders: this.#workerHeaders(record), body: { signal }, timeoutMs: 15_000 });
     const stopped = responseValue(response.body);
     if (stopped?.stopped === true && Array.isArray(stopped.project_installs) && record.boundExecutionId) {
       this.projectInstallReceipts.set(record.boundExecutionId, { bindingVersion: record.bindingVersion,
@@ -873,7 +919,7 @@ export class OpenSandboxManager {
     let response;
     try {
       response = await this.fetch(`${record.agent.endpoint}${session ? '/core/session/archive' : '/core/files/collect'}`, { method: 'POST',
-        headers: { authorization: `Bearer ${record.agent.token}`, 'content-type': 'application/json', accept: 'application/x-ndjson' },
+        headers: { ...this.#workerHeaders(record), 'content-type': 'application/json', accept: 'application/x-ndjson' },
         body: JSON.stringify(spec), signal: controller.signal, redirect: 'error' });
       if (!response.ok || !response.body || response.headers.get('content-type')?.split(';')[0] !== 'application/x-ndjson') {
         throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not return the bounded Core collection stream');
@@ -966,7 +1012,7 @@ export class OpenSandboxManager {
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline) {
       try {
-        const response = await this.fetch(`${endpoint}/health`, { method: 'GET', headers });
+        const response = await this.fetch(`${endpoint}/health`, { method: 'GET', headers, redirect: 'error', signal: AbortSignal.timeout(3000) });
         if (response.ok) return;
       } catch { /* worker is still starting */ }
       await new Promise<any>((resolve: any) => setTimeout(resolve, 100));
@@ -1014,20 +1060,114 @@ export class OpenSandboxManager {
     return { job_id: jobId ?? randomUUID(), state, exit_code: exitCode, timed_out: timedOut, truncated, stdout, stderr };
   }
 
+  #workerHeaders(record: any) { return record.agent.headers ?? { authorization: `Bearer ${record.agent.token}` }; }
+
+  #dataPlaneHeaders(endpoint: string, headers?: Record<string, string>) {
+    const result = Object.fromEntries(new Headers(headers).entries());
+    const lifecycle = new URL(this.lifecycleBaseUrl);
+    const destination = new URL(endpoint);
+    if (this.useServerProxy && destination.origin === lifecycle.origin &&
+        destination.pathname.startsWith(`${lifecycle.pathname.replace(/\/$/, '')}/sandboxes/`) && this.apiKey) {
+      result['open-sandbox-api-key'] = this.apiKey;
+    }
+    return result;
+  }
+
+  async #checkAgentBoundary(executionId: string) {
+    // Run before any task code or model interaction, without passing credentials
+    // to the UID that will run the executor. Only a fixed verdict leaves the guest.
+    const guestProbe = `
+      const fs = require('node:fs');
+      const assert = require('node:assert/strict');
+      const status = fs.readFileSync('/proc/self/status', 'utf8');
+      assert.equal(process.getuid(), 10001);
+      assert.match(status, /^NoNewPrivs:\\s+1$/m);
+      for (const name of ['CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb']) {
+        assert.match(status, new RegExp('^' + name + ':\\\\s+0+$', 'm'));
+      }
+      const secretName = /(?:EXECD_ACCESS_TOKEN|MURM_WORKER_TOKEN|OPEN_SANDBOX_API_KEY|OPENSANDBOX_SERVER_API_KEY)=/;
+      for (const key of Object.keys(process.env)) assert.ok(!secretName.test(key + '='));
+      for (const entry of fs.readdirSync('/proc').filter(entry => /^\\d+$/.test(entry))) {
+        for (const file of ['environ', 'cmdline']) {
+          try {
+            assert.ok(!secretName.test(fs.readFileSync('/proc/' + entry + '/' + file, 'utf8')));
+          } catch (error) {
+            if (!['EACCES', 'EPERM', 'ENOENT', 'ESRCH'].includes(error.code)) throw error;
+          }
+        }
+      }
+      assert.ok(!fs.existsSync('/var/run/docker.sock') && !fs.existsSync('/run/docker.sock'));
+      const read = path => {
+        try { return fs.readFileSync('/sys/fs/cgroup/' + path, 'utf8').trim(); }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+      };
+      const cpuMax = read('cpu.max')?.split(' ') ?? [
+        read('cpu/cpu.cfs_quota_us') ?? read('cpu,cpuacct/cpu.cfs_quota_us'),
+        read('cpu/cpu.cfs_period_us') ?? read('cpu,cpuacct/cpu.cfs_period_us'),
+      ];
+      const cpu = Number(cpuMax[0]) / Number(cpuMax[1]);
+      const memory = Number(read('memory.max') ?? read('memory/memory.limit_in_bytes'));
+      const urls = [
+        ['http://127.0.0.1:${this.execdPort}/command', 'POST'],
+        ['http://127.0.0.1:${this.execdPort}/files/info', 'GET'],
+        ['http://127.0.0.1:${this.execdPort}/session', 'POST'],
+        ['http://127.0.0.1:${this.execdPort}/proxy/${this.workerPort}/core/contract', 'GET'],
+        ['http://127.0.0.1:${this.workerPort}/core/contract', 'GET'],
+      ];
+      Promise.all(urls.map(async ([url, method]) => {
+        const response = await fetch(url, { method, signal: AbortSignal.timeout(3000), redirect: 'error',
+          ...(method === 'POST' ? { body: '{}', headers: { 'content-type': 'application/json' } } : {}) });
+        await response.body?.cancel();
+        assert.ok([401, 403].includes(response.status));
+      })).then(() => console.log(JSON.stringify({ cpu, memory })), () => { process.exitCode = 1; });
+    `;
+    const result = await this.exec({ executionId, timeoutMs: 8000, command: [
+      'setpriv', '--reuid', '10001', '--regid', '10001', '--clear-groups', '--no-new-privs',
+      '--bounding-set=-all', '--inh-caps=-all', '--ambient-caps=-all', '--', 'env', '-i',
+      'PATH=/usr/local/bin:/usr/bin:/bin', 'node', '-e', guestProbe,
+    ] }).catch(() => undefined);
+    if (result?.exit_code !== 0) {
+      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Sandbox did not confirm management isolation from the Linux Agent UID');
+    }
+    const effective = jsonData(result.stdout.trim());
+    const cpu = Number.parseFloat(this.resourceLimits.cpu) / (this.resourceLimits.cpu.endsWith('m') ? 1000 : 1);
+    const [, amount, suffix = ''] = /^(\d+)([kmgt](?:i|b)?|b)?$/i.exec(this.resourceLimits.memory) ?? [];
+    const exponent = ['', 'k', 'm', 'g', 't'].indexOf(suffix.toLowerCase().replace(/[ib]$/, ''));
+    const memory = Number(amount) * (suffix.toLowerCase().endsWith('i') ? 1024 : 1000) ** exponent;
+    if (!(effective?.cpu > 0 && effective.cpu <= cpu) || !(effective?.memory > 0 && effective.memory <= memory)) {
+      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Sandbox did not enforce the requested CPU and memory cgroup limits');
+    }
+    return { cpu: effective.cpu as number, memoryBytes: effective.memory as number, managementAuthentication: true };
+  }
+
+  async #checkExecdAuthentication(record: any) {
+    const headers = new Headers(record.execdHeaders);
+    headers.delete('x-execd-access-token');
+    await Promise.all([
+      ['/command', 'POST'], ['/files/info', 'GET'], ['/session', 'POST'],
+    ].map(async ([path, method]) => {
+      const response = await this.#request(`${record.execdUrl}${path}`, {
+        absolute: true, method, extraHeaders: Object.fromEntries(headers), timeoutMs: 5000,
+        ...(method === 'POST' ? { body: {} } : {}), allowStatuses: [401, 403],
+      }).catch(() => undefined);
+      if (!response || ![401, 403].includes(response.status)) {
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'OpenSandbox Execd management authentication could not be confirmed');
+      }
+    }));
+  }
+
   async #execd(record: any, path: any, options: any) { return this.#request(`${record.execdUrl}${path}`, { ...options, absolute: true, extraHeaders: record.execdHeaders }); }
 
-  async #request(path: any, { method = 'GET', body = undefined, timeoutMs = this.commandTimeoutMs, absolute = false, extraHeaders = {}, allowStatuses = [], workerStart = false, signal }: any = {}) {
+  async #request(path: any, { method = 'GET', body = undefined, timeoutMs = this.commandTimeoutMs, absolute = false, extraHeaders = {}, allowStatuses = [], workerStart = false, signal, omitLifecycleKey = false }: any = {}) {
     const url = absolute ? path : `${this.lifecycleBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('sandbox provider request timed out')), timeoutMs);
     const requestSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
     const headers = { accept: 'application/json', ...extraHeaders };
     if (body !== undefined) headers['content-type'] = 'application/json';
-    if (absolute) {
-      if (this.execdToken && !Object.keys(headers).some((name: any) => name.toLowerCase() === 'x-execd-access-token')) headers['X-EXECD-ACCESS-TOKEN'] = this.execdToken;
-    } else if (this.apiKey) headers['OPEN-SANDBOX-API-KEY'] = this.apiKey;
+    if (!absolute && !omitLifecycleKey && this.apiKey) headers['OPEN-SANDBOX-API-KEY'] = this.apiKey;
     try {
-      const response = await this.fetch(url, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: requestSignal });
+      const response = await this.fetch(url, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: requestSignal, redirect: 'error' });
       const text = await response.text();
       const parsed = response.headers?.get?.('content-type')?.includes('text/event-stream') ? null : (text ? jsonData(text) : {});
       if (workerStart && response.status === 400 && parsed?.ok === false && parsed.code === ERROR_CODES.AGENT_STARTUP_CONTRACT) {

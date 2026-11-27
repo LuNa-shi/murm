@@ -1,14 +1,14 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { loadEnvFile } from 'node:process';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { createSubagentsHarness } from '../examples/subagents/main.js';
-import { resolveSubagentsEnvironment } from './local-environment.js';
-import { prepareWorkerImage } from './local-setup-worker.js';
+import { resolveLocalDocker, resolveSubagentsEnvironment } from './local-environment.js';
+import { loadMurmConfig } from '../src/core/sandbox-connection.js';
+import { DEFAULT_WORKER_IMAGE } from '../src/core/worker-image.js';
 
 const execute = promisify(execFile);
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -17,8 +17,8 @@ export interface SubagentsProjectOptions {
   directory: string;
   image: string;
   lifecycleBaseUrl: string;
-  endpointHost: string;
-  advertiseHost: string;
+  endpointHost?: string;
+  advertiseHost?: string;
   packageArchive?: string;
   signal?: AbortSignal;
 }
@@ -26,13 +26,7 @@ export interface SubagentsProjectOptions {
 export type LocalProjectConfig = Parameters<typeof createSubagentsHarness>[0];
 
 export async function loadLocalProjectConfig(filename: string): Promise<LocalProjectConfig> {
-  const configPath = resolve(filename);
-  try {
-    loadEnvFile(join(dirname(configPath), '.env'));
-  } catch (error: any) {
-    if (error.code !== 'ENOENT') throw error;
-  }
-  return (await import(pathToFileURL(configPath).href)).default;
+  return await loadMurmConfig(filename) as LocalProjectConfig;
 }
 
 async function exists(filename: string) {
@@ -51,7 +45,7 @@ function environment(options: SubagentsProjectOptions) {
     MURM_SUBAGENTS_LIFECYCLE_TOKEN: '',
   };
   return '# Set your Responses endpoint and credentials, then run murm in this directory.\n' +
-    Object.entries(fields).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join('\n') + '\n';
+    Object.entries(fields).filter(([, value]) => value !== undefined).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join('\n') + '\n';
 }
 
 /** Generate editable host files and install the actual distributable archive. */
@@ -163,13 +157,12 @@ export async function initializeSubagentsProject(directory: string, signal: Abor
   const start = performance.now();
   try {
     const config = await resolveSubagentsEnvironment();
-    const worker = await prepareWorkerImage({
-      packageRoot, requestedImage: process.env.MURM_SUBAGENTS_IMAGE ?? process.env.MURM_WORKER_IMAGE, install: false, signal,
-    });
+    const advertiseHost = config.advertiseHost ?? (config.mode === 'local'
+      ? (await resolveLocalDocker().catch(() => undefined))?.advertiseHost : undefined);
     const project = await prepareSubagentsProject({
-      directory, image: worker.image?.id ?? worker.reference,
+      directory, image: config.image ?? DEFAULT_WORKER_IMAGE,
       lifecycleBaseUrl: config.lifecycleBaseUrl, endpointHost: config.endpointHost,
-      advertiseHost: config.advertiseHost, signal,
+      advertiseHost, signal,
     });
     return { command: 'init', ok: true, project, elapsedMs: Math.round(performance.now() - start) };
   } catch (error) {

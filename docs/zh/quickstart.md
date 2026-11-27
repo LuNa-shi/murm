@@ -1,146 +1,56 @@
 ---
 title: 快速上手
-description: 安装宿主机依赖、用一行命令安装 @luna-shi/murm，并通过 CLI 或 TypeScript SDK 跑通第一次多智能体运行。
+description: 在 Linux 上连接或部署 OpenSandbox，再通过 CLI 或 TypeScript SDK 跑通第一次多 Agent 运行。
 section: 快速开始
 order: 1
 ---
 
-`murm` 通过 GitHub Release 以单个 **`@luna-shi/murm`** 安装包同时分发 CLI、TypeScript SDK 与内置 Trace Viewer。完成一次宿主机环境准备后，你可以直接通过 CLI 在现有项目中运行内置 Harness，也可以在自己的 TypeScript 程序中嵌入 SDK。
+`@luna-shi/murm` 安装包包含 CLI、TypeScript SDK 和 Trace Viewer。准备一个 Linux 普通账号和 Node.js 22.19 或更新版本。已有 OpenSandbox 的用户直接连接，也可以由 setup 引导本地部署。
 
-## 1. 环境准备（宿主机前置依赖）
+## 1. 安装 murm
 
-当前 OpenSandbox 隔离后端需要**同一台 Linux 宿主机**（不支持 macOS、Docker Desktop 或 rootless Docker），并满足以下 5 项前置条件：
-
-| 依赖 | 最低要求 | 用途 |
-| --- | --- | --- |
-| **Linux 内核** | 支持 **Landlock ABI >= 5**（通常需 Linux 6.10+，x86_64 或 aarch64） | 沙箱内 Agent 文件系统访问边界强制 |
-| **Node.js & npm** | **Node.js 22.19+** | 运行 `murm` CLI 与 TypeScript SDK |
-| **Docker Engine** | 本地 **rootful Docker Engine**（`/var/run/docker.sock`，本机 `/run/docker.pid` 可见） | 运行 OpenSandbox 服务端与隔离 Worker 容器 |
-| **宿主机系统工具** | `python3`、`nftables`、`util-linux`、`coreutils`、`iproute2` | 为每个沙箱挂载独立配额 `tmpfs` 与 `nftables` 出站防火墙 |
-| **免密 `sudo` 规则** | 允许宿主非交互调用 `unshare`、`nft` 与 `mount-agent-workspace.py` | 宿主侧设置容器网络与磁盘隔离（Agent 容器内保持无特权） |
-
-### 1.1 检查 Linux 内核与 Node.js
-
-```bash
-# 确认 Node.js >= 22.19.0
-node -v
-
-# 确认内核已启用 Landlock ABI >= 5
-python3 -c "import ctypes, platform; assert platform.machine() in ('x86_64', 'aarch64'); abi = ctypes.CDLL(None).syscall(444, 0, 0, 1); print('Landlock ABI:', abi); assert abi >= 5"
-```
-
-### 1.2 安装 Docker Engine 与系统工具（Ubuntu / Debian 示例）
-
-若尚未安装 rootful Docker Engine，请先按 [Docker Engine 官方文档](https://docs.docker.com/engine/install/) 安装，然后安装系统工具并把当前用户加入 `docker` 组：
-
-```bash
-sudo apt-get update
-sudo apt-get install -y python3 nftables util-linux coreutils iproute2
-
-# 允许当前用户访问 /var/run/docker.sock（执行后需重新登录 shell 或运行 newgrp docker）
-sudo usermod -aG docker "$USER"
-docker info --format '{{.OSType}} {{.ServerVersion}}'
-```
-
-### 1.3 配置最小权限免密 `sudo`
-
-`murm` 在启动每个 Agent 沙箱时，会在**宿主机侧**为其命名空间配置 `tmpfs` 配额挂载和 `nftables` 规则（只允许访问宿主的 Bridge 与 Model Gateway）。请先安装 `@luna-shi/murm`（见第 2 步），再用 `sudo visudo -f /etc/sudoers.d/murm` 添加如下最小权限规则（把 `<your-user>` 替换为你的用户名，把 `<murm-pkg-root>` 替换为 `npm root -g` 下的 `@luna-shi/murm` 路径）：
-
-```text
-<your-user> ALL=(root) NOPASSWD: /usr/bin/unshare --mount --net -- /usr/bin/true
-<your-user> ALL=(root) NOPASSWD: /usr/sbin/nft *
-<your-user> ALL=(root) NOPASSWD: /usr/bin/nsenter *
-<your-user> ALL=(root) NOPASSWD: /usr/bin/mount *
-<your-user> ALL=(root) NOPASSWD: /usr/bin/umount *
-<your-user> ALL=(root) NOPASSWD: /usr/bin/python3 -I <murm-pkg-root>/dist/scripts/mount-agent-workspace.py *
-```
-
-验证权限已生效（均应无密码报错直接退出 0）：
-
-```bash
-sudo -n /usr/bin/unshare --mount --net -- /usr/bin/true
-sudo -n /usr/sbin/nft -j list tables >/dev/null
-```
-
-## 2. 安装 `@luna-shi/murm` 并初始化基础设施
-
-从最新的 GitHub Release 全局安装 CLI：
-
-```bash
-curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
-```
-
-也可以直接使用 npm 安装。
-
-```bash
-npm install -g --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz
-```
-
-### 从源码检出安装候选包
-
-对于尚未发布的版本，在 murm 的源码目录执行以下命令。如果也要在独立项目中安装 SDK，请保留 tarball。
+安装你要使用的实现版本。测试尚未发布的改动时，安装对应候选包。
 
 ```bash
 npm ci --no-audit --no-fund
 pack_dir=$(mktemp -d)
 npm pack --pack-destination "$pack_dir"
-npm install -g --ignore-scripts "$pack_dir"/*.tgz
+npm install -g --prefix "$HOME/.local" --ignore-scripts "$pack_dir"/*.tgz
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-运行 `murm setup` 一键准备并校验本地执行环境：
+正式安装包见 [GitHub Releases](https://github.com/LuNa-shi/murm/releases)，请使用对应版本的文档。
+
+## 2. 连接或部署 OpenSandbox
+
+### 连接已有服务
+
+配置 Lifecycle API 和密钥。Controller 必须能访问服务返回的 Worker 和 Execd 地址，Worker 必须能回连 Controller 的 Bridge 和 Model Gateway。Controller 只需要 Node.js 和 murm 安装包。
 
 ```bash
-murm setup
+export MURM_LIFECYCLE_URL='https://sandbox.example.net/v1'
+export MURM_ADVERTISE_HOST='controller.internal.example.net'
+# 在可信进程环境设置服务管理员提供的 MURM_LIFECYCLE_TOKEN。
+murm setup --mode existing
 ```
 
-`murm setup` 不是黑盒——它按顺序执行以下 4 件事并输出结构化 JSON 报告：
+路由有额外要求时，在 ESM 配置中设置 `sandbox.endpointHost` 或 `sandbox.useServerProxy: true`，再执行 `murm setup --mode existing --config ./murm.config.mjs`。前者覆盖返回的地址主机，后者使用 OpenSandbox 的服务端代理，两者选其一。服务端代理需要支持代理 token header 的 Worker。若回连需经域名或 TLS 反向代理，使用 `connection.bridge.publicUrl` 和 `connection.modelGateway.publicUrl` 声明包含 `{port}` 的 HTTP(S) 地址模板。发起连接的进程必须信任 TLS 证书。
 
-1. **宿主机预检**：校验 Linux/Landlock ABI、Node 版本、rootful Docker、Docker bridge 网关 IP（默认 `172.17.0.1`）、`nftables`、`unshare` 与免密 `sudo` 权限（可随时单独运行 `murm doctor` 复查）。
-2. **启动本地 OpenSandbox**：拉取 `opensandbox/server:release-1.2.0` 与 `opensandbox/execd:v1.1.0`，使用包内置的 `deploy/opensandbox/config.toml` 启动常驻容器 `murm-opensandbox-8080`，在 `http://127.0.0.1:8080/v1` 提供生命周期 API（状态目录位于 `~/.cache/murm/opensandbox/`）。
-3. **准备 Worker 镜像**：拉取与当前版本匹配的官方预构建镜像 `ghcr.io/luna-shi/murm-worker:0.2.0`；如果当前网络无法拉取或处于本地开发版，则自动基于包内的 `deploy/worker/Dockerfile` 本地构建并打上同一标签。Worker 镜像包含 `opensandbox-agent-worker`、Pi `1.3.0`、Codex CLI `0.172.0`、`swarm` CLI、`jq` 和 Landlock 策略程序。
-4. **真实沙箱冒烟探测**：使用本地回环 mock 模型端点启动一个真实沙箱，确认工具调用、Service Bridge 与资源清理链路全部正常。
-
-<details>
-<summary>不想用一键脚本？展开查看手动准备 OpenSandbox 与 Worker 镜像的等价命令</summary>
-
-1. 拉取 OpenSandbox 镜像并启动本地控制面（监听 `127.0.0.1:8080/v1`）：
+### 本地部署
 
 ```bash
-docker pull opensandbox/execd:v1.1.0
-docker pull opensandbox/server:release-1.2.0
-
-MURM_ROOT="$(npm root -g)/@luna-shi/murm"
-mkdir -p ~/.cache/murm/opensandbox/manual/data
-cp "$MURM_ROOT/deploy/opensandbox/config.toml" ~/.cache/murm/opensandbox/manual/config.toml
-
-docker run -d \
-  --name murm-opensandbox-8080 \
-  --network host \
-  --restart unless-stopped \
-  -e OPENSANDBOX_INSECURE_SERVER=YES \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v ~/.cache/murm/opensandbox/manual/config.toml:/config/config.toml:ro \
-  -v ~/.cache/murm/opensandbox/manual/data:/root/.opensandbox \
-  opensandbox/server:release-1.2.0 --config /config/config.toml
+murm setup --mode local
 ```
 
-2. 拉取预构建 Worker 镜像（或从包内 Dockerfile 本地构建）：
+setup 检查当前 Docker context，启动 OpenSandbox 并验证 Lifecycle API 鉴权，然后才准备所选 Worker。缺 Docker 时，会打印当前发行版对应的安装和恢复命令。Docker 的首次系统安装可能需要一次性提权，rootful Docker socket 本身也具有较高的宿主权限。日常 Agent 运行走 OpenSandbox API，无需 murm 专属 sudoers。
 
-```bash
-# 方式 1：直接拉取官方预构建镜像（推荐）
-docker pull ghcr.io/luna-shi/murm-worker:0.2.0
+托管服务默认绑定到本机回环 8080 端口。需要时 setup 自动生成仅当前用户可读的 Lifecycle 密钥，优先使用发布的 Worker 镜像，必要时才用包内 Dockerfile 构建。重复执行会复用已托管的服务，保留用户配置和其他部署。无参 `murm setup` 在配置了 Lifecycle 地址时选择已有服务路径，使用默认地址时选择本地路径。
 
-# 方式 2：或自行本地构建（自定义依赖时使用）
-docker build -f "$MURM_ROOT/deploy/worker/Dockerfile" -t ghcr.io/luna-shi/murm-worker:0.2.0 "$MURM_ROOT"
-```
+`murm doctor` 检查配置与 Lifecycle 鉴权，无需创建 Sandbox。`murm doctor --smoke` 会启动真实的 Pi 或 Codex Worker，用受控的 Responses 端点验证 Bridge、网关、文件读写、导出和删除。真实模型验证状态单独报告。
 
-3. 用 `murm doctor --smoke` 验证全部依赖、OpenSandbox 和 Worker 镜像契约：
+### 保留严格本地隔离
 
-```bash
-murm doctor --smoke
-```
-
-</details>
+有明确的工作区配额、实时共享挂载或按 UID 网络白名单需求时，继续指定 `isolation: { network: 'local-docker', disk: { bytes, inodes } }`。旧的字节数加 inode 配置也会选择此策略。该策略依赖已有管理员配置的同机 Docker、命名空间能力和 Landlock ABI 5+。默认 API 策略要求 Provider 隔离低权限 Agent 并保护管理接口，实际检查 CPU 和内存上限，出站网络策略由部署提供。显式请求的磁盘上限、网络白名单或实时共享挂载无法落实时，启动会说明缺失能力。
 
 ## 3. 配置模型端点
 
@@ -283,7 +193,6 @@ const runtime = await createRuntime({
   sandbox: createSandbox({
     lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
     apiKey: process.env.MURM_LIFECYCLE_TOKEN,
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
   }),
   connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
   models: {

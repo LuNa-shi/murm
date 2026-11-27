@@ -27,7 +27,13 @@ export function streamResponse(model: string, number: number, item: any) {
 }
 
 /** The host sends only fixed tool instructions to this loopback Responses endpoint. */
-export async function createLocalSetupUpstream() {
+export async function createLocalSetupUpstream(executor: 'pi' | 'codex' = 'pi') {
+  const codex = executor === 'codex';
+  const model = codex ? 'gpt-5.4' : 'k3';
+  const command = (id: string, cmd: string) => ({
+    type: 'function_call', id: `fc_setup_${id}`, call_id: `call_setup_${id}`, name: 'exec_command',
+    arguments: JSON.stringify({ cmd, yield_time_ms: 1000, max_output_tokens: 128 }),
+  });
   let arrivals = 0;
   let verifiedRead = false;
   let failure = false;
@@ -42,25 +48,25 @@ export async function createLocalSetupUpstream() {
         chunks.push(chunk);
       }
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      if (body.model !== 'k3' || !Array.isArray(body.input)) throw new Error('shape');
+      if (body.model !== model || !Array.isArray(body.input)) throw new Error('shape');
       arrivals++;
       let item;
       if (arrivals === 1) {
-        item = { type: 'function_call', id: 'fc_setup_bash', call_id: 'call_setup_bash', name: 'bash',
+        item = codex ? command('bash', SETUP_BASH) : { type: 'function_call', id: 'fc_setup_bash', call_id: 'call_setup_bash', name: 'bash',
           arguments: JSON.stringify({ command: SETUP_BASH, timeout: 10 }) };
       } else if (arrivals === 2) {
         if (!body.input.some((value: any) => value.type === 'function_call_output' && value.call_id === 'call_setup_bash')) throw new Error('bash');
-        item = { type: 'function_call', id: 'fc_setup_read', call_id: 'call_setup_read', name: 'read',
+        item = codex ? command('read', `cat ${SETUP_READ}`) : { type: 'function_call', id: 'fc_setup_read', call_id: 'call_setup_read', name: 'read',
           arguments: JSON.stringify({ path: SETUP_READ }) };
       } else if (arrivals === 3) {
         const read = body.input.find((value: any) => value.type === 'function_call_output' && value.call_id === 'call_setup_read');
-        if (typeof read?.output !== 'string' || read.output.trim() !== SETUP_MARKER) throw new Error('read');
+        if (typeof read?.output !== 'string' || (codex ? !read.output.includes(SETUP_MARKER) : read.output.trim() !== SETUP_MARKER)) throw new Error('read');
         verifiedRead = true;
         item = { type: 'message', id: 'msg_setup_final', role: 'assistant', status: 'completed',
           content: [{ type: 'output_text', text: SETUP_RESULT, annotations: [] }] };
       } else throw new Error('boundary');
       response.writeHead(200, { 'content-type': 'text/event-stream' });
-      response.end(streamResponse('k3', arrivals, item));
+      response.end(streamResponse(model, arrivals, item));
     } catch {
       failure = true;
       response.writeHead(400, { 'content-type': 'application/json' });

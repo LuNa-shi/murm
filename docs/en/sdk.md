@@ -11,25 +11,26 @@ To run a built-in Harness against a project directory via the CLI, see the [Quic
 
 ## Install the SDK
 
-In a Node.js 22.19+ project, install the versioned GitHub Release asset:
+In a Node.js 22.19+ project, install the archive built from this revision as described in [Quickstart](quickstart.md#1-install-murm).
 
 ```sh
-npm install --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+npm install --ignore-scripts /path/to/luna-shi-murm-0.2.0.tgz
 ```
 
-With npm 12, use `npm ci --allow-remote=root` when reinstalling this dependency from a lockfile.
+For the published v0.2.0 API, use the [versioned SDK guide](https://github.com/LuNa-shi/murm/blob/v0.2.0/docs/en/sdk.md).
 
-Before running live sandboxes, follow the [Quickstart host prerequisites](./quickstart.md#1-prerequisites-execution-host) to prepare Linux, Docker, OpenSandbox, and the Worker image (or run `murm setup` and verify with `murm doctor`).
+Follow [Quickstart](./quickstart.md) to connect to an existing OpenSandbox or prepare a local service. Verify the selected Worker with `murm doctor --smoke`.
 
 The [management API](reference/api.md#runtime-management) lets you extend the Profile and Service directory and update Agent Service permissions while a Run is open.
 
 ## Public entry points
 
-Import all public values and types from `@luna-shi/murm`. The seven runtime exports are:
+Import all public values and types from `@luna-shi/murm`. The root entry includes:
 
-- `createSandbox`: captures OpenSandbox lifecycle and disk/network isolation settings
+- `createSandbox`: captures OpenSandbox settings or a custom Sandbox Provider
 - `createRuntime`: creates and manages the Runtime, Agent lifecycle, file controls, and cleanup
 - `DEFAULT_WORKER_IMAGE`: default prebuilt Worker image tag matching this package version (`ghcr.io/luna-shi/murm-worker:0.2.0`)
+- `resolveSandboxConnection` resolves Lifecycle, routing and image defaults for trusted configuration.
 - `getExecutorCapabilities`: static capability lookup for `'pi'` or `'codex'` with no network side effects
 - `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`: register in-process or external HTTP JSON v2 Services
 
@@ -46,7 +47,6 @@ import {
 const runtime = await createRuntime({
   sandbox: createSandbox({
     lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
   }),
   connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
   models: {
@@ -144,3 +144,9 @@ Build a Service when Agents need a shared task pool, mailbox, result store, chec
 - Exclusive task claiming: combine domain leases with the trusted file APIs (`runtime.files`).
 
 See the [API reference](./reference/api.md) for exact signatures and recovery semantics, [Types](./reference/types.md) for public declarations, and [Run lifecycle](./run-lifecycle.md) for resource ownership and cleanup order.
+
+## Connect a different Sandbox Provider
+
+`createSandbox({ provider, timeoutSeconds })` accepts a trusted implementation of the root-exported `SandboxProvider` contract. It supplies a stable ID and version, a readiness check, and an image-specific `SandboxManager` for allocation, Worker transport, snapshots, export, stop and deletion. Claim shared-workspace or allowlist capabilities only when the Provider enforces them. Implement uncertain-create and delete reconciliation under the original resource key. The host remains responsible for configuring the Runtime's executor, model routes, Profiles and Services.
+
+Use `resolveSandboxConnection` in project configuration to share the CLI's endpoint, credentials, callback host and image resolution. Explicit fields take precedence over generic `MURM_*` variables, scoped example aliases and upstream fallbacks. Keep the returned connection object in trusted configuration, since it can contain a Lifecycle key.
