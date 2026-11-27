@@ -152,8 +152,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const modelTrace = createModelTrace(outputDir, redactor);
   const serviceTrace = createServiceTrace(outputDir, redactor.value);
   const effectiveConfig = runtimeConfiguration({ config, profiles, registrations, maxAgents, defaultTimeoutMs }, redactor.text);
+  const sandboxObservations = new Map<string, unknown>();
   const saveSummary = (status: any, data: any = {}) => writeRecord(reportPath, {
     runtimeId, status, maxAgents, config: effectiveConfig, evidence: records.snapshot(),
+    sandboxes: Object.fromEntries(sandboxObservations),
     modelLedgers: modelAccess?.ledgerPaths?.() ?? [], modelTrace: modelTrace.snapshot(), ...data,
   });
   const getAgent = (agentId: any) => {
@@ -559,6 +561,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           } });
         if (agent.fatal || info.status !== 'starting') throw new Error('Agent stopped before becoming idle');
         info.status = 'idle';
+        sandboxObservations.set(info.id, redactor.value({
+          providerId: resource.providerId, providerVersion: resource.providerVersion,
+          sandboxId: resource.sandboxId, image: agent.profile.image, effective: resource.effective,
+        }));
         records.record('spawn', { state: 'ready', agentId: info.id, requestId: redactor.text(requestId),
           providerId: resource.providerId, resourceKey: resource.resourceKey, sandboxId: redactor.text(resource.sandboxId),
           versions: resource.versions, ...(resource.backend ? { backend: resource.backend } : {}) });

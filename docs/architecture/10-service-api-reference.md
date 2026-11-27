@@ -40,11 +40,11 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `af9fd45a15bdf6edceccde3558264adec75c60c8709b60bee402c0388e4bb28f` |
 | [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `20c6f7ae438a69b329b43a696c5b7a6d77ecb7a1e73b5da9f547eda27769556f` |
+| [src/core/index.ts](../../src/core/index.ts) | `3fe4457b04085fdd618743dfbf4d810fa28d8d8e180d32f52f45ed38935b0818` |
 | [src/core/types.ts](../../src/core/types.ts) | `cf92f2f1576e5f754e72436b073f7b5909ca162e1cc21f41834f70ef36377b02` |
 | [src/core/services.ts](../../src/core/services.ts) | `823b7c83efd0fc61314c5511177b32b8863f469454cad5c5288bd04e5e82cf96` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
-| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | `d3cb0a688bc7ac047a2337a9e9fc8cf4862c00aedba27279902fa4e0789fd229` |
+| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | `2476ba7700dce18d9a5ada0c56b6d655dacd0decc59df1b678a4102913786b21` |
 | [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | `664420efc5ef52b2d16d8f5b31dfb74ca37ee0082d6960c7740b5e48ca3dc877` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `ded613503868ef9d445ec41f2bb41d24178719913203ef7843accf5c5a5598a3` |
 | [src/core/opensandbox-provider.ts](../../src/core/opensandbox-provider.ts) | `38190bed297b4c5c47340609ed3732377bc1bdbdfd946ffebc0e0b8089b612d7` |
@@ -3789,6 +3789,17 @@ export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBacken
             [key: string]: unknown;
             piVersion?: string;
         };
+        providerVersion: string | undefined;
+        effective: {
+            cpu?: number | undefined;
+            memoryBytes?: number | undefined;
+            managementAuthentication?: boolean | undefined;
+            disk?: {
+                scope: 'workspace';
+                bytes: number;
+                inodes: number;
+            } | undefined;
+        } | undefined;
         backend?: {
             kind: 'codex';
             version: string;

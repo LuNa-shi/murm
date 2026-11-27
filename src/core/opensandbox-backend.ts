@@ -456,15 +456,20 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         requireCoreFileProtocol: true, projectQuota: quota, modelCatalogResource: credentials.catalogResource,
         ...(credentials.catalogContent !== undefined ? { modelCatalogContent: credentials.catalogContent } : {}),
         beforeAgentStart: assertOpen });
-      if (startup?.isolation) trace(agent, { type: 'sandbox-isolation', providerId: provider.id,
-        sandboxId: sandbox.sandbox_id, effective: startup.isolation });
+      const effective = startup?.isolation || quota ? {
+        ...startup?.isolation,
+        ...(quota ? { disk: { ...quota, scope: 'workspace' as const } } : {}),
+      } : undefined;
+      if (effective) trace(agent, { type: 'sandbox-isolation', providerId: provider.id,
+        sandboxId: sandbox.sandbox_id, effective });
       agent.started = true;
       const ready = await manager.agentRpc(agentId, { type: 'get_state', id: `ready-${randomUUID()}` }, { timeoutMs: 10_000, since: 0 });
       if (ready.response?.success !== true || ready.response.command !== 'get_state') throw invalid('Executor readiness response was not confirmed');
       consume(agent, ready.records ?? []);
       assertOpen();
       agent.polling = agent.eventPoll.run(signal => readWorkerEvents(agent, signal));
-      return { ...allocation, sandboxId: sandbox.sandbox_id, versions, ...(startup?.backend ? { backend: startup.backend } : {}) };
+      return { ...allocation, sandboxId: sandbox.sandbox_id, versions,
+        providerVersion: provider.version, effective, ...(startup?.backend ? { backend: startup.backend } : {}) };
     },
     async snapshotFiles(agentId: string, input: FileSnapshotOptions) {
       const agent = agents.get(agentId);

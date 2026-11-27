@@ -61,6 +61,7 @@ test('a packed SDK consumer can own a Sandbox through a custom Provider', { time
   await execute('npm', ['install', '--offline', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', archive], { cwd: directory });
   await writeFile(join(directory, 'provider.mjs'), `
     import assert from 'node:assert/strict';
+    import { readFile } from 'node:fs/promises';
     import { createRuntime, createSandbox, ServiceRegistry } from '@luna-shi/murm';
     const calls = [];
     const provider = {
@@ -140,6 +141,10 @@ test('a packed SDK consumer can own a Sandbox through a custom Provider', { time
       assert.equal((await runtime.close()).cleanup, 'complete');
     }
     assert.deepEqual(calls, ['preflight', 'allocate', 'prepare', 'start', 'stop', 'stop', 'archive', 'delete']);
+    const summary = JSON.parse(await readFile('./runs/' + runtime.id + '/runtime.json', 'utf8'));
+    assert.deepEqual(Object.values(summary.sandboxes), [{
+      providerId: 'external', providerVersion: '1.0.0', sandboxId: 'external-sandbox', image: 'my-worker',
+    }]);
   `);
   const env = { ...process.env };
   delete env.NODE_PATH;
