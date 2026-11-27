@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { access, readFile, readdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -107,10 +107,14 @@ try {
       if (process.platform !== 'linux') {
         failure('host.linux', 'Setup requires Linux.', 'Run this command on Linux.');
         process.exitCode = 1;
-      } else {
+      } else if (command.command === 'setup') {
+        const options = [
+          ...(command.mode ? ['--mode', command.mode] : []),
+          ...(command.configPath ? ['--config', resolve(command.configPath)] : []),
+        ];
         process.exitCode = await child('flock', ['--no-fork', '--exclusive', '--timeout', '180', '--conflict-exit-code', '73',
           root, process.execPath, '--disable-warning=ExperimentalWarning', script, '--under-checkout-lock',
-          String(startedAt), ...args], process.env, true);
+          String(startedAt), ...options], process.env, true);
         if (process.exitCode === 73) {
           failure('checkout-lock', 'Another setup still holds the checkout lock.', 'Wait for the other invocation and rerun setup.');
           process.exitCode = 1;

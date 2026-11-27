@@ -121,3 +121,32 @@ test('doctor uses the shared lifecycle environment and requires an authenticated
   assert.ok(requests.includes('doctor-test-key'));
   assert.doesNotMatch(stdout, /doctor-test-key/);
 });
+
+test('configured doctor preserves shell values while loading an adjacent environment', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-doctor-env-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const server = createServer((request, response) => {
+    const ready = request.headers['open-sandbox-api-key'] === 'shell-test-key';
+    response.writeHead(ready ? 200 : 403, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ items: [] }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => server.close());
+  const address = server.address() as { port: number };
+  await writeFile(join(directory, '.env'),
+    `TEST_CONFIG_URL=http://127.0.0.1:${address.port}/v1\nMURM_LIFECYCLE_TOKEN=file-test-credential\n`);
+  const filename = join(directory, 'config.mjs');
+  await writeFile(filename, `export default {
+    image: 'unused', sandbox: { lifecycleBaseUrl: process.env.TEST_CONFIG_URL },
+    connection: { advertiseHost: 'localhost' },
+  };`);
+  const { stdout } = await promisify(execFile)(process.execPath, [cli, 'doctor', '--config', filename], {
+    env: { PATH: '/does-not-exist', MURM_LIFECYCLE_URL: 'http://127.0.0.1:1/v1', MURM_LIFECYCLE_TOKEN: 'shell-test-key' },
+  });
+  const report = JSON.parse(stdout);
+  assert.equal(report.mode, 'existing');
+  assert.equal(report.infrastructure, 'preflight-passed');
+  assert.equal(report.lifecycleSource, 'config');
+  assert.doesNotMatch(stdout, /shell-test-key|file-test-credential/);
+});

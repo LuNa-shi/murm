@@ -3,6 +3,11 @@
 All notable changes to **murm** (`@luna-shi/murm`) are documented in this file.
 For a feature walkthrough of the current release, see [What's New (v0.2.0)](docs/en/latest.md) ([中文版](docs/zh/latest.md)).
 
+## Unreleased
+
+- Linux setup can connect to an authenticated OpenSandbox service or prepare a local service before the Worker. The API policy is the default. The strict local policy retains explicitly configured workspace quotas and network rules.
+- The SDK accepts an external Sandbox Provider through `createSandbox`. Setup, doctor and built-in configurations share connection defaults. The infrastructure probe supports Pi and Codex.
+
 ## [0.2.0] - 2026-11-27
 
 First public open-source release of `murm` as a single unified TypeScript SDK, CLI, and Trace Viewer package.

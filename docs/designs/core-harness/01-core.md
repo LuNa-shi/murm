@@ -111,7 +111,7 @@ const runtime = await createRuntime({
 | --- | --- |
 | Sandbox | `kind` 默认 `opensandbox`；默认通过 OpenSandbox API 接入本机或远端服务，管理与回连地址分别配置。也可经 `{ provider }` 接入外部 Provider。严格同机 `local-docker` 要求磁盘字节和 inode 上限，由显式配置或兼容的旧配额写法选择。资源默认 2 CPU、2 GiB，命令期限 120 秒，Sandbox 生命周期 3600 秒且至少 60 秒。 |
 | Runtime | `executor` 默认 Pi，可显式选 Codex。非空模型表、Profiles、Services、maxAgents 和专用 outputDir 由宿主提供。模型上游为无内嵌凭据的 HTTP(S) `/v1/responses`，用 headers 携带凭据。 |
-| Runtime 连接 | `connection.advertiseHost` 接收 setup/项目配置确定的同机可达 IPv4。Bridge 和网关监听地址默认 `0.0.0.0`；Bridge 默认 `http://<advertiseHost>:{port}`，网关默认用同一可达地址。可分别显式覆盖；两个目的地址均须可解析为当前支持的非 loopback IPv4 字面量。若两个可达地址都已有显式配置，可省略共同地址；无法确定时在装配阶段指出缺失字段。 |
+| Runtime 连接 | `connection.advertiseHost` 接收 setup/项目配置确定的由 Agent 可达的 IP 或主机名。Bridge 和网关监听地址默认 `0.0.0.0`，两者都可分别使用带 `{port}` 的 HTTP(S) origin 模板。两处都已配置回连地址时可省略共同地址。严格本地模式仍要求可供 UID 网络规则验证的同机非回环 IPv4。 |
 | 模型请求 | 网关默认 120 秒；Pi 默认最多 32768 输出 token，Codex 默认保留执行器参数。显式 `null` 保留参数，数值须为不小于 16 的安全整数。 |
 | Profile / spawn | Profile 选择模型别名、镜像、提示、服务权限、初始 writable、网络附加目标与产物政策；spawn 可提供父子关系、fork、文件、bindings、secretEnv 或共享挂载，以及允许的 writable/collect 覆盖。 |
 
@@ -225,7 +225,7 @@ Profile 由宿主建立并冻结。`model` 选择 Runtime 模型表中的别名�
 
 `Profile.env` 是宿主显式给该角色的非秘密环境变量；不会任意继承宿主环境。`SpawnOptions.secretEnv` 是宿主发给特定 Agent 使用的受限凭据。目标 Agent 能读取这些凭据；其值不进入 AgentInfo、事件和普通日志。真正的模型 upstream 凭据、Worker 管理 token 和 Core 保留字段由受信侧管理，禁止覆盖。
 
-`Profile.network.allow` 指定额外目标；Bridge 与模型 gateway 自动加入。当前 backend 首版只接受非 loopback IPv4 字面量的 HTTP(S) origin，按目标 IP/port 放行。Gitea 同一端点的 REST 操作仍受该账户的 upstream ACL 约束，不提供 Git-only 路径限制。此能力需要修改当前只允许 Bridge 与 gateway 的网络规则。[当前网络隔离](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/runtime/docker-bot-network.js)
+`Profile.network.allow` 指定额外目标；Bridge 与模型 gateway 自动加入。严格本地模式只接受非回环 IPv4 字面量的 HTTP(S) origin，按目标 IP 和端口放行。API 模式由部署提供出站策略，只有声明并落实该能力的 Provider 才接收显式 allowlist。Gitea 同一端点的 REST 操作仍受该账户的 upstream ACL 约束，不提供 Git-only 路径限制。此能力需要修改当前只允许 Bridge 与 gateway 的网络规则。[当前网络隔离](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/runtime/docker-bot-network.js)
 
 #### Core 启动提示与 Service 发现
 

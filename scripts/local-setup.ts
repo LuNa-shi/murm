@@ -52,6 +52,11 @@ function checkProjectRuntime(config: ProjectConfig, sandbox: SandboxConfig): Dia
     });
     return { id: 'config.runtime', ok: true, detail: 'The editable Sandbox and Runtime configuration satisfies the Core startup contract.' };
   } catch {
+    if (sandbox.isolation?.disk && sandbox.isolation.network !== 'local-docker' &&
+        sandbox.isolation.disk.inodes === undefined) {
+      return { id: 'config.runtime', ok: false, detail: 'The OpenSandbox API policy cannot enforce a workspace disk limit.',
+        remedy: 'Use a compatible Provider, or on the same Docker host configure strict local isolation with byte and inode limits.' };
+    }
     return { id: 'config.runtime', ok: false, detail: 'The editable Sandbox and Runtime configuration violates the Core startup contract.',
       remedy: 'Check endpoint URLs, Bridge and Gateway addresses, resource quantities and the selected isolation policy.' };
   }

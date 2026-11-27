@@ -11,13 +11,13 @@ To run a built-in Harness against a project directory via the CLI, see the [Quic
 
 ## Install the SDK
 
-In a Node.js 22.19+ project, install the versioned GitHub Release asset:
+In a Node.js 22.19+ project, install the archive built from this revision as described in [Quickstart](quickstart.md#1-install-murm).
 
 ```sh
-npm install --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+npm install --ignore-scripts /path/to/luna-shi-murm-0.2.0.tgz
 ```
 
-With npm 12, use `npm ci --allow-remote=root` when reinstalling this dependency from a lockfile.
+For the published v0.2.0 API, use the [versioned SDK guide](https://github.com/LuNa-shi/murm/blob/v0.2.0/docs/en/sdk.md).
 
 Follow [Quickstart](./quickstart.md) to connect to an existing OpenSandbox or prepare a local service. Verify the selected Worker with `murm doctor --smoke`.
 
@@ -25,11 +25,12 @@ The [management API](reference/api.md#runtime-management) lets you extend the Pr
 
 ## Public entry points
 
-Import all public values and types from `@luna-shi/murm`. The seven runtime exports are:
+Import all public values and types from `@luna-shi/murm`. The root entry includes:
 
-- `createSandbox`: captures OpenSandbox lifecycle and disk/network isolation settings
+- `createSandbox`: captures OpenSandbox settings or a custom Sandbox Provider
 - `createRuntime`: creates and manages the Runtime, Agent lifecycle, file controls, and cleanup
 - `DEFAULT_WORKER_IMAGE`: default prebuilt Worker image tag matching this package version (`ghcr.io/luna-shi/murm-worker:0.2.0`)
+- `resolveSandboxConnection` resolves Lifecycle, routing and image defaults for trusted configuration.
 - `getExecutorCapabilities`: static capability lookup for `'pi'` or `'codex'` with no network side effects
 - `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`: register in-process or external HTTP JSON v2 Services
 

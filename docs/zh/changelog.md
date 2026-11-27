@@ -7,6 +7,11 @@ order: 16
 
 本页同步记录 **murm**（`@luna-shi/murm`）的历次重要变更，与仓库根目录的 [`CHANGELOG.md`](../../CHANGELOG.md) 保持一致。如需了解当前最新版本的完整功能导览，请查看 [最新版本 (v0.2.0)](latest.md)。
 
+## 尚未发布
+
+- Linux setup 可以接入已鉴权的 OpenSandbox 服务，也可以先部署本地服务，再准备 Worker。默认使用 API 路径。严格本地模式保留显式工作区配额与网络规则。
+- SDK 可通过 `createSandbox` 接入外部 Sandbox Provider。setup、doctor 与内置配置共用连接解析。基础设施探针支持 Pi 和 Codex。
+
 ## v0.2.0 — 2026-11-27
 
 [GitHub Release](https://github.com/LuNa-shi/murm/releases/tag/v0.2.0) · [SHA256SUMS](https://github.com/LuNa-shi/murm/releases/download/v0.2.0/SHA256SUMS) · `ghcr.io/luna-shi/murm-worker:0.2.0`

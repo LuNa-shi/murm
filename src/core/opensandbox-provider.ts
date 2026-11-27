@@ -80,16 +80,18 @@ export function createApiOpenSandboxProvider({ sandbox }: OpenSandboxBackendConf
 }
 
 export function adaptSandboxProvider(provider: SandboxProvider): SandboxProvider & OpenSandboxProvider {
+  const preflight = provider.preflight.bind(provider);
+  const openManager = provider.openManager.bind(provider);
+  const prepareSandbox = provider.prepareSandbox.bind(provider);
+  const createSharedWorkspace = provider.createSharedWorkspace?.bind(provider);
+  const deleteSharedWorkspace = provider.deleteSharedWorkspace?.bind(provider);
   return {
     id: provider.id, version: provider.version, capabilities: Object.freeze({ ...provider.capabilities }),
-    projectQuotaRequired: false,
-    preflight: () => provider.preflight(),
-    openManager: image => provider.openManager(image),
-    prepareSandbox: input => provider.prepareSandbox(input),
+    projectQuotaRequired: false, preflight, openManager, prepareSandbox,
     async createSharedWorkspace(runtimeId, workspaceId) {
-      if (!provider.createSharedWorkspace || !provider.deleteSharedWorkspace) throw new Error('Shared Workspace operations are unavailable');
-      await provider.createSharedWorkspace(runtimeId, workspaceId);
+      if (!createSharedWorkspace) throw new Error('Shared Workspace creation is unavailable');
+      await createSharedWorkspace(runtimeId, workspaceId);
     },
-    async deleteSharedWorkspace(runtimeId, workspaceId) { await provider.deleteSharedWorkspace?.(runtimeId, workspaceId); },
+    async deleteSharedWorkspace(runtimeId, workspaceId) { await deleteSharedWorkspace?.(runtimeId, workspaceId); },
   };
 }

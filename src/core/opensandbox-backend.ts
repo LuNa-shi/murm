@@ -52,6 +52,7 @@ interface BackendAgent {
   pendingInputs: number;
   historyLost?: boolean;
   started?: boolean;
+  workerStartDispatched?: boolean;
   polling?: Promise<void>;
   submissions?: Map<string, InputSubmission>;
   executionStopped?: boolean;
@@ -99,6 +100,8 @@ export interface SandboxManager {
     backend?: { kind: 'codex'; version: string; authMode: 'api-key'; threadId: string };
     isolation?: { cpu: number; memoryBytes: number; managementAuthentication: boolean };
   } | undefined>;
+  /** Return true only when confirmed stopped. Return false for no running executor before start dispatch.
+   * Throw or return false for an unconfirmed stop after start dispatch, retaining the resource for retry. */
   stopAgent(agentId: string, signal: string, options: { preserveWorker: boolean }): Promise<boolean>;
   collectCoreFiles(agentId: string, specification: NonNullable<Profile['collect']>): AsyncIterable<import('./artifact-collection.js').ArtifactRecord>;
   coreResource(agentId: string): {
@@ -107,6 +110,7 @@ export interface SandboxManager {
     creation: 'created' | 'pending' | 'absent';
     executionStopped: boolean;
   } | undefined;
+  /** Resolve after confirmed deletion or absence. Throw while the deletion outcome is uncertain. */
   stopExecution(agentId: string): Promise<unknown>;
 }
 
@@ -440,6 +444,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (versions[`${driver.kind}Version`] !== driver.version) throw invalid(`Backend requires ${driver.kind} ${driver.version}`);
       assertOpen();
       const model = config.models[profile.model];
+      agent.workerStartDispatched = true;
       const startup = await manager.startAgent({ executionId: agentId,
         ...driver.start({ model, baseUrl: credentials.baseUrl, forkSession: Boolean(forkSession) }),
         systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt, driver.kind),
@@ -574,6 +579,10 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       agent.stopping = true;
       agent.eventPoll.wake();
       const stopped = await agent.manager.stopAgent(agentId, 'SIGTERM', { preserveWorker: true });
+      // The built-in manager returns false only before it has dispatched a Worker start.
+      if (!stopped && (agent.started || (config.provider && agent.workerStartDispatched))) {
+        throw Object.assign(new Error('Sandbox Provider did not confirm execution stop'), { code: 'SERVICE_UNAVAILABLE', retryable: true });
+      }
       agent.executionStopped = true;
       agent.eventPoll.stop();
       await agent.polling;
@@ -611,7 +620,10 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (!agent) return;
       if (!agent.executionStopped) throw Object.assign(new Error('Sandbox deletion requires confirmed execution stop'), { code: 'NOT_ALLOWED' });
       agent.eventPoll.stop();
-      await agent.manager.stopExecution(agentId);
+      const deletion = await agent.manager.stopExecution(agentId);
+      if (config.provider && deletion === false && agent.manager.coreResource(agentId)?.creation !== 'absent') {
+        throw Object.assign(new Error('Sandbox Provider did not confirm deletion'), { code: 'SERVICE_UNAVAILABLE', retryable: true });
+      }
       await agent.polling;
       if (agent.workspace) {
         const workspaceId = agent.workspace.id;

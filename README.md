@@ -50,7 +50,8 @@ Use Node.js 22.19+ on Linux. This example uses a build of the current checkout. 
 npm ci
 pack_dir=$(mktemp -d)
 npm pack --pack-destination "$pack_dir"
-npm install -g --ignore-scripts "$pack_dir"/*.tgz
+npm install -g --prefix "$HOME/.local" --ignore-scripts "$pack_dir"/*.tgz
+export PATH="$HOME/.local/bin:$PATH"
 
 # 2. Prepare OpenSandbox, then prepare and verify the Worker
 murm setup --mode local
@@ -71,14 +72,13 @@ murm trace --root ./subagents-runs --port 8787
 
 ## Build with the TypeScript SDK
 
-Install the versioned `v0.2.0` Release asset in your project:
+Install the archive from this checkout in your project:
 
 ```sh
-npm install --ignore-scripts --allow-remote=root \
-  https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+npm install --ignore-scripts /path/to/luna-shi-murm-0.2.0.tgz
 ```
 
-Import all seven public runtime exports (`createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`) and all public types from `@luna-shi/murm`.
+Import Runtime, Service and Sandbox Provider APIs from `@luna-shi/murm`.
 
 - Self-contained runnable `handoff.ts`: [Quickstart — Option B](docs/en/quickstart.md#5-option-b-use-the-sdk-in-your-own-typescript-project)
 - Observation, file controls, external HTTP Services, and cleanup receipts: [SDK Guide](docs/en/sdk.md)

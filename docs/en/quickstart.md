@@ -15,7 +15,8 @@ Install the package for the implementation you are testing. When testing a chang
 npm ci --no-audit --no-fund
 pack_dir=$(mktemp -d)
 npm pack --pack-destination "$pack_dir"
-npm install -g --ignore-scripts "$pack_dir"/*.tgz
+npm install -g --prefix "$HOME/.local" --ignore-scripts "$pack_dir"/*.tgz
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Published packages are available on [GitHub Releases](https://github.com/LuNa-shi/murm/releases). Use the documentation for the version you install.

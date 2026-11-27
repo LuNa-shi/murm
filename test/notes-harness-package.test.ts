@@ -149,7 +149,7 @@ import { DEFAULT_WORKER_IMAGE, createRuntime, createSandbox, getExecutorCapabili
 type Assert<T extends true> = T;
 type Same<A, B> = [A, B] extends [B, A] ? true : false;
 type CoreExports = Assert<Same<keyof typeof import('@luna-shi/murm'), 'DEFAULT_WORKER_IMAGE' | 'createRuntime' | 'createSandbox' | 'getExecutorCapabilities' |
-  'ServiceRegistry' | 'createInProcessAdapter' | 'createHttpJsonAdapter'>>;
+  'ServiceRegistry' | 'createInProcessAdapter' | 'createHttpJsonAdapter' | 'resolveSandboxConnection'>>;
 const defaultWorkerImage: string = DEFAULT_WORKER_IMAGE;
 const config: SandboxConfig = {
   lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',

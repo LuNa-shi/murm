@@ -7,6 +7,11 @@ order: 16
 
 All notable changes to **murm** (`@luna-shi/murm`) are tracked here and in the repository's [`CHANGELOG.md`](../../CHANGELOG.md). For an overview of everything available in the current release, see [Latest (v0.2.0)](latest.md).
 
+## Unreleased
+
+- Linux setup can connect to an authenticated OpenSandbox service or prepare a local service before the Worker. The API policy is the default. The strict local policy retains explicitly configured workspace quotas and network rules.
+- The SDK accepts an external Sandbox Provider through `createSandbox`. Setup, doctor and built-in configurations share connection defaults. The infrastructure probe supports Pi and Codex.
+
 ## v0.2.0 — 2026-11-27
 
 [GitHub Release](https://github.com/LuNa-shi/murm/releases/tag/v0.2.0) · [SHA256SUMS](https://github.com/LuNa-shi/murm/releases/download/v0.2.0/SHA256SUMS) · `ghcr.io/luna-shi/murm-worker:0.2.0`

@@ -68,7 +68,7 @@ test('a packed SDK consumer can own a Sandbox through a custom Provider', { time
       async preflight() { calls.push('preflight'); },
       openManager(image) {
         assert.equal(image, 'my-worker');
-        let agentId, stopped = false;
+        let agentId, stopped = false, stopAttempts = 0;
         return {
           async ensureExecution(request) {
             agentId = request.agentId;
@@ -96,6 +96,7 @@ test('a packed SDK consumer can own a Sandbox through a custom Provider', { time
             assert.equal(id, agentId);
             assert.equal(preserveWorker, true);
             calls.push('stop');
+            if (++stopAttempts === 1) return false;
             stopped = true;
             return true;
           },
@@ -119,8 +120,10 @@ test('a packed SDK consumer can own a Sandbox through a custom Provider', { time
         calls.push('prepare');
       },
     };
+    const sandbox = createSandbox({ provider });
+    provider.openManager = () => { throw new Error('Provider implementation replaced'); };
     const runtime = await createRuntime({
-      sandbox: createSandbox({ provider }), connection: { advertiseHost: '192.0.2.1' },
+      sandbox, connection: { advertiseHost: '192.0.2.1' },
       models: { default: { provider: 'kimi_proxy', model: 'k3',
         upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
       profiles: { worker: { image: 'my-worker', model: 'default', writable: true, services: {} } },
@@ -129,11 +132,14 @@ test('a packed SDK consumer can own a Sandbox through a custom Provider', { time
     try {
       const agent = await runtime.spawn({ profile: 'worker', requestId: 'external-spawn' });
       assert.equal(agent.status, 'idle');
+      const uncertain = await runtime.stop(agent.id);
+      assert.equal(uncertain.cleanup, 'pending');
+      assert.deepEqual(calls, ['preflight', 'allocate', 'prepare', 'start', 'stop']);
       assert.equal((await runtime.stop(agent.id)).cleanup, 'complete');
     } finally {
       assert.equal((await runtime.close()).cleanup, 'complete');
     }
-    assert.deepEqual(calls, ['preflight', 'allocate', 'prepare', 'start', 'stop', 'archive', 'delete']);
+    assert.deepEqual(calls, ['preflight', 'allocate', 'prepare', 'start', 'stop', 'stop', 'archive', 'delete']);
   `);
   const env = { ...process.env };
   delete env.NODE_PATH;
