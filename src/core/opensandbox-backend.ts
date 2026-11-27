@@ -621,7 +621,9 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         agent.exited = true;
         agent.onEvent({ type: 'exit', reason: 'Worker confirmed executor stopped', expected: true });
       }
-      return { collectable: stopped };
+      // Rejected startup may leave only a partial workDir. An unadmitted
+      // Agent has no output to collect, even after the Worker confirms stop.
+      return { collectable: stopped && agent.started === true };
     },
     async *collectSession(agentId: string) {
       const agent = agents.get(agentId);

@@ -10,6 +10,7 @@ async function endpoint(t: TestContext, id: string, version: number) {
   const quota = { bytes: 32 * 1024 ** 2, inodes: 2048 };
   let metadata: Record<string, string> | undefined;
   let loseCreateResponse = false;
+  let rejectStart = false;
   let origin: string;
   const server = createServer(async (request, response) => {
     const url = new URL(request.url!, origin);
@@ -34,6 +35,7 @@ async function endpoint(t: TestContext, id: string, version: number) {
     else if (route === 'GET /worker/health' || route === 'GET /execd/ready') json({});
     else if (route === 'POST /execd/command') json({ exit_code: 0, stdout: JSON.stringify(input).includes('pi') ? '1.3.0' : 'v24.21.0' });
     else if (route === 'GET /worker/core/contract') json({ result: { file_protocol: 'file-tree-v1' } });
+    else if (route === 'POST /worker/start' && rejectStart) json({ ok: false, code: 'FILE_SPACE_INSUFFICIENT' }, 400);
     else if (route === 'POST /worker/start') json({ result: { contract: { version: 'murm-core-v1', file_protocol: 'file-tree-v1', resources: [] },
       project_quota: quota, project_files: { version: 0, writable: false } } });
     else if (route === 'POST /worker/rpc') json({ result: { response: { command: 'get_state', success: true }, records: [] } });
@@ -47,6 +49,7 @@ async function endpoint(t: TestContext, id: string, version: number) {
   assert.ok(address && typeof address !== 'string');
   origin = `http://127.0.0.1:${address.port}`;
   return { id, origin, calls, quota, occupied: () => Boolean(metadata), loseCreate: () => { loseCreateResponse = true; },
+    exhaustFileSpace: () => { loseCreateResponse = false; rejectStart = true; },
     openManager: (image: string) => new OpenSandboxManager({ image, lifecycleBaseUrl: `${origin}/v1` }),
     async prepareSandbox() { return quota; },
     async createSharedWorkspace() { assert.fail('The fixture only supports private directories'); },
@@ -109,6 +112,12 @@ test('one Backend routes identical sandbox IDs and lost creates to their origina
     ['lost', 'first', 'lost', 'allocation-observed', 'same-sandbox', 'cleanup-lookup'],
   ]);
   await stop('two');
+  assert.equal(second.occupied(), false);
+
+  second.exhaustFileSpace();
+  await assert.rejects(spawn('no-space'), { code: 'FILE_SPACE_INSUFFICIENT' });
+  assert.deepEqual(await backend.stopExecution('no-space'), { collectable: false });
+  await backend.destroy('no-space');
   assert.equal(second.occupied(), false);
   await backend.close();
 });
