@@ -1,23 +1,43 @@
 ---
-title: API & Configuration
-description: Complete reference for @luna-shi/murm Runtime methods, unified send semantics, file controls, Service protocol v2, the swarm CLI, foreground host CLI, backend config, and error contracts.
+title: SDK & API Reference
+description: Complete lookup reference for @luna-shi/murm exports, createSandbox, createRuntime, Agent lifecycle, send/onEvent semantics, runtime.files, Runtime management, Service protocol, and error codes.
 section: REFERENCE
-order: 12
+order: 15
 ---
 
-This reference describes the public interfaces of **`@luna-shi/murm` `0.2.0`** in the current source tree. Start with [Use the TypeScript SDK](../sdk.md) for installation and a complete runnable example; use [Types & Source Map](./types.md) to look up declarations.
+This reference documents every public runtime export, method contract, and error code in **`@luna-shi/murm` `0.2.0`**. For conceptual guides, start with [Runtime & Agents](../runtime.md) and [Services & Permissions](../services.md); for exact TypeScript declarations, see [Types & Source Map](./types.md); for host and container CLIs, see [CLI Reference](./cli.md).
 
-## Package entry points
+## Install the SDK
 
-Import all public types and the public runtime values from `@luna-shi/murm`. The values are `createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `resolveSandboxConnection`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`.
+In a Node.js 22.19+ project, install the pinned GitHub Release tarball:
 
-## Runtime management
+```bash
+npm install --ignore-scripts --allow-remote=root \
+  https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+```
 
-Use `runtime.profiles.register/get/list` for immutable Profiles and `runtime.services.register/get/list/retire` for the Service directory. Use `runtime.access.get/grant/revoke` to change an existing Agent's operation permissions. Mutations use stable request IDs. Service retirement closes admission, waits for authorized work to drain, and reports its current state. The application owns deployment and external facility cleanup.
+> With npm 12+, lockfile reinstalls of remote tarball URLs also require `--allow-remote=root` (e.g. `npm ci --allow-remote=root`). Follow [Quickstart](../quickstart.md) to prepare or connect to OpenSandbox before launching sandboxes.
 
-Subscribe with `onEvent` before reading `runtime.management.get()`. Buffer management changes during the read, then apply the changes newer than the returned management `sequence`. Re-read if a sequence is missing. The same root entry exports the management request, receipt, snapshot and event types. See [Runtime management](../../architecture/15-core-runtime.md#runtime-management).
+## Public package exports
 
-## `createRuntime(options)`
+All public values and TypeScript types are imported from the single root entry `@luna-shi/murm`:
+
+| Export | Kind | Purpose |
+| --- | --- | --- |
+| `createSandbox(config)` | Function | Creates a reusable OpenSandbox connection handle or plugs in a custom `{ provider }` `SandboxProvider`. |
+| `resolveSandboxConnection(overrides?)` | Function | Resolves Lifecycle URL, local token, and image defaults matching the CLI (use only in trusted host config). |
+| `createRuntime(options)` | Async function | Opens a Run control plane (`outputDir/<runtimeId>/`, Service Bridge, Model Gateway) with configurable `executor` and `filePolicy`. |
+| `createPiExecutor({ version })` / `createCodexExecutor({ version })` | Function | Selects a verified built-in executor version (Pi `1.3.0` / `1.4.0`, Codex `0.172.0`); `'pi'` / `'codex'` shorthands remain supported. |
+| `createExecutorAdapter(declaration)` / `EXECUTOR_ADAPTER_PROTOCOL` | Function / Constant | Declares an image-installed external executor adapter (`murm-executor-v1`). |
+| `DEFAULT_WORKER_IMAGE` / `workerImageFor(selection)` | Constant / Function | Default dual-executor Worker image, or the single-executor Worker image matching a chosen executor. |
+| `getExecutorCapabilities(selection)` | Function | Static capability lookup for a configured executor (no network side effects). |
+| `ServiceRegistry` | Class | Holds Service registrations passed into `createRuntime()`. |
+| `createInProcessAdapter(impl)` | Function | Wraps a host-process `invoke` handler (and optional `exportState`) as a `ServiceAdapter`. |
+| `createHttpJsonAdapter(options)` | Function | Wraps an external HTTP JSON Service endpoint with `Idempotency-Key` and optional bearer auth. |
+
+> Repository Harnesses under `examples/` and `src/harnesses/` are editable reference implementations and are **not** additional exports from `@luna-shi/murm`.
+
+## `createSandbox(config)` & `createRuntime(options)`
 
 ```ts
 import {
@@ -27,37 +47,53 @@ import {
   createSandbox,
 } from '@luna-shi/murm';
 
+const sandbox = createSandbox({
+  lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
+  apiKey: process.env.MURM_LIFECYCLE_TOKEN,
+});
+
 const runtime = await createRuntime({
-  sandbox: createSandbox({
-    lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
-    isolation: { disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
-  }),
+  sandbox,
+  executor: 'pi', // 'pi' (default) | 'codex' | createPiExecutor(...) | createExecutorAdapter(...)
   connection: { advertiseHost: '172.17.0.1' },
   models: {
-    default: { provider: 'openai', model: 'gpt-5.4', upstream: { url: modelUrl, headers: modelHeaders } },
+    default: {
+      provider: 'openai',
+      model: 'gpt-5.4',
+      // protocol defaults to 'responses'; Pi also supports 'chat-completions' or a custom ModelTransport
+      upstream: { url: modelUrl, headers: modelHeaders },
+    },
   },
   services: new ServiceRegistry(),
-  profiles: { reader: { model: 'default', image: DEFAULT_WORKER_IMAGE, writable: false, services: {} } },
+  profiles: {
+    reader: { model: 'default', image: DEFAULT_WORKER_IMAGE, writable: false, services: {} },
+  },
   maxAgents: 2,
-  outputDir,
+  outputDir: './runs',
 });
 ```
 
-`createSandbox` captures OpenSandbox deployment settings. Its `kind` defaults to `opensandbox`. Supply a Lifecycle URL and authenticated connection, or provide `{ provider }` for an external implementation. The optional `timeoutSeconds` defaults to 3600 and is a safe integer of at least 60. Advertise a hostname or IP that Workers can reach. The Bridge and Model Gateway also accept explicit HTTP(S) URL templates. Choose strict local isolation explicitly when its quotas or shared mounts are required. Provider credentials stay on the trusted host.
-
-Runtime owns `executor` (Pi by default), `models`, `connection`, `profiles`, `services`, `maxAgents`, and `outputDir`. `getExecutorCapabilities('pi' | 'codex')` is static. Both executors support steer, followUp, conditional input, queued input cancellation and explicit `all`. Pi also supports Context Fork and `one-at-a-time`. Use model URLs ending in `/v1/responses`. Set `connection.modelGateway.maxOutputTokens: null` to preserve the executor's parameters.
+- **`createSandbox`**: defaults to the OpenSandbox API policy; supports `endpointHost`, `useServerProxy: true`, or a custom `{ provider }` `SandboxProvider`. Pass `isolation: { network: 'local-docker', disk: { bytes, inodes } }` when strict same-host `tmpfs` quotas, live shared mounts, or UID egress allowlists are needed. Optional `timeoutSeconds` defaults to `3600` (`>= 60`).
+- **`connection`**: `advertiseHost` advertises a Worker-reachable host or IP; `connection.bridge.publicUrl` and `connection.modelGateway.publicUrl` accept explicit HTTP(S) URL templates containing `{port}`. `modelGateway` supports `requestTimeoutMs`, `maxOutputTokens` (`null` disables clamping), and `maxRequests`.
+- **`models`**: defaults to streaming Responses; Pi also supports `protocol: 'chat-completions'` and `capabilities: { contextWindow, maxOutputTokens, tools, reasoning }`; trusted host modules can supply a custom `ModelTransport`. Upstream credentials stay strictly on the host.
+- **`filePolicy`**: independently configure `initial`, `snapshot`, `replace`, `export`, and `session` limits (`maxBytes`, `maxFileBytes`, `maxFiles`, `maxEntries`, `timeoutMs`) plus `controllerSpoolBytes` and `workerSpoolBytes`.
+- **`getExecutorCapabilities(selection)`**: Pi (`1.3.0` / `1.4.0`) supports `contextFork`, `activeSteer`, `followUp`, and `one-at-a-time`; Codex (`0.172.0`) supports `activeSteer`, `followUp`, and `all` without context forking.
 
 ## Agent lifecycle
 
-`spawn({ requestId, profile, parentId?, forkFrom?, writable?, files?, workspace?, secretEnv? })` initializes an idle Agent. Seed a private directory with `files`, or attach a shared directory with `workspace: { id, mode: 'read-only' | 'read-write' }`. With a supported executor, `forkFrom` copies Session context from a live Agent in the same Runtime. Capability checks precede allocation. Idle Agents occupy a Slot. `get(agentId)` and `list({ parentId?, status? })` return current snapshots. `runtime.state` is `open`, `closing`, or `closed`.
+- **`runtime.spawn({ requestId, profile, parentId?, forkFrom?, writable?, files?, bindings?, secretEnv?, workspace?, collect? })`**: reserves a Slot (up to `maxAgents`), provisions the Sandbox, and resolves to an `idle` `AgentInfo`. Seed private files via `files`, or attach a shared workspace via `workspace: { id, mode: 'read-only' | 'read-write' }`. `forkFrom` clones live Session context on supported executors (`pi`).
+- **`runtime.get(agentId)`** / **`runtime.list({ parentId?, status? })`**: return current `AgentInfo` snapshots.
+- **`runtime.state`**: `'open' | 'closing' | 'closed'`.
 
-## Input delivery and events
+## Input delivery & live observation
 
-`runtime.send(agentId, text, { requestId, mode?, wakeIfIdle?, source?, steeringMode? })` defaults to `steer` and `wakeIfIdle: true`. Use `followUp` to deliver after current work. Conditional delivery may return `not-accepted/idle`. An accepted input is `started`, `queued`, or `handled`. Reconcile unknown admission by retrying the original arguments under the original ID. Changed arguments conflict. The receipt describes admission.
-
-### Live observation
-
-`onEvent(listener)` returns a function that removes that listener. Register before lifecycle operations, and read `get/list/state` for the current view. The subscription delivers `output`, `settled`, `error`, `exit`, `agentChanged` and `runtimeChanged`. On either state notification, query the current state. Events may arrive before operation receipts. Listener failures are isolated. A settlement marks one observed executor execution as completed, failed or aborted. Establish business completion through application-owned evidence.
+- **`runtime.send(agentId, text, { requestId, mode?, wakeIfIdle?, source?, steeringMode? })`**:
+  - Defaults to `mode: 'steer'` and `wakeIfIdle: true`; pass `mode: 'followUp'` to queue work after the current execution.
+  - Returns `InputReceipt` (`{ status: 'accepted', disposition: 'started' | 'queued' | 'handled' }` or `{ status: 'unknown' }`), or `{ status: 'not-accepted', reason: 'idle' }` when `wakeIfIdle: false`.
+  - Reconcile `unknown` by replaying the exact `requestId` and arguments; changing arguments under the same `requestId` throws `CONFLICT`.
+- **`runtime.onEvent(listener)`**: returns an `unsubscribe()` function. Register before `spawn`/`send`, then query `get`/`list`/`state` for initial state.
+  - Emits `output`, `settled`, `error`, `exit`, `agentChanged`, `runtimeChanged`, and `management`.
+  - Events may arrive before `send()` resolves; listener errors are isolated and logged.
 
 ## Controlled file primitives (`runtime.files`)
 
@@ -71,63 +107,34 @@ const receipt = await runtime.files.replace(agentId, {
 });
 ```
 
-A `FileTree` maps project-relative paths to UTF-8 or base64 regular files with optional `0644` or `0755` mode. Parent directories are implicit. Use `paths: ['.']` for a complete snapshot. Explicit file or directory paths produce a partial digest. The limits are 10,000 files, 2 MiB per file and 16 MiB total, with an optional lower snapshot `maxBytes`. Protected paths and links are outside the tree.
-
-`replace` checks a complete digest and installs the whole target tree in the same private directory, including deletions and mode changes. Omitting `writable` preserves access. Passing `true` can grant writing after installation. The Agent and Session continue. Digest conflicts and shared replacement are rejected. The Worker resumes writers before issuing a completed receipt. A proven rollback returns `failed`. Reconcile an unknown outcome using the original request arguments. A retry of completed work preserves the Agent's later edits.
+- A `FileTree` maps project-relative paths to UTF-8 or base64 regular files with optional `0o644` or `0o755` mode (limits: 10,000 files, 2 MiB per file, 16 MiB total).
+- **`snapshot(agentId, { requestId, paths, maxBytes? })`**: `paths: ['.']` produces a `complete:sha256:...` digest; specific subpaths produce a `partial:sha256:...` digest.
+- **`replace(agentId, { requestId, expectedDigest, files, writable? })`**: checks the complete digest, pauses writers, atomically installs `files` (including deletions and modes) in the private workspace, optionally upgrades `writable: true`, and preserves the live session. Returns `completed`, `failed` (confirmed rollback), or `unknown` (reconcile with identical arguments).
 
 ## Interrupt, stop, and close
 
-`interrupt(agentId, { requestId, timeoutMs? })` clears queued work and interrupts execution while retaining Session, files and Slot. If unconfirmed, retry the original ID.
+- **`runtime.interrupt(agentId, { requestId, timeoutMs? })`**: cancels pending Bridge calls, clears queued inputs (optionally returning `discardedInputHashes`), and aborts active work while keeping container, session, files, and Slot.
+- **`runtime.stop(agentId, { timeoutMs? })`**: revokes credentials on entry, confirms executor stop, archives the session, collects declared files, deletes the Sandbox, and frees the Slot. Returns `StopReceipt` separating `execution: 'stopped' | 'unknown'` from `cleanup: 'complete' | 'pending'`.
+- **`runtime.close({ timeoutMs? })`**: default timeout `60_000` ms. Stops all Agents, retires dynamic Services, calls `exportState()`, closes host gateways, writes `runtime.json`, and returns `CloseReceipt`. Required export failures retain the Sandbox; retry `stop()` / `close()` on the same Runtime after resolving blockers.
 
-`stop(agentId, { timeoutMs? })` revokes model and Bridge access on entry. After confirming execution stop, it archives Session, collects files, deletes the sandbox and frees the Slot. `close({ timeoutMs? })` handles all Agents, host endpoints and the Runtime report. The default timeout is 60 seconds. Receipts separate `stopped/unknown` execution from `complete/pending` cleanup. Required export failures retain the sandbox. Repeating cleanup joins active work or retries an unfinished stage. Existing external Services retain their owners.
+## Runtime management
 
-## Service protocol v2 & built-in `agent` Service
+Update Profiles, Services, and Agent permissions while a Run is open (all mutations require stable `requestId`s):
+
+- **`runtime.profiles`**: `register({ id, requestId, profile, actorId? })`, `get(id)`, `list()` — adds immutable Profiles mid-Run.
+- **`runtime.services`**: `register({ requestId, registration, deploymentRef, implementationId, ownership, actorId? })`, `get(id)`, `list()`, `retire({ serviceId, requestId, timeoutMs?, actorId? })` — dynamically mounts Services or drains and retires them.
+- **`runtime.access`**: `get(agentId)`, `grant({ agentId, serviceId, operations, requestId, binding? })`, `revoke({ agentId, serviceId, operations, requestId })` — mutates live Agent Service grants (optionally gated by `agentAccessPolicy`).
+- **`runtime.management.get()`**: returns the current sequenced snapshot (`{ sequence, profiles, services, access }`). Subscribe via `onEvent` before reading, buffer `management` events with higher `sequence`, and re-read if a sequence gap appears.
+
+## Service protocol & built-in `agent` Service
 
 - **Registration (`ServiceRegistry.registerService`)**: requires `contract_version: '2'`, unique `id` (not reserved `'agent'`), `title`, `purpose`, `provider_version`, `endpoint` (`{ transport: 'in-process' }` or `{ transport: 'http-json', url }`), and non-empty `capabilities`. Schemas compile strictly with Ajv `8.20.0` draft-07 (synchronous, no coercion, no defaults).
 - **Invocation (`ServiceAdapter.invoke`)**: receives `{ manifest, capability, input, envelope: { operation_id }, caller: { runtimeId, agentId, profile, binding? }, signal, assertAuthorized }`. Default per-call timeout is `30_000` ms (configurable per capability via `timeout_ms`: `1..86_400_000`).
 - **Optional state export (`ServiceAdapter.exportState({ signal })`)**: called once during `runtime.close()` (30-second cap) and written to `service-state.<id>.json`.
-- **HTTP JSON wire contract (`createHttpJsonAdapter`)**: POSTs `{ input, envelope, caller }` to `endpoint.url + (capability.path ?? '/v2/' + capability.operation)` with headers `Content-Type: application/json`, `Idempotency-Key: <operation_id>`, and optional host `Authorization: Bearer <token>`. Must return `{ "ok": true, "result": <json> }` (2 MiB max, redirects disabled).
-- **Built-in `agent` Service**: grant operations explicitly via `Profile.services.agent` (`['spawn', 'get', 'send', 'stop']`).
-  - `spawn` requires target role in `Profile.spawnProfiles`; `fork: true` requires `Profile.allowContextFork: true`.
-  - `get` and `send` target the caller itself or a direct child; `stop` targets only a direct child.
+- **HTTP JSON wire contract (`createHttpJsonAdapter`)**: POSTs `{ input, envelope, caller }` to `endpoint.url + (capability.path ?? '/v2/' + capability.operation)` with `Content-Type: application/json`, `Idempotency-Key: <operation_id>`, and optional host `Authorization: Bearer <token>`. Remote servers must authenticate this host connection before trusting `caller` and return `{ "ok": true, "result": <json> }` (2 MiB max, redirects disabled).
+- **Built-in `agent` Service**: grant explicitly in `Profile.services.agent` — child lifecycle (`['spawn', 'get', 'send', 'stop']`) and optional delegated access (`['access_get', 'grant', 'revoke']`, gated by `agentAccessPolicy`). `spawn` requires target role in `Profile.spawnProfiles` (`fork: true` requires `Profile.allowContextFork: true`); `get`/`send` target self or direct children; `stop` targets direct children only.
 
-The application can attach an already-running HTTP Service or use a host adapter for an existing CLI. The Messages example exposes the same operations from an in-process or HTTP implementation. The GitHub example runs a scoped, read-only `gh issue list` on the application host under Bridge authorization. The host keeps the Service and GitHub credentials. [Bridge Service examples](https://github.com/LuNa-shi/murm/tree/main/examples/bridge-services)
-
-## `swarm` CLI (inside containers)
-
-The `swarm` binary (`dist/scripts/swarm.js`) runs inside containers over `MURM_BRIDGE_URL`, `MURM_BRIDGE_TOKEN`, and `MURM_BRIDGE_CONTRACT_VERSION=2` (all injected and protected by Core):
-
-```bash
-# Discover permitted services and full schemas
-swarm service list
-swarm service view <service-id> --json
-
-# Invoke any registered service operation
-swarm <service> <operation> --input payload.json --request-id <unique-id>
-swarm <service> <operation> --stdin --request-id <unique-id>
-swarm service invoke <service-id> <operation> --input payload.json --request-id <unique-id>
-
-# Built-in agent control (when granted in Profile.services.agent)
-swarm agent spawn --profile worker --text 'Audit src/parser.ts' --fork true --request-id child-1
-swarm agent get <agent-id>
-swarm agent send <agent-id> --text 'Focus on error paths' --mode steer --wake-if-idle false --request-id steer-1
-swarm agent stop <agent-id> --request-id stop-1
-```
-
-**CLI exit codes**: `0` success, `1` transport/service error, `2` CLI/contract argument error, `3` checker completed successfully with a business fail verdict (`fail` / `failed` / `source_failure` / `mathematical_failure` / `incorrect`).
-
-## Repository helpers & foreground CLI
-
-The following helpers are source used by bundled Harnesses, not additional package exports. External consumers should use the public Runtime methods, or implement their own policy using the runnable SDK example.
-
-- **`src/harnesses/shared/run-input.ts`** (`runInput`): single-source exclusive turn helper (verifies `idle`, subscribes before sending, resolves on `'started'` + matching `settled`).
-- **`src/harnesses/shared/run-report.ts`** (`runWithReport`): runs `createRuntime` → `run` → bounded `close` → optional `afterClose`, preserving independent `businessFailure`, `cleanupFailure`, and `reportSaveFailure` slots in `harness-report.json`.
-- **Foreground host CLI (`scripts/run-harness.ts` & `scripts/read-harness-result.ts`)**: drives configured `taskpool` or `peermesh` harnesses over JSON-line `stdin` (`status`, `kickoff`, `input`, `wait`, `stop`) and inspects saved `runtime.json` + `harness-report.json` offline:
-
-```bash
-node dist/scripts/run-harness.js --config <host-config.mjs>
-node dist/scripts/read-harness-result.js --run-directory <dir> --runtime-id <id>
-```
+For host `murm` commands, container `swarm` commands, and environment variables, see **[CLI Reference](./cli.md)**.
 
 ## Error codes & recovery
 
@@ -136,7 +143,7 @@ node dist/scripts/read-harness-result.js --run-directory <dir> --runtime-id <id>
 | `INVALID_CONTRACT` / `SERVICE_INPUT_INVALID` | Invalid arguments, config, or JSON Schema input | Fix the input or config; the operation did not execute |
 | `SERVICE_OUTPUT_INVALID` | Adapter returned JSON violating `output_schema` | For writes, state may already have changed — inspect Service state before retrying |
 | `NOT_FOUND` / `NOT_ALLOWED` | Unknown agent/operation, missing Profile grant, fatal fence, or Runtime closing | Check Profile grants and agent status; do not retry unauthorized calls |
-| `CONFLICT` | Same `requestId` reused with different arguments, version mismatch, or no free Slot (`maxAgents`) | Use a fresh `requestId` for new parameters, or wait for `stop()` to free a Slot |
-| `OPERATION_UNKNOWN` / `status: 'unknown'` from Runtime input | Host wait expired or transport dropped after input dispatch | Reconcile the input by repeating the **exact same `requestId` and arguments** |
-| `SERVICE_TIMEOUT` / unknown Service write | The adapter may already have performed its side effect | Retain the operation ID and inspect or reconcile through that Service's own idempotency contract; Registry does not automatically retry or deduplicate writes |
-| `cleanup: 'pending'` | Execution stop, session archive, required `collect`, or sandbox delete incomplete | Inspect `pending[].action` and `errors`, fix the cause, and call `stop()` / `close()` again |
+| `CONFLICT` | Same `requestId` reused with different arguments, digest/version mismatch, or no free Slot (`maxAgents`) | Use a fresh `requestId` for new parameters, refresh digests, or wait for `stop()` to free a Slot |
+| `OPERATION_UNKNOWN` / `status: 'unknown'` from Runtime input | Host wait expired or transport dropped after dispatch | Reconcile by repeating the **exact same `requestId` and arguments** |
+| `SERVICE_TIMEOUT` / unknown Service write | The adapter may already have performed its side effect | Retain `operation_id` and reconcile through that Service's own idempotency contract; Registry does not auto-retry writes |
+| `cleanup: 'pending'` | Execution stop, session archive, required `collect`, or Sandbox delete incomplete | Inspect `pending[].action` and `errors`, resolve the blocker, and retry `stop()` / `close()` on the same Runtime |

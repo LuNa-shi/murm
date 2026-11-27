@@ -21,7 +21,7 @@ First public open-source release of `murm` as a single unified TypeScript SDK, C
 
 ### Added
 
-- **Unified `@luna-shi/murm` public SDK**: Narrow root entry exporting `createRuntime`, `createSandbox`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, and `createHttpJsonAdapter` with full TypeScript declarations ([SDK Guide](sdk.md)).
+- **Unified `@luna-shi/murm` public SDK**: Narrow root entry exporting `createRuntime`, `createSandbox`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, and `createHttpJsonAdapter` with full TypeScript declarations ([SDK & API Reference](reference/api.md)).
 - **Live observation & runtime management**: `runtime.onEvent` real-time stream (`output`, `settled`, `error`, `exit`, `agentChanged`, `runtimeChanged`, `management`), live `runtime.profiles` / `runtime.services` / `runtime.access` management APIs, and `runtime.files` (`snapshot` / `replace` with SHA-256 digest CAS).
 - **Dual executors & open Pi model catalog**: Supports **Pi (`1.3.0`)** (with session `forkFrom` context forking) and **Codex CLI (`0.172.0`)** behind the host Model Gateway. Pi ships a built-in `openai` Responses catalog (`gpt-5.4`, `gpt-5`, `gpt-5-mini`, `gpt-4.1`, `gpt-4.1-mini`, `o4-mini`) and accepts any custom streaming OpenAI Responses-compatible `provider` + `model` via host-synthesized, SHA-256-attested catalogs.
 - **Unified host CLI (`murm`)**:
@@ -41,7 +41,7 @@ First public open-source release of `murm` as a single unified TypeScript SDK, C
 
 - Renamed package from `@murm/core` to `@luna-shi/murm` and merged the standalone Trace Viewer package into `@luna-shi/murm` (eliminating global `murm` binary collisions).
 - Built-in CLI Harnesses (`subagents`, `taskpool`, `notes`, `messages`) now default to `DEFAULT_WORKER_IMAGE` and accept unified `MURM_MODEL_*` / `MURM_WORKER_IMAGE` environment variables alongside per-Harness overrides.
-- Rewrote EN/ZH [Quickstart](quickstart.md) and [SDK](sdk.md) guides with transparent Linux host prerequisites (Landlock ABI 5+, rootful Docker Engine, host utilities, least-privilege `sudoers`) and self-contained TypeScript SDK examples.
+- Rewrote EN/ZH [Quickstart](quickstart.md) and [SDK & API Reference](reference/api.md) guides with transparent Linux host prerequisites (Landlock ABI 5+, rootful Docker Engine, host utilities, least-privilege `sudoers`) and self-contained TypeScript SDK examples.
 
 ### Security & Isolation
 

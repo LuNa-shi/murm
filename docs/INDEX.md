@@ -8,12 +8,12 @@ Start with the user guides to run a Harness or build your own. The English and C
 | --- | --- | --- |
 | Understand what murm provides | [Overview](en/overview.md) | [文档总览](zh/overview.md) |
 | Run your first Harness | [Quickstart](en/quickstart.md) | [快速上手](zh/quickstart.md) |
-| Understand Runtime, Agent, Profile and Service | [How murm works](en/concepts.md) | [工作原理](zh/concepts.md) |
-| Embed murm in a TypeScript application | [Use the SDK](en/sdk.md) | [使用 SDK](zh/sdk.md) |
-| Add a Service and choose a control loop | [Build your Harness](en/build-your-harness.md) | [构建自己的 Harness](zh/build-your-harness.md) |
-| Compare the five collaboration mechanisms | [Harnesses](en/harnesses/index.md) | [协作机制](zh/harnesses/index.md) |
-| Follow input, execution and cleanup | [Run lifecycle](en/run-lifecycle.md) | [运行生命周期](zh/run-lifecycle.md) |
-| Look up public calls and types | [API](en/reference/api.md) · [Types](en/reference/types.md) | [API](zh/reference/api.md) · [类型](zh/reference/types.md) |
+| Build a 2-minute mental model | [Core Concepts](en/concepts.md) | [核心概念](zh/concepts.md) |
+| Master the 6 core building blocks | [Sandboxes](en/sandbox.md) · [Runtime](en/runtime.md) · [Agents](en/agents.md) · [Gateway](en/gateway.md) · [Services](en/services.md) · [Trace Viewer](en/trace-viewer.md) | [Sandbox](zh/sandbox.md) · [Runtime](zh/runtime.md) · [Agent](zh/agents.md) · [Gateway](zh/gateway.md) · [Services](zh/services.md) · [观测与调试](zh/trace-viewer.md) |
+| Build a parallel Swarm step by step | [Build a Swarm Harness](en/build-your-harness.md) | [实战：构建 Swarm Harness](zh/build-your-harness.md) |
+| Compare the five collaboration patterns | [Choose a Harness](en/harnesses/index.md) | [选择 Harness](zh/harnesses/index.md) |
+| Look up SDK exports, CLI flags & types | [API](en/reference/api.md) · [CLI](en/reference/cli.md) · [Types](en/reference/types.md) | [API](zh/reference/api.md) · [CLI](zh/reference/cli.md) · [类型](zh/reference/types.md) |
+| Track the latest release & changelog | [Latest (v0.2.0)](en/latest.md) · [Changelog](en/changelog.md) | [最新版本](zh/latest.md) · [更新日志](zh/changelog.md) |
 
 ## Understand or change the implementation
 

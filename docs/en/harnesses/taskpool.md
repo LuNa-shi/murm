@@ -2,21 +2,21 @@
 title: TaskPool
 description: A shared task pool with exclusive leases, controlled file handoff, durable Materials and versioned Workspace results.
 section: HARNESSES
-order: 8
+order: 11
 ---
 
-## Run an ordinary project
+**TaskPool** keeps a pool of workers making forward progress even as individual Agents finish, time out, or rotate. Each Agent starts read-only to discover ready Tasks, acquires an exclusive lease on one Task, receives host-installed writable files, publishes reusable Materials, and saves verified revisions back into the shared Workspace. Source: [examples/taskpool](https://github.com/LuNa-shi/murm/tree/main/examples/taskpool).
 
-```sh
+## Quick run (CLI)
+
+With `MURM_MODEL_URL` and `MURM_MODEL_TOKEN` configured (see [Quickstart](../quickstart.md)), launch TaskPool directly against a project directory:
+
+```bash
 cd my-project
 murm --harness taskpool --prompt "Fix the parser using the project tests"
 ```
 
-TaskPool creates the Mission and its Workspace in the Run directory. The prompt is the Mission goal. Discovery starts from the read-only project and execution uses the Workspace revision selected when it takes a Task. The sections below also cover direct SDK embedding and explicit benchmark fixtures.
-
-TaskPool lets a group of researchers keep working while individual Agents finish, time out or rotate. Each Agent discovers Tasks, chooses one, publishes reusable Materials and saves its work into the public Workspace. The host keeps the pool populated and enforces ownership through leases.
-
-The implementation lives in `examples/taskpool/`. It composes the [Core SDK](../sdk.md) with the repository's existing Mission, Task, Material and Workspace stores. `runTaskPoolHarness` is a repository host function, not an exported member of `@luna-shi/murm`. It requires those stores and a prepared Mission/Workspace; it is not a standalone configuration-only example.
+TaskPool initializes a Mission and versioned Workspace inside the Run directory using your prompt as the Mission goal. Workers discover from the read-only project snapshot and unlock writable directories upon claiming a Task. The sections below detail the registered Services, lease handoff, and custom host composition.
 
 ## Services available to a researcher
 
@@ -29,7 +29,7 @@ The implementation lives in `examples/taskpool/`. It composes the [Core SDK](../
 | `mission` (optional) | `swarm mission view`, `submit`, `submission view` | Mission goal and explicit acceptance of a pinned public result |
 | `mathlib-search` (optional) | `swarm mathlib-search search` | Search the pinned Mathlib source |
 
-The host enables `task create` with `autonomousTasks: true`. Dependency replacement, Mission submission and selected Material correction operations also require their domain grants. The workspace manifest only exposes live capture operations when a capture source exists; `apply` requires `workspaceCapture: 'core'`, and `merge` requires the configured merger. A command appearing in general CLI help does not make it available in every Harness. Inspect the authenticated manifest:
+The host enables `task create` with `autonomousTasks: true`. Dependency replacement, Mission submission and selected Material correction operations also require their domain grants. The workspace manifest only exposes live capture operations when a capture source exists; `apply` requires `workspaceCapture: 'core'`, and `merge` requires the configured merger. Only operations granted to your Profile are active in a given Run; inspect them with `swarm service view`:
 
 ```bash
 swarm service view task --json
@@ -44,16 +44,16 @@ After `take` succeeds, edit the private project, save an enabled Workspace revis
 
 ## From discovery to writable work
 
-A researcher starts with `writable: false`. It can read public Task, Material and Workspace state through Services while the project directory remains read-only. Winning a Task reservation starts the handoff in [task-handoff.ts](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/task-handoff.ts):
+A worker (`researcher` role) starts with `writable: false`. It can read public Task, Material, and Workspace state through Services while its project directory remains read-only. Winning a Task reservation triggers the four-step host handoff in [task-handoff.ts](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/task-handoff.ts):
 
-1. Pin the public Workspace revision and linked Material inputs. A preparation heartbeat keeps the reservation alive.
+1. **Pin inputs & keep the lease alive**: resolve the public Workspace revision and linked Material inputs while a preparation heartbeat renews the reservation.
+2. **Capture the read-only digest**: call `runtime.files.snapshot(agentId, { paths: ['.'] })` to obtain the Sandbox's current `complete:sha256:...` digest.
+3. **Activate the Execution**: commit `start_execution` in `TaskService` with the computed execution and handoff deadlines.
+4. **Atomically install & unlock writes**: call `runtime.files.replace(agentId, { expectedDigest, files, writable: true })` so the Worker installs the pinned Task files and enables write access in a single CAS-guarded operation while preserving the Agent's session.
 
-3. Activate the Execution in TaskService with its execution and handoff deadlines.
+All file preparation and write unlocking stay strictly on the trusted host — the Agent requests work through the `task` Service and can never grant itself file access.
 
-
-The two SDK calls are distinct because file preparation can fail before the Task is ready to authorize writes. Preparation and grant belong to the trusted host. The Agent requests work through the `task` Service; it does not manufacture a prepared handle or grant itself file access.
-
-If a handoff fails after reservation, the host records its stage and stops or reconciles the affected Agent. A normal claim conflict does not stop the Agent that lost the race.
+If a handoff fails after reservation, the host records the exact failure stage and stops or reconciles the affected Agent. A normal claim conflict does not stop the Agent that lost the race.
 
 ## Keep model access tied to the lease
 
@@ -71,7 +71,9 @@ With `completionPolicy: 'tasks'`, success requires all Tasks to reach terminal s
 
 ## Running TaskPool
 
-The foreground host accepts a trusted module whose default export contains `mode: 'taskpool'`, finite `timeoutMs`, and `options` for `runTaskPoolHarness`. Those options include the Backend, stores, Mission/Workspace IDs, worker Profile inputs and deadline. A runnable configuration must first initialize and bind those domain objects; there is no shipped `examples/taskpool/config.ts` to copy.
+For ordinary project directories, `murm --harness taskpool` loads the shipped [examples/taskpool/config.ts](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/config.ts) (which defaults to `DEFAULT_WORKER_IMAGE` and reads `MURM_MODEL_URL`, `MURM_MODEL_TOKEN`, and `MURM_TASKPOOL_*` settings) and initializes the Mission and Workspace automatically.
+
+For custom store compositions via the repository's foreground runner, provide an ESM module whose default export contains `mode: 'taskpool'`, a finite `timeoutMs`, and `options` for `runTaskPoolHarness` (pre-initialized domain stores, Mission/Workspace IDs, worker Profile inputs, and deadlines).
 
 After building the repository and creating that host module:
 

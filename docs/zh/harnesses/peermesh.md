@@ -1,22 +1,22 @@
 ---
 title: PeerMesh
-description: 对等工程师团队——通过可重叠软认领 Board、Mattermost 频道与私信以及经宿主验证的 Gitea Pull Request 并行开发。
-section: 协作机制
-order: 9
+description: 扁平对等研发小组——成员在共享任务板上登记分工、通过 Mattermost 群聊与私信协商，并在个人 Git 分支提 PR 经宿主核验合入。
+section: 内置 Harness
+order: 13
 ---
 
-## 在普通项目中运行
+**PeerMesh**（`src/harnesses/peermesh/`）模拟一个 2–8 人的扁平研发小组，没有中心管理员，也不强行对任务加独占锁。每位成员拥有独立的 Gitea 与 Mattermost 账号、持久化会话和本地 Git 仓库：大家在共享任务板上登记自己正在处理的模块（`CLAIM`）、通过频道和私信商量分工、各自在个人分支开发并提 PR，最后由宿主机核验代码后再合入受保护的 `main`。
 
-```sh
+## 快速运行（CLI）
+
+先按 [examples/peermesh/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/README.md) 配置 Gitea、Mattermost、Board 与模型环境变量，再在项目目录启动：
+
+```bash
 cd my-project
 murm --harness peermesh --prompt "根据解析测试修复当前项目"
 ```
 
-PeerMesh 根据目录和 prompt 建立团队仓库与 issue。各 peer 使用独立 Sandbox。启动前配置 Gitea、Mattermost 和 Board。 调用 TS SDK 的旧示例和基准测试专用参数见下文。
-
-**PeerMesh**（`src/harnesses/peermesh/`）建模了一个 2–8 人的扁平对等工程团队，没有中心调度器也没有独占任务锁。每位成员拥有独立的 Gitea 账号、Mattermost 账号、持久化 Pi 会话和本地 Git 仓库：大家在个人分支开发、在共享 Board 发布软意向（`CLAIM`）与进展、通过群聊和私信协商分工，最后由宿主验证并合并 PR 到受保护的 `main`。
-
-随仓库提供的宿主使用通用 OpenSandbox 后端运行 Pi，并围绕 Core 组合 Service。`src/harnesses/peermesh/` 下的团队和 Router 工厂属于仓库模块，没有作为 SDK 工厂导出。构建新 Harness 请参考 [SDK 指南](../sdk.md)，运行这种具体协作策略则使用下面的示例。
+PeerMesh 会根据当前目录和提示词自动建立团队仓库与 Issue，为每位成员分配独立沙箱与个人分支。下文介绍其 Services、每成员串行 Router 及前台 JSON 行运行方式。
 
 ## 1. 注册的 Services
 
@@ -24,14 +24,14 @@ PeerMesh 根据目录和 prompt 建立团队仓库与 issue。各 peer 使用独
 
 | Service | 支持的操作 | 用途 |
 | --- | --- | --- |
-| **`peermesh-context`** | `board_read`、`board_write`、`board_grep`、`board_unfold` | 读写共享 Board，支持 `FACT`、`OBSERVED`、`FAIL`、`PATCH_SUMMARY` 与可重叠软认领 `CLAIM` |
+| **`peermesh-context`** | `board_read`、`board_write`、`board_grep`、`board_unfold` | 读写共享任务板，支持 `FACT`、`OBSERVED`、`FAIL`、`PATCH_SUMMARY` 以及不加锁的分工登记 `CLAIM` |
 | **`message`** | `post_message`、`peer_list`、`send_dm` | 在运行频道发言、发现其他成员以及发送点对点私信 |
 | **`gitea`** | `issue_list`、`issue_read`、`issue_write`、`pull_request_list`、`pull_request_read`、`pull_request_write`、`comment_list`、`comment_write`、`pull_request_merge` | 读写 Issue / PR 并向受保护 `main` 申请经宿主验证的合并 |
 
 成员还可以直接通过白名单放行的 Gitea 来源（`Profile.network.allow`）与 `secretEnv.GITEA_TOKEN` 使用原生 `git` 推送个人分支。容器内典型命令如下：
 
 ```bash
-# 向共享 Board 发布软认领或发现
+# 向共享任务板登记正在处理的模块或发布发现
 swarm peermesh-context board_write \
   --input claim.json --request-id claim-parser
 
@@ -49,7 +49,7 @@ swarm gitea pull_request_merge \
 
 ## 2. 每成员串行 Router 与途中转向
 
-在 [team.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/team.ts) 和 [router.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/router.ts) 中，每位成员都有一个专属串行 Router。事件订阅轮询 Mattermost 和 Gitea，成功的 Board 写入也会追加通知，Router 将这些事件投递到成员的持久化 Pi 会话中。下面节选项目运行配置，完整工厂还会安装故障处理与关闭逻辑：
+在 [team.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/team.ts) 和 [router.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/router.ts) 中，每位成员都有一个专属串行 Router。事件订阅轮询 Mattermost 和 Gitea，成功的 Board 写入也会追加通知，Router 将这些事件投递到成员的持久化 Pi 会话中（其中的 `runInput` 是仓库共用的单轮执行辅助函数 `src/harnesses/shared/run-input.ts`）。下面节选项目运行配置，完整工厂还会安装故障处理与关闭逻辑：
 
 ```ts
 const router = createPeerMeshRouter({

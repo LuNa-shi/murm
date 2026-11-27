@@ -57,7 +57,7 @@ npm install --ignore-scripts --allow-remote=root \
 - **文件快照与 CAS 替换**：`runtime.files.snapshot` 与 `runtime.files.replace` 支持对暂停中的 Agent 文件树做只读快照与基于 SHA-256 摘要（`complete:sha256:...`）的原子替换。
 - **运行中动态管理**：`runtime.profiles`、`runtime.services`、`runtime.access` 与 `runtime.management.get()` 支持在 Run 期间动态注册 Profile、上线或下线 Service、授予或撤销 Agent 权限，并接受 `agentAccessPolicy` 宿主策略守卫。
 
-详细签名与可运行示例请阅读 [使用 SDK](sdk.md) 与 [API 参考](reference/api.md)。
+详细签名与实战示例请阅读 [Runtime 运行控制面](runtime.md)、[Services 与权限](services.md) 与 [SDK 与 API 参考](reference/api.md)。
 
 ### 2. Pi / Codex 双执行器与开放 Pi 模型目录
 

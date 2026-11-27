@@ -1,22 +1,22 @@
 ---
 title: Subagents
-description: 基于单一自定义 collaboration Service 实现的递归命名委派、会话上下文分叉、非唤醒邮箱消息与中断恢复。
-section: 协作机制
-order: 7
+description: 主 Agent 按需拆解任务并派生子 Agent，通过邮箱异步沟通、中途纠偏并汇总成果的层级协作模式。
+section: 内置 Harness
+order: 11
 ---
 
-## 在普通项目中运行
+**Subagents** 模拟常见的层级研发团队：由主 Agent（`/root`）拆解目标、按需创建子 Agent（最多 `maxDepth` 层）、通过邮箱收发消息并在必要时中途纠偏，最后由 `/root` 整合交付结果。源码：[examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents)。
 
-```sh
+## 快速运行（CLI）
+
+配置好 `MURM_MODEL_URL` 与 `MURM_MODEL_TOKEN`（见 [快速上手](../quickstart.md)）后，在任意项目目录直接启动：
+
+```bash
 cd my-project
 murm --harness subagents --prompt "根据解析测试修复当前项目"
 ```
 
-Subagents 将 prompt 发给 Root，并为 Root 和每个 Child 安装固定的项目树。进程内 RPC 可选输入发给 Root。 调用 TS SDK 的旧示例和基准测试专用参数见下文。
-
-**Subagents** 建模了一套层级协作团队：由主 Agent（`/root`）拆解目标、递归派生命名子 Agent（最多 `maxDepth` 层）、通过消息实时协同并最终整合交付。源码：[examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents)。
-
-宿主统一从 `@luna-shi/murm` 导入公开 SDK。 `createSubagentsHarness` 是示例源码。安装步骤见 [SDK 指南](../sdk.md)。
+Subagents 会把提示词发送给 `/root`，并为 `/root` 及每个子 Agent 各自准备独立的项目沙箱副本；在 `--mode rpc` 下，运行中追加的用户输入会路由给 `/root`。下文拆解其 `collaboration` Service、邮箱调度器以及从源码嵌入运行的方式。
 
 ## 1. 注册的 Service（`collaboration`）
 

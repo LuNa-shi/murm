@@ -1,0 +1,110 @@
+---
+import type { Lang } from '../lib/i18n';
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = 'en' } = Astro.props;
+const isZh = lang === 'zh';
+const p = isZh ? 'zh' : 'en';
+---
+
+<div class="doc-svg-wrap" role="region" aria-label={isZh ? 'murm 六大核心构件与双向调用流' : 'Six core building blocks and bidirectional data flows in murm'}>
+  <svg class="doc-svg" viewBox="0 0 880 416" width="880" height="416" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <pattern id={`cg-grid-${p}`} width="24" height="24" patternUnits="userSpaceOnUse">
+        <path d="M 24 0 L 0 0 0 24" fill="none" stroke="var(--sch-grid)" stroke-width="0.8" />
+      </pattern>
+      <marker id={`cg-ar-in-${p}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M 1 1.5 L 8 5 L 1 8.5" fill="none" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </marker>
+      <marker id={`cg-ar-te-${p}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M 1 1.5 L 8 5 L 1 8.5" fill="none" stroke="var(--sch-teal)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </marker>
+      <marker id={`cg-ar-am-${p}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M 1 1.5 L 8 5 L 1 8.5" fill="none" stroke="var(--sch-amber)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </marker>
+    </defs>
+
+    <rect x="0" y="0" width="880" height="416" fill="var(--sch-surface)" />
+    <rect x="0" y="0" width="880" height="416" fill={`url(#cg-grid-${p})`} />
+
+    <!-- Top-Left: HARNESS -->
+    <rect x="24" y="42" width="256" height="126" rx="6" class="dsvg-card-yellow" />
+    <rect x="24" y="42" width="256" height="5" rx="2" fill="var(--ink)" />
+    <text x="40" y="68" class="dsvg-title">{isZh ? 'HARNESS（你的编排程序）' : 'HARNESS (YOUR APP)'}</text>
+    <text x="40" y="94" class="dsvg-body">{isZh ? '• 定义角色 Profiles 与结束条件' : '• Defines role Profiles & stop rules'}</text>
+    <text x="40" y="117" class="dsvg-body">{isZh ? '• 注册自定义共享 Services' : '• Registers shared Services'}</text>
+    <text x="40" y="140" class="dsvg-body">{isZh ? '• 驱动宿主控制循环与协作规则' : '• Runs host control loop & policy'}</text>
+
+    <!-- Top-Right: RUNTIME & SANDBOXES -->
+    <rect x="496" y="22" width="360" height="162" rx="6" class="dsvg-card" />
+    <rect x="496" y="22" width="360" height="5" rx="2" fill="var(--sch-indigo)" />
+    <text x="512" y="47" class="dsvg-title">RUNTIME</text>
+    <text x="840" y="47" text-anchor="end" class="dsvg-sub">{isZh ? '运行控制面与隔离沙箱' : 'Control plane & isolated sandboxes'}</text>
+    <rect x="512" y="60" width="328" height="32" rx="4" class="dsvg-pill" />
+    <text x="524" y="80" class="dsvg-strong">SANDBOX A</text>
+    <text x="606" y="80" class="dsvg-body">{isZh ? '· Agent（持久化会话 + 工作区）' : '· Agent (persistent session + files)'}</text>
+    <rect x="512" y="100" width="328" height="32" rx="4" class="dsvg-pill" />
+    <text x="524" y="120" class="dsvg-strong">SANDBOX B</text>
+    <text x="606" y="120" class="dsvg-body">{isZh ? '· Agent（持久化会话 + 工作区）' : '· Agent (persistent session + files)'}</text>
+    <rect x="512" y="140" width="328" height="32" rx="4" class="dsvg-pill" />
+    <text x="524" y="160" class="dsvg-strong">SANDBOX C</text>
+    <text x="606" y="160" class="dsvg-body">{isZh ? '· Agent（持久化会话 + 工作区）' : '· Agent (persistent session + files)'}</text>
+
+    <!-- Top Horizontal Arrows: HARNESS <-> RUNTIME -->
+    <path d="M 284 90 H 490" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end={`url(#cg-ar-in-${p})`} />
+    <text x="388" y="81" text-anchor="middle" class="dsvg-mono">spawn · send · files</text>
+    <path d="M 494 124 H 288" fill="none" stroke="var(--sch-teal)" stroke-width="2" marker-end={`url(#cg-ar-te-${p})`} />
+    <text x="388" y="142" text-anchor="middle" class="dsvg-mono-teal">onEvent() · receipts</text>
+
+    <!-- Bottom-Left: SHARED SERVICES -->
+    <rect x="24" y="268" width="256" height="126" rx="6" class="dsvg-card-service" />
+    <rect x="24" y="268" width="256" height="5" rx="2" fill="var(--sch-indigo)" />
+    <text x="40" y="294" class="dsvg-title">SHARED SERVICES</text>
+    <text x="40" y="319" class="dsvg-body">{isZh ? '• 宿主机共享业务状态与工具' : '• Host-side shared state & tools'}</text>
+    <text x="40" y="341" class="dsvg-body">{isZh ? '• 黑板、任务池、Git 与验证器' : '• Boards, pools, Git & verifiers'}</text>
+    <text x="40" y="363" class="dsvg-body">{isZh ? '• Agent A 写入 → Agent B 读取' : '• Agent A writes → Agent B reads'}</text>
+
+    <!-- Bottom-Center: HOST GATEWAY -->
+    <rect x="328" y="268" width="244" height="126" rx="6" class="dsvg-card" />
+    <rect x="328" y="268" width="244" height="5" rx="2" fill="var(--sch-teal)" />
+    <text x="344" y="294" class="dsvg-title">HOST GATEWAY</text>
+    <text x="344" y="319" class="dsvg-body">{isZh ? '• Service Bridge（鉴权 + 校验）' : '• Service Bridge (auth + schema)'}</text>
+    <text x="344" y="341" class="dsvg-body">{isZh ? '• Model Gateway（密钥留在宿主）' : '• Model Gateway (host API keys)'}</text>
+    <text x="344" y="363" class="dsvg-body">{isZh ? '• 统一把关权限并回传结果' : '• Enforces ACL & returns replies'}</text>
+
+    <!-- Bottom-Right: RUN TRACES -->
+    <rect x="620" y="268" width="236" height="126" rx="6" class="dsvg-card" />
+    <rect x="620" y="268" width="236" height="5" rx="2" fill="var(--sch-amber)" />
+    <text x="636" y="294" class="dsvg-title">RUN TRACES</text>
+    <text x="636" y="319" class="dsvg-body">• outputDir/&lt;runtimeId&gt;/</text>
+    <text x="636" y="341" class="dsvg-body">{isZh ? '• 会话、模型与 Service 账本' : '• Sessions, model & Service logs'}</text>
+    <text x="636" y="363" class="dsvg-body">{isZh ? '• 导出产物 · murm trace 回放' : '• Artifacts · murm trace UI'}</text>
+
+    <!-- Connector 1: HARNESS -> SHARED SERVICES -->
+    <path d="M 152 170 V 262" fill="none" stroke="var(--sch-indigo)" stroke-width="1.9" stroke-dasharray="5 3" marker-end={`url(#cg-ar-in-${p})`} />
+    <text x="164" y="211" class="dsvg-strong">{isZh ? '注册 Services' : 'registers Services'}</text>
+    <text x="164" y="228" class="dsvg-sub">{isZh ? 'Manifest + 适配器' : 'manifest + adapter'}</text>
+
+    <!-- Connector 2: RUNTIME <-> HOST GATEWAY (smooth rounded elbow, bidirectional) -->
+    <path d="M 622 189 V 214 Q 622 226 610 226 H 462 Q 450 226 450 238 V 262" fill="none" stroke="var(--sch-teal)" stroke-width="2.1" marker-start={`url(#cg-ar-te-${p})`} marker-end={`url(#cg-ar-te-${p})`} />
+    <text x="536" y="213" text-anchor="middle" class="dsvg-mono-teal">swarm CLI · /v1/responses</text>
+    <text x="466" y="247" class="dsvg-sub">{isZh ? '经宿主网关双向请求与返回' : 'authenticated request & response'}</text>
+
+    <!-- Connector 3: RUNTIME -> RUN TRACES -->
+    <path d="M 738 184 V 262" fill="none" stroke="var(--sch-amber)" stroke-width="1.9" marker-end={`url(#cg-ar-am-${p})`} />
+    <text x="748" y="216" class="dsvg-mono-amber">{isZh ? '会话与产物' : 'sessions & files'}</text>
+    <text x="748" y="233" class="dsvg-sub">{isZh ? '先归档再清理' : 'archive-before-delete'}</text>
+
+    <!-- Connector 4: HOST GATEWAY <-> SHARED SERVICES (bidirectional) -->
+    <path d="M 286 331 H 322" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-start={`url(#cg-ar-in-${p})`} marker-end={`url(#cg-ar-in-${p})`} />
+    <text x="304" y="318" text-anchor="middle" class="dsvg-sub">{isZh ? '调用' : 'call'}</text>
+    <text x="304" y="349" text-anchor="middle" class="dsvg-sub">{isZh ? '返回' : 'reply'}</text>
+
+    <!-- Connector 5: HOST GATEWAY -> RUN TRACES -->
+    <path d="M 574 331 H 614" fill="none" stroke="var(--sch-amber)" stroke-width="1.9" marker-end={`url(#cg-ar-am-${p})`} />
+    <text x="596" y="318" text-anchor="middle" class="dsvg-sub">{isZh ? '调用轨迹' : 'traces'}</text>
+  </svg>
+</div>

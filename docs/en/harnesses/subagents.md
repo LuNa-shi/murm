@@ -2,21 +2,21 @@
 title: Subagents
 description: Hierarchical recursive delegation, session context forking, non-waking mailbox messaging, and interrupt recovery built on one custom collaboration Service.
 section: HARNESSES
-order: 7
+order: 10
 ---
 
-## Run an ordinary project
+**Subagents** models a hierarchical team where a lead Agent (`/root`) breaks down work, spawns named child Agents recursively (up to `maxDepth`), steers busy children without waking idle ones, and integrates child results. Source: [examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents).
 
-```sh
+## Quick run (CLI)
+
+With `MURM_MODEL_URL` and `MURM_MODEL_TOKEN` configured (see [Quickstart](../quickstart.md)), run Subagents directly against any project directory:
+
+```bash
 cd my-project
 murm --harness subagents --prompt "Fix the parser using the project tests"
 ```
 
-Subagents sends the prompt to Root and supplies the captured project to Root and each Child. The application uses separate Sandbox directories. Optional RPC input goes to Root. The sections below also cover direct SDK embedding and explicit benchmark fixtures.
-
-**Subagents** models a lead agent (`/root`) that breaks down a task, spawns named child agents recursively (up to `maxDepth`), exchanges messages in real time, and integrates results. Source: [examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents).
-
-The host imports the public SDK from `@luna-shi/murm`. `createSubagentsHarness` belongs to the example source. See the [SDK guide](../sdk.md) for installation.
+Subagents sends your prompt to `/root` and seeds each Sandbox with the captured project tree (separate isolated directories per Agent). In `--mode rpc`, follow-up user inputs route directly to `/root`. See the sections below for the `collaboration` Service protocol, mailbox controller, and source-level embedding.
 
 ## 1. Registered Service (`collaboration`)
 

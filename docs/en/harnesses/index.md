@@ -1,56 +1,43 @@
 ---
 title: Choose a Harness
-description: Compare the five collaboration mechanisms implemented in murm and find their SDK and example entry points.
-section: HARNESSES
-order: 6
+description: Compare the five built-in multi-agent patterns in murm, run them with one command, or adapt them to build your own team.
+section: BUILT-IN HARNESSES
+order: 10
 ---
 
-## Run an ordinary project
+A **Harness** defines how a multi-agent team divides work, shares information, and decides when the job is done.
 
-Install the CLI and prepare the host by following [Quickstart](../quickstart.md), then launch from your project directory. The invocation directory is the default; use `--cwd` to select another project. Supply model and runtime settings via environment variables (`MURM_MODEL_URL`, `MURM_MODEL_TOKEN`, etc.) or `--config`.
+`murm` ships **five complete multi-agent patterns** (`Subagents`, `TaskPool`, `PeerMesh`, `Substrate`, and `Lead-Worker`), plus two minimal starters (`notes` and `messages`). All of them share the exact same Sandboxes, Host Gateway, and Trace Viewer — only their Services and orchestration rules differ.
 
-```sh
+> **How to use them**: run any built-in directly via `murm --harness <name>`, or inspect `examples/` and `src/harnesses/` to adapt them. To build your own from scratch, see [Build a Swarm Harness](../build-your-harness.md).
+
+## Run in one command
+
+Once [Quickstart](../quickstart.md) is done, launch against any project folder:
+
+```bash
 cd my-project
 murm --harness subagents --prompt "Fix the parser and add tests"
 ```
 
-Built-in names are `subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes` and `messages`. Configure the resources required by the selected example.
+Built-in names: `subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes`, `messages`. (`subagents`, `taskpool`, `notes`, and `messages` only need your model environment variables; `peermesh`, `substrate`, and `lead-worker` also use external facilities such as Gitea or Mattermost.)
 
-A Harness supplies the collaboration policy around a murm Runtime: which Agents to start, which Services they can call, how shared work is represented, and when the run is complete. The repository implements five different policies. They reuse Core lifecycle, isolation, input delivery and observation while keeping their coordination rules in host code and Services.
+## Five collaboration patterns at a glance
 
-Start with the [SDK guide](../sdk.md) to embed murm in your own application. The Harnesses below are editable repository implementations and examples; their factory functions are not additional `@luna-shi/murm` package exports. TaskPool also composes the repository's existing Mission, Task, Material and Workspace stores. The other four have dedicated example launchers.
-
-## Compare the mechanisms
-
-| Harness | Shared state and Services | How work moves | Result |
+| Harness | How the team collaborates | Shared Services | Final output |
 | --- | --- | --- | --- |
-| [Subagents](subagents.md) | A `collaboration` Service with named members and mailboxes | Root delegates recursively; members send notices, resume children and return results to their parent | Root's integrated response and any configured collected files |
-| [TaskPool](taskpool.md) | `task`, `context` for Materials, `workspace`, optional `judge`, `mission` and `mathlib-search` | Agents choose Tasks; exclusive leases authorize one Execution; the host replaces finished or expired workers | Published Materials and saved or merged Workspace revisions |
-| [PeerMesh](peermesh.md) | A soft-claim Board, Mattermost messages and Gitea | Equal peers choose branches and coordinate in chat; routers deliver events and host-verified merges update `main` | A pinned shared `main` archive, merge receipts and each peer's private archive |
-| [Substrate](substrate.md) | An immutable SQLite publication store with `publish`, `search` and `visit` | Equal peers explore in parallel and explicitly cite work they use | Publications, references, read records and private work; FATE configurations add Lean checks |
-| [Lead-Worker](lead-worker.md) | A SQLite `board` with role permissions, ownership and feedback, plus Gitea | A fixed team alternates lead direction and concurrent worker delivery | Verified branch files and evidence that workers read the revised direction |
+| **[Subagents](subagents.md)** | **Hierarchical delegation**: `/root` splits goals, spawns child Agents on demand, exchanges mailbox messages, and integrates results | Member tree & mailbox (`collaboration`) | Integrated final reply and collected files |
+| **[TaskPool](taskpool.md)** | **Competitive task queue**: workers start read-only, claim exclusive timed tasks to unlock writes, and rotate cleanly on finish or timeout | Task queue (`task`), shared notes (`context`), versioned workspace (`workspace`), optional `judge` | Published findings and merged workspace revisions |
+| **[PeerMesh](peermesh.md)** | **Flat engineering team**: no central manager — peers declare what they're working on without locks, coordinate in chat, and open personal-branch PRs verified by the host | Shared board, team chat/DMs (Mattermost), and Git (Gitea) | Host-verified `main` branch and per-peer Git archives |
+| **[Substrate](substrate.md)** | **Shared citation store**: no queues or DMs — equal peers explore in parallel, publish immutable findings to SQLite, and build on each other via explicit citations | Append-only SQLite store (`publish` / `search` / `visit`) | Findings, citation graph, and files (plus optional Lean proof checks) |
+| **[Lead-Worker](lead-worker.md)** | **Directed feedback loop**: one Lead sets direction while workers claim subtasks and ship Git commits; the board enforces reading feedback before new directions and reading directions before delivery | Transactional SQLite board + Git (Gitea) | Byte-verified Git deliveries and feedback records |
 
-## What changes when two Agents want the same work?
+## What happens when two Agents want the same work?
 
-This question exposes the policy implemented by each Harness:
+- **TaskPool**: **Strictly exclusive**. Only the winning Agent unlocks file writes and continues using the model; others stay read-only and pick another task.
+- **PeerMesh**: **Advisory board, negotiated in chat**. Multiple peers can register overlapping areas without locking and coordinate via channels or DMs.
+- **Lead-Worker**: **First-come permanent claim**. A SQLite transaction locks one permanent owner per subtask with no timeout or reassignment.
+- **Substrate**: **No claims at all**. Peers explore freely and cite earlier findings to build cumulative progress.
+- **Subagents**: **Split by the parent**. The parent divides responsibilities and guides or interrupts children directly.
 
-- **TaskPool** admits one owner through a lease and `fencing_version`. The winning Execution receives write access and a work-phase model permit. Unbound Agents retain only their bounded discovery permissions.
-- **PeerMesh** allows overlapping `CLAIM` notes. Peers resolve overlap through the Board, channel messages and DMs.
-- **Lead-Worker** records one permanent owner with transactional revision checks. The example does not expire or reassign that claim.
-- **Substrate** has no claim operation. Peers may explore the same question and exchange evidence through publications and citations.
-- **Subagents** lets a parent divide responsibilities and redirect members through messages or interrupts. Delegation itself does not lock files or prevent overlapping work.
-
-These policies belong to the Harness and its Services. Core provides the same Agent lifecycle and enforces the configured permissions in each case.
-
-## Find the runnable entry point
-
-| Start here when you want to… | Entry point |
-| --- | --- |
-| Learn the SDK with two Agents and a small Service | [Messages handoff](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/README.md) |
-| Delegate a task and keep talking to Root | [Subagents example](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md), one-shot or interactive |
-| Run a leased task pool over existing domain stores | [TaskPool host composition](taskpool.md#running-taskpool) |
-| Run a peer engineering project with chat and Git | [PeerMesh example](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/README.md), foreground JSON-line commands |
-| Explore a question or run a FATE configuration | [Substrate example](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) |
-| Run the fixed direction-and-feedback workflow | [Lead-Worker example](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/README.md) |
-
-The supplied configurations have different team sizes, deadlines, dependencies and completion checks. Read the selected example's prerequisites before launching. To define another policy, follow [Build your own Harness](../build-your-harness.md).
+> **Combining ideas for your own Swarm?** See **[Build a Swarm Harness](../build-your-harness.md)** to combine a shared blackboard, custom roles, or an external HTTP backend.

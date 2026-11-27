@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>murm · Trace Viewer</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script src="./demo-shim.js"></script>
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="header-left">
+        <button
+          id="toggle-sidebar"
+          type="button"
+          class="icon-button"
+          aria-label="Toggle Runs sidebar"
+          title="Toggle Runs sidebar"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+            <line x1="9" y1="4" x2="9" y2="20"></line>
+          </svg>
+        </button>
+        <a class="brand" href="./index.html" aria-label="murm Trace Viewer">
+          <svg class="brand-flock" width="24" height="20" viewBox="0 0 36 30" fill="none" aria-hidden="true">
+            <g fill="currentColor">
+              <path d="M2 18c2-1.5 3.7-1.1 5.1.3-1.7-.1-3.1.5-4.5 1.6-.4.3-.8-.1-.6-.5z" opacity="0.7"></path>
+              <path d="M9 13c2.3-1.7 4.3-1.3 6 .4-2.1-.1-3.7.6-5.4 1.9-.5.3-1-.1-.6-.6z"></path>
+              <path d="M15 20c2.2-1.6 4.1-1.2 5.6.4-1.9-.1-3.5.6-5 1.8-.4.3-.9-.1-.6-.6z" opacity="0.85"></path>
+              <path d="M18 9c2.5-1.8 4.6-1.4 6.4.4-2.2-.1-4 .7-5.7 2-.5.3-1-.1-.7-.6z"></path>
+              <path d="M25 14c2.1-1.5 3.9-1.1 5.4.4-1.9-.1-3.4.6-4.9 1.7-.4.3-.9-.1-.5-.6z" opacity="0.9"></path>
+              <path d="M28 7c1.8-1.3 3.3-1 4.6.3-1.6-.1-2.9.5-4.1 1.4-.4.3-.8-.1-.5-.5z" opacity="0.65"></path>
+            </g>
+          </svg>
+          <span class="brand-word">murm</span>
+        </a>
+        <span class="brand-sep" aria-hidden="true">/</span>
+        <span class="pixel-badge">TRACE VIEWER</span>
+      </div>
+      <div class="header-actions">
+        <span class="read-only">READ-ONLY</span>
+        <button
+          id="theme"
+          type="button"
+          class="icon-button"
+          aria-label="Switch color theme"
+          title="Toggle light / dark theme"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l1.41 1.41"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside id="run-sidebar" class="run-sidebar" aria-label="Runs">
+        <div class="sidebar-heading">
+          <h2 id="run-count">RUNS</h2>
+          <button
+            id="refresh"
+            type="button"
+            class="icon-button icon-button-sm"
+            aria-label="Refresh Run list"
+            title="Refresh Run list"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"></path>
+              <path d="M21 3v5h-5"></path>
+            </svg>
+          </button>
+        </div>
+        <label class="search-box">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.3-4.3"></path>
+          </svg>
+          <input
+            id="run-search"
+            type="search"
+            placeholder="Find a Run…"
+            aria-label="Find a Run"
+          />
+        </label>
+        <nav id="runs" aria-label="Choose a Run">
+          <p class="muted empty-state">Loading Runs…</p>
+        </nav>
+        <div class="sidebar-footer">
+          <span class="status-dot good"></span>
+          <span>Local evidence</span>
+          <span class="muted">HTTP / SSE</span>
+        </div>
+      </aside>
+
+      <main id="main" class="main-content">
+        <div id="welcome" class="welcome">
+          <span class="eyebrow">RUN EXPLORER</span>
+          <h1>Follow the work.<br />Inspect the evidence.</h1>
+          <p>
+            Open a Run to inspect Agent swimlanes, model requests, tool calls
+            and the exact evidence passed between them.
+          </p>
+          <p id="empty-help" class="muted">Choose a Run from the sidebar.</p>
+        </div>
+
+        <section id="run-view" class="run-container" hidden>
+          <div class="run-heading">
+            <div class="run-heading-meta">
+              <div class="run-title-row">
+                <h1 id="run-title"></h1>
+                <span id="run-harness" class="harness-pill">Trace</span>
+              </div>
+              <div id="run-subtitle" class="run-subtitle"></div>
+            </div>
+            <div class="run-actions">
+              <span id="live-state" class="live-state" role="status"></span>
+              <button id="follow" type="button" class="seg-button active" aria-pressed="true">
+                Follow live
+              </button>
+            </div>
+          </div>
+
+          <div id="status-strip" class="status-strip"></div>
+          <div id="gaps" class="gaps"></div>
+
+          <div class="view-toolbar">
+            <div class="tabs" role="tablist" aria-label="Run views">
+              <button type="button" role="tab" aria-selected="true" data-view="timeline">
+                Timeline
+              </button>
+              <button type="button" role="tab" aria-selected="false" data-view="events">
+                Events <span id="event-total-count">0</span>
+              </button>
+              <button type="button" role="tab" aria-selected="false" data-view="collaboration">
+                Collaboration <span id="relation-count">0</span>
+              </button>
+              <button type="button" role="tab" aria-selected="false" data-view="artifacts">
+                Files &amp; results
+              </button>
+            </div>
+            <div id="cursor-readout" class="cursor-readout">
+              Wheel to zoom · Drag or swipe to pan · W/S/A/D/0
+            </div>
+          </div>
+
+          <!-- TIMELINE PANEL: Minimap Navigator + Zero-Overlap Sub-Track Swimlane + Window-Synced Trajectory -->
+          <section id="timeline-panel" class="view-panel blueprint-frame" aria-label="Agent timeline">
+            <div class="timeline-toolbar">
+              <div class="toolbar-group">
+                <div class="segmented" role="group" aria-label="Timeline scale">
+                  <button type="button" class="seg-button active" data-scale="duration">Duration</button>
+                  <button type="button" class="seg-button" data-scale="sequence">Sequence</button>
+                </div>
+                <div id="agent-pills" class="segmented" role="group" aria-label="Filter by Agent"></div>
+                <div id="zoom-group" class="segmented" role="group" aria-label="Time zoom">
+                  <button id="zoom-out" type="button" class="seg-button" title="Zoom out (S)">−</button>
+                  <span id="zoom-readout" class="zoom-readout">1.0×</span>
+                  <button id="zoom-in" type="button" class="seg-button" title="Zoom in (W)">+</button>
+                  <button id="zoom-fit" type="button" class="seg-button" title="Reset to full Run (0)">Fit</button>
+                </div>
+                <label id="spawn-wrap" class="spawn-toggle" hidden>
+                  <input id="spawn-toggle" type="checkbox" checked />
+                  <span>Spawn link</span>
+                </label>
+              </div>
+
+              <label class="search-box search-box-compact">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <path d="m21 21-4.3-4.3"></path>
+                </svg>
+                <input
+                  id="timeline-search"
+                  type="search"
+                  placeholder="Filter tool, service, model…"
+                  aria-label="Filter timeline items"
+                />
+              </label>
+            </div>
+
+            <div id="minimap-section" class="minimap-section">
+              <div class="minimap-bar">
+                <span class="minimap-hint">TIMELINE NAVIGATOR · SCROLL TO ZOOM · DRAG WINDOW OR SWIMLANE TO PAN</span>
+                <div class="minimap-status">
+                  <span id="window-label"></span>
+                  <span id="overlap-badge" class="overlap-badge">0 OVERLAPS</span>
+                </div>
+              </div>
+              <div id="minimap-wrap" class="minimap-wrap"></div>
+            </div>
+
+            <div id="swimlane-scroll" class="swimlane-scroll">
+              <div id="timeline" class="timeline-svg-host"></div>
+            </div>
+
+            <div class="trajectory-bar">
+              <div id="track-filter-pills" class="track-filter-pills"></div>
+              <span id="traj-summary" class="muted traj-summary"></span>
+            </div>
+            <div id="timeline-events" class="event-list"></div>
+            <div id="traj-more-wrap" class="traj-more-wrap" hidden>
+              <button id="traj-more" type="button" class="button">Load more records</button>
+            </div>
+            <p id="timeline-note" class="timeline-note"></p>
+          </section>
+
+          <!-- EVENTS PANEL: Server-paginated Raw Ledger -->
+          <section id="events-panel" class="view-panel blueprint-frame" aria-label="Event ledger" hidden>
+            <div class="filters">
+              <label class="filter-label">
+                Agent
+                <select id="agent-filter">
+                  <option value="">All Agents</option>
+                </select>
+              </label>
+              <label class="filter-label">
+                Event
+                <select id="type-filter">
+                  <option value="">All events</option>
+                  <option value="model">Model</option>
+                  <option value="service">Service</option>
+                  <option value="tool">Tool</option>
+                  <option value="lifecycle">Lifecycle</option>
+                  <option value="input">Input</option>
+                </select>
+              </label>
+              <label class="search-box search-box-compact">
+                <input
+                  id="event-search"
+                  type="search"
+                  placeholder="Search this page…"
+                  aria-label="Search this event page"
+                />
+              </label>
+              <span id="page-info" class="page-info"></span>
+            </div>
+            <div id="events" class="event-list"></div>
+            <footer class="pagination">
+              <button id="previous" type="button" class="button">← Previous page</button>
+              <span id="pagination-info" class="muted"></span>
+              <button id="next" type="button" class="button">Next page →</button>
+            </footer>
+          </section>
+
+          <!-- COLLABORATION PANEL -->
+          <section id="collaboration-panel" class="view-panel" aria-label="Collaboration evidence" hidden>
+            <div id="relations" class="relations-grid"></div>
+          </section>
+
+          <!-- FILES & RESULTS PANEL -->
+          <section id="artifacts-panel" class="view-panel" aria-label="Files and results" hidden>
+            <div id="outcome" class="blueprint-frame outcome-frame"></div>
+            <div class="blueprint-frame files-frame">
+              <div class="panel-heading">
+                <h2>Recorded files</h2>
+                <span class="muted">Loaded on demand · read-only</span>
+              </div>
+              <div id="files"></div>
+            </div>
+          </section>
+        </section>
+
+        <div id="error" class="error-banner" role="alert" hidden></div>
+      </main>
+    </div>
+
+    <div id="tooltip" class="hover-tip" aria-hidden="true"></div>
+
+    <aside id="inspector" class="inspector" aria-label="Evidence inspector" hidden>
+      <div class="inspector-header">
+        <div class="inspector-header-left">
+          <span class="eyebrow">EVIDENCE INSPECTOR</span>
+        </div>
+        <div class="inspector-header-actions">
+          <div class="segmented" role="group" aria-label="Inspector view mode">
+            <button id="ins-mode-struct" type="button" class="seg-button active">Structured</button>
+            <button id="ins-mode-raw" type="button" class="seg-button">Raw JSON</button>
+          </div>
+          <button id="close-inspector" type="button" class="icon-button icon-button-sm" aria-label="Close inspector" title="Close (Esc)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div id="inspector-content" class="inspector-body"></div>
+    </aside>
+  </body>
+</html>

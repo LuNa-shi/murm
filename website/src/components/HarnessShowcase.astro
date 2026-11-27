@@ -44,13 +44,13 @@ const HARNESS_META = isZh
         index: '01',
         name: 'Subagents',
         kicker: '层级树 · 邮箱',
-        headline: '递归命名委派、非唤醒中途转向（steer）与共享工作区交接',
+        headline: '示例：协作构建 CLI 文件查找器 — /root 递归委派子任务、中途非唤醒转向（steer）并集成验收',
         services: 'collaboration（6 个操作）',
         primitives: 'spawn(forkFrom) · send(wakeIfIdle: false) · interrupt',
         docHref: docHref('zh', 'harnesses/subagents'),
         phases: ['01 创建', '02 并行', '03 转向', '04 交接', '05 收尾'],
         notes: {
-          all: '总览：/root 按需派生隔离的子 Agent，仅向忙碌成员注入中途 steer 消息，并在“先归档再销毁”收尾前集成验证结果。',
+          all: '场景背景（构建命令行文件查找器）：/root 拆出正则匹配与筛选测试两个子任务给独立沙箱，中途将符号链接新需求非唤醒 steer 给忙碌子 Agent，最后统一跑测试并归档收尾。色条颜色代表所属 Agent 泳道。',
           '1': '01 · 创建：/root 调用 collaboration.spawn_agent，Runtime 启动独立沙箱并按需挂载共享工作区或分叉父级会话上下文。',
           '2': '02 · 并行：三个 Agent 在各自持久化执行器会话与隔离配额下并行工作，模型 API 密钥始终留在宿主机。',
           '3': '03 · 转向：中途新需求通过 send({ mode: "steer", wakeIfIdle: false }) 投递——忙碌子 Agent 在执行器支持的边界接收输入，明确空闲时由 Harness 保留到邮箱。',
@@ -79,15 +79,15 @@ const HARNESS_META = isZh
       peermesh: {
         index: '03',
         name: 'PeerMesh',
-        kicker: '对等体 · 聊天 · GIT PR',
-        headline: '对等工程师通过软认领与聊天协商分工、个人分支开发并经宿主验证合并 PR',
+        kicker: '对等小组 · 聊天 · GIT PR',
+        headline: '扁平研发小组在任务板登记分工、群聊协商、个人分支开发并经宿主核验合并 PR',
         services: 'peermesh-context · message · gitea + 原生 git',
         primitives: 'per-peer bindings · network.allow · secretEnv · collect(includeGit)',
         docHref: docHref('zh', 'harnesses/peermesh'),
-        phases: ['01 软认领', '02 协商', '03 分支开发', '04 提 PR', '05 验收集成'],
+        phases: ['01 登记分工', '02 协商', '03 分支开发', '04 提 PR', '05 验收集成'],
         notes: {
-          all: '总览：无中心调度器与独占锁——成员在共享 Board 发布可重叠软认领、通过频道和私信协商分工，并在个人分支提交 PR 经宿主验证合入。',
-          '1': '01 · 软认领：peer-a 与 peer-b 在共享 Board 发布可重叠的 CLAIM 条目，表明关注区域而不互相阻塞。',
+          all: '总览：无中心管理员也不强行加锁——成员在共享任务板自由登记正在处理的模块，通过群聊和私信协商分工，最后各自在个人分支提 PR 经宿主核验合入。',
+          '1': '01 · 登记分工：peer-a 与 peer-b 在共享任务板发布 CLAIM 条目表明关注区域，不互相阻塞。',
           '2': '02 · 协商：消息进入每个成员的串行 Router，并附带最新 Board 视图；project 模式可将新私信和 Board 通知 steer 到活跃会话。',
           '3': '03 · 分支开发：每个成员在各自个人分支使用原生 git 开发，隔离的 Gitea 凭证严格通过 secretEnv 注入。',
           '4': '04 · 提 PR：成员通过受控的 gitea Service 从个人分支向受保护 main 发起 Pull Request。',
@@ -115,18 +115,18 @@ const HARNESS_META = isZh
       'lead-worker': {
         index: '05',
         name: 'Lead-Worker',
-        kicker: '方向定调 · 反馈闭环',
-        headline: '分阶段主导定调、SQLite 事务排他认领、Git SHA-256 校验与因果阅读门控',
+        kicker: '主管定调 · 反馈闭环',
+        headline: '主管定方向、成员认领子任务并交 Git 代码；系统强制先读反馈再调向、先读方向再交稿',
         services: 'board（SQLite）· gitea + 原生 git',
         primitives: 'fixed-team spawn · onEvent · send',
         docHref: docHref('zh', 'harnesses/lead-worker'),
         phases: ['01 定调', '02 认领', '03 交付', '04 调向', '05 二轮'],
         notes: {
-          all: '总览：一名 Lead 负责方向定调，多名 Worker 事务化认领子任务、交付经字节校验的 Git 提交并回传一线反馈，驱动下一轮调向。',
-          '1': '01 · 定调：Lead 在事务化 SQLite Board 发布初始方向、分工安排与就绪子任务。',
-          '2': '02 · 认领：多名 Worker 并发调用带乐观锁 expected_revision 的 board.claim()，在 BEGIN IMMEDIATE 内锁定唯一永久负责人。',
-          '3': '03 · 交付：Worker 推送个人分支、提交一线反馈，并上报 { commit, path, sha256 } 由宿主实时向 Gitea 核验。',
-          '4': '04 · 调向：因果阅读门控——只有 reads 记录证明 Lead 已实际读过反馈后，Board 才允许发布新方向。',
+          all: '总览：一名主管负责定方向，多名执行成员认领子任务、提交经核验的 Git 代码并回传一线反馈，驱动下一轮调向。',
+          '1': '01 · 定调：主管在 SQLite 任务板发布初始方向、分工安排与就绪子任务。',
+          '2': '02 · 认领：多名成员并发调用 board.claim()，数据库事务锁定唯一永久负责人。',
+          '3': '03 · 交付：成员推送个人分支、写下一线反馈，并提交 { commit, path, sha256 } 由宿主实时向 Gitea 核验。',
+          '4': '04 · 调向：先读后写校验——只有数据库记录证明主管已实际读完反馈，任务板才允许发布新方向。',
           '5': '05 · 二轮：同一批 Worker 在保留的会话与 Git 工作区中继续执行，读取新 direction_id 并交付第二轮成果。',
         },
       },
@@ -136,13 +136,13 @@ const HARNESS_META = isZh
         index: '01',
         name: 'Subagents',
         kicker: 'TREE · MAILBOX',
-        headline: 'Recursive named delegation, non-waking steer, and shared-workspace handoff',
+        headline: 'Example: building a CLI file finder — /root delegates subtasks, steers mid-flight, and integrates tests',
         services: 'collaboration (6 ops)',
         primitives: 'spawn(forkFrom) · send(wakeIfIdle: false) · interrupt',
         docHref: docHref('en', 'harnesses/subagents'),
         phases: ['01 SPAWN', '02 PARALLEL', '03 STEER', '04 HANDOFF', '05 CLOSE'],
         notes: {
-          all: 'Overview: /root spawns isolated children on demand, injects mid-flight steers only into busy agents, and integrates verified test suites before archive-before-delete closeout.',
+          all: 'Scenario (building a CLI file finder): /root splits regex matching and filter testing across two child sandboxes, steers a mid-flight symlink spec into the busy child without waking idle agents, and runs the handed-off test suite before archive-before-delete closeout. Card top bars match each Agent’s lane color.',
           '1': '01 · SPAWN: /root invokes collaboration.spawn_agent. The Runtime boots two isolated sandboxes and optionally mounts a shared workspace or forks parent context.',
           '2': '02 · PARALLEL: All three agents execute concurrently in separate executor sessions with isolated disk and network limits — API keys never leave the host.',
           '3': '03 · STEER: Mid-flight requirements call send({ mode: "steer", wakeIfIdle: false }) so busy children receive input at supported execution boundaries; confirmed idle delivery is retained in the mailbox.',
@@ -173,7 +173,7 @@ const HARNESS_META = isZh
         name: 'PeerMesh',
         kicker: 'PEERS · CHAT · GIT PR',
         headline: 'Equal peers negotiating soft claims in chat, coding on personal branches, and landing verified PRs',
-        services: 'board · message · gitea + native git',
+        services: 'peermesh-context · message · gitea + native git',
         primitives: 'per-peer bindings · network.allow · secretEnv · collect(includeGit)',
         docHref: docHref('en', 'harnesses/peermesh'),
         phases: ['01 CLAIM', '02 NEGOTIATE', '03 BRANCH', '04 OPEN PR', '05 LAND'],
@@ -244,7 +244,7 @@ const HARNESS_META = isZh
           <path class="mini-flow" d="M 102 20 C 102 28, 96 31, 96 34" fill="none" stroke="var(--sch-blue)" stroke-width="1.6" />
           <path class="mini-flow" d="M 134 54 C 144 42, 144 30, 148 22" fill="none" stroke="var(--sch-amber)" stroke-width="1.6" />
           <rect x="16" y="10" width="32" height="11" rx="2.5" fill="var(--sch-indigo)" />
-          <rect x="88" y="10" width="28" height="11" rx="2.5" fill="var(--sch-blue)" />
+          <rect x="88" y="10" width="28" height="11" rx="2.5" fill="var(--sch-indigo)" />
           <rect x="138" y="10" width="28" height="11" rx="2.5" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1" />
           <rect x="58" y="32" width="54" height="11" rx="2.5" fill="var(--sch-teal)" />
           <rect x="58" y="52" width="76" height="11" rx="2.5" fill="var(--sch-amber)" />
@@ -461,19 +461,29 @@ const HARNESS_META = isZh
             <text x="896" y="236" text-anchor="middle" class="sch-hand-blue">66 tests →</text>
           </g>
 
-          <g class="sch-node" data-sch-phase="1"><rect x="212" y="77" width="142" height="44" rx="5" class="sch-shadow" /><rect x="209" y="74" width="142" height="44" rx="5" class="sch-card" /><rect x="209" y="74" width="142" height="5" rx="2" fill="var(--sch-indigo)" /><text x="220" y="94" class="sch-card-pixel">SPAWN_AGENT</text><text x="220" y="110" class="sch-card-title">Split &amp; delegate ×2</text></g>
-          <g class="sch-node" data-sch-phase="2"><rect x="385" y="77" width="148" height="44" rx="5" class="sch-shadow" /><rect x="382" y="74" width="148" height="44" rx="5" class="sch-card" /><rect x="382" y="74" width="148" height="5" rx="2" fill="var(--sch-amber)" /><text x="393" y="94" class="sch-card-pixel">WRITE · BASH</text><text x="393" y="110" class="sch-card-title">Implement core CLI</text></g>
-          <g class="sch-node" data-sch-phase="3"><rect x="562" y="77" width="150" height="44" rx="5" class="sch-shadow" /><rect x="559" y="74" width="150" height="44" rx="5" class="sch-card" /><rect x="559" y="74" width="150" height="5" rx="2" fill="var(--sch-blue)" /><text x="570" y="94" class="sch-card-pixel">USER → STEER</text><text x="570" y="110" class="sch-card-title">Forward symlink spec</text></g>
-          <g class="sch-node" data-sch-phase="4"><rect x="742" y="77" width="148" height="44" rx="5" class="sch-shadow" /><rect x="739" y="74" width="148" height="44" rx="5" class="sch-card" /><rect x="739" y="74" width="148" height="5" rx="2" fill="var(--sch-purple)" /><text x="750" y="94" class="sch-card-pixel">VERIFY · FIX</text><text x="750" y="110" class="sch-card-title">Run tests &amp; fix edges</text></g>
+          <g class="sch-node" data-sch-phase="1"><rect x="212" y="77" width="142" height="44" rx="5" class="sch-shadow" /><rect x="209" y="74" width="142" height="44" rx="5" class="sch-card" /><rect x="209" y="74" width="142" height="5" rx="2" fill="var(--sch-indigo)" /><text x="220" y="94" class="sch-card-pixel">SPAWN_AGENT</text><text x="220" y="110" class="sch-card-title">Split CLI finder ×2</text></g>
+          <g class="sch-node" data-sch-phase="2"><rect x="385" y="77" width="148" height="44" rx="5" class="sch-shadow" /><rect x="382" y="74" width="148" height="44" rx="5" class="sch-card" /><rect x="382" y="74" width="148" height="5" rx="2" fill="var(--sch-indigo)" /><text x="393" y="94" class="sch-card-pixel">IMPLEMENT</text><text x="393" y="110" class="sch-card-title">Build core CLI binary</text></g>
+          <g class="sch-node" data-sch-phase="3"><rect x="562" y="77" width="150" height="44" rx="5" class="sch-shadow" /><rect x="559" y="74" width="150" height="44" rx="5" class="sch-card" /><rect x="559" y="74" width="150" height="5" rx="2" fill="var(--sch-indigo)" /><text x="570" y="94" class="sch-card-pixel">USER → STEER</text><text x="570" y="110" class="sch-card-title">Forward symlink spec</text></g>
+          <g class="sch-node" data-sch-phase="4"><rect x="742" y="77" width="148" height="44" rx="5" class="sch-shadow" /><rect x="739" y="74" width="148" height="44" rx="5" class="sch-card" /><rect x="739" y="74" width="148" height="5" rx="2" fill="var(--sch-indigo)" /><text x="750" y="94" class="sch-card-pixel">INTEGRATE · FIX</text><text x="750" y="110" class="sch-card-title">Run tests &amp; fix edges</text></g>
           <g class="sch-node" data-sch-phase="5"><rect x="920" y="77" width="124" height="44" rx="5" class="sch-shadow" /><rect x="917" y="74" width="124" height="44" rx="5" class="sch-card sch-card-yellow" /><text x="928" y="94" class="sch-card-pixel">RUNTIME.CLOSE</text><text x="928" y="110" class="sch-card-title">Archive &amp; cleanup</text></g>
 
-          <g class="sch-node" data-sch-phase="2"><rect x="385" y="189" width="148" height="44" rx="5" class="sch-shadow" /><rect x="382" y="186" width="148" height="44" rx="5" class="sch-card" /><rect x="382" y="186" width="148" height="5" rx="2" fill="var(--sch-teal)" /><text x="393" y="206" class="sch-card-pixel">TOOL · PROBE</text><text x="393" y="222" class="sch-card-title">Probe regex / glob</text></g>
-          <g class="sch-node" data-sch-phase="3"><rect x="562" y="189" width="136" height="44" rx="5" class="sch-shadow" /><rect x="559" y="186" width="136" height="44" rx="5" class="sch-card" /><rect x="559" y="186" width="136" height="5" rx="2" fill="var(--sch-blue)" /><text x="570" y="206" class="sch-card-pixel">STEER INJECT</text><text x="570" y="222" class="sch-card-title">Add symlink suite</text></g>
+          <g class="sch-node" data-sch-phase="2"><rect x="385" y="189" width="148" height="44" rx="5" class="sch-shadow" /><rect x="382" y="186" width="148" height="44" rx="5" class="sch-card" /><rect x="382" y="186" width="148" height="5" rx="2" fill="var(--sch-teal)" /><text x="393" y="206" class="sch-card-pixel">EXPLORE</text><text x="393" y="222" class="sch-card-title">Probe regex / glob</text></g>
+          <g class="sch-node" data-sch-phase="3"><rect x="562" y="189" width="136" height="44" rx="5" class="sch-shadow" /><rect x="559" y="186" width="136" height="44" rx="5" class="sch-card" /><rect x="559" y="186" width="136" height="5" rx="2" fill="var(--sch-teal)" /><text x="570" y="206" class="sch-card-pixel">STEER INJECT</text><text x="570" y="222" class="sch-card-title">Add symlink suite</text></g>
           <g class="sch-node" data-sch-phase="4"><rect x="716" y="189" width="76" height="44" rx="5" class="sch-shadow" /><rect x="713" y="186" width="76" height="44" rx="5" class="sch-card" /><rect x="713" y="186" width="76" height="5" rx="2" fill="var(--sch-teal)" /><text x="751" y="207" text-anchor="middle" class="sch-card-pixel">EVENT</text><text x="751" y="222" text-anchor="middle" class="sch-card-title">settled</text></g>
 
-          <g class="sch-node" data-sch-phase="2"><rect x="385" y="292" width="148" height="44" rx="5" class="sch-shadow" /><rect x="382" y="289" width="148" height="44" rx="5" class="sch-card" /><rect x="382" y="289" width="148" height="5" rx="2" fill="var(--sch-amber)" /><text x="393" y="309" class="sch-card-pixel">MODEL · AUDIT</text><text x="393" y="325" class="sch-card-title">Audit CLI filter flags</text></g>
+          <g class="sch-node" data-sch-phase="2"><rect x="385" y="292" width="148" height="44" rx="5" class="sch-shadow" /><rect x="382" y="289" width="148" height="44" rx="5" class="sch-card" /><rect x="382" y="289" width="148" height="5" rx="2" fill="var(--sch-amber)" /><text x="393" y="309" class="sch-card-pixel">AUDIT</text><text x="393" y="325" class="sch-card-title">Audit CLI filter flags</text></g>
           <g class="sch-node" data-sch-phase="3"><rect x="562" y="292" width="150" height="44" rx="5" class="sch-shadow" /><rect x="559" y="289" width="150" height="44" rx="5" class="sch-card" /><rect x="559" y="289" width="150" height="5" rx="2" fill="var(--sch-amber)" /><text x="570" y="309" class="sch-card-pixel">WRITE SUITE</text><text x="570" y="325" class="sch-card-title">Write 66 filter tests</text></g>
-          <g class="sch-node" data-sch-phase="4"><rect x="742" y="292" width="112" height="44" rx="5" class="sch-shadow" /><rect x="739" y="289" width="112" height="44" rx="5" class="sch-card" /><rect x="739" y="289" width="112" height="5" rx="2" fill="var(--sch-indigo)" /><text x="795" y="309" text-anchor="middle" class="sch-card-pixel">SERVICE</text><text x="795" y="325" text-anchor="middle" class="sch-card-title">send_message</text></g>
+          <g class="sch-node" data-sch-phase="4"><rect x="742" y="292" width="112" height="44" rx="5" class="sch-shadow" /><rect x="739" y="289" width="112" height="44" rx="5" class="sch-card" /><rect x="739" y="289" width="112" height="5" rx="2" fill="var(--sch-amber)" /><text x="795" y="309" text-anchor="middle" class="sch-card-pixel">SERVICE</text><text x="795" y="325" text-anchor="middle" class="sch-card-title">send_message</text></g>
+
+          <!-- Micro-legend clarifying lane colors & host closeout -->
+          <rect x="210" y="366" width="8" height="8" rx="1.5" fill="var(--sch-indigo)" />
+          <text x="223" y="373.5" class="sch-agent-role">/root</text>
+          <rect x="266" y="366" width="8" height="8" rx="1.5" fill="var(--sch-teal)" />
+          <text x="279" y="373.5" class="sch-agent-role">/root/patterns</text>
+          <rect x="372" y="366" width="8" height="8" rx="1.5" fill="var(--sch-amber)" />
+          <text x="385" y="373.5" class="sch-agent-role">/root/filters</text>
+          <rect x="466" y="366" width="14" height="8" rx="2" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1" />
+          <text x="485" y="373.5" class="sch-agent-role">{isZh ? '顶条色 = 所属 Agent · 黄底 = 宿主收尾 · 箭头 = 跨泳道派生/消息' : 'bar color = Agent lane · yellow = host closeout · arrows = spawn / steer / handoff'}</text>
         </svg>
       </div>
 

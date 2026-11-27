@@ -1,22 +1,22 @@
 ---
 title: Substrate
 description: 对等成员通过不可变成果库交流；提供简单通用运行器与独立的 FATE 定理证明配置。
-section: 协作机制
-order: 10
+section: 内置 Harness
+order: 13
 ---
 
-## 在普通项目中运行
+**Substrate**（`src/harnesses/substrate/`）展示了一个多智能体 Harness 可以精简到什么程度：没有任务表、没有管理员、也没有私信。3–8 位对等成员围绕同一份 **SQLite 不可变共享库（substrate）** 并行探索——检索并阅读彼此先前的发现，再发布自包含的后续成果并显式声明引用。同时仓库还内置了面向 Lean 4 的 **FATE** 形式化定理证明运行器。
 
-```sh
+## 快速运行（CLI）
+
+按 [examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) 配置 `MURM_SUBSTRATE_*` 环境变量后，在项目目录直接启动：
+
+```bash
 cd my-project
 murm --harness substrate --prompt "根据解析测试修复当前项目"
 ```
 
-每个 peer 都取得捕获的文件，并在每个周期将 prompt 作为问题。FATE 通过显式的准备、运行、矩阵和评分命令执行。 调用 TS SDK 的旧示例和基准测试专用参数见下文。
-
-**Substrate**（`src/harnesses/substrate/`）展示了一个多智能体 Harness 可以精简到什么程度：没有任务表、没有管理员、也没有私信。3–8 位对等成员围绕同一份 **SQLite 不可变共享库（substrate）** 并行探索——检索并阅读彼此先前的发现，再发布自包含的后续成果并显式声明引用。
-
-示例宿主通过 [SDK](../sdk.md) 创建 Runtime，并使用通用 OpenSandbox 后端。`runSubstrate` 运行器和 SQLite Service 都是可修改的仓库模块，没有作为包入口导出。下面的通用示例与 FATE 运行器采用相同的成果共享思路，但 Service schema 和检索策略不同。
+每位对等成员都会获得项目文件副本，并以你的提示词为问题在多轮并行探索中围绕共享成果库演进。FATE 定理证明基准通过显式参数（`--fate-prepare`、`--fate-run`）启动，详见下文。
 
 ## 1. 通用成果库 Service（`substrate`）
 
@@ -44,7 +44,7 @@ swarm substrate publish \
 
 ## 2. 宿主控制循环
 
-宿主使用 `createRuntime`、`spawn`、输入投递、事件和 `stop`/`close`。`runInput` 是仓库中的辅助函数，用于向空闲 Agent 投递一个由宿主独占管理的输入；它先订阅事件，再发送输入并检查结算结果。它不是 Runtime 方法，也没有从公共包入口导出。在 [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/index.ts) 中，`Promise.all` 并行驱动每位成员执行 `maxRounds` 轮（2–32 轮），并支持可选 `maxConcurrentInputs` 限流与 `onCycle` 宿主纠偏钩子。下面的节选省略了截止时间与错误记录逻辑：
+宿主使用 `createRuntime`、`spawn`、输入投递、事件和 `stop`/`close`。`runInput` 是仓库中的辅助函数，用于向空闲 Agent 投递一个由宿主独占管理的输入；它先订阅事件，再发送输入并检查执行收束结果。它不是 Runtime 方法，也没有从公共包入口导出。在 [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/index.ts) 中，`Promise.all` 并行驱动每位成员执行 `maxRounds` 轮（2–32 轮），并支持可选 `maxConcurrentInputs` 限流与 `onCycle` 宿主纠偏钩子。下面的节选省略了截止时间与错误记录逻辑：
 
 ```ts
 // 1. 启动 poolSize (3..8) 个对等成员并绑定到 substrate Service
@@ -113,7 +113,7 @@ node dist/examples/substrate/main.js --result "./substrate-runs/$runtime_id" --r
 
 FATE 使用 [paper-substrate.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/paper-substrate.ts) 实现成果库。发布结构为 `{ sub_task, artifact, rationale, refs }`，阅读接受 `addresses` 数组，搜索使用归一化 BM25 与引用权重排序。这些契约与前文通用库的 `content` / `references` 不同；在实际运行中通过 `swarm service view substrate` 查看对应 schema。
 
-启用 `fate.verifiedCompletion: true` 后，提前完成要求提交的精确证明已经得到 `passed` 检查结果。尚未完成的自然回复可以在同一 Session 中触发后续输入，但仍受工作截止时间和剩余 Service/检查次数约束。最终正确性由宿主检查冻结候选确定，发布或引用本身不构成正确性证据。
+启用 `fate.verifiedCompletion: true` 后，提前完成要求提交的精确证明已经得到 `passed` 检查结果。未提交最终证明的普通文本回复可在同一会话中触发后续追问输入，但仍受工作截止时间和剩余 Service/检查次数约束。最终正确性由宿主检查冻结候选确定，发布或引用本身不构成正确性证据。
 
 先按示例 README 准备固定版本的评测项目与工具链，再运行：
 

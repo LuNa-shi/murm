@@ -1,15 +1,33 @@
 ---
 title: Quickstart
-description: Connect a Linux client to OpenSandbox or prepare a local service, then run a Harness using the CLI or SDK.
+description: Install @luna-shi/murm on Linux, start or connect to OpenSandbox, and run your first multi-agent Harness in minutes.
 section: GET STARTED
 order: 1
 ---
 
-The `@luna-shi/murm` package contains the CLI, TypeScript SDK and Trace Viewer. Start with a Linux account and Node.js 22.19 or newer. Use the connection path if you already have a compatible OpenSandbox service, or let setup start a local one.
+`@luna-shi/murm` bundles the CLI, TypeScript SDK, and built-in Trace Viewer in one package. Every Agent runs inside an isolated container powered by the open-source **OpenSandbox** runtime.
 
-## 1. Install murm
+**Prerequisites**: a Linux machine with **Node.js 22.19+** and **Docker** for the default one-command local setup (if your team already runs a shared OpenSandbox service, the Controller only needs Node.js).
 
-Install the package for the implementation you are testing. When testing a change before release, install its candidate tarball.
+## 1. Install `murm`
+
+Install the published CLI globally from the latest [GitHub Release](https://github.com/LuNa-shi/murm/releases):
+
+```bash
+curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
+```
+
+Or install directly with npm:
+
+```bash
+npm install -g --ignore-scripts --allow-remote=root \
+  https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz
+```
+
+<details>
+<summary>Testing unreleased changes from a source checkout? Expand to build and install a local tarball</summary>
+
+### Install a candidate from a checkout
 
 ```bash
 npm ci --no-audit --no-fund
@@ -19,288 +37,104 @@ npm install -g --prefix "$HOME/.local" --ignore-scripts "$pack_dir"/*.tgz
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Published packages are available on [GitHub Releases](https://github.com/LuNa-shi/murm/releases). Use the documentation for the version you install.
+</details>
 
-## 2. Prepare or connect to OpenSandbox
+## 2. Initialize OpenSandbox
 
-### Connect to an existing service
-
-Configure the Lifecycle API and its key. The Controller must reach the advertised data-plane endpoints, and the Worker must reach your Controller's Bridge and Model Gateway. The Controller needs only Node.js and the murm package.
-
-```bash
-export MURM_LIFECYCLE_URL='https://sandbox.example.net/v1'
-export MURM_ADVERTISE_HOST='controller.internal.example.net'
-# Set MURM_LIFECYCLE_TOKEN from the service operator in your trusted environment.
-murm setup --mode existing
-```
-
-For non-default routes, put `sandbox.endpointHost` or `sandbox.useServerProxy: true` in an ESM configuration and run `murm setup --mode existing --config ./murm.config.mjs`. The options select either a host override for returned URLs or the provider's server-proxy route. The server-proxy route requires a Worker that supports the proxy token header. Use `connection.bridge.publicUrl` and `connection.modelGateway.publicUrl` for explicit callback origins, including HTTPS. Include `{port}` in each URL template. Any TLS certificates must be trusted by the process that connects to them.
-
-### Deploy locally
+By default, set up a managed local OpenSandbox service and Worker image on your machine with one command:
 
 ```bash
 murm setup --mode local
 ```
 
-Setup checks your selected local Docker context, then starts OpenSandbox and verifies its authenticated Lifecycle API before preparing the chosen Worker. It prints distribution-specific installation commands and how to rerun setup if Docker is missing. Installing Docker can require a one-time system administrator action. Access to a rootful Docker socket grants substantial host access. Day-to-day murm runs use OpenSandbox API credentials and have no murm-specific sudoers requirements.
+This checks your Docker environment, starts a managed OpenSandbox server on `127.0.0.1:8080`, generates an owner-only Lifecycle key when needed, and prepares the Worker image. If Docker is missing, setup prints distribution-specific install instructions.
 
-The managed service defaults to loopback port 8080. Setup generates an owner-only Lifecycle key when needed, prefers the distributed Worker image, and can build the bundled Worker image locally if needed. A repeat uses the existing managed service and leaves user configuration and unrelated deployments in place. With no `--mode`, an explicit Lifecycle endpoint selects existing mode. The default endpoint selects local mode.
+### Verify readiness
 
-`murm doctor` reports configuration and authenticated Lifecycle readiness without allocating a Sandbox. `murm doctor --smoke` exercises the selected real Pi or Codex Worker, authenticated Bridge and model gateway, file I/O, export and deletion. It uses a controlled endpoint for the selected built-in model protocol. Model validation status is reported separately.
+```bash
+# Fast config & Lifecycle auth check
+murm doctor
 
-### Keep a stricter local policy
+# Live end-to-end smoke test (boots a real Worker and checks Bridge, gateway, files, and cleanup)
+murm doctor --smoke
+```
 
-Carry forward `isolation: { network: 'local-docker', disk: { bytes, inodes } }` if your deployment requires measured workspace quotas, live shared mounts or the local UID network allowlist. The old byte-and-inode form also selects this policy. It relies on the explicitly administered same-host Docker, namespace and Landlock ABI 5+ facilities. The default API policy requires the provider to isolate the Agent and authenticate management operations. It uses verified CPU and memory limits and delegates egress policy to the deployment. Requests for unsupported workspace disk limits, network allowlists or live shared mounts fail with a capability error.
+<details>
+<summary>Connect to an existing remote OpenSandbox service (optional)</summary>
 
-## 3. Configure your model endpoint
+If your team already runs a shared OpenSandbox service, point the Controller at it (ensure the Controller can reach the Lifecycle/Worker endpoints and Workers can reach your Controller's Bridge and Model Gateway):
 
-Set a streaming **OpenAI Responses-compatible endpoint (`/v1/responses`)** and token for your model. Upstream credentials stay in the host Model Gateway.
+```bash
+export MURM_LIFECYCLE_URL='https://sandbox.example.net/v1'
+export MURM_ADVERTISE_HOST='controller.internal.example.net'
+# Set MURM_LIFECYCLE_TOKEN from your service operator in your trusted environment
+murm setup --mode existing
+```
+
+> Need proxy routing (`sandbox.endpointHost` / `sandbox.useServerProxy`) or HTTPS callback templates? See [Sandboxes](sandbox.md) and [Host Gateway](gateway.md).
+
+</details>
+
+<details>
+<summary>Enable strict local isolation (optional: tmpfs quotas, live shared mounts, UID firewall allowlists)</summary>
+
+The default OpenSandbox API policy provides container isolation, authenticated management, and verified CPU/memory limits.
+
+When your deployment requires **measured `tmpfs` disk quotas, live shared mounts, or local UID egress allowlists**, opt in to `local-docker` via `createSandbox()` (requires same-host rootful Docker, Linux namespaces, and Landlock ABI 5+; see [Sandboxes](sandbox.md)):
+
+```ts
+isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } }
+```
+
+</details>
+
+## 3. Configure your model and run your first Harness
+
+Point `murm` at any streaming **OpenAI Responses-compatible endpoint (`/v1/responses`)** (credentials stay on the host Model Gateway; Pi also supports **Chat Completions** via project configuration):
 
 ```bash
 export MURM_MODEL_URL='https://api.openai.com/v1/responses'
 export MURM_MODEL_TOKEN='sk-...'
 
-# Optional: defaults to Pi with provider "openai" and model "gpt-5.4".
-# Select a provider and model supported by your endpoint:
+# Optional: defaults to Pi (provider: openai, model: gpt-5.4). Override anytime:
 # export MURM_MODEL_PROVIDER='openai'
 # export MURM_MODEL_ID='gpt-4.1'
 # export MURM_EXECUTOR='codex'
 ```
 
-- Subagents, TaskPool, Notes, and Messages default to the selected executor’s matching Worker tag from `workerImageFor(executor)` and accept `MURM_WORKER_IMAGE` for a custom image. SDK callers supply an image in each Profile, as shown below. Rebuild custom images from the matching package version so the Pi catalog and Worker startup contract match.
-- **Connection defaults**: OpenSandbox defaults to `http://127.0.0.1:8080/v1` and the sandbox-visible host address defaults to `172.17.0.1`. Override with `MURM_LIFECYCLE_URL`, `MURM_LIFECYCLE_TOKEN`, and `MURM_ADVERTISE_HOST` if needed.
-
-## 4. Option A: Run a built-in Harness with the CLI
-
-From any project directory, run `subagents`, or use the same model setup with `messages`, `notes` or `taskpool`:
+Run the built-in `Subagents` Harness against any project directory:
 
 ```bash
-cd your-project
-murm --harness subagents --prompt "Audit this project's test coverage and suggest two high-value edge-case tests"
+cd my-project
+murm --harness subagents --prompt "Inspect the tests and explain or fix any failures"
 ```
 
-PeerMesh, Substrate, and Lead–Worker have their own image, model, and Service configuration. Follow their entries in [Choose a Harness](harnesses/index.md).
+> You can also run bare `murm` to start an interactive session in the current directory, or scaffold an editable starter project with `murm init --template subagents --dir ./my-harness`.
 
-When finished, stdout prints the structured JSON report (including result, artifacts, and cleanup receipt). Inspect execution traces directly in a browser with the built-in Trace Viewer (no extra package required):
+Inspect the run timeline, Service handoffs, and exported files in the built-in **Trace Viewer**:
 
 ```bash
-murm trace --root ./subagents-runs
+murm trace --root ./runs --port 8787 --open
 ```
 
-## 5. Option B: Use the SDK in your own TypeScript project
+When started inside an SSH session on a remote Linux host, `murm trace` prints the exact `ssh -N -L` forwarding command to paste on your laptop.
 
-To author your own coordination Harness, install `@luna-shi/murm` in a fresh directory:
+## 4. Using the TypeScript SDK in your own project
+
+Install `@luna-shi/murm` in any Node.js 22.19+ project (Node 22.19+ executes `.ts` files natively):
 
 ```bash
-mkdir my-harness
-cd my-harness
-npm init -y
-npm pkg set type=module
-npm install --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+mkdir my-swarm && cd my-swarm
+npm init -y && npm pkg set type=module
+npm install --ignore-scripts --allow-remote=root \
+  https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
 ```
 
-For an unpublished version, replace the URL in the install command with the absolute path to the tarball you packed above.
+> Testing from a source checkout? Install the local `.tgz` packed in Step 1 instead. For a minimal two-Agent handoff script, see [`examples/bridge-services/handoff.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/handoff.ts).
 
-Create `handoff.ts` — this self-contained example registers a `messages` Service, spawns two isolated Agents to hand off a value through it, and verifies cleanup:
+## Next steps
 
-```ts
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import {
-  DEFAULT_WORKER_IMAGE,
-  ServiceRegistry,
-  createInProcessAdapter,
-  createRuntime,
-  createSandbox,
-  type JsonValue,
-  type ServiceRegistration,
-} from '@luna-shi/murm';
-
-const store = new Map<string, string>();
-const messagesService: ServiceRegistration = {
-  manifest: {
-    contract_version: '2',
-    id: 'messages',
-    title: 'Messages',
-    purpose: 'Exchange short text values between Agents by key.',
-    provider_version: '1.0.0',
-    endpoint: { transport: 'in-process' },
-    capabilities: [
-      {
-        name: 'put',
-        operation: 'put',
-        description: 'Store a text value under a key.',
-        side_effect: 'write',
-        idempotent: true,
-        help: { when: 'Publish a value for another Agent' },
-        errors: [],
-        input_schema: {
-          type: 'object',
-          properties: { key: { type: 'string' }, text: { type: 'string' } },
-          required: ['key', 'text'],
-          additionalProperties: false,
-        },
-        output_schema: {
-          type: 'object',
-          properties: { stored: { type: 'boolean' } },
-          required: ['stored'],
-          additionalProperties: false,
-        },
-      },
-      {
-        name: 'get',
-        operation: 'get',
-        description: 'Read a stored text value by key.',
-        side_effect: 'read',
-        idempotent: true,
-        help: { when: 'Read a published value' },
-        errors: [],
-        input_schema: {
-          type: 'object',
-          properties: { key: { type: 'string' } },
-          required: ['key'],
-          additionalProperties: false,
-        },
-        output_schema: {
-          type: 'object',
-          properties: { text: { type: ['string', 'null'] } },
-          required: ['text'],
-          additionalProperties: false,
-        },
-      },
-    ],
-  },
-  adapter: createInProcessAdapter({
-    invoke({ capability, input, assertAuthorized }): JsonValue {
-      const { key, text } = input as { key: string; text: string };
-      if (capability.operation === 'get') return { text: store.get(key) ?? null };
-      assertAuthorized();
-      store.set(key, text);
-      return { stored: true };
-    },
-  }),
-};
-
-const services = new ServiceRegistry();
-services.registerService(messagesService);
-
-const image = process.env.MURM_WORKER_IMAGE ?? DEFAULT_WORKER_IMAGE;
-const token = process.env.MURM_MODEL_TOKEN;
-const url = process.env.MURM_MODEL_URL;
-if (!url) throw new Error('Set MURM_MODEL_URL before running the handoff');
-
-const runtime = await createRuntime({
-  sandbox: createSandbox({
-    lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-    apiKey: process.env.MURM_LIFECYCLE_TOKEN,
-  }),
-  connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
-  models: {
-    default: {
-      provider: process.env.MURM_MODEL_PROVIDER ?? 'openai',
-      model: process.env.MURM_MODEL_ID ?? 'gpt-5.4',
-      upstream: {
-        url,
-        headers: token ? { authorization: `Bearer ${token}` } : {},
-      },
-    },
-  },
-  services,
-  profiles: {
-    writer: { model: 'default', image, writable: false, services: { messages: ['put'] } },
-    reader: {
-      model: 'default', image, writable: true, services: { messages: ['get'] },
-      collect: { paths: ['received.txt'], includeGit: false, maxBytes: 4096, required: true },
-    },
-  },
-  maxAgents: 2,
-  outputDir: './handoff-runs',
-});
-
-async function runTurn(agentId: string, input: string, requestId: string) {
-  let unsubscribe = () => {};
-  const execution = Promise.withResolvers<void>();
-  const timer = setTimeout(() => execution.reject(new Error('Agent turn timed out')), 60_000);
-  try {
-    unsubscribe = runtime.onEvent(event => {
-      if (!('agentId' in event) || event.agentId !== agentId) return;
-      if (event.type === 'settled' && event.outcome === 'completed') execution.resolve();
-      else if (event.type === 'settled' || event.type === 'exit' || (event.type === 'error' && event.fatal)) {
-        execution.reject(new Error('Agent execution failed'));
-      }
-    });
-    const admission = runtime.send(agentId, input, { requestId, mode: 'followUp' }).then(receipt => {
-      if (receipt.status !== 'accepted' || receipt.disposition !== 'started') {
-        throw new Error('Agent input was not accepted for execution');
-      }
-    });
-    await Promise.all([admission, execution.promise]);
-  } finally {
-    unsubscribe();
-    clearTimeout(timer);
-  }
-}
-
-const expected = 'hello from murm';
-let readerId: string | undefined;
-let cleanup;
-try {
-  const writer = await runtime.spawn({
-    requestId: 'spawn-writer', profile: 'writer',
-    files: { 'message.json': { encoding: 'utf8', data: JSON.stringify({ key: 'greeting', text: expected }) } },
-  });
-  await runTurn(writer.id, 'Run swarm messages put --input message.json --request-id put-1, then finish.', 'send-writer');
-  if (store.get('greeting') !== expected) throw new Error('Writer did not publish the expected value');
-
-  const reader = await runtime.spawn({ requestId: 'spawn-reader', profile: 'reader' });
-  readerId = reader.id;
-  await runTurn(reader.id, 'Run swarm messages get --key greeting --request-id get-1 | jq -er .text > received.txt and then finish.', 'send-reader');
-} finally {
-  cleanup = await runtime.close({ timeoutMs: 30_000 });
-  console.log('Cleanup status:', cleanup.cleanup, 'Output:', cleanup.outputDir);
-}
-
-if (cleanup.cleanup !== 'complete') throw new Error('Runtime cleanup is pending');
-const output = cleanup.agents.find(agent => agent.agentId === readerId)
-  ?.artifacts.find(path => path.endsWith('/artifacts/files'));
-if (!output || await readFile(join(output, 'received.txt'), 'utf8') !== expected + '\n') {
-  throw new Error('Reader did not export the expected text');
-}
-console.log('Handoff verified');
-```
-
-Node.js 22.19+ runs TypeScript directly with zero build config:
-
-```bash
-node handoff.ts
-```
-
-To type-check the sample, run:
-
-```bash
-npm install -D typescript @types/node
-npx tsc --noEmit --strict --target es2024 --module nodenext --types node handoff.ts
-```
-
-## Developing from source
-
-If you are contributing to `murm` itself or running the full repository test suite:
-
-```bash
-git clone https://github.com/LuNa-shi/murm.git
-cd murm
-npm ci --ignore-scripts
-npm run build
-npm test
-```
-
-## Continue from here
-
-- Explore everything included in `v0.2.0` in [Latest (v0.2.0)](latest.md) and review release history in [Changelog](changelog.md).
-- Read [Use the SDK](sdk.md) for the full Runtime lifecycle, admission receipts, artifact verification, and external HTTP Services.
-- Read [Build Your Own Harness](build-your-harness.md) to design custom coordination policies and Service contracts.
-- Compare the five built-in mechanisms in [Choose a Harness](harnesses/index.md) (`Subagents`, `TaskPool`, `PeerMesh`, `Substrate`, and `Lead-Worker`).
-
-### Select an executor or use a larger project
-
-A Linux project can keep the same `murm --harness … --cwd … --prompt …` command while selecting an executor and model in its configuration. Use `workerImageFor(executor)` for the matching Pi-only or Codex-only image. Set `MURM_WORKER_IMAGE` if you already have a compatible image. `murm setup --config ./murm.config.mjs` and `murm doctor --config ./murm.config.mjs` validate the same configuration used by the Runtime. With Pi you can choose Chat Completions or Responses. Set an explicit `filePolicy` when the project exceeds the default import limits or the finished work needs a separate export budget. [Configuration and examples](sdk.md#executor-model-and-project-file-configuration)
+- **[Core Concepts](concepts.md)** — understand how the 6 building blocks fit together in 2 minutes.
+- **[Build a Swarm Harness](build-your-harness.md)** — build a 3-researcher parallel Research Swarm step by step.
+- **[Choose a Harness](harnesses/index.md)** — compare `Subagents`, `TaskPool`, `PeerMesh`, `Substrate`, and `Lead-Worker`.
+- **[CLI Reference](reference/cli.md)** · **[SDK & API Reference](reference/api.md)** — full flags, executor selection, model protocols, and `filePolicy` budgets.

@@ -1,22 +1,22 @@
 ---
 title: TaskPool
-description: 通过排他租约、受控文件交接、持久化 Material 与版本化 Workspace 推进共享任务池。
-section: 协作机制
-order: 8
+description: 同构成员默认只读浏览共享任务池、抢单后解锁写入权限、超时自动回收并把验证后的成果合并回主干。
+section: 内置 Harness
+order: 12
 ---
 
-## 在普通项目中运行
+**TaskPool** 适合可以拆成一批独立子任务、并且允许成员完工或超时后自动换人接力的场景。所有成员一开始都是**只读**状态，只能查看待办任务和公共资料；谁成功认领了任务（拿到限时独占锁），宿主机就会把任务文件同步进它的沙箱并解锁写权限；做完验证后把改动合入公共工作区，再释放槽位换新成员继续推进。源码：[examples/taskpool](https://github.com/LuNa-shi/murm/tree/main/examples/taskpool)。
 
-```sh
+## 快速运行（CLI）
+
+配置好 `MURM_MODEL_URL` 与 `MURM_MODEL_TOKEN`（见 [快速上手](../quickstart.md)）后，在任意项目目录直接启动：
+
+```bash
 cd my-project
 murm --harness taskpool --prompt "根据解析测试修复当前项目"
 ```
 
-TaskPool 在运行目录创建 Mission 和 Workspace。prompt 成为 Mission 目标。Discovery 使用只读项目，领取 Task 后按所选 Workspace 版本获得可写目录。 调用 TS SDK 的旧示例和基准测试专用参数见下文。
-
-TaskPool 让一组研究者在个别 Agent 完工、超时或轮换后继续推进项目。每个 Agent 自主发现并选择 Task，发布可复用的 Material，将成果保存到公共 Workspace。宿主负责维持并发数量，并通过租约落实任务归属。
-
-实现位于 `examples/taskpool/`，组合了 [Core SDK](../sdk.md) 与仓库现有的 Mission、Task、Material、Workspace 存储。`runTaskPoolHarness` 是仓库中的宿主函数，没有从 `@luna-shi/murm` 导出。调用它需要提供这些存储和已准备好的 Mission/Workspace，不能只传一个普通配置文件就建立完整任务池。
+TaskPool 会在运行目录内自动创建 Mission 与版本化 Workspace，把提示词作为 Mission 目标：成员在发现阶段读取只读项目副本，认领 Task 后按选定版本解锁可写工作区。下文拆解其 Services、四步文件交接、租约门控与自定义装配方式。
 
 ## 研究者可用的 Service
 
@@ -29,7 +29,7 @@ TaskPool 让一组研究者在个别 Agent 完工、超时或轮换后继续推�
 | `mission`（可选） | `swarm mission view`、`submit`、`submission view` | 共享目标与固定公共成果的显式验收 |
 | `mathlib-search`（可选） | `swarm mathlib-search search` | 检索固定版本的 Mathlib 源码 |
 
-宿主通过 `autonomousTasks: true` 启用 `task create`。替换依赖、提交 Mission 和部分 Material 纠正操作还需要对应领域授权。Workspace 只有在存在采集来源时才暴露当前私有文件操作；`apply` 要求 `workspaceCapture: 'core'`，`merge` 要求配置合并器。通用 CLI 帮助中出现某个命令，不代表每个 Harness 都提供它。应查看当前身份实际可见的 manifest：
+宿主通过 `autonomousTasks: true` 启用 `task create`。替换依赖、提交 Mission 和部分 Material 纠正操作还需要对应领域授权。仅当配置了工作区采集方式（如 `workspaceCapture`）时，`workspace` Service 才暴露当前私有文件操作；`apply` 要求 `workspaceCapture: 'core'`，`merge` 要求配置合并器。通用 CLI 帮助中出现的命令并不代表在每个 Harness 中都可用，请直接查看当前身份实际获准的 Manifest：
 
 ```bash
 swarm service view task --json
@@ -44,34 +44,36 @@ swarm task take TASK_ID_FROM_LIST --request-id take-selected-task
 
 ## 从发现任务到获得写权限
 
-研究者以 `writable: false` 启动。它可以通过 Service 阅读公共 Task、Material 和 Workspace，项目目录保持只读。成功预留 Task 后，[task-handoff.ts](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/task-handoff.ts) 执行交接：
+Worker（`researcher` 角色）默认以 `writable: false` 启动，可通过 Service 阅读公共 Task、Material 和 Workspace，同时本地项目目录保持只读。成功预留 Task 后，[task-handoff.ts](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/task-handoff.ts) 按四个步骤完成交接：
 
-1. 固定公共 Workspace 修订和引用的 Material 输入，准备期间通过心跳保持预留有效。
+1. **固定输入并保活租约**：锁定公共 Workspace 修订与关联 Material 输入，准备期间由心跳定时续租。
+2. **捕获当前目录摘要**：调用 `runtime.files.snapshot(agentId, { paths: ['.'] })` 获取沙箱当前的 `complete:sha256:...` 完整摘要。
+3. **激活 Execution**：在 `TaskService` 提交 `start_execution`，写入执行与交接截止时间。
+4. **原子替换并解锁写入**：调用 `runtime.files.replace(agentId, { expectedDigest, files, writable: true })`，在单次 CAS 受控操作中安装任务文件并开放写权限，同时完整保留 Agent 会话。
 
-3. 在 TaskService 中激活 Execution，设置执行和交接截止时间。
+整个准备与解锁流程完全由可信宿主执行，Agent 只能通过 `task` Service 申请任务，无法自行授予文件写权限。
 
-
-准备文件与授予写权限是两步，因为文件准备可能在 Task 可以授权之前失败。这两个 SDK 操作都由可信宿主执行。Agent 通过 `task` Service 申请工作，不自行构造准备句柄或授予写权限。
-
-预留之后的交接失败会记录失败阶段，并进入受影响 Agent 的停止或协调流程。普通认领冲突不会停止未抢到 Task 的 Agent。
+预留之后的交接失败会记录失败阶段，并停止或对账受影响的 Agent；普通的任务竞争冲突不会停止未抢到任务的 Agent。
 
 ## 让模型调用服从租约
 
-TaskPool 控制器在可信 TaskService 提交后检查 Mission、归属与截止时间，并调整计时器。归属失效、到期或收到停止请求时，控制器立即调用 `runtime.stop`。Core 撤销该 Agent 的模型权限并中止活动连接。TaskPool 依据执行停止回执释放任务归属，清理完成后才复用 Slot。
+TaskPool 控制器在可信 TaskService 提交后检查 Mission、归属与截止时间，并调整计时器。归属失效、到期或收到停止请求时，控制器立即调用 `runtime.stop`。Core 撤销该 Agent 的模型权限并中止活动连接。TaskPool 依据执行停止回执释放任务归属，清理完成后才复用槽位。
 
 这层控制与 Service 鉴权和文件权限共同工作：即使容器尚未完全停止，过期 Agent 也不能继续使用模型。完整判断见 [model-access-policy.ts](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/model-access-policy.ts)。
 
 ## 继续执行、退出与补位
 
-[控制器](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/controller.ts) 同时观察 Runtime 事件与领域截止时间。`settled` 的 completed 结果表示 Agent 的一轮执行结束，不能据此认定 Task 已完成。仍在执行中的 Execution 可以收到继续工作的输入，未绑定任务的 Agent 可以收到更多发现提示。失败或中断的轮次进入失败处理。
+[控制器](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/controller.ts) 同时观察 Runtime 事件与领域截止时间。`settled` 的 `completed` 结果表示 Agent 的一轮执行结束，不能据此认定 Task 已完成。仍在执行中的 Execution 可以收到继续工作的输入，未绑定任务的 Agent 可以收到更多发现提示。失败或中断的轮次进入失败处理。
 
-心跳为当前租约续期，并协调截止时间、结束请求和空闲容量。Task 进入收尾后，控制器停止 Agent、协调已保存成果并完成领域状态更新，再在容量释放后启动替补。执行状态未知或清理仍待完成时，Slot 不会被当成已经释放。
+心跳为当前租约续期，并协调截止时间、结束请求和空闲容量。Task 进入收尾后，控制器停止 Agent、协调已保存成果并完成领域状态更新，再在容量释放后启动替补。执行状态未知或清理仍待完成时，槽位不会被当成已经释放。
 
 `completionPolicy: 'tasks'` 要求所有 Task 进入终态且控制器没有失败；`completionPolicy: 'mission'` 则要求可信 Mission 验收。完成当前可见的全部 Task，不等于满足后一种完成条件。
 
 ## 运行 TaskPool
 
-前台宿主接受一个可信配置模块，其默认导出包含 `mode: 'taskpool'`、有限的 `timeoutMs`，以及传给 `runTaskPoolHarness` 的 `options`。这些选项包括 Backend、领域存储、Mission/Workspace ID、Worker Profile 输入与截止时间。可运行的模块必须先初始化并绑定这些领域对象；仓库没有可直接复制的 `examples/taskpool/config.ts`。
+针对普通项目目录，`murm --harness taskpool` 会直接加载内置的 [examples/taskpool/config.ts](https://github.com/LuNa-shi/murm/blob/main/examples/taskpool/config.ts)（默认使用 `DEFAULT_WORKER_IMAGE`，并读取 `MURM_MODEL_URL`、`MURM_MODEL_TOKEN` 与 `MURM_TASKPOOL_*` 环境变量），自动初始化 Mission 与 Workspace。
+
+如需通过仓库前台运行器挂载自定义领域存储，请编写默认导出 `mode: 'taskpool'`、有限 `timeoutMs` 及 `runTaskPoolHarness` 所需 `options`（预初始化的存储、Mission/Workspace ID、Profile 与截止时间）的 ESM 模块。
 
 构建仓库并完成宿主模块后运行：
 

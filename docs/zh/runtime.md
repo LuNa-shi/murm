@@ -1,0 +1,156 @@
+---
+title: Runtime 运行控制面
+description: 从用户视角分类掌握 createRuntime 的核心能力：集群配置、事件监控、文件同步、运行期动态管理与安全收尾恢复。
+section: 核心构件与实战
+order: 4
+---
+
+**Runtime** 是一次多智能体运行的总控对象。准备好 [Sandbox](sandbox.md)、角色和 Services 之后，所有集群级操作——创建运行、监听事件、跨容器同步文件、动态调整配置以及最后归档收尾——都通过 `runtime` 完成。
+
+> 完整参数类型与错误码请查 [SDK 与 API 参考](reference/api.md)。
+
+## 1. 创建 Runtime（基础配置）
+
+当你希望启动一次新的多智能体运行，调用 `createRuntime()` 传入五类核心配置：
+
+```ts
+import {
+  DEFAULT_WORKER_IMAGE,
+  ServiceRegistry,
+  createRuntime,
+} from '@luna-shi/murm';
+
+const runtime = await createRuntime({
+  sandbox, // 上一章用 createSandbox() 创建的隔离配置
+  executor: 'pi', // 执行器：默认 'pi'，也可切换为 'codex'
+
+  // 容器访问宿主机网关时使用的宿主机 IP（Linux Docker 网桥默认为 172.17.0.1）
+  connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
+
+  // 模型别名表：上游 URL 和 API Key 只留在宿主机 Model Gateway，绝不进入容器
+  models: {
+    default: {
+      provider: process.env.MURM_MODEL_PROVIDER ?? 'openai',
+      model: process.env.MURM_MODEL_ID ?? 'gpt-5.4',
+      // protocol 默认 'responses'；使用 Pi 时也可设为 'chat-completions'
+      upstream: {
+        url: process.env.MURM_MODEL_URL!,
+        headers: process.env.MURM_MODEL_TOKEN
+          ? { authorization: `Bearer ${process.env.MURM_MODEL_TOKEN}` }
+          : {},
+      },
+    },
+  },
+
+  // 可选：大项目可按阶段单独调整文件传输与导出预算（initial / snapshot / replace / export / session）
+  // filePolicy: { initial: { maxBytes: 64 * 1024 ** 2 } },
+
+  services: new ServiceRegistry(), // 预注册的共享 Services（见 Services 与权限）
+  profiles: {
+    researcher: {
+      prompt: '分析项目代码并记录关键发现。',
+      model: 'default',
+      image: DEFAULT_WORKER_IMAGE,
+      writable: false,
+      services: {},
+    },
+  },
+  maxAgents: 4, // 同一时刻最多活跃的 Agent 数量上限
+  outputDir: './runs', // 本次运行轨迹与产物的落盘根目录（实际写入 outputDir/<runtime.id>/）
+});
+```
+
+调用成功后，`murm` 会在宿主机自动初始化本次运行的目录、Model Gateway 和 Service Bridge，但**尚未启动任何容器**——具体何时启动 Agent 由你的 Harness 调用 `runtime.spawn()` 决定（见下一章 [Agent 与 Profile](agents.md)）。
+
+> **灵活的执行器与模型选项**：除了 `'pi'`（默认 `1.3.0`）和 `'codex'`（`0.172.0`）简写外，还可以用 `createPiExecutor({ version: '1.4.0' })`、`createCodexExecutor(...)` 或 `createExecutorAdapter(...)` 指定执行器版本或自定义镜像内执行器；Pi 同时支持 **Responses** 与 **Chat Completions** 协议（详见 [SDK 与 API 参考](reference/api.md)）。
+
+## 2. 如果你要监控运行过程：`runtime.onEvent()`
+
+Runtime 不会主动替你决定下一步怎么协作，而是把集群中发生的所有关键变化实时推送到 `runtime.onEvent()`。**务必在调用 `spawn()` 或 `send()` 之前先注册监听**，这样不会漏掉早期事件。
+
+最常用的事件对应四类常见需求：
+
+| 你想做什么 | 监听的事件类型 | 何时产生 |
+| --- | --- | --- |
+| 实时打印 Agent 的回复流 | `output` | Agent 在推理过程中输出文本片段时 |
+| 知道某轮任务干完了，触发下一步 | `settled` | Agent 结束当前一轮执行时（附带 `outcome: 'completed' \| 'failed' \| 'aborted'`） |
+| 捕获异常或容器意外崩溃 | `error` / `exit` | 发生执行错误或容器进程退出时（`fatal` / `expected` 标明严重程度） |
+| 同步刷新 UI 或内部状态表 | `agentChanged` / `runtimeChanged` / `management` | Agent 状态变化、Runtime 关闭或动态管理操作完成时 |
+
+一个典型的宿主用法——用 `settled` 驱动流程流转：
+
+```ts
+// 记录哪些 Agent 已经完成当前轮次
+const completed = new Set<string>();
+
+const unsubscribe = runtime.onEvent((event) => {
+  // 1. 实时把模型回复打印到宿主终端
+  if (event.type === 'output') {
+    process.stdout.write(`[${event.agentId.slice(0, 8)}] ${event.text}`);
+    return;
+  }
+
+  // 2. 某个 Agent 这一轮执行结束了 → 标记完成并检查是否满足推进条件
+  if (event.type === 'settled') {
+    if (event.outcome === 'completed') completed.add(event.agentId);
+    console.log(`Agent ${event.agentId.slice(0, 8)} 本轮结束: ${event.outcome}`);
+    return;
+  }
+
+  // 3. 容器意外退出或出现错误 → 记录告警，必要时决定重试或提前终止
+  if (event.type === 'error' || (event.type === 'exit' && !event.expected)) {
+    console.error('运行异常:', event);
+  }
+});
+```
+
+## 3. 如果你要操作沙箱里的文件：`runtime.files`
+
+默认情况下，每个 Agent 的 `/workspace/project` 相互隔离。如果宿主需要读取某个 Agent 写出的文件，或者把 A 的成果安全同步给 B，使用 `runtime.files`：
+
+```ts
+// 1. 从 coder 的私有工作区拍一份完整快照（返回文件树和 SHA-256 摘要）
+const coderSnap = await runtime.files.snapshot(coder.id, {
+  requestId: 'snap-coder-1',
+  paths: ['.'],
+});
+
+// 2. 把快照原子写入目标 Agent 的工作区（传 expectedDigest 防止并发修改覆盖）
+const receipt = await runtime.files.replace(reviewer.id, {
+  requestId: 'sync-to-reviewer-1',
+  expectedDigest: reviewerInitialDigest, // 来自目标 Agent 先前的一次 snapshot.digest
+  files: coderSnap.files,
+  // 可选：如果目标原本是只读（writable: false），传入 writable: true 可同时解锁写入
+});
+```
+
+- **为什么替换时要传 `expectedDigest`？** `files.replace` 会先暂停沙箱内写进程、校验目标目录摘要未被中途改动，再原子替换全部文件（同时完整保留 Agent 原有的对话会话）。
+- **多个 Agent 需要实时共享同一目录？** 在 `runtime.spawn()` 时显式传入 `workspace: { id: 'shared-repo', mode: 'read-write' }` 即可；最终导出前请先对所有写者调用 `runtime.stop()`，确保文件落盘一致。
+
+## 4. 如果你要在运行中动态调整配置
+
+Runtime 启动后会自动锁定初始配置，避免外部误改普通对象。若你的 Harness 需要在运行中途扩展团队或调整工具权限，可以使用三组带审计记录的管理接口：
+
+- `runtime.profiles.register(...)`：运行中新增一种角色 Profile。
+- `runtime.services.register(...)` / `retire(...)`：动态挂载新 Service，或平滑下线已有 Service。
+- `runtime.access.get(...)` / `grant(...)` / `revoke(...)`：实时查询、授予或撤销某个活跃 Agent 的 Service 权限。
+
+## 5. 结束运行与故障恢复：`runtime.close()`
+
+任务结束或达到预算上限时，调用 `runtime.close()` 安全收尾：
+
+```ts
+const receipt = await runtime.close({ timeoutMs: 60_000 });
+unsubscribe();
+
+if (receipt.cleanup !== 'complete') {
+  // 例如必选产物导出受阻或 Docker 删除超时，查看 receipt.pending 排障后重试 close()
+  console.warn('存在尚未清理完成的项:', receipt.pending);
+}
+```
+
+`runtime.close()` 严格执行**先归档、再销毁**：停止所有执行器 → 导出会话、Service 状态与 `Profile.collect` 声明的产物 → 确认保存完毕后再删除容器。如果中途有必选产物导出失败或容器删除超时，`receipt.cleanup` 会返回 `'pending'` 并在 `receipt.pending` 列出精确项；处理完问题后在同一个 `runtime` 上再次调用 `close()` 即可恢复。
+
+---
+
+**下一步**：学习如何定义角色、拉起持久化 Agent 会话、发消息与中断恢复——**[Agent 与 Profile](agents.md)**。

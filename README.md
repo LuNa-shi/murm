@@ -24,7 +24,7 @@
   <a href="docs/en/quickstart.md">Quickstart</a> ·
   <a href="docs/en/latest.md">What's New (v0.2.0)</a> ·
   <a href="docs/en/changelog.md">Changelog</a> ·
-  <a href="docs/en/sdk.md">SDK Guide</a> ·
+  <a href="docs/en/build-your-harness.md">Build a Swarm Harness</a> ·
   <a href="docs/zh/overview.md">中文文档</a>
 </p>
 
@@ -80,9 +80,9 @@ npm install --ignore-scripts /path/to/luna-shi-murm-0.2.0.tgz
 
 Import Runtime, Service and Sandbox Provider APIs from `@luna-shi/murm`.
 
-- Self-contained runnable `handoff.ts`: [Quickstart — Option B](docs/en/quickstart.md#5-option-b-use-the-sdk-in-your-own-typescript-project)
-- Observation, file controls, external HTTP Services, and cleanup receipts: [SDK Guide](docs/en/sdk.md)
-- Exact signatures and types: [API Reference](docs/en/reference/api.md) · [Types & Source Map](docs/en/reference/types.md)
+- Core building blocks & Swarm tutorial: [Sandboxes](docs/en/sandbox.md) · [Runtime](docs/en/runtime.md) · [Agents](docs/en/agents.md) · [Host Gateway](docs/en/gateway.md) · [Services](docs/en/services.md) · [Build a Swarm Harness](docs/en/build-your-harness.md)
+- Minimal runnable two-Agent script: [`examples/bridge-services/handoff.ts`](examples/bridge-services/handoff.ts)
+- Exact signatures, CLI flags, and types: [API Reference](docs/en/reference/api.md) · [CLI Reference](docs/en/reference/cli.md) · [Types & Source Map](docs/en/reference/types.md)
 
 ## Built-in Harnesses
 

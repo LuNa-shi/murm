@@ -38,7 +38,7 @@ These terms describe the current implementation. Read [How murm works](docs/en/c
 | **Artifact verification** | A host check of exported results. The bundled application finalizer records whether the configured check passed, failed, timed out or was not requested. |
 | **Cleanup receipt** | A statement of confirmed execution/resource cleanup and anything pending or retained. A timeout does not prove that a resource was destroyed. |
 
-See the [SDK guide](docs/en/sdk.md), [Run lifecycle](docs/en/run-lifecycle.md) and [types reference](docs/en/reference/types.md) for the actual method signatures and status values.
+See [Runtime](docs/en/runtime.md), [Agents & Profiles](docs/en/agents.md), [SDK & API Reference](docs/en/reference/api.md) and [types reference](docs/en/reference/types.md) for the actual method signatures and status values.
 
 ## TaskPool domain
 

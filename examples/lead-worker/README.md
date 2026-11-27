@@ -14,7 +14,7 @@ After installing the built tarball, configure the model route, compatible Worker
 
 This example creates one lead and two helpers through the public Core SDK. The default workflow uses preconfigured Profiles and a fixed team. Each Agent has its own Profile, sandbox, workDir, persistent Session, Git account and branch. The Board is a local SQLite Service with exclusive owner claims, not PeerMesh's soft overlapping CLAIM notes. The trusted host owns the controller, identity bindings and cleanup.
 
-The host imports the Runtime, Sandbox and Service author APIs from `@luna-shi/murm`. The Lead-Worker controller runs from the bundled example. See the [SDK guide](../../docs/en/sdk.md), [mechanism guide](../../docs/en/harnesses/lead-worker.md) and [dynamic-team design](../../docs/designs/dynamic-lead-worker.md).
+The host imports the Runtime, Sandbox and Service author APIs from `@luna-shi/murm`. The Lead-Worker controller runs from the bundled example. See the [Runtime guide](../../docs/en/runtime.md), [mechanism guide](../../docs/en/harnesses/lead-worker.md) and [dynamic-team design](../../docs/designs/dynamic-lead-worker.md).
 
 ## Install and configure
 
@@ -24,7 +24,7 @@ After `npm ci`, build the editable TypeScript with `npm run build`. From the che
 node dist/examples/lead-worker/main.js dist/examples/lead-worker/config.js
 ```
 
-The package is currently private and consumed as a checkout-built tarball. After following the [SDK installation recipe](../../docs/en/sdk.md), run it in a consumer directory with:
+The package is currently private and consumed as a checkout-built tarball. After following the [SDK installation recipe](../../docs/en/reference/api.md#install-the-sdk), run it in a consumer directory with:
 
 ```bash
 example=node_modules/@luna-shi/murm/dist/examples/lead-worker

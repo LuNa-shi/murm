@@ -1,0 +1,200 @@
+---
+import { docHref, type Lang } from '../lib/i18n';
+import { withBase } from '../lib/url';
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = 'en' } = Astro.props;
+const isZh = lang === 'zh';
+
+const demoDocHref = `${docHref(lang, 'trace-viewer')}#live-demo`;
+const fullDemoHref = withBase('/trace-demo/index.html?run=release-notes');
+
+const copy = isZh
+  ? {
+      badge: 'TRACE VIEWER · 内置观测',
+      title: '像视频时间轴一样回放每次多智能体运行',
+      desc: '无需安装前端依赖，一条 murm trace 命令即可在浏览器中缩放泳道、悬浮查看模型与工具耗时、追踪跨 Agent 协作交接，并核对导出文件与清理回执。',
+      ctaPrimary: '在线交互体验真实泳道图 →',
+      ctaSecondary: '新窗口打开完整实例 ↗',
+      legend: [
+        { cls: 'dot-input', label: '输入投递' },
+        { cls: 'dot-model', label: '模型推理' },
+        { cls: 'dot-tool', label: '工具调用' },
+        { cls: 'dot-service', label: 'Service 协作交接' },
+      ],
+      defaultReadout: '悬浮任意色块预览追踪元数据，或点击右侧进入可缩放的真实 Trace Viewer 实例',
+      bars: [
+        { id: 'b1', lane: '/root', kind: 'MODEL', detail: 'demo-model · 1.25s · 规划任务并决定派生子 Agent' },
+        { id: 'b2', lane: '/root', kind: 'SERVICE', detail: 'collaboration.spawn_agent → 派生 /root/check-notes 并发送核对指令' },
+        { id: 'b3', lane: '/root/check-notes', kind: 'TOOL', detail: 'read / bash · 检查 CSV 导出实现与边界测试' },
+        { id: 'b4', lane: '/root/check-notes', kind: 'SERVICE', detail: 'settled → Core input admission → 回传结果给 /root 模型上下文' },
+        { id: 'b5', lane: '/root', kind: 'TOOL', detail: 'write release-note.md · 归档产物并完成 cleanup: complete' },
+      ],
+    }
+  : {
+      badge: 'TRACE VIEWER · BUILT-IN',
+      title: 'Scrub every multi-agent Run like a timeline editor',
+      desc: 'Zero extra dependencies: run murm trace to zoom multi-Agent swimlanes, hover model and tool spans, jump from Service handoffs straight into the receiver’s actual model context, and verify exported files.',
+      ctaPrimary: 'Try live interactive swimlane →',
+      ctaSecondary: 'Open full demo ↗',
+      legend: [
+        { cls: 'dot-input', label: 'Input' },
+        { cls: 'dot-model', label: 'Model call' },
+        { cls: 'dot-tool', label: 'Tool call' },
+        { cls: 'dot-service', label: 'Service handoff' },
+      ],
+      defaultReadout: 'Hover any span to preview trace telemetry, or open the real zoomable Trace Viewer demo',
+      bars: [
+        { id: 'b1', lane: '/root', kind: 'MODEL', detail: 'demo-model · 1.25s · plans release note and delegates verification' },
+        { id: 'b2', lane: '/root', kind: 'SERVICE', detail: 'collaboration.spawn_agent → spawns /root/check-notes with task input' },
+        { id: 'b3', lane: '/root/check-notes', kind: 'TOOL', detail: 'read / bash · verifies CSV export behavior in isolated sandbox' },
+        { id: 'b4', lane: '/root/check-notes', kind: 'SERVICE', detail: 'settled → Core input admission → delivered to /root model context' },
+        { id: 'b5', lane: '/root', kind: 'TOOL', detail: 'write release-note.md · collects artifacts and confirms cleanup: complete' },
+      ],
+    };
+
+const barMap = Object.fromEntries(copy.bars.map((b) => [b.id, `${b.lane} · ${b.kind} — ${b.detail}`]));
+---
+
+<div class="trace-preview-card" data-trace-preview>
+  <div class="trace-preview-head">
+    <div class="trace-preview-copy">
+      <div class="trace-preview-badges">
+        <span class="pixel-badge">{copy.badge}</span>
+        <span class="trace-preview-cmd"><code>murm trace --root ./runs</code></span>
+      </div>
+      <h3>{copy.title}</h3>
+      <p>{copy.desc}</p>
+    </div>
+    <div class="trace-preview-cta">
+      <a class="btn btn-tactile" href={demoDocHref}>{copy.ctaPrimary}</a>
+      <a class="btn btn-outline" href={fullDemoHref} target="_blank" rel="noreferrer">{copy.ctaSecondary}</a>
+    </div>
+  </div>
+
+  <div class="trace-preview-stage">
+    <svg
+      class="trace-preview-svg"
+      viewBox="0 0 960 176"
+      width="960"
+      height="176"
+      role="img"
+      aria-label={isZh ? 'Trace Viewer 多 Agent 泳道动态预览图' : 'Animated Trace Viewer multi-Agent swimlane preview'}
+    >
+      <defs>
+        <pattern id="g-trace-prev" width="24" height="24" patternUnits="userSpaceOnUse">
+          <path d="M 24 0 L 0 0 0 24" fill="none" stroke="var(--sch-grid)" stroke-width="0.8" />
+        </pattern>
+        <marker id="ar-tp-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 1 1.5 L 8 5 L 1 8.5" fill="none" stroke="var(--sch-teal)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+        </marker>
+      </defs>
+
+      <rect x="0" y="0" width="960" height="176" fill="var(--sch-surface)" />
+      <rect x="158" y="28" width="802" height="148" fill="url(#g-trace-prev)" />
+      <rect x="0" y="0" width="960" height="28" fill="var(--sch-header)" />
+      <line x1="0" y1="28" x2="960" y2="28" stroke="var(--ink)" stroke-width="1.2" opacity="0.25" />
+      <line x1="158" y1="0" x2="158" y2="176" stroke="var(--ink)" stroke-width="1.2" opacity="0.25" />
+      <line x1="0" y1="102" x2="960" y2="102" stroke="var(--border)" stroke-width="1" />
+
+      <!-- Time ticks -->
+      <text x="16" y="18" class="tp-head">AGENT SWIMLANE</text>
+      <text x="176" y="18" class="tp-tick">0.0s</text>
+      <text x="330" y="18" class="tp-tick">3.0s</text>
+      <text x="486" y="18" class="tp-tick">6.0s</text>
+      <text x="642" y="18" class="tp-tick">9.0s</text>
+      <text x="798" y="18" class="tp-tick">12.0s</text>
+      <text x="920" y="18" class="tp-tick">14.2s</text>
+
+      <!-- Lane labels -->
+      <rect x="14" y="47" width="7" height="7" rx="1" fill="var(--sch-indigo)" />
+      <text x="28" y="54" class="tp-lane-name">/root</text>
+      <text x="28" y="70" class="tp-lane-sub">Lead · release-notes</text>
+
+      <rect x="14" y="121" width="7" height="7" rx="1" fill="var(--sch-teal)" />
+      <text x="28" y="128" class="tp-lane-name">/root/check-notes</text>
+      <text x="28" y="144" class="tp-lane-sub">Child · CSV verifier</text>
+
+      <!-- Sub-track rails -->
+      <line x1="172" y1="54" x2="942" y2="54" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 3" />
+      <line x1="172" y1="78" x2="942" y2="78" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 3" />
+      <line x1="172" y1="128" x2="942" y2="128" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 3" />
+      <line x1="172" y1="152" x2="942" y2="152" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 3" />
+
+      <!-- Cross-agent handoff arcs -->
+      <path class="tp-handoff-arc" d="M 358 84 C 384 98, 396 108, 412 122" fill="none" stroke="var(--sch-teal)" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#ar-tp-teal)" />
+      <path class="tp-handoff-arc tp-handoff-arc-2" d="M 692 146 C 718 124, 728 96, 742 62" fill="none" stroke="var(--sch-teal)" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#ar-tp-teal)" />
+
+      <!-- /root spans -->
+      <rect x="176" y="45" width="20" height="16" rx="3" fill="var(--sch-indigo)" opacity="0.88" />
+      <g class="tp-bar" data-tp-bar="b1" tabindex="0">
+        <rect x="204" y="45" width="114" height="16" rx="3" fill="var(--sch-purple)" />
+        <text x="212" y="56.5" class="tp-bar-lbl">model · plan</text>
+      </g>
+      <g class="tp-bar" data-tp-bar="b2" tabindex="0">
+        <rect x="324" y="69" width="76" height="16" rx="3" fill="var(--sch-teal)" />
+        <text x="331" y="80.5" class="tp-bar-lbl">spawn_agent</text>
+      </g>
+      <rect x="742" y="45" width="96" height="16" rx="3" fill="var(--sch-purple)" opacity="0.92" />
+      <text x="750" y="56.5" class="tp-bar-lbl">model · synth</text>
+      <g class="tp-bar" data-tp-bar="b5" tabindex="0">
+        <rect x="844" y="69" width="92" height="16" rx="3" fill="var(--sch-amber)" />
+        <text x="852" y="80.5" class="tp-bar-lbl">write artifact</text>
+      </g>
+
+      <!-- /root/check-notes spans -->
+      <rect x="412" y="119" width="84" height="16" rx="3" fill="var(--sch-purple)" opacity="0.92" />
+      <text x="420" y="130.5" class="tp-bar-lbl">model · check</text>
+      <g class="tp-bar" data-tp-bar="b3" tabindex="0">
+        <rect x="502" y="143" width="118" height="16" rx="3" fill="var(--sch-amber)" />
+        <text x="510" y="154.5" class="tp-bar-lbl">read · bash tests</text>
+      </g>
+      <g class="tp-bar" data-tp-bar="b4" tabindex="0">
+        <rect x="626" y="143" width="86" height="16" rx="3" fill="var(--sch-teal)" />
+        <text x="634" y="154.5" class="tp-bar-lbl">handoff result</text>
+      </g>
+
+      <!-- Animated sweeping playhead -->
+      <g class="tp-playhead" aria-hidden="true">
+        <line x1="176" y1="28" x2="176" y2="176" stroke="var(--accent)" stroke-width="1.6" />
+        <polygon points="171,28 181,28 176,35" fill="var(--accent)" />
+      </g>
+    </svg>
+  </div>
+
+  <div class="trace-preview-foot">
+    <div class="trace-preview-legend">
+      {copy.legend.map((item) => (
+        <span class="tp-leg-item"><span class={`tp-leg-dot ${item.cls}`}></span>{item.label}</span>
+      ))}
+    </div>
+    <span class="trace-preview-readout" data-tp-readout>{copy.defaultReadout}</span>
+  </div>
+</div>
+
+<script define:vars={{ barMap, defaultReadout: copy.defaultReadout }}>
+  (function initTracePreview() {
+    document.querySelectorAll('[data-trace-preview]').forEach((root) => {
+      if (root.dataset.bound === '1') return;
+      root.dataset.bound = '1';
+      const readout = root.querySelector('[data-tp-readout]');
+      if (!readout) return;
+      root.querySelectorAll('[data-tp-bar]').forEach((bar) => {
+        const key = bar.getAttribute('data-tp-bar');
+        const show = () => {
+          if (key && barMap[key]) readout.textContent = barMap[key];
+        };
+        const reset = () => {
+          readout.textContent = defaultReadout;
+        };
+        bar.addEventListener('mouseenter', show);
+        bar.addEventListener('focus', show);
+        bar.addEventListener('mouseleave', reset);
+        bar.addEventListener('blur', reset);
+      });
+    });
+  })();
+</script>

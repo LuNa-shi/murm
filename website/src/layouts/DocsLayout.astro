@@ -58,6 +58,8 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
       <h1 class="docs-title">{title}</h1>
       <p class="docs-lead">{description}</p>
 
+      <slot name="before-prose" />
+
       <article class="prose" id="docs-article">
         <slot />
       </article>

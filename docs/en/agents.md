@@ -1,0 +1,101 @@
+---
+title: Agents & Profiles
+description: Define role Profiles, spawn persistent Agent sessions, send tasks and mid-flight steers, handle interrupts, and safely reconcile retries.
+section: CORE BUILDING BLOCKS
+order: 5
+---
+
+A **Profile** is a role blueprint; an **Agent** is a persistent executor session spawned from that blueprint. This page covers how you define roles, run multi-turn Agents, send messages, and recover cleanly from interrupts or timeouts.
+
+## 1. Defining roles with Profiles
+
+Declare your roles in `createRuntime({ profiles })`:
+
+```ts
+const profiles = {
+  researcher: {
+    prompt: 'Investigate performance bottlenecks in the codebase and publish verified findings to the board.',
+    model: 'default', // Alias from runtime.models
+    image: DEFAULT_WORKER_IMAGE, // Container image for this role
+    writable: false, // Whether /workspace/project starts writable
+    services: { board: ['publish', 'search'] }, // Least-privilege Service allowlist
+    collect: { paths: ['notes.md'], includeGit: false, maxBytes: 1_048_576, required: false }, // Artifacts exported before close
+  },
+};
+```
+
+> **Why is `image` on Profile instead of Runtime?**
+> Different roles in one swarm often need different toolchains — for example, general researchers can use an official image (`workerImageFor(executor)` or `DEFAULT_WORKER_IMAGE`), while a formal-verification specialist uses an image with Lean or custom compilers preinstalled. When every role uses the same environment, simply pass the same image constant on each Profile.
+
+Other optional fields include `spawnProfiles` and `allowContextFork` (for delegating child Agents via the built-in `agent` Service) and `network: { allow: [...] }` (to permit specific internal IPv4 endpoints).
+
+## 2. Persistent session lifecycle and capacity slots
+
+```text
+spawn() ──► starting ──► idle ◄──► running ──► stop() / close() ──► closing ──► closed
+                          │           │
+                          └───────────┴──► unexpected exit ──► exited ──► stop() / close()
+```
+
+```ts
+// Boot an Agent (optionally seeding private files into /workspace/project)
+const researcher = await runtime.spawn({
+  requestId: 'spawn-researcher-1',
+  profile: 'researcher',
+  files: {
+    'brief.txt': { encoding: 'utf8', data: 'Focus on memory allocation and cache invalidation.' },
+  },
+});
+```
+
+Three practical things to remember:
+
+1. **Agents start `idle`**: `spawn()` prepares the container and executor session without making any model calls until you call `runtime.send()`.
+2. **Context and files persist across turns**: when a turn finishes and returns to `idle`, the Agent retains its conversation history and local files so you can keep asking follow-up questions.
+3. **Slots are freed only on `stop()` / `close()`**: every open Agent (including `idle` and `exited`) occupies one slot out of `maxAgents`. Call `runtime.stop(agent.id)` when a member is no longer needed to archive its session, remove its container, and free the slot.
+
+## 3. Sending messages: `runtime.send()`
+
+Pick the delivery mode that matches your coordination style:
+
+| Options | Behavior | Common use case |
+| --- | --- | --- |
+| `mode: 'steer'` *(default)* | Injects guidance into an active turn at a safe boundary (or starts a turn if idle) | Mid-flight requirement updates or pushing urgent peer notices |
+| `mode: 'followUp'` | Queues behind the current turn and runs next (or starts immediately if idle) | Sequential multi-step instructions |
+| `wakeIfIdle: false` | **Delivers only if busy**; if idle, returns `not-accepted` (`idle`) without waking the Agent | Non-waking mailboxes that avoid spending tokens on minor notices |
+
+```ts
+const receipt = await runtime.send(
+  researcher.id,
+  'Inspect the caching layer and publish verified findings to the board.',
+  { requestId: 'task-1', mode: 'followUp' },
+);
+```
+
+## 4. Admission vs. completion, and safe retries
+
+`runtime.send()` returns an **admission receipt** — it tells you whether the executor accepted the message, not whether the turn finished:
+
+- **`accepted`** (`started` / `queued` / `handled`): wait for the `settled` event on `runtime.onEvent()` to know when the turn ends.
+- **`not-accepted`**: e.g., `wakeIfIdle: false` found the Agent idle — keep the message in your Harness mailbox for later.
+- **`unknown`**: if a timeout or disconnect makes delivery ambiguous, **never switch to a new `requestId`** (that could execute the task twice). Retry `send()` with the exact same `requestId` and payload to reconcile whether it was accepted.
+
+> Likewise, a `settled` event only proves the model stopped its turn — verify real success against your Service state and exported files.
+
+## 5. Interrupting work without losing context: `runtime.interrupt()`
+
+To stop a running Agent mid-turn while keeping its container, workspace, and conversation history intact:
+
+```ts
+const result = await runtime.interrupt(researcher.id, {
+  requestId: 'interrupt-1',
+});
+// If queued messages were cleared before running, result.discardedInputHashes
+// lists their SHA-256 digests so your Harness mailbox can restore them cleanly.
+```
+
+`interrupt()` aborts active inference and in-flight Bridge calls, clears queued inputs, and leaves the Agent ready for fresh `send()` calls.
+
+---
+
+**Next:** see how Agents talk safely to models and shared Services across the **[Host Gateway](gateway.md)**.
