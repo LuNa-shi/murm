@@ -8,6 +8,11 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|
+| `EXP-20261127-01` | [Issue #257](https://github.com/LuNa-shi/murm/issues/257) | REGISTERED · Subagents · 15 min | `0c203ba0` | [Project Harness live acceptance](EXP-20261127-01-05-project-harness.md) |
+| `EXP-20261127-02` | [Issue #257](https://github.com/LuNa-shi/murm/issues/257) | REGISTERED · TaskPool · 15 min | `0c203ba0` | [Project Harness live acceptance](EXP-20261127-01-05-project-harness.md) |
+| `EXP-20261127-03` | [Issue #257](https://github.com/LuNa-shi/murm/issues/257) | REGISTERED · PeerMesh · 15 min | `0c203ba0` | [Project Harness live acceptance](EXP-20261127-01-05-project-harness.md) |
+| `EXP-20261127-04` | [Issue #257](https://github.com/LuNa-shi/murm/issues/257) | REGISTERED · Substrate · 15 min | `0c203ba0` | [Project Harness live acceptance](EXP-20261127-01-05-project-harness.md) |
+| `EXP-20261127-05` | [Issue #257](https://github.com/LuNa-shi/murm/issues/257) | REGISTERED · Lead–Worker · 15 min | `0c203ba0` | [Project Harness live acceptance](EXP-20261127-01-05-project-harness.md) |
 | `EXP-20261126-05` | [Issue #235](https://github.com/LuNa-shi/murm/issues/235) | **STOPPED · GPT-6.1 Sol · orders-a · workload change** | `cbcb790f` | [Dynamic Lead–Worker time-bounded acceptance](EXP-20261126-05-06-lead-worker-dynamic.md) |
 | `EXP-20261126-06` | [Issue #235](https://github.com/LuNa-shi/murm/issues/235) | **STOPPED IN SETUP · GPT-6.1 Sol · orders-b · workload change** | `cbcb790f` | [Dynamic Lead–Worker time-bounded acceptance](EXP-20261126-05-06-lead-worker-dynamic.md) |
 | `EXP-20261126-03` | [Issue #235](https://github.com/LuNa-shi/murm/issues/235) | **SETTLED · GPT-6.1 Sol · orders-a · request cap, partial acceptance** | `df459980` | [Dynamic Lead–Worker recovery](EXP-20261126-03-04-lead-worker-dynamic.md) |
