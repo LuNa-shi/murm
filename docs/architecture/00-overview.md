@@ -2,7 +2,7 @@
 
 murm separates the collaboration policy from Agent execution. A host program, called a Harness, decides who works, how work is shared and what counts as success. It uses the public Core SDK to create a Runtime, connect Services and run Agents. The Runtime handles isolation, authenticated calls, input delivery, execution records and resource cleanup.
 
-A Runtime can run a single Agent, a parent with children, a fixed peer pool or a task-driven team. It does not require a Mission, Task pool, shared Git branch or leader. Those are choices made by the Harness and its Services. Start with the [SDK guide](../en/sdk.md) for a runnable application; this chapter explains the implementation boundaries behind it.
+A Runtime can run a single Agent, a parent with children, a fixed peer pool or a task-driven team. It does not require a Mission, Task pool, shared Git branch or leader. Those are choices made by the Harness and its Services. Start with [Runtime](../en/runtime.md) and [Build a Swarm Harness](../en/build-your-harness.md) for a runnable application; this chapter explains the implementation boundaries behind it.
 
 ## Components and ownership
 

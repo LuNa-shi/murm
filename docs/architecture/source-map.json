@@ -2990,6 +2990,118 @@
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Public model protocol, capabilities and Host transport contract"
+    },
+    {
+      "path": "website/scripts/build-trace-demo.mjs",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Generates the self-contained offline Trace Viewer demo bundle from src/trace-viewer/public and the bundled release-notes fixture"
+    },
+    {
+      "path": "website/src/components/InstallBar.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Bilingual hero one-line install bar (CURL / NPM) with copy feedback"
+    },
+    {
+      "path": "website/src/components/ConceptsDiagram.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Responsive inline SVG overview diagram for the Core Concepts page showing the six building blocks and bidirectional gateway flows"
+    },
+    {
+      "path": "website/src/components/GatewayDiagram.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Responsive inline SVG trust-boundary diagram for the Host Gateway page showing Service Bridge, Model Gateway, and Sandbox firewall boundaries"
+    },
+    {
+      "path": "website/src/components/TraceDemoEmbed.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Embeds the real interactive Trace Viewer swimlane with outer panel tabs and auto-fit height on the Trace Viewer documentation page"
+    },
+    {
+      "path": "website/src/components/TracePreviewStrip.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Lightweight animated Trace Viewer swimlane preview card on the landing page linking to the live interactive demo"
+    },
+    {
+      "path": "website/public/trace-demo/index.html",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Generated static Trace Viewer demo entry page served under /trace-demo/"
+    },
+    {
+      "path": "website/public/trace-demo/style.css",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Generated static Trace Viewer demo stylesheet with relative font URLs and zero-scroll embedded polish"
+    },
+    {
+      "path": "website/public/trace-demo/app.js",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Generated copy of src/trace-viewer/public/app.js powering the live interactive documentation demo"
+    },
+    {
+      "path": "website/public/trace-demo/demo-shim.js",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Offline fetch/EventSource shim serving pre-indexed release-notes trace data, outer tab switching, auto-height, and theme sync"
+    },
+    {
+      "path": "website/public/trace-demo/demo-data.json",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Deterministic pre-indexed Trace Viewer dataset exported from test/fixtures/trace-viewer/runs/release-notes"
+    },
+    {
+      "path": "website/public/trace-demo/fonts/inter.woff2",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Bundled Inter font asset served by the static Trace Viewer demo"
+    },
+    {
+      "path": "website/public/trace-demo/fonts/space-grotesk.woff2",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Bundled Space Grotesk font asset served by the static Trace Viewer demo"
+    },
+    {
+      "path": "website/public/trace-demo/fonts/departure-mono.woff2",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Bundled Departure Mono font asset served by the static Trace Viewer demo"
     }
   ]
 }

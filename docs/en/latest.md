@@ -57,7 +57,7 @@ Key Runtime capabilities shipped in `v0.2.0`:
 - **File inspection and CAS replacement**: `runtime.files.snapshot` and `runtime.files.replace` read and atomically replace paused Agent file trees guarded by SHA-256 digests (`complete:sha256:...`).
 - **Live runtime management**: `runtime.profiles`, `runtime.services`, `runtime.access`, and `runtime.management.get()` allow adding Profiles, registering or retiring Services, and granting or revoking Agent permissions during a Run under an optional `agentAccessPolicy`.
 
-Read the [SDK Guide](sdk.md) or [API Reference](reference/api.md) for signatures and runnable examples.
+Read [Runtime](runtime.md), [Services & Permissions](services.md), and [SDK & API Reference](reference/api.md) for signatures and examples.
 
 ### 2. Dual Executors & Open Pi Model Catalog
 

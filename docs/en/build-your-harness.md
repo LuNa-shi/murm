@@ -1,175 +1,587 @@
 ---
-title: Build Your Own Harness
-description: Design coordination Services, role permissions, scheduling, and verification on top of the public murm SDK.
-section: BUILD ON MURM
-order: 6
+title: Build a Swarm Harness
+description: Build a real parallel multi-agent Research Swarm — 3 researchers explore concurrently over a shared board, cite each other's findings, and hand off to a synthesizer.
+section: CORE BUILDING BLOCKS
+order: 9
 ---
 
-## Load a module with the shared CLI
+Now let's combine all six building blocks into a **real multi-agent Swarm** — a **Parallel Research & Synthesis Swarm**:
 
-Pass a built ESM file to `murm --harness ./tools/harness.mjs --prompt 'Audit the build inputs'`. Local paths and installed packages resolve from the invocation directory. A module can use `import.meta.url` to find its own resources. The runner supplies `input`, `initial.files`, `initial.digest`, `configuration`, `runId`, `outputDir`, `signal` and observation callbacks.
+- **3 parallel researchers (`researcher`)**: run in isolated read-only sandboxes, investigate the same target concurrently, and use a shared `FindingsBoard` Service to publish findings, search what peers found, and cite earlier entries.
+- **Two collaborative rounds**: round 1 gathers independent findings onto the board; round 2 keeps each Agent's session context alive while peers search each other's entries to fill gaps or challenge claims with explicit citations.
+- **1 synthesizer (`synthesizer`)**: read-only access to the board (`board: ['search']`) plus write access to its workspace; reads the team's collective findings and writes `report.md`, exported automatically via `Profile.collect`.
 
-```js
-export default {
-  id: 'inspect-input',
-  apiVersion: 1,
-  async run(context) {
-    context.signal.throwIfAborted();
-    context.markRunning();
-    return {
-      outcome: 'completed',
-      reason: 'file-list-ready',
-      result: { files: Object.keys(context.initial.files) },
-      artifacts: [],
-      cleanup: { status: 'complete' },
-    };
+Everything runs locally with **zero external databases or Git containers** once `murm setup` is done. The walkthrough below shows focused, annotated snippets; the complete runnable files are tucked at the end.
+
+## Step 1: Write your shared board as a plain class (`board.ts`)
+
+Start with ordinary TypeScript logic — no framework glue yet:
+
+```ts
+// board.ts — plain domain class decoupled from murm internals
+export interface Finding {
+  id: number;
+  authorId: string; // Verified Agent ID injected by Host Gateway
+  topic: string;
+  summary: string;
+  cites: number[]; // References to earlier peer findings
+}
+
+export class FindingsBoard {
+  private entries: Finding[] = [];
+
+  publish(authorId: string, topic: string, summary: string, cites: number[] = []): Finding {
+    // Reject hallucinated citation IDs before mutating state
+    for (const refId of cites) {
+      if (!this.entries.some((e) => e.id === refId)) {
+        throw Object.assign(new Error(`Referenced finding #${refId} does not exist`), {
+          code: 'NOT_FOUND',
+        });
+      }
+    }
+    const entry: Finding = { id: this.entries.length + 1, authorId, topic, summary, cites };
+    this.entries.push(entry);
+    return entry;
+  }
+
+  search(query = ''): Finding[] {
+    const q = query.trim().toLowerCase();
+    return q
+      ? this.entries.filter((e) => `${e.topic} ${e.summary}`.toLowerCase().includes(q))
+      : [...this.entries];
+  }
+
+  exportState() {
+    return { total: this.entries.length, entries: this.entries };
+  }
+}
+```
+
+## Step 2: Wrap the class as a thin `board` Service (`board-service.ts`)
+
+Register a thin manifest + adapter layer that routes `swarm board publish` and `swarm board search` to your class methods:
+
+```ts
+// board-service.ts — thin manifest & dispatch wrapper
+import { createInProcessAdapter, type JsonValue, type ServiceRegistration } from '@luna-shi/murm';
+import { FindingsBoard } from './board.js';
+
+export function createBoardRegistration(board: FindingsBoard): ServiceRegistration {
+  return {
+    manifest: {
+      contract_version: '2',
+      id: 'board',
+      title: 'Shared Research Board',
+      purpose: 'Publish, search, and cite findings across parallel swarm researchers.',
+      provider_version: '1.0.0',
+      endpoint: { transport: 'in-process' },
+      capabilities: [
+        {
+          name: 'publish',
+          operation: 'publish',
+          description: 'Publish a verified finding and optionally cite prior finding IDs.',
+          side_effect: 'write',
+          idempotent: false,
+          help: { when: 'After discovering or cross-checking a concrete fact' },
+          errors: [{ code: 'NOT_FOUND', retryable: false }],
+          input_schema: { /* topic, summary, cites — see full code at bottom */ },
+          output_schema: { /* finding object schema */ },
+        },
+        {
+          name: 'search',
+          operation: 'search',
+          description: 'Search findings on the shared board (empty returns all).',
+          side_effect: 'read',
+          idempotent: true,
+          help: { when: 'Before publishing or during synthesis' },
+          errors: [],
+          input_schema: { /* optional query string */ },
+          output_schema: { /* { entries: [...] } */ },
+        },
+      ],
+    },
+    adapter: createInProcessAdapter({
+      invoke({ capability, input, caller, assertAuthorized }): JsonValue {
+        if (capability.operation === 'publish') {
+          assertAuthorized(); // Re-check permission before mutating shared state
+          const { topic, summary, cites } = input as {
+            topic: string;
+            summary: string;
+            cites?: number[];
+          };
+          return board.publish(caller.agentId, topic, summary, cites) as unknown as JsonValue;
+        }
+        const { query } = input as { query?: string };
+        return { entries: board.search(query) } as unknown as JsonValue;
+      },
+      exportState: () => board.exportState() as unknown as JsonValue,
+    }),
+  };
+}
+```
+
+## Step 3: Wire Sandbox, Profiles, and Runtime
+
+Give `researcher` read-only workspace access plus board read/write, and give `synthesizer` board read-only plus workspace write + `collect`:
+
+```ts
+// 1. Sandbox config (connects to local or remote OpenSandbox)
+const sandbox = createSandbox({
+  lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+  apiKey: process.env.MURM_LIFECYCLE_TOKEN,
+});
+
+// 2. Register the shared board
+const board = new FindingsBoard();
+const services = new ServiceRegistry();
+services.registerService(createBoardRegistration(board));
+
+// 3. Create Runtime with least-privilege Profiles
+const runtime = await createRuntime({
+  sandbox,
+  executor: process.env.MURM_EXECUTOR === 'codex' ? 'codex' : 'pi',
+  connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
+  models: { /* configured from MURM_MODEL_URL & MURM_MODEL_TOKEN — see full code */ },
+  services,
+  profiles: {
+    researcher: {
+      prompt: 'Inspect the workspace, search peer findings with `swarm board search`, and publish verified findings via `swarm board publish`.',
+      model: 'default',
+      image: DEFAULT_WORKER_IMAGE,
+      writable: false,
+      services: { board: ['publish', 'search'] },
+    },
+    synthesizer: {
+      prompt: 'Read all team findings via `swarm board search` and write a clear `report.md` in the workspace.',
+      model: 'default',
+      image: DEFAULT_WORKER_IMAGE,
+      writable: true,
+      services: { board: ['search'] },
+      collect: { paths: ['report.md'], includeGit: false, maxBytes: 1_048_576, required: true },
+    },
+  },
+  maxAgents: 4, // 3 researchers + 1 synthesizer
+  outputDir: './swarm-runs',
+});
+```
+
+## Step 4: Run the parallel Swarm control loop
+
+First, create a tiny `runTurn()` helper backed by `runtime.onEvent()` so waiting for parallel Agents stays clean:
+
+```ts
+const waiters = new Map<string, (outcome: string) => void>();
+
+// Subscribe before spawning or sending any input
+const unsubscribe = runtime.onEvent((event) => {
+  if (event.type === 'settled') {
+    const resolve = waiters.get(event.agentId);
+    if (resolve) {
+      waiters.delete(event.agentId);
+      resolve(event.outcome);
+    }
+  }
+});
+
+async function runTurn(agentId: string, text: string, requestId: string): Promise<string> {
+  let resolveTurn!: (outcome: string) => void;
+  const done = new Promise<string>((r) => { resolveTurn = r; });
+  waiters.set(agentId, resolveTurn);
+
+  const receipt = await runtime.send(agentId, text, { requestId, mode: 'followUp' });
+  if (receipt.status !== 'accepted') {
+    waiters.delete(agentId);
+    throw new Error(`Input not accepted: ${receipt.status}`);
+  }
+  return done;
+}
+```
+
+Now drive 3 researchers concurrently across two rounds, then synthesize and close cleanly:
+
+```ts
+// 1. Spawn 3 researchers concurrently with the same read-only seed files
+const peers = await Promise.all(
+  [1, 2, 3].map((i) =>
+    runtime.spawn({ requestId: `spawn-r${i}`, profile: 'researcher', files: seedFiles }),
+  ),
+);
+
+// 2. Round 1: independent parallel exploration
+await Promise.all(
+  peers.map((peer, i) =>
+    runTurn(
+      peer.id,
+      `Goal: ${goal}\nYou are researcher #${i + 1}. Inspect the files, check the board, and publish your key findings.`,
+      `r1-peer-${i + 1}`,
+    ),
+  ),
+);
+
+// 3. Round 2: cross-check teammates' findings in the same persistent sessions
+await Promise.all(
+  peers.map((peer, i) =>
+    runTurn(
+      peer.id,
+      'Run `swarm board search` to read every teammate entry, then publish a follow-up finding with `cites` covering gaps or counterpoints.',
+      `r2-peer-${i + 1}`,
+    ),
+  ),
+);
+
+// 4. Retire researchers and spawn the synthesizer to write report.md
+await Promise.all(peers.map((peer) => runtime.stop(peer.id)));
+const synth = await runtime.spawn({ requestId: 'spawn-synth', profile: 'synthesizer', files: seedFiles });
+await runTurn(synth.id, `Synthesize all ${board.search().length} board findings into report.md.`, 'synth-1');
+
+// 5. Archive traces & exported report.md, then verify cleanup
+const receipt = await runtime.close({ timeoutMs: 60_000 });
+unsubscribe();
+console.log('Findings:', board.search().length, 'Cleanup:', receipt.cleanup);
+```
+
+## Step 5: Run it and inspect the Swarm in Trace Viewer
+
+```bash
+npx tsx run-swarm.ts
+murm trace --root ./swarm-runs --port 8787 --open
+```
+
+Trace Viewer shows all 3 parallel researcher swimlanes, their shared `board` calls, the synthesizer turn, and the exported `report.md` side by side.
+
+<details>
+<summary>Expand complete runnable source files (strict TypeScript, ready to save and execute)</summary>
+
+Initialize a project and install `@luna-shi/murm`:
+
+```bash
+mkdir research-swarm && cd research-swarm
+npm init -y && npm pkg set type=module
+npm install --ignore-scripts --allow-remote=root \
+  https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+```
+
+### Complete file 1: `board.ts`
+
+```ts
+export interface Finding {
+  id: number;
+  authorId: string;
+  topic: string;
+  summary: string;
+  cites: number[];
+}
+
+export class FindingsBoard {
+  private entries: Finding[] = [];
+
+  publish(authorId: string, topic: string, summary: string, cites: number[] = []): Finding {
+    for (const refId of cites) {
+      if (!this.entries.some((e) => e.id === refId)) {
+        throw Object.assign(new Error(`Referenced finding #${refId} does not exist`), {
+          code: 'NOT_FOUND',
+        });
+      }
+    }
+    const entry: Finding = { id: this.entries.length + 1, authorId, topic, summary, cites };
+    this.entries.push(entry);
+    return entry;
+  }
+
+  search(query = ''): Finding[] {
+    const q = query.trim().toLowerCase();
+    return q
+      ? this.entries.filter((e) => `${e.topic} ${e.summary}`.toLowerCase().includes(q))
+      : [...this.entries];
+  }
+
+  exportState() {
+    return { total: this.entries.length, entries: this.entries };
+  }
+}
+```
+
+### Complete file 2: `board-service.ts`
+
+```ts
+import {
+  createInProcessAdapter,
+  type JsonValue,
+  type ServiceRegistration,
+} from '@luna-shi/murm';
+import { FindingsBoard } from './board.js';
+
+const FINDING_SCHEMA = {
+  type: 'object',
+  properties: {
+    id: { type: 'integer' },
+    authorId: { type: 'string' },
+    topic: { type: 'string' },
+    summary: { type: 'string' },
+    cites: { type: 'array', items: { type: 'integer' } },
+  },
+  required: ['id', 'authorId', 'topic', 'summary', 'cites'],
+  additionalProperties: false,
+} as const;
+
+export function createBoardRegistration(board: FindingsBoard): ServiceRegistration {
+  return {
+    manifest: {
+      contract_version: '2',
+      id: 'board',
+      title: 'Shared Research Board',
+      purpose: 'Publish, search, and cite findings across parallel swarm researchers.',
+      provider_version: '1.0.0',
+      endpoint: { transport: 'in-process' },
+      capabilities: [
+        {
+          name: 'publish',
+          operation: 'publish',
+          description: 'Publish a verified finding and optionally cite prior finding IDs.',
+          side_effect: 'write',
+          idempotent: false,
+          help: { when: 'After discovering or cross-checking a concrete fact' },
+          errors: [{ code: 'NOT_FOUND', retryable: false }],
+          input_schema: {
+            type: 'object',
+            properties: {
+              topic: { type: 'string', minLength: 1, maxLength: 120 },
+              summary: { type: 'string', minLength: 1, maxLength: 2000 },
+              cites: { type: 'array', items: { type: 'integer', minimum: 1 }, maxItems: 8 },
+            },
+            required: ['topic', 'summary'],
+            additionalProperties: false,
+          },
+          output_schema: FINDING_SCHEMA,
+        },
+        {
+          name: 'search',
+          operation: 'search',
+          description: 'Search findings published on the shared board (empty returns all).',
+          side_effect: 'read',
+          idempotent: true,
+          help: { when: 'Before publishing or during synthesis' },
+          errors: [],
+          input_schema: {
+            type: 'object',
+            properties: { query: { type: 'string', maxLength: 120 } },
+            additionalProperties: false,
+          },
+          output_schema: {
+            type: 'object',
+            properties: { entries: { type: 'array', items: FINDING_SCHEMA } },
+            required: ['entries'],
+            additionalProperties: false,
+          },
+        },
+      ],
+    },
+    adapter: createInProcessAdapter({
+      invoke({ capability, input, caller, assertAuthorized }): JsonValue {
+        if (capability.operation === 'publish') {
+          assertAuthorized();
+          const { topic, summary, cites } = input as {
+            topic: string;
+            summary: string;
+            cites?: number[];
+          };
+          return board.publish(caller.agentId, topic, summary, cites) as unknown as JsonValue;
+        }
+        const { query } = input as { query?: string };
+        return { entries: board.search(query) } as unknown as JsonValue;
+      },
+      exportState: () => board.exportState() as unknown as JsonValue,
+    }),
+  };
+}
+```
+
+### Complete file 3: `run-swarm.ts`
+
+```ts
+import {
+  DEFAULT_WORKER_IMAGE,
+  ServiceRegistry,
+  createRuntime,
+  createSandbox,
+  type FileTree,
+} from '@luna-shi/murm';
+import { FindingsBoard } from './board.js';
+import { createBoardRegistration } from './board-service.js';
+
+const goal =
+  process.env.SWARM_GOAL ??
+  'Audit the cache implementation for memory leaks and concurrency risks, then recommend fixes.';
+
+const seedFiles: FileTree = {
+  'cache.ts': {
+    encoding: 'utf8',
+    data: [
+      'export class SimpleCache<V> {',
+      '  private store = new Map<string, { value: V; expiresAt: number }>();',
+      '  set(key: string, value: V, ttlMs = 60_000) {',
+      '    this.store.set(key, { value, expiresAt: Date.now() + ttlMs });',
+      '  }',
+      '  get(key: string): V | undefined {',
+      '    const hit = this.store.get(key);',
+      '    if (!hit || hit.expiresAt < Date.now()) return undefined;',
+      '    return hit.value;',
+      '  }',
+      '}',
+      '',
+    ].join('\n'),
   },
 };
-```
 
-When starting Agents, pass `initial.files` to Core `spawn`. Subscribe with `onEvent` before spawn, call `markRunning()` when ready to send the first task, and return the Core close evidence and artifacts after stopping. In `--mode rpc`, wait for `ready` then send one `run` with `cwd` and `prompt` in `input`. Use `status` and `stop` during the run. A module that declares `input: true` can call `registerInput` to opt into follow-up requests. Stdout is JSONL and stderr carries diagnostics.
+const board = new FindingsBoard();
+const services = new ServiceRegistry();
+services.registerService(createBoardRegistration(board));
 
-A Harness is an application built with the SDK. It decides who works, how Agents share information, and what proves that the Run succeeded. Start from the [SDK guide](sdk.md) and the runnable [Messages handoff](https://github.com/LuNa-shi/murm/tree/main/examples/bridge-services); this page explains how to change the collaboration mechanism.
+const sandbox = createSandbox({
+  lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+  apiKey: process.env.MURM_LIFECYCLE_TOKEN,
+});
 
-Role prompts, Service contracts, and host scheduling can be changed in application code. If the task also needs a new executable, language runtime, or system library inside the Sandbox, provide it in a compatible Worker image.
+const modelUrl = process.env.MURM_MODEL_URL;
+if (!modelUrl) throw new Error('Set MURM_MODEL_URL before running');
 
-## 1. Decide what coordinates the work
-
-Choose the shared state and the transitions you intend to enforce before writing prompts:
-
-| Design question | Examples |
-| --- | --- |
-| Where does shared state live? | Host memory, SQLite, a separate HTTP service, Git, or a chat system |
-| How does work acquire an owner? | Parent delegation, an exclusive leased Task, a soft Board claim, or independent exploration |
-| What starts the next turn? | A host instruction, a delivered message, a newly available Task, or a periodic reconciliation loop |
-| What makes a result usable? | A schema-valid publication, verified revision, passed checker, or exported file check |
-| Who decides to stop? | The Harness's completion rule, deadline, cancellation, or exhausted work |
-
-These are substantive mechanism choices. For example, moving from [TaskPool](harnesses/taskpool.md) to [Substrate](harnesses/substrate.md) changes work selection and result discovery, even if both use the same `spawn`, `send`, and cleanup interfaces.
-
-## 2. Implement a Service contract
-
-A Service registration pairs a **v2 manifest** with an adapter. The manifest describes operations, schemas, and side effects. The adapter implements the operations or connects them to an existing endpoint.
-
-Here is the complete [`messages.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/messages.ts) used by the handoff:
-
-```ts
-import { createHttpJsonAdapter, createInProcessAdapter, type ServiceRegistration } from '@luna-shi/murm';
-
-const key = { type: 'string', minLength: 1, maxLength: 64 };
-const text = { type: 'string', minLength: 1, maxLength: 2048 };
-const message = { type: 'object', properties: { key, text, author: { type: 'string' } },
-  required: ['key', 'text', 'author'], additionalProperties: false };
-
-export function createMessageService(remote?: { url: string; token: string }): ServiceRegistration {
-  const manifest: ServiceRegistration['manifest'] = {
-    id: 'messages', title: 'Messages', purpose: 'Pass a message to another Agent', provider_version: '1', contract_version: '2',
-    endpoint: remote ? { transport: 'http-json', url: remote.url } : { transport: 'in-process' },
-    capabilities: [{
-      name: 'put', operation: 'put', description: 'Publish a message under a key', side_effect: 'write', idempotent: true,
-      help: { when: 'Make a message available to a reader' }, errors: [{ code: 'CONFLICT', retryable: false }],
-      input_schema: { type: 'object', properties: { key, text }, required: ['key', 'text'], additionalProperties: false }, output_schema: message,
-    }, {
-      name: 'get', operation: 'get', description: 'Read a message by key', side_effect: 'read', idempotent: true,
-      help: { when: 'Read a message published by another Agent' }, errors: [],
-      input_schema: { type: 'object', properties: { key }, required: ['key'], additionalProperties: false },
-      output_schema: { anyOf: [message, { type: 'null' }] },
-    }],
-  };
-  if (remote) return { manifest, adapter: createHttpJsonAdapter({ token: remote.token }) };
-  const records = new Map<string, { key: string; text: string; author: string }>();
-  const adapter = createInProcessAdapter({ invoke({ capability, input, caller, assertAuthorized }) {
-    const { key, text } = input as { key: string; text: string };
-    const previous = records.get(key);
-    if (capability.operation === 'get') return previous ?? null;
-    if (previous && (previous.author !== caller.agentId || previous.text !== text)) {
-      throw Object.assign(new Error('A different message already uses this key'), { code: 'CONFLICT' });
-    }
-    assertAuthorized();
-    const record = previous ?? { key, text, author: caller.agentId };
-    if (!previous) records.set(key, record);
-    return record;
-  } });
-  return { manifest, adapter };
-}
-```
-
-The example defines a small but explicit coordination rule: the author can repeat the same publication under a key, while another author or different text conflicts. A real task pool would instead define claims, leases, and completion transitions; a research library would define publication and citation rules.
-
-Several details matter when extending the implementation:
-
-- Derive ownership from `caller.agentId`, supplied by the Bridge. Do not trust an Agent-provided author field.
-- Implement the promised idempotency in the underlying state. Declaring `idempotent: true` does not add a transaction or retry mechanism.
-- Call `assertAuthorized()` immediately before a protected in-process mutation. For asynchronous storage, preserve the authority check and transaction boundary across the write.
-- Use strict input and output schemas so failures are visible at the Service boundary.
-- Add `exportState()` to an in-process adapter when the Run should save its state at close. Persistence and recovery during the Run remain part of the Service's design.
-
-Register the Service before `createRuntime()`, then grant its operation names in the relevant Profiles. The Runtime captures its Service registry at creation.
-
-### Connect an existing Service
-
-The same `createMessageService({ url, token })` function registers the HTTP variant. It sends `POST /v2/put` and `POST /v2/get` with `{ input, envelope, caller }`, and expects `{ ok: true, result }`. The host supplies authentication and the operation identity through `envelope.operation_id` and the `Idempotency-Key` header. The Agent uses the same CLI commands with either adapter. The adapter sends a bearer token when one is configured. The remote Service must authenticate this host connection before trusting the forwarded `caller`; JSON caller fields alone do not authenticate a request.
-
-Registration does not start or own that remote server. It may live in a separate Docker container, a local process, or an independently operated service. For a different native protocol, implement `ServiceAdapter.invoke` around the existing client; the [GitHub adapter example](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/gh-issues.ts) uses host-side `gh` with a fixed command and timeout.
-
-If a write's result is uncertain, inspect shared state using the original operation identity before submitting more work. Neither an HTTP timeout nor a lost response proves that a write did not occur.
-
-## 3. Give each role only the operations it needs
-
-The writer and reader share a Service but have different authority:
-
-```ts
-import type { Profile } from '@luna-shi/murm';
-
-export function handoffProfiles(image: string): Record<string, Profile> {
-  return {
-    writer: {
-      prompt: 'Publish the input file through the messages Service.',
-      model: 'default', image, writable: true,
-      services: { messages: ['put'] },
-    },
-    reader: {
-      prompt: 'Read the messages Service and save the received text.',
-      model: 'default', image, writable: true,
-      services: { messages: ['get'] },
-      collect: {
-        paths: ['received.txt'], includeGit: false,
-        maxBytes: 4096, required: true,
+const runtime = await createRuntime({
+  sandbox,
+  executor: process.env.MURM_EXECUTOR === 'codex' ? 'codex' : 'pi',
+  connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
+  models: {
+    default: {
+      provider: process.env.MURM_MODEL_PROVIDER ?? 'openai',
+      model: process.env.MURM_MODEL_ID ?? 'gpt-5.4',
+      upstream: {
+        url: modelUrl,
+        headers: process.env.MURM_MODEL_TOKEN
+          ? { authorization: `Bearer ${process.env.MURM_MODEL_TOKEN}` }
+          : {},
       },
     },
-  };
+  },
+  services,
+  profiles: {
+    researcher: {
+      prompt:
+        'You are part of a parallel research swarm. Inspect the workspace, run `swarm board search` to see peer findings, and call `swarm board publish` with concrete verified insights.',
+      model: 'default',
+      image: process.env.MURM_WORKER_IMAGE ?? DEFAULT_WORKER_IMAGE,
+      writable: false,
+      services: { board: ['publish', 'search'] },
+    },
+    synthesizer: {
+      prompt:
+        'Call `swarm board search` to read every team finding and citation, then write a concise `report.md` in the workspace.',
+      model: 'default',
+      image: process.env.MURM_WORKER_IMAGE ?? DEFAULT_WORKER_IMAGE,
+      writable: true,
+      services: { board: ['search'] },
+      collect: { paths: ['report.md'], includeGit: false, maxBytes: 1_048_576, required: true },
+    },
+  },
+  maxAgents: 4,
+  outputDir: './swarm-runs',
+});
+
+const waiters = new Map<string, (outcome: string) => void>();
+const unsubscribe = runtime.onEvent((event) => {
+  if (event.type === 'settled') {
+    const resolve = waiters.get(event.agentId);
+    if (resolve) {
+      waiters.delete(event.agentId);
+      resolve(event.outcome);
+    }
+  }
+});
+
+async function runTurn(agentId: string, text: string, requestId: string): Promise<string> {
+  let resolveTurn!: (outcome: string) => void;
+  const done = new Promise<string>((r) => { resolveTurn = r; });
+  waiters.set(agentId, resolveTurn);
+
+  const receipt = await runtime.send(agentId, text, { requestId, mode: 'followUp' });
+  if (receipt.status !== 'accepted') {
+    waiters.delete(agentId);
+    throw new Error(`Input not accepted for ${agentId}: ${receipt.status}`);
+  }
+  return done;
+}
+
+try {
+  const peers = await Promise.all(
+    [1, 2, 3].map((i) =>
+      runtime.spawn({ requestId: `spawn-r${i}`, profile: 'researcher', files: seedFiles }),
+    ),
+  );
+
+  // Round 1: independent parallel exploration
+  await Promise.all(
+    peers.map((peer, i) =>
+      runTurn(
+        peer.id,
+        `Goal: ${goal}\nYou are researcher #${i + 1}. Inspect cache.ts and publish your key findings to the board.`,
+        `r1-peer-${i + 1}`,
+      ),
+    ),
+  );
+
+  // Round 2: cross-check and cite peers
+  await Promise.all(
+    peers.map((peer, i) =>
+      runTurn(
+        peer.id,
+        'Run `swarm board search` to read teammates’ entries, then publish a follow-up finding with `cites` addressing gaps or disagreements.',
+        `r2-peer-${i + 1}`,
+      ),
+    ),
+  );
+
+  await Promise.all(peers.map((peer) => runtime.stop(peer.id)));
+
+  // Synthesize final report.md
+  const synth = await runtime.spawn({
+    requestId: 'spawn-synth',
+    profile: 'synthesizer',
+    files: seedFiles,
+  });
+  await runTurn(
+    synth.id,
+    `Synthesize all ${board.search().length} findings on the board into report.md.`,
+    'synth-1',
+  );
+} finally {
+  const receipt = await runtime.close({ timeoutMs: 60_000 });
+  unsubscribe();
+  console.log(
+    JSON.stringify(
+      {
+        runtimeId: runtime.id,
+        findings: board.search().length,
+        cleanup: receipt.cleanup,
+        reportPath: receipt.reportPath,
+      },
+      null,
+      2,
+    ),
+  );
 }
 ```
 
-The role prompt explains how to use the available operations. The Profile seeds the Agent’s permissions. The Bridge enforces the current grants, which the host can update through [Runtime management](reference/api.md#runtime-management).
+</details>
 
-For delegation, the built-in `agent` Service provides `spawn`, `get`, `send`, and `stop`; `spawnProfiles` restricts which child roles an Agent may create. Enable `allowContextFork` only when the selected backend supports it. A domain-specific delegation Service can add ownership and mailbox rules, as [Subagents](harnesses/subagents.md) does.
+## Where to take your Swarm next
 
-For file sharing, request a shared workspace explicitly through `spawn({ workspace: { id, mode } })`, or use guarded file snapshots and installs. The Harness still owns rules about who may publish or merge a revision. For direct access to an external facility, configure the permitted IPv4 origin and provide a distinct Agent credential through `secretEnv`.
+Once the baseline Swarm runs, you can evolve the coordination policy without touching the Runtime:
 
-## 4. Choose the control loop
+| What you want to add | How to extend it | Built-in reference |
+| --- | --- | --- |
+| **Push urgent updates mid-turn** | After `publish`, notify busy peers via `runtime.send(..., { mode: 'steer', wakeIfIdle: false })` | [Subagents](harnesses/subagents.md) · [PeerMesh](harnesses/peermesh.md) |
+| **Prevent duplicate work** | Add time-bounded exclusive claims and unlock writes on handoff via `files.replace({ writable: true })` | [TaskPool](harnesses/taskpool.md) |
+| **Reuse an existing Python / verifier backend** | Keep your domain code in Python/Lean/SQLite and mount it via `createHttpJsonAdapter` | [Services & Permissions](services.md#3-connecting-external-http-services-python-go-existing-backends) · [Substrate](harnesses/substrate.md) |
+| **Package for the `murm` CLI** | Export `runHarness(context)` and invoke `murm --harness ./my-swarm.mjs --prompt "..."` | [CLI Reference](reference/cli.md) |
 
-### A serial handoff
+---
 
-Use this when a consumer needs a verified result from a producer. The [Messages implementation](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/handoff.ts) creates an observation before sending input, consumes it concurrently, checks the receipt, and requires both a matching Service operation and completed execution. It then runs the reader and verifies the final artifact during closeout.
-
-This example has one exclusive host input source per Agent. A Harness with concurrent input sources needs its own business identities and reconciliation rules; an execution's `settled` event does not identify all inputs it processed.
-
-### Delegation and mailboxes
-
-Use this when Agents can send messages while recipients are busy or idle. `send({ mode: 'steer', wakeIfIdle: false })` offers a notice without starting a new idle turn. A `not-accepted` receipt with reason `idle` lets the Harness store it in a mailbox for later delivery. An `unknown` receipt requires reconciliation using the original request ID; treating it as a definite rejection can duplicate work.
-
-[Subagents](harnesses/subagents.md) adds parent-child ownership and recursive delegation. [PeerMesh](harnesses/peermesh.md) routes chat and task updates among peers. Follow their complete implementations when adapting event-driven control, including cancellation, delivery errors, and closeout.
-
-### A task pool or research loop
-
-Use this when work allocation or accumulated artifacts drive progress. [TaskPool](harnesses/taskpool.md) reconciles authoritative Task state, leases, and Agent capacity; [Substrate](harnesses/substrate.md) lets peers search and build on publications. The host can use observation updates or a bounded periodic loop to decide when to continue, replace, or stop Agents.
-
-An idle Agent still occupies a Slot. Finishing a Task, finishing an execution, and freeing capacity are separate transitions. Make each transition explicit in your Harness.
-
-## 5. Verify the result and close the Run
-
-Stop dispatching work and call `runtime.close({ timeoutMs })`. Evaluate business, exported artifacts and cleanup independently. Close application-owned facilities after Core cleanup, keeping dependencies available for any pending recovery.
-
-
-Before broadening a new Harness, verify a small complete Run: expected Service transitions, correct role permissions, real artifact content, and no unaccounted pending resources. Then test the mechanism's defining behavior, such as exclusive claims, cross-Agent reuse, or parent ownership. The existing [Harness guides](harnesses/index.md) describe these distinct behaviors and their boundaries.
+**Next section:** explore the five production-ready patterns already built into `murm` in **[Choose a Harness](harnesses/index.md)**.

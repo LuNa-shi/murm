@@ -1,53 +1,33 @@
 ---
-title: murm Documentation
-description: Build multi-agent systems with a TypeScript SDK for isolated Agents, coordination Services, observable Runs, and artifact collection.
+title: Overview
+description: Learn what murm solves, how the docs follow the six core building blocks, and where to jump in.
 section: GET STARTED
 order: 0
 ---
 
-`murm` is a TypeScript SDK for building multi-agent systems. You define the roles, shared state, work allocation, and completion rules in a **Harness**. The **Runtime** manages Agent sessions, isolated workspaces, Service access, execution records, and cleanup.
+**`murm`** (`@luna-shi/murm`) is a local-first framework for building, isolating, and observing multi-agent systems.
 
-The same Runtime supports a lead delegating to children, workers claiming a task pool, or peers exchanging findings through a shared library. Changing the collaboration mechanism means changing your Harness and its Services. This makes it possible to develop and compare those mechanisms while keeping the execution infrastructure consistent.
+It cleanly separates **how your agents collaborate** from **how they are isolated and run**:
 
-## Start with a working Run
+- **You write the Harness** — deciding the roles, shared coordination Services, and orchestration logic.
+- **murm provides the foundation** — isolated containers (Sandboxes), the run control plane (Runtime), the trusted Host Gateway, and the built-in browser Trace Viewer.
 
-Follow the [Quickstart](quickstart.md) to prepare the host prerequisites, install `@luna-shi/murm` in one command, and run either a built-in CLI Harness or a self-contained TypeScript SDK handoff.
+The TypeScript SDK, host `murm` CLI, in-sandbox `swarm` CLI, and `murm trace` all ship in one `@luna-shi/murm` package.
 
-If you already have the infrastructure ready, choose your next step:
+## How the docs are organized
 
-| What you want to do | Start here |
-| --- | --- |
-| See everything available in `v0.2.0` | [Latest (v0.2.0)](latest.md) · [Changelog](changelog.md) |
-| Embed murm in your TypeScript application | [Use the SDK](sdk.md) |
-| Understand what happens during a Run | [How murm Works](concepts.md) |
-| Design your own collaboration mechanism | [Build Your Own Harness](build-your-harness.md) |
-| Run or adapt an existing multi-agent system | [Harnesses](harnesses/index.md) |
-| Trace component responsibilities and data flow | [System Architecture](architecture.md) |
+The guide walks through the **six building blocks** from the homepage one by one, then puts them together in a real Swarm tutorial:
 
-## One package, explicit public entry points
+1. **Get Started**: [Quickstart](quickstart.md) (install and run your first swarm) → [Core Concepts](concepts.md) (the big picture in 2 minutes).
+2. **Core Building Blocks**:
+   - [Sandboxes](sandbox.md) — per-Agent containers, workspace quotas, and isolation defaults.
+   - [Runtime](runtime.md) — creating a run, syncing files, subscribing to events, live updates, and clean shutdown.
+   - [Agents & Profiles](agents.md) — role templates, persistent sessions, sending messages, interrupts, and safe retries.
+   - [Host Gateway](gateway.md) — how Service Bridge and Model Gateway guard identity, schemas, and API keys.
+   - [Services & Permissions](services.md) — why coordination uses host Services instead of local tools, wrapping your own classes or HTTP APIs, and static/dynamic permissions.
+   - [Trace Viewer](trace-viewer.md) — interactive live swimlane demo right in the docs, plus launching `murm trace` locally or over SSH.
+   - [Build a Swarm Harness](build-your-harness.md) — build a parallel multi-agent Research Swarm step by step.
+3. **Built-in Harnesses**: [Choose a Harness](harnesses/index.md) — run or adapt `Subagents`, `TaskPool`, `PeerMesh`, `Substrate`, and `Lead-Worker`.
+4. **Reference & Releases**: [SDK & API Reference](reference/api.md) · [CLI Reference](reference/cli.md) · [Types & Source Map](reference/types.md) · [Latest (v0.2.0)](latest.md) · [Changelog](changelog.md).
 
-GitHub Release distributes the CLI, TypeScript SDK, and built-in browser Trace Viewer (`murm trace`) in one `@luna-shi/murm` tarball.
-
-Import all public values and types from `@luna-shi/murm`. Configure OpenSandbox with `createSandbox`, reference the matching prebuilt Worker image via `DEFAULT_WORKER_IMAGE`, and manage Agents, Services, files, and cleanup through `createRuntime`. Install the versioned GitHub Release asset. See the [SDK guide](sdk.md).
-
-## Explore the collaboration mechanisms
-
-The repository includes five Harnesses that make different coordination choices:
-
-| Harness | How work is coordinated | What to study |
-| --- | --- | --- |
-| [Subagents](harnesses/subagents.md) | A root delegates to a tree of children, with context forking and mailbox delivery | Recursive decomposition, ownership, and user steering |
-| [TaskPool](harnesses/taskpool.md) | Workers exclusively claim leased Tasks and publish Materials and workspace revisions | Durable work allocation and replacement of workers |
-| [PeerMesh](harnesses/peermesh.md) | Peer engineers use a Board, Mattermost, and Gitea pull requests | Soft claims, direct discussion, and verified integration |
-| [Substrate](harnesses/substrate.md) | Peers publish, search, read, and cite immutable artifacts | Collaboration through accumulated findings |
-| [Lead-Worker](harnesses/lead-worker.md) | A lead supplies direction and workers return claims, changes, and feedback | Lead ownership and explicit feedback gates |
-
-These examples retain their own domain rules and verification criteria. The [comparison](harnesses/index.md) explains what changes between them; the SDK provides the common execution controls.
-
-## Find a specific contract
-
-Use the [API reference](reference/api.md) for method signatures, input receipts, observation, file controls, Service calls, and configuration. Use [Run lifecycle](run-lifecycle.md) to understand when an operation is accepted, when execution settles, and when cleanup is complete. [Types and source map](reference/types.md) links those contracts to their implementation.
-
-The Linux Controller connects to local or remote OpenSandbox through its API. It supports Pi and Codex executors with different capabilities. Run directories contain prompts, model and Service traces, native sessions, and exported files; keep them in private storage. The [architecture](architecture.md) explains the runtime and credential boundaries.
-
-The website renders the English and Chinese guides directly from `docs/en/` and `docs/zh/`. The repository's [implementation manual](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/INDEX.md) covers the deeper runtime paths, generated protocol references, and prompt composition.
+> Looking for internal implementation details or maintainer specs? See the repository's [Architecture Manual](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/INDEX.md).

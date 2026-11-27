@@ -6,7 +6,7 @@ The default engineering procedure is defined by the [installed Matt Pocock engin
 
 ## Current baseline and intended changes
 
-Read the [architecture manual](../architecture/INDEX.md), [SDK guide](../en/sdk.md) and [GLOSSARY](../../GLOSSARY.md) for the current implementation. The [Phase 0005 Core / Harness design on main](../designs/core-harness/README.md) governs target requirements and acceptance for that stage. Review changes to that design before synchronizing affected Issues. In other stages, human-approved Issues define intended changes and acceptance. Read the relevant Issue's full discussion and linked design before implementing it.
+Read the [architecture manual](../architecture/INDEX.md), [Runtime](../en/runtime.md), [SDK & API Reference](../en/reference/api.md) and [GLOSSARY](../../GLOSSARY.md) for the current implementation. The [Phase 0005 Core / Harness design on main](../designs/core-harness/README.md) governs target requirements and acceptance for that stage. Review changes to that design before synchronizing affected Issues. In other stages, human-approved Issues define intended changes and acceptance. Read the relevant Issue's full discussion and linked design before implementing it.
 
 Keep approvals, dependencies, progress and evidence on the Issue/PR. A large change may use a reviewed design in `docs/designs/`, with its exact revision linked from the Issue. Mark future behavior explicitly. Once implemented, reconcile the behavior into Architecture and retire superseded requirements through Git history.
 

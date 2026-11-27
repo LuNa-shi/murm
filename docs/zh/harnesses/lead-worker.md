@@ -1,22 +1,25 @@
 ---
 title: Lead-Worker
-description: 固定 Lead 与 Worker 团队，根据一线反馈更新方向，并通过 Git 核验交付。
-section: 协作机制
-order: 11
+description: 主管定方向、执行成员认领子任务并交 Git 代码；系统强制先读反馈再调向、先读新方向再交稿的闭环协作模式。
+section: 内置 Harness
+order: 15
 ---
 
-## 在普通项目中运行
+**Lead-Worker**（`src/harnesses/lead-worker/`）适合需要一人统筹方向、同时确保一线执行反馈真正落入下一轮规划的团队。1 名主管（`lead`）与 2–7 名执行成员（`helper1..helperN`）通过本地 SQLite 任务板（`board`）和 Gitea 协作：系统在数据库层强制**先读后写**——主管必须先读完一线反馈才能发布新方向，成员必须先读完新方向才能提交交付。除固定团队外，还支持运行中动态扩编与新增检查 Service（见 [examples/lead-worker/README.md](../../../examples/lead-worker/README.md)）。
 
-```sh
+## 快速运行（CLI）
+
+先按 [examples/lead-worker/README.md](../../../examples/lead-worker/README.md) 配置 Gitea 与模型环境变量，再在项目目录启动：
+
+```bash
 cd my-project
 murm --harness lead-worker --prompt "根据解析测试修复当前项目"
+
+# 可选：启用动态团队编制与运行期动态检查 Service
+MURM_LEAD_WORKER_TEAM=dynamic murm --harness lead-worker --prompt "根据解析测试修复当前项目"
 ```
 
-Lead–Worker 将 prompt 发给 Lead，初始化团队 Git 与成员 Sandbox。用 `MURM_LEAD_WORKER_TEAM=dynamic` 选择动态团队。动态检查器使用 `MURM_LEAD_WORKER_CHECKING_IMAGE` 或 Worker 镜像设置中的不可变 Docker 镜像 ID。 调用 TS SDK 的旧示例和基准测试专用参数见下文。
-
-**Lead-Worker**（`src/harnesses/lead-worker/`）适合需要明确由一人掌舵方向、同时强制将一线执行反馈纳入下一轮规划的团队。1 名 `lead` 与 2–7 名 Worker（代码中角色名为 `helper1..helperN`）在各自持久化会话中运行，拥有独立 Gitea 账号、个人 Git 分支以及一个本地 SQLite **`board` Service**。
-
-宿主通过 [SDK](../sdk.md) 组合 Runtime、Service 与 OpenSandbox 后端。`createLeadWorkerHarness` 和 `runLeadWorker` 是 `src/harnesses/lead-worker/` 下的仓库模块，没有从公共包入口导出。默认模式在启动前确定团队。随包提供的[动态订单示例](../../../examples/lead-worker/README.md)允许 Lead 在工作进行中部署检查 Service、登记 Profile、接纳新成员并更新原 Worker 的授权。
+Lead-Worker 会根据项目目录初始化团队 Git 仓库与成员沙箱，并将提示词交给主管。动态模式下，检查器使用 `MURM_LEAD_WORKER_CHECKING_IMAGE`（或回退到 Worker 镜像设置）。下文介绍其“先读后写”校验规则、分阶段控制循环与源码运行方式。
 
 ## 1. 注册的 Services 与非对称权限
 
@@ -65,9 +68,9 @@ swarm board complete --input complete.json --request-id helper1-done
 
 ## 2. 分阶段控制循环与故障围栏
 
-在 [src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/index.ts) 中，`createLeadWorkerHarness()` 一次性启动固定团队（`maxAgents: 1 + helperCount`），把团队成员绑定到 `board` 与 `git`，并订阅 `runtime.onEvent()`——一旦任何成员出现 fatal 错误、非 completed 结算或意外退出，立即调用 `board.fence()` 冻结后续写操作，同时完整保留所有证据与归属状态。
+在 [src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/index.ts) 中，`createLeadWorkerHarness()` 一次性启动固定团队（`maxAgents: 1 + helperCount`），把团队成员绑定到 `board` 与 `git`，并订阅 `runtime.onEvent()`——一旦任何成员出现 `fatal` 错误、非 `completed` 收束或意外退出，立即调用 `board.fence()` 冻结后续写操作，同时完整保留所有证据与归属状态。
 
-默认工作流交替执行两轮。仓库辅助函数 `runInput` 先订阅结算事件，再投递一个由宿主独占管理的输入。下面的流程省略了每个阶段共用的取消信号与结果验证：
+默认工作流交替执行两轮。仓库辅助函数 `runInput` 先订阅收束事件，再投递一个由宿主独占管理的输入。下面的流程省略了每个阶段共用的取消信号与结果验证：
 
 ```ts
 // 阶段 1a：Lead 发布初始方向、分工指派与就绪子任务

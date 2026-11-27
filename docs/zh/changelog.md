@@ -21,7 +21,7 @@ order: 16
 
 ### 新增功能
 
-- **统一的 `@luna-shi/murm` 公开 SDK**：收束后的根入口导出 `createRuntime`、`createSandbox`、`DEFAULT_WORKER_IMAGE`、`getExecutorCapabilities`、`ServiceRegistry`、`createInProcessAdapter` 与 `createHttpJsonAdapter`，附带完整 TypeScript 类型声明（[使用 SDK](sdk.md)）。
+- **统一的 `@luna-shi/murm` 公开 SDK**：收束后的根入口导出 `createRuntime`、`createSandbox`、`DEFAULT_WORKER_IMAGE`、`getExecutorCapabilities`、`ServiceRegistry`、`createInProcessAdapter` 与 `createHttpJsonAdapter`，附带完整 TypeScript 类型声明（[SDK 与 API 参考](reference/api.md)）。
 - **实时观测与动态管理**：提供 `runtime.onEvent` 实时事件流（`output`、`settled`、`error`、`exit`、`agentChanged`、`runtimeChanged`、`management`），运行时动态管理接口（`runtime.profiles` / `runtime.services` / `runtime.access`），以及基于 SHA-256 摘要 CAS 的文件控制（`runtime.files.snapshot` / `replace`）。
 - **双执行器与开放 Pi 模型目录**：在宿主机 Model Gateway 后方同时支持 **Pi（`1.3.0`）**（含 `forkFrom` 会话分叉）与 **Codex CLI（`0.172.0`）**。Pi 内置 `openai` Responses 模型目录（`gpt-5.4`、`gpt-5`、`gpt-5-mini`、`gpt-4.1`、`gpt-4.1-mini`、`o4-mini`），并支持通过宿主机动态合成与 SHA-256 校验接入任意 OpenAI Responses 兼容的自定义 `provider` + `model`。
 - **统一宿主机 CLI（`murm`）**：
@@ -41,7 +41,7 @@ order: 16
 
 - 包名由 `@murm/core` 调整为 `@luna-shi/murm`，并将独立 Trace Viewer 包合并进 `@luna-shi/murm`，彻底消除全局 `murm` 命令名冲突。
 - 内置 CLI Harness（`subagents`、`taskpool`、`notes`、`messages`）默认使用 `DEFAULT_WORKER_IMAGE`，统一支持 `MURM_MODEL_*` / `MURM_WORKER_IMAGE` 环境变量并保留各自专属覆盖参数。
-- 重写中英文 [快速上手](quickstart.md) 与 [SDK 指南](sdk.md)，透明列出 Linux 宿主机前置要求（Landlock ABI 5+、rootful Docker Engine、宿主机工具、最小权限 `sudoers`）并提供自包含的 TypeScript SDK 完整示例。
+- 重写中英文 [快速上手](quickstart.md) 与 [SDK 与 API 参考](reference/api.md)，透明列出 Linux 宿主机前置要求（Landlock ABI 5+、rootful Docker Engine、宿主机工具、最小权限 `sudoers`）并提供自包含的 TypeScript SDK 完整示例。
 
 ### 安全与隔离
 

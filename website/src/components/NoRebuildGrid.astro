@@ -11,9 +11,9 @@ const isZh = lang === 'zh';
 const copy = isZh
   ? {
       eyebrow: '01 · 为什么选择 MURM',
-      title: '在同一 SDK 上构建不同协作机制',
+      title: '在同一底座上构建不同协作机制',
       descPre: '角色、任务分配和共享状态由你的 Harness 决定。',
-      descPost: ' 提供隔离执行、Service 接入、运行观察与清理接口。',
+      descPost: ' 提供隔离执行、Service 接入、统一 CLI 与内置轨迹观测。',
       cards: [
         {
           title: '换拓扑，不换 Runtime',
@@ -25,19 +25,19 @@ const copy = isZh
         },
         {
           title: '通过可定制 Services 协作',
-          desc: '自由创建并接入任务板、邮箱、Git 仓库或形式化验证器等共享服务，统一经过 Schema 校验网关。',
+          desc: '自由创建任务板、邮箱、Git 或验证器等共享服务——例如 Agent A 通过某个 Service 发布发现或补丁，Agent B 通过同一 Service 读取并续做，全部经由 Schema 校验网关。',
         },
         {
           title: '每次运行，全程可检视',
-          desc: '会话、模型请求与工具调用保存在 Run 中，结合业务验收和清理回执检查结果。',
+          desc: '会话、模型请求与 Service 调用完整落盘，用内置 murm trace 浏览器直接回放时间线并核对清理回执。',
         },
       ],
     }
   : {
       eyebrow: '01 · WHY MURM',
-      title: 'Build different mechanisms on one SDK',
+      title: 'Build different mechanisms on one runtime',
       descPre: 'Your Harness defines roles, work allocation, and shared state. ',
-      descPost: ' supplies isolated execution, Service integration, observation, and cleanup.',
+      descPost: ' supplies isolated execution, Service integration, a host CLI, and built-in trace observation.',
       cards: [
         {
           title: 'Swap topologies, not runtimes',
@@ -49,11 +49,11 @@ const copy = isZh
         },
         {
           title: 'Coordinate through customized services',
-          desc: 'Build and plug in any shared service — task board, mailbox, Git repo, or formal verifier — behind one schema-checked gateway.',
+          desc: 'Plug in task boards, mailboxes, Git repos, or formal verifiers — e.g. Agent A publishes a finding or patch via a Service and Agent B reads it to build on it, all behind one schema-checked gateway.',
         },
         {
           title: 'Every run, fully inspectable',
-          desc: 'Inspect saved sessions, model calls, and tool actions alongside artifact checks and cleanup receipts.',
+          desc: 'Inspect saved sessions, model exchanges, and Service handoffs in the built-in murm trace browser alongside artifact and cleanup receipts.',
         },
       ],
     };

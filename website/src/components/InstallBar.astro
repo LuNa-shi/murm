@@ -1,0 +1,142 @@
+---
+import { docHref, type Lang } from '../lib/i18n';
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = 'en' } = Astro.props;
+const isZh = lang === 'zh';
+
+const COMMANDS = {
+  curl: 'curl -fsSL https://luna-shi.github.io/murm/install.sh | sh',
+  npm: 'npm install -g --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz',
+};
+
+const copy = isZh
+  ? {
+      ariaLabel: '一键安装命令',
+      copyLabel: '[ 复制 ]',
+      copiedLabel: '[ 已复制 ✓ ]',
+      errorLabel: '[ 复制失败 ]',
+      notePrefix: '支持 Linux + Node.js 22.19+ · 安装后运行 ',
+      noteCmd: 'murm setup --mode local',
+      noteSuffix: ' 一键初始化本地 OpenSandbox · ',
+      noteLink: '快速上手 →',
+    }
+  : {
+      ariaLabel: 'One-line install command',
+      copyLabel: '[ COPY ]',
+      copiedLabel: '[ COPIED ✓ ]',
+      errorLabel: '[ FAILED ]',
+      notePrefix: 'Linux + Node.js 22.19+ · Run ',
+      noteCmd: 'murm setup --mode local',
+      noteSuffix: ' to start local OpenSandbox · ',
+      noteLink: 'Quickstart →',
+    };
+---
+
+<div class="install-bar-wrap" data-install-bar>
+  <div class="install-bar" role="region" aria-label={copy.ariaLabel}>
+    <div class="install-tabs" role="tablist" aria-label={copy.ariaLabel}>
+      <button
+        type="button"
+        class="install-tab active"
+        role="tab"
+        aria-selected="true"
+        data-install-tab="curl"
+      >
+        CURL
+      </button>
+      <button
+        type="button"
+        class="install-tab"
+        role="tab"
+        aria-selected="false"
+        data-install-tab="npm"
+      >
+        NPM
+      </button>
+    </div>
+
+    <div class="install-body">
+      <div class="install-cmd-scroll">
+        <code class="install-cmd">
+          <span class="install-prompt" aria-hidden="true">$</span>
+          <span data-install-cmd>{COMMANDS.curl}</span>
+        </code>
+      </div>
+      <button
+        type="button"
+        class="install-copy-btn"
+        data-install-copy
+        data-label-default={copy.copyLabel}
+        data-label-copied={copy.copiedLabel}
+        data-label-error={copy.errorLabel}
+      >
+        {copy.copyLabel}
+      </button>
+    </div>
+  </div>
+  <p class="install-note">
+    {copy.notePrefix}<code>{copy.noteCmd}</code>{copy.noteSuffix}<a href={docHref(lang, 'quickstart')}>{copy.noteLink}</a>
+  </p>
+</div>
+
+<script define:vars={{ COMMANDS }}>
+  (function initInstallBar() {
+    document.querySelectorAll('[data-install-bar]').forEach((root) => {
+      if (root.dataset.bound === '1') return;
+      root.dataset.bound = '1';
+
+      const tabs = root.querySelectorAll('[data-install-tab]');
+      const cmdEl = root.querySelector('[data-install-cmd]');
+      const copyBtn = root.querySelector('[data-install-copy]');
+      let currentKey = 'curl';
+
+      function select(key) {
+        if (!COMMANDS[key]) return;
+        currentKey = key;
+        tabs.forEach((tab) => {
+          const active = tab.getAttribute('data-install-tab') === key;
+          tab.classList.toggle('active', active);
+          tab.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        if (cmdEl) cmdEl.textContent = COMMANDS[key];
+        if (copyBtn) {
+          copyBtn.classList.remove('copied');
+          copyBtn.textContent = copyBtn.getAttribute('data-label-default') || '[ COPY ]';
+        }
+      }
+
+      tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+          select(tab.getAttribute('data-install-tab') || 'curl');
+        });
+      });
+
+      if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+          const text = COMMANDS[currentKey] || '';
+          const defaultLbl = copyBtn.getAttribute('data-label-default') || '[ COPY ]';
+          const copiedLbl = copyBtn.getAttribute('data-label-copied') || '[ COPIED ✓ ]';
+          const errorLbl = copyBtn.getAttribute('data-label-error') || '[ FAILED ]';
+          try {
+            await navigator.clipboard.writeText(text);
+            copyBtn.textContent = copiedLbl;
+            copyBtn.classList.add('copied');
+            setTimeout(() => {
+              copyBtn.textContent = defaultLbl;
+              copyBtn.classList.remove('copied');
+            }, 1600);
+          } catch {
+            copyBtn.textContent = errorLbl;
+            setTimeout(() => {
+              copyBtn.textContent = defaultLbl;
+            }, 1600);
+          }
+        });
+      }
+    });
+  })();
+</script>

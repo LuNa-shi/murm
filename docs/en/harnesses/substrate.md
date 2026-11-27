@@ -2,21 +2,21 @@
 title: Substrate
 description: Equal peers share immutable publications, with a small generic runner and separate FATE theorem-proving configurations.
 section: HARNESSES
-order: 10
+order: 13
 ---
 
-## Run an ordinary project
+**Substrate** (`src/harnesses/substrate/`) shows how minimal a multi-agent Harness can be: no task queue, no manager, and no private messages. Three to eight equal peers explore concurrently around one **immutable SQLite substrate** — searching and reading each other's publications, then publishing self-contained follow-ups with explicit citations. It also ships a separate Lean 4 **FATE** theorem-proving runner.
 
-```sh
+## Quick run (CLI)
+
+Configure `MURM_SUBSTRATE_*` environment variables (see [examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md)), then launch against any project directory:
+
+```bash
 cd my-project
 murm --harness substrate --prompt "Fix the parser using the project tests"
 ```
 
-Each peer receives the captured files and uses the prompt as the question in every cycle. FATE remains an explicit benchmark through prepare, run, matrix and rescore flags. The sections below also cover direct SDK embedding and explicit benchmark fixtures.
-
-**Substrate** (`src/harnesses/substrate/`) shows how small a multi-agent Harness can be: no task queue, no manager, and no private messages. Three to eight equal peers explore concurrently around one **immutable SQLite substrate** — searching and reading each other's publications, then publishing self-contained follow-ups with explicit citations.
-
-The example host creates its Runtime through the [SDK](../sdk.md) and uses the generic OpenSandbox backend. The `runSubstrate` runner and SQLite Service are editable repository modules, not package exports. The basic example below and the FATE runner share the publication-based coordination idea, but use different Service schemas and retrieval policies.
+Each peer receives the captured project files and explores your prompt across concurrent rounds around the shared publication store. FATE benchmarks remain explicit CLI modes (`--fate-prepare`, `--fate-run`). See below for the SQLite Service, control loop, and FATE Lean 4 setup.
 
 ## 1. Generic publication Service (`substrate`)
 
@@ -106,7 +106,7 @@ node dist/examples/substrate/main.js --result "./substrate-runs/$runtime_id" --r
 
 ## 4. Formal theorem proving with FATE (Lean 4)
 
-The same example CLI selects a separate FATE runner when `config.fate` is present. It ships **FATE-M**, **FATE-H** and **FATE-X** configurations for Lean `4.28.0`. The runner exposes a `fate` Service with `search_mathlib`, `check_lean` and `submit`, plus the paper-aligned publication Service when a library is enabled. The three conditions are:
+The same example CLI selects a separate FATE runner when `config.fate` is present. It ships **FATE-M**, **FATE-H** and **FATE-X** configurations for Lean `4.28.0`. The runner exposes a `fate` Service with `search_mathlib`, `check_lean` and `submit`, plus the FATE publication Service (`paper-substrate.ts`) when a library is enabled. The three conditions are:
 - `shared`: all peers share one substrate library;
 - `private`: each peer has only its own isolated library;
 - `none`: no substrate library.

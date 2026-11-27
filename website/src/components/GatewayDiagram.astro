@@ -1,0 +1,126 @@
+---
+import type { Lang } from '../lib/i18n';
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = 'en' } = Astro.props;
+const isZh = lang === 'zh';
+const p = isZh ? 'zh' : 'en';
+---
+
+<div class="doc-svg-wrap" role="region" aria-label={isZh ? 'murm 可信宿主机网关与隔离沙箱边界示意图' : 'murm trusted host gateway and isolated sandbox trust boundary diagram'}>
+  <svg class="doc-svg" viewBox="0 0 880 540" width="880" height="540" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <pattern id={`ag-grid-${p}`} width="24" height="24" patternUnits="userSpaceOnUse">
+        <path d="M 24 0 L 0 0 0 24" fill="none" stroke="var(--sch-grid)" stroke-width="0.8" />
+      </pattern>
+      <marker id={`ag-ar-in-${p}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M 1 1.5 L 8 5 L 1 8.5" fill="none" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </marker>
+      <marker id={`ag-ar-te-${p}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M 1 1.5 L 8 5 L 1 8.5" fill="none" stroke="var(--sch-teal)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </marker>
+      <marker id={`ag-ar-am-${p}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M 1 1.5 L 8 5 L 1 8.5" fill="none" stroke="var(--sch-amber)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </marker>
+    </defs>
+
+    <rect x="0" y="0" width="880" height="540" fill="var(--sch-surface)" />
+    <rect x="0" y="0" width="880" height="540" fill={`url(#ag-grid-${p})`} />
+
+    <!-- TRUSTED HOST ZONE -->
+    <rect x="16" y="14" width="848" height="296" rx="8" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.6" />
+    <text x="32" y="37" class="dsvg-zone-title">{isZh ? '可信宿主机（TRUSTED HOST）' : 'TRUSTED HOST'}</text>
+    <text x="848" y="37" text-anchor="end" class="dsvg-zone-sub">{isZh ? 'Node.js 进程 · 持有凭据、Services 与权威运行账本' : 'Node.js process · owns secrets, Services, and authoritative ledgers'}</text>
+    <line x1="16" y1="47" x2="864" y2="47" stroke="var(--border)" stroke-width="1" />
+
+    <!-- Host Row 1 -->
+    <rect x="32" y="60" width="244" height="96" rx="5" class="dsvg-card-yellow" />
+    <rect x="32" y="60" width="244" height="4" rx="2" fill="var(--ink)" />
+    <text x="46" y="83" class="dsvg-title">{isZh ? '你的 Harness' : 'Your Harness'}</text>
+    <text x="46" y="104" class="dsvg-body">{isZh ? '• 控制循环与协作规则' : '• Control loop & rules'}</text>
+    <text x="46" y="123" class="dsvg-body">{isZh ? '• 角色 Profiles 定义' : '• Role Profiles'}</text>
+    <text x="46" y="142" class="dsvg-body">{isZh ? '• 自定义 Services 逻辑' : '• Custom Service logic'}</text>
+
+    <rect x="318" y="60" width="244" height="96" rx="5" class="dsvg-card" />
+    <rect x="318" y="60" width="244" height="4" rx="2" fill="var(--sch-indigo)" />
+    <text x="332" y="83" class="dsvg-title">Core Runtime</text>
+    <text x="332" y="104" class="dsvg-body">{isZh ? '• Agent 注册表与并发槽位' : '• Agent registry & slots'}</text>
+    <text x="332" y="123" class="dsvg-body">{isZh ? '• 输入与文件操作账本' : '• Input & file ledgers'}</text>
+    <text x="332" y="142" class="dsvg-body">{isZh ? '• 生命周期事件流' : '• Lifecycle event stream'}</text>
+
+    <rect x="604" y="60" width="244" height="96" rx="5" class="dsvg-card" />
+    <rect x="604" y="60" width="244" height="4" rx="2" fill="var(--sch-amber)" />
+    <text x="618" y="83" class="dsvg-title">outputDir/&lt;runtimeId&gt;/</text>
+    <text x="618" y="104" class="dsvg-body">• runtime.json / evidence.jsonl</text>
+    <text x="618" y="123" class="dsvg-body">• service-calls.jsonl</text>
+    <text x="618" y="142" class="dsvg-body">{isZh ? '• model-trace/ 与会话产物' : '• model-trace/ & archives'}</text>
+
+    <path d="M 280 108 H 314" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-start={`url(#ag-ar-in-${p})`} marker-end={`url(#ag-ar-in-${p})`} />
+    <path d="M 566 108 H 598" fill="none" stroke="var(--sch-amber)" stroke-width="1.9" marker-end={`url(#ag-ar-am-${p})`} />
+
+    <!-- Host Row 2: Gateways -->
+    <rect x="32" y="206" width="388" height="88" rx="5" class="dsvg-card-service" />
+    <rect x="32" y="206" width="388" height="4" rx="2" fill="var(--sch-indigo)" />
+    <text x="46" y="229" class="dsvg-title">Service Bridge (HTTP)</text>
+    <text x="46" y="249" class="dsvg-body">{isZh ? '• Bearer 令牌鉴权 → 绑定真实 agentId' : '• Bearer token auth → verified agentId'}</text>
+    <text x="46" y="267" class="dsvg-body">{isZh ? '• Profile.services 白名单与 JSON Schema 校验' : '• Profile.services ACL & JSON Schema check'}</text>
+    <text x="46" y="285" class="dsvg-body">{isZh ? '• 派发至进程内或外部 HTTP Service 并回传结果' : '• Dispatches to in-process or HTTP Service & replies'}</text>
+
+    <rect x="460" y="206" width="388" height="88" rx="5" class="dsvg-card" />
+    <rect x="460" y="206" width="388" height="4" rx="2" fill="var(--sch-teal)" />
+    <text x="474" y="229" class="dsvg-title">Model Gateway (/v1/responses)</text>
+    <text x="474" y="249" class="dsvg-body">{isZh ? '• 每 Agent 独立可即时吊销令牌' : '• Per-agent revocable bearer token'}</text>
+    <text x="474" y="267" class="dsvg-body">{isZh ? '• 仅在宿主机注入上游模型 API 密钥' : '• Injects upstream API keys strictly on host'}</text>
+    <text x="474" y="285" class="dsvg-body">{isZh ? '• 可选 modelAccessPolicy 同步租约门控' : '• Optional synchronous modelAccessPolicy gate'}</text>
+
+    <!-- Host Internal Routes -->
+    <path d="M 154 202 V 162" fill="none" stroke="var(--sch-indigo)" stroke-width="1.9" marker-start={`url(#ag-ar-in-${p})`} marker-end={`url(#ag-ar-in-${p})`} />
+    <text x="164" y="185" class="dsvg-sub">{isZh ? 'Service 派发 / 返回' : 'Service dispatch / reply'}</text>
+
+    <path d="M 380 202 V 188 Q 380 180 390 180 H 632 Q 642 180 642 172 V 162" fill="none" stroke="var(--sch-amber)" stroke-width="1.6" stroke-dasharray="4 3" marker-end={`url(#ag-ar-am-${p})`} />
+
+    <path d="M 510 202 V 162" fill="none" stroke="var(--sch-teal)" stroke-width="1.8" marker-start={`url(#ag-ar-te-${p})`} marker-end={`url(#ag-ar-te-${p})`} />
+    <text x="518" y="196" class="dsvg-sub">{isZh ? '租约门控' : 'lease gate'}</text>
+
+    <path d="M 736 202 V 162" fill="none" stroke="var(--sch-amber)" stroke-width="1.9" marker-end={`url(#ag-ar-am-${p})`} />
+    <text x="746" y="185" class="dsvg-sub">{isZh ? '模型轨迹落盘' : 'model traces'}</text>
+
+    <!-- TRUST BOUNDARY -->
+    <line x1="16" y1="348" x2="864" y2="348" stroke="var(--sch-amber)" stroke-width="1.4" stroke-dasharray="6 4" />
+    <rect x="260" y="336" width="360" height="22" rx="11" fill="var(--bg-elevated)" stroke="var(--sch-amber)" stroke-width="1.2" />
+    <text x="440" y="351" text-anchor="middle" class="dsvg-mono-amber">{isZh ? '宿主机 / 沙箱信任边界 · 凭证留在宿主' : 'HOST / SANDBOX TRUST BOUNDARY · KEYS ON HOST'}</text>
+
+    <!-- ISOLATED SANDBOX ZONE -->
+    <rect x="16" y="388" width="848" height="136" rx="8" fill="var(--sch-surface)" stroke="var(--ink)" stroke-width="1.6" stroke-dasharray="6 4" />
+    <text x="32" y="411" class="dsvg-zone-title">{isZh ? '隔离沙箱（ISOLATED SANDBOX）' : 'ISOLATED SANDBOX'}</text>
+    <text x={isZh ? 256 : 182} y="411" class="dsvg-zone-sub">{isZh ? '· OpenSandbox 独立容器与私有工作区' : '· OpenSandbox container & private workspace'}</text>
+    <line x1="16" y1="421" x2="864" y2="421" stroke="var(--border)" stroke-width="1" />
+
+    <rect x="32" y="432" width="330" height="78" rx="5" class="dsvg-card" />
+    <rect x="32" y="432" width="330" height="4" rx="2" fill="var(--sch-teal)" />
+    <text x="46" y="454" class="dsvg-title">{isZh ? 'Worker 监督进程' : 'Worker Supervisor'}</text>
+    <text x="46" y="474" class="dsvg-body">{isZh ? '• 准备冻结提示词 · 快照/替换前暂停写' : '• Stages prompt · pauses writers on sync'}</text>
+    <text x="46" y="493" class="dsvg-body">{isZh ? '• 停止执行器并流式导出会话与产物' : '• Stops executor & streams archives'}</text>
+
+    <path d="M 366 471 H 434" fill="none" stroke="var(--sch-teal)" stroke-width="1.9" marker-end={`url(#ag-ar-te-${p})`} />
+    <text x="401" y="462" text-anchor="middle" class="dsvg-sub">{isZh ? '监督管理' : 'manages'}</text>
+
+    <rect x="440" y="432" width="408" height="78" rx="5" class="dsvg-card" />
+    <rect x="440" y="432" width="408" height="4" rx="2" fill="var(--ink)" />
+    <text x="454" y="454" class="dsvg-title">{isZh ? 'Pi 或 Codex 执行器' : 'Pi or Codex executor'}</text>
+    <text x="454" y="474" class="dsvg-body">{isZh ? '• 本地文件与 Shell 工具（独立 /workspace/project）' : '• Local file & shell tools (isolated /workspace/project)'}</text>
+    <text x="454" y="493" class="dsvg-body">{isZh ? '• 运行 swarm CLI 与模型推理请求' : '• Calls swarm CLI & model endpoints'}</text>
+
+    <!-- Cross-boundary bidirectional pipes -->
+    <path d="M 556 428 V 376 Q 556 368 544 368 H 238 Q 226 368 226 358 V 300" fill="none" stroke="var(--sch-indigo)" stroke-width="2.1" marker-start={`url(#ag-ar-in-${p})`} marker-end={`url(#ag-ar-in-${p})`} />
+    <text x="214" y="323" text-anchor="end" class="dsvg-mono">MURM_BRIDGE_URL</text>
+    <text x="214" y="338" text-anchor="end" class="dsvg-sub">{isZh ? '鉴权 · 双向调用' : 'auth · req / res'}</text>
+
+    <path d="M 716 428 V 300" fill="none" stroke="var(--sch-teal)" stroke-width="2.1" marker-start={`url(#ag-ar-te-${p})`} marker-end={`url(#ag-ar-te-${p})`} />
+    <text x="728" y="323" class="dsvg-mono-teal">{isZh ? 'Gateway 地址' : 'Gateway origin'}</text>
+    <text x="728" y="338" class="dsvg-sub">{isZh ? '鉴权 · 流式响应' : 'auth · streamed SSE'}</text>
+  </svg>
+</div>

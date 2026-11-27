@@ -5,9 +5,9 @@ section: REFERENCE
 order: 13
 ---
 
-The excerpts below cover the main public type families in `@luna-shi/murm` `0.2.0`. The complete declarations live in [Core types](https://github.com/LuNa-shi/murm/blob/main/src/core/types.ts), [Service types](https://github.com/LuNa-shi/murm/blob/main/src/core/service-types.ts), [backend configuration](https://github.com/LuNa-shi/murm/blob/main/src/core/backend-config.ts), and [default Worker image](https://github.com/LuNa-shi/murm/blob/main/src/core/worker-image.ts). For a complete running program, start with [the SDK guide](../sdk.md).
+The excerpts below cover the main public type families in `@luna-shi/murm`. The complete declarations live in [Core types](https://github.com/LuNa-shi/murm/blob/main/src/core/types.ts), [Service types](https://github.com/LuNa-shi/murm/blob/main/src/core/service-types.ts), [backend configuration](https://github.com/LuNa-shi/murm/blob/main/src/core/backend-config.ts), [executor adapters](https://github.com/LuNa-shi/murm/blob/main/src/core/executor-adapter.ts), [file policy](https://github.com/LuNa-shi/murm/blob/main/src/core/file-policy.ts), [model transport](https://github.com/LuNa-shi/murm/blob/main/src/core/model-transport.ts), and [default Worker image](https://github.com/LuNa-shi/murm/blob/main/src/core/worker-image.ts). For guided walkthroughs, start with [Runtime](../runtime.md) and [Build a Swarm Harness](../build-your-harness.md).
 
-Import public values (`createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `resolveSandboxConnection`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`) and public types from `@luna-shi/murm`. The declarations cover Runtime, files, receipts, Sandbox and the Service author boundary.
+Import public values (`createSandbox`, `resolveSandboxConnection`, `createRuntime`, `createPiExecutor`, `createCodexExecutor`, `createExecutorAdapter`, `EXECUTOR_ADAPTER_PROTOCOL`, `getExecutorCapabilities`, `DEFAULT_WORKER_IMAGE`, `workerImageFor`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`) and public types from `@luna-shi/murm`. The declarations cover Runtime, files, receipts, Sandbox and the Service author boundary.
 
 ## Runtime, Profile, FileTree and events
 
@@ -476,4 +476,4 @@ export interface HttpJsonAdapterOptions {
 }
 ```
 
-[See Service author and HTTP wire contracts in the API reference.](api.md#service-protocol-v2--built-in-agent-service)
+[See Service author and HTTP wire contracts in the API reference.](api.md#service-protocol--built-in-agent-service)

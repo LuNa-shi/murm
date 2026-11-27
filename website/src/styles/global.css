@@ -2340,3 +2340,616 @@ html.reveal-ready [data-reveal-line].is-visible {
     padding: 4px 0;
   }
 }
+
+/* ============================================================================
+   Hero One-Line Install Bar (pi.dev-inspired paper-grid bar)
+   ============================================================================ */
+.install-bar-wrap {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto 24px;
+  text-align: left;
+}
+
+.install-bar {
+  border: 1.5px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--ink) 14%, transparent);
+  overflow: hidden;
+}
+
+.install-tabs {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
+}
+
+.install-tab {
+  appearance: none;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  padding: 9px 20px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+
+.install-tab:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--bg-elevated) 60%, transparent);
+}
+
+.install-tab.active {
+  color: var(--ink);
+  background: var(--bg-elevated);
+}
+
+.install-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+}
+
+.install-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+}
+
+.install-cmd-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.install-cmd {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  color: var(--ink);
+  background: transparent;
+  padding: 0;
+  border: 0;
+}
+
+.install-prompt {
+  color: var(--ink-muted);
+  user-select: none;
+}
+
+.install-copy-btn {
+  flex: 0 0 auto;
+  appearance: none;
+  border: 1.3px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-subtle);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: border-color 0.14s ease, background 0.14s ease, color 0.14s ease, transform 0.12s ease;
+}
+
+.install-copy-btn:hover {
+  border-color: var(--ink);
+  background: var(--bg-elevated);
+  transform: translateY(-1px);
+}
+
+.install-copy-btn.copied {
+  border-color: var(--sch-teal);
+  color: var(--sch-teal);
+  background: var(--teal-soft);
+}
+
+.install-note {
+  margin: 9px 4px 0;
+  font-size: 12.2px;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.install-note code {
+  font-family: var(--font-mono);
+  font-size: 11.6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  color: var(--ink);
+}
+
+.install-note a {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.install-note a:hover {
+  text-decoration: underline;
+}
+
+/* ============================================================================
+   CoreModelBlueprint Animated Trace Playhead + Homepage TracePreviewStrip
+   ============================================================================ */
+.ar-trace-cursor {
+  animation: ar-trace-sweep 5.5s ease-in-out infinite;
+}
+
+@keyframes ar-trace-sweep {
+  0%, 100% { transform: translateX(0px); }
+  50% { transform: translateX(106px); }
+}
+
+.trace-preview-card {
+  margin-top: 22px;
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--ink) 14%, transparent);
+  overflow: hidden;
+}
+
+.trace-preview-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.trace-preview-copy {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+
+.trace-preview-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.trace-preview-cmd code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  color: var(--ink);
+}
+
+.trace-preview-copy h3 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.trace-preview-copy p {
+  margin: 0;
+  font-size: 13.8px;
+  line-height: 1.55;
+  color: var(--ink-secondary);
+}
+
+.trace-preview-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.trace-preview-stage {
+  overflow-x: auto;
+  background: var(--sch-surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.trace-preview-svg {
+  display: block;
+  width: 100%;
+  min-width: 680px;
+  height: auto;
+}
+
+.trace-preview-svg .tp-head {
+  font-family: var(--font-pixel);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  fill: var(--ink);
+}
+
+.trace-preview-svg .tp-tick {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--ink-muted);
+}
+
+.trace-preview-svg .tp-lane-name {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+
+.trace-preview-svg .tp-lane-sub {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  fill: var(--ink-muted);
+}
+
+.trace-preview-svg .tp-bar-lbl {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  fill: #ffffff;
+  pointer-events: none;
+}
+
+.trace-preview-svg .tp-bar {
+  cursor: pointer;
+  transition: opacity 0.14s ease, filter 0.14s ease;
+}
+
+.trace-preview-svg .tp-bar:hover,
+.trace-preview-svg .tp-bar:focus {
+  filter: brightness(1.1);
+  outline: none;
+}
+
+.trace-preview-svg .tp-handoff-arc {
+  animation: tp-dash 3.2s linear infinite;
+}
+
+.trace-preview-svg .tp-handoff-arc-2 {
+  animation-delay: -1.4s;
+}
+
+@keyframes tp-dash {
+  to { stroke-dashoffset: -28; }
+}
+
+.trace-preview-svg .tp-playhead {
+  animation: tp-sweep 9s ease-in-out infinite;
+}
+
+@keyframes tp-sweep {
+  0% { transform: translateX(0px); }
+  50% { transform: translateX(740px); }
+  100% { transform: translateX(0px); }
+}
+
+.trace-preview-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  padding: 10px 18px;
+  background: var(--bg-subtle);
+  font-size: 12px;
+}
+
+.trace-preview-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--ink-secondary);
+}
+
+.tp-leg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+}
+
+.tp-leg-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.tp-leg-dot.dot-input { background: var(--sch-indigo); }
+.tp-leg-dot.dot-model { background: var(--sch-purple); }
+.tp-leg-dot.dot-tool { background: var(--sch-amber); }
+.tp-leg-dot.dot-service { background: var(--sch-teal); }
+
+.trace-preview-readout {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ar-trace-cursor,
+  .trace-preview-svg .tp-playhead,
+  .trace-preview-svg .tp-handoff-arc {
+    animation: none;
+  }
+}
+
+/* ============================================================================
+   Embedded Interactive Trace Viewer Demo (trace-viewer.md)
+   ============================================================================ */
+.trace-embed-shell {
+  margin: 0 0 28px;
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--ink) 12%, transparent);
+  overflow: hidden;
+}
+
+.trace-embed-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 11px 14px;
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
+}
+
+.trace-embed-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.trace-embed-title {
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.trace-embed-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trace-embed-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  border: 1.2px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 5px 10px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.trace-embed-btn:hover {
+  border-color: var(--ink);
+  background: var(--bg-subtle);
+  text-decoration: none;
+}
+
+.trace-embed-link {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.trace-outer-tabs {
+  display: inline-flex;
+  align-items: center;
+  border: 1.2px solid var(--border-strong);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+}
+
+.trace-outer-tab {
+  appearance: none;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.trace-outer-tab:last-child {
+  border-right: 0;
+}
+
+.trace-outer-tab:hover {
+  color: var(--ink);
+  background: var(--bg-subtle);
+}
+
+.trace-outer-tab.active {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.trace-embed-frame-wrap {
+  width: 100%;
+  height: 472px;
+  background: var(--sch-surface);
+  transition: height 0.18s ease;
+}
+
+.trace-embed-iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.trace-embed-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-subtle);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+
+.trace-embed-foot code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-secondary);
+}
+
+/* ============================================================================
+   Precision Inline SVG Diagrams (ConceptsDiagram.astro, GatewayDiagram.astro)
+   ============================================================================ */
+.doc-svg-wrap {
+  margin: 0 0 26px;
+  border-radius: var(--radius-md);
+  border: 1.4px solid var(--border-strong);
+  background: var(--sch-surface);
+  overflow-x: auto;
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+.doc-svg {
+  display: block;
+  width: 100%;
+  min-width: 660px;
+  height: auto;
+}
+
+.doc-svg text {
+  font-family: var(--font-sans);
+}
+
+.doc-svg .dsvg-title {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  fill: var(--ink);
+}
+
+.doc-svg .dsvg-zone-title {
+  font-family: var(--font-pixel);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  fill: var(--ink);
+}
+
+.doc-svg .dsvg-zone-sub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  fill: var(--ink-muted);
+}
+
+.doc-svg .dsvg-body {
+  font-size: 11.8px;
+  fill: var(--ink-secondary);
+}
+
+.doc-svg .dsvg-strong {
+  font-size: 11.8px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+
+.doc-svg .dsvg-mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--sch-indigo);
+}
+
+.doc-svg .dsvg-mono-teal {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--sch-teal);
+}
+
+.doc-svg .dsvg-mono-amber {
+  font-family: var(--font-mono);
+  font-size: 10.8px;
+  font-weight: 600;
+  fill: var(--sch-amber);
+}
+
+.doc-svg .dsvg-sub {
+  font-size: 10.5px;
+  fill: var(--ink-muted);
+}
+
+.doc-svg .dsvg-card {
+  fill: var(--bg-elevated);
+  stroke: var(--border-strong);
+  stroke-width: 1.3;
+}
+
+.doc-svg .dsvg-card-yellow {
+  fill: color-mix(in srgb, var(--marker-yellow) 32%, var(--bg-elevated));
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.doc-svg .dsvg-card-service {
+  fill: var(--sch-lane-service);
+  stroke: var(--sch-indigo);
+  stroke-width: 1.3;
+}
+
+.doc-svg .dsvg-pill {
+  fill: var(--sch-surface);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 2.5;
+}
+
+@media (max-width: 720px) {
+  .install-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .install-copy-btn {
+    align-self: flex-end;
+  }
+  .trace-embed-frame-wrap {
+    height: 540px;
+  }
+}

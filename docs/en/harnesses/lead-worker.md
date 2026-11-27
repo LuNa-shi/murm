@@ -2,21 +2,24 @@
 title: Lead-Worker
 description: A fixed lead and worker team that revises its direction using worker feedback and verifies delivery against Git.
 section: HARNESSES
-order: 11
+order: 14
 ---
 
-## Run an ordinary project
+**Lead-Worker** (`src/harnesses/lead-worker/`) fits teams that want one explicit owner of direction while enforcing that worker feedback discovered during execution actually reaches the next round of planning. One `lead` and 2–7 workers (`helper1..helperN`) run in persistent sessions with separate Gitea accounts, personal Git branches, and a local SQLite **`board` Service**. It supports both a fixed team (default) and a **dynamic team** mode where the Lead can deploy a checking Service, register a Profile, admit a new member, and update Worker grants mid-Run (see [examples/lead-worker/README.md](../../../examples/lead-worker/README.md)).
 
-```sh
+## Quick run (CLI)
+
+Configure your Gitea and model host variables (see [examples/lead-worker/README.md](../../../examples/lead-worker/README.md)), then launch against any project directory:
+
+```bash
 cd my-project
 murm --harness lead-worker --prompt "Fix the parser using the project tests"
+
+# Optional: enable dynamic team membership & live checking Service
+MURM_LEAD_WORKER_TEAM=dynamic murm --harness lead-worker --prompt "Fix the parser using the project tests"
 ```
 
-Lead–Worker sends the prompt to the Lead and initializes team Git and member Sandbox files. Choose the dynamic team with `MURM_LEAD_WORKER_TEAM=dynamic`. The dynamic checker uses an immutable Docker image ID from `MURM_LEAD_WORKER_CHECKING_IMAGE` or the Worker image setting. The sections below also cover direct SDK embedding and explicit benchmark fixtures.
-
-**Lead-Worker** (`src/harnesses/lead-worker/`) fits teams that want one explicit owner of direction while enforcing that worker feedback discovered during execution actually reaches the next round of planning. One `lead` and 2–7 workers (`helper1..helperN`) run in persistent sessions with separate Gitea accounts, personal Git branches, and a local SQLite **`board` Service**.
-
-The host composes Runtime, Services and the OpenSandbox backend using the [SDK](../sdk.md). `createLeadWorkerHarness` and `runLeadWorker` are repository modules under `src/harnesses/lead-worker/`, not public package exports. The default mode configures the team before startup. The packaged [dynamic orders example](../../../examples/lead-worker/README.md) lets the Lead deploy a checking Service, register a Profile, admit a new member and change an original Worker’s grants while work is underway.
+Lead-Worker initializes the team Git repository and member Sandboxes from your project directory and routes the prompt to the Lead. In dynamic mode, the checker uses `MURM_LEAD_WORKER_CHECKING_IMAGE` (or falls back to the configured Worker image ID). See below for its causal read gates, staged control loop, and source runner.
 
 ## 1. Registered Services & asymmetric permissions
 
@@ -98,7 +101,7 @@ await Promise.all(
 
 For a host-managed schedule with `helperCount: 3`, the factory also exposes `prepareStages({ signal })` and `runStage(...)`. The first stage receives `goal` and `paths`; later stages receive `supplement` and new `paths`. Optional task specifications, a host signal, a deadline and a candidate verifier can be supplied. Up to four serial stages reuse the same team. The supplied CLI still runs the short two-round workflow.
 
-The read gates establish which feedback and direction were observed. Delivery verification establishes account, commit and byte provenance; it does not establish the semantic quality of arbitrary code.
+The read gates establish which feedback and direction were observed. Delivery verification proves account, commit, and byte provenance (not semantic code quality).
 
 ## 3. Running the example
 

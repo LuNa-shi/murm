@@ -2,21 +2,21 @@
 title: PeerMesh
 description: Peer-to-peer engineering team coordinating through soft Board claims, Mattermost channels and direct messages, and host-verified Gitea pull requests.
 section: HARNESSES
-order: 9
+order: 12
 ---
 
-## Run an ordinary project
+**PeerMesh** (`src/harnesses/peermesh/`) models a flat team of 2–8 peer engineers with no central dispatcher and no exclusive task locks. Each peer has its own Gitea account, Mattermost account, persistent Pi session, and Git checkout. Peers choose work on personal branches, post advisory `CLAIM` notes and updates on a shared Board, discuss in team chat and DMs, and land PRs into protected `main` through host verification.
 
-```sh
+## Quick run (CLI)
+
+Configure your Gitea, Mattermost, Board, and model host variables (see [examples/peermesh/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/README.md)), then launch against any project directory:
+
+```bash
 cd my-project
 murm --harness peermesh --prompt "Fix the parser using the project tests"
 ```
 
-PeerMesh creates a shared project repository and issue from the directory and prompt. Peers work in separate Sandboxes. Configure Gitea, Mattermost and the Board before launching. The sections below also cover direct SDK embedding and explicit benchmark fixtures.
-
-**PeerMesh** (`src/harnesses/peermesh/`) models a flat team of 2–8 peer engineers with no central dispatcher and no exclusive task locks. Each peer has its own Gitea account, Mattermost account, persistent Pi session, and Git checkout. Peers choose work on personal branches, post soft intentions (`CLAIM`) and updates on a shared Board, talk in team chat and DMs, and merge PRs into protected `main` through host verification.
-
-The shipped host uses the generic OpenSandbox backend with Pi and composes its Services around Core. The team and router factories in `src/harnesses/peermesh/` are repository modules, not exported SDK factories. Use the [SDK guide](../sdk.md) to build a new Harness and the example below to run this particular policy.
+PeerMesh creates a shared project repository and issue from the directory and prompt, giving each peer its own Sandbox and branch. See the sections below for its Services, per-peer Router, and JSON-line foreground runner.
 
 ## 1. Registered Services
 
@@ -49,7 +49,7 @@ When a peer calls `pull_request_merge`, [delivery.ts](https://github.com/LuNa-sh
 
 ## 2. Per-peer router & mid-turn steering
 
-In [team.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/team.ts) and [router.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/router.ts), each peer gets an independent serial router. Event subscriptions poll Mattermost and Gitea; successful Board writes also enqueue notices. The router delivers these events into the peer's persistent Pi session. This excerpt shows the project-run configuration; the complete factory also installs failure fencing and shutdown handlers:
+In [team.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/team.ts) and [router.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/router.ts), each peer gets an independent serial router. Event subscriptions poll Mattermost and Gitea; successful Board writes also enqueue notices. The router delivers these events into the peer's persistent Pi session (`runInput` is the repository's shared single-turn helper from `src/harnesses/shared/run-input.ts`). This excerpt shows the project-run configuration; the complete factory also installs failure fencing and shutdown handlers:
 
 ```ts
 const router = createPeerMeshRouter({

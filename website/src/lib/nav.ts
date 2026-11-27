@@ -17,20 +17,23 @@ export const DOC_NAV: NavGroup[] = [
     items: [
       { title: 'Overview', slug: 'overview' },
       { title: 'Quickstart', slug: 'quickstart' },
-      { title: 'How murm Works', slug: 'concepts' },
+      { title: 'Core Concepts', slug: 'concepts' },
     ],
   },
   {
-    label: 'BUILD ON MURM',
+    label: 'CORE BUILDING BLOCKS',
     items: [
-      { title: 'Use the SDK', slug: 'sdk' },
-      { title: 'Build Your Own Harness', slug: 'build-your-harness' },
-      { title: 'System Architecture', slug: 'architecture' },
-      { title: 'Run Lifecycle', slug: 'run-lifecycle' },
+      { title: 'Sandboxes', slug: 'sandbox' },
+      { title: 'Runtime', slug: 'runtime' },
+      { title: 'Agents & Profiles', slug: 'agents' },
+      { title: 'Host Gateway', slug: 'gateway' },
+      { title: 'Services & Permissions', slug: 'services' },
+      { title: 'Trace Viewer', slug: 'trace-viewer' },
+      { title: 'Build a Swarm Harness', slug: 'build-your-harness' },
     ],
   },
   {
-    label: 'HARNESSES',
+    label: 'BUILT-IN HARNESSES',
     items: [
       { title: 'Choose a Harness', slug: 'harnesses' },
       { title: 'Subagents', slug: 'harnesses/subagents' },
@@ -43,9 +46,9 @@ export const DOC_NAV: NavGroup[] = [
   {
     label: 'REFERENCE',
     items: [
-      { title: 'API & Configuration', slug: 'reference/api' },
+      { title: 'SDK & API Reference', slug: 'reference/api' },
+      { title: 'CLI Reference', slug: 'reference/cli' },
       { title: 'Types & Source Map', slug: 'reference/types' },
-      { title: 'Documentation Site', slug: 'reference/deploy' },
     ],
   },
   {
@@ -63,20 +66,23 @@ export const DOC_NAV_ZH: NavGroup[] = [
     items: [
       { title: '文档总览', slug: 'overview' },
       { title: '快速上手', slug: 'quickstart' },
-      { title: 'murm 如何工作', slug: 'concepts' },
+      { title: '核心概念', slug: 'concepts' },
     ],
   },
   {
-    label: '基于 MURM 构建',
+    label: '核心构件与实战',
     items: [
-      { title: '使用 SDK', slug: 'sdk' },
-      { title: '构建你自己的 Harness', slug: 'build-your-harness' },
-      { title: '系统架构', slug: 'architecture' },
-      { title: 'Run 生命周期', slug: 'run-lifecycle' },
+      { title: 'Sandbox 隔离沙箱', slug: 'sandbox' },
+      { title: 'Runtime 运行控制面', slug: 'runtime' },
+      { title: 'Agent 与 Profile', slug: 'agents' },
+      { title: 'Host Gateway 宿主机网关', slug: 'gateway' },
+      { title: 'Services 与权限', slug: 'services' },
+      { title: '观测与调试', slug: 'trace-viewer' },
+      { title: '实战：构建 Swarm Harness', slug: 'build-your-harness' },
     ],
   },
   {
-    label: '协作机制',
+    label: '内置 Harness',
     items: [
       { title: '选择 Harness', slug: 'harnesses' },
       { title: 'Subagents', slug: 'harnesses/subagents' },
@@ -89,9 +95,9 @@ export const DOC_NAV_ZH: NavGroup[] = [
   {
     label: '参考手册',
     items: [
-      { title: 'API 与配置参考', slug: 'reference/api' },
+      { title: 'SDK 与 API 参考', slug: 'reference/api' },
+      { title: 'CLI 参考', slug: 'reference/cli' },
       { title: '类型定义与源码映射', slug: 'reference/types' },
-      { title: '站点部署指南', slug: 'reference/deploy' },
     ],
   },
   {
