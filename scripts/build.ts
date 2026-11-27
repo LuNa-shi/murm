@@ -32,6 +32,15 @@ for (const directory of ['src', 'scripts', 'deploy', 'examples', 'test']) {
   });
 }
 
+// Ship the zero-dependency Trace Viewer modules and browser assets alongside compiled src/.
+const traceViewerSource = resolve(root, 'src/trace-viewer');
+if (await stat(traceViewerSource).catch(error => {
+  if (error.code === 'ENOENT') return null;
+  throw error;
+})) {
+  await cp(traceViewerSource, resolve(dist, 'src/trace-viewer'), { recursive: true });
+}
+
 for (const name of ['murm', 'swarm']) {
   await chmod(resolve(dist, `scripts/${name}.js`), 0o755);
 }

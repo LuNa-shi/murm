@@ -7,24 +7,27 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { execFile, spawn } from 'node:child_process';
 import test from 'node:test';
+import { preparePackageArchive } from './fixtures/notes-installed-package.js';
 
 const exec = promisify(execFile);
 
-test('installed CLI serves read-only Run evidence and resumes a live stream', { timeout: 30_000 }, async (t) => {
+test('installed murm CLI serves read-only Run evidence and resumes a live stream', { timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'murm-trace-http-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const consumer = join(root, 'consumer');
-  const packagePath = fileURLToPath(new URL('.', import.meta.url));
   await mkdir(consumer);
-  const pack = await exec('npm', ['pack', packagePath, '--json'], { cwd: consumer });
-  const [{ filename, files }] = JSON.parse(pack.stdout);
-  assert.ok(files.some(entry => entry.path === 'public/index.html'));
-  assert.ok(files.every(entry => !entry.path.endsWith('.test.mjs')));
-  await exec('npm', ['install', '--offline', '--no-audit', '--no-fund', './' + filename], { cwd: consumer });
-  const help = await exec(process.execPath, [
-    '--input-type=module', '-e',
-    "import { runTraceCommand } from '@luna-shi/murm-trace-viewer/command'; await runTraceCommand(['--help']);",
-  ], { cwd: consumer });
+  const { archive } = await preparePackageArchive(root);
+  const archiveListing = await exec('tar', ['-tzf', archive], { maxBuffer: 4 * 1024 ** 2 });
+  const files = archiveListing.stdout.trim().split('\n');
+  assert.ok(files.includes('package/dist/src/trace-viewer/public/index.html'));
+  assert.ok(files.includes('package/dist/src/trace-viewer/public/app.js'));
+  await writeFile(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
+  await exec('npm', ['install', '--offline', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', archive], {
+    cwd: consumer,
+    timeout: 60_000,
+    maxBuffer: 4 * 1024 ** 2,
+  });
+  const help = await exec(join(consumer, 'node_modules/.bin/murm'), ['trace', '--help'], { cwd: consumer });
   assert.match(help.stdout, /murm trace/);
   const run = join(root, 'fixture');
   await mkdir(run);
@@ -120,7 +123,7 @@ test('installed CLI serves read-only Run evidence and resumes a live stream', { 
 });
 
 test('command helpers support positional root, SSH forwarding hint, validation and rebuilt assets', async (t) => {
-  const { formatSshHint, runTraceCommand } = await import('./command.mjs');
+  const { formatSshHint, runTraceCommand } = await import('../src/trace-viewer/command.mjs');
   assert.equal(formatSshHint(8787, {}), null);
   const hint = formatSshHint(9090, {
     SSH_CONNECTION: '10.0.0.2 51234 192.168.1.50 22',
@@ -128,7 +131,7 @@ test('command helpers support positional root, SSH forwarding hint, validation a
   });
   assert.match(hint, /ssh -N -L 9090:127\.0\.0\.1:9090 alice@192\.168\.1\.50/);
 
-  const root = fileURLToPath(new URL('../test/fixtures/trace-viewer/runs', import.meta.url));
+  const root = fileURLToPath(new URL('../../test/fixtures/trace-viewer/runs', import.meta.url));
   const viewer = await runTraceCommand([root, '--port', '0']);
   t.after(() => viewer.close());
   assert.match(viewer.url, /^http:\/\/127\.0\.0\.1:\d+$/);

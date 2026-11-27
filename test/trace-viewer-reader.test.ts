@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createTraceReader } from "../reader.mjs";
+import { createTraceReader } from "../src/trace-viewer/reader.mjs";
 
 test("the offline demo links a child result to the Root request and exported note", async () => {
   const root = fileURLToPath(new URL("../../test/fixtures/trace-viewer/runs/", import.meta.url));

@@ -56,12 +56,11 @@ The repository includes five substantial Harnesses sharing the same Runtime with
 
 Compare policies in [Choose a Harness](docs/en/harnesses/index.md) or create your own in [Build Your Own Harness](docs/en/build-your-harness.md).
 
-## Optional Trace Viewer
+## Built-in Trace Viewer
 
-Inspect saved or live Run timelines in a local web UI:
+Inspect saved or live Run timelines in a local web UI (bundled inside `@luna-shi/murm` — no extra package required):
 
 ```sh
-npm install -g --ignore-scripts @luna-shi/murm-trace-viewer
 murm trace --root ./subagents-runs --port 8787
 ```
 

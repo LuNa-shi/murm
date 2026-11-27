@@ -152,10 +152,9 @@ cd your-project
 murm --harness subagents --prompt "Audit this project's test coverage and suggest two high-value edge-case tests"
 ```
 
-When finished, stdout prints the structured JSON report (including result, artifacts, and cleanup receipt). To inspect execution traces in a browser, install the optional Trace Viewer:
+When finished, stdout prints the structured JSON report (including result, artifacts, and cleanup receipt). Inspect execution traces directly in a browser with the built-in Trace Viewer (no extra package required):
 
 ```bash
-npm install -g --ignore-scripts @luna-shi/murm-trace-viewer
 murm trace --root ./subagents-runs
 ```
 

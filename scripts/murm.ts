@@ -7,7 +7,7 @@ import { parseMurmCommand } from './murm-arguments.js';
 
 const args = process.argv.slice(2);
 if (args[0] === 'trace') {
-  const viewerCommand = '@luna-shi/murm-trace-viewer/command';
+  const viewerCommand = '../src/trace-viewer/command.mjs';
   try {
     const { runTraceCommand } = await import(viewerCommand) as {
       runTraceCommand(args: string[]): Promise<{ close(): void } | null>;
@@ -18,10 +18,8 @@ if (args[0] === 'trace') {
       process.once('SIGTERM', viewer.close);
     }
   } catch (error) {
-    const missing = (error as NodeJS.ErrnoException).code === 'ERR_MODULE_NOT_FOUND';
-    console.error(missing
-      ? 'Install the optional @luna-shi/murm-trace-viewer package to run murm trace.'
-      : 'Could not start the Trace Viewer. Run murm trace --help for supported arguments.');
+    const detail = error instanceof Error && error.message ? ` (${error.message})` : '';
+    console.error(`Could not start the Trace Viewer${detail}. Run murm trace --help for supported arguments.`);
     process.exitCode = 1;
   }
 } else {

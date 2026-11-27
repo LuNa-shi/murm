@@ -52,7 +52,7 @@ Developers can [run Subagents directly from the checkout](../../examples/subagen
 
 Setup resolves the repository or installed Core package root. When it needs to build the Worker, it uses [`deploy/worker/Dockerfile`](../../deploy/worker/Dockerfile) with that root as the Docker build context. Local OpenSandbox startup reads [`deploy/opensandbox/config.toml`](../../deploy/opensandbox/config.toml) and substitutes the configured local port. The optional project initializer reads the editable JavaScript templates from `scripts/local-setup/templates/` under the same root. Builds copy deployment assets into `dist/deploy/` for compiled code and tests, and the package includes the root Docker build inputs and raw project templates.
 
-The host binary dispatches local preparation independently of the optional Trace Viewer. The `trace` subcommand loads `@luna-shi/murm-trace-viewer/command` when that package is installed. The Core dependency tree does not include the Viewer.
+The host binary dispatches local preparation, Harness runs, and the built-in Trace Viewer through one CLI (`murm`). The `trace` subcommand lazily loads `src/trace-viewer/command.mjs` with zero extra npm dependencies.
 
 ### Host checks and checkout preparation
 
@@ -122,9 +122,9 @@ The root `/experiments/` and `/reports/` ignore rules cover private raw evidence
 
 Built-in Service launchers use HTTP manifests and role/binding enforcement. Built-in invocation requires actor-bound principals. Independent Context/Judge composition owns peer authentication, durable request/commit gates, checker reconciliation and bounded shutdown. Hosts supply the actual domain stores and deployment configuration. Mathlib Search needs a configured upstream or mounted source tree. [Services](04-services.md) describes each callable path.
 
-The independent Trace Viewer package opens an output root containing saved or active Core Runs. Its loopback HTTP server serves a browser interface and resumable SSE. Current-run control still goes through the foreground Harness. The [Trace Viewer guide](../operations/trace-viewer.md) covers installation and SSH port forwarding.
+The built-in Trace Viewer (`src/trace-viewer/`) opens an output root containing saved or active Core Runs via `murm trace`. Its loopback HTTP server serves a browser interface and resumable SSE. Current-run control still goes through the foreground Harness. The [Trace Viewer guide](../operations/trace-viewer.md) covers usage and SSH port forwarding.
 
-`npm test` runs the Core suite with the offline `docs:check` pretest. `npm --prefix trace-viewer test` verifies the standalone package. `docs:generate` refreshes prompt/API/storage references and source fingerprints.
+`npm test` runs the full suite (including the Trace Viewer tests) with the offline `docs:check` pretest. `docs:generate` refreshes prompt/API/storage references and source fingerprints.
 
 ## CI build and verification
 

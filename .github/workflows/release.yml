@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_npm:
-        description: 'Publish @luna-shi/murm and @luna-shi/murm-trace-viewer to npm'
+        description: 'Publish @luna-shi/murm to npm'
         type: boolean
         default: true
       publish_worker_image:
@@ -41,20 +41,24 @@ jobs:
         id: version
         run: |
           version=$(node -p "require('./package.json').version")
-          viewer_version=$(node -p "require('./trace-viewer/package.json').version")
-          if [ "$version" != "$viewer_version" ]; then
-            echo "package.json ($version) and trace-viewer/package.json ($viewer_version) versions must match" >&2
-            exit 1
-          fi
           if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
             echo "Tag ${GITHUB_REF_NAME} does not match package.json version v${version}" >&2
             exit 1
           fi
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      - name: Start with a fresh npm cache
+        run: |
+          npm_cache=$(mktemp -d "$RUNNER_TEMP/murm-npm-cache.XXXXXXXX")
+          printf 'npm_config_cache=%s\n' "$npm_cache" >> "$GITHUB_ENV"
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
+      - name: Prepare npm cache for offline package tests
+        run: |
+          package_dir=$(mktemp -d)
+          trap 'rm -rf -- "$package_dir"' EXIT
+          npm pack --loglevel=error --pack-destination "$package_dir"
+          npm install --prefix "$package_dir/consumer" --prefer-offline --omit=dev --ignore-scripts --no-audit --no-fund "$package_dir"/*.tgz
       - run: npm test
-      - run: npm --prefix trace-viewer test
 
   publish-worker-image:
     name: Publish GHCR Worker Image
@@ -89,7 +93,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   publish-npm:
-    name: Publish npm Packages
+    name: Publish @luna-shi/murm to npm
     needs: verify
     if: github.event_name == 'push' || inputs.publish_npm == true
     runs-on: ubuntu-24.04
@@ -111,7 +115,3 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public --provenance
-      - name: Publish @luna-shi/murm-trace-viewer
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm --prefix trace-viewer publish --access public --provenance

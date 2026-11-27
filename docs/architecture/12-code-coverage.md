@@ -4,13 +4,13 @@
 
 Runtime baseline: `9e2804864c9f348e46095aa91f6ddf72fef016f5`; review date: 2026-11-26. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **329 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **323 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/subagents/`, `website/`, `trace-viewer/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes/.npmignore`, `examples/subagents/.npmignore`, `examples/lead-worker/.npmignore`, `examples/substrate/.npmignore`, `examples/peermesh/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`, `examples/substrate/FateProofGuard.lean`, `examples/substrate/VerifyFateProof.lean`, `.github/workflows/ci.yml`, `.github/workflows/deploy-website.yml`, `.github/workflows/release.yml`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/subagents/`, `website/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes/.npmignore`, `examples/subagents/.npmignore`, `examples/lead-worker/.npmignore`, `examples/substrate/.npmignore`, `examples/peermesh/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`, `examples/substrate/FateProofGuard.lean`, `examples/substrate/VerifyFateProof.lean`, `.github/workflows/ci.yml`, `.github/workflows/deploy-website.yml`, `.github/workflows/release.yml`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -76,7 +76,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [.dockerignore](../../.dockerignore) | Build context exclusions for generated outputs, dependency trees and local data. | [07-run-configuration](07-run-configuration.md) | `5592ad2f492c4d0255176e75ff5f8e8ac0460821f95d1a89b0f841f8c98aa8ac` |
-| [scripts/build.ts](../../scripts/build.ts) | Clean TypeScript compilation and staging of runtime and verification assets in dist. | [07-run-configuration](07-run-configuration.md) | `c8590585dfbb1451ae8a5e671f9910fe8041c4e0708378bc22b1bd2d7b0ed64a` |
+| [scripts/build.ts](../../scripts/build.ts) | Clean TypeScript compilation and staging of runtime and verification assets in dist. | [07-run-configuration](07-run-configuration.md) | `743c499fcefae19057db3123711a84d11e545fa3653aa452bfe87cd23dd33d1b` |
 | [tsconfig.json](../../tsconfig.json) | Strict TypeScript and Node ESM compiler configuration for the mirrored dist tree. | [07-run-configuration](07-run-configuration.md) | `e498c3f35ff5553e4c92b0d20fd3d239d0bfda49663fb7246582a60b37fdd8eb` |
 | [tsconfig.tests.json](../../tsconfig.tests.json) | TypeScript test emission configuration for the executable test tree. | [07-run-configuration](07-run-configuration.md) | `9927b0d021c575089dd66a4b84056140dd25b9dd24201df5913ee42d8acf8d0f` |
 
@@ -227,28 +227,22 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [scripts/core-work-dir.ts](../../scripts/core-work-dir.ts) | Trusted Worker file snapshots, digest-checked replacement, verified write grant and close coordination | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `b0c633c52d0a6a2522472aef2d5c0b58231a45cd1477bd3fde8cecf63217a6eb` |
 | [scripts/pi-rpc-submissions.ts](../../scripts/pi-rpc-submissions.ts) | Compatibility export of the shared Worker receipt ledger | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `9045e1c0401f3c84a634aa76a87a3a74908213787fa7ae68b5bc6df8513ebef2` |
 
-### Trace Viewer (18)
+### Trace Viewer (12)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [trace-viewer/command.mjs](../../trace-viewer/command.mjs) | Optional host trace subcommand parsing and server launch | [06-observability-experiments](06-observability-experiments.md) | `535e1a3206870bfb3a87bb75c0f56ff4fd3488129759171945ddd7c713284600` |
-| [trace-viewer/LICENSE](../../trace-viewer/LICENSE) | MIT terms bundled with the standalone package | [06-observability-experiments](06-observability-experiments.md) | `90272d879fe0b703911f686fcb63995d941e091cfa8e072adc1590bf0c0092e0` |
-| [trace-viewer/murm.mjs](../../trace-viewer/murm.mjs) | Thin host command and trace server startup | [06-observability-experiments](06-observability-experiments.md) | `b00f9ba1dcd6be2d367fc041dcbff01ee488d8722e6d9509287d3966b81898b7` |
-| [trace-viewer/package.json](../../trace-viewer/package.json) | Independent package and host command declaration | [06-observability-experiments](06-observability-experiments.md) | `ab4c49a2676f85c2021123ee3a8612a087c015ed4f334ac2205e8f2363f14656` |
-| [trace-viewer/public/app.js](../../trace-viewer/public/app.js) | Run navigation, rendering, filtering, stream updates and evidence inspector | [06-observability-experiments](06-observability-experiments.md) | `150705239d62658a3b8dd79d133e04f1f3a727cb1465572c883293a68573e19e` |
-| [trace-viewer/public/fonts/departure-mono.woff2](../../trace-viewer/public/fonts/departure-mono.woff2) | Self-hosted departure-mono font | [06-observability-experiments](06-observability-experiments.md) | `5b4fed1daa90708aa9c6ee1190abca9dc22164a1c1def0020386e46b61038cfb` |
-| [trace-viewer/public/fonts/inter.woff2](../../trace-viewer/public/fonts/inter.woff2) | Self-hosted inter font | [06-observability-experiments](06-observability-experiments.md) | `3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62` |
-| [trace-viewer/public/fonts/space-grotesk.woff2](../../trace-viewer/public/fonts/space-grotesk.woff2) | Self-hosted space-grotesk font | [06-observability-experiments](06-observability-experiments.md) | `0640890476fc1198ab4de571fb658de443c4d85b66466ec09534a8737ab1ce9d` |
-| [trace-viewer/public/index.html](../../trace-viewer/public/index.html) | Run list, timeline, evidence and result interface markup | [06-observability-experiments](06-observability-experiments.md) | `9335518b76349441c6b6c82798a5d528bd49eade7e462186f3a499bec4180883` |
-| [trace-viewer/public/licenses/departure-mono.txt](../../trace-viewer/public/licenses/departure-mono.txt) | License for the bundled departure-mono font | [06-observability-experiments](06-observability-experiments.md) | `b65e42750f3cb65437a97f4dfd781c58f199259949db2341012be60e32500e83` |
-| [trace-viewer/public/licenses/inter.txt](../../trace-viewer/public/licenses/inter.txt) | License for the bundled inter font | [06-observability-experiments](06-observability-experiments.md) | `3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345` |
-| [trace-viewer/public/licenses/space-grotesk.txt](../../trace-viewer/public/licenses/space-grotesk.txt) | License for the bundled space-grotesk font | [06-observability-experiments](06-observability-experiments.md) | `18a4de52385f6b988782639d5d0cc1326e5a8c2de9a7f01d7b20d9aedcc60943` |
-| [trace-viewer/public/style.css](../../trace-viewer/public/style.css) | Responsive layout, timeline layers and murm color themes | [06-observability-experiments](06-observability-experiments.md) | `3d0ffea18d69dd8b8af9f8fa85c22fd1ef93e348b0d6b6d3a7b9b27ab3625b50` |
-| [trace-viewer/reader.mjs](../../trace-viewer/reader.mjs) | Versioned evidence discovery, indexing, projection and bounded raw reads | [06-observability-experiments](06-observability-experiments.md) | `e05aa4729e2003dca3c29afb90705e4895c22a136442af6247f29cace07e906f` |
-| [trace-viewer/README.md](../../trace-viewer/README.md) | Candidate package and remote viewing instructions | [06-observability-experiments](06-observability-experiments.md) | `d44938cc806fc466dc98d7b8c4f85d08a9b43ca26067c282b44d7e929274b9a7` |
-| [trace-viewer/server.mjs](../../trace-viewer/server.mjs) | Loopback static assets, read-only API and resumable SSE | [06-observability-experiments](06-observability-experiments.md) | `639a9bf8675df6bff2d36bd1fcf9310db4baded9f14d6e6a4156725f4beeedbd` |
-| [trace-viewer/server.test.mjs](../../trace-viewer/server.test.mjs) | Standalone CLI and HTTP/SSE verification | [06-observability-experiments](06-observability-experiments.md) | `8381078b2b9fdcd71293a82b4ed729f5e8ee1a794cb4291982922682a4525d08` |
-| [trace-viewer/test/reader.test.mjs](../../trace-viewer/test/reader.test.mjs) | Reader contract verification with synthetic saved and live Core Runs | [06-observability-experiments](06-observability-experiments.md) | `c891c64751f6f94ad28c3a67ef9b6797d3e34a2934dc28e992ebee36334b182d` |
+| [src/trace-viewer/command.mjs](../../src/trace-viewer/command.mjs) | Built-in murm trace subcommand parsing and server launch | [06-observability-experiments](06-observability-experiments.md) | `535e1a3206870bfb3a87bb75c0f56ff4fd3488129759171945ddd7c713284600` |
+| [src/trace-viewer/public/app.js](../../src/trace-viewer/public/app.js) | Run navigation, rendering, filtering, stream updates and evidence inspector | [06-observability-experiments](06-observability-experiments.md) | `150705239d62658a3b8dd79d133e04f1f3a727cb1465572c883293a68573e19e` |
+| [src/trace-viewer/public/fonts/departure-mono.woff2](../../src/trace-viewer/public/fonts/departure-mono.woff2) | Self-hosted departure-mono font | [06-observability-experiments](06-observability-experiments.md) | `5b4fed1daa90708aa9c6ee1190abca9dc22164a1c1def0020386e46b61038cfb` |
+| [src/trace-viewer/public/fonts/inter.woff2](../../src/trace-viewer/public/fonts/inter.woff2) | Self-hosted inter font | [06-observability-experiments](06-observability-experiments.md) | `3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62` |
+| [src/trace-viewer/public/fonts/space-grotesk.woff2](../../src/trace-viewer/public/fonts/space-grotesk.woff2) | Self-hosted space-grotesk font | [06-observability-experiments](06-observability-experiments.md) | `0640890476fc1198ab4de571fb658de443c4d85b66466ec09534a8737ab1ce9d` |
+| [src/trace-viewer/public/index.html](../../src/trace-viewer/public/index.html) | Run list, timeline, evidence and result interface markup | [06-observability-experiments](06-observability-experiments.md) | `9335518b76349441c6b6c82798a5d528bd49eade7e462186f3a499bec4180883` |
+| [src/trace-viewer/public/licenses/departure-mono.txt](../../src/trace-viewer/public/licenses/departure-mono.txt) | License for the bundled departure-mono font | [06-observability-experiments](06-observability-experiments.md) | `b65e42750f3cb65437a97f4dfd781c58f199259949db2341012be60e32500e83` |
+| [src/trace-viewer/public/licenses/inter.txt](../../src/trace-viewer/public/licenses/inter.txt) | License for the bundled inter font | [06-observability-experiments](06-observability-experiments.md) | `3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345` |
+| [src/trace-viewer/public/licenses/space-grotesk.txt](../../src/trace-viewer/public/licenses/space-grotesk.txt) | License for the bundled space-grotesk font | [06-observability-experiments](06-observability-experiments.md) | `18a4de52385f6b988782639d5d0cc1326e5a8c2de9a7f01d7b20d9aedcc60943` |
+| [src/trace-viewer/public/style.css](../../src/trace-viewer/public/style.css) | Responsive layout, timeline layers and murm color themes | [06-observability-experiments](06-observability-experiments.md) | `3d0ffea18d69dd8b8af9f8fa85c22fd1ef93e348b0d6b6d3a7b9b27ab3625b50` |
+| [src/trace-viewer/reader.mjs](../../src/trace-viewer/reader.mjs) | Versioned evidence discovery, indexing, projection and bounded raw reads | [06-observability-experiments](06-observability-experiments.md) | `e05aa4729e2003dca3c29afb90705e4895c22a136442af6247f29cace07e906f` |
+| [src/trace-viewer/server.mjs](../../src/trace-viewer/server.mjs) | Loopback static assets, read-only API and resumable SSE | [06-observability-experiments](06-observability-experiments.md) | `639a9bf8675df6bff2d36bd1fcf9310db4baded9f14d6e6a4156725f4beeedbd` |
 
 ### Workspace and Sandbox (2)
 
@@ -261,7 +255,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [.github/workflows/ci.yml](../../.github/workflows/ci.yml) | Run Core, Trace Viewer and website checks on pull requests and main | [07-run-configuration](07-run-configuration.md), [22-website](22-website.md) | `2f4043d33bad6b725dd939004bd7d33a3c6c44434255a8b66de96d7fb0da6464` |
+| [.github/workflows/ci.yml](../../.github/workflows/ci.yml) | Run Core, Trace Viewer and website checks on pull requests and main | [07-run-configuration](07-run-configuration.md), [22-website](22-website.md) | `806b5fbddf4bcdaf514de6124a3ba207e55bc512b94781644715b9a86e75ca47` |
 
 ### development benchmarks (20)
 
@@ -317,7 +311,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [.env.example](../../.env.example) | Nonsecret example environment-variable names | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `98dca3bed17dfd9c30ff2a09b8d0e5bd7c191d4eb022e6479d9351841031c6c9` |
-| [.github/workflows/release.yml](../../.github/workflows/release.yml) | Tag-driven verification, GHCR multi-arch Worker image publishing, and public npm package publishing | [07-run-configuration](07-run-configuration.md) | `0ab44371eb4cec0db3620a10db9fb0ecc55cda54c59853678c698307bea61340` |
+| [.github/workflows/release.yml](../../.github/workflows/release.yml) | Tag-driven verification, GHCR multi-arch Worker image publishing, and public npm package publishing | [07-run-configuration](07-run-configuration.md) | `e2c13de96fcd4f9b1177ec159a9230d865416dd0727fe238285e7931bcda5402` |
 | [.gitignore](../../.gitignore) | Raw evidence and credential retention boundary in the working tree and npm packlist | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `6b8f64521e5686d00b33aef067df0322ed1a34621cf65abe198b47d715183f39` |
 | [deploy/worker/Dockerfile](../../deploy/worker/Dockerfile) | OpenSandbox agent image recipe containing the worker, Pi package and native shell tools | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [18-peermesh-harness](18-peermesh-harness.md) | `e68edb01ae02e9a998fd9419257b41920b165de78c3898797bb6079d90882cb2` |
 | [deploy/worker/pi-models.json](../../deploy/worker/pi-models.json) | Native Pi compatible-provider catalog with runtime environment interpolation | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `5793995e07dbd632f4e1507fb2d76f3452ca2de9921d693bc8c9e4513598fd85` |
@@ -340,9 +334,9 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [scripts/local-setup/templates/config.js](../../scripts/local-setup/templates/config.js) | Editable generated Subagents configuration | [07-run-configuration](07-run-configuration.md) | `9808912fdb5f4ee5a1e092becd72e9a6cfd893ad0667e03e525f319909c019b2` |
 | [scripts/local-setup/templates/environment.js](../../scripts/local-setup/templates/environment.js) | Generated project environment loader | [07-run-configuration](07-run-configuration.md) | `1fa29fa58372f29453ddc11c201d956971c24d48aeebcbfe610ad5efe6b436ff` |
 | [scripts/mathlib-search-service.ts](../../scripts/mathlib-search-service.ts) | Mathlib HTTP provider process and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `f5054cc046061997bd0b41b8df5d09a2aa522323e5ea95b08d10ae4e7aaf77bc` |
-| [scripts/murm-arguments.ts](../../scripts/murm-arguments.ts) | Shared host command syntax and setup wrapper arguments | [07-run-configuration](07-run-configuration.md) | `7230dc6b716e4e5a81b1f040e3f7f16cd25e76d23151c7aeb147cc62591c4200` |
+| [scripts/murm-arguments.ts](../../scripts/murm-arguments.ts) | Shared host command syntax and setup wrapper arguments | [07-run-configuration](07-run-configuration.md) | `59686e9be60a4c73b044336c1a30d3c40238f2e578fa9a603c8be96bbb96228b` |
 | [scripts/murm-project.ts](../../scripts/murm-project.ts) | Installed project command, stream ownership, signal handling and protocol flush | [17-harness-reporting](17-harness-reporting.md), [23-project-harness](23-project-harness.md) | `65936f71df21415a6423a4b3e11c427895de32c9e04cb8e8b114ca04aee5b7d9` |
-| [scripts/murm.ts](../../scripts/murm.ts) | Host CLI dispatch, current-project interactive entry, signal handling and exit status | [07-run-configuration](07-run-configuration.md) | `44035a2bbda856207fd2841441a6ffb12eaebecf4779a9133e4e2f21adfed746` |
+| [scripts/murm.ts](../../scripts/murm.ts) | Host CLI dispatch, current-project interactive entry, signal handling and exit status | [07-run-configuration](07-run-configuration.md) | `62c7d21460b0a1dbdcd8675d2a9ae785a70e557f8d9879c0b08a528793950f9c` |
 | [scripts/read-harness-result.ts](../../scripts/read-harness-result.ts) | Host CLI for saved result inspection using the shared reader | [17-harness-reporting](17-harness-reporting.md) | `ec5eb4529550206ce0b624d9286f84a4f3f07c1d76635d795d3189eeb717b04d` |
 | [scripts/run-harness.ts](../../scripts/run-harness.ts) | Foreground host CLI for explicit local Harness configuration and bounded control | [17-harness-reporting](17-harness-reporting.md) | `0b1258756e186435aa19105cd9b04285f84c7d61154dd4457b4e52760533fd18` |
 | [scripts/service-host-entrypoint.sh](../../scripts/service-host-entrypoint.sh) | Explicit Judge checker prebuild gate and persistent volume marker | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `d865639ebed7d39cbc6cfa4839848716890803524a05c28e4b62d4d1849818b8` |

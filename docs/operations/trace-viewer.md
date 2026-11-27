@@ -2,26 +2,22 @@
 
 ## Replay the included demo
 
-From a checkout on Linux or WSL with Node.js 22.19 or later, start the Viewer directly. The [included Run](../../test/fixtures/trace-viewer/runs/release-notes/) is ready to view offline and requires no installation, Sandbox, or model credentials.
+From a built checkout on Linux or WSL with Node.js 22.19 or later, start the built-in Viewer directly. The [included Run](../../test/fixtures/trace-viewer/runs/release-notes/) is ready to view offline and requires no Sandbox or model credentials.
 
 ```bash
-node trace-viewer/murm.mjs trace --root test/fixtures/trace-viewer/runs --port 8787 --open
+npm run build
+node dist/scripts/murm.js trace --root test/fixtures/trace-viewer/runs --port 8787 --open
 ```
 
 Open [the demo Run](http://127.0.0.1:8787/#run=release-notes). The synthetic Subagents Run covers about 19 seconds. The Root and Child work in parallel to verify a CSV export change and write a release note. On **Timeline**, scroll over the swimlane to zoom around the cursor, drag or swipe horizontally to pan, or drag the overview minimap window (`W`/`S`/`A`/`D`/`0` shortcuts also navigate the timeline). Under **Collaboration**, select **Inspect handoff** or **Core input admission** on the `result` card and follow the first **Actual model context** link to Root request 5. In **Files & results**, open `release-note.md`. The directory includes the Core lifecycle ledger, Bridge Service calls, all six model exchanges, both Session archives, and the exported note.
 
-## Install the standalone package
+## Run from an installed `@luna-shi/murm` CLI
 
-Build the standalone candidate package from the repository root on Linux or WSL with Node.js 22.19 or later. Install the resulting tarball in a separate directory.
+The Trace Viewer is bundled directly inside `@luna-shi/murm` (`src/trace-viewer/`) with zero extra dependencies:
 
 ```bash
-mkdir -p /tmp/murm-viewer-package
-npm pack ./trace-viewer --pack-destination /tmp/murm-viewer-package
-
-mkdir -p ~/murm-viewer
-cd ~/murm-viewer
-npm install /tmp/murm-viewer-package/murm-trace-viewer-0.2.0.tgz
-./node_modules/.bin/murm trace /path/to/private/runs --port 8787 --open
+npm install -g --ignore-scripts @luna-shi/murm
+murm trace /path/to/private/runs --port 8787 --open
 ```
 
 Open `http://127.0.0.1:8787`. A configured root (passed via `--root <dir>` or as a positional argument) may be a Core Run directory containing `runtime.json` or a parent output directory. The Viewer opens on an empty parent directory and discovers new Runs there. It needs the saved Run files and Node.js. Core, the executing Harness, Sandbox services and model credentials are independent.

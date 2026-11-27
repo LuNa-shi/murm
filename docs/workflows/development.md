@@ -58,7 +58,7 @@ an offline installation of the packed Core needs. The temporary consumer seeds
 that metadata in the same cache used by the tests. The package tests still
 install offline.
 
-**Trace Viewer CI** runs `npm --prefix trace-viewer test`. For **Website CI**,
+Trace Viewer tests run inside **Core CI** via `npm test`. For **Website CI**,
 run `npm ci` inside `website/`, then
 `BASE_PATH=/murm SITE_URL=https://luna-shi.github.io npm run build`. The job
 checks for both `dist/index.html` and `dist/zh/index.html`. The Pages workflow

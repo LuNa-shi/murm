@@ -152,10 +152,9 @@ cd your-project
 murm --harness subagents --prompt "检查当前项目的测试覆盖情况，列出两条最值得补充的边界测试"
 ```
 
-运行结束后，stdout 会输出包含结果、导出产物与清理回执的 JSON，完整轨迹保存在输出目录中。你也可以安装可选的 Trace Viewer 在浏览器中查看时间线：
+运行结束后，stdout 会输出包含结果、导出产物与清理回执的 JSON，完整轨迹保存在输出目录中。你可以直接用内置的 Trace Viewer 在浏览器中查看时间线（无需额外安装包）：
 
 ```bash
-npm install -g --ignore-scripts @luna-shi/murm-trace-viewer
 murm trace --root ./subagents-runs
 ```
 
