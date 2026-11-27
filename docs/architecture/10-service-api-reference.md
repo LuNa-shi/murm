@@ -40,7 +40,7 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `af9fd45a15bdf6edceccde3558264adec75c60c8709b60bee402c0388e4bb28f` |
 | [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `03db62961344dd6ac15c417fefb9efa1e648143818adac243dacac4f4ac6075d` |
+| [src/core/index.ts](../../src/core/index.ts) | `f7d942b55b4b783620909aa05b0e7ea6e9e88bf54ebf5584ccf4f6c64c8b3dfe` |
 | [src/core/types.ts](../../src/core/types.ts) | `1161fe11a40d1da8d229fc7f469bec00c7a139c709010daf7713e7708325619b` |
 | [src/core/services.ts](../../src/core/services.ts) | `823b7c83efd0fc61314c5511177b32b8863f469454cad5c5288bd04e5e82cf96` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |

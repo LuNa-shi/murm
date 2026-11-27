@@ -707,6 +707,9 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     const timeoutMs = bound(options, 'interrupt', agentId);
     if (!validId(requestId)) throw problem('INVALID_CONTRACT', 'interrupt requires a requestId', 'interrupt', agentId, requestId);
     const agent = findAgent(agentId, 'interrupt', requestId);
+    if (!config.driver.capabilities.queuedInputCancellation) {
+      throw problem('NOT_ALLOWED', 'Executor does not support fenced interruption with queue cancellation', 'interrupt', agentId, requestId);
+    }
     let request = agent.interruptRequests.get(requestId);
     if (!request) {
       if (closing || !isLive(agent)) throw problem('NOT_ALLOWED', 'Agent is not available to interrupt', 'interrupt', agentId, requestId);
