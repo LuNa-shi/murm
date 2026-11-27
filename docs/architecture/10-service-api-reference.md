@@ -44,10 +44,10 @@ This section is generated from executable exports and checked against the source
 | [src/core/types.ts](../../src/core/types.ts) | `cf92f2f1576e5f754e72436b073f7b5909ca162e1cc21f41834f70ef36377b02` |
 | [src/core/services.ts](../../src/core/services.ts) | `823b7c83efd0fc61314c5511177b32b8863f469454cad5c5288bd04e5e82cf96` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
-| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | `476e540c7005ab37a3e6159642e0639779410b9d42864a66f536a8bde6d7102b` |
+| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | `d3cb0a688bc7ac047a2337a9e9fc8cf4862c00aedba27279902fa4e0789fd229` |
 | [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | `664420efc5ef52b2d16d8f5b31dfb74ca37ee0082d6960c7740b5e48ca3dc877` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `ded613503868ef9d445ec41f2bb41d24178719913203ef7843accf5c5a5598a3` |
-| [src/core/opensandbox-provider.ts](../../src/core/opensandbox-provider.ts) | `a5f223a1798e963d37e8d2902b4ffeaedafa7e14e8006206142e15522018f705` |
+| [src/core/opensandbox-provider.ts](../../src/core/opensandbox-provider.ts) | `38190bed297b4c5c47340609ed3732377bc1bdbdfd946ffebc0e0b8089b612d7` |
 | [src/core/sandbox-connection.ts](../../src/core/sandbox-connection.ts) | `27c35937b58ae31efb2192ddb0bc11100239b4932d25ea7292bb7df5e7eb80c4` |
 
 ### Exact built-in command operation surface
@@ -3729,6 +3729,8 @@ export interface SandboxManager {
             managementAuthentication: boolean;
         };
     } | undefined>;
+    /** Return true only when confirmed stopped. Return false for no running executor before start dispatch.
+     * Throw or return false for an unconfirmed stop after start dispatch, retaining the resource for retry. */
     stopAgent(agentId: string, signal: string, options: {
         preserveWorker: boolean;
     }): Promise<boolean>;
@@ -3739,6 +3741,7 @@ export interface SandboxManager {
         creation: 'created' | 'pending' | 'absent';
         executionStopped: boolean;
     } | undefined;
+    /** Resolve after confirmed deletion or absence. Throw while the deletion outcome is uncertain. */
     stopExecution(agentId: string): Promise<unknown>;
 }
 interface BackendOptions {
