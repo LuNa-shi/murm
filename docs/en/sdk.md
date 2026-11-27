@@ -11,11 +11,13 @@ To run a built-in Harness against a project directory via the CLI, see the [Quic
 
 ## Install the SDK
 
-In any Node.js 22.19+ project, install `@luna-shi/murm`:
+In a Node.js 22.19+ project, install the versioned GitHub Release asset:
 
 ```sh
-npm install --ignore-scripts @luna-shi/murm
+npm install --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
 ```
+
+With npm 12, use `npm ci --allow-remote=root` when reinstalling this dependency from a lockfile.
 
 Before running live sandboxes, follow the [Quickstart host prerequisites](./quickstart.md#1-prerequisites-execution-host) to prepare Linux, Docker, OpenSandbox, and the Worker image (or run `murm setup` and verify with `murm doctor`).
 

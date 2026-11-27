@@ -11,11 +11,13 @@ order: 5
 
 ## 安装 SDK
 
-在 Node.js 22.19+ 项目中直接安装 `@luna-shi/murm`：
+在 Node.js 22.19+ 项目中安装指定版本的 GitHub Release 附件。
 
 ```sh
-npm install --ignore-scripts @luna-shi/murm
+npm install --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
 ```
+
+在 npm 12 下从锁文件重新安装此依赖时，使用 `npm ci --allow-remote=root`。
 
 运行前请先按[快速上手的环境准备步骤](./quickstart.md#1-环境准备宿主机前置依赖)完成 Linux 宿主机依赖、OpenSandbox 控制面和 Worker 镜像准备（可通过 `murm setup` 一键完成，并用 `murm doctor` 检查）。
 

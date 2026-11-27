@@ -69,12 +69,12 @@ npm run build
 node dist/examples/bridge-services/handoff.js
 ```
 
-In your own project, install `@luna-shi/murm` directly from npm:
+In your own project, install the versioned GitHub Release asset:
 
 ```sh
 npm init -y
 npm pkg set type=module
-npm install --ignore-scripts @luna-shi/murm
+npm install --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
 ```
 
 Or invoke it directly via the global CLI:

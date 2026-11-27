@@ -12,7 +12,7 @@ On a Linux host with Node.js 22.19+, rootful Docker Engine, Landlock ABI 5+, and
 
 ```sh
 # 1. Install the CLI globally
-npm install -g --ignore-scripts @luna-shi/murm
+curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
 
 # 2. Verify host prerequisites, start local OpenSandbox, pull/build the Worker image, and run a smoke probe
 murm setup
@@ -26,6 +26,12 @@ cd my-project
 murm --harness subagents --prompt "Fix the parser and add tests"
 ```
 
+To install directly with npm, run:
+
+```sh
+npm install -g --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz
+```
+
 For an unpublished version, [install the candidate from a checkout](docs/en/quickstart.md#install-a-candidate-from-a-checkout) before running `murm setup`.
 
 The Subagents CLI configuration defaults to the matching Worker image tag, exported as `DEFAULT_WORKER_IMAGE`. Override it with `MURM_WORKER_IMAGE` when using a custom image. SDK Profiles take an explicit image.
@@ -34,13 +40,13 @@ Use `--harness` to select any built-in (`subagents`, `taskpool`, `peermesh`, `su
 
 ## Build with the TypeScript SDK
 
-Install `@luna-shi/murm` in your own project:
+Install the versioned Release asset in your own project:
 
 ```sh
-npm install --ignore-scripts @luna-shi/murm
+npm install --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
 ```
 
-Install a candidate tarball by passing its path in place of the npm package name. Import `createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, and `createHttpJsonAdapter` from `@luna-shi/murm`. Pi is the default executor. Pi and Codex use streaming Responses endpoints that support their request formats.
+Install a candidate tarball by passing its path in place of the URL. Import `createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, and `createHttpJsonAdapter` from `@luna-shi/murm`. Pi is the default executor. Pi and Codex use streaming Responses endpoints that support their request formats.
 
 See the [Quickstart](docs/en/quickstart.md#5-option-b-use-the-sdk-in-your-own-typescript-project) for a self-contained runnable `handoff.ts`, and the [SDK Guide](docs/en/sdk.md) for observation, file controls, external HTTP Services, and cleanup semantics.
 

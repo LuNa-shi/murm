@@ -64,10 +64,16 @@ sudo -n /usr/sbin/nft -j list tables >/dev/null
 
 ## 2. 安装 `@luna-shi/murm` 并初始化基础设施
 
-对于 npm registry 上已有的版本，可以全局安装 CLI：
+从最新的 GitHub Release 全局安装 CLI：
 
 ```bash
-npm install -g --ignore-scripts @luna-shi/murm
+curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
+```
+
+也可以直接使用 npm 安装。
+
+```bash
+npm install -g --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz
 ```
 
 ### 从源码检出安装候选包
@@ -180,10 +186,10 @@ mkdir my-harness
 cd my-harness
 npm init -y
 npm pkg set type=module
-npm install --ignore-scripts @luna-shi/murm
+npm install --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
 ```
 
-安装未发布版本时，将安装命令中的包名替换为上一步生成的 tarball 的绝对路径。
+安装未发布版本时，将安装命令中的 URL 替换为上一步生成的 tarball 的绝对路径。
 
 创建 `handoff.ts`——下面这段自包含代码注册了一个 `messages` Service，在隔离沙箱中启动两个 Agent 完成值传递，并验证导出结果和资源清理：
 
