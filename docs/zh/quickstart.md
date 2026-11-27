@@ -188,12 +188,15 @@ npm install --ignore-scripts @luna-shi/murm
 创建 `handoff.ts`——下面这段自包含代码注册了一个 `messages` Service，在隔离沙箱中启动两个 Agent 完成值传递，并验证导出结果和资源清理：
 
 ```ts
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   DEFAULT_WORKER_IMAGE,
   ServiceRegistry,
   createInProcessAdapter,
   createRuntime,
   createSandbox,
+  type JsonValue,
   type ServiceRegistration,
 } from '@luna-shi/murm';
 
@@ -212,6 +215,9 @@ const messagesService: ServiceRegistration = {
         operation: 'put',
         description: 'Store a text value under a key.',
         side_effect: 'write',
+        idempotent: true,
+        help: { when: 'Publish a value for another Agent' },
+        errors: [],
         input_schema: {
           type: 'object',
           properties: { key: { type: 'string' }, text: { type: 'string' } },
@@ -230,6 +236,9 @@ const messagesService: ServiceRegistration = {
         operation: 'get',
         description: 'Read a stored text value by key.',
         side_effect: 'read',
+        idempotent: true,
+        help: { when: 'Read a published value' },
+        errors: [],
         input_schema: {
           type: 'object',
           properties: { key: { type: 'string' } },
@@ -246,14 +255,12 @@ const messagesService: ServiceRegistration = {
     ],
   },
   adapter: createInProcessAdapter({
-    put: async ({ input }) => {
+    invoke({ capability, input, assertAuthorized }): JsonValue {
       const { key, text } = input as { key: string; text: string };
+      if (capability.operation === 'get') return { text: store.get(key) ?? null };
+      assertAuthorized();
       store.set(key, text);
       return { stored: true };
-    },
-    get: async ({ input }) => {
-      const { key } = input as { key: string };
-      return { text: store.get(key) ?? null };
     },
   }),
 };
@@ -263,10 +270,13 @@ services.registerService(messagesService);
 
 const image = process.env.MURM_WORKER_IMAGE ?? DEFAULT_WORKER_IMAGE;
 const token = process.env.MURM_MODEL_TOKEN;
+const url = process.env.MURM_MODEL_URL;
+if (!url) throw new Error('Set MURM_MODEL_URL before running the handoff');
 
 const runtime = await createRuntime({
   sandbox: createSandbox({
     lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+    apiKey: process.env.MURM_LIFECYCLE_TOKEN,
     isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
   }),
   connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
@@ -275,7 +285,7 @@ const runtime = await createRuntime({
       provider: process.env.MURM_MODEL_PROVIDER ?? 'openai',
       model: process.env.MURM_MODEL_ID ?? 'gpt-5.4',
       upstream: {
-        url: process.env.MURM_MODEL_URL!,
+        url,
         headers: token ? { authorization: `Bearer ${token}` } : {},
       },
     },
@@ -283,43 +293,65 @@ const runtime = await createRuntime({
   services,
   profiles: {
     writer: { model: 'default', image, writable: false, services: { messages: ['put'] } },
-    reader: { model: 'default', image, writable: true, services: { messages: ['get'] } },
+    reader: {
+      model: 'default', image, writable: true, services: { messages: ['get'] },
+      collect: { paths: ['received.txt'], includeGit: false, maxBytes: 4096, required: true },
+    },
   },
   maxAgents: 2,
   outputDir: './handoff-runs',
 });
 
-const settled = new Map<string, () => void>();
-const waitSettled = (agentId: string) => new Promise<void>(resolve => settled.set(agentId, resolve));
-const off = runtime.onEvent(event => {
-  if (event.type === 'settled') settled.get(event.agentId)?.();
-});
+async function runTurn(agentId: string, input: string, requestId: string) {
+  let unsubscribe = () => {};
+  const execution = Promise.withResolvers<void>();
+  const timer = setTimeout(() => execution.reject(new Error('Agent turn timed out')), 60_000);
+  try {
+    unsubscribe = runtime.onEvent(event => {
+      if (!('agentId' in event) || event.agentId !== agentId) return;
+      if (event.type === 'settled' && event.outcome === 'completed') execution.resolve();
+      else if (event.type === 'settled' || event.type === 'exit' || (event.type === 'error' && event.fatal)) {
+        execution.reject(new Error('Agent execution failed'));
+      }
+    });
+    const admission = runtime.send(agentId, input, { requestId, mode: 'followUp' }).then(receipt => {
+      if (receipt.status !== 'accepted' || receipt.disposition !== 'started') {
+        throw new Error('Agent input was not accepted for execution');
+      }
+    });
+    await Promise.all([admission, execution.promise]);
+  } finally {
+    unsubscribe();
+    clearTimeout(timer);
+  }
+}
 
+const expected = 'hello from murm';
+let readerId: string | undefined;
+let cleanup;
 try {
-  const writer = await runtime.spawn({ requestId: 'spawn-writer', profile: 'writer' });
-  const writerDone = waitSettled(writer.id);
-  await runtime.send(
-    writer.id,
-    `Run: printf '%s' '{"key":"greeting","text":"hello from murm"}' | swarm messages put --stdin --request-id put-1`,
-    { requestId: 'send-writer', mode: 'followUp' },
-  );
-  await writerDone;
+  const writer = await runtime.spawn({
+    requestId: 'spawn-writer', profile: 'writer',
+    files: { 'message.json': { encoding: 'utf8', data: JSON.stringify({ key: 'greeting', text: expected }) } },
+  });
+  await runTurn(writer.id, 'Run swarm messages put --input message.json --request-id put-1, then finish.', 'send-writer');
+  if (store.get('greeting') !== expected) throw new Error('Writer did not publish the expected value');
 
   const reader = await runtime.spawn({ requestId: 'spawn-reader', profile: 'reader' });
-  const readerDone = waitSettled(reader.id);
-  await runtime.send(
-    reader.id,
-    `Run: printf '%s' '{"key":"greeting"}' | swarm messages get --stdin --request-id get-1, then write the text into received.txt.`,
-    { requestId: 'send-reader', mode: 'followUp' },
-  );
-  await readerDone;
-
-  console.log('Stored in Service:', store.get('greeting'));
+  readerId = reader.id;
+  await runTurn(reader.id, 'Run swarm messages get --key greeting --request-id get-1 | jq -er .text > received.txt and then finish.', 'send-reader');
 } finally {
-  off();
-  const receipt = await runtime.close({ timeoutMs: 30_000 });
-  console.log('Cleanup status:', receipt.cleanup, 'Output:', receipt.outputDir);
+  cleanup = await runtime.close({ timeoutMs: 30_000 });
+  console.log('Cleanup status:', cleanup.cleanup, 'Output:', cleanup.outputDir);
 }
+
+if (cleanup.cleanup !== 'complete') throw new Error('Runtime cleanup is pending');
+const output = cleanup.agents.find(agent => agent.agentId === readerId)
+  ?.artifacts.find(path => path.endsWith('/artifacts/files'));
+if (!output || await readFile(join(output, 'received.txt'), 'utf8') !== expected + '\n') {
+  throw new Error('Reader did not export the expected text');
+}
+console.log('Handoff verified');
 ```
 
 Node.js 22.19+ 原生支持直接运行 TypeScript，无需额外配置 `tsconfig.json` 或编译步骤：
@@ -328,7 +360,12 @@ Node.js 22.19+ 原生支持直接运行 TypeScript，无需额外配置 `tsconfi
 node handoff.ts
 ```
 
-（如果需要类型检查，可以按需安装 `npm install -D typescript @types/node` 并运行 `npx tsc --noEmit`。）
+如需检查示例的类型，可以运行以下命令。
+
+```bash
+npm install -D typescript @types/node
+npx tsc --noEmit --strict --target es2024 --module nodenext --types node handoff.ts
+```
 
 ## 从源码贡献开发
 

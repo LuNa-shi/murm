@@ -255,7 +255,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [.github/workflows/ci.yml](../../.github/workflows/ci.yml) | Run Core, Trace Viewer and website checks on pull requests and main | [07-run-configuration](07-run-configuration.md), [22-website](22-website.md) | `961b3a6607c952b2e1f921b74df7428a9be70f2b514a137253ba300b64d0ee9a` |
+| [.github/workflows/ci.yml](../../.github/workflows/ci.yml) | Run Core, Trace Viewer and website checks on pull requests and main | [07-run-configuration](07-run-configuration.md), [22-website](22-website.md) | `b30ba43b2f9e7edcb2b712290a7f8c3a44c1a582f57c164fb7f1dbecdac81e13` |
 
 ### development benchmarks (20)
 
