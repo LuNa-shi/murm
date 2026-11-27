@@ -12,7 +12,7 @@ import { createTaskPoolMathlibService } from './mathlib-service.js';
 export const TASKPOOL_WITHOUT_WORKSPACE_SAVE_PROMPT = '当前配置支持读取公开 Workspace 和发布 Material。请领取可通过这些能力完成的 Task，按照 Task 的真实完成条件提交结果。运行期间的私有文件只保留在 Agent 工作目录中。';
 
 /** Trusted host entry point. Domain stores remain caller-owned and readable. */
-export async function runTaskPoolHarness({sandbox, executor, models, connection,model,image,prompt='',
+export async function runTaskPoolHarness({sandbox, executor, models, connection, filePolicy,model,image,prompt='',
   outputDir,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,deadlineAt,
   capacity=2,autonomousTasks=false,completionPolicy='tasks',coordinationPermissions=[],missionCoordination=null,snapshotProject,workspaceCapture,mathlibSearch=null,activeDeadline,judgeService=null,workspaceProjectCheck=false,workspaceMergeEnabled=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
   onRuntime,closeTimeoutMs=30_000,redact=(value: any)=>value,signal}: any) {
@@ -59,7 +59,7 @@ export async function runTaskPoolHarness({sandbox, executor, models, connection,
         ...(mathlib?[[mathlib.manifest.id,mathlib.manifest.capabilities.map(cap=>cap.operation)]]:[]),
         ...(mission?[['mission',mission.manifest.capabilities.filter((cap: any)=>cap.operation!=='mission_submit'||permissions.includes('mission_submit')).map((cap: any)=>cap.operation)]]:[]),
       ]);
-      runtime=await createRuntime({sandbox, executor, models, connection,profiles:{researcher},services,maxAgents:capacity,outputDir});
+      runtime=await createRuntime({sandbox, executor, models, connection, filePolicy,profiles:{researcher},services,maxAgents:capacity,outputDir});
       try {
         controller=createTaskPoolController({...controllerOptions,autonomousTasks,completionPolicy,runtime,taskService,missionId,capacity,deadlineAt,activeDeadline:deadline,coordinationPermissions:permissions,
           workspaceSaveAvailable,afterStopped:(id: any,options: any)=>publication.reconcileWorkspace(id,options)});

@@ -75,7 +75,7 @@ const runtime = await createRuntime({
 });
 ```
 
-- **模型路由**：`upstream.url` 需指向支持流式输出的 OpenAI Responses 兼容端点（以 `/v1/responses` 结尾）。默认执行器为 Pi，支持内置 `openai` / `kimi_proxy` / `gpt_proxy` 目录以及任意自定义 `provider` + `model` 组合（宿主会自动生成并校验对应 Pi 模型目录）。切换 Codex 时传入 `executor: 'codex'`。
+- **模型路由**：每个模型别名可设置支持流式输出的端点和真实能力。默认使用 Responses，Pi 也支持 Chat Completions。宿主会生成并核验自定义 Pi 模型的目录。
 - **Worker 镜像**：默认直接传入 `DEFAULT_WORKER_IMAGE`；只有当你自定义了沙箱工具链镜像时才需替换。
 - **隔离与凭据**：上游模型凭据仅保存在宿主 Model Gateway 中，绝不会进入容器。同一个 `createSandbox` 句柄可以配置多个独立拥有的 Runtime。
 

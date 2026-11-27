@@ -86,6 +86,10 @@ interface WorkerReply {
   status?: string;
 }
 
+type ExecutorStartup =
+  | { kind: 'codex'; version: string; authMode: 'api-key'; threadId: string }
+  | { kind: string; version: string; protocol: string; capabilities: ExecutorCapabilities };
+
 export interface SandboxManager {
   agentRpc(agentId: string, input: Record<string, unknown>, options: {
     timeoutMs: number; since?: number; transportTimeoutMs?: number; signal?: AbortSignal;
@@ -98,7 +102,7 @@ export interface SandboxManager {
   ensureExecution(options: Record<string, unknown>): Promise<{ sandbox_id: string }>;
   agentVersions(options: { executionId: string; executor?: string; externalExecutor?: boolean }): Promise<{ piVersion?: string; [key: string]: unknown }>;
   startAgent(options: Record<string, unknown>): Promise<{
-    backend?: { kind: 'codex'; version: string; authMode: 'api-key'; threadId: string };
+    backend?: ExecutorStartup;
     isolation?: { cpu: number; memoryBytes: number; managementAuthentication: boolean };
   } | undefined>;
   /** Return true only when confirmed stopped. Return false for no running executor before start dispatch.
@@ -146,9 +150,10 @@ interface BackendSpawnOptions {
 }
 
 import type { CreateRuntimeOptions } from './types.js';
-import type { OpenSandboxBackendConfig, Sandbox, SandboxConfig, SandboxProviderConfig } from './backend-config.js';
+import type { ExecutorCapabilities, OpenSandboxBackendConfig, Sandbox, SandboxConfig, SandboxProviderConfig } from './backend-config.js';
 import { selectExecutorDriver, type ExecutorDriver } from './executor-driver.js';
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { isIP } from 'node:net';
 import { createWorkerEventPoll } from './worker-event-poll.js';
 import { resolveSandboxConnection } from './sandbox-connection.js';
@@ -467,6 +472,14 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         requireCoreFileProtocol: true, projectQuota: quota, modelCatalogResource: credentials.catalogResource,
         ...(credentials.catalogContent !== undefined ? { modelCatalogContent: credentials.catalogContent } : {}),
         beforeAgentStart: assertOpen });
+      if (driver.adapter) {
+        const receipt = startup?.backend;
+        if (!receipt || !('protocol' in receipt) || receipt.kind !== driver.kind || receipt.version !== driver.version ||
+            receipt.protocol !== driver.adapter.protocol || !isDeepStrictEqual(receipt.capabilities, driver.capabilities)) {
+          throw Object.assign(new Error('Sandbox Manager did not attest the selected executor version, protocol and capabilities'),
+            { code: 'AGENT_STARTUP_CONTRACT' });
+        }
+      }
       const effective = startup?.isolation || quota ? {
         ...startup?.isolation,
         ...(quota ? { disk: { ...quota, scope: 'workspace' as const } } : {}),

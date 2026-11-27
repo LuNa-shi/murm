@@ -273,3 +273,38 @@ test('close aborts live model requests, revokes credentials and is idempotent', 
   await call;
   assert.throws(() => f.access.credentialsForAgent('agent-a', 'default'), { code: 'NOT_ALLOWED' });
 });
+
+test('a public transport uses the scoped gateway and shared ledger', async t => {
+  /** @type {import('@luna-shi/murm').ModelTransport} */
+  const protocol = {
+    id: 'external-transport', version: '1', clientProtocol: 'responses', path: '/v1/responses',
+    validateUpstream: url => url.pathname === '/v1/responses',
+    prepareRequest(body, policy) {
+      if (body?.input !== 'fixture' || body.model !== policy.model) return null;
+      return { model: policy.model, query: body.input, cap: policy.maxOutputTokens };
+    },
+    stream(model) {
+      return { accept(data) {
+        const event = JSON.parse(data);
+        if (event.model === model && event.done === true) {
+          return { status: 'completed', usage: { inputTokens: 4, outputTokens: 2 } };
+        }
+      } };
+    },
+  };
+  const f = await fixture(t, { protocol, reply(_request, response, body) {
+    response.end(`data: ${JSON.stringify({ model: body.model, done: true })}\n\n`);
+  } });
+  const payload = { model: 'k3', input: 'fixture' };
+  assert.equal((await f.call('external', payload)).status, 200);
+  assert.equal((await f.call('external', payload)).status, 200);
+  assert.equal(f.requests.length, 1);
+  assert.deepEqual(f.requests[0].body, { model: 'k3', query: 'fixture', cap: 64 });
+  const [filename] = await readdir(join(f.outputDir, 'model-access'));
+  const ledger = new DatabaseSync(join(f.outputDir, 'model-access', filename), { readOnly: true });
+  t.after(() => ledger.close());
+  assert.deepEqual({ ...ledger.prepare('SELECT state, input_tokens, output_tokens FROM runtime_model_attempts').get() },
+    { state: 'completed', input_tokens: 4, output_tokens: 2 });
+  f.access.revokeAgent('agent-a');
+  assert.equal((await f.call('external', payload)).status, 401);
+});

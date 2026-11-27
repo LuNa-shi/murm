@@ -152,3 +152,12 @@ test('a packed SDK consumer can own a Sandbox through a custom Provider', { time
   delete env.NODE_OPTIONS;
   await execute(process.execPath, ['provider.mjs'], { cwd: directory, env, timeout: 20_000 });
 });
+
+
+test('the public executor factories reject unverified versions and select matching images', () => {
+  assert.equal(core.createPiExecutor().version, '1.3.0');
+  assert.equal(core.createCodexExecutor().version, '0.172.0');
+  assert.match(core.workerImageFor(core.createPiExecutor({ version: '1.4.0' })), /-pi-1\.4\.0$/);
+  assert.match(core.workerImageFor('codex'), /-codex$/);
+  assert.throws(() => core.createPiExecutor({ version: '10.0.0' }), { code: 'INVALID_CONTRACT' });
+});

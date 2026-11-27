@@ -188,8 +188,8 @@ await runtime.send(agent.id, 'Read a note', { requestId: 'invalid', mode: 'later
 registry.registerService({ manifest: {}, adapter });
 // @ts-expect-error OpenSandbox requires its explicit configuration.
 createSandbox({});
-// @ts-expect-error The image pins the CLI releases. Configuration accepts executor names.
-getExecutorCapabilities({ kind: 'pi', version: 'unverified' });
+// @ts-expect-error A built-in version selection uses a version string.
+getExecutorCapabilities({ kind: 'pi', version: 13 });
 await runtime.close();
 `;
   await writeFile(join(installed.directory, 'consumer.mts'), consumer);

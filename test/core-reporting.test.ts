@@ -120,7 +120,11 @@ test('Runtime records identity, unknown input reconciliation, sanitised settled 
     const report = JSON.parse(summary);
     assert.equal(report.config.schemaVersion, 1);
     assert.equal(report.config.waiting.hostDefaultMs, 60_000);
-    assert.deepEqual(report.config.models.default, { provider: 'kimi_proxy', model: 'k3', requestTimeoutMs: 8000, maxOutputTokens: 256 });
+    assert.deepEqual(report.config.models.default, {
+      provider: 'kimi_proxy', model: 'k3', protocol: 'responses', requestTimeoutMs: 8000, maxOutputTokens: 256,
+      capabilities: { contextWindow: 256000, maxOutputTokens: 128000, tools: true, reasoning: true },
+      capabilitySource: 'shipped-catalog', effectiveMaxOutputTokens: 256,
+    });
     assert.deepEqual(report.config.profiles.worker.environmentKeys, ['CORE_REPORT_DATA']);
     assert.equal(report.modelLedgers.length, 1);
     assert.equal(report.modelLedgers[0].alias, 'default');

@@ -71,6 +71,7 @@ export class CoreWorkDir {
     this.#installer = new ProjectInstaller({
       projectDir: path, controlDir: join(dirname(path), '.core-file-installs'), uid, decode: (files: FileTree) => installTree(files, policy.replace),
       owner: () => this.#writable ? { uid, gid } : rootOwner, excluded: isGitPath,
+      maxDirectories: policy.replace.maxEntries + 1, timeoutMs: policy.replace.timeoutMs,
       assertOpen, snapshot: (_input: unknown, options?: { retainBytes?: boolean }) => this.#projectSnapshot(policy.replace, options?.retainBytes),
     });
   }

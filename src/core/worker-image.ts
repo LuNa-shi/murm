@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { selectExecutorDriver } from './executor-driver.js';
+import type { ExecutorSelection } from './executor-adapter.js';
 
 export const WORKER_IMAGE_REPOSITORY = 'ghcr.io/luna-shi/murm-worker';
 export const WORKER_PROTOCOL = 'murm-core-v1';
@@ -28,7 +29,7 @@ export const PACKAGE_VERSION = readPackageVersion();
  */
 export const DEFAULT_WORKER_IMAGE = `${WORKER_IMAGE_REPOSITORY}:${PACKAGE_VERSION}`;
 
-export function workerImageFor(executor: unknown = 'pi'): string {
+export function workerImageFor(executor: ExecutorSelection | string = 'pi'): string {
   const driver = selectExecutorDriver(executor);
   return driver.adapter?.image ?? `${DEFAULT_WORKER_IMAGE}-${driver.kind}${
     driver.version === selectExecutorDriver(driver.kind).version ? '' : `-${driver.version}`}`;

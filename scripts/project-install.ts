@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { chmod, chown, copyFile, lstat, mkdir, opendir, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { chmod, chown, copyFile, lstat, mkdir, opendir, rm, rmdir, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -67,12 +67,14 @@ export class ProjectInstaller {
   };
   declare owner: () => { uid: number; gid: number };
   declare excluded: (path: string) => boolean;
+  declare maxDirectories: number;
+  declare timeoutMs: number;
 
   declare held: any;
 
   constructor({ projectDir, controlDir, uid, snapshot, assertOpen, fault = null,
-    decode = decodeProjectFiles, owner = () => ({ uid, gid: uid }), excluded = () => false }: any) {
-    Object.assign(this, { projectDir, controlDir, uid, snapshot, assertOpen, fault, decode, owner, excluded });
+    decode = decodeProjectFiles, owner = () => ({ uid, gid: uid }), excluded = () => false, maxDirectories = 10_000, timeoutMs = 15_000 }: any) {
+    Object.assign(this, { projectDir, controlDir, uid, snapshot, assertOpen, fault, decode, owner, excluded, maxDirectories, timeoutMs });
     this.held = null;
   }
 
@@ -122,10 +124,10 @@ export class ProjectInstaller {
     return this.#public(receipt);
   }
 
-  async #writeTree(before: any, target: any, changed: any, modes: any = Object.create(null), restore = false) {
+  async #writeTree(before: any, target: any, changed: any, modes: any = Object.create(null)) {
     // Preserve all unaffected file/directory inodes. Only directories that
     // would collide with a target file are removed; ordinary empty dirs stay.
-    const deadline = Date.now() + 15_000;
+    const deadline = Date.now() + this.timeoutMs;
     const { uid, gid } = this.owner();
     for (const path of [...changed].sort((a: any, b: any) => b.split('/').length - a.split('/').length)) {
       if (Date.now() >= deadline) throw busy('Project installation exceeded its write window');
@@ -145,7 +147,6 @@ export class ProjectInstaller {
       const mode = Object.hasOwn(modes, path) ? modes[path] : 0o644;
       const content = target[path];
       if (Buffer.isBuffer(content)) await writeFile(absolute, content, { flag: 'wx', mode });
-      else if (restore) await rename(content.file, absolute);
       else await copyFile(content.file, absolute, constants.COPYFILE_EXCL);
       await chown(absolute, uid, gid);
       await chmod(absolute, mode);
@@ -172,7 +173,7 @@ export class ProjectInstaller {
     const result = Object.create(null);
     let count = 0;
     const visit = async (path: any) => {
-      if (++count > 10_000) throw busy('Directory topology exceeds install bounds');
+      if (++count > this.maxDirectories) throw busy('Directory topology exceeds install bounds');
       const absolute = join(this.projectDir, path);
       const info = await lstat(absolute);
       result[path] = { mode: info.mode & 0o7777, uid: info.uid, gid: info.gid };
@@ -298,7 +299,7 @@ export class ProjectInstaller {
           // partial write, and verify bytes before permitting any resume.
           const old = this.decode(original.files);
           const actual = Object.fromEntries(changed.map((path: any) => [path, true]));
-          await this.#writeTree(actual, old.bytes, changed, modes, Boolean(original.dispose));
+          await this.#writeTree(actual, old.bytes, changed, modes);
           await this.#restoreDirectories(directories);
           const restored = await this.snapshot(input);
           if (restored.content_hash !== original.content_hash || restored.file_digest !== original.file_digest) throw new Error('Apply rollback hash differs');

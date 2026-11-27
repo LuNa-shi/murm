@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { ERROR_CODES, MurmError } from '../errors.js';
 import { openSandboxAgentKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
 import { decodeFileSeed, fileProtocol, fileTransferProtocol, snapshotFileSeed } from '../../scripts/core-file-seed.js';
@@ -748,7 +749,7 @@ export class OpenSandboxManager {
     }
     if (externalExecutor && (backend?.kind !== externalExecutor.kind ||
       backend.version !== executorVersion || backend.protocol !== externalExecutor.protocol ||
-      signature([backend.capabilities]) !== signature([externalExecutor.capabilities]))) {
+      !isDeepStrictEqual(backend.capabilities, externalExecutor.capabilities))) {
       throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker did not attest the selected adapter protocol, version and capabilities');
     }
     const quotaReceipt = startup.body?.result?.project_quota;
@@ -1233,8 +1234,13 @@ export class OpenSandboxManager {
       const response = await this.fetch(url, { method, headers, ...payload, signal: requestSignal, redirect: 'error' });
       const text = await response.text();
       const parsed = response.headers?.get?.('content-type')?.includes('text/event-stream') ? null : (text ? jsonData(text) : {});
-      if (workerStart && response.status === 400 && parsed?.ok === false && parsed.code === ERROR_CODES.AGENT_STARTUP_CONTRACT) {
-        throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker rejected the pinned Agent startup contract');
+      if (workerStart && response.status === 400 && parsed?.ok === false) {
+        if (parsed.code === 'FILE_SPACE_INSUFFICIENT') {
+          throw new MurmError('FILE_SPACE_INSUFFICIENT', 'Sandbox staging or workDir could not hold the initial project');
+        }
+        if (parsed.code === ERROR_CODES.AGENT_STARTUP_CONTRACT) {
+          throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker rejected the pinned Agent startup contract');
+        }
       }
       if (!response.ok && !allowStatuses.includes(response.status)) throw new MurmError(absolute && /\/project\/(snapshot|install|install-result|install-confirm)$/.test(new URL(url).pathname) && [ERROR_CODES.WORKSPACE_BUSY, ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED].includes(parsed?.code)
         ? parsed.code : response.status >= 500 ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT,

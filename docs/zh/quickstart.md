@@ -46,7 +46,7 @@ setup 检查当前 Docker context，启动 OpenSandbox 并验证 Lifecycle API �
 
 托管服务默认绑定到本机回环 8080 端口。需要时 setup 自动生成仅当前用户可读的 Lifecycle 密钥，优先使用发布的 Worker 镜像，必要时才用包内 Dockerfile 构建。重复执行会复用已托管的服务，保留用户配置和其他部署。无参 `murm setup` 在配置了 Lifecycle 地址时选择已有服务路径，使用默认地址时选择本地路径。
 
-`murm doctor` 检查配置与 Lifecycle 鉴权，无需创建 Sandbox。`murm doctor --smoke` 会启动真实的 Pi 或 Codex Worker，用受控的 Responses 端点验证 Bridge、网关、文件读写、导出和删除。真实模型验证状态单独报告。
+`murm doctor` 检查配置与 Lifecycle 鉴权，无需创建 Sandbox。`murm doctor --smoke` 会启动真实的 Pi 或 Codex Worker，用所选模型协议的受控端点验证 Bridge、网关、文件读写、导出和删除。真实模型验证状态单独报告。
 
 ### 保留严格本地隔离
 

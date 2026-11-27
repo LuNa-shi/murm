@@ -200,7 +200,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
       await chmod(path, 0o600);
       const transport = resolveModelTransport(entry.model.protocol);
       const gatewayOptions = { db: entry.db, executor: driver.kind,
-        transport, capabilities: entry.model.capabilities,
+        transport, capabilities: entry.capabilities,
         upstream: { ...entry.model.upstream, model: entry.model.model }, timeBounds: gatewayConfig,
         ...(entry.model.provider === 'kimi_proxy' && entry.model.model === 'k3' ? { transformPayload: kimiResponsesPayload } : {}),
         beginTrace: modelTrace ? (request: Record<string, unknown>) => modelTrace.begin({

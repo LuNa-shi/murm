@@ -1,8 +1,10 @@
 export const createSandbox = () => Object.freeze({});
+import { DEFAULT_FILE_POLICY } from '../../src/core/file-policy.js';
 import { selectExecutorDriver } from '../../src/core/executor-driver.js';
 
 export const configuration = {
   sandbox: {},
+  filePolicy: DEFAULT_FILE_POLICY,
   isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
   bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
   modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },

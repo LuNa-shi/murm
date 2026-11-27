@@ -44,7 +44,7 @@ This section is generated from executable exports and checked against the source
 | [src/core/types.ts](../../src/core/types.ts) | `1161fe11a40d1da8d229fc7f469bec00c7a139c709010daf7713e7708325619b` |
 | [src/core/services.ts](../../src/core/services.ts) | `823b7c83efd0fc61314c5511177b32b8863f469454cad5c5288bd04e5e82cf96` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
-| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | `692653e6312ef3a46d72f903bb27baf94bd153a3bc9f65d3d4f5428de1c9982c` |
+| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | `9e86326905dbcfb4181a036127ab72c24499d99bdc41dddce54aa9e22999e6fd` |
 | [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | `949681fa831b28626abea25dec88beda744e76066f3653d56367441579893ee7` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `d3c72dbab8426517916d5deb92800556001d32f15593b7ae5cd146868cf0ede5` |
 | [src/core/opensandbox-provider.ts](../../src/core/opensandbox-provider.ts) | `38190bed297b4c5c47340609ed3732377bc1bdbdfd946ffebc0e0b8089b612d7` |
@@ -3697,6 +3697,17 @@ interface WorkerReply {
     };
     status?: string;
 }
+type ExecutorStartup = {
+    kind: 'codex';
+    version: string;
+    authMode: 'api-key';
+    threadId: string;
+} | {
+    kind: string;
+    version: string;
+    protocol: string;
+    capabilities: ExecutorCapabilities;
+};
 export interface SandboxManager {
     agentRpc(agentId: string, input: Record<string, unknown>, options: {
         timeoutMs: number;
@@ -3726,12 +3737,7 @@ export interface SandboxManager {
         [key: string]: unknown;
     }>;
     startAgent(options: Record<string, unknown>): Promise<{
-        backend?: {
-            kind: 'codex';
-            version: string;
-            authMode: 'api-key';
-            threadId: string;
-        };
+        backend?: ExecutorStartup;
         isolation?: {
             cpu: number;
             memoryBytes: number;
@@ -3781,7 +3787,7 @@ interface BackendSpawnOptions {
     recordAllocation(record: AllocationRecord): void;
 }
 import type { CreateRuntimeOptions } from './types.js';
-import type { OpenSandboxBackendConfig, Sandbox, SandboxConfig, SandboxProviderConfig } from './backend-config.js';
+import type { ExecutorCapabilities, OpenSandboxBackendConfig, Sandbox, SandboxConfig, SandboxProviderConfig } from './backend-config.js';
 import { type ExecutorDriver } from './executor-driver.js';
 import { type OpenSandboxProvider } from './opensandbox-provider.js';
 export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'> & {
@@ -3810,12 +3816,7 @@ export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBacken
                 inodes: number;
             } | undefined;
         } | undefined;
-        backend?: {
-            kind: 'codex';
-            version: string;
-            authMode: 'api-key';
-            threadId: string;
-        } | undefined;
+        backend?: ExecutorStartup | undefined;
     }>;
     snapshotFiles(agentId: string, input: FileSnapshotOptions): Promise<WorkerFileSnapshot>;
     replaceFiles(agentId: string, input: FileReplaceOptions): Promise<WorkerFileReplace>;

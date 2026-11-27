@@ -198,17 +198,19 @@ jobs:
         shell: bash
         run: |
           repository=${IMAGE#ghcr.io/}
-          if ! token=$(curl -fsS --get \
+          token=$(curl -fsS --get \
             --data-urlencode 'service=ghcr.io' \
             --data-urlencode "scope=repository:$repository:pull" \
-            https://ghcr.io/token | jq -er '.token') ||
-            ! curl -fsS --head --output /dev/null \
+            https://ghcr.io/token | jq -er '.token')
+          for tag in "$VERSION" "$VERSION-pi" "$VERSION-codex" "$VERSION-pi-1.4.0"; do
+            if ! curl -fsS --head --output /dev/null \
               --header "Authorization: Bearer $token" \
               --header 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
-              "https://ghcr.io/v2/$repository/manifests/$VERSION"; then
-            echo "::error::Anonymous Worker pull failed. Check that murm-worker is public in GitHub Packages, then rerun the failed job."
-            exit 1
-          fi
+              "https://ghcr.io/v2/$repository/manifests/$tag"; then
+              echo "::error::Anonymous Worker pull failed for $tag. Verify the versioned tag and public access in GitHub Packages."
+              exit 1
+            fi
+          done
       - name: Publish the verified tarball and latest download alias
         if: steps.release.outputs.status != 'published'
         working-directory: ${{ runner.temp }}/murm-release

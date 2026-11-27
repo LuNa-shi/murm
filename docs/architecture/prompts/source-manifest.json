@@ -35,7 +35,7 @@
     },
     {
       "path": "src/core/opensandbox-backend.ts",
-      "sha256": "692653e6312ef3a46d72f903bb27baf94bd153a3bc9f65d3d4f5428de1c9982c"
+      "sha256": "9e86326905dbcfb4181a036127ab72c24499d99bdc41dddce54aa9e22999e6fd"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
@@ -51,7 +51,7 @@
     },
     {
       "path": "scripts/local-setup-upstream.ts",
-      "sha256": "90d34e0d6e9598a42cfba040b2f064895e5e2b2685426d57403374e4623a35d9"
+      "sha256": "a96b4f1e96f29a4a927f88f9a231d399ff251540cbf7132d801fa15b37ed38e0"
     },
     {
       "path": "examples/bridge-services/handoff.ts",
@@ -67,7 +67,7 @@
     },
     {
       "path": "examples/taskpool/project.ts",
-      "sha256": "4b5834a800c98f6a962fa69c9c7706242afcd0b67e1958f90a959605730f98f3"
+      "sha256": "47d3d135f062786b1a043c3888cfe3c37369f0e126eb5cc5929414efd2ceb490"
     },
     {
       "path": "src/harnesses/shared/project-git.ts",
@@ -79,7 +79,7 @@
     },
     {
       "path": "src/harnesses/substrate/index.ts",
-      "sha256": "8cfb7fcec6283f685aa78662111d62cda6c1bf28cf9bbf22df79415eefd19366"
+      "sha256": "a917951eb3ebcd6b32b683d2c19a903bf539cfb5019f8752e49eb8e359a6c1a8"
     },
     {
       "path": "src/harnesses/substrate/substrate.ts",
@@ -91,7 +91,7 @@
     },
     {
       "path": "examples/taskpool/harness.ts",
-      "sha256": "b79b26b13baf5141a2885f64a004f440440f5373feb802b4ef5ad48a197d3c7f"
+      "sha256": "7528eea2264e01e20942c92b401434a67affab67f94ce301021ce389702ca596"
     },
     {
       "path": "examples/substrate/fate-run.ts",
@@ -155,7 +155,7 @@
     },
     {
       "path": "src/harnesses/peermesh/team.ts",
-      "sha256": "38338b5a4c7a49dc3587d63688dac63cdf3a3af9fd0ef6a00419e40689cc2c0d"
+      "sha256": "4e17aed7ec824aa2fb9673e65e94a1926d2fb59b2d6d04f2f06b45301d62eb1d"
     },
     {
       "path": "test/fixtures/peermesh-team-kimi.ts",
@@ -171,7 +171,7 @@
     },
     {
       "path": "src/harnesses/lead-worker/index.ts",
-      "sha256": "4403f66114df9cb086041cf93927ba71bb110c67e44754ae84b53867db36fc0b"
+      "sha256": "fe185b9c09889e3ebd47b928a8d78b30fc0e4b3de4550c669c93d069989cbe89"
     },
     {
       "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",

@@ -8,7 +8,7 @@ import { deployDynamicContainer } from './dynamic-container.js';
 import { leadWorkerConfig } from './project-config.js';
 
 type Config = Omit<ReturnType<typeof leadWorkerConfig>, 'models' | 'sandbox'> &
-  Pick<CreateRuntimeOptions, 'executor' | 'models'> & { sandbox: SandboxConfig; team?: 'static' | 'dynamic'; checkingImage?: string };
+  Pick<CreateRuntimeOptions, 'executor' | 'models' | 'filePolicy'> & { sandbox: SandboxConfig; team?: 'static' | 'dynamic'; checkingImage?: string };
 
 const leadWorker = {
   id: 'lead-worker', apiVersion: 1,

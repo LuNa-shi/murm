@@ -92,8 +92,9 @@ export async function createLocalSetupUpstream(executor: 'pi' | 'codex' = 'pi', 
         item = { type: 'message', id: 'msg_setup_final', role: 'assistant', status: 'completed',
           content: [{ type: 'output_text', text: SETUP_RESULT, annotations: [] }] };
       } else if (chat && arrivals === 4 && verifiedRead) {
-        if (!messages.some(message => message.role === 'assistant' && message.content === SETUP_RESULT) ||
-            !messages.some(message => message.role === 'user' && message.content === SETUP_CONTINUATION)) {
+        const hasText = (role: string, text: string) => messages.some(message => message.role === role &&
+          (message.content === text || (Array.isArray(message.content) && message.content.some((part: { text?: string }) => part?.text === text))));
+        if (!hasText('assistant', SETUP_RESULT) || !hasText('user', SETUP_CONTINUATION)) {
           throw new Error('continuation');
         }
         item = { type: 'message', content: [{ type: 'output_text', text: SETUP_CONTINUED }] };
