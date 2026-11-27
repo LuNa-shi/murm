@@ -82,7 +82,8 @@ visibility are independent.
 
 The job uploads the verified versioned tarball, the byte-identical
 `luna-shi-murm.tgz` alias and `SHA256SUMS` to the tagged Release before
-publishing it. It promotes the versioned Worker to `:latest` when that tag is
+publishing it. An older stable tag can still be published as a pinned Release.
+The job promotes the versioned Worker to `:latest` when that tag is
 GitHub's latest Release. The CI-provided GitHub token handles both publications.
 
 ## Documentation changes
