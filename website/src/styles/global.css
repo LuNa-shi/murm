@@ -182,6 +182,27 @@ html[data-theme='dark'] .astro-code span {
   color: var(--ink);
 }
 
+.nav-version-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  color: var(--accent);
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.nav-version-pill:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .nav-actions {
   display: flex;
   align-items: center;
@@ -1547,6 +1568,25 @@ html.reveal-ready [data-reveal-line].is-visible {
   color: var(--accent);
   background: var(--accent-soft);
   font-weight: 600;
+}
+
+.sidebar-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--accent);
+  font-family: var(--font-pixel);
+  font-size: 9.5px;
+  letter-spacing: 0.03em;
+  line-height: 1.4;
+}
+
+.sidebar-link.active .sidebar-badge {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--bg-elevated);
 }
 
 .docs-main {

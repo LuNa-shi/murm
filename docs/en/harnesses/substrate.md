@@ -87,7 +87,7 @@ Use a built checkout or `@luna-shi/murm` installation with a compatible Pi Worke
 
 ```bash
 export MURM_SUBSTRATE_RUN=research-01
-export MURM_SUBSTRATE_IMAGE=$(docker image inspect murm-worker:local --format '{{.Id}}')
+export MURM_SUBSTRATE_IMAGE='ghcr.io/luna-shi/murm-worker:0.2.0'
 export MURM_SUBSTRATE_MODEL_URL='https://your-model-endpoint/v1/responses'
 export MURM_SUBSTRATE_MODEL_TOKEN='your-bearer-token'
 

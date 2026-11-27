@@ -1,0 +1,19 @@
+---
+import { docHref } from '../lib/i18n';
+
+const target = docHref('en', 'latest');
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Latest (v0.2.0) · murm</title>
+    <meta http-equiv="refresh" content={`0; url=${target}`} />
+    <link rel="canonical" href={target} />
+  </head>
+  <body>
+    <p>Redirecting to <a href={target}>murm Latest (v0.2.0)</a>…</p>
+  </body>
+</html>

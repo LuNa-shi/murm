@@ -1,0 +1,19 @@
+---
+import { docHref } from '../../lib/i18n';
+
+const target = docHref('zh', 'latest');
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>最新版本 (v0.2.0) · murm</title>
+    <meta http-equiv="refresh" content={`0; url=${target}`} />
+    <link rel="canonical" href={target} />
+  </head>
+  <body>
+    <p>正在前往 <a href={target}>murm 最新版本 (v0.2.0)</a>…</p>
+  </body>
+</html>

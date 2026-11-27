@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation & Quickstart
+    url: https://luna-shi.github.io/murm/docs/quickstart/
+    about: Host prerequisites, setup guide, CLI usage, and TypeScript SDK walkthrough.
+  - name: What's New & Changelog
+    url: https://luna-shi.github.io/murm/docs/latest/
+    about: Check the latest v0.2.0 capabilities and version history.

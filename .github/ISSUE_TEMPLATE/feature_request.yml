@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose a new SDK capability, Harness pattern, executor integration, or documentation improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What multi-agent workflow or developer experience gap are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed design
+      description: How should this work from the CLI, TypeScript SDK, or Harness side?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional notes on tradeoffs or existing workarounds.

@@ -5,7 +5,7 @@ section: 参考手册
 order: 14
 ---
 
-`website/` 中的网站使用 Astro 构建，产物是静态 HTML、CSS、打包字体和首页交互示意图。公开 Markdown 指南位于 **`docs/en/` 与 `docs/zh/`**。GitHub 与网站使用同一份源文件，更新接口说明时只需修改这一处内容。
+`website/` 中的网站使用 Astro 构建，产物包含静态 HTML、CSS、打包字体、首页交互示意图、`/latest/` 与 `/zh/latest/` 快捷跳转页，以及公开 CLI 安装脚本 `website/public/install.sh`（`https://luna-shi.github.io/murm/install.sh`）。公开 Markdown 指南位于 **`docs/en/` 与 `docs/zh/`**。GitHub 与网站使用同一份源文件，更新接口说明时只需修改这一处内容。
 
 ## 本地预览
 

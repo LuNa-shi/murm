@@ -5,9 +5,9 @@ section: 参考手册
 order: 13
 ---
 
-下面列出 `@luna-shi/murm` `0.2.0` 的主要公共类型。完整声明分别位于 [Core types](https://github.com/LuNa-shi/murm/blob/main/src/core/types.ts)、[Service types](https://github.com/LuNa-shi/murm/blob/main/src/core/service-types.ts) 与[后端配置](https://github.com/LuNa-shi/murm/blob/main/src/core/backend-config.ts)。完整可运行程序请从 [SDK 指南](../sdk.md)开始。
+下面列出 `@luna-shi/murm` `0.2.0` 的主要公共类型。完整声明分别位于 [Core types](https://github.com/LuNa-shi/murm/blob/main/src/core/types.ts)、[Service types](https://github.com/LuNa-shi/murm/blob/main/src/core/service-types.ts)、[后端配置](https://github.com/LuNa-shi/murm/blob/main/src/core/backend-config.ts) 与 [默认 Worker 镜像常量](https://github.com/LuNa-shi/murm/blob/main/src/core/worker-image.ts)。完整可运行程序请从 [SDK 指南](../sdk.md)开始。
 
-公开类型从 `@luna-shi/murm` 导入。以下声明覆盖 Runtime、文件、回执、Sandbox 与 Service 作者边界。
+公开值（`createSandbox`、`createRuntime`、`DEFAULT_WORKER_IMAGE`、`getExecutorCapabilities`、`ServiceRegistry`、`createInProcessAdapter`、`createHttpJsonAdapter`）与公开类型均从 `@luna-shi/murm` 导入。以下声明覆盖 Runtime、文件、回执、Sandbox 与 Service 作者边界。
 
 ## Runtime, Profile, FileTree and events
 

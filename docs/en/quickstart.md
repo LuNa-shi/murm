@@ -5,7 +5,7 @@ section: GET STARTED
 order: 1
 ---
 
-`murm` ships both its CLI and TypeScript SDK in the **`@luna-shi/murm`** npm package. Once your Linux host prerequisites are ready, you can run a built-in Harness against any project with one command or embed the SDK in your own TypeScript application.
+`murm` distributes its CLI, TypeScript SDK, and built-in Trace Viewer in a single **`@luna-shi/murm`** tarball via GitHub Releases. Once your Linux host prerequisites are ready, you can run a built-in Harness against any project with one command or embed the SDK in your own TypeScript application.
 
 ## 1. Prerequisites (execution host)
 
@@ -387,6 +387,7 @@ npm test
 
 ## Continue from here
 
+- Explore everything included in `v0.2.0` in [Latest (v0.2.0)](latest.md) and review release history in [Changelog](changelog.md).
 - Read [Use the SDK](sdk.md) for the full Runtime lifecycle, admission receipts, artifact verification, and external HTTP Services.
 - Read [Build Your Own Harness](build-your-harness.md) to design custom coordination policies and Service contracts.
 - Compare the five built-in mechanisms in [Choose a Harness](harnesses/index.md) (`Subagents`, `TaskPool`, `PeerMesh`, `Substrate`, and `Lead-Worker`).

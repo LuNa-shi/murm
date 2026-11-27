@@ -1,6 +1,6 @@
 ---
 import MurmLogo from './MurmLogo.astro';
-import { UI, homeHref, type Lang } from '../lib/i18n';
+import { UI, docHref, homeHref, type Lang } from '../lib/i18n';
 
 interface Props {
   showMobileMenu?: boolean;
@@ -28,6 +28,13 @@ const otherLang: Lang = lang === 'zh' ? 'en' : 'zh';
       <a class="brand-link" href={homeHref(lang)}>
         <MurmLogo variant="nav" />
         <span>murm</span>
+      </a>
+      <a
+        class="nav-version-pill"
+        href={docHref(lang, 'latest')}
+        title={lang === 'zh' ? '查看最新版本 v0.2.0 功能' : 'See what is new in v0.2.0'}
+      >
+        v0.2.0
       </a>
     </div>
 

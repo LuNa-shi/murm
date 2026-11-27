@@ -28,6 +28,7 @@ const t = UI[lang];
                 aria-current={isCurrent ? 'page' : undefined}
               >
                 <span>{item.title}</span>
+                {item.badge && <span class="sidebar-badge">{item.badge}</span>}
               </a>
             </li>
           );

@@ -3,6 +3,7 @@ import type { Lang } from './i18n';
 export interface NavItem {
   title: string;
   slug: string;
+  badge?: string;
 }
 
 export interface NavGroup {
@@ -47,6 +48,13 @@ export const DOC_NAV: NavGroup[] = [
       { title: 'Documentation Site', slug: 'reference/deploy' },
     ],
   },
+  {
+    label: 'RELEASES',
+    items: [
+      { title: 'Latest', slug: 'latest', badge: 'v0.2.0' },
+      { title: 'Changelog', slug: 'changelog' },
+    ],
+  },
 ];
 
 export const DOC_NAV_ZH: NavGroup[] = [
@@ -84,6 +92,13 @@ export const DOC_NAV_ZH: NavGroup[] = [
       { title: 'API 与配置参考', slug: 'reference/api' },
       { title: '类型定义与源码映射', slug: 'reference/types' },
       { title: '站点部署指南', slug: 'reference/deploy' },
+    ],
+  },
+  {
+    label: '版本与更新',
+    items: [
+      { title: '最新版本', slug: 'latest', badge: 'v0.2.0' },
+      { title: '更新日志', slug: 'changelog' },
     ],
   },
 ];
