@@ -1,0 +1,36 @@
+name: Bug report
+description: Report a bug in the murm SDK, CLI, OpenSandbox backend, or Trace Viewer.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an issue in **murm**. Please do not paste API keys, bearer tokens, or private prompts.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A concise description of the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Commands, Harness/SDK snippet, and configuration (with secrets redacted).
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Execution host environment
+      description: Paste relevant versions (`murm --help`, `node -v`, `uname -r`, `docker version`, `murm doctor` sanitized output).
+      value: |
+        - murm version / commit: v0.2.0
+        - Node.js version:
+        - Linux distro & kernel (Landlock ABI):
+        - Docker Engine version:
+        - Executor (`pi` or `codex`):
+    validations:
+      required: true

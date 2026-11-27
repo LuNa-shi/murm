@@ -2901,6 +2901,22 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Candidate verification, tag-driven GitHub Release tarball publishing, and GHCR multi-arch Worker distribution"
+    },
+    {
+      "path": "website/src/pages/latest.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Top-level /latest/ shortcut redirecting to the English Latest release feature guide"
+    },
+    {
+      "path": "website/src/pages/zh/latest.astro",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Top-level /zh/latest/ shortcut redirecting to the Chinese Latest release feature guide"
     }
   ]
 }

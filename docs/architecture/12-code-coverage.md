@@ -4,7 +4,7 @@
 
 Runtime baseline: `9e2804864c9f348e46095aa91f6ddf72fef016f5`; review date: 2026-11-26. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **324 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **326 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -402,7 +402,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | Optional provider manifest, schemas, help and documentation declarations | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/services/mathlib-search/SKILL.md](../../src/services/mathlib-search/SKILL.md) | Repository-owned full Mathlib tool usage instructions loaded by bundle | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `e7f79c40eed183b5a5bb0568923ec5575d450016dba41ff5a7cef94414e6f27c` |
 
-### public documentation website (38)
+### public documentation website (40)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -423,26 +423,28 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [website/src/components/CoreModelBlueprint.astro](../../website/src/components/CoreModelBlueprint.astro) | Interactive Tactical Sandtable mental model diagram | [22-website](22-website.md) | `cadd3bb2cf9eafabeb3a1a4ecb63acf985d31c989c2d384bc8b9a080c0fd0307` |
 | [website/src/components/DomainStrip.astro](../../website/src/components/DomainStrip.astro) | Landing page application domains | [22-website](22-website.md) | `bf8ca22e117d64d1d48fa2b759a7162b6f493a6ecee7f336bb38f720a0f98fbd` |
 | [website/src/components/HarnessShowcase.astro](../../website/src/components/HarnessShowcase.astro) | Interactive selection and diagrams for the five Harnesses | [22-website](22-website.md) | `223fccf02bf29cb5c1e6a790f483681f94ba44a903a99638d01f528e6e9fe1b0` |
-| [website/src/components/LandingPage.astro](../../website/src/components/LandingPage.astro) | Shared bilingual landing page component | [22-website](22-website.md) | `10b79c99158bc67ed9617d2c3bd640174dea4013372b33b4aef8f141b412ac1f` |
+| [website/src/components/LandingPage.astro](../../website/src/components/LandingPage.astro) | Shared bilingual landing page component | [22-website](22-website.md) | `df7570426a883c1ee8345f828636db5866a9504a9b647a2b80c8654256f0fdba` |
 | [website/src/components/MurmLogo.astro](../../website/src/components/MurmLogo.astro) | Shared murm wordmark and icon | [22-website](22-website.md) | `37deb2538a3c36ac773e086f3ac9efad5028e2ba106089473a854ec46bc5e48c` |
 | [website/src/components/MurmurationCanvas.astro](../../website/src/components/MurmurationCanvas.astro) | Animated landing page canvas | [22-website](22-website.md) | `f23420853eb2c6a78285f85cc40cb94d2875c6937bb2c629ad3d2123b86f3b1c` |
 | [website/src/components/NoRebuildGrid.astro](../../website/src/components/NoRebuildGrid.astro) | Landing page examples of reusable Runtime capabilities | [22-website](22-website.md) | `0fed80ceb630b2064d44c907f6a24380a936f64a5f66cb1ee48ae93d50a22c38` |
 | [website/src/components/PillarSchematics.astro](../../website/src/components/PillarSchematics.astro) | Landing page architecture diagrams | [22-website](22-website.md) | `378baa5a379fcc07fecccaeec7ac35efa8514a9c6d9ae3fb323df5b1c2b0d889` |
 | [website/src/components/SearchModal.astro](../../website/src/components/SearchModal.astro) | Client-side documentation search, keyboard shortcuts and result navigation | [22-website](22-website.md) | `f456fc947a423dfa3af5ef83daf091be46157468407d0fcc3964bea9c319e21d` |
-| [website/src/components/Sidebar.astro](../../website/src/components/Sidebar.astro) | Documentation section navigation | [22-website](22-website.md) | `7b8d34a2c81421847eb45181fed9462f34a171172045861a802c8d6d90d3f55a` |
-| [website/src/components/TopNav.astro](../../website/src/components/TopNav.astro) | Site navigation, mobile menu, theme and search controls | [22-website](22-website.md) | `d54a7c440c2ac6e0857e33db4ea8263585327bea131654fee349877748e09da1` |
+| [website/src/components/Sidebar.astro](../../website/src/components/Sidebar.astro) | Documentation section navigation | [22-website](22-website.md) | `9c771bb389221552797d8284215224c7d3f57efe757dfab6d15de08746b79468` |
+| [website/src/components/TopNav.astro](../../website/src/components/TopNav.astro) | Site navigation, mobile menu, theme and search controls | [22-website](22-website.md) | `fc48042c6c6ee191dcd728d294e96a25f6fc63027c5c86f35a27554a2ac2b792` |
 | [website/src/content.config.ts](../../website/src/content.config.ts) | Documentation loader and frontmatter schema | [22-website](22-website.md) | `6b7566a2df96f730504cc0a190936b93dbff7d85cf141eb052a79d2ac234343a` |
 | [website/src/layouts/BaseLayout.astro](../../website/src/layouts/BaseLayout.astro) | Document shell, browser theme and shared site styles | [22-website](22-website.md) | `20c65c7b2a4218f84fb5b37514970b5b16fee1b77445e61f40d1ebf520b1cc22` |
 | [website/src/layouts/DocsLayout.astro](../../website/src/layouts/DocsLayout.astro) | Documentation shell, section sidebar and page headings | [22-website](22-website.md) | `66e7bbe9bcc346fb70b231cd98b2e84d77dc7b81f33432147f299fb956c4066f` |
 | [website/src/lib/i18n.ts](../../website/src/lib/i18n.ts) | Bilingual English/Chinese route helpers and UI strings | [22-website](22-website.md) | `2cacb8205e7bf3b7fa1f5f565714aac2bd537b0b03fbd4d790972bef6a4d6947` |
 | [website/src/lib/markdown-doc-links.mjs](../../website/src/lib/markdown-doc-links.mjs) | Resolve canonical Markdown file links into locale-aware website routes and repository source links. | [22-website](22-website.md) | `bd627fc0240ba26ad92bd69fb53acb8924c448e438127ffbd6ded7e2a532dc61` |
-| [website/src/lib/nav.ts](../../website/src/lib/nav.ts) | Public documentation navigation groups and routes | [22-website](22-website.md) | `97d55bd83facda67cd09ee4a48b5cc73a5afd87f4a37d3bcffc85797332162d8` |
+| [website/src/lib/nav.ts](../../website/src/lib/nav.ts) | Public documentation navigation groups and routes | [22-website](22-website.md) | `006d995fd000361b26033539d0aac3bbe0f885cf3a6a42438a28b718ee9d4bc8` |
 | [website/src/lib/url.ts](../../website/src/lib/url.ts) | Deployment base resolution for generated site URLs | [22-website](22-website.md) | `c96db4b0d42b65f83b70233aaa06a445d3a00d485b59d42ba0299cada706bff3` |
 | [website/src/pages/docs/[...slug].astro](../../website/src/pages/docs/[...slug].astro) | Build-time documentation route enumeration and rendering | [22-website](22-website.md) | `eb38b171beb44262a9f3bd760d612ee7521d90395af166f78f1a1d58b73df3e2` |
 | [website/src/pages/index.astro](../../website/src/pages/index.astro) | Public landing page assembly | [22-website](22-website.md) | `e40c5e68196b5db6c5a9572fd70bba164d928234d0069948e5db7a530e95ed55` |
+| [website/src/pages/latest.astro](../../website/src/pages/latest.astro) | Top-level /latest/ shortcut redirecting to the English Latest release feature guide | [22-website](22-website.md) | `34ff1eaf3e74e4f01f3e443c3f8cfb939d717899d4de216b6842773acca6c648` |
 | [website/src/pages/zh/docs/[...slug].astro](../../website/src/pages/zh/docs/[...slug].astro) | Chinese documentation dynamic route (/zh/docs/*) | [22-website](22-website.md) | `294c90740fff3015f9d47c33dff2ffa7632cd2a84dd2fb5761cae391fdb19a79` |
 | [website/src/pages/zh/index.astro](../../website/src/pages/zh/index.astro) | Chinese landing page route (/zh/) | [22-website](22-website.md) | `1a6fc0977115bd88fc5c82286a30949d2dc1dad6e87fd41e9c395dfe07dcea1a` |
-| [website/src/styles/global.css](../../website/src/styles/global.css) | Responsive styles, font declarations and browser theme colors | [22-website](22-website.md) | `688f8c679a43d9de155f0cf42d920febf2ae495f5acea24ab9aa2d973cfbcfd5` |
+| [website/src/pages/zh/latest.astro](../../website/src/pages/zh/latest.astro) | Top-level /zh/latest/ shortcut redirecting to the Chinese Latest release feature guide | [22-website](22-website.md) | `8082a15cf0e5507203bc5bdcfc4e15eab0ecb057c0197ae68f7affacf4399531` |
+| [website/src/styles/global.css](../../website/src/styles/global.css) | Responsive styles, font declarations and browser theme colors | [22-website](22-website.md) | `0ad8c4db7d71c84214ac360162ab6e4b6150cec40f5df11d958ed08878c94f53` |
 | [website/tsconfig.json](../../website/tsconfig.json) | Astro TypeScript source configuration | [22-website](22-website.md) | `8ac0c34ca488883dfa22bccd923af5072ef84b18dbd73fcd23e797c29398d387` |
 
 ### runtime and execution (14)

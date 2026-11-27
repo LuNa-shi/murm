@@ -101,7 +101,7 @@ Configure the host environment variables (see [examples/peermesh/config.ts](http
 ```bash
 export MURM_PEERMESH_PROJECT_FILE=./project.json
 export MURM_PEERMESH_RUN_ID=color-cli-01
-export MURM_PEERMESH_IMAGE=$(docker image inspect murm-worker:local --format '{{.Id}}')
+export MURM_PEERMESH_IMAGE='ghcr.io/luna-shi/murm-worker:0.2.0'
 export MURM_PEERMESH_MODEL_URL='https://your-model-endpoint/v1/responses'
 export MURM_PEERMESH_PEERS=4
 # Plus Gitea, Mattermost, and Board MySQL DSN host variables

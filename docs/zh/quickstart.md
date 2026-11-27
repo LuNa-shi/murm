@@ -5,7 +5,7 @@ section: 快速开始
 order: 1
 ---
 
-`murm` 通过 npm 包 **`@luna-shi/murm`** 同时提供命令行工具与 TypeScript SDK。完成一次宿主机环境准备后，你可以直接通过 CLI 在现有项目中运行内置 Harness，也可以在自己的 TypeScript 程序中嵌入 SDK。
+`murm` 通过 GitHub Release 以单个 **`@luna-shi/murm`** 安装包同时分发 CLI、TypeScript SDK 与内置 Trace Viewer。完成一次宿主机环境准备后，你可以直接通过 CLI 在现有项目中运行内置 Harness，也可以在自己的 TypeScript 程序中嵌入 SDK。
 
 ## 1. 环境准备（宿主机前置依赖）
 
@@ -387,6 +387,7 @@ npm test
 
 ## 下一步
 
+- 阅读 [最新版本 (v0.2.0)](latest.md) 查看当前版本提供的完整能力，并在 [更新日志](changelog.md) 追踪版本变更。
 - 阅读 [使用 SDK](sdk.md)，深入理解 Runtime 生命周期、输入回执、产物验证与外部 HTTP Service 接入。
 - 阅读 [构建你自己的 Harness](build-your-harness.md)，设计自己的协作协议、权限矩阵与验收规则。
 - 浏览 [选择 Harness](harnesses/index.md)，对比 `Subagents`、`TaskPool`、`PeerMesh`、`Substrate` 与 `Lead-Worker` 五种内置机制。

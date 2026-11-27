@@ -17,6 +17,7 @@ If you already have the infrastructure ready, choose your next step:
 
 | What you want to do | Start here |
 | --- | --- |
+| See everything available in `v0.2.0` | [Latest (v0.2.0)](latest.md) · [Changelog](changelog.md) |
 | Embed murm in your TypeScript application | [Use the SDK](sdk.md) |
 | Understand what happens during a Run | [How murm Works](concepts.md) |
 | Design your own collaboration mechanism | [Build Your Own Harness](build-your-harness.md) |
@@ -25,7 +26,7 @@ If you already have the infrastructure ready, choose your next step:
 
 ## One package, explicit public entry points
 
-GitHub Release distributes the CLI and SDK in one `@luna-shi/murm` tarball.
+GitHub Release distributes the CLI, TypeScript SDK, and built-in browser Trace Viewer (`murm trace`) in one `@luna-shi/murm` tarball.
 
 Import all public values and types from `@luna-shi/murm`. Configure OpenSandbox with `createSandbox`, reference the matching prebuilt Worker image via `DEFAULT_WORKER_IMAGE`, and manage Agents, Services, files, and cleanup through `createRuntime`. Install the versioned GitHub Release asset. See the [SDK guide](sdk.md).
 

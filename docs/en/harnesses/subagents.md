@@ -122,12 +122,13 @@ If any child writer fails to confirm `execution === 'stopped'`, the harness appe
 
 ## 4. Programmatic & CLI usage
 
-From a built checkout, configure the Worker image and model endpoint, then use the one-shot or interactive launcher. The [example README](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md) covers OpenSandbox setup and optional host settings:
+From a built checkout, configure your model endpoint (the Subagents config defaults to `DEFAULT_WORKER_IMAGE`, i.e. `ghcr.io/luna-shi/murm-worker:0.2.0`, and accepts `MURM_WORKER_IMAGE` or `MURM_SUBAGENTS_IMAGE` to override it), then use the one-shot or interactive launcher. The [example README](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md) covers OpenSandbox setup and optional host settings:
 
 ```bash
-export MURM_SUBAGENTS_IMAGE=$(docker image inspect murm-worker:local --format '{{.Id}}')
-export MURM_SUBAGENTS_MODEL_URL='https://your-model-endpoint/v1/responses'
-export MURM_SUBAGENTS_MODEL_TOKEN='your-bearer-token'
+export MURM_MODEL_URL='https://your-model-endpoint/v1/responses'
+export MURM_MODEL_TOKEN='your-bearer-token'
+# Optional: override the default prebuilt Worker image (ghcr.io/luna-shi/murm-worker:0.2.0)
+# export MURM_WORKER_IMAGE='ghcr.io/luna-shi/murm-worker:0.2.0'
 
 node dist/examples/subagents/main.js dist/examples/subagents/config.js \
   'Split this task into two independent checks and summarize the results.'

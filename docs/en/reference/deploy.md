@@ -5,7 +5,7 @@ section: REFERENCE
 order: 14
 ---
 
-The site in `website/` builds with Astro into static HTML, CSS, bundled fonts, and interactive homepage schematics. The public Markdown guides live in **`docs/en/` and `docs/zh/`**. GitHub and the website use those same files; edit the source once when updating a contract.
+The site in `website/` builds with Astro into static HTML, CSS, bundled fonts, interactive homepage schematics, `/latest/` and `/zh/latest/` shortcut redirects, and the public CLI installer at `website/public/install.sh` (`https://luna-shi.github.io/murm/install.sh`). The public Markdown guides live in **`docs/en/` and `docs/zh/`**. GitHub and the website use those same files; edit the source once when updating a contract.
 
 ## Preview locally
 

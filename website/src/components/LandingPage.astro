@@ -47,6 +47,9 @@ const copy = isZh
       footerQuickstart: '快速上手',
       footerBuild: 'SDK 指南',
       footerApi: 'API 参考',
+      footerLatest: '最新版本 v0.2.0',
+      footerChangelog: '更新日志',
+      changelogLink: '更新日志',
     }
   : {
       pageTitle: 'murm · Build your own multi-agent harness',
@@ -75,6 +78,9 @@ const copy = isZh
       footerQuickstart: 'Quickstart',
       footerBuild: 'SDK Guide',
       footerApi: 'API Reference',
+      footerLatest: 'Latest v0.2.0',
+      footerChangelog: 'Changelog',
+      changelogLink: 'Changelog',
     };
 ---
 
@@ -90,6 +96,10 @@ const copy = isZh
   <main class="landing-shell">
     <div class="landing-corner" aria-label="Quick links">
       <a class="corner-link" href={docHref(lang, 'overview')}>{copy.docsLink}</a>
+      <span class="corner-sep" aria-hidden="true">/</span>
+      <a class="corner-link" href={docHref(lang, 'latest')}>v0.2.0</a>
+      <span class="corner-sep" aria-hidden="true">/</span>
+      <a class="corner-link" href={docHref(lang, 'changelog')}>{copy.changelogLink}</a>
       <span class="corner-sep" aria-hidden="true">/</span>
       <a class="corner-link" href="https://github.com/LuNa-shi/murm" target="_blank" rel="noreferrer">GitHub</a>
       <a
@@ -200,6 +210,8 @@ const copy = isZh
         <a href={docHref(lang, 'quickstart')}>{copy.footerQuickstart}</a>
         <a href={docHref(lang, 'sdk')}>{copy.footerBuild}</a>
         <a href={docHref(lang, 'reference/api')}>{copy.footerApi}</a>
+        <a href={docHref(lang, 'latest')}>{copy.footerLatest}</a>
+        <a href={docHref(lang, 'changelog')}>{copy.footerChangelog}</a>
         <a href="https://github.com/LuNa-shi/murm" target="_blank" rel="noreferrer">GitHub</a>
       </div>
     </footer>

@@ -17,6 +17,7 @@ order: 0
 
 | 你想完成什么 | 从这里开始 |
 | --- | --- |
+| 查看 `v0.2.0` 最新版本提供的完整功能 | [最新版本 (v0.2.0)](latest.md) · [更新日志](changelog.md) |
 | 在自己的 TypeScript 程序中使用 murm | [使用 SDK](sdk.md) |
 | 理解一次 Run 中发生了什么 | [murm 如何工作](concepts.md) |
 | 设计自己的协作机制 | [构建你自己的 Harness](build-your-harness.md) |
@@ -25,7 +26,7 @@ order: 0
 
 ## 一个包，明确的公开入口
 
-GitHub Release 用同一个 `@luna-shi/murm` tarball 分发 SDK 和 CLI。
+GitHub Release 用同一个 `@luna-shi/murm` tarball 同时分发 CLI、TypeScript SDK 与内置浏览器 Trace Viewer（`murm trace`）。
 
 公开值和类型统一从 `@luna-shi/murm` 导入。使用 `createSandbox` 设置 OpenSandbox，使用 `DEFAULT_WORKER_IMAGE` 引用与版本匹配的官方 Worker 镜像，使用 `createRuntime` 管理 Agent、Service、文件与清理。从 GitHub Release 安装对应版本，详见 [SDK 指南](sdk.md)。
 

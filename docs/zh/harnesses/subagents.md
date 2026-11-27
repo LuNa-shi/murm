@@ -122,12 +122,13 @@ const receipt = await runtime.close({ timeoutMs: remainingCloseMs });
 
 ## 4. 命令行与代码集成方式
 
-从已构建的仓库运行，先配置 Worker 镜像与模型端点，再选择单次任务或交互入口。[示例 README](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md) 说明 OpenSandbox 准备步骤与可选宿主设置：
+从已构建的仓库运行，只需配置模型端点（Subagents 配置默认使用 `DEFAULT_WORKER_IMAGE`，即 `ghcr.io/luna-shi/murm-worker:0.2.0`，也可通过 `MURM_WORKER_IMAGE` 或 `MURM_SUBAGENTS_IMAGE` 覆盖），然后选择单次任务或交互入口。[示例 README](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md) 说明 OpenSandbox 准备步骤与可选宿主设置：
 
 ```bash
-export MURM_SUBAGENTS_IMAGE=$(docker image inspect murm-worker:local --format '{{.Id}}')
-export MURM_SUBAGENTS_MODEL_URL='https://your-model-endpoint/v1/responses'
-export MURM_SUBAGENTS_MODEL_TOKEN='your-bearer-token'
+export MURM_MODEL_URL='https://your-model-endpoint/v1/responses'
+export MURM_MODEL_TOKEN='your-bearer-token'
+# 可选：覆盖默认官方 Worker 镜像（ghcr.io/luna-shi/murm-worker:0.2.0）
+# export MURM_WORKER_IMAGE='ghcr.io/luna-shi/murm-worker:0.2.0'
 
 node dist/examples/subagents/main.js dist/examples/subagents/config.js \
   'Split this task into two independent checks and summarize the results.'
