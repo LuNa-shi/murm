@@ -114,7 +114,7 @@ try {
 } finally {await bridge.close()}
 
 const root='@luna-shi/murm';
-assert.deepEqual(Object.keys(await import(root)).sort(), ['ServiceRegistry','createHttpJsonAdapter','createInProcessAdapter','createRuntime','createSandbox','getExecutorCapabilities']);
+assert.deepEqual(Object.keys(await import(root)).sort(), ['DEFAULT_WORKER_IMAGE','ServiceRegistry','createHttpJsonAdapter','createInProcessAdapter','createRuntime','createSandbox','getExecutorCapabilities']);
 assert.ok(import.meta.resolve(root).startsWith(new URL('./node_modules/',import.meta.url).href));
 assert.ok(loaded.has(import.meta.resolve(root).slice(packageRoot.length)));
 for (const old of ['/services','/backends/opensandbox','/backends/pi-opensandbox','/package.json']) {
@@ -140,12 +140,13 @@ console.log(JSON.stringify({resolved:true,closed:true,cancelled:true}));
     files: ['consumer.mts'],
   }));
   const consumer = `
-import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter,
+import { DEFAULT_WORKER_IMAGE, createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter,
   type Runtime, type RuntimeEvent, type RuntimeFiles, type SandboxConfig, type FileTree } from '@luna-shi/murm';
 type Assert<T extends true> = T;
 type Same<A, B> = [A, B] extends [B, A] ? true : false;
-type CoreExports = Assert<Same<keyof typeof import('@luna-shi/murm'), 'createRuntime' | 'createSandbox' | 'getExecutorCapabilities' |
+type CoreExports = Assert<Same<keyof typeof import('@luna-shi/murm'), 'DEFAULT_WORKER_IMAGE' | 'createRuntime' | 'createSandbox' | 'getExecutorCapabilities' |
   'ServiceRegistry' | 'createInProcessAdapter' | 'createHttpJsonAdapter'>>;
+const defaultWorkerImage: string = DEFAULT_WORKER_IMAGE;
 const config: SandboxConfig = {
   lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
   isolation: { network: 'local-docker', disk: { bytes: 67108864, inodes: 4096 } },
