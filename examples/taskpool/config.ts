@@ -1,4 +1,4 @@
-import { DEFAULT_WORKER_IMAGE, resolveSandboxConnection } from '@luna-shi/murm';
+import { workerImageFor, resolveSandboxConnection } from '@luna-shi/murm';
 
 function required(...names: string[]) {
   for (const name of names) {
@@ -18,7 +18,7 @@ const model = process.env.MURM_MODEL_ID ?? process.env.MURM_TASKPOOL_MODEL_ID ??
 export default {
   model: 'default',
   capacity: Number(process.env.MURM_TASKPOOL_CAPACITY ?? 2),
-  image: image ?? DEFAULT_WORKER_IMAGE,
+  image: image ?? workerImageFor(executor),
   workTimeoutMs: 120_000,
   closeTimeoutMs: 30_000,
   executor,

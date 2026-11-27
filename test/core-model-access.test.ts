@@ -15,7 +15,8 @@ function completion(model = 'k3') {
     response: { status: 'completed', model, usage: { input_tokens: 3, output_tokens: 2 } } })}\n\n`;
 }
 
-async function fixture(t, { reply, requestTimeoutMs = 2000, maxOutputTokens = 64, models, provider = 'kimi_proxy', model = 'k3' } = {}) {
+async function fixture(t, { reply, requestTimeoutMs = 2000, maxOutputTokens = 64, models, provider = 'kimi_proxy', model = 'k3',
+  protocol, capabilities, executor } = {}) {
   const outputDir = await mkdtemp(join(tmpdir(), 'core-model-'));
   const requests = [];
   const upstream = createServer(async (request, response) => {
@@ -29,7 +30,8 @@ async function fixture(t, { reply, requestTimeoutMs = 2000, maxOutputTokens = 64
   });
   upstream.listen(0, '127.0.0.1');
   await once(upstream, 'listening');
-  const upstreamUrl = `http://127.0.0.1:${upstream.address().port}/v1/responses`;
+  const endpoint = protocol === 'chat-completions' ? 'chat/completions' : 'responses';
+  const upstreamUrl = `http://127.0.0.1:${upstream.address().port}/v1/${endpoint}`;
   const agents = new Map([['agent-a', { profile: 'writer', model: 'default', status: 'idle' }]]);
   let access;
   t.after(async () => {
@@ -39,16 +41,16 @@ async function fixture(t, { reply, requestTimeoutMs = 2000, maxOutputTokens = 64
     await rm(outputDir, { recursive: true, force: true });
   });
   const config = {
-    driver: selectExecutorDriver(),
+    driver: selectExecutorDriver(executor),
     modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs, maxOutputTokens },
-    models: models ?? { default: { provider, model,
+    models: models ?? { default: { provider, model, protocol, capabilities,
       upstream: { url: upstreamUrl, headers: { authorization: 'Bearer upstream-private' } } } },
   };
   access = await createCoreModelAccess({ runtimeId: 'runtime-a', outputDir, config,
     getAgent: agentId => agents.get(agentId) ?? null });
   const credentials = access.credentialsForAgent('agent-a', 'default');
   const call = async (requestId = 'request-a', body = { model, input: 'Return a small result.' }) => {
-    const response = await fetch(`${credentials.baseUrl}/responses`, {
+    const response = await fetch(`${credentials.baseUrl}/${endpoint}`, {
       method: 'POST', headers: { authorization: `Bearer ${Object.values(credentials.secretEnvironment)[0]}`,
         'content-type': 'application/json', 'x-murm-request-id': requestId }, body: JSON.stringify(body),
     });
@@ -56,6 +58,37 @@ async function fixture(t, { reply, requestTimeoutMs = 2000, maxOutputTokens = 64
   };
   return { access, agents, requests, credentials, call, outputDir, config };
 }
+
+test('Chat Completions uses its own route, model limits, split terminal frames and usage receipts', async t => {
+  const frame = value => `data: ${JSON.stringify(value)}\n\n`;
+  const output = frame({ model: 'local-chat', choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: null }] }) +
+    frame({ model: 'local-chat', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
+  const f = await fixture(t, { protocol: 'chat-completions', model: 'local-chat', provider: 'local',
+    capabilities: { contextWindow: 16384, maxOutputTokens: 32, tools: false, reasoning: false },
+    reply(request, response) {
+      assert.equal(request.url, '/v1/chat/completions');
+      response.write(output.slice(0, 50));
+      response.end(output.slice(50) + 'data: [DONE]\n\n');
+    },
+  });
+  const catalog = JSON.parse(f.credentials.catalogContent);
+  assert.equal(catalog.providers.local.api, 'openai-completions');
+  assert.equal(catalog.providers.local.models[0].contextWindow, 16384);
+  assert.equal(catalog.providers.local.models[0].maxTokens, 32);
+  const payload = { model: 'local-chat', messages: [{ role: 'user', content: 'hello' }],
+    stream: true, max_completion_tokens: 512 };
+  assert.equal((await f.call('chat', { ...payload, tools: [{ type: 'function', function: { name: 'read' } }] })).status, 400);
+  assert.deepEqual(await f.call('chat', payload), { status: 200, body: output + 'data: [DONE]\n\n' });
+  assert.equal(f.requests[0].body.max_completion_tokens, 32);
+  assert.equal(f.requests[0].headers.authorization, 'Bearer upstream-private');
+  assert.equal((await f.call('chat', payload)).status, 200);
+  assert.equal(f.requests.length, 1);
+  const [filename] = await readdir(join(f.outputDir, 'model-access'));
+  const ledger = new DatabaseSync(join(f.outputDir, 'model-access', filename), { readOnly: true });
+  t.after(() => ledger.close());
+  assert.deepEqual({ ...ledger.prepare('SELECT state, input_tokens, output_tokens FROM runtime_model_attempts').get() },
+    { state: 'completed', input_tokens: null, output_tokens: null });
+});
 
 test('Runtime model access propagates explicit natural output policy while retaining Agent credentials and usage evidence', async t => {
   const { call, requests, access } = await fixture(t, { maxOutputTokens: null });

@@ -2,9 +2,9 @@ import { fileProtocol } from './core-file-seed.js';
 import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { DEFAULT_WORKER_IMAGE, WORKER_PROTOCOL } from '../src/core/worker-image.js';
+import { workerImageFor, WORKER_PROTOCOL } from '../src/core/worker-image.js';
 import { selectExecutorDriver } from '../src/core/executor-driver.js';
-import type { ExecutorKind } from '../src/core/backend-config.js';
+import type { ExecutorSelection } from '../src/core/executor-adapter.js';
 import type { DiagnosticCheck } from './local-environment.js';
 
 const exec = promisify(execFile);
@@ -17,11 +17,11 @@ type Image = {
   RepoDigests?: string[];
   Config?: { Labels?: Record<string, string>; Env?: string[] };
 };
-export type WorkerImage = { reference: string; id: string; digests: string[]; protocol: string; executor: ExecutorKind; version: string };
+export type WorkerImage = { reference: string; id: string; digests: string[]; protocol: string; executor: string; version: string };
 type WorkerInspection = { checks: DiagnosticCheck[]; image?: WorkerImage; absent: boolean };
-const remedy = `Run murm setup to pull or build ${DEFAULT_WORKER_IMAGE}, or set MURM_WORKER_IMAGE (or MURM_SUBAGENTS_IMAGE) to a compatible local image.`;
+const remedy = 'Run murm setup to prepare the selected Worker, or set MURM_WORKER_IMAGE to a compatible image.';
 
-async function inspectWorker(reference: string, executor: ExecutorKind, signal: AbortSignal): Promise<WorkerInspection> {
+async function inspectWorker(reference: string, driver: ReturnType<typeof selectExecutorDriver>, signal: AbortSignal): Promise<WorkerInspection> {
   if (!imageReferencePattern.test(reference)) return {
     checks: [{ id: 'worker-image', ok: false, detail: 'The configured Worker image reference is invalid.', remedy }], absent: false,
   };
@@ -42,8 +42,12 @@ async function inspectWorker(reference: string, executor: ExecutorKind, signal: 
   const labels = image.Config?.Labels ?? {};
   const protocolMatches = labels['org.murm.opensandbox.worker-protocol'] === protocol &&
     labels['org.murm.opensandbox.file-protocol'] === fileProtocol;
-  const { version } = selectExecutorDriver(executor);
-  const versionMatches = labels[`org.murm.opensandbox.${executor}-version`] === version;
+  const { kind: executor, version } = driver;
+  const installed = labels['org.murm.opensandbox.worker-executors'];
+  const actualVersion = labels[`org.murm.opensandbox.${executor}-version`];
+  const versionMatches = driver.adapter
+    ? actualVersion === version && labels[`org.murm.opensandbox.${executor}-protocol`] === driver.adapter.protocol
+    : actualVersion === version && (installed === undefined || installed === 'both' || installed === executor);
   return {
     checks: [
       { id: 'worker-image', ok: true, detail: `Docker resolved ${image.Id}.` },
@@ -51,7 +55,8 @@ async function inspectWorker(reference: string, executor: ExecutorKind, signal: 
         detail: protocolMatches ? `The image declares ${protocol} and ${fileProtocol}.` : `The image does not declare the required Worker protocol ${protocol} and ${fileProtocol}.`,
         ...(protocolMatches ? {} : { remedy }) },
       { id: `worker-${executor}`, ok: versionMatches,
-        detail: versionMatches ? `The image declares ${executor} ${version}.` : `The image does not declare the required ${executor} version ${version}.`,
+        detail: versionMatches ? `The image declares ${executor} ${version}.` :
+          `Image declares ${executor} ${actualVersion ?? 'unavailable'}; selected ${version} within ${driver.compatibleVersions.join(', ')}.`,
         ...(versionMatches ? {} : { remedy }) },
     ],
     ...(protocolMatches && versionMatches ? { image: { reference, id: image.Id,
@@ -61,14 +66,15 @@ async function inspectWorker(reference: string, executor: ExecutorKind, signal: 
 }
 
 export async function prepareWorkerImage({ packageRoot, requestedImage, executor = 'pi', install, signal }: {
-  packageRoot: string; requestedImage?: string; executor?: ExecutorKind; install: boolean; signal: AbortSignal;
+  packageRoot: string; requestedImage?: string; executor?: ExecutorSelection; install: boolean; signal: AbortSignal;
 }): Promise<WorkerInspection & { reference: string; source: 'cache' | 'build' | 'pull' }> {
-  const reference = requestedImage ?? DEFAULT_WORKER_IMAGE;
-  const cached = await inspectWorker(reference, executor, signal);
+  const driver = selectExecutorDriver(executor);
+  const reference = requestedImage ?? workerImageFor(executor);
+  const cached = await inspectWorker(reference, driver, signal);
   if (!install || cached.image || !cached.absent) return { ...cached, reference, source: 'cache' };
 
   if (requestedImage && imageIdPattern.test(requestedImage)) return { ...cached, reference, source: 'cache' };
-  if (requestedImage) {
+  if (requestedImage || driver.adapter) {
     try {
       await exec('docker', ['pull', '--', reference], { signal, timeout: 15 * 60_000, maxBuffer: 12 * 1024 * 1024 });
     } catch {
@@ -77,20 +83,21 @@ export async function prepareWorkerImage({ packageRoot, requestedImage, executor
         detail: 'Docker could not pull the Worker image.',
         remedy: 'Check the requested image reference and registry access, or import the compatible Worker image locally.' }] };
     }
-    return { ...(await inspectWorker(reference, executor, signal)), reference, source: 'pull' };
+    return { ...(await inspectWorker(reference, driver, signal)), reference, source: 'pull' };
   }
 
   // Prefer the prebuilt official GHCR image for fast onboarding; fall back to a local build when unavailable.
   try {
     await exec('docker', ['pull', '--', reference], { signal, timeout: 10 * 60_000, maxBuffer: 12 * 1024 * 1024 });
-    const pulled = await inspectWorker(reference, executor, signal);
+    const pulled = await inspectWorker(reference, driver, signal);
     if (pulled.image) return { ...pulled, reference, source: 'pull' };
   } catch {
     signal.throwIfAborted();
   }
 
   try {
-    await exec('docker', ['build', '--file', join(packageRoot, 'deploy/worker/Dockerfile'), '--tag', reference, packageRoot],
+    await exec('docker', ['build', '--file', join(packageRoot, 'deploy/worker/Dockerfile'), '--tag', reference,
+      '--build-arg', `WORKER_EXECUTOR=${driver.kind}`, '--build-arg', `${driver.kind.toUpperCase()}_VERSION=${driver.version}`, packageRoot],
       { signal, timeout: 15 * 60_000, maxBuffer: 12 * 1024 * 1024 });
   } catch {
     signal.throwIfAborted();
@@ -98,5 +105,5 @@ export async function prepareWorkerImage({ packageRoot, requestedImage, executor
       detail: 'Docker could not build the Worker image.',
       remedy: `Run docker build -f deploy/worker/Dockerfile -t ${reference} . in the package or checkout to inspect the build failure.` }] };
   }
-  return { ...(await inspectWorker(reference, executor, signal)), reference, source: 'build' };
+  return { ...(await inspectWorker(reference, driver, signal)), reference, source: 'build' };
 }

@@ -5,6 +5,8 @@ export interface Sandbox {
 }
 
 import type { OpenSandboxProvider, SandboxProvider } from './opensandbox-provider.js';
+import type { ModelCapabilities, ModelProtocol, ModelTransport } from './model-transport.js';
+import type { ExecutorSelection } from './executor-adapter.js';
 
 export interface SandboxProviderConfig {
   provider: SandboxProvider;
@@ -41,6 +43,8 @@ export interface ExecutorCapabilities {
 export interface ModelConfig {
   provider: string;
   model: string;
+  protocol?: ModelProtocol | ModelTransport;
+  capabilities?: ModelCapabilities;
   upstream: { url: string; headers: Readonly<Record<string, string>> };
 }
 
@@ -60,7 +64,7 @@ export interface RuntimeConnectionOptions {
 
 export interface OpenSandboxBackendConfig {
   /** Defaults to Pi. Runtime resolves this selection at assembly. */
-  executor?: ExecutorKind;
+  executor?: ExecutorSelection;
   sandbox: {
     lifecycleBaseUrl?: string;
     apiKey?: string;

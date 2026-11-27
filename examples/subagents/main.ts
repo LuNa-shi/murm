@@ -9,7 +9,7 @@ import { createSubagentsController } from './controller.js';
 import { childPrompt, rootPrompt } from './prompts.js';
 import { runWithReport } from './run-report.js';
 
-interface Config extends Pick<CreateRuntimeOptions, 'connection' | 'executor' | 'models'> {
+interface Config extends Pick<CreateRuntimeOptions, 'connection' | 'executor' | 'models' | 'filePolicy'> {
   sandbox: SandboxConfig;
   model?: string;
   rootModel?: string;
@@ -57,7 +57,7 @@ export async function createSubagentsHarness(config: Config, controls: ProjectCo
     spawnProfiles: ['child'], allowContextFork };
   const runtime = await createRuntime({
     sandbox: createSandbox(config.sandbox), executor: config.executor, models: config.models,
-    connection: config.connection, outputDir, services, maxAgents,
+    connection: config.connection, filePolicy: config.filePolicy, outputDir, services, maxAgents,
     profiles: {
       root: { ...common, model: rootModel, prompt: rootPrompt },
       child: { ...common, model: childModel, prompt: childPrompt },

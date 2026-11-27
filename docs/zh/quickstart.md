@@ -300,3 +300,7 @@ npm test
 - 阅读 [使用 SDK](sdk.md)，深入理解 Runtime 生命周期、输入回执、产物验证与外部 HTTP Service 接入。
 - 阅读 [构建你自己的 Harness](build-your-harness.md)，设计自己的协作协议、权限矩阵与验收规则。
 - 浏览 [选择 Harness](harnesses/index.md)，对比 `Subagents`、`TaskPool`、`PeerMesh`、`Substrate` 与 `Lead-Worker` 五种内置机制。
+
+### 选择执行器或扩大项目文件预算
+
+继续使用 `murm --harness … --cwd … --prompt …`。在配置中选择执行器和模型，通过 `workerImageFor(executor)` 获取匹配的单执行器镜像，或者用 `MURM_WORKER_IMAGE` 指定已有镜像。将同一配置文件交给 `murm setup --config ./murm.config.mjs` 和 `murm doctor --config ./murm.config.mjs` 验证。Pi 支持 Responses 和 Chat Completions。项目超过默认导入限制时，可在 `filePolicy` 中分别扩大导入、在线操作和最终产物导出的预算。[配置说明与示例](sdk.md#配置执行器模型与文件预算)

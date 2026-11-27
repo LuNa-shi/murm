@@ -150,3 +150,17 @@ try {
 `createSandbox({ provider, timeoutSeconds })` 接收由可信宿主加载的 `SandboxProvider`。实现从包根入口导入接口，声明稳定的 ID、版本与能力，提供就绪检查，并为给定镜像交付 `SandboxManager`，处理分配、Worker 通信、快照、导出、停止与删除。创建或删除回执丢失时，使用原资源键核对。执行器、模型、Profile 和 Service 仍由 Runtime 配置。
 
 项目可通过 `resolveSandboxConnection` 使用 CLI 的解析逻辑。显式字段优先，其次是通用 `MURM_*`、当前示例的别名和上游兼容变量。返回值可能带 Lifecycle 密钥，请仅在可信宿主配置中使用。
+
+## 配置执行器、模型与文件预算
+
+根入口公开 `createPiExecutor({ version })`、`createCodexExecutor({ version })`、`createExecutorAdapter(declaration)`、`getExecutorCapabilities(selection)` 和 `workerImageFor(selection)`。原有的 `'pi'`、`'codex'` 简写仍可用。每个 Runtime 选择一个执行器，Profile 使用对应的 Worker 镜像。Host 安装包无需安装 Pi 或 Codex。显式使用 `DEFAULT_WORKER_IMAGE` 仍可选用旧的双执行器镜像。
+
+| 执行器 | 版本 | 模型协议 | 上下文分支 |
+| --- | --- | --- | --- |
+| Pi | 1.3.0（默认）、1.4.0 | Responses、Chat Completions | 支持 |
+| Codex | 0.172.0 | Responses | 不支持 |
+| 外部执行器 | adapter 声明的兼容版本 | adapter 明确列出的协议 | 不支持 |
+
+外部执行器由项目配置显式导入，并随选定镜像安装。镜像内 `/opt/murm/executors/<kind>.json` 描述真实命令、版本探针、协议 `murm-executor-v1` 和能力。Worker 以 Agent 身份执行探针并核验实际版本。镜像可用 `WORKER_EXECUTOR=none` 构建，再安装 adapter。自定义模型可配置 `protocol: 'chat-completions'`，以及 `capabilities: { contextWindow: 65536, maxOutputTokens: 8192, tools: true, reasoning: false }`。省略协议时仍使用 Responses。自定义 Pi 模型未声明能力时使用兼容值，分别为 32,768 上下文、8,192 输出 token、开启工具、关闭推理。运行级模型限额通过 `connection.modelGateway` 设置，生效值和能力来源写入运行清单。受信 Host 模块还可用根 SDK 的 `ModelTransport` 接入 SSE 路径、请求和终态解析，继续使用统一鉴权、撤销、去重和账本。[完整配置示例](../en/sdk.md#executor-model-and-project-file-configuration) · [外部执行器协议](../architecture/16-pi-opensandbox-backend.md#image-installed-executor-adapter)
+
+`filePolicy` 可独立配置 `initial`、`snapshot`、`replace`、`export` 和 `session`。每项支持 `maxBytes`、`maxFileBytes`、`maxFiles`、`maxEntries` 和 `timeoutMs`。导入及在线文件操作默认 16 MiB 总量、2 MiB 单文件、10,000 文件、50,000 条目录清单和 30 秒。工作目录与会话归档默认各 256 MiB、16,384 条清单，分别限时 30 秒与 600 秒。Controller 暂存默认 256 MiB，Worker 暂存默认 512 MiB，可分别通过 `controllerSpoolBytes` 和 `workerSpoolBytes` 调整。普通目录输入直接使用磁盘暂存和有界传输，公开的 `FileTree` 继续支持显式内存数据。单次操作只能收紧 Runtime 上限。大目录需匹配版本的 Worker，并为原树、替换树、导出和暂存准备空间。

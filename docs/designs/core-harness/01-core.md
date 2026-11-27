@@ -110,14 +110,14 @@ const runtime = await createRuntime({
 | 所属 | 参数及默认值 |
 | --- | --- |
 | Sandbox | `kind` 默认 `opensandbox`；默认通过 OpenSandbox API 接入本机或远端服务，管理与回连地址分别配置。也可经 `{ provider }` 接入外部 Provider。严格同机 `local-docker` 要求磁盘字节和 inode 上限，由显式配置或兼容的旧配额写法选择。资源默认 2 CPU、2 GiB，命令期限 120 秒，Sandbox 生命周期 3600 秒且至少 60 秒。 |
-| Runtime | `executor` 默认 Pi，可显式选 Codex。非空模型表、Profiles、Services、maxAgents 和专用 outputDir 由宿主提供。模型上游为无内嵌凭据的 HTTP(S) `/v1/responses`，用 headers 携带凭据。 |
+| Runtime | `executor` 默认 Pi，可显式选 Codex。非空模型表、Profiles、Services、maxAgents 和专用 outputDir 由宿主提供。Responses 为默认协议，Pi 也接入 Chat Completions，Codex 使用 Responses。外部执行器可声明兼容协议，Host 可显式注册 transport。上游地址不内嵌凭据，用 headers 携带。 |
 | Runtime 连接 | `connection.advertiseHost` 接收 setup/项目配置确定的由 Agent 可达的 IP 或主机名。Bridge 和网关监听地址默认 `0.0.0.0`，两者都可分别使用带 `{port}` 的 HTTP(S) origin 模板。两处都已配置回连地址时可省略共同地址。严格本地模式仍要求可供 UID 网络规则验证的同机非回环 IPv4。 |
 | 模型请求 | 网关默认 120 秒；Pi 默认最多 32768 输出 token，Codex 默认保留执行器参数。显式 `null` 保留参数，数值须为不小于 16 的安全整数。 |
 | Profile / spawn | Profile 选择模型别名、镜像、提示、服务权限、初始 writable、网络附加目标与产物政策；spawn 可提供父子关系、fork、文件、bindings、secretEnv 或共享挂载，以及允许的 writable/collect 覆盖。 |
 
 `createSandbox` 校验并捕获部署配置或外部 Provider，返回不透明的接入对象。Runtime 为自己的 Agent 持有实际 Sandbox 和清理记录；在创建派发前记录原请求和服务身份，获得 ID 后按服务身份与 Sandbox ID 的组合寻址。响应丢失、查询、文件操作与删除均回原服务核对。沿用 [#236](https://github.com/LuNa-shi/murm/issues/236) 的资源归属；默认接入取消同机限制。Provider 声明、检查和落实可选隔离能力。默认 OpenSandbox 核验 Lifecycle、Execd 和 Worker 管理鉴权，并在启动前以低权限 UID 检查凭据隔离、回环访问及实测 CPU/内存上限。它依赖部署提供网络策略，对工作区磁盘上限、显式网络白名单和共享挂载在能力缺失时提前报错。严格本地模式继续要求同机 Docker、Landlock ABI 5 与管理员准备的隔离能力。OpenSandbox 管理凭据和模型上游 headers 留在可信宿主，Agent 仅使用自身的 Bridge/网关凭据；日志和返回对象脱敏。setup/doctor/init/run 共用连接配置解析，已有 endpoint 路径仅需 Linux Controller 的 JS 环境，本地路径先验证 OpenSandbox 然后启动所选 Pi 或 Codex Worker。普通 doctor 不分配 Sandbox。
 
-`getExecutorCapabilities(executor)` 同步读取静态能力，无网络、监听器和资源分配。Pi 支持上下文分支及 `all`、`one-at-a-time`；Codex 不支持分支且仅支持 `all`。两者报告 active steer、follow-up、条件输入、已排队输入清除能力。Profile 或 spawn 请求不支持的能力时前置拒绝。两个执行器继续使用各自原生 Session 归档格式。
+`getExecutorCapabilities(executor)` 同步读取静态能力，无网络、监听器和资源分配。Pi 支持上下文分支及 `all`、`one-at-a-time`；Codex 不支持分支且仅支持 `all`。两者报告 active steer、follow-up、条件输入、已排队输入清除能力。Profile 或 spawn 请求不支持的能力时前置拒绝。内置执行器继续使用各自原生 Session 归档格式，并可选择经验证的兼容版本。外部 adapter 随 Worker 镜像部署，Worker 核验协议、实际版本和能力后以 Agent 身份执行。
 
 ### 3.4 模型访问与停止
 
@@ -270,6 +270,8 @@ Agent Service 的 spawn 是便利组合：先创建 Agent，再按指定 mode �
 ### 7.1 受管文件树
 
 三条入口使用同一文件规范，根均为 Agent 的 workDir。初始安装在 executor 启动前完成；普通私有目录的初始 writable 由 spawn 覆盖或 Profile 给出。
+
+`filePolicy` 为导入、snapshot、replace、工作目录导出和 Session 归档分别设定有限预算。普通目录捕获与 Worker 传输使用有界磁盘暂存、分块和 SHA-256 完整性核验。要求更大预算时使用支持分块的 Worker。
 
 | 项目 | FileTree V1 规则 |
 | --- | --- |

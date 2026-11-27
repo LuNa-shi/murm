@@ -1,4 +1,4 @@
-import { DEFAULT_WORKER_IMAGE, resolveSandboxConnection } from '@luna-shi/murm';
+import { workerImageFor, resolveSandboxConnection } from '@luna-shi/murm';
 
 function required(...names: string[]) {
   for (const name of names) {
@@ -17,7 +17,7 @@ const model = process.env.MURM_MODEL_ID ?? process.env.MURM_NOTES_MODEL_ID ?? (e
 
 export default {
   model: 'default',
-  image: image ?? DEFAULT_WORKER_IMAGE,
+  image: image ?? workerImageFor(executor),
   outputDir: './notes-runs',
   turnTimeoutMs: 30_000,
   closeTimeoutMs: 30_000,

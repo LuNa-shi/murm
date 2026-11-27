@@ -2926,6 +2926,70 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Top-level /zh/latest/ shortcut redirecting to the Chinese Latest release feature guide"
+    },
+    {
+      "path": "scripts/file-tree-stream.ts",
+      "category": "Core public runtime",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Bounded NDJSON framing, tree digest, disk staging and capacity checks"
+    },
+    {
+      "path": "scripts/worker-executor-adapter.ts",
+      "category": "Core public runtime",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Root-owned executor descriptor, compatibility and capability verification"
+    },
+    {
+      "path": "src/agent/chat-completions-transport.ts",
+      "category": "Core public runtime",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Chat Completions tool, stream and usage validation"
+    },
+    {
+      "path": "src/agent/model-request-validation.ts",
+      "category": "Core public runtime",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Shared model request contract validation"
+    },
+    {
+      "path": "src/core/executor-adapter.ts",
+      "category": "Core public runtime",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Public executor selection, compatibility and guest wire contracts"
+    },
+    {
+      "path": "src/core/file-policy.ts",
+      "category": "Core public runtime",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Public phase-specific project transfer and export bounds"
+    },
+    {
+      "path": "src/core/model-transport.ts",
+      "category": "Core public runtime",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Public model protocol, capabilities and Host transport contract"
     }
   ]
 }

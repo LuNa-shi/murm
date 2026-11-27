@@ -41,7 +41,7 @@ export async function saveAgentArtifacts({ outputDir, agentId, collect, records,
   agentId: string;
   collect: CollectionSpec;
   records: () => AsyncIterable<ArtifactRecord>;
-  bounds: { bytes: number; inodes: number };
+  bounds: { bytes: number; inodes: number; maxFiles?: number; maxFileBytes?: number; timeoutMs?: number };
   destination?: string;
   redactStream?: ReturnType<typeof createRedactor>['stream'];
   privateFiles?: boolean;
@@ -55,6 +55,7 @@ export async function saveAgentArtifacts({ outputDir, agentId, collect, records,
   const seen = new Set();
   let totalBytes = 0;
   let complete = false;
+  const deadline = performance.now() + (bounds.timeoutMs ?? Infinity);
   try {
     await mkdir(agentDir, { mode: 0o700 }).catch(error => {
       if (error.code !== 'EEXIST') throw error;
@@ -68,6 +69,7 @@ export async function saveAgentArtifacts({ outputDir, agentId, collect, records,
       : collect.paths.some(scope => scope === '.' || path === scope ||
         path.startsWith(`${scope}/`) || scope.startsWith(`${path}/`));
     for await (const record of records()) {
+      if (performance.now() >= deadline) throw collectionError('ARTIFACT_TIMEOUT', 'Artifact export exceeded its allowed time', true);
       valid(!complete, 'Artifact stream continued after final record');
       if (record?.type === 'directory' || record?.type === 'file') {
         const { path } = record;
@@ -80,6 +82,7 @@ export async function saveAgentArtifacts({ outputDir, agentId, collect, records,
         } else {
           const { mode, bytes } = record;
           valid(Number.isInteger(mode) && mode >= 0 && mode <= 0o777 &&
+            files.length < (bounds.maxFiles ?? bounds.inodes) && bytes <= (bounds.maxFileBytes ?? bounds.bytes) &&
             Number.isSafeInteger(bytes) && bytes >= 0 && bytes <= Math.min(collect.maxBytes, bounds.bytes) - totalBytes,
           'Artifact file exceeds its declared mode or byte bounds');
           const target = join(tree, path);

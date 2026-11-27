@@ -4,6 +4,7 @@ import type {
 } from './types.js';
 import { completeDigest, fileSnapshotSelection, partialDigest, snapshotFileSeed } from '../../scripts/core-file-seed.js';
 import { validId } from './config.js';
+import { DEFAULT_FILE_POLICY, type ResolvedFilePolicy } from './file-policy.js';
 
 type WorkerReply<T> = T extends { agentId: string } ? Omit<T, 'agentId'> : never;
 export type WorkerFileSnapshot = WorkerReply<FileSnapshot>;
@@ -37,12 +38,13 @@ interface Options<Agent extends FileAgent, Timeout extends symbol> {
   problem(code: string, message: string, operation: string, agentId: string, requestId: string | undefined, cleanup?: string): Error;
   observe<T>(work: Promise<T>): Promise<T | Timeout>;
   timedOut: Timeout;
+  filePolicy?: ResolvedFilePolicy;
 }
 
-const knownRejections = new Set(['CONFLICT', 'INVALID_CONTRACT', 'NOT_ALLOWED', 'WORKSPACE_BUSY']);
+const knownRejections = new Set(['CONFLICT', 'INVALID_CONTRACT', 'NOT_ALLOWED', 'WORKSPACE_BUSY', 'FILE_SPACE_INSUFFICIENT']);
 
 export function createFileControls<Agent extends FileAgent, Timeout extends symbol>({
-  backend, findAgent, isLive, problem, observe, timedOut,
+  backend, findAgent, isLive, problem, observe, timedOut, filePolicy = DEFAULT_FILE_POLICY,
 }: Options<Agent, Timeout>) {
   const states = new WeakMap<Agent, AgentFileState>();
   const replacements = new Map<string, Operation<FileReplaceReceipt>>();
@@ -106,7 +108,7 @@ export function createFileControls<Agent extends FileAgent, Timeout extends symb
       if (Object.keys(options).some(key => !['requestId', 'paths', 'maxBytes'].includes(key))) {
         throw new TypeError('Unsupported snapshot options');
       }
-      spec = fileSnapshotSelection(options);
+      spec = fileSnapshotSelection(options, filePolicy.snapshot);
     } catch (error) { throw reject('INVALID_CONTRACT', (error as Error).message); }
 
     const { agent, state } = binding(agentId, operation, requestId);
@@ -123,7 +125,7 @@ export function createFileControls<Agent extends FileAgent, Timeout extends symb
     return run(agent, state, request, operation, requestId, async () => {
       const reply = await backend.snapshotFiles(agentId, { requestId, paths: spec.paths, maxBytes: spec.maxBytes });
       const scope = spec.paths[0] === '.' ? 'complete' : 'partial';
-      const { files, digest } = snapshotFileSeed(reply.files);
+      const { files, digest } = snapshotFileSeed(reply.files, { ...filePolicy.snapshot, maxBytes: spec.maxBytes });
       if (reply.requestId !== requestId || !Number.isSafeInteger(reply.version) || reply.version < 1 ||
           reply.scope !== scope || reply.digest !== (scope === 'complete' ? completeDigest(digest) : partialDigest(digest))) {
         throw new Error('Worker snapshot receipt did not match the request and file digest');
@@ -143,7 +145,7 @@ export function createFileControls<Agent extends FileAgent, Timeout extends symb
       throw reject('INVALID_CONTRACT', 'File replacement requires requestId, a complete digest and optional writable: true');
     }
     let target;
-    try { target = snapshotFileSeed(options.files); }
+    try { target = snapshotFileSeed(options.files, filePolicy.replace); }
     catch (error) { throw reject('INVALID_CONTRACT', (error as Error).message); }
 
     const { expectedDigest, writable } = options;

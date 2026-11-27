@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { selectExecutorDriver } from './executor-driver.js';
 
 export const WORKER_IMAGE_REPOSITORY = 'ghcr.io/luna-shi/murm-worker';
 export const WORKER_PROTOCOL = 'murm-core-v1';
@@ -26,3 +27,9 @@ export const PACKAGE_VERSION = readPackageVersion();
  * from `deploy/worker/Dockerfile` and tags it with this exact reference.
  */
 export const DEFAULT_WORKER_IMAGE = `${WORKER_IMAGE_REPOSITORY}:${PACKAGE_VERSION}`;
+
+export function workerImageFor(executor: unknown = 'pi'): string {
+  const driver = selectExecutorDriver(executor);
+  return driver.adapter?.image ?? `${DEFAULT_WORKER_IMAGE}-${driver.kind}${
+    driver.version === selectExecutorDriver(driver.kind).version ? '' : `-${driver.version}`}`;
+}

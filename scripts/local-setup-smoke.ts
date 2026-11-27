@@ -3,12 +3,18 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { createRuntime, createSandbox, ServiceRegistry, type RuntimeEvent, type CloseReceipt,
-  type PendingCleanup, type Runtime, type RuntimeConnectionOptions, type SandboxConfig } from '../src/core/index.js';
-import { createLocalSetupUpstream, SETUP_MARKER, SETUP_READ, SETUP_RESULT } from './local-setup-upstream.js';
+  type FilePolicy, type ModelConfig, type PendingCleanup, type Runtime, type RuntimeConnectionOptions, type SandboxConfig } from '../src/core/index.js';
+import { createLocalSetupUpstream, SETUP_CONTINUATION, SETUP_CONTINUED, SETUP_MARKER, SETUP_READ, SETUP_RESULT } from './local-setup-upstream.js';
+import { selectExecutorDriver } from '../src/core/executor-driver.js';
+import type { ExecutorSelection } from '../src/core/executor-adapter.js';
+import type { ModelProtocol } from '../src/core/model-transport.js';
 
 export interface LocalSmokeOptions {
   image: string;
-  executor?: 'pi' | 'codex';
+  executor?: ExecutorSelection;
+  modelProtocol?: ModelProtocol;
+  modelConfig?: ModelConfig;
+  filePolicy?: FilePolicy;
   lifecycleBaseUrl: string;
   endpointHost?: string;
   apiKey?: string;
@@ -68,7 +74,12 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
   try {
     signal.throwIfAborted();
     temporary = await mkdtemp(join(tmpdir(), 'murm-setup-smoke-'));
-    upstream = await createLocalSetupUpstream(options.executor);
+    const driver = selectExecutorDriver(options.executor);
+    const protocol = options.modelProtocol ?? 'responses';
+    if (!driver.adapter) upstream = await createLocalSetupUpstream(driver.kind === 'codex' ? 'codex' : 'pi', protocol);
+    const model = driver.adapter ? options.modelConfig : { provider: driver.kind === 'codex' ? 'openai' : 'kimi_proxy',
+      model: driver.kind === 'codex' ? 'gpt-5.4' : 'k3', protocol, upstream: { url: upstream!.url, headers: {} } };
+    if (!model) throw Object.assign(new Error('An external executor probe requires its configured model alias'), { code: 'INVALID_CONTRACT' });
     signal.throwIfAborted();
     const services = new ServiceRegistry();
     let serviceCaller: string | undefined;
@@ -91,7 +102,7 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
         advertiseHost: options.advertiseHost, ...options.connection,
         modelGateway: { requestTimeoutMs: 20_000, maxOutputTokens: 128, ...options.connection?.modelGateway },
       },
-      models: { default: { provider: options.executor === 'codex' ? 'openai' : 'kimi_proxy', model: options.executor === 'codex' ? 'gpt-5.4' : 'k3', upstream: { url: upstream.url, headers: {} } } },
+      models: { default: model }, filePolicy: options.filePolicy,
       profiles: { probe: { prompt: SETUP_PROFILE_PROMPT, model: 'default', image: options.image,
         writable: true, services: { 'setup-probe': ['verify'] } } },
       services, maxAgents: 1, outputDir: temporary,
@@ -100,27 +111,41 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
     receipt.cleanup = 'pending';
     stage = 'host-worker';
     const agent = await untilAborted(runtime.spawn({ profile: 'probe', requestId: 'setup-smoke-spawn',
+      ...(driver.adapter ? { files: { [SETUP_READ]: { encoding: 'utf8', data: `${SETUP_MARKER}\n` } } } : {}),
       collect: { paths: ['.'], includeGit: false, maxBytes: 4096, required: true } }), signal);
     signal.throwIfAborted();
     if (agent.status !== 'idle') throw new Error('worker');
-    passed(stage, `Controller reached the real Worker and verified its ${options.executor ?? 'pi'} version`);
-    stage = 'agent-bridge-gateway';
-    let settle!: (event: RuntimeEvent) => void;
-    const settled = new Promise<RuntimeEvent>(resolve => { settle = resolve; });
-    unsubscribe = runtime.onEvent(event => {
-      if ((event.type === 'settled' || event.type === 'exit') && event.agentId === agent.id) settle(event);
-    });
-    const input = await untilAborted(runtime.send(agent.id, SETUP_FOLLOW_UP,
-      { requestId: 'setup-smoke-input', mode: 'followUp' }), signal);
-    if (input.status !== 'accepted') throw new Error('input');
-    const outcome = await untilAborted(settled, signal);
-    if (outcome.type !== 'settled' || outcome.outcome !== 'completed' || outcome.output?.trim() !== SETUP_RESULT || serviceCaller !== agent.id) {
-      throw new Error('roundtrip');
+    passed(stage, `Controller reached the real Worker and verified ${driver.kind} ${driver.version}`);
+    if (upstream) {
+      stage = 'agent-bridge-gateway';
+      async function turn(message: string, requestId: string, expected: string) {
+        const settled = new Promise<RuntimeEvent>(resolve => {
+          unsubscribe = runtime!.onEvent(event => {
+            if ((event.type === 'settled' || event.type === 'exit') && event.agentId === agent.id) resolve(event);
+          });
+        });
+        try {
+          const input = await untilAborted(runtime!.send(agent.id, message, { requestId, mode: 'followUp' }), signal);
+          if (input.status !== 'accepted') throw new Error('input');
+          const outcome = await untilAborted(settled, signal);
+          if (outcome.type !== 'settled' || outcome.outcome !== 'completed' || outcome.output?.trim() !== expected) {
+            throw new Error('roundtrip');
+          }
+        } finally {
+          unsubscribe?.();
+          unsubscribe = undefined;
+        }
+      }
+      await turn(SETUP_FOLLOW_UP, 'setup-smoke-input', SETUP_RESULT);
+      if (protocol === 'chat-completions') await turn(SETUP_CONTINUATION, 'setup-smoke-continuation', SETUP_CONTINUED);
+      const observed = upstream.receipt();
+      const expectedRequests = protocol === 'chat-completions' ? 4 : 3;
+      if (serviceCaller !== agent.id || observed.failure || observed.arrivals !== expectedRequests || !observed.verifiedRead) {
+        throw new Error('gateway');
+      }
+      passed(stage, `Real ${driver.kind} called the authenticated Bridge Service and controlled ${protocol} gateway`);
+      passed('file-write-read', 'Executor tools wrote and read the saved bytes');
     }
-    const observed = upstream.receipt();
-    if (observed.failure || observed.arrivals !== 3 || !observed.verifiedRead) throw new Error('gateway');
-    passed(stage, `Real ${options.executor ?? 'pi'} called the authenticated Bridge Service and controlled Responses gateway`);
-    passed('file-write-read', 'Executor tools wrote and read the saved bytes');
     signal.throwIfAborted();
     stage = 'artifact-export';
     const stopped = await untilAborted(runtime.stop(agent.id, { timeoutMs: 25_000 }), signal);

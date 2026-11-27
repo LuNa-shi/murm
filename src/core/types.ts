@@ -1,4 +1,6 @@
-import type { ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SteeringMode } from './backend-config.js';
+import type { ModelConfig, RuntimeConnectionOptions, Sandbox, SteeringMode } from './backend-config.js';
+import type { ExecutorSelection } from './executor-adapter.js';
+import type { FilePolicy } from './file-policy.js';
 import type { ServiceRegistration, ServiceRegistry } from './services.js';
 import type { ServiceManifest } from './service-types.js';
 
@@ -20,7 +22,8 @@ export interface Profile {
 
 export interface CreateRuntimeOptions {
   sandbox: Sandbox;
-  executor?: ExecutorKind;
+  executor?: ExecutorSelection;
+  filePolicy?: FilePolicy;
   models: Readonly<Record<string, ModelConfig>>;
   connection?: RuntimeConnectionOptions;
   profiles: Readonly<Record<string, Profile>>;

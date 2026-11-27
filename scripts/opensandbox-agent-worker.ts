@@ -12,6 +12,10 @@ import { collectCoreWorkDir, MAX_COLLECTION_ENTRIES } from './core-collection.js
 import { once } from 'node:events';
 import { createRpcSubmissions } from './rpc-submissions.js';
 import { createCodexAppServerDriver } from './codex-app-server-driver.js';
+import { loadWorkerExecutor } from './worker-executor-adapter.js';
+import { DEFAULT_FILE_POLICY, resolveFilePolicy } from '../src/core/file-policy.js';
+import { fileTreeFrames, receiveFileTree } from './file-tree-stream.js';
+import { fileTransferProtocol } from './core-file-seed.js';
 import { snapshotSessionFork, sessionForkText } from './core-session-fork.js';
 
 const argv = process.argv.slice(2);
@@ -37,7 +41,11 @@ if (initialized) await project.initialize();
 let everStarted = false;
 let stopping: Promise<unknown> | null = null;
 let executorLaunched = false;
-let executorKind: 'pi' | 'codex' = 'pi';
+let executorKind: string = 'pi';
+let filePolicy = DEFAULT_FILE_POLICY;
+let receivingTree = false;
+const sessionDirectory = (executor: string) => executor === 'pi' ? 'pi-session' :
+  executor === 'codex' ? 'codex-home/sessions' : 'executor-session';
 let codexDriver: ReturnType<typeof createCodexAppServerDriver> | undefined;
 let writerGate: Promise<unknown> = Promise.resolve();
 let child: any = null;
@@ -66,10 +74,10 @@ const rpcSubmissions = createRpcSubmissions({ write({ steeringMode, executionEpo
     codexDriver.write({ ...message, steeringMode, onlyWhileActive } as Parameters<typeof codexDriver.write>[0]);
     return;
   }
-  if (steeringMode !== undefined) {
+  if (steeringMode !== undefined && executorKind === 'pi') {
     child.stdin.write(`${JSON.stringify({ type: 'set_steering_mode', mode: steeringMode })}\n`);
   }
-  child.stdin.write(`${JSON.stringify(message)}\n`);
+  child.stdin.write(`${JSON.stringify(executorKind === 'pi' ? message : { ...message, steeringMode, onlyWhileActive })}\n`);
 } });
 
 function authorized(request: IncomingMessage) {
@@ -163,7 +171,12 @@ async function startAgent(input: any) {
   if (typeof input.command !== 'string' || !input.command) throw new Error('worker command is required');
   const cwd = input.cwd ?? PROJECT_DIR;
   if (cwd !== PROJECT_DIR) throw new Error('worker project cwd must be /workspace/project');
-  if (!['pi', 'codex'].includes(input.command)) throw startupContractError('Core startup requires a supported executor');
+  const external = ['pi', 'codex'].includes(input.command) ? undefined :
+    await loadWorkerExecutor(input.command, input.executor_adapter, input.executor_version);
+  if (external && (input.args.length || input.codex || input.fork_session !== undefined ||
+      input.model_catalog_resource !== undefined || input.model_catalog_content !== undefined)) {
+    throw startupContractError('External executor startup must use the descriptor installed in the image');
+  }
   if (input.command === 'codex') {
     if (input.args.length || input.fork_session !== undefined || input.model_catalog_resource !== undefined || input.model_catalog_content !== undefined ||
         typeof input.codex?.model !== 'string' || !input.codex.model || typeof input.codex?.baseUrl !== 'string' ||
@@ -171,11 +184,12 @@ async function startAgent(input: any) {
       throw startupContractError('Codex requires its model gateway, credential, and a fresh native thread');
     }
     const gateway = new URL(input.codex.baseUrl);
-    if (gateway.protocol !== 'http:' || gateway.username || gateway.password || gateway.search || gateway.hash || gateway.pathname !== '/v1') {
+    if (!['http:', 'https:'].includes(gateway.protocol) || gateway.username || gateway.password || gateway.search || gateway.hash || !gateway.pathname.endsWith('/v1')) {
       throw startupContractError('Codex requires an explicit host Responses gateway');
     }
   }
   executorKind = input.command;
+  filePolicy = resolveFilePolicy(input.file_policy);
   everStarted = true;
   let projectQuota: { bytes: number; inodes: number } | null = null;
   const sharedWorkspace = input.shared_workspace;
@@ -211,11 +225,12 @@ async function startAgent(input: any) {
     projectQuota = { bytes, inodes };
     collectionMaxEntries = Math.min(inodes, MAX_COLLECTION_ENTRIES);
   } else if (input.project_quota) throw startupContractError('Worker must start in quota enforcement mode');
-  if (input.contract_version !== 'murm-core-v1' || !['pi', 'codex'].includes(input.command) || typeof input.system_prompt !== 'string' || input.system_prompt_path !== `${RUNTIME_DIR}/profile-prompt.txt` || !Array.isArray(input.resources) || input.resources.length !== 0) {
+  if (input.contract_version !== 'murm-core-v1' || typeof input.system_prompt !== 'string' || input.system_prompt_path !== `${RUNTIME_DIR}/profile-prompt.txt` || !Array.isArray(input.resources) || input.resources.length !== 0) {
     throw startupContractError('Core startup requires a supported executor, an explicit role prompt and an empty resource set');
   }
   if (project.closing) throw new Error('Agent stopped during resource validation');
-  for (const path of ['home', 'tmp', ...(executorKind === 'pi' ? ['pi-agent', 'pi-session'] : ['codex-home', 'codex-home/sessions'])]) {
+  for (const path of ['home', 'tmp', ...(executorKind === 'pi' ? ['pi-agent'] : executorKind === 'codex' ? ['codex-home'] : []),
+    sessionDirectory(executorKind)]) {
     await mkdir(join(RUNTIME_DIR, path), { recursive: true });
     await chown(join(RUNTIME_DIR, path), AGENT_UID, AGENT_UID);
   }
@@ -225,7 +240,7 @@ async function startAgent(input: any) {
     await writeFile(input.system_prompt_path, input.system_prompt, { mode: 0o600 });
     await chown(input.system_prompt_path, AGENT_UID, AGENT_UID);
   }
-  coreWorkDir = new CoreWorkDir({ path: PROJECT_DIR, uid: AGENT_UID, gid: AGENT_UID, assertOpen: requireOpenWorkDir });
+  coreWorkDir = new CoreWorkDir({ path: PROJECT_DIR, uid: AGENT_UID, gid: AGENT_UID, assertOpen: requireOpenWorkDir, policy: filePolicy });
   const projectFiles = await coreWorkDir.initialize({ files: input.files, writable: input.writable === true, shared: Boolean(sharedWorkspace) });
   const suppliedEnv = { ...(input.env ?? {}), ...(input.secret_env ?? {}) };
   sessionPrivateValues = Object.values(input.secret_env ?? {});
@@ -237,6 +252,7 @@ async function startAgent(input: any) {
   delete suppliedEnv.MURM_WORKER_TOKEN;
   const agentEnvironment = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', ...suppliedEnv,
     HOME: join(RUNTIME_DIR, 'home'), TMPDIR: join(RUNTIME_DIR, 'tmp'), PI_CODING_AGENT_DIR: join(RUNTIME_DIR, 'pi-agent'),
+    ...(external ? { MURM_EXECUTOR_SESSION_DIR: join(RUNTIME_DIR, sessionDirectory(executorKind)), MURM_EXECUTOR_SYSTEM_PROMPT: input.system_prompt_path } : {}),
     ...(executorKind === 'codex' ? { CODEX_HOME: join(RUNTIME_DIR, 'codex-home') } : {}) };
   let modelCatalogResource: any = null;
   let executorVersion: string | undefined;
@@ -270,11 +286,13 @@ async function startAgent(input: any) {
     await writeFile(runtimeCatalogPath, catalog, { mode: 0o600 });
     await expandPiModelCatalog(agentEnvironment);
     await chown(runtimeCatalogPath, AGENT_UID, AGENT_UID);
-  } else {
+  } else if (executorKind === 'codex') {
     const version = spawnSync('setpriv', [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : []), 'codex', '--version'],
       { cwd, env: agentEnvironment, timeout: 5_000, encoding: 'utf8' });
-    if (version.status !== 0 || version.stdout.trim() !== 'codex-cli 0.172.0') throw startupContractError('Codex CLI version must be 0.172.0');
-    executorVersion = '0.172.0';
+    executorVersion = input.executor_version ?? '0.172.0';
+    if (version.status !== 0 || version.stdout.trim() !== `codex-cli ${executorVersion}`) {
+      throw startupContractError('Codex CLI version differs from the Runtime selection');
+    }
     const configuration = [
       `model = ${JSON.stringify(input.codex.model)}`, 'model_provider = "murm"', 'approval_policy = "never"',
       'sandbox_mode = "danger-full-access"', 'web_search = "disabled"', 'check_for_update_on_startup = false',
@@ -288,7 +306,16 @@ async function startAgent(input: any) {
     await chown(join(agentEnvironment.CODEX_HOME!, 'config.toml'), AGENT_UID, AGENT_UID);
   }
   if (project.closing) throw new Error('Agent stopped during startup');
-  child = spawn('setpriv', [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : []), input.command, ...(executorKind === 'codex' ? ['app-server'] : input.args)],
+  const privilege = [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : [])];
+  if (external) {
+    const version = spawnSync('setpriv', [...privilege, external.command, ...external.versionArgs],
+      { cwd, env: agentEnvironment, timeout: 5_000, encoding: 'utf8', maxBuffer: 8192 });
+    if (version.status !== 0 || version.stdout.trim() !== external.contract.version) {
+      throw startupContractError('Actual Worker executor version differs from the selected adapter version');
+    }
+  }
+  child = spawn('setpriv', [...privilege, external?.command ?? input.command,
+    ...(external?.args ?? (executorKind === 'codex' ? ['app-server'] : input.args))],
     { cwd, env: agentEnvironment, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
   executorLaunched = child.pid !== undefined;
   if (executorKind === 'codex') codexDriver = createCodexAppServerDriver({ model: input.codex.model, cwd,
@@ -304,7 +331,9 @@ async function startAgent(input: any) {
     child = null;
   });
   const nativeSession = await codexDriver?.ready;
-  return { pid: child?.pid, ...(nativeSession ? { backend: { kind: 'codex', version: executorVersion, authMode: 'api-key', threadId: nativeSession.threadId } } : {}), contract: { version: input.contract_version, resources: input.resources, file_protocol: fileProtocol },
+  return { pid: child?.pid, ...(external ? { backend: external.contract } : nativeSession ? {
+    backend: { kind: 'codex', version: executorVersion, authMode: 'api-key', threadId: nativeSession.threadId },
+  } : {}), contract: { version: input.contract_version, resources: input.resources, file_protocol: fileProtocol },
     ...(projectQuota ? { project_quota: projectQuota } : {}),
     ...(projectFiles ? { project_files: projectFiles } : {}),
     ...(sharedWorkspace ? { shared_workspace: sharedWorkspace } : {}),
@@ -521,23 +550,78 @@ function controlCoreFiles(action: any, input: any) {
   });
 }
 
+async function parseFileRequest(request: IncomingMessage, phase: 'initial' | 'replace', run: (input: any) => Promise<unknown>) {
+  if (request.headers['content-type'] !== 'application/x-ndjson') return run(await body(request, 32 * 1024 ** 2));
+  requireOpenWorkDir();
+  if (receivingTree) throw Object.assign(new Error('A file transfer is already active'), { code: 'WORKSPACE_BUSY' });
+  const policy = phase === 'initial' ? resolveFilePolicy(JSON.parse(String(request.headers['x-murm-file-policy']))) : filePolicy;
+  const controller = new AbortController();
+  const timer = setTimeout(() => { controller.abort(); request.destroy(); }, policy[phase].timeoutMs);
+  const broken = () => controller.abort();
+  request.once('aborted', broken);
+  receivingTree = true;
+  let staged: Awaited<ReturnType<typeof receiveFileTree>> | undefined;
+  try {
+    staged = await receiveFileTree(request.iterator({ destroyOnReturn: false }), { parent: '/tmp', budget: policy[phase],
+      maxSpoolBytes: policy.workerSpoolBytes, label: 'Sandbox upload staging', signal: controller.signal });
+    controller.signal.throwIfAborted();
+    clearTimeout(timer);
+    if (phase === 'initial' && JSON.stringify(resolveFilePolicy(staged.meta.file_policy)) !== JSON.stringify(policy)) {
+      throw Object.assign(new Error('Initial file protocol policy does not match the startup contract'), { code: 'INVALID_CONTRACT' });
+    }
+    requireOpenWorkDir();
+    return await run({ ...staged.meta, files: staged.files });
+  } finally {
+    clearTimeout(timer);
+    request.off('aborted', broken);
+    receivingTree = false;
+    await staged?.dispose();
+  }
+}
+
+async function sendFileSnapshot(request: IncomingMessage, response: ServerResponse) {
+  const result = await controlCoreFiles('snapshot', await body(request));
+  if (request.headers.accept !== 'application/x-ndjson') return send(response, 200, { ok: true, result });
+  const { files, ...meta } = result as any;
+  const controller = new AbortController();
+  const timer = setTimeout(() => { controller.abort(); response.destroy(); }, filePolicy.snapshot.timeoutMs);
+  const disconnected = () => controller.abort();
+  response.on('close', disconnected);
+  response.writeHead(200, { 'content-type': 'application/x-ndjson' });
+  try {
+    for await (const chunk of fileTreeFrames(files, filePolicy.snapshot, meta, controller.signal)) {
+      if (!response.write(chunk)) await once(response, 'drain', { signal: controller.signal });
+    }
+    response.end();
+  } catch { response.destroy(); }
+  finally {
+    clearTimeout(timer);
+    response.off('close', disconnected);
+  }
+}
+
 const server = createServer(async (request: any, response: any) => {
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
   try {
     if (request.method === 'GET' && url.pathname === '/health') { send(response, 200, { ok: true, pid: child?.pid ?? null }); return; }
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
     if (request.method === 'GET' && url.pathname === '/core/contract') {
-      send(response, 200, { ok: true, result: { file_protocol: fileProtocol } });
+      send(response, 200, { ok: true, result: { file_protocol: fileProtocol, file_transfer: fileTransferProtocol } });
       return;
     }
-    if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request, 32 * 1024 ** 2)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/start') {
+      send(response, 200, { ok: true, result: await parseFileRequest(request, 'initial', startAgent) });
+      return;
+    }
     if (request.method === 'POST' && ['/core/files/collect', '/core/session/archive'].includes(url.pathname)) {
       const sessionArchive = url.pathname === '/core/session/archive';
       if (!executionStopped || (!sessionArchive && !coreWorkDir)) throw Object.assign(new Error('Core collection requires confirmed stopped execution'), { code: 'NOT_ALLOWED' });
       const requested = await body(request);
-      const input = sessionArchive ? { paths: ['.'], includeGit: false, required: true, maxBytes: Number.MAX_SAFE_INTEGER } : requested;
+      const budget = filePolicy[sessionArchive ? 'session' : 'export'];
+      const input = sessionArchive ? { paths: ['.'], includeGit: false, required: true, maxBytes: budget.maxBytes } :
+        { ...requested, maxBytes: Math.min(requested.maxBytes, budget.maxBytes) };
       const controller = new AbortController();
-      const deadline = setTimeout(() => { controller.abort(); response.destroy(); }, sessionArchive ? 605_000 : 25_000);
+      const deadline = setTimeout(() => { controller.abort(); response.destroy(); }, budget.timeoutMs);
       const disconnected = () => controller.abort();
       response.on('close', disconnected);
       response.writeHead(200, { 'content-type': 'application/x-ndjson' });
@@ -546,7 +630,10 @@ const server = createServer(async (request: any, response: any) => {
           response.write(`${JSON.stringify({ type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 })}\n`);
           return;
         }
-        for await (const record of collectCoreWorkDir(sessionArchive ? join(RUNTIME_DIR, ...(executorKind === 'pi' ? ['pi-session'] : ['codex-home', 'sessions'])) : PROJECT_DIR, input, { signal: controller.signal, maxEntries: collectionMaxEntries, timeoutMs: sessionArchive ? 600_000 : 20_000 })) {
+        for await (const record of collectCoreWorkDir(sessionArchive ? join(RUNTIME_DIR, sessionDirectory(executorKind)) : PROJECT_DIR, input, {
+          signal: controller.signal, maxEntries: Math.min(collectionMaxEntries, budget.maxEntries), timeoutMs: budget.timeoutMs,
+          fileTree: { validPath: () => true, excluded: () => false, maxFiles: budget.maxFiles, maxFileBytes: budget.maxFileBytes },
+        })) {
           if (!response.write(`${JSON.stringify(record)}\n`)) await once(response, 'drain', { signal: controller.signal });
         }
       } catch (error: any) {
@@ -559,7 +646,7 @@ const server = createServer(async (request: any, response: any) => {
       return;
     }
     if (request.method === 'POST' && url.pathname === '/core/files/replace') {
-      send(response, 200, { ok: true, result: await controlCoreFiles('replace', await body(request, 32 * 1024 ** 2)) });
+      send(response, 200, { ok: true, result: await parseFileRequest(request, 'replace', input => controlCoreFiles('replace', input)) });
       return;
     }
     if (request.method === 'POST' && ['/core/files/pause', '/core/files/resume'].includes(url.pathname)) {
@@ -585,7 +672,7 @@ const server = createServer(async (request: any, response: any) => {
       return;
     }
     if (request.method === 'POST' && url.pathname === '/core/files/snapshot') {
-      send(response, 200, { ok: true, result: await controlCoreFiles('snapshot', await body(request)) });
+      await sendFileSnapshot(request, response);
       return;
     }
     if (url.pathname.startsWith('/project/') && !initialized) throw new Error('Agent workspace is not initialized');
@@ -613,7 +700,7 @@ const server = createServer(async (request: any, response: any) => {
     }
     send(response, 404, { ok: false, error: 'unknown worker route' });
   } catch (error: any) {
-    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT', 'AGENT_STARTUP_CONTRACT', 'CONFLICT', 'NOT_ALLOWED', 'OPERATION_UNKNOWN'].includes(error.code) ? { code: error.code } : {}),
+    if (!response.writableEnded && !response.destroyed) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT', 'AGENT_STARTUP_CONTRACT', 'CONFLICT', 'NOT_ALLOWED', 'OPERATION_UNKNOWN', 'FILE_SPACE_INSUFFICIENT'].includes(error.code) ? { code: error.code } : {}),
       ...(['dirty', 'active_writer'].includes(error.applyBlocker) ? { apply_blocker: error.applyBlocker } : {}) });
   }
 });

@@ -8,7 +8,7 @@ import { createNotes } from './main.js';
 import { runInput } from './run-input.js';
 import { runWithReport } from './run-report.js';
 
-interface Config extends Pick<CreateRuntimeOptions, 'executor' | 'connection' | 'models'> {
+interface Config extends Pick<CreateRuntimeOptions, 'executor' | 'connection' | 'models' | 'filePolicy'> {
   sandbox: SandboxConfig;
   image: string;
   model?: string;
@@ -39,7 +39,7 @@ const notesHarness = {
       const report = await runWithReport({ outputDir: context.outputDir, closeTimeoutMs,
         async createRuntime() {
           const runtime = await createRuntime({ sandbox, executor: config.executor, models: config.models,
-            connection: config.connection, services: notes.services, outputDir: context.outputDir, maxAgents: 2,
+            connection: config.connection, filePolicy: config.filePolicy, services: notes.services, outputDir: context.outputDir, maxAgents: 2,
             profiles: {
               writer: { ...common, prompt: projectNotesWriterPrompt, services: { notes: ['put'] } },
               reader: { ...common, prompt: projectNotesReaderPrompt, services: { notes: ['get'] },
