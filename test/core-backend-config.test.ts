@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createSandbox, getExecutorCapabilities } from '@murm/core';
+import { createSandbox, getExecutorCapabilities } from '@luna-shi/murm';
 import { claimOpenSandboxBackend } from '../src/core/opensandbox-backend.js';
 
 const sandboxConfig = {

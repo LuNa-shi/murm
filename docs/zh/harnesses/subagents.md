@@ -16,7 +16,7 @@ Subagents 将 prompt 发给 Root，并为 Root 和每个 Child 安装固定的�
 
 **Subagents** 建模了一套层级协作团队：由主 Agent（`/root`）拆解目标、递归派生命名子 Agent（最多 `maxDepth` 层）、通过消息实时协同并最终整合交付。源码：[examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents)。
 
-宿主统一从 `@murm/core` 导入公开 SDK。 `createSubagentsHarness` 是示例源码。安装步骤见 [SDK 指南](../sdk.md)。
+宿主统一从 `@luna-shi/murm` 导入公开 SDK。 `createSubagentsHarness` 是示例源码。安装步骤见 [SDK 指南](../sdk.md)。
 
 ## 1. 注册的 Service（`collaboration`）
 

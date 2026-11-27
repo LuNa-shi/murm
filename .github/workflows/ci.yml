@@ -56,7 +56,14 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-      - run: npm --prefix trace-viewer test
+      - run: npm ci --no-audit --no-fund
+      - name: Prepare npm cache for the installed Viewer test
+        run: |
+          package_dir=$(mktemp -d)
+          trap 'rm -rf -- "$package_dir"' EXIT
+          npm pack --loglevel=error --pack-destination "$package_dir"
+          npm install --prefix "$package_dir/consumer" --prefer-offline --omit=dev --ignore-scripts --no-audit --no-fund "$package_dir"/*.tgz
+      - run: node --test dist/test/trace-viewer-*.test.js
 
   website:
     name: Website CI

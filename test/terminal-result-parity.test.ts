@@ -160,10 +160,10 @@ test('foreground report persistence failure stays separate from business and cle
   }
 });
 
-test('installed terminal and saved-result entries preserve pending receipts without the standalone Trace Viewer or browser dependencies', { timeout: 180_000 }, async t => {
+test('installed terminal and saved-result entries preserve pending receipts without retired observability or browser bundler dependencies', { timeout: 180_000 }, async t => {
   const installed = await installNotesExample();
   t.after(() => installed.close());
-  const packageRoot = join(installed.directory, 'node_modules', '@murm', 'core');
+  const packageRoot = join(installed.directory, 'node_modules', '@luna-shi', 'murm');
   for (const path of ['src/observability', 'trace-viewer', 'dist/scripts/serve-observability.js']) {
     await assert.rejects(access(join(packageRoot, path)), { code: 'ENOENT' });
   }

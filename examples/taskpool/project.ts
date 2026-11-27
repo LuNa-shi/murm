@@ -1,4 +1,4 @@
-import { createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@murm/core';
+import { createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@luna-shi/murm';
 import { join } from 'node:path';
 import { decodeFileSeed } from '../../scripts/core-file-seed.js';
 import { ContextService } from '../../src/context/context-service.js';

@@ -7,9 +7,9 @@ import { join, isAbsolute } from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
-import { createRuntime } from '@murm/core';
+import { createRuntime } from '@luna-shi/murm';
 
-import { ServiceRegistry } from '@murm/core';
+import { ServiceRegistry } from '@luna-shi/murm';
 import { createArtifactsUpstream } from './fixtures/core-artifacts-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';

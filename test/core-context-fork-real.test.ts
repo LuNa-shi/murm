@@ -16,9 +16,9 @@ test('Core Context Fork inherits a live native Session with isolated credentials
   skip: process.env.MURM_CORE_FORK_REAL_TEST !== '1' && 'Real OpenSandbox Context Fork probe requires opt-in',
   timeout: 180000,
 }, async t => {
-  const { createRuntime } = await import('@murm/core');
+  const { createRuntime } = await import('@luna-shi/murm');
 
-  const { ServiceRegistry } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@luna-shi/murm');
   const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.ok(image);
   const requests = [];

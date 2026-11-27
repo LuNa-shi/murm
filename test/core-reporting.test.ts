@@ -14,9 +14,9 @@ const profileValue = 'configured-profile-value';
 async function fixture(t, hooks, { registrations = [], grants = {}, sandbox = {}, modelGateway = {} } = {}) {
   const provider = await createLifecycleProvider(t, hooks);
   provider.allowDeletion();
-  const { createRuntime } = await import('@murm/core');
+  const { createRuntime } = await import('@luna-shi/murm');
 
-  const { ServiceRegistry } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@luna-shi/murm');
   const outputDir = await mkdtemp(join(tmpdir(), 'core-report-evidence-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   function makeOptions(directory = outputDir) {
@@ -142,7 +142,7 @@ test('Runtime records identity, unknown input reconciliation, sanitised settled 
 });
 
 test('Runtime report joins a rejected Service write to its trusted caller and effective adapter timeout', async t => {
-  const { createHttpJsonAdapter } = await import('@murm/core');
+  const { createHttpJsonAdapter } = await import('@luna-shi/murm');
   const manifest = notesManifest();
   manifest.endpoint = { transport: 'http-json', url: 'https://example.invalid' };
   const serviceToken = 'fixture-adapter-credential';

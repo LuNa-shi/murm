@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createRuntime, createSandbox, ServiceRegistry } from '@murm/core';
+import { createRuntime, createSandbox, ServiceRegistry } from '@luna-shi/murm';
 import { runWithReport } from '../../src/harnesses/shared/run-report.js';
 import { createSubagentsController } from './communication-fixture-controller.js';
 import { parentPromptFor, childPrompt, initialGoalFor } from './communication-fixture-prompts.js';

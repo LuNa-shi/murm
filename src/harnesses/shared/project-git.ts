@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import type { FileTree } from '@murm/core';
+import type { FileTree } from '@luna-shi/murm';
 import { decodeFileSeed } from '../../../scripts/core-file-seed.js';
 import { isWorkspaceGitPath, WorkspaceRepository } from '../../runtime/workspace-repository.js';
 import { projectError, ProjectPreflightError } from './project-input.js';

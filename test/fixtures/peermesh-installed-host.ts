@@ -1,9 +1,9 @@
 import { runtimeSettings } from './core-runtime-settings.js';
 
-import { createLocalPeerMeshStack } from './node_modules/@murm/core/dist/test/fixtures/peermesh-local-stack.js';
-import { createCleanupBudget } from './node_modules/@murm/core/dist/test/fixtures/peermesh-deadline.js';
-import { httpClient } from './node_modules/@murm/core/dist/src/harnesses/peermesh/http.js';
-import { teamFact, teamInputs } from './node_modules/@murm/core/dist/test/fixtures/peermesh-team-upstream.js';
+import { createLocalPeerMeshStack } from './node_modules/@luna-shi/murm/dist/test/fixtures/peermesh-local-stack.js';
+import { createCleanupBudget } from './node_modules/@luna-shi/murm/dist/test/fixtures/peermesh-deadline.js';
+import { httpClient } from './node_modules/@luna-shi/murm/dist/src/harnesses/peermesh/http.js';
+import { teamFact, teamInputs } from './node_modules/@luna-shi/murm/dist/test/fixtures/peermesh-team-upstream.js';
 import { readFile } from 'node:fs/promises';
 const input = JSON.parse(await readFile(process.env.MURM_PEERMESH_HOST_INPUT, 'utf8'));
 

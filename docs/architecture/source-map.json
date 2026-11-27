@@ -8,8 +8,7 @@
     "deploy",
     "integrations",
     "test-support/subagents",
-    "website",
-    "trace-viewer"
+    "website"
   ],
   "scope_root_files": [
     "package.json",
@@ -28,7 +27,8 @@
     "examples/substrate/FateProofGuard.lean",
     "examples/substrate/VerifyFateProof.lean",
     ".github/workflows/ci.yml",
-    ".github/workflows/deploy-website.yml"
+    ".github/workflows/deploy-website.yml",
+    ".github/workflows/release.yml"
   ],
   "excluded": [
     {
@@ -2493,23 +2493,7 @@
       "role": "Build, upload and deploy the static website to GitHub Pages from main"
     },
     {
-      "path": "trace-viewer/package.json",
-      "category": "Trace Viewer",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md"
-      ],
-      "role": "Independent package and host command declaration"
-    },
-    {
-      "path": "trace-viewer/murm.mjs",
-      "category": "Trace Viewer",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md"
-      ],
-      "role": "Thin host command and trace server startup"
-    },
-    {
-      "path": "trace-viewer/server.mjs",
+      "path": "src/trace-viewer/server.mjs",
       "category": "Trace Viewer",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
@@ -2517,23 +2501,7 @@
       "role": "Loopback static assets, read-only API and resumable SSE"
     },
     {
-      "path": "trace-viewer/README.md",
-      "category": "Trace Viewer",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md"
-      ],
-      "role": "Candidate package and remote viewing instructions"
-    },
-    {
-      "path": "trace-viewer/server.test.mjs",
-      "category": "Trace Viewer",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md"
-      ],
-      "role": "Standalone CLI and HTTP/SSE verification"
-    },
-    {
-      "path": "trace-viewer/reader.mjs",
+      "path": "src/trace-viewer/reader.mjs",
       "category": "Trace Viewer",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
@@ -2541,15 +2509,7 @@
       "role": "Versioned evidence discovery, indexing, projection and bounded raw reads"
     },
     {
-      "path": "trace-viewer/test/reader.test.mjs",
-      "category": "Trace Viewer",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md"
-      ],
-      "role": "Reader contract verification with synthetic saved and live Core Runs"
-    },
-    {
-      "path": "trace-viewer/public/index.html",
+      "path": "src/trace-viewer/public/index.html",
       "category": "Trace Viewer",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
@@ -2557,7 +2517,7 @@
       "role": "Run list, timeline, evidence and result interface markup"
     },
     {
-      "path": "trace-viewer/public/app.js",
+      "path": "src/trace-viewer/public/app.js",
       "category": "Trace Viewer",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
@@ -2565,7 +2525,7 @@
       "role": "Run navigation, rendering, filtering, stream updates and evidence inspector"
     },
     {
-      "path": "trace-viewer/public/style.css",
+      "path": "src/trace-viewer/public/style.css",
       "category": "Trace Viewer",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
@@ -2573,7 +2533,7 @@
       "role": "Responsive layout, timeline layers and murm color themes"
     },
     {
-      "path": "trace-viewer/public/fonts/departure-mono.woff2",
+      "path": "src/trace-viewer/public/fonts/departure-mono.woff2",
       "category": "Trace Viewer",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
@@ -2581,7 +2541,7 @@
       "role": "Self-hosted departure-mono font"
     },
     {
-      "path": "trace-viewer/public/licenses/departure-mono.txt",
+      "path": "src/trace-viewer/public/licenses/departure-mono.txt",
       "category": "Trace Viewer",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
@@ -2589,7 +2549,7 @@
       "role": "License for the bundled departure-mono font"
     },
     {
-      "path": "trace-viewer/public/fonts/inter.woff2",
+      "path": "src/trace-viewer/public/fonts/inter.woff2",
       "category": "Trace Viewer",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
@@ -2597,7 +2557,7 @@
       "role": "Self-hosted inter font"
     },
     {
-      "path": "trace-viewer/public/licenses/inter.txt",
+      "path": "src/trace-viewer/public/licenses/inter.txt",
       "category": "Trace Viewer",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
@@ -2605,7 +2565,7 @@
       "role": "License for the bundled inter font"
     },
     {
-      "path": "trace-viewer/public/fonts/space-grotesk.woff2",
+      "path": "src/trace-viewer/public/fonts/space-grotesk.woff2",
       "category": "Trace Viewer",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
@@ -2613,7 +2573,7 @@
       "role": "Self-hosted space-grotesk font"
     },
     {
-      "path": "trace-viewer/public/licenses/space-grotesk.txt",
+      "path": "src/trace-viewer/public/licenses/space-grotesk.txt",
       "category": "Trace Viewer",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
@@ -2621,20 +2581,12 @@
       "role": "License for the bundled space-grotesk font"
     },
     {
-      "path": "trace-viewer/command.mjs",
+      "path": "src/trace-viewer/command.mjs",
       "category": "Trace Viewer",
       "chapters": [
         "docs/architecture/06-observability-experiments.md"
       ],
-      "role": "Optional host trace subcommand parsing and server launch"
-    },
-    {
-      "path": "trace-viewer/LICENSE",
-      "category": "Trace Viewer",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md"
-      ],
-      "role": "MIT terms bundled with the standalone package"
+      "role": "Built-in murm trace subcommand parsing and server launch"
     },
     {
       "path": "scripts/setup",
@@ -2923,6 +2875,24 @@
         "docs/architecture/23-project-harness.md"
       ],
       "role": "TaskPool Mission and Workspace instantiation, fixed discovery files and reports"
+    },
+    {
+      "path": "src/core/worker-image.ts",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Default GHCR Worker image reference and protocol version constants exported by the public package"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Tag-driven verification, GHCR multi-arch Worker image publishing, and public npm package publishing"
     }
   ]
 }

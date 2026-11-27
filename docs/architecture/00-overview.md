@@ -28,7 +28,7 @@ flowchart TD
 | Service adapter | The named operation's implementation and domain state, in process or behind a configured external endpoint. | Agent resource lifecycle unless explicitly delegated by a Harness. |
 | Model gateway | Host-owned model routing, credentials, access policy and traces. | Service manifests or task completion. |
 
-The public package entry is `@murm/core`. It supplies Sandbox and Runtime assembly, Service author interfaces and public types. The [Core chapter](15-core-runtime.md) describes each contract.
+The public package entry is `@luna-shi/murm`. It supplies Sandbox and Runtime assembly, Service author interfaces and public types. The [Core chapter](15-core-runtime.md) describes each contract.
 
 ## One complete Run
 

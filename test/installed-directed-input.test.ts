@@ -101,7 +101,7 @@ test('installed headless and CLI share configuration, directed input provenance 
 }, async t => {
   const installed = await installNotesExample();
   t.after(() => installed.close());
-  const root = join(installed.directory, 'node_modules/@murm/core');
+  const root = join(installed.directory, 'node_modules/@luna-shi/murm');
   const outputDir = join(installed.directory, 'controlled-output');
   await mkdir(outputDir);
   const entry = join(root, 'dist/scripts/run-harness.js');

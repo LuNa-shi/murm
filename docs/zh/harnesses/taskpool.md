@@ -16,7 +16,7 @@ TaskPool 在运行目录创建 Mission 和 Workspace。prompt 成为 Mission 目
 
 TaskPool 让一组研究者在个别 Agent 完工、超时或轮换后继续推进项目。每个 Agent 自主发现并选择 Task，发布可复用的 Material，将成果保存到公共 Workspace。宿主负责维持并发数量，并通过租约落实任务归属。
 
-实现位于 `examples/taskpool/`，组合了 [Core SDK](../sdk.md) 与仓库现有的 Mission、Task、Material、Workspace 存储。`runTaskPoolHarness` 是仓库中的宿主函数，没有从 `@murm/core` 导出。调用它需要提供这些存储和已准备好的 Mission/Workspace，不能只传一个普通配置文件就建立完整任务池。
+实现位于 `examples/taskpool/`，组合了 [Core SDK](../sdk.md) 与仓库现有的 Mission、Task、Material、Workspace 存储。`runTaskPoolHarness` 是仓库中的宿主函数，没有从 `@luna-shi/murm` 导出。调用它需要提供这些存储和已准备好的 Mission/Workspace，不能只传一个普通配置文件就建立完整任务池。
 
 ## 研究者可用的 Service
 

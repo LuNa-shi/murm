@@ -1,4 +1,4 @@
-import type { CreateRuntimeOptions } from '@murm/core';
+import type { CreateRuntimeOptions } from '@luna-shi/murm';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';

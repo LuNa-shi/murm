@@ -47,7 +47,7 @@ test('checkout TMPDIR cannot make an external frozen consumer inherit checkout d
   const packageRoot = join(root, 'package');
   await mkdir(join(packageRoot, 'examples/notes'), { recursive: true });
   await mkdir(join(packageRoot, 'src/harnesses/shared'), { recursive: true });
-  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@murm/core', version: '0.0.0-external', type: 'module', exports: './examples/notes/main.mjs' }));
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@luna-shi/murm', version: '0.0.0-external', type: 'module', exports: './examples/notes/main.mjs' }));
   await writeFile(join(packageRoot, 'examples/notes/main.mjs'), `import value from '${dependency}';export default value;`);
   for (const name of ['run-input', 'run-report', 'read-result']) await writeFile(join(packageRoot, `src/harnesses/shared/${name}.js`), '');
   const archive = join(root, 'candidate.tgz'); await execute('tar', ['-czf', archive, 'package'], { cwd: root, timeout: 5000 });
@@ -65,7 +65,7 @@ test('checkout TMPDIR cannot make an external frozen consumer inherit checkout d
       const installed=await install();try {
         assert.equal((await realpath(installed.directory)).startsWith(checkout+'/'),false);
         assert.notEqual(dirname(installed.directory),temp);
-        await assert.rejects(execute(process.execPath,['--input-type=module','-e',"await import('@murm/core')"],{cwd:installed.directory,env:installed.env}),error=>/ERR_MODULE_NOT_FOUND/.test(error.stderr));
+        await assert.rejects(execute(process.execPath,['--input-type=module','-e',"await import('@luna-shi/murm')"],{cwd:installed.directory,env:installed.env}),error=>/ERR_MODULE_NOT_FOUND/.test(error.stderr));
         const output=join(evidence,'synthetic-result.json');await writeFile(output,JSON.stringify({installation:installed.directory}));
         assert.equal(JSON.parse(await readFile(output)).installation,installed.directory);
       }finally{await installed.close();}
@@ -101,14 +101,14 @@ test('matching frozen archive installs its exact bytes outside checkout without 
   const packageRoot = join(root, 'package');
   await mkdir(join(packageRoot, 'examples/notes'), { recursive: true });
   await mkdir(join(packageRoot, 'src/harnesses/shared'), { recursive: true });
-  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@murm/core', version: '0.0.0-frozen-fixture', type: 'module', exports: './examples/notes/main.mjs' }));
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@luna-shi/murm', version: '0.0.0-frozen-fixture', type: 'module', exports: './examples/notes/main.mjs' }));
   await writeFile(join(packageRoot, 'examples/notes/main.mjs'), "export const marker = 'frozen-candidate';\n");
   for (const name of ['run-input', 'run-report', 'read-result']) await writeFile(join(packageRoot, `src/harnesses/shared/${name}.js`), `export const name = '${name}';\n`);
   const archive = join(root, 'candidate.tgz');
   await execute('tar', ['-czf', archive, 'package'], { cwd: root, timeout: 5000 });
   const bytes = await readFile(archive), expectedSha256 = createHash('sha256').update(bytes).digest('hex');
   const installed = await installNotesExample({ archive, expectedSha256 }); t.after(() => installed.close());
-  assert.deepEqual(installed.metadata, { name: '@murm/core', version: '0.0.0-frozen-fixture', sourceCommit: null, sourceDirty: null, sha256: expectedSha256 });
+  assert.deepEqual(installed.metadata, { name: '@luna-shi/murm', version: '0.0.0-frozen-fixture', sourceCommit: null, sourceDirty: null, sha256: expectedSha256 });
   // The platform temporary directory can itself have checkout ancestry.
   let ancestor = await realpath(installed.directory);
   for (;;) {
@@ -121,7 +121,7 @@ test('matching frozen archive installs its exact bytes outside checkout without 
   assert.deepEqual(await readFile(join(installed.directory, 'frozen-package.tgz')), bytes);
   const result = await execute(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
-    import { marker } from '@murm/core';
+    import { marker } from '@luna-shi/murm';
     import { name as input } from './run-input.mjs';
     import { name as reader } from './read-result.mjs';
     assert.equal(marker, 'frozen-candidate');
@@ -139,7 +139,7 @@ try {
   assert.equal((await (await import('node:fs/promises')).stat(installed.directory)).mode & 0o777,0o700);
   assert.equal(installed.metadata.sha256,process.env.MURM_TEST_PACKAGE_SHA256);
   assert.equal(installed.metadata.sourceCommit,null); assert.equal(installed.metadata.sourceDirty,null);
-  const result=await execute(process.execPath,['--input-type=module','-e',"import assert from 'node:assert/strict'; import {marker} from '@murm/core'; assert.equal(marker,'frozen-candidate');"],{cwd:installed.directory,env:installed.env,timeout:5000});
+  const result=await execute(process.execPath,['--input-type=module','-e',"import assert from 'node:assert/strict'; import {marker} from '@luna-shi/murm'; assert.equal(marker,'frozen-candidate');"],{cwd:installed.directory,env:installed.env,timeout:5000});
   assert.equal(result.stderr,'');
 } finally {await installed.close();}
 `], { env: { ...process.env, MURM_TEST_PACKAGE_ARCHIVE: archive,

@@ -1,6 +1,6 @@
 # OpenSandbox backend and execution drivers
 
-Use `createSandbox` from `@murm/core` for OpenSandbox deployment settings. Runtime owns executor selection and the model, Bridge and Gateway settings. Pi is the default executor.
+Use `createSandbox` from `@luna-shi/murm` for OpenSandbox deployment settings. Runtime owns executor selection and the model, Bridge and Gateway settings. Pi is the default executor.
 
 `getExecutorCapabilities(executor)` returns immutable information without allocating a sandbox. Use it before granting an executor-specific feature.
 
@@ -39,6 +39,10 @@ The Runtime opens the backend with its own identity, Bridge and model access. Th
 The public Core, Services and backend imports load independently of TaskPool Task policy and registered Agent prompts. Manager startup uses the single `murm-core-v1` contract and requires an explicit empty resource array. The Worker rejects previous resource-based versions and arbitrary command names. The manager retains the authenticated endpoint before dispatch, so failed attestation or an uncertain start remains owned until stop is confirmed. The installed public-import regression observes loaded package modules before loading example or fixture modules.
 
 Spawn creates the sandbox, verifies local Docker identity and installs network isolation, mounts the bounded workspace filesystem, and checks guest Pi version 1.3.0. Credentials come from the host Bridge and model-access objects. The upstream model credential remains behind the host gateway. Root Worker credentials remain outside the Pi environment.
+
+For Pi, Core validates the configured provider and model identifiers before allocating an Agent. If the pair is listed with the expected Responses API and environment placeholders in the package catalog, Core selects the image's protected `/opt/murm/pi-agent/models.json` and its expected SHA-256. The Worker reads that path and compares the digest. A custom Worker must carry the catalog from the same Core version for this path to succeed.
+
+For other valid Pi pairs, Core creates a one-provider Responses catalog with gateway environment placeholders and generic reasoning and token-limit settings. Core sends the catalog text, expected path and SHA-256 in the authenticated `/start` request. The Worker checks the 65,536-character limit, JSON structure, expected path and digest. It writes the approved catalog under the Agent's private `/workspace/runtime/pi-agent/models.json` before starting Pi. The Worker returns the selected path and digest as startup evidence. Core verifies that receipt before exposing the Agent. Invalid catalog data or a mismatched receipt fails spawn and uses the owned-sandbox cleanup path. The endpoint still has to support the configured model's actual Responses capabilities.
 
 For Context Fork, the backend first asks the source's authenticated root Worker for `/core/session/snapshot`. That Worker asks its live Pi for native entries and the active leaf. It walks the active ancestry and selects the latest boundary with all tool calls paired to results. It removes known parent credentials from inherited content and rejects a collision in required structural metadata. The destination Worker writes a new native header for `fork.jsonl`, loads it using Pi's explicit `--session` route and starts with its own Profile/system prompt and credentials. Pi's source process keeps its current Session. The authenticated source and child must stay available through their respective boundaries. An unconfirmed snapshot or illegal tree fails child startup before a usable child is returned.
 

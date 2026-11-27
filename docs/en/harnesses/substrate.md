@@ -83,7 +83,7 @@ When each peer finishes its rounds, `substrate.retirePeer(peer.agentId)` rejects
 
 ## 3. Running Substrate & inspecting reuse
 
-Use a built checkout with a compatible Pi Worker image, running OpenSandbox provider and configured Responses endpoint. The [example README](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) also gives a tarball installation recipe.
+Use a built checkout or `@luna-shi/murm` installation with a compatible Pi Worker image, running OpenSandbox provider, and configured Responses endpoint. See the [example README](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) for environment options.
 
 ```bash
 export MURM_SUBSTRATE_RUN=research-01

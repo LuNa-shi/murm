@@ -32,7 +32,7 @@ test('dynamic Lead-Worker runs via the installed package with native Pi, Gitea a
   const candidatePath = join(directory, 'candidate.json');
   await mkdir(outputDir);
   const installed = await installNativeNotesExample();
-  const packageDir = join(installed.directory, 'node_modules/@murm/core/dist/examples/lead-worker');
+  const packageDir = join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/lead-worker');
   const stack = await createLocalPeerMeshStack({ directory: join(directory, 'facilities'), advertiseHost: host, giteaOnly: true });
   const cleanup = createCleanupBudget(80_000);
   const proof: Record<string, any> = { runId, image, serviceImage, installed: installed.metadata, configuration: {

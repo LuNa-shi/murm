@@ -8,9 +8,9 @@ import { availableParallelism, release } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
-import { createRuntime } from '@murm/core';
+import { createRuntime } from '@luna-shi/murm';
 
-import { ServiceRegistry } from '@murm/core';
+import { ServiceRegistry } from '@luna-shi/murm';
 import { runInput } from '../../src/harnesses/shared/run-input.js';
 import { ownedContainers } from '../fixtures/core-runtime-containers.js';
 import { streamResponse } from '../fixtures/core-controlled-upstream.js';

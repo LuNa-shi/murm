@@ -1,4 +1,4 @@
-import { createHttpJsonAdapter, createInProcessAdapter, type ServiceRegistration } from '@murm/core';
+import { createHttpJsonAdapter, createInProcessAdapter, type ServiceRegistration } from '@luna-shi/murm';
 
 const key = { type: 'string', minLength: 1, maxLength: 64 };
 const text = { type: 'string', minLength: 1, maxLength: 2048 };

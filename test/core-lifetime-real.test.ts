@@ -28,8 +28,8 @@ test('four idle native Core Agents attest actual provider lifetime and terminal 
   const headers = apiKey ? { 'OPEN-SANDBOX-API-KEY': apiKey } : {};
   let runtime, receiptSaved = false, probing = false;
   try {
-    const { createRuntime } = await import('@murm/core');
-    const { ServiceRegistry } = await import('@murm/core');
+    const { createRuntime } = await import('@luna-shi/murm');
+    const { ServiceRegistry } = await import('@luna-shi/murm');
 
     const backend = runtimeSettings({
       sandbox: { lifecycleBaseUrl: lifecycle, endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey,

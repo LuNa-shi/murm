@@ -14,7 +14,7 @@ const feedback = taskId => ({ taskId, input: 'PRIVATE_FIXED_DIRECTION', requestI
 test('installed TaskPool CLI and headless host preserve the same directed Task binding and close receipts', { timeout: 180_000 }, async t => {
   const installed = await installNotesExample();
   t.after(() => installed.close());
-  const root = join(installed.directory, 'node_modules/@murm/core');
+  const root = join(installed.directory, 'node_modules/@luna-shi/murm');
   const config = join(root, 'dist/test/fixtures/foreground-taskpool-configuration.js');
   const cliOutput = join(installed.directory, 'cli-flat');
   const headlessOutput = join(installed.directory, 'headless-flat');

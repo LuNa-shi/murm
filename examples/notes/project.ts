@@ -1,4 +1,4 @@
-import { createRuntime, createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@murm/core';
+import { createRuntime, createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@luna-shi/murm';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';

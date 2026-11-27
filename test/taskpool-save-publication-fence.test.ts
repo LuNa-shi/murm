@@ -19,7 +19,7 @@ const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
-const {createRuntime}=await import('@murm/core');hooks.deregister();
+const {createRuntime}=await import('@luna-shi/murm');hooks.deregister();
 const execute=promisify(execFile);
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const closeFromAnotherProcess=(root,agentId)=>execute(process.execPath,['--input-type=module','-e',`
@@ -56,7 +56,7 @@ async function fixture(t,installed) {
   const credentials=controls.credentials.get(agent.id);
   const env={...installed.env,...credentials.environment,...credentials.secretEnvironment};
   const url=new URL(env.MURM_BRIDGE_URL);url.hostname='127.0.0.1';env.MURM_BRIDGE_URL=url.origin;
-  const cli=async(...args)=>JSON.parse((await execute(process.execPath,[join(installed.directory,'node_modules/@murm/core/dist/scripts/swarm.js'),...args],{cwd:installed.directory,env,timeout:15000})).stdout);
+  const cli=async(...args)=>JSON.parse((await execute(process.execPath,[join(installed.directory,'node_modules/@luna-shi/murm/dist/scripts/swarm.js'),...args],{cwd:installed.directory,env,timeout:15000})).stdout);
   await cli('task','take',stores.task.task_id,'--request-id','take');
   return {...stores,root,agent,cli,captures:()=>captures};
 }

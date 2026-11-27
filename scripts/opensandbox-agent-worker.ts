@@ -163,7 +163,7 @@ async function startAgent(input: any) {
   if (cwd !== PROJECT_DIR) throw new Error('worker project cwd must be /workspace/project');
   if (!['pi', 'codex'].includes(input.command)) throw startupContractError('Core startup requires a supported executor');
   if (input.command === 'codex') {
-    if (input.args.length || input.fork_session !== undefined || input.model_catalog_resource !== undefined ||
+    if (input.args.length || input.fork_session !== undefined || input.model_catalog_resource !== undefined || input.model_catalog_content !== undefined ||
         typeof input.codex?.model !== 'string' || !input.codex.model || typeof input.codex?.baseUrl !== 'string' ||
         typeof input.secret_env?.OPENAI_API_KEY !== 'string' || !input.secret_env.OPENAI_API_KEY) {
       throw startupContractError('Codex requires its model gateway, credential, and a fresh native thread');
@@ -239,15 +239,35 @@ async function startAgent(input: any) {
   let modelCatalogResource: any = null;
   let executorVersion: string | undefined;
   if (executorKind === 'pi') {
-    const catalog = await readPinnedStartupPath(readFile, catalogPath);
-    if (input.model_catalog_resource) {
+    const runtimeCatalogPath = join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json');
+    let catalog: Buffer;
+    if (input.model_catalog_content !== undefined) {
+      if (typeof input.model_catalog_content !== 'string' || input.model_catalog_content.length === 0 || input.model_catalog_content.length > 65_536) {
+        throw startupContractError('Custom Pi model catalog content is invalid');
+      }
+      let parsed: any;
+      try { parsed = JSON.parse(input.model_catalog_content); }
+      catch { throw startupContractError('Custom Pi model catalog must be valid JSON'); }
+      if (!parsed || typeof parsed !== 'object' || !parsed.providers || typeof parsed.providers !== 'object') {
+        throw startupContractError('Custom Pi model catalog must declare a providers object');
+      }
+      catalog = Buffer.from(input.model_catalog_content, 'utf8');
       const sha256 = createHash('sha256').update(catalog).digest('hex');
-      if (input.model_catalog_resource.path !== catalogPath || input.model_catalog_resource.sha256 !== sha256) throw startupContractError('Pi model catalog does not match the host selection gate');
-      modelCatalogResource = { path: catalogPath, sha256 };
+      if (!input.model_catalog_resource || input.model_catalog_resource.path !== runtimeCatalogPath || input.model_catalog_resource.sha256 !== sha256) {
+        throw startupContractError('Custom Pi model catalog does not match the host selection gate');
+      }
+      modelCatalogResource = { path: runtimeCatalogPath, sha256 };
+    } else {
+      catalog = await readPinnedStartupPath(readFile, catalogPath);
+      if (input.model_catalog_resource) {
+        const sha256 = createHash('sha256').update(catalog).digest('hex');
+        if (input.model_catalog_resource.path !== catalogPath || input.model_catalog_resource.sha256 !== sha256) throw startupContractError('Pi model catalog does not match the host selection gate');
+        modelCatalogResource = { path: catalogPath, sha256 };
+      }
     }
-    await writeFile(join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json'), catalog, { mode: 0o600 });
+    await writeFile(runtimeCatalogPath, catalog, { mode: 0o600 });
     await expandPiModelCatalog(agentEnvironment);
-    await chown(join(agentEnvironment.PI_CODING_AGENT_DIR, 'models.json'), AGENT_UID, AGENT_UID);
+    await chown(runtimeCatalogPath, AGENT_UID, AGENT_UID);
   } else {
     const version = spawnSync('setpriv', [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : []), 'codex', '--version'],
       { cwd, env: agentEnvironment, timeout: 5_000, encoding: 'utf8' });

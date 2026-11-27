@@ -23,9 +23,9 @@ async function fixture(t, hooks = {}, config = {}) {
   let runtime, service, provider;
   t.after(async () => { await service?.close(); provider?.allowDeletion(); await runtime?.close({ timeoutMs: 1000 }); context.close(); tasks.close(); await rm(root, { recursive: true, force: true }); });
   provider = await createLifecycleProvider(t, { fileOperation(action, input) { return { body: { result: action === 'snapshot' ? emptySnapshot(input) : replaced(input) } }; }, ...hooks, allowHostGit: true }); provider.allowDeletion();
-  const { createRuntime } = await import('@murm/core');
+  const { createRuntime } = await import('@luna-shi/murm');
 
-  const { ServiceRegistry } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@luna-shi/murm');
   const { collect, stop, ...serviceConfig } = config;
   service = createTaskPoolTaskService({ runtime: () => stop ? { ...runtime, stop: (...args) => stop(runtime, ...args) } : runtime,
     taskService: tasks, missionId, missionWorkspace: workspace,

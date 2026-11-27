@@ -11,7 +11,7 @@ The same Runtime supports a lead delegating to children, workers claiming a task
 
 ## Start with a working Run
 
-Follow the [Quickstart](quickstart.md) to run the TypeScript Messages handoff. A writer publishes a value through a Service; a reader retrieves it and writes a file; the host checks the exported bytes and saves a finalization report. This gives you a complete SDK example with observable collaboration and a checked result.
+Follow the [Quickstart](quickstart.md) to prepare the host prerequisites, install `@luna-shi/murm` in one command, and run either a built-in CLI Harness or a self-contained TypeScript SDK handoff.
 
 If you already have the infrastructure ready, choose your next step:
 
@@ -25,9 +25,9 @@ If you already have the infrastructure ready, choose your next step:
 
 ## One package, explicit public entry points
 
-The package is named `@murm/core`. These are import paths within that package:
+Both the CLI and SDK ship in the `@luna-shi/murm` npm package:
 
-Import the public values and types from `@murm/core`. Configure OpenSandbox with `createSandbox` and manage Agents, Services, files and cleanup through `createRuntime`. Install from a checkout or an `npm pack` tarball. See the [SDK guide](sdk.md).
+Import all public values and types from `@luna-shi/murm`. Configure OpenSandbox with `createSandbox`, reference the matching prebuilt Worker image via `DEFAULT_WORKER_IMAGE`, and manage Agents, Services, files, and cleanup through `createRuntime`. Install directly with `npm install --ignore-scripts @luna-shi/murm`. See the [SDK guide](sdk.md).
 
 ## Explore the collaboration mechanisms
 

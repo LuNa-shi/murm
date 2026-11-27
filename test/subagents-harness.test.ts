@@ -159,8 +159,8 @@ test('invalid subagents child counts fail before Agent creation', async () => {
 });
 
 test('four staged groups use real Core and parent Agent Service inputs without ending at the first integration', async t => {
-  const { createRuntime } = await import('@murm/core');
-  const { ServiceRegistry } = await import('@murm/core');
+  const { createRuntime } = await import('@luna-shi/murm');
+  const { ServiceRegistry } = await import('@luna-shi/murm');
   const { runInput } = await import('../src/harnesses/shared/run-input.js');
   const { createSubagentsStages } = await import('../test-support/subagents/stages.js');
   transport.reset(); transport.collectable = true;

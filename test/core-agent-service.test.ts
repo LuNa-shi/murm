@@ -10,7 +10,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/core-agent-service-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { createRuntime } = await import('@murm/core'); hooks.deregister();
+const { createRuntime } = await import('@luna-shi/murm'); hooks.deregister();
 async function setup(t, options = {}) {
   transport.reset();
   const outputDir = await mkdtemp(join(tmpdir(), 'agent-service-'));

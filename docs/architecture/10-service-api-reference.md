@@ -40,12 +40,12 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `af9fd45a15bdf6edceccde3558264adec75c60c8709b60bee402c0388e4bb28f` |
 | [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `a3ab2b5d81c55ae629577438eab2f6483b5dcd7a9b6126cf6360d32fd26b7a8c` |
+| [src/core/index.ts](../../src/core/index.ts) | `82dc6607c386bddf40cce797d92fb80bebfa3eb4443f131dc37be147011734ad` |
 | [src/core/types.ts](../../src/core/types.ts) | `cf92f2f1576e5f754e72436b073f7b5909ca162e1cc21f41834f70ef36377b02` |
 | [src/core/services.ts](../../src/core/services.ts) | `823b7c83efd0fc61314c5511177b32b8863f469454cad5c5288bd04e5e82cf96` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
-| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | `b5f0afb361666f5ac78bf16b389f6801336be1537a9bc3a93de4f31e877cd3ca` |
-| [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | `9ae1004077d204fc0c923905c0b35349aaca8caafac72a3c87ec1a4087a89956` |
+| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | `0deb0dddfc15ef9087e979ca27b34f90c8b8fa7f248f0bd3cabc87e408ee7738` |
+| [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | `664420efc5ef52b2d16d8f5b31dfb74ca37ee0082d6960c7740b5e48ca3dc877` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `f06269fb81525faba2eb6a46956b0b98131ddddd45b53e17fe1d71ca5a3390f4` |
 
 ### Exact built-in command operation surface
@@ -3093,6 +3093,7 @@ These are the package entrypoint declarations and the declarations they referenc
 import type { CreateRuntimeOptions, Runtime } from './types.js';
 export { createSandbox } from './opensandbox-backend.js';
 export { getExecutorCapabilities } from './executor-driver.js';
+export { DEFAULT_WORKER_IMAGE } from './worker-image.js';
 export { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from './services.js';
 export type { ExecutorCapabilities, ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SandboxConfig, SteeringMode } from './backend-config.js';
 export type { HttpJsonAdapterOptions, ServiceRegistration } from './services.js';
@@ -3816,7 +3817,7 @@ export {};
 #### dist/src/core/executor-driver.d.ts
 
 ```ts
-import { assertShippedModelPair } from '../agent/model-catalog.js';
+import { resolvePiModelCatalog } from '../agent/model-catalog.js';
 import type { ExecutorCapabilities, ExecutorKind, ModelConfig } from './backend-config.js';
 type Model = ModelConfig;
 export interface ExecutorDriver {
@@ -3826,7 +3827,7 @@ export interface ExecutorDriver {
     readonly capabilities: ExecutorCapabilities;
     readonly defaultMaxOutputTokens?: null;
     assertEnvironment?(environment: Readonly<Record<string, string>> | undefined): void;
-    modelCatalogResource?(model: Model): ReturnType<typeof assertShippedModelPair>;
+    modelCatalogResource?(model: Model): ReturnType<typeof resolvePiModelCatalog>;
     credentials(model: Model, baseUrl: string, token: string): {
         environment: Record<string, string>;
         secretEnvironment: Record<string, string>;

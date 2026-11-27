@@ -20,7 +20,7 @@ intact for Node to resolve. The suite exercises external boundaries with
 deliberately invalid inputs and partial mocks. The separate installed-consumer
 check typechecks valid and invalid uses of the generated public declarations.
 
-The package root exposes the six public Core values and their types through the JavaScript and declaration entry under `dist/src/core/`. `npm pack` runs the build through `prepack`. Installing the resulting archive with `npm install --omit=dev` makes the compiled programs available without a compiler or loader. Run `npm run docs:generate`, `npm run docs:check` and `npm test` from a source checkout. Each builds first. The editable host templates supply a plain Sandbox configuration for `createSandbox`, plus separate Runtime executor, model and connection settings. Core Worker startup checks `file-tree-v1`, and local setup's Worker profile and reuse check require its matching image label.
+The package root exposes the seven public Core values and their types through the JavaScript and declaration entry under `dist/src/core/`. `npm pack` runs the build through `prepack`. Installing the resulting archive with `npm install --omit=dev` makes the compiled programs available without a compiler or loader. Run `npm run docs:generate`, `npm run docs:check` and `npm test` from a source checkout. Each builds first. The editable host templates supply a plain Sandbox configuration for `createSandbox`, plus separate Runtime executor, model and connection settings. Core Worker startup checks `file-tree-v1`, and local setup's Worker profile and reuse check require its matching image label.
 
 Each image compiles from the locked inputs in a TypeScript build stage. The
 final image installs production dependencies only and copies the compiled tree.
@@ -52,7 +52,7 @@ Developers can [run Subagents directly from the checkout](../../examples/subagen
 
 Setup resolves the repository or installed Core package root. When it needs to build the Worker, it uses [`deploy/worker/Dockerfile`](../../deploy/worker/Dockerfile) with that root as the Docker build context. Local OpenSandbox startup reads [`deploy/opensandbox/config.toml`](../../deploy/opensandbox/config.toml) and substitutes the configured local port. The optional project initializer reads the editable JavaScript templates from `scripts/local-setup/templates/` under the same root. Builds copy deployment assets into `dist/deploy/` for compiled code and tests, and the package includes the root Docker build inputs and raw project templates.
 
-The host binary dispatches local preparation independently of the optional Trace Viewer. The `trace` subcommand loads `@murm/trace-viewer/command` when that package is installed. The Core dependency tree does not include the Viewer.
+The host binary dispatches local preparation, Harness runs, and the built-in Trace Viewer through one CLI (`murm`). The `trace` subcommand lazily loads `src/trace-viewer/command.mjs` with zero extra npm dependencies.
 
 ### Host checks and checkout preparation
 
@@ -64,7 +64,7 @@ The checkout wrapper validates Node and runs the shared host checks before downl
 
 ### Worker and OpenSandbox
 
-Setup inspects the selected Worker image in the local Docker daemon and records its immutable image ID and any repository digests. It compares the declared `murm-core-v1` protocol and Pi 1.3.0 labels and image environment. The smoke then exercises the actual Worker startup protocol and guest Pi version. The default local cache tag includes the package version, Worker protocol and Pi version. If that image is absent, setup builds the shipped Worker Dockerfile. To use an imported image, set `MURM_SUBAGENTS_IMAGE` before setup. A missing named image can be pulled. A missing local image ID must be built or imported before retrying. Neither doctor mode builds or pulls an image.
+Setup inspects the selected Worker image in the local Docker daemon and records its immutable image ID and any repository digests. It compares the declared `murm-core-v1` and `file-tree-v1` protocols and the Pi 1.3.0 label and image environment. The smoke then exercises the actual Worker startup protocol and guest Pi version. The default reference is `ghcr.io/luna-shi/murm-worker:<package-version>`. If it is absent locally, setup first tries to pull it and inspect it again. If that fails, setup builds the shipped Worker Dockerfile with the same tag and inspects the result. Set `MURM_WORKER_IMAGE` or the existing `MURM_SUBAGENTS_IMAGE` override to select an imported or custom image. For an absent override, setup can pull a named image. A missing local image ID must be built or imported before retrying. Neither doctor mode builds or pulls an image.
 
 The local recipe runs OpenSandbox `release-1.2.0` with Execd `v1.1.0`, the Docker bridge Sandbox network and direct ingress. The lifecycle API listens on loopback, by default `http://127.0.0.1:8080/v1`. The managed provider publishes Execd ports on loopback and uses a private SQLite state directory under `.cache/murm/opensandbox/`. Sandboxes have no host path allowlist entries, drop the configured capabilities and use no-new-privileges. The provider runs with host networking and the system Docker socket. Setup compares the running image identity, profile settings and lifecycle listing before reusing an existing provider, and records the server and Execd image IDs. A conflicting listener is preserved. Configure a different loopback port if needed using `MURM_SUBAGENTS_LIFECYCLE_URL`. The optional `MURM_SUBAGENTS_ENDPOINT_HOST` selects the Execd host. The optional lifecycle token stays in the host environment or project configuration.
 
@@ -104,7 +104,7 @@ The shipped `.env.example` lists host variables consumed by the Notes configurat
 | `dist/scripts/mathlib-search-service.js` | Optional HTTP search over configured upstream or mounted source. [Services](04-services.md#6-optional-mathlib-search) |
 | `murm trace --root <runs-dir> --port 8787` | Standalone browser viewer for saved and active Core Runs. [Trace Viewer](06-observability-experiments.md) |
 
-Use the `@murm/core` root entry. Runtime's `executor` defaults to `pi`. Select `codex` explicitly when needed and query static capabilities with `getExecutorCapabilities(executor)`.
+Use the `@luna-shi/murm` root entry. Runtime's `executor` defaults to `pi`. Select `codex` explicitly when needed and query static capabilities with `getExecutorCapabilities(executor)`.
 
 ## Startup, input and shutdown
 
@@ -116,15 +116,15 @@ The foreground host installs signal handling before loading its trusted configur
 
 Core writes records under the configured output directory and Runtime ID. Evidence, Runtime report, Harness report and required Agent artifacts have distinct locations and failure handling. Result inspection requires the expected Runtime ID and checks saved report identity. An absent report, unknown stop or pending cleanup retains that state in the projection. A configured Harness redactor removes its credential values before normal reports are saved or returned.
 
-The root `/experiments/` and `/reports/` ignore rules cover private raw evidence and local reports. npm uses that boundary through its Git ignore packlist fallback, including unreadable local facility volumes. Historical tracked inputs and reports are preserved at the fixed research revision. Committed `docs/experiments/` contains version-bound summaries.
+The root `/experiments/` and `/reports/` ignore rules cover private raw evidence and local reports. npm uses that boundary through its Git ignore packlist fallback, including unreadable local facility volumes. Version-bound reports remain in the Git [experiment registry](../experiments/INDEX.md). The nested `docs/.npmignore` excludes that directory from npm tarballs.
 
 ## Optional Services and Trace Viewer
 
 Built-in Service launchers use HTTP manifests and role/binding enforcement. Built-in invocation requires actor-bound principals. Independent Context/Judge composition owns peer authentication, durable request/commit gates, checker reconciliation and bounded shutdown. Hosts supply the actual domain stores and deployment configuration. Mathlib Search needs a configured upstream or mounted source tree. [Services](04-services.md) describes each callable path.
 
-The independent Trace Viewer package opens an output root containing saved or active Core Runs. Its loopback HTTP server serves a browser interface and resumable SSE. Current-run control still goes through the foreground Harness. The [Trace Viewer guide](../operations/trace-viewer.md) covers installation and SSH port forwarding.
+The built-in Trace Viewer (`src/trace-viewer/`) opens an output root containing saved or active Core Runs via `murm trace`. Its loopback HTTP server serves a browser interface and resumable SSE. Current-run control still goes through the foreground Harness. The [Trace Viewer guide](../operations/trace-viewer.md) covers usage and SSH port forwarding.
 
-`npm test` runs the Core suite with the offline `docs:check` pretest. `npm --prefix trace-viewer test` verifies the standalone package. `docs:generate` refreshes prompt/API/storage references and source fingerprints.
+`npm test` runs the full suite (including the Trace Viewer tests) with the offline `docs:check` pretest. `docs:generate` refreshes prompt/API/storage references and source fingerprints.
 
 ## CI build and verification
 

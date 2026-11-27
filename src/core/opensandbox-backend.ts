@@ -405,7 +405,9 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         files: options.files, forkSession, workspace,
         env: { ...(profile.env ?? {}), ...bridgeCredentials.environment, ...credentials.environment },
         secretEnvironment: { ...(options.secretEnv ?? {}), ...bridgeCredentials.secretEnvironment, ...credentials.secretEnvironment },
-        requireCoreFileProtocol: true, projectQuota: quota, modelCatalogResource: credentials.catalogResource, beforeAgentStart: assertOpen });
+        requireCoreFileProtocol: true, projectQuota: quota, modelCatalogResource: credentials.catalogResource,
+        ...(credentials.catalogContent !== undefined ? { modelCatalogContent: credentials.catalogContent } : {}),
+        beforeAgentStart: assertOpen });
       agent.started = true;
       const ready = await manager.agentRpc(agentId, { type: 'get_state', id: `ready-${randomUUID()}` }, { timeoutMs: 10_000, since: 0 });
       if (ready.response?.success !== true || ready.response.command !== 'get_state') throw invalid('Executor readiness response was not confirmed');

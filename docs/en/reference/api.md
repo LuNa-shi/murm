@@ -1,15 +1,15 @@
 ---
 title: API & Configuration
-description: Complete reference for @murm/core Runtime methods, unified send semantics, file controls, Service protocol v2, the swarm CLI, foreground host CLI, backend config, and error contracts.
+description: Complete reference for @luna-shi/murm Runtime methods, unified send semantics, file controls, Service protocol v2, the swarm CLI, foreground host CLI, backend config, and error contracts.
 section: REFERENCE
 order: 12
 ---
 
-This reference describes the public interfaces of **`@murm/core` `0.2.0`** in the current source tree. Start with [Use the TypeScript SDK](../sdk.md) for installation and a complete runnable example; use [Types & Source Map](./types.md) to look up declarations.
+This reference describes the public interfaces of **`@luna-shi/murm` `0.2.0`** in the current source tree. Start with [Use the TypeScript SDK](../sdk.md) for installation and a complete runnable example; use [Types & Source Map](./types.md) to look up declarations.
 
 ## Package entry points
 
-Import all public types and the six runtime values from `@murm/core`. The values are `createSandbox`, `createRuntime`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`.
+Import all public types and the seven runtime values from `@luna-shi/murm`. The values are `createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`.
 
 ## Runtime management
 
@@ -20,7 +20,12 @@ Subscribe with `onEvent` before reading `runtime.management.get()`. Buffer manag
 ## `createRuntime(options)`
 
 ```ts
-import { createRuntime, createSandbox, ServiceRegistry } from '@murm/core';
+import {
+  DEFAULT_WORKER_IMAGE,
+  ServiceRegistry,
+  createRuntime,
+  createSandbox,
+} from '@luna-shi/murm';
 
 const runtime = await createRuntime({
   sandbox: createSandbox({
@@ -29,10 +34,10 @@ const runtime = await createRuntime({
   }),
   connection: { advertiseHost: '172.17.0.1' },
   models: {
-    default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: modelUrl, headers: modelHeaders } },
+    default: { provider: 'openai', model: 'gpt-5.4', upstream: { url: modelUrl, headers: modelHeaders } },
   },
   services: new ServiceRegistry(),
-  profiles: { reader: { model: 'default', image, writable: false, services: {} } },
+  profiles: { reader: { model: 'default', image: DEFAULT_WORKER_IMAGE, writable: false, services: {} } },
   maxAgents: 2,
   outputDir,
 });

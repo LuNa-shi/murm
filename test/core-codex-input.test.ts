@@ -13,10 +13,10 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
-const { createRuntime } = await import('@murm/core');
+const { createRuntime } = await import('@luna-shi/murm');
 const { runtimeSettings } = await import('./fixtures/core-runtime-settings.js');
 
-const { ServiceRegistry } = await import('@murm/core');
+const { ServiceRegistry } = await import('@luna-shi/murm');
 hooks.deregister();
 
 test('Codex uses an Agent gateway token and retains one executor across inputs while rejecting unsupported steering before dispatch', async t => {

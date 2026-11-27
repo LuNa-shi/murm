@@ -5,9 +5,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
-import { createRuntime } from '@murm/core';
+import { createRuntime } from '@luna-shi/murm';
 
-import { ServiceRegistry } from '@murm/core';
+import { ServiceRegistry } from '@luna-shi/murm';
 import { createFilesUpstream, seededFiles, preparedFiles } from './fixtures/core-files-upstream.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';

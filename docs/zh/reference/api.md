@@ -1,15 +1,15 @@
 ---
 title: API 与配置参考
-description: "@murm/core Runtime 方法、统一 send 语义、受控文件原语、Service v2 协议、swarm CLI、前台宿主 CLI、后端配置与错误契约的完整参考。"
+description: "@luna-shi/murm Runtime 方法、统一 send 语义、受控文件原语、Service v2 协议、swarm CLI、前台宿主 CLI、后端配置与错误契约的完整参考。"
 section: 参考手册
 order: 12
 ---
 
-本页说明当前源码中 **`@murm/core` `0.2.0`** 的公共接口。安装与完整可运行示例见[使用 TypeScript SDK](../sdk.md)，公共声明见[类型定义与源码映射](./types.md)。
+本页说明当前源码中 **`@luna-shi/murm` `0.2.0`** 的公共接口。安装与完整可运行示例见[使用 TypeScript SDK](../sdk.md)，公共声明见[类型定义与源码映射](./types.md)。
 
 ## 公共包入口
 
-所有类型和六个运行时值从 `@murm/core` 导入。运行时值为 `createSandbox`, `createRuntime`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`。
+所有类型和七个运行时值从 `@luna-shi/murm` 导入。运行时值为 `createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`。
 
 ## Runtime 管理
 
@@ -20,7 +20,12 @@ order: 12
 ## `createRuntime(options)`
 
 ```ts
-import { createRuntime, createSandbox, ServiceRegistry } from '@murm/core';
+import {
+  DEFAULT_WORKER_IMAGE,
+  ServiceRegistry,
+  createRuntime,
+  createSandbox,
+} from '@luna-shi/murm';
 
 const runtime = await createRuntime({
   sandbox: createSandbox({
@@ -29,10 +34,10 @@ const runtime = await createRuntime({
   }),
   connection: { advertiseHost: '172.17.0.1' },
   models: {
-    default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: modelUrl, headers: modelHeaders } },
+    default: { provider: 'openai', model: 'gpt-5.4', upstream: { url: modelUrl, headers: modelHeaders } },
   },
   services: new ServiceRegistry(),
-  profiles: { reader: { model: 'default', image, writable: false, services: {} } },
+  profiles: { reader: { model: 'default', image: DEFAULT_WORKER_IMAGE, writable: false, services: {} } },
   maxAgents: 2,
   outputDir,
 });

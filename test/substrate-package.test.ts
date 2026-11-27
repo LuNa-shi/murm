@@ -5,7 +5,7 @@ import { installNotesExample, execute } from './fixtures/notes-installed-package
 
 test('installed Substrate host resolves the public backend and saves an aborted run without allocating resources', { timeout: 180_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());
-  const main = join(installed.directory, 'node_modules/@murm/core/dist/examples/substrate/main.js');
+  const main = join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/substrate/main.js');
   const script = `import assert from 'node:assert/strict';
     import {readFile} from 'node:fs/promises';import {pathToFileURL} from 'node:url';
     const {runSubstrateExample,runFateExample}=await import(pathToFileURL(${JSON.stringify(main)}));
@@ -22,7 +22,7 @@ test('installed Substrate host resolves the public backend and saves an aborted 
     const saved=JSON.parse(await readFile(report.reportPath,'utf8'));
     assert.deepEqual(saved.peers,[]);assert.equal(saved.businessFailure.code,'CONTROLLED_ABORT');
     assert.equal(JSON.stringify(saved).includes('PRIVATE_MODEL_TOKEN'),false);
-    assert.ok(import.meta.resolve('@murm/core').includes('/node_modules/@murm/core/'));
+    assert.ok(import.meta.resolve('@luna-shi/murm').includes('/node_modules/@luna-shi/murm/'));
     const fate = { ...config, poolSize: 4, fate: {projectRoot:'unused', leanRoot:'unused'} };
     const withModel = (provider, model) => ({
       ...fate,
@@ -40,7 +40,7 @@ test('installed Substrate host resolves the public backend and saves an aborted 
 
 test('installed Substrate CLI offers help and saved inspection without loading credentials, and hides configuration errors', { timeout: 180_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());
-  const main = join(installed.directory, 'node_modules/@murm/core/dist/examples/substrate/main.js');
+  const main = join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/substrate/main.js');
   const { writeFile } = await import('node:fs/promises');
   const config = join(installed.directory, 'private-config.mjs');
   await writeFile(config, "throw new Error('PRIVATE_MODEL_TOKEN');\n");

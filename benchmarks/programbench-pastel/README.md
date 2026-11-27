@@ -2,7 +2,7 @@
 
 Rebuild the Pastel color CLI for ProgramBench instance `sharkdp__pastel.b60e899`. Subagents, TaskPool and PeerMesh receive the same task and reference executable. Each has its own workspace and delivery mechanism. The case checks whether multiple Agents can hand off source, incorporate a contribution and freeze a buildable submission within a fixed window.
 
-This is a development benchmark run explicitly from a source checkout. [Repository tests](../../test/README.md) and [Harness examples](../../README.md#choose-a-collaboration-mechanism) have their usual entry points. Benchmark output goes under the ignored `experiments/programbench-pastel/` directory. The npm package, application CLI and default test command do not include the benchmark.
+This is a development benchmark run explicitly from a source checkout. [Repository tests](../../test/README.md) and [Harness examples](../../README.md#built-in-harnesses) have their usual entry points. Benchmark output goes under the ignored `experiments/programbench-pastel/` directory. The npm package, application CLI and default test command do not include the benchmark.
 
 ## Case and results
 
@@ -21,7 +21,7 @@ This is a development benchmark run explicitly from a source checkout. [Reposito
 | TaskPool | The host seeds parser, formatter and integration Tasks. The integrator publishes source as Material attachments. The host checks the actual producer and consumer Executions, source hashes and `integration` consumption record. This runner gives each Task a cap equal to the configured work window. The outer window stops model traffic and candidate writes at the common deadline. |
 | PeerMesh | Two contributors start together. The host merges their pinned PR heads, then dispatches the integrator on the resulting main. The host checks Board publication and read order, fixed Git revisions and source bytes incorporated by the integrator. |
 
-The three registered Kimi K3 runs used an earlier revision and each reached its 30-minute deadline without an archive. Subagents delivered child results. TaskPool repeatedly expired at the previous 60-second Task limit. PeerMesh merged the first contribution and never reached the integrator. The version-bound report retains these outcomes and the cleanup evidence. [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) · [Formal results](../../docs/experiments/EXP-20261125-programbench-pastel.md)
+The three registered Kimi K3 runs used an earlier revision and each reached its 30-minute deadline without an archive. Subagents delivered child results. TaskPool repeatedly expired at the previous 60-second Task limit. PeerMesh merged the first contribution and never reached the integrator. The version-bound report retains these outcomes and the cleanup evidence. [Issue #209](https://github.com/LuNa-shi/murm/issues/209) · [Formal results](../../docs/experiments/EXP-20261125-programbench-pastel.md)
 
 ## Prepare a local Worker
 

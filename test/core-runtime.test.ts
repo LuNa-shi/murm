@@ -8,9 +8,9 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createRuntime } from '@murm/core';
+import { createRuntime } from '@luna-shi/murm';
 
-import { ServiceRegistry } from '@murm/core';
+import { ServiceRegistry } from '@luna-shi/murm';
 
 function options(outputDir, model = 'k3', sandbox = {}) {
   return {
@@ -59,15 +59,25 @@ test('Runtime rejects an unknown Profile model before creating a Agent', async t
   });
 });
 
-test('Runtime rejects a configured model absent from the shipped Pi catalog', async t => {
+test('Runtime rejects invalid Pi model identifiers and accepts custom Responses models', async t => {
   const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-test-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
-  const config = options(outputDir, 'unknown-pi-model');
-  config.profiles.writer.model = 'default';
+  const invalidConfig = options(outputDir, '../invalid-model');
+  invalidConfig.profiles.writer.model = 'default';
 
-  await assert.rejects(createRuntime(config), {
+  await assert.rejects(createRuntime(invalidConfig), {
     code: 'INVALID_CONTRACT', operation: 'createRuntime', cleanup: 'complete',
   });
+
+  const customConfig = options(outputDir, 'custom-pi-model');
+  customConfig.profiles.writer.model = 'default';
+  const runtime = await createRuntime(customConfig);
+  try {
+    assert.equal(runtime.state, 'open');
+  } finally {
+    const receipt = await runtime.close();
+    assert.equal(receipt.cleanup, 'complete');
+  }
 });
 
 test('An empty Runtime opens and closes without contacting an unavailable sandbox lifecycle', async t => {

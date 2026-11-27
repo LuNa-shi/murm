@@ -14,9 +14,9 @@ test('real Pi batches steer before start and preserves Session and files across 
   skip: process.env.MURM_CORE_INPUT_REAL_TEST !== '1' && 'Controlled Pi/OpenSandbox input acceptance requires independent review and explicit opt-in',
   timeout: 180_000,
 }, async t => {
-  const { createRuntime } = await import('@murm/core');
+  const { createRuntime } = await import('@luna-shi/murm');
 
-  const { ServiceRegistry } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@luna-shi/murm');
   const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.ok(image);
   const outputDir = join(process.cwd(), 'experiments', `core-input-${Date.now()}`);

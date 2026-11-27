@@ -7,8 +7,8 @@ import { once } from 'node:events';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
-import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core';
+import { createRuntime } from '@luna-shi/murm';
+import { ServiceRegistry } from '@luna-shi/murm';
 
 import { createIsolationUpstream } from './fixtures/core-isolation-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';

@@ -10,7 +10,7 @@ test('offline archive ships the native PeerMesh host configuration and declared 
 }, async t => {
   const installed = await installNotesExample();
   t.after(() => installed.close());
-  const root = join(installed.directory, 'node_modules/@murm/core');
+  const root = join(installed.directory, 'node_modules/@luna-shi/murm');
   const metadata = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   assert.deepEqual(Object.keys(metadata.exports), ['.']);
 
@@ -59,7 +59,7 @@ test('offline archive ships the native PeerMesh host configuration and declared 
   };
   const imported = await execute(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
-    import { createSandbox } from '@murm/core';
+    import { createSandbox } from '@luna-shi/murm';
     import config from ${JSON.stringify(config.href)};
     assert.equal(typeof createSandbox, 'function');
     assert.equal(config.mode, 'peermesh');

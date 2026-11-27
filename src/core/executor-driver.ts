@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { assertShippedModelPair } from '../agent/model-catalog.js';
+import { resolvePiModelCatalog } from '../agent/model-catalog.js';
 import type { ExecutorCapabilities, ExecutorKind, ModelConfig } from './backend-config.js';
 
 type Model = ModelConfig;
@@ -11,7 +11,7 @@ export interface ExecutorDriver {
   readonly capabilities: ExecutorCapabilities;
   readonly defaultMaxOutputTokens?: null;
   assertEnvironment?(environment: Readonly<Record<string, string>> | undefined): void;
-  modelCatalogResource?(model: Model): ReturnType<typeof assertShippedModelPair>;
+  modelCatalogResource?(model: Model): ReturnType<typeof resolvePiModelCatalog>;
   credentials(model: Model, baseUrl: string, token: string): {
     environment: Record<string, string>;
     secretEnvironment: Record<string, string>;
@@ -34,7 +34,7 @@ const pi: ExecutorDriver = {
   version: '1.3.0',
   capabilities: Object.freeze({ ...sharedCapabilities, contextFork: true,
     steeringModes: Object.freeze(['all', 'one-at-a-time'] as const) }),
-  modelCatalogResource: assertShippedModelPair,
+  modelCatalogResource: resolvePiModelCatalog,
   credentials(model, baseUrl, token) {
     const prefix = `PI_${model.provider.toUpperCase().replaceAll('-', '_')}`;
     return { environment: { [`${prefix}_BASE_URL`]: baseUrl }, secretEnvironment: { [`${prefix}_API_KEY`]: token } };

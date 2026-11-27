@@ -12,7 +12,7 @@ The writer and reader use the same captured project to publish and use a task ob
 After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
 
 
-The host imports only from `@murm/core` for Runtime, Sandbox and Service author APIs. See the [SDK guide](../../docs/en/sdk.md) for configuration and resource ownership.
+The host imports only from `@luna-shi/murm` for Runtime, Sandbox and Service author APIs. See the [SDK guide](../../docs/en/sdk.md) for configuration and resource ownership.
 
 The package is currently distributed from a checkout as a tarball (`private: true`). Install the checkout dependencies with `npm ci` first. TypeScript sources compile with `npm run build` into `dist/`; `npm pack` builds JavaScript and declarations before archiving.
 
@@ -31,12 +31,12 @@ npm pack "$repo" --pack-destination "$example_dir"
 cd "$example_dir"
 npm init -y
 npm pkg set type=module
-npm install --omit=dev --ignore-scripts ./murm-core-0.2.0.tgz
-tar -xOf murm-core-0.2.0.tgz package/dist/examples/notes/main.js > main.js
-tar -xOf murm-core-0.2.0.tgz package/dist/examples/notes/config.js > config.js
-tar -xOf murm-core-0.2.0.tgz package/dist/src/harnesses/shared/run-input.js > run-input.js
-tar -xOf murm-core-0.2.0.tgz package/dist/src/harnesses/shared/run-report.js > run-report.js
-tar -xOf murm-core-0.2.0.tgz package/dist/src/harnesses/shared/read-result.js > read-result.js
+npm install --omit=dev --ignore-scripts ./luna-shi-murm-0.2.0.tgz
+tar -xOf luna-shi-murm-0.2.0.tgz package/dist/examples/notes/main.js > main.js
+tar -xOf luna-shi-murm-0.2.0.tgz package/dist/examples/notes/config.js > config.js
+tar -xOf luna-shi-murm-0.2.0.tgz package/dist/src/harnesses/shared/run-input.js > run-input.js
+tar -xOf luna-shi-murm-0.2.0.tgz package/dist/src/harnesses/shared/run-report.js > run-report.js
+tar -xOf luna-shi-murm-0.2.0.tgz package/dist/src/harnesses/shared/read-result.js > read-result.js
 ```
 
 Set `MURM_NOTES_IMAGE` to your compatible worker image ID and `MURM_NOTES_MODEL_URL` to the trusted Responses endpoint, including the exact `/v1/responses` path. Set `MURM_NOTES_MODEL_TOKEN` if the endpoint requires a bearer token. Configure `MURM_NOTES_ADVERTISE_HOST` to the host's guest-reachable IPv4 address if it differs from `172.17.0.1`. The sample `config.js` also reads optional lifecycle host, endpoint host and token variables. Model and lifecycle secrets stay on the host.

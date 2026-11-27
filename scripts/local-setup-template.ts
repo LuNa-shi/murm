@@ -89,7 +89,7 @@ export async function prepareSubagentsProject(options: SubagentsProjectOptions) 
       options.signal?.throwIfAborted();
       throw Object.assign(new Error('The candidate archive must contain a valid package/package.json.'), { code: 'PACKAGE_ARCHIVE_INVALID', cause: error });
     }
-    if (archiveMetadata.name !== '@murm/core' || archiveMetadata.version !== metadata.version) {
+    if (archiveMetadata.name !== '@luna-shi/murm' || archiveMetadata.version !== metadata.version) {
       throw Object.assign(new Error('The candidate archive identity must match this setup package.'), { code: 'PACKAGE_IDENTITY_MISMATCH' });
     }
     const archiveSha256 = createHash('sha256').update(await readFile(archive)).digest('hex');
@@ -120,7 +120,7 @@ export async function prepareSubagentsProject(options: SubagentsProjectOptions) 
     }
     await create('package.json', JSON.stringify({ name: 'my-murm', version: '1.0.0', private: true, type: 'module',
       scripts: { start: 'murm', doctor: 'murm doctor --config config.js' },
-      dependencies: { '@murm/core': `file:.murm/${archiveName}` },
+      dependencies: { '@luna-shi/murm': `file:.murm/${archiveName}` },
     }, null, 2) + '\n');
     const projectPackage = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
     if (projectPackage.type !== 'module') throw Object.assign(new Error('The target package.json must declare type "module" for this Subagents project.'), { code: 'PROJECT_PACKAGE_INCOMPATIBLE' });
@@ -135,7 +135,7 @@ export async function prepareSubagentsProject(options: SubagentsProjectOptions) 
     await create('.env', environment(options), 0o600);
     await create('.gitignore', 'node_modules/\n.env\n.murm/\n.murm-setup.lock/\nsubagents-runs/\n');
 
-    const installedMetadata = join(directory, 'node_modules/@murm/core/package.json');
+    const installedMetadata = join(directory, 'node_modules/@luna-shi/murm/package.json');
     const installedRecord = join(privateDirectory, 'installed.json');
     let installed = false;
     const record = await readFile(installedRecord, 'utf8').then(JSON.parse).catch(() => undefined);
@@ -144,7 +144,7 @@ export async function prepareSubagentsProject(options: SubagentsProjectOptions) 
         cwd: directory, signal: options.signal, timeout: 120_000, maxBuffer: 8 * 1024 * 1024,
       });
       const candidate = JSON.parse(await readFile(installedMetadata, 'utf8'));
-      if (candidate.name !== '@murm/core' || candidate.version !== metadata.version) throw Object.assign(new Error('Installed package identity does not match the setup package.'), { code: 'PACKAGE_IDENTITY_MISMATCH' });
+      if (candidate.name !== '@luna-shi/murm' || candidate.version !== metadata.version) throw Object.assign(new Error('Installed package identity does not match the setup package.'), { code: 'PACKAGE_IDENTITY_MISMATCH' });
       const nextRecord = `${installedRecord}.${randomUUID()}`;
       await writeFile(nextRecord, JSON.stringify({ archiveSha256, version: candidate.version }) + '\n');
       await rename(nextRecord, installedRecord);
@@ -164,7 +164,7 @@ export async function initializeSubagentsProject(directory: string, signal: Abor
   try {
     const config = await resolveSubagentsEnvironment();
     const worker = await prepareWorkerImage({
-      packageRoot, requestedImage: process.env.MURM_SUBAGENTS_IMAGE, install: false, signal,
+      packageRoot, requestedImage: process.env.MURM_SUBAGENTS_IMAGE ?? process.env.MURM_WORKER_IMAGE, install: false, signal,
     });
     const project = await prepareSubagentsProject({
       directory, image: worker.image?.id ?? worker.reference,

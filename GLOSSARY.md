@@ -7,7 +7,7 @@ These terms describe the current implementation. Read [How murm works](docs/en/c
 | Term | Meaning |
 | --- | --- |
 | **Harness** | The host application that composes Profiles, Services and a collaboration policy. It chooses when to create Agents, route work, check results and finish. |
-| **Core** | The reusable library exposed through the `@murm/core` package. Its root entry provides Sandbox and Runtime creation, Service author APIs and public types. |
+| **Core** | The reusable library exposed through the `@luna-shi/murm` package. Its root entry provides Sandbox and Runtime creation, Service author APIs and public types. |
 | **Runtime** | One live Core instance managing its Agents, capacity, authenticated Service access, input delivery, observation and cleanup. |
 | **Run** | One execution of a Harness, identified and recorded through a Runtime. A Harness adds its own business outcome and evidence. |
 | **Agent** | A Runtime-owned execution identity with its own Sandbox, working directory and Session. A settled Agent can receive another input. |

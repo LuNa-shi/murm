@@ -11,7 +11,7 @@
     "rootDir": ".",
     "outDir": "dist",
     "paths": {
-      "@murm/core": ["./src/core/index.js"]
+      "@luna-shi/murm": ["./src/core/index.js"]
     }
   },
   "include": ["src/**/*.ts", "scripts/**/*.ts", "examples/**/*.ts", "test-support/**/*.ts"]

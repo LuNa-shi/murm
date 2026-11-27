@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createRuntime } from '@murm/core';
+import { createRuntime } from '@luna-shi/murm';
 
 import { substratePeerProfile } from '../src/harnesses/substrate/index.js';
 import { createSubstrateService } from '../src/harnesses/substrate/substrate.js';

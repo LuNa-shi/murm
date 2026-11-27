@@ -26,8 +26,8 @@ test('native lifetime gateway limits start production Core without allocating or
   const { mkdtemp, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
-  const { createRuntime } = await import('@murm/core');
-  const { ServiceRegistry } = await import('@murm/core');
+  const { createRuntime } = await import('@luna-shi/murm');
+  const { ServiceRegistry } = await import('@luna-shi/murm');
 
   const root = await mkdtemp(join(tmpdir(), 'lifetime-config-'));
   let runtime;

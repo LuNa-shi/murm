@@ -16,7 +16,7 @@ Subagents sends the prompt to Root and supplies the captured project to Root and
 
 **Subagents** models a lead agent (`/root`) that breaks down a task, spawns named child agents recursively (up to `maxDepth`), exchanges messages in real time, and integrates results. Source: [examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents).
 
-The host imports the public SDK from `@murm/core`. `createSubagentsHarness` belongs to the example source. See the [SDK guide](../sdk.md) for installation.
+The host imports the public SDK from `@luna-shi/murm`. `createSubagentsHarness` belongs to the example source. See the [SDK guide](../sdk.md) for installation.
 
 ## 1. Registered Service (`collaboration`)
 

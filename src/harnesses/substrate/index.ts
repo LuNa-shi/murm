@@ -1,4 +1,4 @@
-import { createRuntime } from '@murm/core';
+import { createRuntime } from '@luna-shi/murm';
 import { join } from 'node:path';
 import { createSubstrateService } from './substrate.js';
 import { runInput } from '../shared/run-input.js';

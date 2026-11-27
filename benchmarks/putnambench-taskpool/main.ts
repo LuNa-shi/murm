@@ -65,7 +65,7 @@ if (operation === 'preflight') {
     artifactLock: checks.evidence.artifact_lock_sha256, project: seed.project.verdict, final: seed.final.verdict }) + '\n');
 } else {
   const { runPutnamTaskPool } = await import('./run.ts');
-  const { createSandbox } = await import('@murm/core');
+  const { createSandbox } = await import('@luna-shi/murm');
   const { assertShippedModelPair } = await import('../../dist/src/agent/model-catalog.js');
   await assertShippedModelPair({ provider: problem.provider, model: problem.model });
   const environmentPrefix = 'PI_' + problem.provider.toUpperCase();

@@ -83,7 +83,7 @@ await Promise.all(
 
 ## 3. 运行 Substrate 并审计知识复用
 
-以下命令从已构建的仓库运行，需要兼容的 Pi Worker 镜像、已启动的 OpenSandbox 服务和可用的 Responses 模型端点。[示例 README](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) 还提供 tarball 安装步骤。
+以下命令支持从已构建仓库或 `@luna-shi/murm` 安装包运行，需要兼容的 Pi Worker 镜像、已启动的 OpenSandbox 服务和可用的 Responses 模型端点。环境变量说明见 [示例 README](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md)。
 
 ```bash
 export MURM_SUBSTRATE_RUN=research-01

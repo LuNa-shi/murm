@@ -1,4 +1,4 @@
-import { createSandbox } from '@murm/core';
+import { createSandbox } from '@luna-shi/murm';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { peerMeshConfig } from './project-config.js';

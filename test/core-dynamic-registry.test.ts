@@ -12,7 +12,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
-const { createRuntime, createHttpJsonAdapter, ServiceRegistry } = await import('@murm/core');
+const { createRuntime, createHttpJsonAdapter, ServiceRegistry } = await import('@luna-shi/murm');
 hooks.deregister();
 
 const initial = { prompt: 'Initial Worker', model: 'default', image: 'test', writable: true, services: {} };

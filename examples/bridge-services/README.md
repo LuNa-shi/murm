@@ -12,14 +12,14 @@ The writer publishes a project observation to the Messages Service. The reader v
 After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
 
 
-Two Agents exchange a value through a Service, and the host verifies the exported file independently. The same TypeScript example imports the Runtime, Sandbox and Service APIs from `@murm/core` in a checkout or an installed project.
+Two Agents exchange a value through a Service, and the host verifies the exported file independently. The same TypeScript example imports the Runtime, Sandbox and Service APIs from `@luna-shi/murm` in a checkout or an installed project.
 
 ## Define and grant a Service
 
-Copy the example adapters into a TypeScript Harness that depends on `@murm/core`. Register them before calling `createRuntime` and grant each Profile only the operations it needs.
+Copy the example adapters into a TypeScript Harness that depends on `@luna-shi/murm`. Register them before calling `createRuntime` and grant each Profile only the operations it needs.
 
 ```ts
-import { ServiceRegistry } from '@murm/core';
+import { ServiceRegistry } from '@luna-shi/murm';
 import { createMessageService } from './messages.js';
 import { createGhIssuesService } from './gh-issues.js';
 
@@ -52,34 +52,35 @@ The application invokes `gh issue list` with fixed arguments and an explicit ten
 
 The handoff starts two Agents in separate OpenSandbox sandboxes on one Linux host. The writer publishes a value from its seeded file through the Messages Service. The reader retrieves it and writes `received.txt`. The host verifies the exported bytes against the value it seeded.
 
-Prepare local Docker, the OpenSandbox Lifecycle API, a compatible murm Worker image with `jq`, and an OpenAI Responses-compatible model endpoint. Use Node.js 22.19 or newer. Set these values for your environment before running either recipe.
+Prepare local Docker, the OpenSandbox Lifecycle API, and the compatible Worker image (see [Quickstart](../../docs/en/quickstart.md) or run `murm setup`), plus an OpenAI Responses-compatible model endpoint. Use Node.js 22.19 or newer. Set these variables before running:
 
 ```sh
-export MURM_SDK_IMAGE='worker-image'
-export MURM_SDK_MODEL_URL='full-responses-endpoint'
-export MURM_SDK_MODEL_TOKEN='token-if-required'
+export MURM_MODEL_URL='https://api.openai.com/v1/responses'
+export MURM_MODEL_TOKEN='your-token-if-required'
 ```
 
-The same-host defaults are `http://127.0.0.1:8080/v1` for the Lifecycle API and `172.17.0.1` as the Worker-visible host. Override them with `MURM_SDK_LIFECYCLE_URL` and `MURM_SDK_ADVERTISE_HOST`. Set `MURM_SDK_ENDPOINT_HOST` if the Worker endpoint uses a different host from `127.0.0.1` and `MURM_SDK_LIFECYCLE_TOKEN` if the API requires a key. Pi defaults to `kimi_proxy/k3`. For Codex, set `MURM_SDK_EXECUTOR=codex` and provide `MURM_SDK_MODEL_ID`; the provider defaults to `openai`. You can set `MURM_SDK_MODEL_PROVIDER` and `MURM_SDK_MODEL_ID` for either executor.
+The Worker image defaults automatically to `DEFAULT_WORKER_IMAGE` (`ghcr.io/luna-shi/murm-worker:0.2.0`); override it with `MURM_WORKER_IMAGE` or `MURM_SDK_IMAGE` only if you built a custom image. The same-host defaults are `http://127.0.0.1:8080/v1` for the Lifecycle API and `172.17.0.1` as the Worker-visible host (`MURM_LIFECYCLE_URL` / `MURM_SDK_LIFECYCLE_URL` and `MURM_ADVERTISE_HOST` / `MURM_SDK_ADVERTISE_HOST`). Pi is the default executor with provider `openai` and model `gpt-5.4`; set `MURM_MODEL_PROVIDER` and `MURM_MODEL_ID` (or `MURM_SDK_*`) for any OpenAI Responses-compatible model, or set `MURM_EXECUTOR=codex` (or `MURM_SDK_EXECUTOR=codex`) for Codex.
 
 From a checkout:
 
 ```sh
-npm ci
+npm ci --ignore-scripts
 npm run build
 node dist/examples/bridge-services/handoff.js
 ```
 
-The package is currently marked `private: true`; create its tarball with `npm pack` in the prepared checkout. In a fresh directory, install that archive and copy the three TypeScript source files and compiler configuration below. This consumer program does not require a generated project:
+In your own project, install `@luna-shi/murm` directly from npm:
 
 ```sh
 npm init -y
 npm pkg set type=module
-npm install --save-exact /absolute/path/to/murm-core-0.2.0.tgz
-npm install -D typescript @types/node
-cp node_modules/@murm/core/examples/bridge-services/{handoff.ts,handoff-config.ts,messages.ts,tsconfig.handoff.json} .
-npx tsc --project tsconfig.handoff.json
-node build/handoff.js
+npm install --ignore-scripts @luna-shi/murm
+```
+
+Or invoke it directly via the global CLI:
+
+```sh
+murm --harness messages --prompt "Inspect this project and explain how to verify it"
 ```
 
 The default Service is in-process. Set `MURM_SDK_MESSAGE_URL` and `MURM_SDK_MESSAGE_TOKEN` for an already-running HTTP JSON v2 Messages Service. The host owns its bearer token, and the Service stays running after the Harness exits.

@@ -621,7 +621,7 @@ runInput、Board 验收与 controller 是 Harness 代码。controller 决定触�
 
 ```ts
 // Proposed generic Service contract v2; not accepted by the legacy v1 parser.
-import type { ServiceManifest } from "@murm/core";
+import type { ServiceManifest } from "@luna-shi/murm";
 
 const noteProperties = {
   key: { type: "string", minLength: 1, maxLength: 128 },
@@ -689,7 +689,7 @@ import {
   type Runtime, type AgentInfo, type CloseReceipt, type Profile, type ErrorInfo,
   type RuntimeEvent, type InputReceipt, type ModelConfig, type RuntimeConnectionOptions,
   type SandboxConfig,
-} from "@murm/core";
+} from "@luna-shi/murm";
 import { runInput } from "./run-input.js";
 
 type Note = { key: string; text: string; author: string };
@@ -846,8 +846,8 @@ export async function main(config: Config, signal?: AbortSignal) {
 文件为 Harness 的 `run-input.ts`。仅用于第 4.1 节的严格独占场景；不能作为通用输入完成协议。timeoutMs 要为有限正整数，所有取消只结束宿主等待。已提交但结果不确定时保留请求身份并进入收尾，不通过另起一次等待猜测之前的结果。
 
 ```ts
-// Proposal example, not an implemented @murm/core API.
-import type { Runtime, RuntimeEvent, InputReceipt } from "@murm/core";
+// Proposal example, not an implemented @luna-shi/murm API.
+import type { Runtime, RuntimeEvent, InputReceipt } from "@luna-shi/murm";
 
 type Settled = Extract<RuntimeEvent, { type: "settled" }>;
 type Guard = { active: boolean; unresolved: boolean; used: Set<string> };

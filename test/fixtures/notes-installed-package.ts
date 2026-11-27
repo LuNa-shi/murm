@@ -91,7 +91,7 @@ export async function installNotesExample(selection, { requireCleanCheckout = fa
     await writeFile(join(directory, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
     await execute('npm', ['install', '--offline', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', archive],
       { cwd: directory, timeout: 120_000, maxBuffer: 4 * 1024 ** 2 });
-    const installed = join(directory, 'node_modules', '@murm', 'core');
+    const installed = join(directory, 'node_modules', '@luna-shi', 'murm');
     const metadata = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8'));
     const compiled = metadata.exports?.['.']?.default?.startsWith('./dist/');
     const executableRoot = compiled ? join(installed, 'dist') : installed;

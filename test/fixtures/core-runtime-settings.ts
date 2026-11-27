@@ -1,4 +1,4 @@
-import type { CreateRuntimeOptions, SandboxConfig } from '@murm/core';
+import type { CreateRuntimeOptions, SandboxConfig } from '@luna-shi/murm';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -13,6 +13,6 @@ export function runtimeSettings({ sandbox, isolation, bridge, modelGateway, mode
   models: Settings['models'];
   executor?: Settings['executor'];
 }): Settings {
-  const { createSandbox } = require('@murm/core') as typeof import('@murm/core');
+  const { createSandbox } = require('@luna-shi/murm') as typeof import('@luna-shi/murm');
   return { sandbox: createSandbox({ ...sandbox, isolation }), executor, models, connection: { bridge, modelGateway } };
 }

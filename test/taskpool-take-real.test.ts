@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createRuntime } from '@murm/core';
+import { createRuntime } from '@luna-shi/murm';
 
-import { ServiceRegistry } from '@murm/core';
+import { ServiceRegistry } from '@luna-shi/murm';
 import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../examples/taskpool/task-service.js';
 import { createTaskPoolAgentCoordinator } from '../examples/taskpool/agent-coordinator.js';
 import { executionEnvelope } from '../examples/taskpool/prepare-inputs.js';
