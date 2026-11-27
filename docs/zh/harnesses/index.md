@@ -7,7 +7,7 @@ order: 6
 
 ## 在普通项目中运行
 
-通过 `npm install -g --ignore-scripts @luna-shi/murm` 安装 CLI（并按[快速上手](../quickstart.md)完成宿主机与 `murm setup` 准备），然后在项目目录直接选择 Harness 运行。默认使用启动命令时的当前目录，也可以传入 `--cwd`。运行配置支持环境变量（如 `MURM_MODEL_URL`、`MURM_MODEL_TOKEN`）或通过 `--config` 指定模块。
+按[快速上手](../quickstart.md)安装 CLI 并完成宿主机准备，然后在项目目录直接选择 Harness 运行。默认使用启动命令时的当前目录，也可以传入 `--cwd`。运行配置支持环境变量（如 `MURM_MODEL_URL`、`MURM_MODEL_TOKEN`）或通过 `--config` 指定模块。
 
 ```sh
 cd my-project

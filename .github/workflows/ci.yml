@@ -81,7 +81,7 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - run: npm ci --no-audit --no-fund
-      - name: Build and check both locales
+      - name: Build and check both locales and installer
         env:
           BASE_PATH: /murm
           SITE_URL: https://luna-shi.github.io
@@ -89,3 +89,5 @@ jobs:
           npm run build
           test -s dist/index.html
           test -s dist/zh/index.html
+          cmp public/install.sh dist/install.sh
+          sh -n dist/install.sh

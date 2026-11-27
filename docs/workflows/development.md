@@ -67,12 +67,23 @@ deploys the merged site separately.
 
 ## Release verification
 
-Run the [Release workflow](../../.github/workflows/release.yml) manually with both
-publish inputs cleared to verify a candidate and obtain its npm tarball and SHA-256.
-Publication requires the matching `v<version>` tag. A push of that tag requests
-both publications. npm also requires a public source repository for provenance.
-The npm job publishes the same archive recorded by verification. The first GHCR
-image requires public package visibility before users can pull it anonymously.
+Run the [Release workflow](../../.github/workflows/release.yml) manually to verify a
+candidate and download the two tarball filenames and their SHA-256 checksums from
+the workflow artifact. Manual runs only verify. After the source repository is
+public and the release owner approves the tested revision, push a
+`v<version>` tag for the matching stable package version.
+
+The tag run pushes the versioned GHCR Worker image and checks that an
+unauthenticated client can read its manifest. For the first release, open the
+`murm-worker` container package settings after the initial image push and set
+its visibility to **Public**. Rerun the failed publish job if the first
+anonymous check has already failed. The package settings and the repository
+visibility are independent.
+
+The job uploads the verified versioned tarball, the byte-identical
+`luna-shi-murm.tgz` alias and `SHA256SUMS` to the tagged Release before
+publishing it. It promotes the versioned Worker to `:latest` when that tag is
+GitHub's latest Release. The CI-provided GitHub token handles both publications.
 
 ## Documentation changes
 

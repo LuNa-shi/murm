@@ -34,6 +34,12 @@ deployment locks and startup deadlines described below.
 For the pinned source and retained-format inventory, see
 [current source inventory](12-code-coverage.md).
 
+## GitHub Release distribution
+
+The [release workflow](../../.github/workflows/release.yml) runs verification on manual dispatch or a pushed version tag. It requires a stable package version, checks that any selected tag matches it, and requires a public source repository for a tag publication. Verification packs the compiled package, installs that archive in a temporary consumer, runs the Core suite, and uploads the archive plus a byte-identical `luna-shi-murm.tgz` alias and checksums as a workflow artifact.
+
+The tag-run publication job rechecks those bytes. It builds the matching Worker for amd64 and arm64 and pushes the version tag to GHCR. It requests a fresh anonymous registry token for read access to that manifest. A failed read stops publication and leaves the versioned image available for an operator to make public or to diagnose. Once the manifest is readable, the job stages both filenames and their checksums on a draft GitHub Release and publishes it. It promotes the image to `:latest` when the tag is GitHub's latest published Release. A retry can update the draft. Once the Release is public, retries skip writing its assets and versioned image and can finish the promotion. The install URL that uses `releases/latest` follows GitHub's published Release selection.
+
 ## Distribution file boundary
 
 `package.json` admits `dist`, `src`, `scripts`, `services`, `examples`, `docs`, `test` and `test-support`, the compiler configurations and Docker context exclusions, and the tracked root glossary, Agent instructions, dependency shrinkwrap, environment example and submodule declaration. npm also includes its mandatory package metadata and README. Runtime code, Worker/image preparation inputs, model catalog, prompts/skills, foreground/result scripts and editable example resources remain in the tarball. Test fixtures support deterministic and opt-in native verification of the installed candidate.

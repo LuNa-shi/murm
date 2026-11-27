@@ -60,7 +60,7 @@ The example config defaults to four live Agents including Root, with a maximum d
 
 ## Use the packaged example with Codex
 
-Install `@luna-shi/murm` via npm (see the [SDK guide](../../docs/en/sdk.md#install-the-sdk)). The example defaults to Pi. To use Codex from that consumer project, set `MURM_EXECUTOR=codex` (or `MURM_SUBAGENTS_EXECUTOR=codex`), `MURM_MODEL_ID`, and `MURM_MODEL_URL` in the host shell. The Worker image defaults to `DEFAULT_WORKER_IMAGE` (`ghcr.io/luna-shi/murm-worker:0.2.0`) and can be overridden with `MURM_WORKER_IMAGE` or `MURM_SUBAGENTS_IMAGE`. Supply any required model or lifecycle token through the host environment.
+Install the versioned `@luna-shi/murm` tarball from GitHub Release (see the [SDK guide](../../docs/en/sdk.md#install-the-sdk)). The example defaults to Pi. To use Codex from that consumer project, set `MURM_EXECUTOR=codex` (or `MURM_SUBAGENTS_EXECUTOR=codex`), `MURM_MODEL_ID`, and `MURM_MODEL_URL` in the host shell. The Worker image defaults to `DEFAULT_WORKER_IMAGE` (`ghcr.io/luna-shi/murm-worker:0.2.0`) and can be overridden with `MURM_WORKER_IMAGE` or `MURM_SUBAGENTS_IMAGE`. Supply any required model or lifecycle token through the host environment.
 
 ```sh
 example=node_modules/@luna-shi/murm/dist/examples/subagents

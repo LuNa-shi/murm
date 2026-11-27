@@ -16,7 +16,7 @@ Open [the demo Run](http://127.0.0.1:8787/#run=release-notes). The synthetic Sub
 The Trace Viewer is bundled directly inside `@luna-shi/murm` (`src/trace-viewer/`) with zero extra dependencies:
 
 ```bash
-npm install -g --ignore-scripts @luna-shi/murm
+curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
 murm trace /path/to/private/runs --port 8787 --open
 ```
 

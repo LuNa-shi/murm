@@ -64,10 +64,16 @@ sudo -n /usr/sbin/nft -j list tables >/dev/null
 
 ## 2. Install `@luna-shi/murm` and prepare OpenSandbox & Worker
 
-For a version available on the npm registry, install the CLI globally:
+Install the CLI globally from the latest GitHub Release:
 
 ```bash
-npm install -g --ignore-scripts @luna-shi/murm
+curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
+```
+
+Or use npm directly:
+
+```bash
+npm install -g --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz
 ```
 
 ### Install a candidate from a checkout
@@ -180,10 +186,10 @@ mkdir my-harness
 cd my-harness
 npm init -y
 npm pkg set type=module
-npm install --ignore-scripts @luna-shi/murm
+npm install --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
 ```
 
-For an unpublished version, replace the package name in the install command with the absolute path to the tarball you packed above.
+For an unpublished version, replace the URL in the install command with the absolute path to the tarball you packed above.
 
 Create `handoff.ts` — this self-contained example registers a `messages` Service, spawns two isolated Agents to hand off a value through it, and verifies cleanup:
 

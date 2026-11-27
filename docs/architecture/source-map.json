@@ -2244,6 +2244,14 @@
       "role": "Public site icon"
     },
     {
+      "path": "website/public/install.sh",
+      "category": "public documentation website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Public CLI installer for the latest GitHub Release tarball"
+    },
+    {
       "path": "website/public/licenses/caveat.txt",
       "category": "public documentation website",
       "chapters": [
@@ -2892,7 +2900,7 @@
       "chapters": [
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Tag-driven verification, GHCR multi-arch Worker image publishing, and public npm package publishing"
+      "role": "Candidate verification, tag-driven GitHub Release tarball publishing, and GHCR multi-arch Worker distribution"
     }
   ]
 }

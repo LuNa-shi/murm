@@ -4,7 +4,7 @@
 
 Runtime baseline: `9e2804864c9f348e46095aa91f6ddf72fef016f5`; review date: 2026-11-26. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **323 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **324 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -255,7 +255,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [.github/workflows/ci.yml](../../.github/workflows/ci.yml) | Run Core, Trace Viewer and website checks on pull requests and main | [07-run-configuration](07-run-configuration.md), [22-website](22-website.md) | `b30ba43b2f9e7edcb2b712290a7f8c3a44c1a582f57c164fb7f1dbecdac81e13` |
+| [.github/workflows/ci.yml](../../.github/workflows/ci.yml) | Run Core, Trace Viewer and website checks on pull requests and main | [07-run-configuration](07-run-configuration.md), [22-website](22-website.md) | `d73eca7a4e59c20601eaa3f13e848866246104800c0c6a017bd62a632cda4dfa` |
 
 ### development benchmarks (20)
 
@@ -311,7 +311,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [.env.example](../../.env.example) | Nonsecret example environment-variable names | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `98dca3bed17dfd9c30ff2a09b8d0e5bd7c191d4eb022e6479d9351841031c6c9` |
-| [.github/workflows/release.yml](../../.github/workflows/release.yml) | Tag-driven verification, GHCR multi-arch Worker image publishing, and public npm package publishing | [07-run-configuration](07-run-configuration.md) | `004e5e6d8b806ca7b166d9634dd2e26087c4223f79a08267cc739fb5ac7e26b5` |
+| [.github/workflows/release.yml](../../.github/workflows/release.yml) | Candidate verification, tag-driven GitHub Release tarball publishing, and GHCR multi-arch Worker distribution | [07-run-configuration](07-run-configuration.md) | `6bab961c5d52b92e32af48bd2b038705dcc4672b0644e10bc05baf4a19e86441` |
 | [.gitignore](../../.gitignore) | Raw evidence and credential retention boundary in the working tree and npm packlist | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `6b8f64521e5686d00b33aef067df0322ed1a34621cf65abe198b47d715183f39` |
 | [deploy/worker/Dockerfile](../../deploy/worker/Dockerfile) | OpenSandbox agent image recipe containing the worker, Pi package and native shell tools | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [18-peermesh-harness](18-peermesh-harness.md) | `e68edb01ae02e9a998fd9419257b41920b165de78c3898797bb6079d90882cb2` |
 | [deploy/worker/pi-models.json](../../deploy/worker/pi-models.json) | Native Pi compatible-provider catalog with runtime environment interpolation | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `5793995e07dbd632f4e1507fb2d76f3452ca2de9921d693bc8c9e4513598fd85` |
@@ -402,7 +402,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | Optional provider manifest, schemas, help and documentation declarations | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/services/mathlib-search/SKILL.md](../../src/services/mathlib-search/SKILL.md) | Repository-owned full Mathlib tool usage instructions loaded by bundle | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `e7f79c40eed183b5a5bb0568923ec5575d450016dba41ff5a7cef94414e6f27c` |
 
-### public documentation website (37)
+### public documentation website (38)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -412,6 +412,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [website/package-lock.json](../../website/package-lock.json) | Locked site build dependencies and package integrity | [22-website](22-website.md) | `6ab3cb3416996ab755d24e0b4e84d32a3c6d0fec77267979fba12984c794dd98` |
 | [website/package.json](../../website/package.json) | Site dependencies and local development, build and preview entry points | [22-website](22-website.md) | `8b69e5f41f8d247d7a4482e99217839b2550c0d6cf26b714014ea35dd4faafdf` |
 | [website/public/favicon.svg](../../website/public/favicon.svg) | Public site icon | [22-website](22-website.md) | `1a97c80a952d8df1fe59a00dc793fc4420007b65c761eb46e1ef2e3f2e68a451` |
+| [website/public/install.sh](../../website/public/install.sh) | Public CLI installer for the latest GitHub Release tarball | [22-website](22-website.md) | `99b5b3db7a6d5df3e41024567a4e029b358f2f41e7d62df73e382e452b846963` |
 | [website/public/licenses/caveat.txt](../../website/public/licenses/caveat.txt) | Distributed font copyright and license notice | [22-website](22-website.md) | `163a2b400e16916ad3196296c946c526d0efce6baf22a2164269ffc62fb9f671` |
 | [website/public/licenses/departure-mono.txt](../../website/public/licenses/departure-mono.txt) | Distributed font copyright and license notice | [22-website](22-website.md) | `b65e42750f3cb65437a97f4dfd781c58f199259949db2341012be60e32500e83` |
 | [website/public/licenses/inter.txt](../../website/public/licenses/inter.txt) | Distributed font copyright and license notice | [22-website](22-website.md) | `3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345` |

@@ -7,7 +7,7 @@ order: 6
 
 ## Run an ordinary project
 
-Install the CLI globally with `npm install -g --ignore-scripts @luna-shi/murm` (and complete the host setup in [Quickstart](../quickstart.md)), then launch from your project directory. The invocation directory is the default; use `--cwd` to select another project. Supply model and runtime settings via environment variables (`MURM_MODEL_URL`, `MURM_MODEL_TOKEN`, etc.) or `--config`.
+Install the CLI and prepare the host by following [Quickstart](../quickstart.md), then launch from your project directory. The invocation directory is the default; use `--cwd` to select another project. Supply model and runtime settings via environment variables (`MURM_MODEL_URL`, `MURM_MODEL_TOKEN`, etc.) or `--config`.
 
 ```sh
 cd my-project

@@ -25,9 +25,9 @@ If you already have the infrastructure ready, choose your next step:
 
 ## One package, explicit public entry points
 
-Both the CLI and SDK ship in the `@luna-shi/murm` npm package:
+GitHub Release distributes the CLI and SDK in one `@luna-shi/murm` tarball.
 
-Import all public values and types from `@luna-shi/murm`. Configure OpenSandbox with `createSandbox`, reference the matching prebuilt Worker image via `DEFAULT_WORKER_IMAGE`, and manage Agents, Services, files, and cleanup through `createRuntime`. Install directly with `npm install --ignore-scripts @luna-shi/murm`. See the [SDK guide](sdk.md).
+Import all public values and types from `@luna-shi/murm`. Configure OpenSandbox with `createSandbox`, reference the matching prebuilt Worker image via `DEFAULT_WORKER_IMAGE`, and manage Agents, Services, files, and cleanup through `createRuntime`. Install the versioned GitHub Release asset. See the [SDK guide](sdk.md).
 
 ## Explore the collaboration mechanisms
 
