@@ -163,7 +163,8 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
       entry.gateway = new ResponsesBudgetGateway(gatewayOptions);
       const listening = await entry.gateway.start({ host: gatewayConfig.host });
       const hostname = gatewayConfig.advertiseHost.includes(':') ? `[${gatewayConfig.advertiseHost}]` : gatewayConfig.advertiseHost;
-      entry.baseUrl = `http://${hostname}:${listening.port}/v1`;
+      entry.baseUrl = `${(gatewayConfig.publicUrl ?? `http://${hostname}:{port}`)
+        .replaceAll('{port}', String(listening.port)).replace(/\/$/, '')}/v1`;
     }
   } catch (caught) {
     const error = caught as Error & { code?: string };

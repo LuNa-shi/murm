@@ -23,7 +23,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "82dc6607c386bddf40cce797d92fb80bebfa3eb4443f131dc37be147011734ad"
+      "sha256": "20c6f7ae438a69b329b43a696c5b7a6d77ecb7a1e73b5da9f547eda27769556f"
     },
     {
       "path": "src/core/bridge.ts",
@@ -35,11 +35,11 @@
     },
     {
       "path": "src/core/opensandbox-backend.ts",
-      "sha256": "0deb0dddfc15ef9087e979ca27b34f90c8b8fa7f248f0bd3cabc87e408ee7738"
+      "sha256": "476e540c7005ab37a3e6159642e0639779410b9d42864a66f536a8bde6d7102b"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "c97e75bf38c93cdb8d825cf7dd73d35ce607a2c1fd2fa5abb82b2383f6d9b5cf"
+      "sha256": "474480bf3bfa464f950e929cace6bd7924efd69e7b7a01efa915b2f7ae97f836"
     },
     {
       "path": "scripts/codex-app-server-driver.ts",
@@ -47,11 +47,11 @@
     },
     {
       "path": "scripts/local-setup-smoke.ts",
-      "sha256": "d87ff1e1eb89fb85bbd2f4754f3d650ea615708779ff0bbede14a1e4a6c678b5"
+      "sha256": "c6b6cadf7fbfd6a003ba081a8cd1a34418aede01d14959d9f27e706bcca930e6"
     },
     {
       "path": "scripts/local-setup-upstream.ts",
-      "sha256": "01483bed8622e6b646a4641370661e89c01afbdb58cf49aa5362945b7f40f06e"
+      "sha256": "1f2cca17748519c7f1d4b81153e1a206ecefabd4391e9fa5099eede3b798c535"
     },
     {
       "path": "examples/bridge-services/handoff.ts",

@@ -7,7 +7,7 @@ order: 3
 
 murm 应用在可信宿主上运行 Harness。Harness 为一次 Run 创建 Runtime，选择 OpenSandbox 后端，并注册 Agent 可以使用的 Services。每个 Agent 在 Sandbox 中执行；Service 与模型请求经过宿主网关，由网关验证身份并记录执行情况。
 
-当前公开后端是 **OpenSandbox 配合同宿主机的 Linux Docker 隔离**，执行器可选择 Pi 或 Codex。OpenSandbox 提供生命周期和命令传输，本地 provider 仍负责 Docker 网络、磁盘配额与共享工作区挂载。仅配置一个 Lifecycle API URL，并不意味着当前后端支持远程或 Kubernetes 部署。
+默认 Provider 让 Linux Controller 通过 API 连接本地或远端 OpenSandbox，Pi 和 Codex 共用经过鉴权的 Worker 传输。显式选择严格同机 Docker 策略时，会增加本地网络规则、工作区配额和共享挂载。其他 Provider 可从 SDK 根入口接入。
 
 ## 组件边界
 
@@ -89,7 +89,7 @@ murm 应用在可信宿主上运行 Harness。Harness 为一次 Run 创建 Runti
   <div class="dd-zone dd-sandbox">
     <div class="dd-zone-head">
       <span class="dd-zone-title">ISOLATED SANDBOX</span>
-      <span class="dd-zone-sub">OpenSandbox Docker container per Agent · default-deny network</span>
+      <span class="dd-zone-sub">Linux Sandbox per Agent · authenticated control plane</span>
     </div>
     <div class="dd-row-2-arrow">
       <div class="dd-box dd-teal">

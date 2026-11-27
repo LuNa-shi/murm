@@ -1,12 +1,15 @@
 import { fileURLToPath } from 'node:url';
 import {
-  checkLocalHost, checkLocalProvider, ensureLocalProvider, resolveSubagentsEnvironment,
+  checkLinuxHost, checkLocalDocker, checkLocalProvider, checkStrictLocalHost, ensureLocalProvider, resolveLocalEnvironment,
   type DiagnosticCheck,
 } from './local-environment.js';
 import { runLocalSmoke } from './local-setup-smoke.js';
 import { loadLocalProjectConfig } from './local-setup-template.js';
 import { prepareWorkerImage } from './local-setup-worker.js';
+import { selectExecutorDriver } from '../src/core/executor-driver.js';
+import { DEFAULT_WORKER_IMAGE } from '../src/core/worker-image.js';
 import { claimOpenSandboxBackend, createSandbox } from '../src/core/opensandbox-backend.js';
+import type { SandboxConfig } from '../src/core/backend-config.js';
 import type { LocalCommand } from './murm-arguments.js';
 
 const packageRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -17,6 +20,7 @@ type Timing = { id: string; elapsedMs: number; cached?: boolean };
 type Model = { configuration: 'complete' | 'missing' | 'invalid'; verification: 'not-verified' };
 
 function modelState(config: ProjectConfig): Model {
+  if (config.models === undefined) return { configuration: 'missing', verification: 'not-verified' };
   const aliases = new Set([config.rootModel ?? config.model ?? 'default', config.childModel ?? config.model ?? 'default']);
   const routes = [...aliases].map(alias => config.models?.[alias]);
   let configuration: Model['configuration'] = routes.some(route => !route) ? 'invalid' : 'complete';
@@ -36,24 +40,20 @@ function modelState(config: ProjectConfig): Model {
   return { configuration, verification: 'not-verified' };
 }
 
-function checkProjectRuntime(config: ProjectConfig): DiagnosticCheck {
-  if (config.executor === 'codex') return {
-    id: 'config.executor', ok: false, detail: 'Configured doctor currently supports Pi projects.',
-    remedy: 'Use murm doctor for host checks and the installed Subagents example to run with Codex.',
-  };
+function checkProjectRuntime(config: ProjectConfig, sandbox: SandboxConfig): DiagnosticCheck {
   try {
     // The real backend validates every infrastructure field without allocating.
     // Missing model endpoints are reported separately while preparing the host.
-    claimOpenSandboxBackend(createSandbox(config.sandbox), {
+    claimOpenSandboxBackend(createSandbox(sandbox), {
       executor: config.executor, connection: config.connection,
-      models: Object.fromEntries(Object.entries(config.models).map(([alias, route]) => [alias, {
+      models: Object.fromEntries(Object.entries(config.models ?? { default: { provider: 'openai', model: 'gpt-5.4', upstream: { headers: {} } } }).map(([alias, route]) => [alias, {
         ...route, upstream: { ...route.upstream, url: 'http://127.0.0.1/v1/responses' },
       }])),
     });
     return { id: 'config.runtime', ok: true, detail: 'The editable Sandbox and Runtime configuration satisfies the Core startup contract.' };
   } catch {
     return { id: 'config.runtime', ok: false, detail: 'The editable Sandbox and Runtime configuration violates the Core startup contract.',
-      remedy: 'Check Bridge and Gateway addresses, sandbox settings, model aliases and explicit disk quotas in config.js.' };
+      remedy: 'Check endpoint URLs, Bridge and Gateway addresses, resource quantities and the selected isolation policy.' };
   }
 }
 
@@ -76,6 +76,8 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
   const report: {
     command: LocalCommand['command'];
     ok: boolean;
+    mode?: 'existing' | 'local';
+    lifecycleSource?: string;
     infrastructure: 'failed' | 'preflight-passed' | 'ready';
     model?: Model;
     checks: DiagnosticCheck[];
@@ -103,45 +105,81 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
   let provider: Provider | undefined;
   let stage = 'config';
   try {
-    const config = command.command === 'doctor' && command.configPath
+    const config = command.configPath
       ? await loadLocalProjectConfig(command.configPath) : undefined;
-    if (config) {
-      report.model = modelState(config);
-      checks.push(checkProjectRuntime(config));
-    }
+    if (config) report.model = modelState(config);
     if (report.model?.configuration === 'invalid') checks.push({
       id: 'config.models', ok: false, detail: 'An active model alias or Responses endpoint is invalid.',
       remedy: 'Configure every Root and Child model alias with an HTTP(S) endpoint ending in /v1/responses, without embedded credentials.',
     });
     if (checks.some(check => !check.ok)) return report;
-    const environment = await resolveSubagentsEnvironment({
-      ...config?.sandbox,
-      advertiseHost: config?.connection?.modelGateway?.advertiseHost ?? config?.connection?.advertiseHost,
+    let executor;
+    try { executor = selectExecutorDriver(config?.executor ?? process.env.MURM_EXECUTOR).kind; }
+    catch {
+      checks.push({ id: 'config.executor', ok: false, detail: 'Select executor pi or codex.' });
+      return report;
+    }
+    const environment = await resolveLocalEnvironment({
+      ...config?.sandbox, image: config?.image,
+      advertiseHost: config?.connection?.advertiseHost ?? config?.connection?.modelGateway?.advertiseHost,
     });
-    stage = 'host';
-    checks.push(...await timed('host', () => checkLocalHost(environment)));
+    if (config) {
+      const { lifecycleBaseUrl, apiKey, endpointHost } = environment;
+      checks.push(checkProjectRuntime(config, { ...config.sandbox, lifecycleBaseUrl, apiKey, endpointHost }));
+    }
     if (checks.some(check => !check.ok)) return report;
-
-    stage = 'worker';
-    const worker = await timed('worker', () => prepareWorkerImage({
-      packageRoot, requestedImage: config?.image ?? process.env.MURM_SUBAGENTS_IMAGE ?? process.env.MURM_WORKER_IMAGE,
-      install: command.command === 'setup', signal,
-    }));
-    checks.push(...worker.checks);
-    if (worker.image) report.worker = { ...worker.image, source: worker.source };
-
+    const mode = (command.command === 'setup' ? command.mode : undefined) ?? environment.mode;
+    report.mode = mode;
+    report.lifecycleSource = environment.endpointSource;
+    const strict = config?.sandbox?.isolation?.network === 'local-docker' || config?.sandbox?.isolation?.disk?.inodes !== undefined;
+    stage = 'host';
+    checks.push(...checkLinuxHost());
+    if (checks.some(check => !check.ok)) return report;
+    const install = command.command === 'setup';
+    const smoke = install || command.smoke;
+    let advertiseHost = environment.advertiseHost;
+    if (mode === 'local' && smoke) {
+      const docker = await timed('host', checkLocalDocker);
+      checks.push(docker.diagnostic);
+      if (!docker.docker) return report;
+      advertiseHost ??= docker.docker.advertiseHost;
+    }
+    if (strict) {
+      if (!/^(http:\/\/(127\.0\.0\.1|localhost))([:/]|$)/.test(environment.lifecycleBaseUrl)) {
+        checks.push({ id: 'provider.strict', ok: false, detail: 'The selected strict policy requires the Controller and Docker on the same host.',
+          remedy: 'Use local setup for this policy, or select compatible Provider capabilities for the existing service.' });
+        return report;
+      }
+      checks.push(...await timed('strict-host', () => checkStrictLocalHost({ ...environment, advertiseHost })));
+      if (checks.some(check => !check.ok)) return report;
+    }
     stage = 'provider';
-    if (command.command === 'setup' && worker.image) {
+    if (install && mode === 'local') {
       provider = await timed('provider-start', () => ensureLocalProvider(environment, { signal }));
       report.provider = { id: provider.id, created: provider.created, images: provider.images };
     }
-    checks.push(...await timed('provider', () => checkLocalProvider(environment)));
-    if (!worker.image || checks.some(check => !check.ok)) return report;
-    report.infrastructure = 'preflight-passed';
+    const active = provider?.config ?? environment;
+    checks.push(...await timed('provider', () => checkLocalProvider(active, { requireAuth: !strict || mode === 'local' })));
+    if (checks.some(check => !check.ok)) return report;
 
-    if (command.command === 'setup' || command.smoke) {
+    let image = environment.image ?? DEFAULT_WORKER_IMAGE;
+    if (mode === 'local' && smoke) {
+      stage = 'worker';
+      const worker = await timed('worker', () => prepareWorkerImage({
+        packageRoot, requestedImage: environment.image, executor, install, signal,
+      }));
+      checks.push(...worker.checks);
+      if (!worker.image || checks.some(check => !check.ok)) return report;
+      report.worker = { ...worker.image, source: worker.source };
+      image = worker.image.id;
+    }
+    report.infrastructure = 'preflight-passed';
+    if (smoke) {
       stage = 'smoke';
-      report.smoke = await timed('smoke', () => runLocalSmoke({ ...environment, image: worker.image!.id, sandbox: config?.sandbox, connection: config?.connection, signal }));
+      report.smoke = await timed('smoke', () => runLocalSmoke({
+        ...active, image, sandbox: config?.sandbox, connection: config?.connection,
+        advertiseHost, executor, signal,
+      }));
       if (!report.smoke.ok) {
         report.infrastructure = 'failed';
         return report;
@@ -154,9 +192,9 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     // Configuration imports and provider/npm errors can contain credentials.
     const failure: Record<string, [string, string]> = {
       config: ['Could not load the project configuration.', 'Check the trusted config.js and adjacent .env file.'],
-      host: ['Could not complete the host capability checks.', 'Check Docker, host namespace tools and noninteractive helper permissions.'],
+      host: ['Could not complete the host capability checks.', 'Check the installation diagnostics for the selected setup mode.'],
       worker: ['Could not prepare the compatible Worker image.', 'Check local Docker and the configured Worker image.'],
-      provider: ['Could not prepare or verify a compatible OpenSandbox provider.', 'Run murm doctor and check the configured local OpenSandbox service.'],
+      provider: ['Could not prepare or verify a compatible OpenSandbox provider.', 'Run murm doctor to check lifecycle authentication. Ensure the requested endpoint or local port is available.'],
       smoke: ['Could not complete the infrastructure probe.', 'Check the local OpenSandbox service, Worker image and host network.'],
     };
     const [detail, remedy] = failure[stage];

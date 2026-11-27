@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
+import { promisify } from 'node:util';
+import { execFile } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -14,7 +18,7 @@ test('the host bin and checkout entry advertise the same setup command', async (
   assert.equal(manifest.bin.murm, 'dist/scripts/murm.js');
   assert.equal(manifest.bin.swarm, 'dist/scripts/swarm.js');
   const result = execFileSync(process.execPath, [cli, 'setup', '--help'], { encoding: 'utf8' });
-  assert.equal(result.trim(), 'Usage: murm setup');
+  assert.equal(result.trim(), 'Usage: murm setup [--mode existing|local] [--config <module>]');
   assert.equal(execFileSync(setup, ['--help'], { encoding: 'utf8' }), result);
 });
 
@@ -97,20 +101,23 @@ test('doctor classifies invalid active model routes before allocation', async t 
   assert.deepEqual(report.timings, []);
 });
 
-test('configured doctor reports Codex as unsupported by the Pi probe before touching the host', async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'murm-doctor-codex-'));
-  t.after(() => rm(directory, { recursive: true, force: true }));
-  const filename = join(directory, 'config.mjs');
-  await writeFile(filename, `export default {
-    image: 'unused', executor: 'codex',
-    sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1', isolation: { disk: { bytes: 67108864, inodes: 4096 } } },
-    connection: { advertiseHost: '172.17.0.1' },
-    models: { default: { model: 'gpt-6.1-sol', provider: 'openai', upstream: { url: 'https://example.com/v1/responses', headers: {} } } },
-  }`);
-  const result = spawnSync(process.execPath, [cli, 'doctor', '--config', filename, '--smoke'], { encoding: 'utf8' });
-  assert.equal(result.status, 1, result.stderr);
-  const report = JSON.parse(result.stdout);
-  assert.ok(report.checks.some(check => check.id === 'config.executor' && !check.ok), result.stdout);
-  assert.equal(report.smoke, undefined);
-  assert.deepEqual(report.timings, []);
+test('doctor uses the shared lifecycle environment and requires an authenticated existing endpoint without Docker', async t => {
+  const requests: (string | undefined)[] = [];
+  const server = createServer((request, response) => {
+    requests.push(request.headers['open-sandbox-api-key'] as string | undefined);
+    response.writeHead(requests.at(-1) === 'doctor-test-key' ? 200 : 401, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ items: [] }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => server.close());
+  const address = server.address() as { port: number };
+  const { stdout } = await promisify(execFile)(process.execPath, [cli, 'doctor'], {
+    env: { PATH: '/does-not-exist', MURM_LIFECYCLE_URL: `http://127.0.0.1:${address.port}/v1`, MURM_LIFECYCLE_TOKEN: 'doctor-test-key' },
+  });
+  const report = JSON.parse(stdout);
+  assert.equal(report.infrastructure, 'preflight-passed');
+  assert.ok(requests.includes(undefined));
+  assert.ok(requests.includes('doctor-test-key'));
+  assert.doesNotMatch(stdout, /doctor-test-key/);
 });

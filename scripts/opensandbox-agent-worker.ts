@@ -73,7 +73,9 @@ const rpcSubmissions = createRpcSubmissions({ write({ steeringMode, executionEpo
 } });
 
 function authorized(request: IncomingMessage) {
-  return request.headers.authorization === `Bearer ${token}`;
+  const proxyToken = request.headers['x-murm-worker-token'];
+  return proxyToken === undefined ? request.headers.authorization === `Bearer ${token}` :
+    proxyToken === token && request.headers.authorization === undefined;
 }
 
 function send(response: ServerResponse, status: number, body: unknown) {

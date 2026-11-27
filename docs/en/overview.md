@@ -48,6 +48,6 @@ These examples retain their own domain rules and verification criteria. The [com
 
 Use the [API reference](reference/api.md) for method signatures, input receipts, observation, file controls, Service calls, and configuration. Use [Run lifecycle](run-lifecycle.md) to understand when an operation is accepted, when execution settles, and when cleanup is complete. [Types and source map](reference/types.md) links those contracts to their implementation.
 
-The current OpenSandbox backend runs on Linux with same-host rootful Docker. It supports Pi and Codex executors with different capabilities. Run directories contain prompts, model and Service traces, native sessions, and exported files; keep them in private storage. The [architecture](architecture.md) explains the runtime and credential boundaries.
+The Linux Controller connects to local or remote OpenSandbox through its API. It supports Pi and Codex executors with different capabilities. Run directories contain prompts, model and Service traces, native sessions, and exported files; keep them in private storage. The [architecture](architecture.md) explains the runtime and credential boundaries.
 
 The website renders the English and Chinese guides directly from `docs/en/` and `docs/zh/`. The repository's [implementation manual](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/INDEX.md) covers the deeper runtime paths, generated protocol references, and prompt composition.

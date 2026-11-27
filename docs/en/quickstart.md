@@ -1,84 +1,15 @@
 ---
 title: Quickstart
-description: Install host prerequisites, install @luna-shi/murm in one command, and run your first multi-agent Harness via the CLI or TypeScript SDK.
+description: Connect a Linux client to OpenSandbox or prepare a local service, then run a Harness using the CLI or SDK.
 section: GET STARTED
 order: 1
 ---
 
-`murm` distributes its CLI, TypeScript SDK, and built-in Trace Viewer in a single **`@luna-shi/murm`** tarball via GitHub Releases. Once your Linux host prerequisites are ready, you can run a built-in Harness against any project with one command or embed the SDK in your own TypeScript application.
+The `@luna-shi/murm` package contains the CLI, TypeScript SDK and Trace Viewer. Start with a Linux account and Node.js 22.19 or newer. Use the connection path if you already have a compatible OpenSandbox service, or let setup start a local one.
 
-## 1. Prerequisites (execution host)
+## 1. Install murm
 
-The OpenSandbox isolation backend runs on a **single Linux host** (macOS, Docker Desktop, and rootless Docker are not supported) and requires five explicit host components:
-
-| Requirement | Minimum version / profile | Purpose |
-| --- | --- | --- |
-| **Linux kernel** | **Landlock ABI >= 5** (typically Linux 6.10+, `x86_64` or `aarch64`) | Enforces per-Agent filesystem boundaries inside sandboxes |
-| **Node.js & npm** | **Node.js 22.19+** | Runs the `murm` CLI and TypeScript SDK |
-| **Docker Engine** | Local **rootful Docker Engine** (`/var/run/docker.sock`, local `/run/docker.pid` visible) | Runs the OpenSandbox server and isolated Worker containers |
-| **Host utilities** | `python3`, `nftables`, `util-linux`, `coreutils`, `iproute2` | Configures per-sandbox `tmpfs` disk quotas and `nftables` egress policies |
-| **Non-interactive `sudo`** | Passwordless host rules for `unshare`, `nft`, and `mount-agent-workspace.py` | Lets the trusted host isolate sandbox namespaces (Agents remain unprivileged) |
-
-### 1.1 Check your Linux kernel and Node.js
-
-```bash
-# Confirm Node.js >= 22.19.0
-node -v
-
-# Confirm the kernel exposes Landlock ABI >= 5
-python3 -c "import ctypes, platform; assert platform.machine() in ('x86_64', 'aarch64'); abi = ctypes.CDLL(None).syscall(444, 0, 0, 1); print('Landlock ABI:', abi); assert abi >= 5"
-```
-
-### 1.2 Install Docker Engine and host packages (Ubuntu / Debian)
-
-If rootful Docker Engine is not installed yet, follow the [official Docker Engine install guide](https://docs.docker.com/engine/install/), then install the host utilities and grant your user access to `/var/run/docker.sock`:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y python3 nftables util-linux coreutils iproute2
-
-# Allow your user to access /var/run/docker.sock (re-login or run `newgrp docker` afterward)
-sudo usermod -aG docker "$USER"
-docker info --format '{{.OSType}} {{.ServerVersion}}'
-```
-
-### 1.3 Configure least-privilege non-interactive `sudo`
-
-When spawning each Agent sandbox, `murm` applies `tmpfs` workspace quotas and `nftables` egress rules from the **host** so the sandbox can reach only the host Bridge and Model Gateway. After installing `@luna-shi/murm` (Step 2), create `/etc/sudoers.d/murm` with `sudo visudo -f /etc/sudoers.d/murm` (replace `<your-user>` and `<murm-pkg-root>` with your username and `$(npm root -g)/@luna-shi/murm`):
-
-```text
-<your-user> ALL=(root) NOPASSWD: /usr/bin/unshare --mount --net -- /usr/bin/true
-<your-user> ALL=(root) NOPASSWD: /usr/sbin/nft *
-<your-user> ALL=(root) NOPASSWD: /usr/bin/nsenter *
-<your-user> ALL=(root) NOPASSWD: /usr/bin/mount *
-<your-user> ALL=(root) NOPASSWD: /usr/bin/umount *
-<your-user> ALL=(root) NOPASSWD: /usr/bin/python3 -I <murm-pkg-root>/dist/scripts/mount-agent-workspace.py *
-```
-
-Verify both checks exit 0 without prompting for a password:
-
-```bash
-sudo -n /usr/bin/unshare --mount --net -- /usr/bin/true
-sudo -n /usr/sbin/nft -j list tables >/dev/null
-```
-
-## 2. Install `@luna-shi/murm` and prepare OpenSandbox & Worker
-
-Install the CLI globally from the latest GitHub Release:
-
-```bash
-curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
-```
-
-Or use npm directly:
-
-```bash
-npm install -g --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz
-```
-
-### Install a candidate from a checkout
-
-For an unpublished version, run these commands from the murm checkout. Keep the tarball if you also want to install the SDK in a separate project.
+Install the package for the implementation you are testing. When testing a change before release, install its candidate tarball.
 
 ```bash
 npm ci --no-audit --no-fund
@@ -87,60 +18,38 @@ npm pack --pack-destination "$pack_dir"
 npm install -g --ignore-scripts "$pack_dir"/*.tgz
 ```
 
-Run `murm setup` to prepare and verify the local infrastructure:
+Published packages are available on [GitHub Releases](https://github.com/LuNa-shi/murm/releases). Use the documentation for the version you install.
+
+## 2. Prepare or connect to OpenSandbox
+
+### Connect to an existing service
+
+Configure the Lifecycle API and its key. The Controller must reach the advertised data-plane endpoints, and the Worker must reach your Controller's Bridge and Model Gateway. The Controller needs only Node.js and the murm package.
 
 ```bash
-murm setup
+export MURM_LIFECYCLE_URL='https://sandbox.example.net/v1'
+export MURM_ADVERTISE_HOST='controller.internal.example.net'
+# Set MURM_LIFECYCLE_TOKEN from the service operator in your trusted environment.
+murm setup --mode existing
 ```
 
-`murm setup` is transparent — it runs four explicit stages and prints a structured JSON report:
+For non-default routes, put `sandbox.endpointHost` or `sandbox.useServerProxy: true` in an ESM configuration and run `murm setup --mode existing --config ./murm.config.mjs`. The options select either a host override for returned URLs or the provider's server-proxy route. The server-proxy route requires a Worker that supports the proxy token header. Use `connection.bridge.publicUrl` and `connection.modelGateway.publicUrl` for explicit callback origins, including HTTPS. Include `{port}` in each URL template. Any TLS certificates must be trusted by the process that connects to them.
 
-1. **Host preflight**: verifies Linux/Landlock ABI, Node.js, rootful Docker, the Docker bridge gateway IP (default `172.17.0.1`), `nftables`, `unshare`, and passwordless `sudo` rules (you can re-run host checks anytime with `murm doctor`).
-2. **Start local OpenSandbox**: pulls `opensandbox/server:release-1.2.0` and `opensandbox/execd:v1.1.0`, then starts the managed container `murm-opensandbox-8080` using the packaged `deploy/opensandbox/config.toml`, exposing the Lifecycle API on `http://127.0.0.1:8080/v1` with SQLite state in `~/.cache/murm/opensandbox/`.
-3. **Prepare the Worker image**: pulls the prebuilt official image `ghcr.io/luna-shi/murm-worker:0.2.0` (matching the package version), or automatically falls back to building `deploy/worker/Dockerfile` locally under that same tag if offline or developing unreleased changes. The Worker image bundles `opensandbox-agent-worker`, Pi `1.3.0`, Codex CLI `0.172.0`, the `swarm` CLI, `jq`, and the Landlock filesystem policy binary.
-4. **Live sandbox smoke probe**: starts a real sandbox against a loopback mock Responses server to verify execution, Bridge calls, filesystem isolation, and cleanup end to end.
-
-<details>
-<summary>Prefer manual setup? Expand for the exact Docker commands for OpenSandbox and the Worker image</summary>
-
-1. Pull the OpenSandbox images and start the loopback Lifecycle server on `127.0.0.1:8080/v1`:
+### Deploy locally
 
 ```bash
-docker pull opensandbox/execd:v1.1.0
-docker pull opensandbox/server:release-1.2.0
-
-MURM_ROOT="$(npm root -g)/@luna-shi/murm"
-mkdir -p ~/.cache/murm/opensandbox/manual/data
-cp "$MURM_ROOT/deploy/opensandbox/config.toml" ~/.cache/murm/opensandbox/manual/config.toml
-
-docker run -d \
-  --name murm-opensandbox-8080 \
-  --network host \
-  --restart unless-stopped \
-  -e OPENSANDBOX_INSECURE_SERVER=YES \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v ~/.cache/murm/opensandbox/manual/config.toml:/config/config.toml:ro \
-  -v ~/.cache/murm/opensandbox/manual/data:/root/.opensandbox \
-  opensandbox/server:release-1.2.0 --config /config/config.toml
+murm setup --mode local
 ```
 
-2. Pull the prebuilt Worker image (or build it locally from the packaged Dockerfile):
+Setup checks your selected local Docker context, then starts OpenSandbox and verifies its authenticated Lifecycle API before preparing the chosen Worker. It prints distribution-specific installation commands and how to rerun setup if Docker is missing. Installing Docker can require a one-time system administrator action. Access to a rootful Docker socket grants substantial host access. Day-to-day murm runs use OpenSandbox API credentials and have no murm-specific sudoers requirements.
 
-```bash
-# Option 1: Pull the prebuilt official image (recommended)
-docker pull ghcr.io/luna-shi/murm-worker:0.2.0
+The managed service defaults to loopback port 8080. Setup generates an owner-only Lifecycle key when needed, prefers the distributed Worker image, and can build the bundled Worker image locally if needed. A repeat uses the existing managed service and leaves user configuration and unrelated deployments in place. With no `--mode`, an explicit Lifecycle endpoint selects existing mode. The default endpoint selects local mode.
 
-# Option 2: Or build locally (useful when adding custom sandbox tools)
-docker build -f "$MURM_ROOT/deploy/worker/Dockerfile" -t ghcr.io/luna-shi/murm-worker:0.2.0 "$MURM_ROOT"
-```
+`murm doctor` reports configuration and authenticated Lifecycle readiness without allocating a Sandbox. `murm doctor --smoke` exercises the selected real Pi or Codex Worker, authenticated Bridge and model gateway, file I/O, export and deletion. It uses a controlled Responses endpoint. Model validation status is reported separately.
 
-3. Verify the full host, OpenSandbox, and Worker contract:
+### Keep a stricter local policy
 
-```bash
-murm doctor --smoke
-```
-
-</details>
+Carry forward `isolation: { network: 'local-docker', disk: { bytes, inodes } }` if your deployment requires measured workspace quotas, live shared mounts or the local UID network allowlist. The old byte-and-inode form also selects this policy. It relies on the explicitly administered same-host Docker, namespace and Landlock ABI 5+ facilities. The default API policy requires the provider to isolate the Agent and authenticate management operations. It uses verified CPU and memory limits and delegates egress policy to the deployment. Requests for unsupported workspace disk limits, network allowlists or live shared mounts fail with a capability error.
 
 ## 3. Configure your model endpoint
 
@@ -283,7 +192,6 @@ const runtime = await createRuntime({
   sandbox: createSandbox({
     lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
     apiKey: process.env.MURM_LIFECYCLE_TOKEN,
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
   }),
   connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
   models: {

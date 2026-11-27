@@ -52,7 +52,7 @@ The application invokes `gh issue list` with fixed arguments and an explicit ten
 
 The handoff starts two Agents in separate OpenSandbox sandboxes on one Linux host. The writer publishes a value from its seeded file through the Messages Service. The reader retrieves it and writes `received.txt`. The host verifies the exported bytes against the value it seeded.
 
-Prepare local Docker, the OpenSandbox Lifecycle API, and the compatible Worker image (see [Quickstart](../../docs/en/quickstart.md) or run `murm setup`), plus an OpenAI Responses-compatible model endpoint. Use Node.js 22.19 or newer. Set these variables before running:
+Connect to an OpenSandbox Lifecycle API with a compatible Worker image (see [Quickstart](../../docs/en/quickstart.md) or run `murm setup`), plus an OpenAI Responses-compatible model endpoint. Use Node.js 22.19 or newer. Set these variables before running:
 
 ```sh
 export MURM_MODEL_URL='https://api.openai.com/v1/responses'

@@ -1,19 +1,18 @@
-import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { promisify } from 'node:util';
 import { createRuntime, createSandbox, ServiceRegistry, type RuntimeEvent, type CloseReceipt,
   type PendingCleanup, type Runtime, type RuntimeConnectionOptions, type SandboxConfig } from '../src/core/index.js';
 import { createLocalSetupUpstream, SETUP_MARKER, SETUP_READ, SETUP_RESULT } from './local-setup-upstream.js';
 
 export interface LocalSmokeOptions {
   image: string;
+  executor?: 'pi' | 'codex';
   lifecycleBaseUrl: string;
   endpointHost?: string;
   apiKey?: string;
-  advertiseHost: string;
+  advertiseHost?: string;
   signal?: AbortSignal;
   timeoutMs?: number;
   sandbox?: SandboxConfig;
@@ -33,7 +32,6 @@ export interface LocalSmokeReceipt {
   checks: LocalSmokeCheck[];
   cleanup: 'complete' | 'pending';
   pending: readonly PendingCleanup[];
-  containerIds: string[];
   interrupted: boolean;
   durationMs: number;
 }
@@ -41,14 +39,6 @@ export interface LocalSmokeReceipt {
 export const SETUP_PROFILE_PROMPT = 'Perform the fixed local infrastructure probe.';
 export const SETUP_FOLLOW_UP = 'Verify the local Service, write and read setup-smoke.txt, and return the confirmed result.';
 
-const execute = promisify(execFile);
-
-async function ownedContainers(runtimeId: string) {
-  const hash = createHash('sha256').update(runtimeId).digest('hex').slice(0, 48);
-  const { stdout } = await execute('docker', ['ps', '--all', '--quiet', '--no-trunc',
-    '--filter', `label=runtime_key=r-${hash}`], { timeout: 5000, maxBuffer: 1024 * 1024 });
-  return stdout.trim().split('\n').filter(Boolean);
-}
 
 function untilAborted<T>(task: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) {
@@ -66,7 +56,7 @@ function untilAborted<T>(task: Promise<T>, signal: AbortSignal): Promise<T> {
 export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSmokeReceipt> {
   const startedAt = Date.now();
   const receipt: LocalSmokeReceipt = { ok: false, checks: [], cleanup: 'complete', pending: [],
-    containerIds: [], interrupted: false, durationMs: 0 };
+    interrupted: false, durationMs: 0 };
   const signal = AbortSignal.any([...(options.signal ? [options.signal] : []), AbortSignal.timeout(options.timeoutMs ?? 100_000)]);
   let runtime: Runtime | undefined;
   let upstream: Awaited<ReturnType<typeof createLocalSetupUpstream>> | undefined;
@@ -78,7 +68,7 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
   try {
     signal.throwIfAborted();
     temporary = await mkdtemp(join(tmpdir(), 'murm-setup-smoke-'));
-    upstream = await createLocalSetupUpstream();
+    upstream = await createLocalSetupUpstream(options.executor);
     signal.throwIfAborted();
     const services = new ServiceRegistry();
     let serviceCaller: string | undefined;
@@ -93,14 +83,15 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
     runtime = await createRuntime({
       sandbox: createSandbox({
         commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' },
-        isolation: { disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } }, ...options.sandbox,
+        ...options.sandbox,
         lifecycleBaseUrl: options.lifecycleBaseUrl, endpointHost: options.endpointHost, apiKey: options.apiKey,
       }),
+      executor: options.executor,
       connection: {
         advertiseHost: options.advertiseHost, ...options.connection,
         modelGateway: { requestTimeoutMs: 20_000, maxOutputTokens: 128, ...options.connection?.modelGateway },
       },
-      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
+      models: { default: { provider: options.executor === 'codex' ? 'openai' : 'kimi_proxy', model: options.executor === 'codex' ? 'gpt-5.4' : 'k3', upstream: { url: upstream.url, headers: {} } } },
       profiles: { probe: { prompt: SETUP_PROFILE_PROMPT, model: 'default', image: options.image,
         writable: true, services: { 'setup-probe': ['verify'] } } },
       services, maxAgents: 1, outputDir: temporary,
@@ -112,7 +103,7 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
       collect: { paths: ['.'], includeGit: false, maxBytes: 4096, required: true } }), signal);
     signal.throwIfAborted();
     if (agent.status !== 'idle') throw new Error('worker');
-    passed(stage, 'Host reached the real Worker with murm-core-v1 and Pi 1.3.0 startup checks');
+    passed(stage, `Controller reached the real Worker and verified its ${options.executor ?? 'pi'} version`);
     stage = 'agent-bridge-gateway';
     let settle!: (event: RuntimeEvent) => void;
     const settled = new Promise<RuntimeEvent>(resolve => { settle = resolve; });
@@ -128,8 +119,8 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
     }
     const observed = upstream.receipt();
     if (observed.failure || observed.arrivals !== 3 || !observed.verifiedRead) throw new Error('gateway');
-    passed(stage, 'Real Pi called the authenticated Bridge Service and local controlled Responses gateway');
-    passed('file-write-read', 'Worker Bash wrote the fixed file and the Pi read tool returned its exact contents');
+    passed(stage, `Real ${options.executor ?? 'pi'} called the authenticated Bridge Service and controlled Responses gateway`);
+    passed('file-write-read', 'Executor tools wrote and read the saved bytes');
     signal.throwIfAborted();
     stage = 'artifact-export';
     const stopped = await untilAborted(runtime.stop(agent.id, { timeoutMs: 25_000 }), signal);
@@ -137,11 +128,13 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
     const directory = stopped.artifacts.find(path => basename(path) === 'files');
     if (!directory || await readFile(join(directory, SETUP_READ), 'utf8') !== `${SETUP_MARKER}\n`) throw new Error('export');
     passed(stage, 'Stopped Agent export delivered the independently checked file bytes to the host');
-  } catch {
+  } catch (error) {
     receipt.interrupted = options.signal?.aborted ?? false;
     receipt.checks.push({ id: stage, status: 'failed', message: signal.aborted
       ? (receipt.interrupted ? 'Local probe interrupted' : 'Local probe deadline exceeded')
-      : 'Local infrastructure probe failed at this stage. Check doctor diagnostics and retained resource identities' });
+      : error instanceof Error && 'code' in error && typeof error.code === 'string' && /^[A-Z_]+$/.test(error.code)
+        ? `Infrastructure probe failed (${error.code}). Check the configured Worker and network routes.`
+        : 'Infrastructure probe failed. Check doctor diagnostics and retained resource identities' });
   } finally {
     unsubscribe?.();
     if (runtime) {
@@ -153,15 +146,8 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
         receipt.cleanup = 'pending';
         receipt.pending = [{ kind: 'backend', id: runtime.id, action: 'close' }];
       }
-      try {
-        receipt.containerIds = await ownedContainers(runtime.id);
-        if (receipt.containerIds.length) receipt.cleanup = 'pending';
-      } catch {
-        receipt.cleanup = 'pending';
-        receipt.pending = [...receipt.pending, { kind: 'backend', id: runtime.id, action: 'delete-sandbox' }];
-      }
       receipt.checks.push({ id: 'sandbox-deletion', status: receipt.cleanup === 'complete' ? 'passed' : 'failed',
-        message: receipt.cleanup === 'complete' ? 'Runtime close and Docker confirm that this probe has no remaining Sandbox'
+        message: receipt.cleanup === 'complete' ? 'Runtime close confirmed deletion through the Sandbox Provider API'
           : 'Probe cleanup is pending. Retained runtime, Sandbox and evidence identities require recovery' });
     }
     try { await upstream?.close(); } catch {

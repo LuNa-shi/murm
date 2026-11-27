@@ -118,7 +118,7 @@ try {
 } finally {await bridge.close()}
 
 const root='@luna-shi/murm';
-assert.deepEqual(Object.keys(await import(root)).sort(), ['DEFAULT_WORKER_IMAGE','ServiceRegistry','createHttpJsonAdapter','createInProcessAdapter','createRuntime','createSandbox','getExecutorCapabilities']);
+assert.deepEqual(Object.keys(await import(root)).sort(), ['DEFAULT_WORKER_IMAGE','ServiceRegistry','createHttpJsonAdapter','createInProcessAdapter','createRuntime','createSandbox','getExecutorCapabilities','resolveSandboxConnection']);
 assert.ok(import.meta.resolve(root).startsWith(new URL('./node_modules/',import.meta.url).href));
 assert.ok(loaded.has(import.meta.resolve(root).slice(packageRoot.length)));
 for (const old of ['/services','/backends/opensandbox','/backends/pi-opensandbox','/package.json']) {

@@ -19,7 +19,7 @@ npm install --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/mur
 
 With npm 12, use `npm ci --allow-remote=root` when reinstalling this dependency from a lockfile.
 
-Before running live sandboxes, follow the [Quickstart host prerequisites](./quickstart.md#1-prerequisites-execution-host) to prepare Linux, Docker, OpenSandbox, and the Worker image (or run `murm setup` and verify with `murm doctor`).
+Follow [Quickstart](./quickstart.md) to connect to an existing OpenSandbox or prepare a local service. Verify the selected Worker with `murm doctor --smoke`.
 
 The [management API](reference/api.md#runtime-management) lets you extend the Profile and Service directory and update Agent Service permissions while a Run is open.
 
@@ -46,7 +46,6 @@ import {
 const runtime = await createRuntime({
   sandbox: createSandbox({
     lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
   }),
   connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
   models: {
@@ -144,3 +143,9 @@ Build a Service when Agents need a shared task pool, mailbox, result store, chec
 - Exclusive task claiming: combine domain leases with the trusted file APIs (`runtime.files`).
 
 See the [API reference](./reference/api.md) for exact signatures and recovery semantics, [Types](./reference/types.md) for public declarations, and [Run lifecycle](./run-lifecycle.md) for resource ownership and cleanup order.
+
+## Connect a different Sandbox Provider
+
+`createSandbox({ provider, timeoutSeconds })` accepts a trusted implementation of the root-exported `SandboxProvider` contract. It supplies a stable ID and version, a readiness check, and an image-specific `SandboxManager` for allocation, Worker transport, snapshots, export, stop and deletion. Claim shared-workspace or allowlist capabilities only when the Provider enforces them. Implement uncertain-create and delete reconciliation under the original resource key. The host remains responsible for configuring the Runtime's executor, model routes, Profiles and Services.
+
+Use `resolveSandboxConnection` in project configuration to share the CLI's endpoint, credentials, callback host and image resolution. Explicit fields take precedence over generic `MURM_*` variables, scoped example aliases and upstream fallbacks. Keep the returned connection object in trusted configuration, since it can contain a Lifecycle key.

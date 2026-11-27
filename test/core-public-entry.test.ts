@@ -5,7 +5,7 @@ import * as core from '@luna-shi/murm';
 test('the Core package has one narrow public entry point', async () => {
   assert.deepEqual(Object.keys(core).sort(), [
     'DEFAULT_WORKER_IMAGE', 'ServiceRegistry', 'createHttpJsonAdapter', 'createInProcessAdapter',
-    'createRuntime', 'createSandbox', 'getExecutorCapabilities',
+    'createRuntime', 'createSandbox', 'getExecutorCapabilities', 'resolveSandboxConnection',
   ]);
   assert.match(core.DEFAULT_WORKER_IMAGE, /^ghcr\.io\/luna-shi\/murm-worker:\d+\.\d+\.\d+/);
   for (const name of ['services', 'backends/opensandbox', 'backends/pi-opensandbox']) {
@@ -47,4 +47,96 @@ test('Runtime exposes a live state getter through onEvent and one input method',
     offReject();
     offCorrupt();
   }
+});
+
+test('a packed SDK consumer can own a Sandbox through a custom Provider', { timeout: 45_000 }, async t => {
+  const { mkdtemp, rm, writeFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const { execute, preparePackageArchive } = await import('./fixtures/notes-installed-package.js');
+  const directory = await mkdtemp(join(tmpdir(), 'murm-provider-consumer-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const { archive } = await preparePackageArchive(directory);
+  await writeFile(join(directory, 'package.json'), '{"type":"module","private":true}');
+  await execute('npm', ['install', '--offline', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', archive], { cwd: directory });
+  await writeFile(join(directory, 'provider.mjs'), `
+    import assert from 'node:assert/strict';
+    import { createRuntime, createSandbox, ServiceRegistry } from '@luna-shi/murm';
+    const calls = [];
+    const provider = {
+      id: 'external', version: '1.0.0', capabilities: {},
+      async preflight() { calls.push('preflight'); },
+      openManager(image) {
+        assert.equal(image, 'my-worker');
+        let agentId, stopped = false;
+        return {
+          async ensureExecution(request) {
+            agentId = request.agentId;
+            assert.equal(request.executionId, agentId);
+            request.onCreateDispatch({ timeout_seconds: request.timeoutSeconds });
+            request.onCreated({ sandbox_id: 'external-sandbox' });
+            calls.push('allocate');
+            return { sandbox_id: 'external-sandbox' };
+          },
+          async agentVersions() { return { piVersion: '1.3.0' }; },
+          async startAgent(options) {
+            options.beforeAgentStart();
+            assert.equal(options.writable, true);
+            calls.push('start');
+          },
+          async agentRpc(id, { type }) {
+            assert.equal(id, agentId);
+            return { response: { success: true, command: type } };
+          },
+          coreResource(id) {
+            assert.equal(id, agentId);
+            return { creation: 'created', sandboxId: 'external-sandbox', resourceKey: agentId, executionStopped: stopped };
+          },
+          async stopAgent(id, _signal, { preserveWorker }) {
+            assert.equal(id, agentId);
+            assert.equal(preserveWorker, true);
+            calls.push('stop');
+            stopped = true;
+            return true;
+          },
+          async *collectCoreSession(id) {
+            assert.equal(id, agentId);
+            assert.ok(stopped);
+            calls.push('archive');
+            yield { type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 };
+          },
+          async stopExecution(id) {
+            assert.equal(id, agentId);
+            assert.ok(stopped);
+            calls.push('delete');
+            return true;
+          },
+        };
+      },
+      async prepareSandbox(input) {
+        assert.equal(input.sandboxId, 'external-sandbox');
+        input.assertOpen();
+        calls.push('prepare');
+      },
+    };
+    const runtime = await createRuntime({
+      sandbox: createSandbox({ provider }), connection: { advertiseHost: '192.0.2.1' },
+      models: { default: { provider: 'kimi_proxy', model: 'k3',
+        upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
+      profiles: { worker: { image: 'my-worker', model: 'default', writable: true, services: {} } },
+      services: new ServiceRegistry(), maxAgents: 1, outputDir: './runs',
+    });
+    try {
+      const agent = await runtime.spawn({ profile: 'worker', requestId: 'external-spawn' });
+      assert.equal(agent.status, 'idle');
+      assert.equal((await runtime.stop(agent.id)).cleanup, 'complete');
+    } finally {
+      assert.equal((await runtime.close()).cleanup, 'complete');
+    }
+    assert.deepEqual(calls, ['preflight', 'allocate', 'prepare', 'start', 'stop', 'archive', 'delete']);
+  `);
+  const env = { ...process.env };
+  delete env.NODE_PATH;
+  delete env.NODE_OPTIONS;
+  await execute(process.execPath, ['provider.mjs'], { cwd: directory, env, timeout: 20_000 });
 });

@@ -32,6 +32,7 @@ const sourcePaths = [
   'src/services/mathlib-search/service.json', 'src/errors.ts',
   'src/core/index.ts', 'src/core/types.ts', 'src/core/services.ts', 'src/core/service-types.ts',
   'src/core/opensandbox-backend.ts', 'src/core/executor-driver.ts', 'src/core/backend-config.ts',
+  'src/core/opensandbox-provider.ts', 'src/core/sandbox-connection.ts',
 ];
 const sourceRows = await Promise.all(sourcePaths.map(async (path: any) => `| [${path}](../../${path}) | \`${hash(await readFile(resolve(root, path)))}\` |`));
 let api = '## Generated API inventory\n\nThis section is generated from executable exports and checked against the source hashes below. It contains declarations; call-time behavior and known differences are explained in [Services](04-services.md), [Mission and Task](03-mission-task.md), and [Workspace](05-workspace-continuity.md).\n\n| Source | SHA-256 |\n|---|---|\n' + sourceRows.join('\n') + '\n';

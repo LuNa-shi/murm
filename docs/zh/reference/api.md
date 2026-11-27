@@ -9,7 +9,7 @@ order: 12
 
 ## 公共包入口
 
-所有类型和七个运行时值从 `@luna-shi/murm` 导入。运行时值为 `createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`。
+所有类型和七个运行时值从 `@luna-shi/murm` 导入。运行时值为 `createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `resolveSandboxConnection`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`。
 
 ## Runtime 管理
 

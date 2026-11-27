@@ -9,7 +9,7 @@ This reference describes the public interfaces of **`@luna-shi/murm` `0.2.0`** i
 
 ## Package entry points
 
-Import all public types and the seven runtime values from `@luna-shi/murm`. The values are `createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`.
+Import all public types and the public runtime values from `@luna-shi/murm`. The values are `createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `resolveSandboxConnection`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`.
 
 ## Runtime management
 
@@ -43,7 +43,7 @@ const runtime = await createRuntime({
 });
 ```
 
-`createSandbox` captures OpenSandbox deployment settings. Its `kind` defaults to `opensandbox`. Supply the Lifecycle URL and explicit disk byte and inode limits. The optional `timeoutSeconds` defaults to 3600 and is a safe integer of at least 60. `connection.advertiseHost` supplies a container-reachable non-loopback host IPv4 address for both endpoints. Use `connection.bridge` or `connection.modelGateway` for explicit overrides. Provider credentials stay on the trusted host.
+`createSandbox` captures OpenSandbox deployment settings. Its `kind` defaults to `opensandbox`. Supply a Lifecycle URL and authenticated connection, or provide `{ provider }` for an external implementation. The optional `timeoutSeconds` defaults to 3600 and is a safe integer of at least 60. Advertise a hostname or IP that Workers can reach. The Bridge and Model Gateway also accept explicit HTTP(S) URL templates. Choose strict local isolation explicitly when its quotas or shared mounts are required. Provider credentials stay on the trusted host.
 
 Runtime owns `executor` (Pi by default), `models`, `connection`, `profiles`, `services`, `maxAgents`, and `outputDir`. `getExecutorCapabilities('pi' | 'codex')` is static. Both executors support steer, followUp, conditional input, queued input cancellation and explicit `all`. Pi also supports Context Fork and `one-at-a-time`. Use model URLs ending in `/v1/responses`. Set `connection.modelGateway.maxOutputTokens: null` to preserve the executor's parameters.
 

@@ -7,7 +7,7 @@ order: 3
 
 A murm application runs its Harness on the trusted host. The Harness creates one Runtime for a Run, selects an OpenSandbox backend, and registers the Services its Agents may use. Each Agent executes inside a Sandbox; its Service and model requests cross host gateways that enforce caller identity and record execution.
 
-The current public backend is **OpenSandbox with same-host Linux Docker isolation**, using either Pi or Codex. OpenSandbox provides lifecycle and command transport. Local provider code also configures Docker networking, disk quotas, and shared workspace mounts. A Lifecycle API URL alone does not make the current backend a remote or Kubernetes deployment.
+The default Provider connects a Linux Controller to local or remote OpenSandbox. Pi and Codex use the same authenticated Worker transport. An explicitly selected same-host Docker policy adds local network rules, workspace quotas and shared mounts. A package can supply another Provider through the root SDK.
 
 ## Component boundaries
 
@@ -89,7 +89,7 @@ The current public backend is **OpenSandbox with same-host Linux Docker isolatio
   <div class="dd-zone dd-sandbox">
     <div class="dd-zone-head">
       <span class="dd-zone-title">ISOLATED SANDBOX</span>
-      <span class="dd-zone-sub">OpenSandbox Docker container per Agent · default-deny network</span>
+      <span class="dd-zone-sub">Linux Sandbox per Agent · authenticated control plane</span>
     </div>
     <div class="dd-row-2-arrow">
       <div class="dd-box dd-teal">

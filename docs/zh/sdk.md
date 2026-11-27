@@ -19,7 +19,7 @@ npm install --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/mur
 
 在 npm 12 下从锁文件重新安装此依赖时，使用 `npm ci --allow-remote=root`。
 
-运行前请先按[快速上手的环境准备步骤](./quickstart.md#1-环境准备宿主机前置依赖)完成 Linux 宿主机依赖、OpenSandbox 控制面和 Worker 镜像准备（可通过 `murm setup` 一键完成，并用 `murm doctor` 检查）。
+在 Linux 上运行前，按[快速上手](./quickstart.md#2-连接或部署-opensandbox)连接已有 OpenSandbox 或引导本地部署，并使用 `murm doctor --smoke` 检查 Worker 和回连。
 
 运行期间还可通过[管理 API](reference/api.md#runtime-管理)动态扩展 Profile 和 Service 目录，并调整 Agent 的 Service 权限。
 
@@ -46,7 +46,6 @@ import {
 const runtime = await createRuntime({
   sandbox: createSandbox({
     lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
   }),
   connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
   models: {
@@ -144,3 +143,9 @@ try {
 - 独占任务认领：结合领域租约与受控文件 API（`runtime.files`）。
 
 继续查阅 [API 与配置参考](./reference/api.md)、[类型定义与源码映射](./reference/types.md) 以及 [Run 生命周期](./run-lifecycle.md)。
+
+## 接入自定义 Sandbox Provider
+
+`createSandbox({ provider, timeoutSeconds })` 接收由可信宿主加载的 `SandboxProvider`。实现从包根入口导入接口，声明稳定的 ID、版本与能力，提供就绪检查，并为给定镜像交付 `SandboxManager`，处理分配、Worker 通信、快照、导出、停止与删除。创建或删除回执丢失时，使用原资源键核对。执行器、模型、Profile 和 Service 仍由 Runtime 配置。
+
+项目可通过 `resolveSandboxConnection` 使用 CLI 的解析逻辑。显式字段优先，其次是通用 `MURM_*`、当前示例的别名和上游兼容变量。返回值可能带 Lifecycle 密钥，请仅在可信宿主配置中使用。
