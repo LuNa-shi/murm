@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { AgentAccessPolicy, FileTree, Profile, Runtime } from '@murm/core';
-import { ServiceRegistry, type JsonValue, type ServiceManifest, type ServiceRegistration } from '@murm/core';
+import type { AgentAccessPolicy, FileTree, Profile, Runtime } from '@luna-shi/murm';
+import { ServiceRegistry, type JsonValue, type ServiceManifest, type ServiceRegistration } from '@luna-shi/murm';
 import { seededCheckoutInstruction } from '../shared/project-git.js';
 import { dynamicBoardPermissions, type createBoard } from './board.js';
 import type { createLeadWorkerGit, prepareLeadWorkerGit } from './git.js';

@@ -13,8 +13,8 @@ test('real Pi receives the permitted Service directory and Bash can call its adv
   skip: process.env.MURM_CORE_REAL_TEST !== '1' && 'Set MURM_CORE_REAL_TEST=1 with a verified local OpenSandbox image',
   timeout: 180_000,
 }, async t => {
-  const { createRuntime } = await import('@murm/core');
-  const { ServiceRegistry } = await import('@murm/core');
+  const { createRuntime } = await import('@luna-shi/murm');
+  const { ServiceRegistry } = await import('@luna-shi/murm');
 
   const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.ok(image, 'MURM_CORE_TEST_IMAGE must identify a verified Pi/OpenSandbox image');

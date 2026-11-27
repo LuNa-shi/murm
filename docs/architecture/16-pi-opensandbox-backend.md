@@ -1,6 +1,6 @@
 # OpenSandbox backend and execution drivers
 
-Use `createSandbox` from `@murm/core` for OpenSandbox deployment settings. Runtime owns executor selection and the model, Bridge and Gateway settings. Pi is the default executor.
+Use `createSandbox` from `@luna-shi/murm` for OpenSandbox deployment settings. Runtime owns executor selection and the model, Bridge and Gateway settings. Pi is the default executor.
 
 `getExecutorCapabilities(executor)` returns immutable information without allocating a sandbox. Use it before granting an executor-specific feature.
 

@@ -27,6 +27,7 @@ interface ModelOptions {
 interface ModelAlias {
   model: ResolvedOpenSandboxBackendConfig['models'][string];
   catalogResource?: Readonly<{ path: string; sha256: string }>;
+  catalogContent?: string;
   ledgerPath?: string;
   db?: DatabaseSync;
   gateway?: ResponsesBudgetGateway;
@@ -94,8 +95,9 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
   const aliases = new Map<string, ModelAlias>();
   for (const [alias, model] of Object.entries(structuredClone(config.models))) {
     if (!alias || !model?.upstream) throw invalid('Each model alias requires a configured upstream');
-    const catalogResource = await driver.modelCatalogResource?.(model).catch(error => { throw invalid(error.message); });
-    aliases.set(alias, { model, catalogResource: catalogResource && Object.freeze(catalogResource) });
+    const selection = await driver.modelCatalogResource?.(model).catch(error => { throw invalid(error.message); });
+    const catalogResource = selection ? Object.freeze({ path: selection.path, sha256: selection.sha256 }) : undefined;
+    aliases.set(alias, { model, catalogResource, ...(selection?.content !== undefined ? { catalogContent: selection.content } : {}) });
   }
   const directory = join(outputDir, 'model-access');
   await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -175,6 +177,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
       secretEnvironment: Record<string, string>;
       baseUrl: string;
       catalogResource?: Readonly<{ path: string; sha256: string }>;
+      catalogContent?: string;
     } {
       const entry = aliases.get(alias);
       if (!entry || !liveAgent(agentId, alias) || tokens.has(agentId)) {
@@ -183,7 +186,12 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
       }
       const token = entry.gateway!.issueToken({ runtimeId, agentId });
       tokens.set(agentId, { token, gateway: entry.gateway! });
-      return { ...driver.credentials(entry.model, entry.baseUrl!, token), baseUrl: entry.baseUrl!, catalogResource: entry.catalogResource };
+      return {
+        ...driver.credentials(entry.model, entry.baseUrl!, token),
+        baseUrl: entry.baseUrl!,
+        catalogResource: entry.catalogResource,
+        ...(entry.catalogContent !== undefined ? { catalogContent: entry.catalogContent } : {}),
+      };
     },
     revokeAgent(agentId: string) {
       const binding = tokens.get(agentId);

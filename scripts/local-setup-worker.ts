@@ -1,13 +1,13 @@
 import { fileProtocol } from './core-file-seed.js';
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { DEFAULT_WORKER_IMAGE, WORKER_PI_VERSION, WORKER_PROTOCOL } from '../src/core/worker-image.js';
 import type { DiagnosticCheck } from './local-environment.js';
 
 const exec = promisify(execFile);
-const protocol = 'murm-core-v1';
-const pi = '1.3.0';
+const protocol = WORKER_PROTOCOL;
+const pi = WORKER_PI_VERSION;
 const imageIdPattern = /^sha256:[a-f0-9]{64}$/;
 const imageReferencePattern = /^[a-z0-9][a-z0-9._/@:+-]{0,254}$/i;
 
@@ -18,7 +18,7 @@ type Image = {
 };
 export type WorkerImage = { reference: string; id: string; digests: string[]; protocol: string; pi: string };
 type WorkerInspection = { checks: DiagnosticCheck[]; image?: WorkerImage; absent: boolean };
-const remedy = 'Run murm setup to build the package Worker, or set MURM_SUBAGENTS_IMAGE to a compatible local image.';
+const remedy = `Run murm setup to pull or build ${DEFAULT_WORKER_IMAGE}, or set MURM_WORKER_IMAGE (or MURM_SUBAGENTS_IMAGE) to a compatible local image.`;
 
 async function inspectWorker(reference: string, signal: AbortSignal): Promise<WorkerInspection> {
   if (!imageReferencePattern.test(reference)) return {
@@ -61,24 +61,40 @@ async function inspectWorker(reference: string, signal: AbortSignal): Promise<Wo
 export async function prepareWorkerImage({ packageRoot, requestedImage, install, signal }: {
   packageRoot: string; requestedImage?: string; install: boolean; signal: AbortSignal;
 }): Promise<WorkerInspection & { reference: string; source: 'cache' | 'build' | 'pull' }> {
-  const manifest: { version: string } = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
-  const reference = requestedImage ?? `murm-worker:${manifest.version}-${protocol}-${fileProtocol}-pi-${pi}`;
+  const reference = requestedImage ?? DEFAULT_WORKER_IMAGE;
   const cached = await inspectWorker(reference, signal);
   if (!install || cached.image || !cached.absent) return { ...cached, reference, source: 'cache' };
 
-  const source = requestedImage ? 'pull' : 'build';
   if (requestedImage && imageIdPattern.test(requestedImage)) return { ...cached, reference, source: 'cache' };
-  const args = requestedImage ? ['pull', '--', reference] : [
-    'build', '--file', join(packageRoot, 'deploy/worker/Dockerfile'), '--tag', reference, packageRoot,
-  ];
+  if (requestedImage) {
+    try {
+      await exec('docker', ['pull', '--', reference], { signal, timeout: 15 * 60_000, maxBuffer: 12 * 1024 * 1024 });
+    } catch {
+      signal.throwIfAborted();
+      return { ...cached, reference, source: 'pull', checks: [{ id: 'worker-pull', ok: false,
+        detail: 'Docker could not pull the Worker image.',
+        remedy: 'Check the requested image reference and registry access, or import the compatible Worker image locally.' }] };
+    }
+    return { ...(await inspectWorker(reference, signal)), reference, source: 'pull' };
+  }
+
+  // Prefer the prebuilt official GHCR image for fast onboarding; fall back to a local build when unavailable.
   try {
-    await exec('docker', args, { signal, timeout: 15 * 60_000, maxBuffer: 12 * 1024 * 1024 });
+    await exec('docker', ['pull', '--', reference], { signal, timeout: 10 * 60_000, maxBuffer: 12 * 1024 * 1024 });
+    const pulled = await inspectWorker(reference, signal);
+    if (pulled.image) return { ...pulled, reference, source: 'pull' };
   } catch {
     signal.throwIfAborted();
-    return { ...cached, reference, source, checks: [{ id: `worker-${source}`, ok: false,
-      detail: `Docker could not ${source} the Worker image.`, remedy: source === 'build'
-        ? 'Run docker build -f deploy/worker/Dockerfile . in the package or checkout to inspect the build failure.'
-        : 'Check the requested image reference and registry access, or import the compatible Worker image locally.' }] };
   }
-  return { ...(await inspectWorker(reference, signal)), reference, source };
+
+  try {
+    await exec('docker', ['build', '--file', join(packageRoot, 'deploy/worker/Dockerfile'), '--tag', reference, packageRoot],
+      { signal, timeout: 15 * 60_000, maxBuffer: 12 * 1024 * 1024 });
+  } catch {
+    signal.throwIfAborted();
+    return { ...cached, reference, source: 'build', checks: [{ id: 'worker-build', ok: false,
+      detail: 'Docker could not build the Worker image.',
+      remedy: `Run docker build -f deploy/worker/Dockerfile -t ${reference} . in the package or checkout to inspect the build failure.` }] };
+  }
+  return { ...(await inspectWorker(reference, signal)), reference, source: 'build' };
 }

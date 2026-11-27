@@ -7,8 +7,8 @@ import { access, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
-import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core';
+import { createRuntime } from '@luna-shi/murm';
+import { ServiceRegistry } from '@luna-shi/murm';
 
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';

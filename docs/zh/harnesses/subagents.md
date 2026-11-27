@@ -16,7 +16,7 @@ Subagents 将 prompt 发给 Root，并为 Root 和每个 Child 安装固定的�
 
 **Subagents** 建模了一套层级协作团队：由主 Agent（`/root`）拆解目标、递归派生命名子 Agent（最多 `maxDepth` 层）、通过消息实时协同并最终整合交付。源码：[examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents)。
 
-宿主统一从 `@murm/core` 导入公开 SDK。 `createSubagentsHarness` 是示例源码。安装步骤见 [SDK 指南](../sdk.md)。
+宿主统一从 `@luna-shi/murm` 导入公开 SDK。 `createSubagentsHarness` 是示例源码。安装步骤见 [SDK 指南](../sdk.md)。
 
 ## 1. 注册的 Service（`collaboration`）
 
@@ -162,4 +162,4 @@ try {
 - 入口与交互 CLI：[examples/subagents/main.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/main.ts)
 - 控制器、邮箱与中断恢复：[examples/subagents/controller.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/controller.ts)
 - `collaboration` Service Manifest：[examples/subagents/collaboration-service.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/collaboration-service.ts)
-- 运行说明与实验记录：[examples/subagents/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md) · [ProgramBench `fd` 实验报告](https://github.com/LuNa-shi/murm/blob/main/docs/experiments/EXP-20261125-10-issue199-fd.md)
+- 运行说明与验证指南：[examples/subagents/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md)

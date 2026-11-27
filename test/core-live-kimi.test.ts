@@ -48,8 +48,8 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
     errors: receipt.errors?.map(error => ({ code: error.code, retryable: error.retryable })),
   };
   try {
-    const { createRuntime } = await import('@murm/core');
-    const { ServiceRegistry } = await import('@murm/core');
+    const { createRuntime } = await import('@luna-shi/murm');
+    const { ServiceRegistry } = await import('@luna-shi/murm');
 
     let upstreamHeaders;
     try { upstreamHeaders = JSON.parse(process.env.MURM_CORE_LIVE_UPSTREAM_HEADERS_JSON ?? '{}'); }

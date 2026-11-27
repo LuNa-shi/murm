@@ -11,8 +11,8 @@ const payload = { 'bin/sample': { encoding: 'base64', data: 'AP+A', mode: 0o755 
 
 async function openHarness(t, hooks) {
   const provider = await createLifecycleProvider(t, hooks);
-  const { createRuntime } = await import('@murm/core');
-  const { ServiceRegistry } = await import('@murm/core');
+  const { createRuntime } = await import('@luna-shi/murm');
+  const { ServiceRegistry } = await import('@luna-shi/murm');
 
   const outputDir = await mkdtemp(join(tmpdir(), 'core-file-controls-'));
   const runtime = await createRuntime({ ...runtimeSettings({

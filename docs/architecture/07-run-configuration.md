@@ -52,7 +52,7 @@ Developers can [run Subagents directly from the checkout](../../examples/subagen
 
 Setup resolves the repository or installed Core package root. When it needs to build the Worker, it uses [`deploy/worker/Dockerfile`](../../deploy/worker/Dockerfile) with that root as the Docker build context. Local OpenSandbox startup reads [`deploy/opensandbox/config.toml`](../../deploy/opensandbox/config.toml) and substitutes the configured local port. The optional project initializer reads the editable JavaScript templates from `scripts/local-setup/templates/` under the same root. Builds copy deployment assets into `dist/deploy/` for compiled code and tests, and the package includes the root Docker build inputs and raw project templates.
 
-The host binary dispatches local preparation independently of the optional Trace Viewer. The `trace` subcommand loads `@murm/trace-viewer/command` when that package is installed. The Core dependency tree does not include the Viewer.
+The host binary dispatches local preparation independently of the optional Trace Viewer. The `trace` subcommand loads `@luna-shi/murm-trace-viewer/command` when that package is installed. The Core dependency tree does not include the Viewer.
 
 ### Host checks and checkout preparation
 
@@ -104,7 +104,7 @@ The shipped `.env.example` lists host variables consumed by the Notes configurat
 | `dist/scripts/mathlib-search-service.js` | Optional HTTP search over configured upstream or mounted source. [Services](04-services.md#6-optional-mathlib-search) |
 | `murm trace --root <runs-dir> --port 8787` | Standalone browser viewer for saved and active Core Runs. [Trace Viewer](06-observability-experiments.md) |
 
-Use the `@murm/core` root entry. Runtime's `executor` defaults to `pi`. Select `codex` explicitly when needed and query static capabilities with `getExecutorCapabilities(executor)`.
+Use the `@luna-shi/murm` root entry. Runtime's `executor` defaults to `pi`. Select `codex` explicitly when needed and query static capabilities with `getExecutorCapabilities(executor)`.
 
 ## Startup, input and shutdown
 
@@ -116,7 +116,7 @@ The foreground host installs signal handling before loading its trusted configur
 
 Core writes records under the configured output directory and Runtime ID. Evidence, Runtime report, Harness report and required Agent artifacts have distinct locations and failure handling. Result inspection requires the expected Runtime ID and checks saved report identity. An absent report, unknown stop or pending cleanup retains that state in the projection. A configured Harness redactor removes its credential values before normal reports are saved or returned.
 
-The root `/experiments/` and `/reports/` ignore rules cover private raw evidence and local reports. npm uses that boundary through its Git ignore packlist fallback, including unreadable local facility volumes. Historical tracked inputs and reports are preserved at the fixed research revision. Committed `docs/experiments/` contains version-bound summaries.
+The root `/experiments/` and `/reports/` ignore rules cover private raw evidence and local reports. npm uses that boundary through its Git ignore packlist fallback, including unreadable local facility volumes. Historical tracked inputs and reports are preserved in Git history rather than the public docs tree.
 
 ## Optional Services and Trace Viewer
 

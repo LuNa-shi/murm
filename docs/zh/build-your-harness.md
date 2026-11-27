@@ -54,7 +54,7 @@ Harness 是使用 SDK 构建的应用。它决定谁来工作、Agent 如何共�
 下面是交接示例中完整的 [`messages.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/messages.ts)：
 
 ```ts
-import { createHttpJsonAdapter, createInProcessAdapter, type ServiceRegistration } from '@murm/core';
+import { createHttpJsonAdapter, createInProcessAdapter, type ServiceRegistration } from '@luna-shi/murm';
 
 const key = { type: 'string', minLength: 1, maxLength: 64 };
 const text = { type: 'string', minLength: 1, maxLength: 2048 };
@@ -119,7 +119,7 @@ export function createMessageService(remote?: { url: string; token: string }): S
 writer 与 reader 使用同一个 Service，但具有不同权限：
 
 ```ts
-import type { Profile } from '@murm/core';
+import type { Profile } from '@luna-shi/murm';
 
 export function handoffProfiles(image: string): Record<string, Profile> {
   return {

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry, type CollectionSpec,
-  type CreateRuntimeOptions, type FileTree, type Runtime, type SandboxConfig, type SpawnOptions } from '@murm/core';
+  type CreateRuntimeOptions, type FileTree, type Runtime, type SandboxConfig, type SpawnOptions } from '@luna-shi/murm';
 import { collaborationOperations, createCollaborationService } from './collaboration-service.js';
 import { createSubagentsController } from './controller.js';
 import { childPrompt, rootPrompt } from './prompts.js';

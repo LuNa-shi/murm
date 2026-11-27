@@ -117,9 +117,9 @@ The current public backend is **OpenSandbox with same-host Linux Docker isolatio
 | Layer | Owns | Public entry point |
 | --- | --- | --- |
 | Harness | Roles, collaboration policy, Service state, work deadlines, and business verification | Your application code |
-| Core Runtime | Agent identities and capacity, input receipts, observation, file operations, and cleanup | `@murm/core` |
-| Service integration | Manifest validation, adapters, and operation registration | `@murm/core` |
-| OpenSandbox backend | Executor selection, Sandbox configuration, and supported execution capabilities | `@murm/core` |
+| Core Runtime | Agent identities and capacity, input receipts, observation, file operations, and cleanup | `@luna-shi/murm` |
+| Service integration | Manifest validation, adapters, and operation registration | `@luna-shi/murm` |
+| OpenSandbox backend | Executor selection, Sandbox configuration, and supported execution capabilities | `@luna-shi/murm` |
 | External facilities | Independent databases, HTTP services, Git/chat servers, and their deployment | Application or facility owner |
 
 Use `createSandbox` to capture OpenSandbox settings. Each Runtime selects its executor and owns its host connections and model configuration.

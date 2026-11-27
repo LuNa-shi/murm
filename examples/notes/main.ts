@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createRuntime, createSandbox, createInProcessAdapter, ServiceRegistry } from '@murm/core';
+import { createRuntime, createSandbox, createInProcessAdapter, ServiceRegistry } from '@luna-shi/murm';
 import { runInput } from './run-input.js';
 import { runWithReport } from './run-report.js';
 

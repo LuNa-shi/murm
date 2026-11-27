@@ -13,7 +13,7 @@ const projectUsage = [
 export const murmUsage = [
   'Usage: murm                         Start an interactive session in the current project',
   projectUsage, setupUsage, initUsage, doctorUsage,
-  'Usage: murm trace --root <runs-dir> [--port 8787] (requires @murm/trace-viewer)',
+  'Usage: murm trace --root <runs-dir> [--port 8787] (requires @luna-shi/murm-trace-viewer)',
 ].join('\n');
 
 export type LocalCommand =

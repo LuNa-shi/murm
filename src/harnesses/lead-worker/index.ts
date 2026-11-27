@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core';
+import { createRuntime } from '@luna-shi/murm';
+import { ServiceRegistry } from '@luna-shi/murm';
 import { createOwnedResources } from '../peermesh/resources.js';
 import { seededCheckoutInstruction } from '../shared/project-git.js';
 import { runInput } from '../shared/run-input.js';

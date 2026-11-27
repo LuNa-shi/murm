@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createSandbox } from '@murm/core';
+import { createSandbox } from '@luna-shi/murm';
 import { runLeadWorker } from '../../src/harnesses/lead-worker/index.js';
 import { dynamicOrders } from './dynamic-orders.js';
 

@@ -12,7 +12,7 @@ Each peer receives the captured files and uses the prompt as the question in eve
 After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
 
 
-The host imports only from `@murm/core` for Runtime, Sandbox and Service author APIs. See the [SDK guide](../../docs/en/sdk.md) for configuration and resource ownership.
+The host imports only from `@luna-shi/murm` for Runtime, Sandbox and Service author APIs. See the [SDK guide](../../docs/en/sdk.md) for configuration and resource ownership.
 
 The package is currently private and distributed as a checkout-built tarball. Install checkout dependencies with `npm ci` first. TypeScript sources compile with `npm run build` into `dist/`; `npm pack` builds JavaScript and declarations before archiving.
 
@@ -27,14 +27,14 @@ npm pack "$repo" --pack-destination "$consumer"
 cd "$consumer"
 npm init -y
 npm pkg set type=module
-npm install --omit=dev --ignore-scripts ./murm-core-0.2.0.tgz
-cp node_modules/@murm/core/dist/examples/substrate/config.js ./config.js
+npm install --omit=dev --ignore-scripts ./luna-shi-murm-0.2.0.tgz
+cp node_modules/@luna-shi/murm/dist/examples/substrate/config.js ./config.js
 ```
 
 Run the shipped host in its installed package directory and edit the copied `config.js` in the consumer root. The host imports the shipped Harness and saved-result reader using package-relative paths; the Harness itself uses public Core and Services. Keep `main.js` in its installed location if you edit the host policy. These shipped Harness files are not additional package exports.
 
 ```sh
-node node_modules/@murm/core/dist/examples/substrate/main.js --help
+node node_modules/@luna-shi/murm/dist/examples/substrate/main.js --help
 ```
 
 Set `MURM_SUBSTRATE_RUN` to a fresh lowercase alphanumeric/hyphen identifier (up to 64 characters), `MURM_SUBSTRATE_IMAGE` to your immutable Worker image ID, and `MURM_SUBSTRATE_MODEL_URL` to the exact Kimi K3 `/v1/responses` endpoint. Set `MURM_SUBSTRATE_MODEL_TOKEN` if it needs bearer authentication. `MURM_SUBSTRATE_HOST` defaults to `172.17.0.1`; choose the guest-reachable host IPv4 address. The config also reads optional lifecycle URL, token and endpoint-host variables. Tokens stay in host backend configuration; never include them in the question or contribution text.
@@ -42,7 +42,7 @@ Set `MURM_SUBSTRATE_RUN` to a fresh lowercase alphanumeric/hyphen identifier (up
 Edit the copied `config.js` question and limits, then launch from the consumer root:
 
 ```sh
-node node_modules/@murm/core/dist/examples/substrate/main.js \
+node node_modules/@luna-shi/murm/dist/examples/substrate/main.js \
   ./config.js > substrate-result.json
 ```
 
@@ -57,7 +57,7 @@ Read saved receipts without importing model configuration or contacting a runnin
 ```sh
 runtime_id=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("substrate-result.json","utf8")).runtimeId)')
 run_dir=$(node -e 'console.log(require("path").dirname(JSON.parse(require("fs").readFileSync("substrate-result.json","utf8")).reportPath))')
-node node_modules/@murm/core/dist/examples/substrate/main.js \
+node node_modules/@luna-shi/murm/dist/examples/substrate/main.js \
   --result "$run_dir" --runtime-id "$runtime_id"
 ```
 
@@ -83,7 +83,7 @@ elan toolchain install leanprover/lean4:v4.28.0
 From a consumer directory containing the installed murm tarball, set `MURM_FATE_PROJECT` to that workspace and `MURM_FATE_LEAN` to the installed Lean toolchain directory. Set `MURM_SUBSTRATE_RUN` to a fresh ID, `MURM_SUBSTRATE_IMAGE` to the reviewed worker image, and `MURM_SUBSTRATE_MODEL_URL` and `MURM_SUBSTRATE_MODEL_TOKEN` to the approved K3 endpoint and credential. The model URL includes its Responses route. Optional lifecycle settings are listed in the generic example above. `MURM_SUBSTRATE_OUTPUT` defaults to `./experiments/substrate-fate`.
 
 ```sh
-example=node_modules/@murm/core/dist/examples/substrate
+example=node_modules/@luna-shi/murm/dist/examples/substrate
 node "$example/main.js" --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN"
 node "$example/main.js" --fate-matrix "$example/fate-config.js"
 node "$example/main.js" --fate-rescore "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" \

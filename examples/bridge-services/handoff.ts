@@ -3,8 +3,8 @@ import { addAbortListener } from 'node:events';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry } from '@murm/core';
-import type { CloseReceipt, FileTree, Runtime, RuntimeEvent } from '@murm/core';
+import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry } from '@luna-shi/murm';
+import type { CloseReceipt, FileTree, Runtime, RuntimeEvent } from '@luna-shi/murm';
 import { handoffConfig, type HandoffConfig } from './handoff-config.js';
 import { createMessageService } from './messages.js';
 

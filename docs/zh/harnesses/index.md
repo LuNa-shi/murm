@@ -7,7 +7,7 @@ order: 6
 
 ## 在普通项目中运行
 
-用 `npm install --global /path/to/murm-core-0.2.0.tgz` 将候选 CLI 加入 PATH，然后在项目目录选择 Harness。默认使用启动命令时的当前目录，也可以传入 `--cwd`。运行配置只提供 Sandbox、镜像、模型、Service、并发和期限等设置。
+通过 `npm install -g --ignore-scripts @luna-shi/murm` 安装 CLI（并按[快速上手](../quickstart.md)完成宿主机与 `murm setup` 准备），然后在项目目录直接选择 Harness 运行。默认使用启动命令时的当前目录，也可以传入 `--cwd`。运行配置支持环境变量（如 `MURM_MODEL_URL`、`MURM_MODEL_TOKEN`）或通过 `--config` 指定模块。
 
 ```sh
 cd my-project
@@ -18,7 +18,7 @@ murm --harness subagents --prompt "修复解析器并补充测试"
 
 Harness 在 murm Runtime 周围定义协作策略：启动哪些 Agent、允许它们调用哪些 Service、如何记录公共工作，以及什么时候结束运行。仓库实现了五种不同策略。它们复用 Core 的生命周期、隔离、输入投递与观察能力，协作规则由宿主代码和 Service 实现。
 
-如果你想把 murm 嵌入自己的程序，先阅读 [SDK 指南](../sdk.md)。下面的 Harness 是可修改的仓库实现和示例，工厂函数没有作为额外的 `@murm/core` 包入口导出。TaskPool 还组合了仓库现有的 Mission、Task、Material 和 Workspace 存储；其余四种机制提供独立示例启动器。
+如果你想把 murm 嵌入自己的程序，先阅读 [SDK 指南](../sdk.md)。下面的 Harness 是可修改的仓库实现和示例，工厂函数没有作为额外的 `@luna-shi/murm` 包入口导出。TaskPool 还组合了仓库现有的 Mission、Task、Material 和 Workspace 存储；其余四种机制提供独立示例启动器。
 
 ## 比较五种机制
 

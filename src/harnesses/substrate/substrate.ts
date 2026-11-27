@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { ServiceRegistry, createInProcessAdapter } from '@murm/core';
+import { ServiceRegistry, createInProcessAdapter } from '@luna-shi/murm';
 
 const error = (code: any, message: any) => Object.assign(new Error(message), { code });
 const hash = (value: any) => createHash('sha256').update(value).digest('hex');

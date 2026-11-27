@@ -11,7 +11,7 @@ order: 0
 
 ## 从一次完整运行开始
 
-按照 [快速上手](quickstart.md) 运行 TypeScript Messages 交接示例：writer 通过 Service 发布一个值，reader 读取它并写入文件，宿主程序核对导出文件的字节并保存收尾报告。这个例子同时展示 SDK 调用、可观察的协作过程和结果验收。
+按照 [快速上手](quickstart.md) 完成宿主机环境准备、通过 `npm install -g --ignore-scripts @luna-shi/murm` 安装包，并用 CLI 运行内置 Harness，或在自己的 TypeScript 项目中嵌入 SDK 跑通一次双 Agent Service 交接。
 
 如果运行环境已经准备好，可以直接选择下一步：
 
@@ -25,9 +25,9 @@ order: 0
 
 ## 一个包，明确的公开入口
 
-SDK 的包名是 `@murm/core`。下面是同一个包中的导入路径：
+SDK 和 CLI 统一通过 npm 包 `@luna-shi/murm` 发布：
 
-公开值和类型统一从 `@murm/core` 导入。使用 `createSandbox` 设置 OpenSandbox，使用 `createRuntime` 管理 Agent、Service、文件与清理。当前包通过 checkout 或 `npm pack` tarball 安装。详见 [SDK 指南](sdk.md)。
+公开值和类型统一从 `@luna-shi/murm` 导入。使用 `createSandbox` 设置 OpenSandbox，使用 `DEFAULT_WORKER_IMAGE` 引用与版本匹配的官方 Worker 镜像，使用 `createRuntime` 管理 Agent、Service、文件与清理。直接通过 `npm install --ignore-scripts @luna-shi/murm` 安装，详见 [SDK 指南](sdk.md)。
 
 ## 理解不同的协作机制
 

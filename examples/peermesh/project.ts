@@ -1,4 +1,4 @@
-import { createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@murm/core';
+import { createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@luna-shi/murm';
 import { addAbortListener } from 'node:events';
 import { runPeerMeshTeam } from '../../src/harnesses/peermesh/team.js';
 import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';

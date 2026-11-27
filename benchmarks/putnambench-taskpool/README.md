@@ -18,7 +18,7 @@ The trusted checker configuration uses the same settings as the lock command and
 
 ## Run the registered benchmark
 
-Build the Worker from the clean, pinned implementation, then record its immutable image ID and the checker lock in the [experiment registry](../../docs/experiments/INDEX.md). The registry entry uses `**REGISTERED` status, links #200 and pins the implementation commit. The operator supplies K3 credentials through `PI_KIMI_PROXY_BASE_URL` and `PI_KIMI_PROXY_API_KEY`. An equivalent local Pi catalog can supply the model configuration through `MURM_PI_MODELS_FILE`, which defaults to `~/.pi/agent/models.json`. The local sandbox settings use `MURM_SANDBOX_LIFECYCLE_URL`, `MURM_SANDBOX_ENDPOINT_HOST`, `MURM_SANDBOX_ADVERTISE_HOST` and the optional `MURM_SANDBOX_API_KEY`.
+Build the Worker from the clean, pinned implementation, then record its immutable image ID and the checker lock in your local experiment registry (under `docs/experiments/INDEX.md` if running the gated launcher). The registry entry uses `**REGISTERED` status, links #200 and pins the implementation commit. The operator supplies K3 credentials through `PI_KIMI_PROXY_BASE_URL` and `PI_KIMI_PROXY_API_KEY`. An equivalent local Pi catalog can supply the model configuration through `MURM_PI_MODELS_FILE`, which defaults to `~/.pi/agent/models.json`. The local sandbox settings use `MURM_SANDBOX_LIFECYCLE_URL`, `MURM_SANDBOX_ENDPOINT_HOST`, `MURM_SANDBOX_ADVERTISE_HOST` and the optional `MURM_SANDBOX_API_KEY`.
 
 ```sh
 docker build --label org.opencontainers.image.revision="$(git rev-parse HEAD)" \

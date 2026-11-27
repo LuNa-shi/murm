@@ -1,4 +1,4 @@
-import { createInProcessAdapter, type ServiceManifest, type ServiceRequest, type JsonValue } from '@murm/core';
+import { createInProcessAdapter, type ServiceManifest, type ServiceRequest, type JsonValue } from '@luna-shi/murm';
 
 const object = (properties: Record<string, unknown>, required: string[] = []) => ({
   type: 'object', properties, required, additionalProperties: false,

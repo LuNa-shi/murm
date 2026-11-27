@@ -5,9 +5,9 @@ section: REFERENCE
 order: 13
 ---
 
-The excerpts below cover the main public type families in `@murm/core` `0.2.0`. The complete declarations live in [Core types](https://github.com/LuNa-shi/murm/blob/main/src/core/types.ts), [Service types](https://github.com/LuNa-shi/murm/blob/main/src/core/service-types.ts) and [backend configuration](https://github.com/LuNa-shi/murm/blob/main/src/core/backend-config.ts). For a complete running program, start with [the SDK guide](../sdk.md).
+The excerpts below cover the main public type families in `@luna-shi/murm` `0.2.0`. The complete declarations live in [Core types](https://github.com/LuNa-shi/murm/blob/main/src/core/types.ts), [Service types](https://github.com/LuNa-shi/murm/blob/main/src/core/service-types.ts) and [backend configuration](https://github.com/LuNa-shi/murm/blob/main/src/core/backend-config.ts). For a complete running program, start with [the SDK guide](../sdk.md).
 
-Import public types from `@murm/core`. The declarations cover Runtime, files, receipts, Sandbox and the Service author boundary.
+Import public types from `@luna-shi/murm`. The declarations cover Runtime, files, receipts, Sandbox and the Service author boundary.
 
 ## Runtime, Profile, FileTree and events
 

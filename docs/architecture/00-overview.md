@@ -28,7 +28,7 @@ flowchart TD
 | Service adapter | The named operation's implementation and domain state, in process or behind a configured external endpoint. | Agent resource lifecycle unless explicitly delegated by a Harness. |
 | Model gateway | Host-owned model routing, credentials, access policy and traces. | Service manifests or task completion. |
 
-The public package entry is `@murm/core`. It supplies Sandbox and Runtime assembly, Service author interfaces and public types. The [Core chapter](15-core-runtime.md) describes each contract.
+The public package entry is `@luna-shi/murm`. It supplies Sandbox and Runtime assembly, Service author interfaces and public types. The [Core chapter](15-core-runtime.md) describes each contract.
 
 ## One complete Run
 
@@ -78,6 +78,6 @@ The retained domain Runtime and TaskPool-specific mechanisms are documented in c
 
 ## Current implementation and evidence
 
-This manual follows the source inventory in [source-map.json](source-map.json). Generated references reproduce prompt, Service, storage and type declarations; they do not prove every branch has been executed. Issues and PRs preserve acceptance evidence, while [experiments](../experiments/INDEX.md) retain the settings and results of their own revisions.
+This manual follows the source inventory in [source-map.json](source-map.json). Generated references reproduce prompt, Service, storage and type declarations; they do not prove every branch has been executed. Issues and PRs preserve acceptance evidence for specific revisions.
 
 The [known boundaries](09-known-boundaries.md) belong to the current contract. The [dynamic Lead-Worker design](../designs/dynamic-lead-worker.md) remains a future extension tracked by its Issue; its registration and access APIs are not available in this Runtime.

@@ -3,13 +3,13 @@ import { pathToFileURL } from 'node:url';
 import { isFateBenchmark } from './fate-checker.js';
 
 export async function runSubstrateExample(config: any, signal: any) {
-  const { createSandbox } = await import('@murm/core');
+  const { createSandbox } = await import('@luna-shi/murm');
   const { runSubstrate } = await import('../../src/harnesses/substrate/index.js');
   return runSubstrate({ ...config, sandbox: createSandbox(config.sandbox) }, signal);
 }
 
 export async function runFateExample(config: any, signal: AbortSignal) {
-  const { createSandbox } = await import('@murm/core');
+  const { createSandbox } = await import('@luna-shi/murm');
   const selected = config.models[config.model ?? 'default'];
   const supportedModel = (selected?.provider === 'kimi_proxy' && selected.model === 'k3') ||
     (selected?.provider === 'gpt_proxy' && selected.model === 'gpt-6.1-sol');

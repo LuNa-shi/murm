@@ -8,8 +8,8 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
-import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core';
+import { createRuntime } from '@luna-shi/murm';
+import { ServiceRegistry } from '@luna-shi/murm';
 
 import { createMessageService } from '../examples/bridge-services/messages.js';
 import { createGhIssuesService } from '../examples/bridge-services/gh-issues.js';

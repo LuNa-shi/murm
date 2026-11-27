@@ -1,7 +1,9 @@
 {
-  "name": "@murm/core",
+  "name": "@luna-shi/murm",
   "version": "0.2.0",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT",
   "type": "module",
   "description": "A local-first runtime for durable, checkable agent swarm tasks.",

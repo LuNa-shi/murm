@@ -12,7 +12,7 @@ PeerMesh creates a shared project repository and issue from the directory and pr
 After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
 
 
-This example composes Core with a peer router, Board, chat and Git Services. The team and router factories are repository modules; they are not extra `@murm/core` package exports. See the [mechanism guide](../../docs/en/harnesses/peermesh.md) and [SDK guide](../../docs/en/sdk.md) to adapt the policy.
+This example composes Core with a peer router, Board, chat and Git Services. The team and router factories are repository modules; they are not extra `@luna-shi/murm` package exports. See the [mechanism guide](../../docs/en/harnesses/peermesh.md) and [SDK guide](../../docs/en/sdk.md) to adapt the policy.
 
 TypeScript sources compile with `npm run build` into `dist/`. The package is currently private and consumed as a checkout-built tarball; `npm pack` builds the JavaScript and declarations before archiving.
 
@@ -31,13 +31,13 @@ The foreground CLI gives every peer the same project issue. The peers start auto
 Build a tarball with `npm pack` after installing dependencies in the checkout, then install it in a fresh directory. Replace the archive path below with the archive you built.
 
 ```sh
-archive=/absolute/path/to/murm-core-0.2.0.tgz
+archive=/absolute/path/to/luna-shi-murm-0.2.0.tgz
 consumer=$(mktemp -d)
 cd "$consumer"
 npm init -y
 npm pkg set type=module
 npm install --omit=dev --ignore-scripts "$archive"
-package=node_modules/@murm/core
+package=node_modules/@luna-shi/murm
 node "$package/dist/scripts/run-harness.js" --help
 ```
 

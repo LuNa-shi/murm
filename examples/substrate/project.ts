@@ -1,4 +1,4 @@
-import { createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@murm/core';
+import { createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@luna-shi/murm';
 import { runSubstrate } from '../../src/harnesses/substrate/index.js';
 import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
 import { ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';

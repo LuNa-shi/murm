@@ -15,7 +15,7 @@ test('installed Notes and subagents CLIs preserve cancellation received during c
   for (const mode of ['notes', 'subagents']) {
     if (mode === 'subagents') {
       for (const name of ['main', 'controller', 'collaboration-service', 'prompts']) {
-        await copyFile(join(installed.directory, 'node_modules/@murm/core/dist/examples/subagents', `${name}.js`), join(installed.directory, `${name}.js`));
+        await copyFile(join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/subagents', `${name}.js`), join(installed.directory, `${name}.js`));
       }
     }
     const outputDir = join(installed.directory, `${mode}-cancelled`);
@@ -59,7 +59,7 @@ import {registerHooks} from 'node:module';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {writeFile} from 'node:fs/promises';
-const packageRoot=new URL('./node_modules/@murm/core/',import.meta.url).href;
+const packageRoot=new URL('./node_modules/@luna-shi/murm/',import.meta.url).href;
 const loaded=new Set();
 const hooks=registerHooks({load(url,context,nextLoad) {
  const result=nextLoad(url,context);
@@ -68,14 +68,14 @@ const hooks=registerHooks({load(url,context,nextLoad) {
 }});
 let createRuntime,ServiceRegistry,createSandbox,getExecutorCapabilities;
 try {
- ({createRuntime,ServiceRegistry,createSandbox,getExecutorCapabilities}=await import('@murm/core'));
+ ({createRuntime,ServiceRegistry,createSandbox,getExecutorCapabilities}=await import('@luna-shi/murm'));
 } finally {hooks.deregister()}
 const domainRoots=['dist/src/task/','dist/src/context/','dist/src/judge/','dist/examples/taskpool/'];
 assert.deepEqual([...loaded].filter(path=>path==='dist/src/agent/agent-contract.js'||domainRoots.some(root=>path.startsWith(root))),[],
  'Public Core imports must load independently of flat Task, Mission and role contracts');
 const {runNotesHarness,createNotes,fixedFact}=await import('./main.mjs');
-const {createCoreBridge}=await import('./node_modules/@murm/core/dist/src/core/bridge.js');
-const {snapshotServiceRegistry}=await import('./node_modules/@murm/core/dist/src/core/services.js');
+const {createCoreBridge}=await import('./node_modules/@luna-shi/murm/dist/src/core/bridge.js');
+const {snapshotServiceRegistry}=await import('./node_modules/@luna-shi/murm/dist/src/core/services.js');
 const notes=createNotes();
 const agents={writer:{profile:'writer',status:'idle',services:{notes:['put']}},reader:{profile:'reader',status:'idle',services:{notes:['get']}}};
 const bridge=await createCoreBridge({runtimeId:'notes-package',configuration:{host:'127.0.0.1',publicUrl:'http://127.0.0.1:{port}'},getAgent:id=>agents[id]??null,registrations:snapshotServiceRegistry(notes.services)});
@@ -83,7 +83,7 @@ try {
  const run=promisify(execFile);
  const cli=async(agent,...args)=>{
   const credentials=bridge.credentialsForAgent(agent);
-  return run(process.execPath,['./node_modules/@murm/core/dist/scripts/swarm.js',...args],{env:{...process.env,...credentials.environment,...credentials.secretEnvironment},timeout:5000});
+  return run(process.execPath,['./node_modules/@luna-shi/murm/dist/scripts/swarm.js',...args],{env:{...process.env,...credentials.environment,...credentials.secretEnvironment},timeout:5000});
  };
  const rejected=async(code,...args)=>assert.rejects(cli(...args),error=>{assert.equal(JSON.parse(error.stderr).code,code);return true});
  const key='core-service-boundary'; const original=JSON.stringify(fixedFact);
@@ -113,7 +113,7 @@ try {
  assert.deepEqual(notes.records.get(key),record); assert.equal(notes.records.size,1); assert.equal(notes.reads.length,1);
 } finally {await bridge.close()}
 
-const root='@murm/core';
+const root='@luna-shi/murm';
 assert.deepEqual(Object.keys(await import(root)).sort(), ['ServiceRegistry','createHttpJsonAdapter','createInProcessAdapter','createRuntime','createSandbox','getExecutorCapabilities']);
 assert.ok(import.meta.resolve(root).startsWith(new URL('./node_modules/',import.meta.url).href));
 assert.ok(loaded.has(import.meta.resolve(root).slice(packageRoot.length)));
@@ -141,10 +141,10 @@ console.log(JSON.stringify({resolved:true,closed:true,cancelled:true}));
   }));
   const consumer = `
 import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter,
-  type Runtime, type RuntimeEvent, type RuntimeFiles, type SandboxConfig, type FileTree } from '@murm/core';
+  type Runtime, type RuntimeEvent, type RuntimeFiles, type SandboxConfig, type FileTree } from '@luna-shi/murm';
 type Assert<T extends true> = T;
 type Same<A, B> = [A, B] extends [B, A] ? true : false;
-type CoreExports = Assert<Same<keyof typeof import('@murm/core'), 'createRuntime' | 'createSandbox' | 'getExecutorCapabilities' |
+type CoreExports = Assert<Same<keyof typeof import('@luna-shi/murm'), 'createRuntime' | 'createSandbox' | 'getExecutorCapabilities' |
   'ServiceRegistry' | 'createInProcessAdapter' | 'createHttpJsonAdapter'>>;
 const config: SandboxConfig = {
   lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
@@ -191,7 +191,7 @@ await runtime.close();
   const compilerOptions = { cwd: installed.directory, env: installed.env, timeout: 30_000 };
   const typed = await execute(process.execPath, [compiler, '--project', 'tsconfig.json', '--pretty', 'false', '--listFiles'], compilerOptions);
   for (const declaration of ['index.d.ts', 'types.d.ts', 'service-types.d.ts', 'backend-config.d.ts']) {
-    assert.ok(typed.stdout.split('\n').includes(join(installed.directory, 'node_modules/@murm/core/dist/src/core', declaration)));
+    assert.ok(typed.stdout.split('\n').includes(join(installed.directory, 'node_modules/@luna-shi/murm/dist/src/core', declaration)));
   }
   await writeFile(join(installed.directory, 'consumer.mts'), consumer.replaceAll(/\/\/ @ts-expect-error[^\n]*\n/g, ''));
   await assert.rejects(execute(process.execPath, [compiler, '--project', 'tsconfig.json', '--pretty', 'false'], compilerOptions), error => {

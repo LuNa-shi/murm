@@ -12,7 +12,7 @@ Subagents sends the prompt to Root and supplies the captured project to Root and
 After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
 
 
-This example builds a recursive team using the public Runtime, Services and OpenSandbox SDK entries. Its `createSubagentsHarness` factory and `collaboration` controller are local example modules, not exports from `@murm/core`. See the [mechanism guide](../../docs/en/harnesses/subagents.md) and [SDK guide](../../docs/en/sdk.md).
+This example builds a recursive team using the public Runtime, Services and OpenSandbox SDK entries. Its `createSubagentsHarness` factory and `collaboration` controller are local example modules, not exports from `@luna-shi/murm`. See the [mechanism guide](../../docs/en/harnesses/subagents.md) and [SDK guide](../../docs/en/sdk.md).
 
 TypeScript sources compile with `npm run build` into `dist/`. The package is currently marked private and distributed as a checkout-built tarball; `npm pack` builds the JavaScript and declarations before archiving.
 
@@ -60,10 +60,10 @@ The example config defaults to four live Agents including Root, with a maximum d
 
 ## Use the packaged example with Codex
 
-Install a checkout-built tarball using the [SDK installation recipe](../../docs/en/sdk.md#install-the-current-package). The example defaults to Pi. To use Codex from that consumer project, set `MURM_SUBAGENTS_EXECUTOR=codex`, `MURM_SUBAGENTS_MODEL_ID`, and `MURM_SUBAGENTS_MODEL_URL` in the host shell. Set `MURM_SUBAGENTS_IMAGE` to the immutable ID of a Worker built with Codex. The optional `MURM_SUBAGENTS_MODEL_PROVIDER` label defaults to `openai` for Codex. Supply any required model or lifecycle token through the host environment.
+Install `@luna-shi/murm` via npm (see the [SDK guide](../../docs/en/sdk.md#install-the-sdk)). The example defaults to Pi. To use Codex from that consumer project, set `MURM_EXECUTOR=codex` (or `MURM_SUBAGENTS_EXECUTOR=codex`), `MURM_MODEL_ID`, and `MURM_MODEL_URL` in the host shell. The Worker image defaults to `DEFAULT_WORKER_IMAGE` (`ghcr.io/luna-shi/murm-worker:0.2.0`) and can be overridden with `MURM_WORKER_IMAGE` or `MURM_SUBAGENTS_IMAGE`. Supply any required model or lifecycle token through the host environment.
 
 ```sh
-example=node_modules/@murm/core/dist/examples/subagents
+example=node_modules/@luna-shi/murm/dist/examples/subagents
 node "$example/main.js" "$example/config.js" --interactive
 ```
 
@@ -86,4 +86,4 @@ Import `createSubagentsHarness` from the local example module after building. Th
 
 ## Verification
 
-The [Subagents verification guide](../../test/README.md#subagents-verification) describes the regression and native OpenSandbox checks. The [ProgramBench fd experiment](../../docs/experiments/EXP-20261125-10-issue199-fd.md) records a real three-Agent run, including the file handoff, follow-up and independent score.
+The [Subagents verification guide](../../test/README.md#subagents-verification) describes the regression and native OpenSandbox checks.

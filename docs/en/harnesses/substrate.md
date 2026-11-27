@@ -83,7 +83,7 @@ When each peer finishes its rounds, `substrate.retirePeer(peer.agentId)` rejects
 
 ## 3. Running Substrate & inspecting reuse
 
-Use a built checkout with a compatible Pi Worker image, running OpenSandbox provider and configured Responses endpoint. The [example README](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) also gives a tarball installation recipe.
+Use a built checkout or `@luna-shi/murm` installation with a compatible Pi Worker image, running OpenSandbox provider, and configured Responses endpoint. See the [example README](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) for environment options.
 
 ```bash
 export MURM_SUBSTRATE_RUN=research-01
@@ -131,4 +131,4 @@ node dist/examples/substrate/main.js --fate-run dist/examples/substrate/fate-con
 - Concurrent round driver: [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/index.ts)
 - SQLite `substrate` Service: [src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/substrate.ts)
 - Cross-peer reuse auditor: [src/harnesses/substrate/collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/collaboration-evidence.ts)
-- CLI & FATE Lean configs: [examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) · [FATE-X #31 run report](https://github.com/LuNa-shi/murm/blob/main/docs/experiments/EXP-20261125-20-scalemas-fatex-verified.md)
+- CLI & FATE Lean configs: [examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md)

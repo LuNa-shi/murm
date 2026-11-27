@@ -54,7 +54,7 @@ A Service registration pairs a **v2 manifest** with an adapter. The manifest des
 Here is the complete [`messages.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/messages.ts) used by the handoff:
 
 ```ts
-import { createHttpJsonAdapter, createInProcessAdapter, type ServiceRegistration } from '@murm/core';
+import { createHttpJsonAdapter, createInProcessAdapter, type ServiceRegistration } from '@luna-shi/murm';
 
 const key = { type: 'string', minLength: 1, maxLength: 64 };
 const text = { type: 'string', minLength: 1, maxLength: 2048 };
@@ -119,7 +119,7 @@ If a write's result is uncertain, inspect shared state using the original operat
 The writer and reader share a Service but have different authority:
 
 ```ts
-import type { Profile } from '@murm/core';
+import type { Profile } from '@luna-shi/murm';
 
 export function handoffProfiles(image: string): Record<string, Profile> {
   return {

@@ -2,118 +2,81 @@
 
 Build your own multi-agent Harness.
 
-murm is a TypeScript SDK for running isolated Agents and connecting them to shared Services. You write the collaboration policy: who starts work, how Agents communicate, what they share, and when the job is done. The Runtime manages Agent lifecycles, input delivery, Service access, execution records and cleanup. The OpenSandbox backend runs Pi or Codex inside each Agent's Sandbox.
+`murm` is a TypeScript SDK and CLI for running isolated Agents and connecting them to shared Services. You write the collaboration policy: who starts work, how Agents communicate, what they share, and when the job is done. The Runtime manages Agent lifecycles, input delivery, Service access, execution records, and cleanup. The OpenSandbox backend runs Pi or Codex inside each Agent's isolated sandbox.
 
-[Website](https://luna-shi.github.io/murm/) · [Documentation](docs/en/overview.md) · [中文文档](docs/zh/overview.md) · [SDK guide](docs/en/sdk.md) · [Architecture](docs/architecture/INDEX.md)
+[Website](https://luna-shi.github.io/murm/) · [Documentation](docs/en/overview.md) · [中文文档](docs/zh/overview.md) · [Quickstart](docs/en/quickstart.md) · [SDK Guide](docs/en/sdk.md) · [Architecture](docs/architecture/INDEX.md)
 
-## Get started
+## Quick start
 
-Choose an existing Harness to run, or use the SDK to build one.
-
-### Run an existing Harness
-
-Start with [Subagents](examples/subagents/README.md). On a supported Linux host with Node.js 22.19 or newer, npm, a local OpenSandbox provider and a compatible Worker image:
+On a Linux host with Node.js 22.19+, rootful Docker Engine, Landlock ABI 5+, and the host isolation utilities (`python3`, `nftables`, `util-linux`, `iproute2`, plus non-interactive `sudo` rules — see [Prerequisites](docs/en/quickstart.md#1-prerequisites-execution-host)):
 
 ```sh
-npm ci
-npm run build
-```
+# 1. Install the CLI globally
+npm install -g --ignore-scripts @luna-shi/murm
 
-If the host still needs OpenSandbox and the Worker, run `./scripts/setup` from the checkout instead. Create `examples/subagents/.env` using the [example settings](examples/subagents/README.md#run-from-the-checkout), then run:
+# 2. Verify host prerequisites, start local OpenSandbox, pull/build the Worker image, and run a smoke probe
+murm setup
 
-```sh
-cd examples/subagents
-node --env-file=.env ../../dist/examples/subagents/main.js \
-  ../../dist/examples/subagents/config.js \
-  'Suggest two checks to make before merging a pull request.'
-```
+# 3. Point murm at any streaming OpenAI Responses-compatible endpoint
+export MURM_MODEL_URL="https://api.openai.com/v1/responses"
+export MURM_MODEL_TOKEN="sk-..."
 
-The example prints its result and report location, then closes the Run. The [quickstart](docs/en/quickstart.md) runs the Messages SDK handoff and explains its model configuration. For an editable interactive Subagents project, see [project initialization](docs/architecture/07-run-configuration.md#project-initialization-and-interactive-entry).
-
-### Build with the SDK
-
-The package is currently an installable **private candidate** (`@murm/core` 0.2.0). Build an archive from the checkout:
-
-```sh
-npm ci
-npm pack
-```
-
-`npm pack` runs the build and produces `murm-core-0.2.0.tgz`. Install that archive into your TypeScript application; this workflow does not require a public npm registry release:
-
-```sh
-npm install --save-exact /absolute/path/to/murm-core-0.2.0.tgz
-```
-
-Import the public Runtime, Sandbox, events, file controls, Service registration, adapters and their types from `@murm/core`. Configure OpenSandbox with `createSandbox` and select Pi or Codex on `createRuntime`.
-
-The [SDK guide](docs/en/sdk.md) follows a complete two-Agent Messages handoff. Its [TypeScript example](examples/bridge-services/README.md#run-the-typescript-handoff) runs from both the checkout and an independently installed archive. It registers a Service, starts a writer and reader, observes Service calls and execution settlement, verifies the exported file, and saves the finalization report. It also demonstrates connecting an existing HTTP Service while keeping its credential on the host.
-
-## Choose a collaboration mechanism
-
-Install the built CLI on your PATH, then run it from the project directory.
-
-```sh
-npm install --global /absolute/path/to/murm-core-0.2.0.tgz
+# 4. Run a built-in Harness against your project
 cd my-project
 murm --harness subagents --prompt "Fix the parser and add tests"
 ```
 
-Use `--harness` to choose another built-in, a local ESM module or an installed package. In `--mode rpc` the same task arrives over JSONL, with status and stop available during execution. [Choose a Harness](docs/en/harnesses/index.md) · [Load your own module](docs/en/build-your-harness.md)
+The CLI and SDK automatically default to the matching prebuilt Worker image (`ghcr.io/luna-shi/murm-worker:0.2.0`, exported as `DEFAULT_WORKER_IMAGE`). Override it with `MURM_WORKER_IMAGE` only if you build a custom image.
 
+Use `--harness` to select any built-in (`subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes`, `messages`), a local ESM file, or an installed npm package. In `--mode rpc`, tasks arrive over JSONL with live `status` and `stop` control.
 
-The repository includes five substantial Harnesses. They share the Runtime but make different choices about ownership, communication and durable results.
+## Build with the TypeScript SDK
+
+Install `@luna-shi/murm` in your own project:
+
+```sh
+npm install --ignore-scripts @luna-shi/murm
+```
+
+Import `createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, and `createHttpJsonAdapter` from `@luna-shi/murm`. Both Pi (default) and Codex executors work with any OpenAI Responses-compatible provider and model.
+
+See the [Quickstart](docs/en/quickstart.md#5-option-b-use-the-sdk-in-your-own-typescript-project) for a self-contained runnable `handoff.ts`, and the [SDK Guide](docs/en/sdk.md) for observation, file controls, external HTTP Services, and cleanup semantics.
+
+## Built-in Harnesses
+
+The repository includes five substantial Harnesses sharing the same Runtime with different collaboration rules:
 
 | Harness | How Agents coordinate | Start here |
 | --- | --- | --- |
 | Subagents | A parent creates and directs children through a scoped Service; Pi can fork conversation context. | [Guide](docs/en/harnesses/subagents.md) · [Example](examples/subagents/README.md) |
 | TaskPool | Agents exclusively take Tasks and publish Materials and Workspace revisions toward a shared Mission. | [Guide](docs/en/harnesses/taskpool.md) · [Example](examples/taskpool/README.md) |
-| PeerMesh | Peers use Git, messages and a shared Board, each with its own identity and branch. | [Guide](docs/en/harnesses/peermesh.md) · [Example](examples/peermesh/README.md) |
-| Substrate | A fixed peer pool publishes, searches, reads and cites durable contributions. | [Guide](docs/en/harnesses/substrate.md) · [Example](examples/substrate/README.md) |
+| PeerMesh | Peers use Git, messages, and a shared Board, each with its own identity and branch. | [Guide](docs/en/harnesses/peermesh.md) · [Example](examples/peermesh/README.md) |
+| Substrate | A fixed peer pool publishes, searches, reads, and cites durable contributions. | [Guide](docs/en/harnesses/substrate.md) · [Example](examples/substrate/README.md) |
 | Lead-Worker | A lead and fixed helpers coordinate through a Board and retain deliveries in Git. | [Guide](docs/en/harnesses/lead-worker.md) · [Example](examples/lead-worker/README.md) |
 
-These are repository implementations and examples, not additional package exports. The [mechanism comparison](docs/en/harnesses/index.md) explains their boundaries. The smaller [Messages](examples/bridge-services/README.md) and [Notes](examples/notes/README.md) examples are useful starting points for a new Service.
+Compare policies in [Choose a Harness](docs/en/harnesses/index.md) or create your own in [Build Your Own Harness](docs/en/build-your-harness.md).
 
-## What the Runtime guarantees
+## Optional Trace Viewer
 
-Each Agent has its own Sandbox and persistent Session, with a private working directory by default. A Harness can explicitly select a shared workspace. Profiles and the Service registry are captured when the Runtime is created. A settled Agent remains available and occupies its Slot until cleanup completes.
-
-Subscribe with `onEvent` before sending work and read current state through `get`, `list` and `runtime.state`. A `send` receipt reports input admission. A `settled` event reports an execution boundary. The Harness checks the business result.
-
-The supported backend uses same-host, Docker-backed OpenSandbox. Pi and Codex expose different capabilities; query the backend before relying on context fork or a steering mode. [Architecture](docs/en/architecture.md) explains the host, Worker, Bridge and model gateway boundaries.
-
-## Develop murm
-
-Use Node.js 24 for the repository's CI-compatible development environment. The website has its own dependency installation.
+Inspect saved or live Run timelines in a local web UI:
 
 ```sh
-npm ci
-npm run typecheck
-npm run docs:generate
-npm run docs:check
-npm test
-npm --prefix website ci
-BASE_PATH=/murm SITE_URL=https://luna-shi.github.io npm --prefix website run build
+npm install -g --ignore-scripts @luna-shi/murm-trace-viewer
+murm trace --root ./subagents-runs --port 8787
 ```
 
-| Directory | Contents |
-| --- | --- |
-| `src/core/` | Public SDK, Agent lifecycle, Bridge, observation, finalization and backend integration. |
-| `src/harnesses/`, `examples/` | Collaboration policies, runnable hosts and editable SDK examples. |
-| `src/runtime/`, `src/task/`, `src/context/`, `src/judge/`, `src/workspace/` | Resource and domain implementations used by the built-in Harnesses. |
-| `src/sdk/`, `src/services/` | Internal Service infrastructure and optional integrations. The public Service author interfaces are in `@murm/core`. |
-| `deploy/`, `scripts/` | Worker and Service deployment, setup, CLI entry points and build tools. |
-| `docs/en/`, `docs/zh/` | English and Chinese user guides, also rendered by the website. |
-| `docs/architecture/` | Current implementation manual, full prompt/API/storage references and source inventory. |
-| `website/`, `trace-viewer/` | Static documentation site and the separate Run inspection UI. |
-| `benchmarks/`, `test/`, `test-support/` | Opt-in evaluations, regression tests and fixtures. |
+## Contributing & developing from source
 
-Read [AGENTS.md](AGENTS.md) and the [development workflow](docs/workflows/development.md) before making changes. [docs/INDEX.md](docs/INDEX.md) maps maintained documentation. Current behavior belongs in architecture and SDK guides; proposed changes and their acceptance remain attached to the relevant Issue.
+```sh
+git clone https://github.com/LuNa-shi/murm.git
+cd murm
+npm ci --ignore-scripts
+npm run build
+npm test
+```
 
-## Research and evidence
-
-The [research context](docs/PROJECT.md) describes the questions behind murm. [ProgramBench Pastel](benchmarks/programbench-pastel/README.md) and [PutnamBench TaskPool](benchmarks/putnambench-taskpool/README.md) document included evaluation drivers. [Experiment reports](docs/experiments/INDEX.md) preserve observations tied to their original code, model and inputs; they do not establish every later revision's behavior or performance.
+Check the [Architecture manual](docs/architecture/INDEX.md) for the deeper implementation contracts, generated API/schema references, and prompt composition. The [research context](docs/PROJECT.md) describes the questions behind `murm`, and [ProgramBench Pastel](benchmarks/programbench-pastel/README.md) / [PutnamBench TaskPool](benchmarks/putnambench-taskpool/README.md) document the evaluation drivers.
 
 ## License
 
-murm's original code and documentation use the [MIT License](LICENSE). Third-party material retains its own terms. See [third-party notices](docs/third-party-notices.md).
+[MIT](LICENSE)

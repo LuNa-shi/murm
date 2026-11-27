@@ -22,6 +22,7 @@ import { registerServicePrivateValues, snapshotServiceRegistry, type ServiceRegi
 
 export { createSandbox } from './opensandbox-backend.js';
 export { getExecutorCapabilities } from './executor-driver.js';
+export { DEFAULT_WORKER_IMAGE } from './worker-image.js';
 export { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from './services.js';
 export type { ExecutorCapabilities, ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SandboxConfig, SteeringMode } from './backend-config.js';
 export type { HttpJsonAdapterOptions, ServiceRegistration } from './services.js';

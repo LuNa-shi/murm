@@ -17,7 +17,7 @@ const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
-const {createRuntime}=await import('@murm/core');hooks.deregister();
+const {createRuntime}=await import('@luna-shi/murm');hooks.deregister();
 const execute=promisify(execFile);
 const identity={checker_ref:'fixed-tree',checker_version:'1',environment_ref:'controlled'};
 async function fixture(t,options={}) {

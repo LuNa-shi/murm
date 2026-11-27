@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { RuntimeEvent, InputReceipt, Runtime, SpawnOptions } from '@murm/core';
-import type { JsonValue, ServiceRequest } from '@murm/core';
+import type { RuntimeEvent, InputReceipt, Runtime, SpawnOptions } from '@luna-shi/murm';
+import type { JsonValue, ServiceRequest } from '@luna-shi/murm';
 
 type Settled = Extract<RuntimeEvent, { type: 'settled' }>;
 type Exit = Extract<RuntimeEvent, { type: 'exit' }>;

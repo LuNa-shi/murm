@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import {access,readdir,copyFile,mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
-const root=new URL('./node_modules/@murm/core/',import.meta.url).pathname;
+const root=new URL('./node_modules/@luna-shi/murm/',import.meta.url).pathname;
 for(const path of ['src/harnesses/endurance','src/harnesses/taskpool','src/harnesses/shared/hour-window.js','examples/hour-matrix',
  'examples/subagents/hour.mjs','examples/subagents/hour-config.mjs','examples/subagents/hour-artifacts.mjs',
  'examples/subagents/communication-fixture.js','examples/subagents/communication-fixture-controller.js',
@@ -35,7 +35,7 @@ for(const name of ['main','controller','collaboration-service','prompts','config
 }
 await copyFile(join(root,'dist/src/harnesses/shared/run-report.js'),'subagents/run-report.js');
 await import('./subagents/main.js');
-assert.ok(import.meta.resolve('@murm/core').includes('/node_modules/@murm/core/'));
+assert.ok(import.meta.resolve('@luna-shi/murm').includes('/node_modules/@luna-shi/murm/'));
 console.log(JSON.stringify({contained:true,ordinary:true,staged:true}));
 `);
   const result=await execute(process.execPath,['containment.mjs'],{cwd:installed.directory,env:installed.env,timeout:15000});

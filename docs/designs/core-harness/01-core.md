@@ -78,12 +78,12 @@ Runtime、Bridge 和 Harness 在同一宿主进程内运行；业务 Service 可
 
 ### 3.1 模块入口
 
-[#255](https://github.com/LuNa-shi/murm/issues/255) 更新本阶段的 SDK 合同。npm 包 `@murm/core` 只公开根入口，JS 与 TS 的运行时导出为 `createSandbox`、`createRuntime`、`getExecutorCapabilities`、`ServiceRegistry`、`createInProcessAdapter`、`createHttpJsonAdapter`。附录 A 枚举全部基础公共类型。子路径、旧工厂/能力查询、Service 内部装配函数和应用收尾函数从包入口移除。CLI 继续通过包的 bin 安装。
+[#255](https://github.com/LuNa-shi/murm/issues/255) 更新本阶段的 SDK 合同。npm 包 `@luna-shi/murm` 只公开根入口，JS 与 TS 的运行时导出为 `createSandbox`、`createRuntime`、`getExecutorCapabilities`、`ServiceRegistry`、`createInProcessAdapter`、`createHttpJsonAdapter`。附录 A 枚举全部基础公共类型。子路径、旧工厂/能力查询、Service 内部装配函数和应用收尾函数从包入口移除。CLI 继续通过包的 bin 安装。
 
 ### 3.2 创建 Runtime
 
 ```ts
-import { createRuntime, createSandbox, ServiceRegistry } from "@murm/core";
+import { createRuntime, createSandbox, ServiceRegistry } from "@luna-shi/murm";
 
 const runtime = await createRuntime({
   sandbox: createSandbox(config.sandbox),

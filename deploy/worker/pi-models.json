@@ -1,6 +1,63 @@
 {
   "$schema": "https://pi.dev/schemas/models.schema.json",
   "providers": {
+    "openai": {
+      "name": "OpenAI",
+      "baseUrl": "$PI_OPENAI_BASE_URL",
+      "api": "openai-responses",
+      "apiKey": "$PI_OPENAI_API_KEY",
+      "authHeader": true,
+      "compat": {
+        "supportsReasoningEffort": true,
+        "supportsDeveloperRole": true,
+        "supportsStrictMode": true,
+        "supportsMaxOutputTokens": true
+      },
+      "models": [
+        {
+          "id": "gpt-5.4",
+          "name": "GPT-5.4",
+          "reasoning": true,
+          "contextWindow": 400000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "gpt-5",
+          "name": "GPT-5",
+          "reasoning": true,
+          "contextWindow": 400000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "gpt-5-mini",
+          "name": "GPT-5 Mini",
+          "reasoning": true,
+          "contextWindow": 400000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "gpt-4.1",
+          "name": "GPT-4.1",
+          "reasoning": false,
+          "contextWindow": 1047576,
+          "maxTokens": 32768
+        },
+        {
+          "id": "gpt-4.1-mini",
+          "name": "GPT-4.1 Mini",
+          "reasoning": false,
+          "contextWindow": 1047576,
+          "maxTokens": 32768
+        },
+        {
+          "id": "o4-mini",
+          "name": "o4-mini",
+          "reasoning": true,
+          "contextWindow": 200000,
+          "maxTokens": 100000
+        }
+      ]
+    },
     "kimi_proxy": {
       "name": "Kimi proxy",
       "baseUrl": "$PI_KIMI_PROXY_BASE_URL",

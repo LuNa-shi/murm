@@ -15,7 +15,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
-const { createRuntime } = await import('@murm/core');
+const { createRuntime } = await import('@luna-shi/murm');
 hooks.deregister();
 
 async function setup(t) {

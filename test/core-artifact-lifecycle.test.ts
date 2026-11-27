@@ -21,8 +21,8 @@ const records = [
 
 async function runtimeFixture(t, hooks, { collection = collect, maxAgents = 1 } = {}) {
   const provider = await createLifecycleProvider(t, hooks);
-  const { createRuntime } = await import('@murm/core');
-  const { ServiceRegistry } = await import('@murm/core');
+  const { createRuntime } = await import('@luna-shi/murm');
+  const { ServiceRegistry } = await import('@luna-shi/murm');
 
   const outputDir = await mkdtemp(join(tmpdir(), 'core-artifacts-fixture-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));

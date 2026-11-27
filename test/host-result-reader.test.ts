@@ -4,8 +4,8 @@ import test from 'node:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core';
+import { createRuntime } from '@luna-shi/murm';
+import { ServiceRegistry } from '@luna-shi/murm';
 
 import { runWithReport } from '../src/harnesses/shared/run-report.js';
 

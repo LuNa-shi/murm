@@ -22,9 +22,11 @@ FROM node:22.19.0-bookworm-slim
 
 ARG PI_VERSION=1.3.0
 ARG CODEX_VERSION=0.172.0
-LABEL org.murm.opensandbox.pi-version="${PI_VERSION}" \
+LABEL org.opencontainers.image.source="https://github.com/LuNa-shi/murm" \
+      org.opencontainers.image.description="murm OpenSandbox Agent Worker (Pi + Codex + swarm CLI)" \
+      org.murm.opensandbox.pi-version="${PI_VERSION}" \
       org.murm.opensandbox.codex-version="${CODEX_VERSION}" \
-      org.murm.opensandbox.provider="kimi_proxy" \
+      org.murm.opensandbox.provider="openai" \
       org.murm.opensandbox.worker-protocol="murm-core-v1" \
       org.murm.opensandbox.file-protocol="file-tree-v1"
 

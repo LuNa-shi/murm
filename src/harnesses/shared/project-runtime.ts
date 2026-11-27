@@ -1,4 +1,4 @@
-import type { Runtime } from '@murm/core';
+import type { Runtime } from '@luna-shi/murm';
 import { ProjectPreflightError } from './project-input.js';
 import type { HarnessJson, ProjectHarnessContext, ProjectHarnessResult } from './project-harness.js';
 

@@ -16,7 +16,7 @@ TaskPool creates the Mission and its Workspace in the Run directory. The prompt 
 
 TaskPool lets a group of researchers keep working while individual Agents finish, time out or rotate. Each Agent discovers Tasks, chooses one, publishes reusable Materials and saves its work into the public Workspace. The host keeps the pool populated and enforces ownership through leases.
 
-The implementation lives in `examples/taskpool/`. It composes the [Core SDK](../sdk.md) with the repository's existing Mission, Task, Material and Workspace stores. `runTaskPoolHarness` is a repository host function, not an exported member of `@murm/core`. It requires those stores and a prepared Mission/Workspace; it is not a standalone configuration-only example.
+The implementation lives in `examples/taskpool/`. It composes the [Core SDK](../sdk.md) with the repository's existing Mission, Task, Material and Workspace stores. `runTaskPoolHarness` is a repository host function, not an exported member of `@luna-shi/murm`. It requires those stores and a prepared Mission/Workspace; it is not a standalone configuration-only example.
 
 ## Services available to a researcher
 

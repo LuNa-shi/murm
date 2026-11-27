@@ -124,7 +124,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
 
     stage = 'worker';
     const worker = await timed('worker', () => prepareWorkerImage({
-      packageRoot, requestedImage: config?.image ?? process.env.MURM_SUBAGENTS_IMAGE,
+      packageRoot, requestedImage: config?.image ?? process.env.MURM_SUBAGENTS_IMAGE ?? process.env.MURM_WORKER_IMAGE,
       install: command.command === 'setup', signal,
     }));
     checks.push(...worker.checks);

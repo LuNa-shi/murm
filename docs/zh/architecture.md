@@ -117,9 +117,9 @@ murm 应用在可信宿主上运行 Harness。Harness 为一次 Run 创建 Runti
 | 层次 | 负责内容 | 公开入口 |
 | --- | --- | --- |
 | Harness | 角色、协作规则、Service 状态、工作截止时间和业务验收 | 你的应用代码 |
-| Core Runtime | Agent 身份与容量、输入回执、运行观察、文件操作和清理 | `@murm/core` |
-| Service 接入 | Manifest 校验、adapter 与操作注册 | `@murm/core` |
-| OpenSandbox 后端 | 执行器选择、Sandbox 配置与执行能力 | `@murm/core` |
+| Core Runtime | Agent 身份与容量、输入回执、运行观察、文件操作和清理 | `@luna-shi/murm` |
+| Service 接入 | Manifest 校验、adapter 与操作注册 | `@luna-shi/murm` |
+| OpenSandbox 后端 | 执行器选择、Sandbox 配置与执行能力 | `@luna-shi/murm` |
 | 外部设施 | 独立数据库、HTTP 服务、Git/聊天服务及其部署 | 应用或设施维护方 |
 
 使用 `createSandbox` 捕获 OpenSandbox 配置。Runtime 决定使用 Pi 或 Codex，并拥有运行时的宿主连接与模型配置。

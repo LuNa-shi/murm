@@ -200,16 +200,33 @@ test('the configured request deadline bounds a held upstream and retains an unkn
   assert.equal(f.requests.length, 1);
 });
 
-test('unsupported catalog entries, malformed endpoints and nonfinite limits fail before Agent allocation', async t => {
+test('invalid model identifiers, malformed endpoints and nonfinite limits fail before Agent allocation', async t => {
   const cases = [
-    { models: { default: { provider: 'openai', model: 'k3', upstream: { url: 'http://127.0.0.1/v1/responses' } } } },
-    { models: { default: { provider: 'kimi_proxy', model: 'unsupported', upstream: { url: 'http://127.0.0.1/v1/responses' } } } },
+    { models: { default: { provider: '', model: 'gpt-5.4', upstream: { url: 'http://127.0.0.1/v1/responses' } } } },
+    { models: { default: { provider: 'bad provider', model: 'gpt-5.4', upstream: { url: 'http://127.0.0.1/v1/responses' } } } },
+    { models: { default: { provider: 'openai', model: '../escape', upstream: { url: 'http://127.0.0.1/v1/responses' } } } },
     { models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'https://secret@host.test/v1/responses' } } } },
     { models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'https://host.test/v1/chat/completions' } } } },
     { requestTimeoutMs: Infinity },
     { requestTimeoutMs: -1 },
   ];
   for (const options of cases) await assert.rejects(fixture(t, options), { code: 'INVALID_CONFIG' });
+});
+
+test('Pi accepts shipped OpenAI models and synthesizes attested catalogs for custom Responses models', async t => {
+  const shipped = await fixture(t, { provider: 'openai', model: 'gpt-5.4' });
+  assert.equal(shipped.credentials.catalogResource?.path, '/opt/murm/pi-agent/models.json');
+  assert.equal(shipped.credentials.catalogContent, undefined);
+  assert.ok(shipped.credentials.environment.PI_OPENAI_BASE_URL?.endsWith('/v1'));
+  assert.ok(shipped.credentials.secretEnvironment.PI_OPENAI_API_KEY);
+  assert.equal((await shipped.call('req-openai')).status, 200);
+
+  const custom = await fixture(t, { provider: 'openrouter', model: 'anthropic/claude-sonnet-4' });
+  assert.equal(custom.credentials.catalogResource?.path, '/workspace/runtime/pi-agent/models.json');
+  assert.ok(typeof custom.credentials.catalogContent === 'string' && custom.credentials.catalogContent.includes('"anthropic/claude-sonnet-4"'));
+  assert.equal(custom.credentials.environment.PI_OPENROUTER_BASE_URL, custom.credentials.baseUrl);
+  assert.ok(custom.credentials.secretEnvironment.PI_OPENROUTER_API_KEY);
+  assert.equal((await custom.call('req-custom')).status, 200);
 });
 
 test('close aborts live model requests, revokes credentials and is idempotent', async t => {

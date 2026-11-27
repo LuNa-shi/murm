@@ -99,7 +99,7 @@ test('a clean external project typechecks and runs the same public handoff on Pi
   delete env.NODE_OPTIONS;
   await execute('npm', ['install', '--prefer-offline', '--ignore-scripts', '--no-audit', '--no-fund', packed.archive,
     `typescript@${typeScriptVersion}`, `@types/node@${nodeTypesVersion}`], { cwd: project, env, timeout: 90_000 });
-  const installed = join(project, 'node_modules/@murm/core');
+  const installed = join(project, 'node_modules/@luna-shi/murm');
   assert.equal((await lstat(installed)).isSymbolicLink(), false);
   for (const name of ['handoff.ts', 'handoff-config.ts', 'messages.ts', 'tsconfig.handoff.json']) {
     await copyFile(join(installed, 'examples/bridge-services', name), join(project, name));
@@ -210,7 +210,7 @@ process.stdout.write(JSON.stringify(result));
   await t.test('installed Codex rejects unsupported Context Fork authority before allocation', async () => {
     await writeFile(join(project, 'unsupported.mjs'), `
 import assert from 'node:assert/strict';
-import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry } from '@murm/core';
+import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry } from '@luna-shi/murm';
 import { handoffConfig } from './build/handoff-config.js';
 const config = handoffConfig();
 assert.equal(getExecutorCapabilities(config.executor).contextFork, false);

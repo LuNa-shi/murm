@@ -83,7 +83,7 @@ await Promise.all(
 
 ## 3. 运行 Substrate 并审计知识复用
 
-以下命令从已构建的仓库运行，需要兼容的 Pi Worker 镜像、已启动的 OpenSandbox 服务和可用的 Responses 模型端点。[示例 README](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) 还提供 tarball 安装步骤。
+以下命令支持从已构建仓库或 `@luna-shi/murm` 安装包运行，需要兼容的 Pi Worker 镜像、已启动的 OpenSandbox 服务和可用的 Responses 模型端点。环境变量说明见 [示例 README](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md)。
 
 ```bash
 export MURM_SUBSTRATE_RUN=research-01
@@ -131,4 +131,4 @@ node dist/examples/substrate/main.js --fate-run dist/examples/substrate/fate-con
 - 并行轮次驱动：[src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/index.ts)
 - SQLite `substrate` Service：[src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/substrate.ts)
 - 跨成员复用证据审计：[src/harnesses/substrate/collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/collaboration-evidence.ts)
-- CLI 与 FATE Lean 指南：[examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) · [FATE-X #31 运行报告](https://github.com/LuNa-shi/murm/blob/main/docs/experiments/EXP-20261125-20-scalemas-fatex-verified.md)
+- CLI 与 FATE Lean 指南：[examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md)

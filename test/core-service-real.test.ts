@@ -7,9 +7,9 @@ import { once } from 'node:events';
 import { randomBytes } from 'node:crypto';
 import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
-import { createRuntime } from '@murm/core';
+import { createRuntime } from '@luna-shi/murm';
 
-import { ServiceRegistry, createHttpJsonAdapter } from '@murm/core';
+import { ServiceRegistry, createHttpJsonAdapter } from '@luna-shi/murm';
 import { createNotesService, notesManifest } from './fixtures/core-notes-service.js';
 import { createNotesUpstream, notesCommand } from './fixtures/core-notes-upstream.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';

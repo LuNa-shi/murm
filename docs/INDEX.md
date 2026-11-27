@@ -39,4 +39,4 @@ Superseded plans from earlier phases, migration inventories and superseded ADRs 
 
 ## Historical evidence
 
-[Experiment reports](experiments/INDEX.md) remain because they record what a particular run actually did. Keep their original implementation, model, inputs, failed attempts and limitations intact. Links to retired designs point to fixed Git revisions. Historical observations and old acceptance targets do not override the current SDK contract.
+Version-bound experiment logs are kept outside the public documentation tree (in private `experiments/` or linked Issues). Links to retired designs point to fixed Git revisions. Historical observations and old acceptance targets do not override the current SDK contract.

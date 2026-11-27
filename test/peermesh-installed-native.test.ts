@@ -23,7 +23,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
   const directory = await createNativeEvidenceDirectory('agensh-installed');
 
   const installed = await installNativeNotesExample();
-  const root = join(installed.directory, 'node_modules/@murm/core');
+  const root = join(installed.directory, 'node_modules/@luna-shi/murm');
   const runId = `cli-${randomBytes(6).toString('hex')}`;
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const cleanup = createCleanupBudget(100_000);

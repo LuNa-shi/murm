@@ -18,10 +18,10 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
-const { createRuntime } = await import('@murm/core');
+const { createRuntime } = await import('@luna-shi/murm');
 const { runtimeSettings } = await import('./fixtures/core-runtime-settings.js');
 
-const { ServiceRegistry } = await import('@murm/core');
+const { ServiceRegistry } = await import('@luna-shi/murm');
 hooks.deregister();
 
 async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', services = new ServiceRegistry(), permissions = {}, writable = true, maxAgents = 1, upstreamHeaders = {} } = {}) {

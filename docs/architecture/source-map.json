@@ -28,7 +28,8 @@
     "examples/substrate/FateProofGuard.lean",
     "examples/substrate/VerifyFateProof.lean",
     ".github/workflows/ci.yml",
-    ".github/workflows/deploy-website.yml"
+    ".github/workflows/deploy-website.yml",
+    ".github/workflows/release.yml"
   ],
   "excluded": [
     {
@@ -2923,6 +2924,24 @@
         "docs/architecture/23-project-harness.md"
       ],
       "role": "TaskPool Mission and Workspace instantiation, fixed discovery files and reports"
+    },
+    {
+      "path": "src/core/worker-image.ts",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Default GHCR Worker image reference and protocol version constants exported by the public package"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Tag-driven verification, GHCR multi-arch Worker image publishing, and public npm package publishing"
     }
   ]
 }
