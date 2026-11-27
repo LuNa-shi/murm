@@ -1,6 +1,6 @@
 import './environment.js';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_WORKER_IMAGE, resolveSandboxConnection } from '@luna-shi/murm';
+import { workerImageFor, resolveSandboxConnection } from '@luna-shi/murm';
 
 const { image, advertiseHost, endpointSource: _endpointSource, ...sandbox } = resolveSandboxConnection({}, 'SUBAGENTS');
 const token = process.env.MURM_MODEL_TOKEN ?? process.env.MURM_SUBAGENTS_MODEL_TOKEN;
@@ -12,7 +12,7 @@ export default {
   model: 'default',
   maxAgents: Number(process.env.MURM_SUBAGENTS_MAX_AGENTS ?? 4),
   maxDepth: Number(process.env.MURM_SUBAGENTS_MAX_DEPTH ?? 3),
-  image: image ?? DEFAULT_WORKER_IMAGE,
+  image: image ?? workerImageFor(executor),
   outputDir: fileURLToPath(new URL('./subagents-runs/', import.meta.url)),
   workTimeoutMs: 120_000,
   closeTimeoutMs: 30_000,

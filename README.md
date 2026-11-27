@@ -32,13 +32,13 @@
 
 ---
 
-`murm` separates **how Agents collaborate** from **how Agents are isolated and supervised**. You write the **Harness** — who starts work, what shared state and Services Agents can call, and what evidence establishes completion. The **Runtime** owns isolated OpenSandbox execution (Pi or Codex), host-gated model access, authenticated Service bridging, live observation, artifact collection, and verified cleanup.
+`murm` separates **how Agents collaborate** from **how Agents are isolated and supervised**. You write the **Harness** — who starts work, what shared state and Services Agents can call, and what evidence establishes completion. The **Runtime** owns isolated OpenSandbox execution with a configured executor, host-gated model access, authenticated Service bridging, live observation, artifact collection, and verified cleanup.
 
 ## Why murm
 
 - **One Runtime, any topology** — Swap between recursive Subagents, leased TaskPool, PeerMesh, Substrate, or Lead-Worker without modifying the Runtime.
 - **Sandbox Provider interface** — Use OpenSandbox on the same Linux host or connect to an existing service through its API. Supply a custom Provider through the root SDK when you need a different Sandbox integration. Model API keys and external Service tokens stay on the trusted Controller.
-- **Dual executors, open model support** — Runs **Pi (`1.3.0`)** (default, with session context forking and dynamic OpenAI Responses model catalogs) or **Codex CLI (`0.172.0`)** behind the same host Model Gateway.
+- **Configurable executors, models and file budgets** — Select Pi 1.3.0 or 1.4.0, Codex 0.172.0, or an image-installed adapter. Use Responses with Pi or Codex, Chat Completions with Pi, or a trusted Host transport. Configure import, live file operations and export separately.
 - **Single unified package** — `@luna-shi/murm` bundles the TypeScript SDK, `murm` CLI, `swarm` container CLI, built-in Harnesses, and the zero-dependency browser Trace Viewer (`murm trace`).
 
 ## Quick start
@@ -68,7 +68,7 @@ murm --harness subagents --prompt "Fix the parser and add tests"
 murm trace --root ./subagents-runs --port 8787
 ```
 
-`Subagents`, `TaskPool`, `Notes`, and `Messages` default to the matching prebuilt Worker image (`ghcr.io/luna-shi/murm-worker:0.2.0`, exported as `DEFAULT_WORKER_IMAGE`). Override it with `MURM_WORKER_IMAGE` when using a custom image. Use `--harness` to select any built-in (`subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes`, `messages`), a local ESM module, or an installed package. In `--mode rpc`, tasks arrive over JSONL with live `status` and `stop` control.
+`Subagents`, `TaskPool`, `Notes`, and `Messages` default to the versioned Worker image for the selected executor. Override it with `MURM_WORKER_IMAGE` when using a custom image. Use `--harness` to select any built-in (`subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes`, `messages`), a local ESM module, or an installed package. In `--mode rpc`, tasks arrive over JSONL with live `status` and `stop` control.
 
 ## Build with the TypeScript SDK
 

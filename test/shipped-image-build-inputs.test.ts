@@ -34,15 +34,15 @@ test('shipped image contexts contain every COPY input and install their locked d
   ]) {
     assert.ok(files.includes(resource), `runtime or deployment resource is absent from the archive: ${resource}`);
   }
+  const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+  assert.equal(manifest.devDependencies['@earendil-works/pi-coding-agent'], '1.3.0');
   await execute('npm', ['ci', '--offline', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], {
     cwd: root, timeout: 30_000, maxBuffer: 4 * 1024 ** 2,
   });
-  const ciPi = JSON.parse(await readFile(join(root, 'node_modules/@earendil-works/pi-coding-agent/package.json'), 'utf8'));
-  assert.equal(ciPi.version, '1.3.0');
+  await assert.rejects(readFile(join(root, 'node_modules/@earendil-works/pi-coding-agent/package.json')), { code: 'ENOENT' });
   await rm(join(root, 'node_modules'), { recursive: true });
   await execute('npm', ['install', '--offline', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], {
     cwd: root, timeout: 15_000, maxBuffer: 4 * 1024 ** 2,
   });
-  const pi = JSON.parse(await readFile(join(root, 'node_modules/@earendil-works/pi-coding-agent/package.json'), 'utf8'));
-  assert.equal(pi.version, '1.3.0');
+  await assert.rejects(readFile(join(root, 'node_modules/@earendil-works/pi-coding-agent/package.json')), { code: 'ENOENT' });
 });

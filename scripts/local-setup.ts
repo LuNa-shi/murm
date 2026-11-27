@@ -7,8 +7,12 @@ import { runLocalSmoke } from './local-setup-smoke.js';
 import { loadLocalProjectConfig } from './local-setup-template.js';
 import { prepareWorkerImage } from './local-setup-worker.js';
 import { selectExecutorDriver } from '../src/core/executor-driver.js';
-import { DEFAULT_WORKER_IMAGE } from '../src/core/worker-image.js';
+import { workerImageFor } from '../src/core/worker-image.js';
+import type { ExecutorSelection } from '../src/core/executor-adapter.js';
+import { resolveFilePolicy, type ResolvedFilePolicy } from '../src/core/file-policy.js';
 import { claimOpenSandboxBackend, createSandbox } from '../src/core/opensandbox-backend.js';
+import { snapshotModel } from '../src/core/model-access.js';
+import { modelClientProtocol } from '../src/core/model-transport.js';
 import type { SandboxConfig } from '../src/core/backend-config.js';
 import type { LocalCommand } from './murm-arguments.js';
 
@@ -19,7 +23,7 @@ type Smoke = Awaited<ReturnType<typeof runLocalSmoke>>;
 type Timing = { id: string; elapsedMs: number; cached?: boolean };
 type Model = { configuration: 'complete' | 'missing' | 'invalid'; verification: 'not-verified' };
 
-function modelState(config: ProjectConfig): Model {
+function modelState(config: ProjectConfig, executor: string): Model {
   if (config.models === undefined) return { configuration: 'missing', verification: 'not-verified' };
   const aliases = new Set([config.rootModel ?? config.model ?? 'default', config.childModel ?? config.model ?? 'default']);
   const routes = [...aliases].map(alias => config.models?.[alias]);
@@ -30,12 +34,8 @@ function modelState(config: ProjectConfig): Model {
       if (configuration !== 'invalid') configuration = 'missing';
       continue;
     }
-    try {
-      const parsed = new URL(upstream);
-      if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || !parsed.pathname.endsWith('/v1/responses')) configuration = 'invalid';
-    } catch {
-      configuration = 'invalid';
-    }
+    try { snapshotModel(route!, executor); }
+    catch { configuration = 'invalid'; }
   }
   return { configuration, verification: 'not-verified' };
 }
@@ -46,9 +46,13 @@ function checkProjectRuntime(config: ProjectConfig, sandbox: SandboxConfig): Dia
     // Missing model endpoints are reported separately while preparing the host.
     claimOpenSandboxBackend(createSandbox(sandbox), {
       executor: config.executor, connection: config.connection,
-      models: Object.fromEntries(Object.entries(config.models ?? { default: { provider: 'openai', model: 'gpt-5.4', upstream: { headers: {} } } }).map(([alias, route]) => [alias, {
-        ...route, upstream: { ...route.upstream, url: 'http://127.0.0.1/v1/responses' },
-      }])),
+      filePolicy: config.filePolicy,
+      models: Object.fromEntries(Object.entries(config.models ?? { default: { provider: 'openai', model: 'gpt-5.4', upstream: { url: '', headers: {} } } })
+        .map(([alias, route]) => [alias, route.upstream?.url ? route : {
+          ...route,
+          upstream: { headers: route.upstream?.headers ?? {},
+            url: modelClientProtocol(route.protocol) === 'chat-completions' ? 'http://127.0.0.1/v1/chat/completions' : 'http://127.0.0.1/v1/responses' },
+        }])),
     });
     return { id: 'config.runtime', ok: true, detail: 'The editable Sandbox and Runtime configuration satisfies the Core startup contract.' };
   } catch {
@@ -85,6 +89,11 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     lifecycleSource?: string;
     infrastructure: 'failed' | 'preflight-passed' | 'ready';
     model?: Model;
+    configuration?: {
+      executor: { id: string; version: string; compatibleVersions: readonly string[] };
+      image: string;
+      filePolicy: ResolvedFilePolicy;
+    };
     checks: DiagnosticCheck[];
     timings: Timing[];
     elapsedMs: number;
@@ -113,18 +122,19 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
   try {
     const config = command.configPath
       ? await loadLocalProjectConfig(command.configPath) : undefined;
-    if (config) report.model = modelState(config);
-    if (report.model?.configuration === 'invalid') checks.push({
-      id: 'config.models', ok: false, detail: 'An active model alias or Responses endpoint is invalid.',
-      remedy: 'Configure every Root and Child model alias with an HTTP(S) endpoint ending in /v1/responses, without embedded credentials.',
-    });
-    if (checks.some(check => !check.ok)) return report;
-    let executor;
-    try { executor = selectExecutorDriver(config?.executor ?? process.env.MURM_EXECUTOR).kind; }
+    const executor = (config?.executor ?? process.env.MURM_EXECUTOR) as ExecutorSelection | undefined;
+    let driver;
+    try { driver = selectExecutorDriver(executor); }
     catch {
-      checks.push({ id: 'config.executor', ok: false, detail: 'Select executor pi or codex.' });
+      checks.push({ id: 'config.executor', ok: false, detail: 'Select a configured executor.' });
       return report;
     }
+    if (config) report.model = modelState(config, driver.kind);
+    if (report.model?.configuration === 'invalid') checks.push({
+      id: 'config.models', ok: false, detail: 'An active model alias, capability declaration or protocol endpoint is invalid for the selected executor.',
+      remedy: 'Use a supported executor and protocol combination, and configure an HTTP(S) endpoint without embedded credentials for each active model alias.',
+    });
+    if (checks.some(check => !check.ok)) return report;
     const environment = await resolveLocalEnvironment({
       ...config?.sandbox, image: config?.image,
       advertiseHost: config?.connection?.advertiseHost ?? config?.connection?.modelGateway?.advertiseHost,
@@ -134,6 +144,11 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       checks.push(checkProjectRuntime(config, { ...config.sandbox, lifecycleBaseUrl, apiKey, endpointHost }));
     }
     if (checks.some(check => !check.ok)) return report;
+    report.configuration = {
+      executor: { id: driver.kind, version: driver.version, compatibleVersions: driver.compatibleVersions },
+      image: environment.image ?? workerImageFor(executor),
+      filePolicy: resolveFilePolicy(config?.filePolicy),
+    };
     const mode = (command.command === 'setup' ? command.mode : undefined) ?? environment.mode;
     report.mode = mode;
     report.lifecycleSource = environment.endpointSource;
@@ -169,7 +184,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     checks.push(...await timed('provider', () => checkLocalProvider(active, { requireAuth: !strict || mode === 'local' })));
     if (checks.some(check => !check.ok)) return report;
 
-    let image = environment.image ?? DEFAULT_WORKER_IMAGE;
+    let image = report.configuration.image;
     if (mode === 'local' && smoke) {
       stage = 'worker';
       const worker = await timed('worker', () => prepareWorkerImage({
@@ -185,7 +200,9 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       stage = 'smoke';
       report.smoke = await timed('smoke', () => runLocalSmoke({
         ...active, image, sandbox: config?.sandbox, connection: config?.connection,
-        advertiseHost, executor, signal,
+        advertiseHost, executor, signal, filePolicy: config?.filePolicy,
+        modelConfig: config?.models?.[config.rootModel ?? config.model ?? 'default'],
+        modelProtocol: modelClientProtocol(config?.models?.[config.rootModel ?? config.model ?? 'default']?.protocol),
       }));
       if (!report.smoke.ok) {
         report.infrastructure = 'failed';

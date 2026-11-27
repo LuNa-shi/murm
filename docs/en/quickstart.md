@@ -46,7 +46,7 @@ Setup checks your selected local Docker context, then starts OpenSandbox and ver
 
 The managed service defaults to loopback port 8080. Setup generates an owner-only Lifecycle key when needed, prefers the distributed Worker image, and can build the bundled Worker image locally if needed. A repeat uses the existing managed service and leaves user configuration and unrelated deployments in place. With no `--mode`, an explicit Lifecycle endpoint selects existing mode. The default endpoint selects local mode.
 
-`murm doctor` reports configuration and authenticated Lifecycle readiness without allocating a Sandbox. `murm doctor --smoke` exercises the selected real Pi or Codex Worker, authenticated Bridge and model gateway, file I/O, export and deletion. It uses a controlled Responses endpoint. Model validation status is reported separately.
+`murm doctor` reports configuration and authenticated Lifecycle readiness without allocating a Sandbox. `murm doctor --smoke` exercises the selected real Pi or Codex Worker, authenticated Bridge and model gateway, file I/O, export and deletion. It uses a controlled endpoint for the selected built-in model protocol. Model validation status is reported separately.
 
 ### Keep a stricter local policy
 
@@ -67,7 +67,7 @@ export MURM_MODEL_TOKEN='sk-...'
 # export MURM_EXECUTOR='codex'
 ```
 
-- Subagents, TaskPool, Notes, and Messages default to the matching Worker tag exported as `DEFAULT_WORKER_IMAGE` and accept `MURM_WORKER_IMAGE` for a custom image. SDK callers supply an image in each Profile, as shown below. Rebuild custom images from the matching package version so the Pi catalog and Worker startup contract match.
+- Subagents, TaskPool, Notes, and Messages default to the selected executor’s matching Worker tag from `workerImageFor(executor)` and accept `MURM_WORKER_IMAGE` for a custom image. SDK callers supply an image in each Profile, as shown below. Rebuild custom images from the matching package version so the Pi catalog and Worker startup contract match.
 - **Connection defaults**: OpenSandbox defaults to `http://127.0.0.1:8080/v1` and the sandbox-visible host address defaults to `172.17.0.1`. Override with `MURM_LIFECYCLE_URL`, `MURM_LIFECYCLE_TOKEN`, and `MURM_ADVERTISE_HOST` if needed.
 
 ## 4. Option A: Run a built-in Harness with the CLI
@@ -300,3 +300,7 @@ npm test
 - Read [Use the SDK](sdk.md) for the full Runtime lifecycle, admission receipts, artifact verification, and external HTTP Services.
 - Read [Build Your Own Harness](build-your-harness.md) to design custom coordination policies and Service contracts.
 - Compare the five built-in mechanisms in [Choose a Harness](harnesses/index.md) (`Subagents`, `TaskPool`, `PeerMesh`, `Substrate`, and `Lead-Worker`).
+
+### Select an executor or use a larger project
+
+A Linux project can keep the same `murm --harness … --cwd … --prompt …` command while selecting an executor and model in its configuration. Use `workerImageFor(executor)` for the matching Pi-only or Codex-only image. Set `MURM_WORKER_IMAGE` if you already have a compatible image. `murm setup --config ./murm.config.mjs` and `murm doctor --config ./murm.config.mjs` validate the same configuration used by the Runtime. With Pi you can choose Chat Completions or Responses. Set an explicit `filePolicy` when the project exceeds the default import limits or the finished work needs a separate export budget. [Configuration and examples](sdk.md#executor-model-and-project-file-configuration)

@@ -26,7 +26,7 @@ export function substratePeerProfile({ image, model = 'default', exportLimit = 2
 }
 
 /** Fixed no-Task pool. Harness owns content and drivers; Core owns all Agents. */
-export async function runSubstrate({ sandbox, executor, models, connection, runId, image, outputDir, question, model = 'default', poolSize = 3, maxRounds = 2,
+export async function runSubstrate({ sandbox, executor, models, connection, filePolicy, runId, image, outputDir, question, model = 'default', poolSize = 3, maxRounds = 2,
   workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000, files, onRuntime, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle, maxConcurrentInputs }: any, signal: any) {
   if (typeof outputDir !== 'string' || !outputDir || typeof question !== 'string' || !question.trim() || Buffer.byteLength(question) > 8192 ||
       typeof image !== 'string' || !image || !Number.isSafeInteger(maxRounds) || maxRounds < 2 || maxRounds > 32 ||
@@ -57,7 +57,7 @@ export async function runSubstrate({ sandbox, executor, models, connection, runI
           ranking: 'token occurrences descending, incoming references descending, stable address ascending', maxSearchResults: 8 } }),
       createRuntime: async () => {
         remaining();
-        runtime = await createRuntime({ sandbox, executor, models, connection, outputDir, services: substrate.services, maxAgents: poolSize, profiles: {
+        runtime = await createRuntime({ sandbox, executor, models, connection, filePolicy, outputDir, services: substrate.services, maxAgents: poolSize, profiles: {
           peer: substratePeerProfile({ image, model, ...(files === undefined ? {} : { exportLimit: 64 * 1024 ** 2 }) }),
         } });
         return runtime;

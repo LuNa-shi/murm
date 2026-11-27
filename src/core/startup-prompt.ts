@@ -28,15 +28,15 @@ function oneLine(description: string) {
   return description.replace(/\s+/g, ' ').trim().replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
-export function renderStartupPrompt(services: readonly ServiceManifest[], addedSystemPrompt?: string, executor: 'pi' | 'codex' = 'pi'): string {
+export function renderStartupPrompt(services: readonly ServiceManifest[], addedSystemPrompt?: string, executor: string = 'pi'): string {
   const directory = services.map(({ id, purpose, capabilities }) => [
     `${id === 'context' ? 'context (CLI: material)' : id} — ${oneLine(purpose)}`,
     ...capabilities.map(({ operation, description }) => `- \`${serviceCommand(id, operation)}\` ${oneLine(description)}`),
   ].join('\n')).join('\n\n');
-  const tools = executor === 'codex' ? codexTools : piTools;
+  const tools = executor === 'codex' ? codexTools : executor === 'pi' ? piTools : null;
   const sections = [
     preamble,
-    `<tools>\n${tools}\n</tools>`,
+    ...(tools ? [`<tools>\n${tools}\n</tools>`] : []),
     `<services>\n${serviceHelp}\n\n${directory || 'No Service operations are available to this agent.'}\n</services>`,
   ];
   if (addedSystemPrompt?.trim()) {

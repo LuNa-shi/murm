@@ -152,8 +152,10 @@ export function runtimeConfiguration({ config, profiles, registrations, maxAgent
       piSubmitTransportMs: 40_000, fileOperationTransportMs: 30_000, workerStopTransportMs: 15_000, collectionTransportMs: 30_000,
       providerCommandMs: sandbox.commandTimeoutMs ?? 120_000, bridgeServiceMs: 30_000,
     },
+    filePolicy: config.filePolicy,
     models: Object.fromEntries(Object.entries(models).map(([alias, model]) => [alias, {
       provider: model.provider, model: model.model,
+      protocol: typeof model.protocol === 'object' ? { id: model.protocol.id, version: model.protocol.version } : model.protocol ?? 'responses',
       maxOutputTokens: modelGateway.maxOutputTokens === undefined ? defaultTimedResponsesLimits.maxOutputTokens : modelGateway.maxOutputTokens,
       ...(modelGateway.maxRequests === undefined ? {} : { maxRequests: modelGateway.maxRequests }),
       requestTimeoutMs: modelGateway.requestTimeoutMs ?? defaultTimedResponsesLimits.requestTimeoutMs,

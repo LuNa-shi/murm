@@ -8,7 +8,7 @@ import { observeProjectRuntime, projectConfiguration, projectResult } from '../.
 import { peerMeshConfig } from './project-config.js';
 
 type Config = Omit<ReturnType<typeof peerMeshConfig>, 'models' | 'sandbox'> &
-  Pick<CreateRuntimeOptions, 'executor' | 'models'> & { sandbox: SandboxConfig };
+  Pick<CreateRuntimeOptions, 'executor' | 'models' | 'filePolicy'> & { sandbox: SandboxConfig };
 
 const peerMesh = {
   id: 'peermesh', apiVersion: 1,

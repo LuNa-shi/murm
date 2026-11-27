@@ -1,3 +1,6 @@
+import type { ModelCapabilities, ModelStreamTerminal, ModelTransport } from '../core/model-transport.js';
+import { chatCompletionsTransport } from './chat-completions-transport.js';
+import { fields, integer, localSchemaReferences, object, optionalText } from './model-request-validation.js';
 import type { createModelTrace } from '../core/model-trace.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -34,22 +37,6 @@ const requestFields = [
   'prompt_cache_key', 'prompt_cache_retention', 'parallel_tool_calls',
 ];
 
-function integer(value: any, min: any = 0) {
-  return Number.isSafeInteger(value) && value >= min;
-}
-
-function object(value: any) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function fields(value: any, allowed: any) {
-  return object(value) && Object.keys(value).every((key: any) => allowed.includes(key));
-}
-
-function optionalText(value: any) {
-  return value === undefined || typeof value === 'string';
-}
-
 function textPart(part: any) {
   return fields(part, ['type', 'text', 'annotations']) &&
     ['input_text', 'output_text'].includes(part.type) && typeof part.text === 'string' &&
@@ -81,23 +68,6 @@ function validItem(item: any) {
     (item.content === undefined || (Array.isArray(item.content) && item.content.length === 0)) &&
     Array.isArray(item.summary) && item.summary.every((part: any) =>
       fields(part, ['type', 'text']) && part.type === 'summary_text' && typeof part.text === 'string');
-}
-
-function localSchemaReferences(schema: any) {
-  const pending = [schema];
-  while (pending.length) {
-    const node = pending.pop();
-    if (Array.isArray(node)) {
-      for (const child of node) pending.push(child);
-    } else if (object(node)) {
-      for (const [key, value] of Object.entries(node)) {
-        if (['$ref', '$dynamicRef', '$recursiveRef'].includes(key) &&
-            (typeof value !== 'string' || !value.startsWith('#'))) return false;
-        pending.push(value);
-      }
-    }
-  }
-  return true;
 }
 
 function validTool(tool: any) {
@@ -143,13 +113,32 @@ function canonicalPayload(value: any): any {
   return Object.fromEntries(Object.keys(value).sort().map((key: any) => [key, canonicalPayload(value[key])]));
 }
 
-function upstreamPolicy(upstream: any) {
-  if (typeof upstream?.model !== 'string' || !upstream.model) throw new TypeError('A fixed Responses model is required');
-  const url = new URL(upstream.url);
-  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
-      url.search || url.hash || url.pathname !== '/v1/responses') {
-    throw new TypeError('A fixed HTTP(S) /v1/responses endpoint is required');
+export function resolveModelTransport(protocol: unknown): ModelTransport | undefined {
+  if (protocol === undefined || protocol === 'responses') return undefined;
+  if (protocol === 'chat-completions') return chatCompletionsTransport;
+  const transport = protocol as ModelTransport;
+  if (!transport || typeof transport !== 'object' || !/^[a-zA-Z0-9_.-]{1,64}$/.test(transport.id ?? '') ||
+      ['responses', 'chat-completions'].includes(transport.id) || !/^[a-zA-Z0-9_.+-]{1,64}$/.test(transport.version ?? '') ||
+      !/^\/v1(?:\/[a-zA-Z0-9_-]+)+$/.test(transport.path ?? '') ||
+      typeof transport.validateUpstream !== 'function' || typeof transport.prepareRequest !== 'function' ||
+      typeof transport.stream !== 'function') throw new TypeError('Invalid model transport');
+  return Object.freeze({ id: transport.id, version: transport.version, path: transport.path,
+    clientProtocol: transport.clientProtocol, validateUpstream: transport.validateUpstream.bind(transport),
+    prepareRequest: transport.prepareRequest.bind(transport), stream: transport.stream.bind(transport) });
+}
+
+export function assertModelEndpoint(value: string, transport?: ModelTransport) {
+  const url = new URL(value);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash ||
+      !(transport ? transport.validateUpstream(url) === true : url.pathname.endsWith('/v1/responses'))) {
+    throw new TypeError(`A fixed HTTP(S) endpoint for ${transport?.id ?? '/v1/responses'} is required`);
   }
+  return url;
+}
+
+function upstreamPolicy(upstream: any, transport: ModelTransport | undefined) {
+  if (typeof upstream?.model !== 'string' || !upstream.model) throw new TypeError('A fixed Responses model is required');
+  const url = assertModelEndpoint(upstream.url, transport);
   const policy = { model: upstream.model, url: url.href, serviceTier: upstream.serviceTier ?? null };
   if (policy.serviceTier !== null && (typeof policy.serviceTier !== 'string' || !policy.serviceTier)) {
     throw new TypeError('A fixed service tier must be a nonempty string');
@@ -160,46 +149,76 @@ function upstreamPolicy(upstream: any) {
 export const defaultTimedResponsesLimits = Object.freeze({ maxOutputTokens: 32_768, requestTimeoutMs: 120_000 });
 
 function timedPolicy(upstream: any, { maxOutputTokens = defaultTimedResponsesLimits.maxOutputTokens,
-  requestTimeoutMs = defaultTimedResponsesLimits.requestTimeoutMs, maxRequests }: any) {
+  requestTimeoutMs = defaultTimedResponsesLimits.requestTimeoutMs, maxRequests }: any, transport: ModelTransport | undefined, capabilities?: ModelCapabilities) {
   if ((maxOutputTokens !== null && !integer(maxOutputTokens, 16)) || !integer(requestTimeoutMs, 1) || requestTimeoutMs > 2_147_483_647) {
     throw new TypeError('Timed Responses gateway requires a finite request timeout and a valid output-token policy');
   }
   if (maxRequests !== undefined && !integer(maxRequests, 1)) throw new TypeError('A configured model request cap must be a positive safe integer');
-  return { ...upstreamPolicy(upstream), mode: 'time_bounded', maxOutputTokens, requestTimeoutMs, maxRequests };
+  const limit = capabilities?.maxOutputTokens;
+  const effectiveLimit = limit === undefined ? maxOutputTokens : Math.min(maxOutputTokens ?? limit, limit);
+  return { ...upstreamPolicy(upstream, transport), mode: 'time_bounded', maxOutputTokens: effectiveLimit, requestTimeoutMs, maxRequests };
 }
 
-function terminalMeter(model: any, onUsage: any) {
+function responsesStream(model: string) {
+  return {
+    accept(data: string): ModelStreamTerminal | undefined {
+      let event;
+      try { event = JSON.parse(data); } catch { return; }
+      const status = terminalStatuses.get(event?.type);
+      if (!status || event.response?.status !== status || event.response?.model !== model) return;
+      const usage = event.response?.usage;
+      if (integer(usage?.input_tokens) && integer(usage?.output_tokens)) {
+        return { status, usage: { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens } };
+      }
+    },
+  };
+}
+
+function terminalMeter(parser: ReturnType<ModelTransport['stream']>, strict: boolean,
+  onTerminal: (terminal: ModelStreamTerminal) => void) {
   let buffer = '';
+  let ended = false;
   let overflow = false;
   const decoder = new TextDecoder();
   return new Transform({
-    transform(chunk: any, encoding: any, callback: any) {
-      if (!overflow) {
-        buffer += decoder.decode(chunk, { stream: true });
-        let match;
-        while ((match = /\r?\n\r?\n/.exec(buffer))) {
-          const frame = buffer.slice(0, match.index);
-          buffer = buffer.slice(match.index + match[0].length);
-          if (Buffer.byteLength(frame) > maximumEventBytes) { overflow = true; break; }
-          const data = frame.split(/\r?\n/).filter((line: any) => line.startsWith('data:'))
-            .map((line: any) => line.slice(5).replace(/^ /, '')).join('\n');
-          let event;
-          try { event = JSON.parse(data); } catch { continue; }
-          const status = terminalStatuses.get(event?.type);
-          if (!status || event.response?.status !== status) continue;
-          const usage = event.response?.usage;
-          if (event.response?.model !== model ||
-              !integer(usage?.input_tokens) || !integer(usage?.output_tokens)) continue;
-          try { onUsage(usage.input_tokens, usage.output_tokens, status); } catch (error) { callback(error); return; }
-          overflow = true;
-          break;
+    transform(chunk, _encoding, callback) {
+      try {
+        if (!overflow && (!ended || strict)) {
+          buffer += decoder.decode(chunk, { stream: true });
+          let match;
+          while ((match = /\r?\n\r?\n/.exec(buffer))) {
+            const frame = buffer.slice(0, match.index);
+            buffer = buffer.slice(match.index + match[0].length);
+            if (Buffer.byteLength(frame) > maximumEventBytes) { overflow = true; break; }
+            const data = frame.split(/\r?\n/).filter(line => line.startsWith('data:'))
+              .map(line => line.slice(5).replace(/^ /, '')).join('\n');
+            if (!data) continue;
+            if (ended) throw new Error('Model stream has data after its terminal frame');
+            const terminal = parser.accept(data);
+            if (terminal) {
+              const { status, usage } = terminal;
+              if (!['completed', 'incomplete', 'failed'].includes(status) ||
+                  (usage && (!integer(usage.inputTokens) || !integer(usage.outputTokens)))) {
+                throw new Error('Invalid model terminal receipt');
+              }
+              onTerminal(terminal);
+              ended = true;
+              if (!strict) break;
+            }
+          }
+          overflow ||= Buffer.byteLength(buffer) > maximumEventBytes;
+          if (overflow && strict) throw new Error('Model stream frame exceeds its byte limit');
+          if (overflow || ended && !strict) buffer = '';
         }
-        if (overflow || Buffer.byteLength(buffer) > maximumEventBytes) {
-          overflow = true;
-          buffer = '';
-        }
+        callback(null, chunk);
+      } catch (error) {
+        callback(error as Error);
       }
-      callback(null, chunk);
+    },
+    flush(callback) {
+      if (strict && !ended) callback(new Error('Model stream ended without a valid terminal frame'));
+      else if (strict && (buffer + decoder.decode()).trim()) callback(new Error('Model stream has a truncated trailing frame'));
+      else callback();
     },
   });
 }
@@ -239,26 +258,30 @@ export class ResponsesBudgetGateway {
   #controllers: any = new Map<any, any>();
   #stopPromise: any;
   #executor: 'pi' | 'codex';
-  constructor({ db, upstream, timeBounds, executor = 'pi', validateAgent, fetchImpl = globalThis.fetch, transformPayload = (payload: unknown) => payload, beginTrace }: any = {}) {
+  #transport: ModelTransport | undefined;
+  #capabilities: ModelCapabilities | undefined;
+  constructor({ db, upstream, timeBounds, executor = 'pi', transport, capabilities, validateAgent, fetchImpl = globalThis.fetch, transformPayload = (payload: unknown) => payload, beginTrace }: any = {}) {
     if (!db?.prepare || typeof validateAgent !== 'function' || typeof fetchImpl !== 'function') {
       throw new TypeError('Database, synchronous Agent authority, and fetch are required');
     }
     if (!object(timeBounds)) throw new TypeError('Runtime Responses access requires time bounds');
     if (upstream?.contract !== undefined) throw new TypeError('Runtime Responses access does not accept an upstream contract');
-    if (executor !== 'pi' && executor !== 'codex') throw new TypeError('Unsupported Responses executor');
-    this.#executor = executor;
+    if (typeof executor !== 'string' || !executor) throw new TypeError('Executor identity is required for model access');
+    this.#executor = executor === 'codex' ? 'codex' : 'pi';
+    this.#transport = transport;
+    this.#capabilities = capabilities;
     this.db = db;
     this.validateAgent = validateAgent;
     this.fetch = fetchImpl;
     this.transformPayload = transformPayload;
     this.beginTrace = beginTrace;
-    this.policy = Object.freeze(timedPolicy(upstream, timeBounds));
+    this.policy = Object.freeze(timedPolicy(upstream, timeBounds, transport, capabilities));
     this.headers = new Headers(upstream.headers);
     this.headers.set('accept', 'text/event-stream');
     this.headers.set('content-type', 'application/json');
     for (const name of ['host', 'content-length', 'connection', 'transfer-encoding']) this.headers.delete(name);
     // Use the existing Runtime policy encoding for ledgers opened with the same settings.
-    this.pin = createHash('sha256').update(JSON.stringify([this.policy, executor === 'pi' ? null : executor])).digest('hex');
+    this.pin = createHash('sha256').update(JSON.stringify([this.policy, executor === 'pi' ? null : executor, ...(transport ? [transport.id, transport.version] : []), ...(capabilities ? [capabilities] : [])])).digest('hex');
     db.exec(CORE_MODEL_SCHEMA_SQL);
   }
 
@@ -380,8 +403,27 @@ export class ResponsesBudgetGateway {
     }
   }
 
+  #prepareResponses(body: any) {
+    if (!validPayload(body, this.policy.model, this.#executor)) return null;
+    if (this.#capabilities?.tools === false && (body.tools?.length || body.parallel_tool_calls !== undefined ||
+        (body.tool_choice !== undefined && body.tool_choice !== 'none') ||
+        (Array.isArray(body.input) && body.input.some((item: any) => ['function_call', 'function_call_output'].includes(item.type))))) return null;
+    if (this.#capabilities?.reasoning === false && (body.reasoning !== undefined || body.include !== undefined ||
+        (Array.isArray(body.input) && body.input.some((item: any) => item.type === 'reasoning')))) return null;
+    const maxOutputTokens = this.policy.maxOutputTokens === null ? body.max_output_tokens
+      : Math.min(body.max_output_tokens ?? this.policy.maxOutputTokens, this.policy.maxOutputTokens);
+    // Codex diagnostics describe the guest. Keep them in private pre-forward
+    // Trace and in the original fingerprint, never in the upstream request.
+    const { client_metadata: _metadata, ...providerBody } = body;
+    return this.transformPayload({
+      ...providerBody, model: this.policy.model, stream: true, store: false,
+      ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
+      ...(this.policy.serviceTier === null ? {} : { service_tier: this.policy.serviceTier }),
+    });
+  }
+
   async #handle(request: any, response: any) {
-    if (request.method !== 'POST' || request.url !== '/v1/responses') {
+    if (request.method !== 'POST' || request.url !== (this.#transport?.path ?? '/v1/responses')) {
       throw new GatewayError(404, 'route_not_found');
     }
     const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request.headers.authorization ?? '')?.[1];
@@ -405,19 +447,14 @@ export class ResponsesBudgetGateway {
     let body;
     try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
     catch { throw new GatewayError(400, 'invalid_json'); }
-    if (!validPayload(body, this.policy.model, this.#executor)) throw new GatewayError(400, 'unsupported_responses_request');
     if (response.destroyed || request.aborted) return;
-    const maxOutputTokens = this.policy.maxOutputTokens === null ? body.max_output_tokens
-      : Math.min(body.max_output_tokens ?? this.policy.maxOutputTokens, this.policy.maxOutputTokens);
-    // Codex diagnostics describe the guest. Keep them in private pre-forward
-    // Trace and in the original fingerprint, never in the upstream request.
-    const { client_metadata: _metadata, ...providerBody } = body;
-    const normalizedPayload = this.transformPayload({
-      ...providerBody, model: this.policy.model, stream: true, store: false,
-      ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
-      ...(this.policy.serviceTier === null ? {} : { service_tier: this.policy.serviceTier }),
-    });
     const fingerprint = createHash('sha256').update(JSON.stringify(canonicalPayload(body))).digest('hex');
+    const normalizedPayload = this.#transport ? this.#transport.prepareRequest(structuredClone(body), {
+      model: this.policy.model, maxOutputTokens: this.policy.maxOutputTokens, capabilities: this.#capabilities,
+    }) : this.#prepareResponses(body);
+    if (!object(normalizedPayload)) {
+      throw new GatewayError(400, this.#transport ? 'unsupported_model_request' : 'unsupported_responses_request');
+    }
     let runtimeId: any, agentId: any, receipt: any, cancelWatch: any, upstreamWork: any;
     let trace: ReturnType<ReturnType<typeof createModelTrace>['begin']> | undefined;
     let upstreamStatus: number | undefined, terminalStatus: string | undefined;
@@ -425,7 +462,7 @@ export class ResponsesBudgetGateway {
     let failure: { name: string; code?: string; message: string } | undefined;
     const controller = new AbortController();
     const disconnect = () => controller.abort();
-    let usageRecorded = false;
+    let streamConfirmed = false;
     let reason: string | null = 'transport_interrupted';
     let receiptBytes = 0;
     const receiptChunks: any[] = [];
@@ -474,13 +511,10 @@ export class ResponsesBudgetGateway {
         throw new GatewayError(upstream.status === 429 ? 429 : 502, 'upstream_rejected');
       }
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
-      const meter = terminalMeter(this.policy.model, (inputTokens: number, outputTokens: number, status: string) => {
-        this.db.prepare(`UPDATE runtime_model_attempts SET input_tokens = ?, output_tokens = ?, settled = 1
-          WHERE runtime_id = ? AND agent_id = ? AND request_id = ? AND settled = 0`)
-          .run(inputTokens, outputTokens, runtimeId, agentId, requestId);
-        usageRecorded = true;
-        terminalStatus = status;
-        usage = { inputTokens, outputTokens };
+      const parser = this.#transport ? this.#transport.stream(this.policy.model) : responsesStream(this.policy.model);
+      const meter = terminalMeter(parser, Boolean(this.#transport), terminal => {
+        terminalStatus = terminal.status;
+        usage = terminal.usage;
       });
       const capture = new Transform({
         transform(chunk: any, encoding: any, callback: any) {
@@ -492,11 +526,16 @@ export class ResponsesBudgetGateway {
         },
       });
       await pipeline(Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream<Uint8Array>), capture, meter, response, { signal: controller.signal });
-      reason = usageRecorded ? (stableId ? 'receipt_too_large' : null) : 'no_trusted_terminal_usage';
-      if (usageRecorded && receiptChunks.length) {
-        this.db.prepare(`UPDATE runtime_model_attempts SET state = 'completed', receipt = ?
+      streamConfirmed = terminalStatus !== undefined;
+      reason = streamConfirmed
+        ? (stableId && !receiptChunks.length ? 'receipt_too_large' : usage ? null : 'usage_unavailable')
+        : 'no_trusted_terminal_usage';
+      if (streamConfirmed) {
+        this.db.prepare(`UPDATE runtime_model_attempts SET state = 'completed', reason = ?, receipt = ?,
+          input_tokens = ?, output_tokens = ?, settled = 1
           WHERE runtime_id = ? AND agent_id = ? AND request_id = ?`)
-          .run(Buffer.concat(receiptChunks), runtimeId, agentId, requestId);
+          .run(reason, receiptChunks.length ? Buffer.concat(receiptChunks) : null,
+            usage?.inputTokens ?? null, usage?.outputTokens ?? null, runtimeId, agentId, requestId);
       }
     } catch (error: any) {
       failure = { name: error.name, code: error.code, message: error.message };
@@ -512,8 +551,8 @@ export class ResponsesBudgetGateway {
       }
       if (runtimeId && !receipt) this.db.prepare(`UPDATE runtime_model_attempts SET state = ?, reason = ?
         WHERE runtime_id = ? AND agent_id = ? AND request_id = ? AND state = 'pending'`)
-        .run(usageRecorded ? 'completed' : 'unknown', reason, runtimeId, agentId, requestId);
-      await (trace as ReturnType<ReturnType<typeof createModelTrace>['begin']> | undefined)?.finish({ endedAt: new Date().toISOString(), upstreamStatus, usage, reason, terminalStatus,
+        .run(streamConfirmed ? 'completed' : 'unknown', reason, runtimeId, agentId, requestId);
+      await (trace as ReturnType<ReturnType<typeof createModelTrace>['begin']> | undefined)?.finish({ endedAt: new Date().toISOString(), upstreamStatus, usage: streamConfirmed ? usage : undefined, reason, terminalStatus: streamConfirmed ? terminalStatus : undefined,
         state: failure || terminalStatus === 'failed' ? 'failed' : terminalStatus ?? 'unknown', error: failure });
     }
   }

@@ -1,12 +1,14 @@
 import { loadMurmConfig } from '../../core/sandbox-connection.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { registerHooks } from 'node:module';
 import { homedir, tmpdir } from 'node:os';
 import { extname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { captureProject, isInside, projectError, ProjectPreflightError, resolveProjectDirectory } from './project-input.js';
 import { saveReport } from './run-report.js';
+import { resolveFilePolicy, type FilePolicy } from '../../core/file-policy.js';
+import { fileSpool } from '../../../scripts/core-file-seed.js';
 
 export type HarnessInput = Readonly<{ cwd: string; prompt: string }>;
 type InitialProject = Awaited<ReturnType<typeof captureProject>>;
@@ -103,7 +105,7 @@ type RunResult = Omit<ProjectHarnessResult, 'reason'> & {
   runId: string;
   harness: { id: string; apiVersion: 1 };
   cwd: string;
-  initial: (Omit<InitialProject, 'files'> & { manifestPath: string | null }) | null;
+  initial: (Omit<InitialProject, 'files' | 'manifest'> & { manifestPath: string | null }) | null;
   prompt: { path: string | null; sha256: string };
   reason: string;
   stopReason: StopReason | null;
@@ -224,6 +226,7 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
     let enteredHarness = false;
     let failure: Failure | null = null;
     const signal = controller.signal;
+    let staged: ReturnType<typeof fileSpool>;
     const work = async () => {
       // Resolve the directory first so an explicitly nested output can be excluded.
       cwd = await resolveProjectDirectory(raw.cwd);
@@ -237,15 +240,14 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
       signal.throwIfAborted();
       const configuration = await loadConfiguration(options.launchDirectory, options.configPath);
       signal.throwIfAborted();
-      const captured = await captureProject(cwd, outputDir, signal);
-      const { files, ...source } = captured;
+      let filePolicy;
+      try { filePolicy = resolveFilePolicy((configuration as { filePolicy?: FilePolicy } | undefined)?.filePolicy); }
+      catch { throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid project file policy'); }
+      const captured = await captureProject(cwd, outputDir, signal, filePolicy);
+      const { files, manifest, ...source } = captured;
+      staged = fileSpool(files);
       initial = { ...source, manifestPath: null };
       signal.throwIfAborted();
-      const manifest = Object.keys(files).sort().map(path => {
-        const { data, encoding, mode } = files[path];
-        const bytes = Buffer.from(data, encoding);
-        return { path, mode, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
-      });
       const manifestPath = join(outputDir, 'initial-files.json');
       await writeFile(manifestPath, JSON.stringify(manifest) + '\n', { flag: 'wx', mode: 0o600 });
       initial.manifestPath = manifestPath;
@@ -274,9 +276,14 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
         },
       }));
     };
+    let workFinished = false;
+    const running = work().finally(() => { workFinished = true; });
+    const removeSpool = async () => {
+      if (staged) await rm(staged.directory, { recursive: true, force: true });
+    };
     let business: ProjectHarnessResult;
     try {
-      business = await Promise.race([work(), stopDeadline.promise]);
+      business = await Promise.race([running, stopDeadline.promise]);
     } catch (error) {
       const code = failureCode(error, enteredHarness ? 'HARNESS_RUN_FAILED' : 'PROJECT_CAPTURE_FAILED');
       const preflight = error instanceof ProjectPreflightError;
@@ -290,17 +297,22 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
       publishing = false;
       phase = 'finished';
     }
-    const result: RunResult = {
-      ...business, runId: id, harness, cwd, initial, prompt: {
-        path: promptPath, sha256: createHash('sha256').update(raw.prompt).digest('hex'),
-      },
-      stopReason: reason, failure, reportSaveFailure: null,
-    };
     let saved: RunResult;
-    if (outputRoot) {
-      saved = await saveReport(outputRoot, 'project-run.json', result);
-    } else {
-      saved = { ...result, reportSaveFailure: { code: 'OUTPUT_UNAVAILABLE', message: 'Run output directory was not prepared' } };
+    try {
+      const result: RunResult = {
+        ...business, runId: id, harness, cwd, initial, prompt: {
+          path: promptPath, sha256: createHash('sha256').update(raw.prompt).digest('hex'),
+        },
+        stopReason: reason, failure, reportSaveFailure: null,
+      };
+      saved = outputRoot
+        ? await saveReport(outputRoot, 'project-run.json', result)
+        : { ...result, reportSaveFailure: { code: 'OUTPUT_UNAVAILABLE', message: 'Run output directory was not prepared' } };
+    } finally {
+      // A Harness may include the lazy FileTree in its JSON result. Keep the
+      // spool until both Harness work and report serialization have finished.
+      if (workFinished) await removeSpool();
+      else void running.then(removeSpool, removeSpool).catch(() => {});
     }
     const code = reason === 'SIGINT' ? 130 : reason === 'SIGTERM' ? 143 :
       reason ? 1 : isLaunchError(failure?.code ?? saved.reason) ? 2 :

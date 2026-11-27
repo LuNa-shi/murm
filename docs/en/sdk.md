@@ -31,7 +31,7 @@ Import all public values and types from `@luna-shi/murm`. The root entry include
 - `createRuntime`: creates and manages the Runtime, Agent lifecycle, file controls, and cleanup
 - `DEFAULT_WORKER_IMAGE`: default prebuilt Worker image tag matching this package version (`ghcr.io/luna-shi/murm-worker:0.2.0`)
 - `resolveSandboxConnection` resolves Lifecycle, routing and image defaults for trusted configuration.
-- `getExecutorCapabilities`: static capability lookup for `'pi'` or `'codex'` with no network side effects
+- `getExecutorCapabilities`: static capability lookup for configured executors with no network side effects
 - `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`: register in-process or external HTTP JSON v2 Services
 
 ## Create the Runtime your Harness needs
@@ -75,7 +75,7 @@ const runtime = await createRuntime({
 });
 ```
 
-- **Model routing**: point `upstream.url` at any streaming OpenAI Responses-compatible endpoint ending in `/v1/responses`. Pi is the default executor and accepts both shipped catalog models (`openai`, `kimi_proxy`, `gpt_proxy`) and any custom `provider` + `model` pair (the host synthesizes and attests a Pi model catalog automatically). Pass `executor: 'codex'` to use Codex.
+- **Model routing**: configure a streaming model endpoint and capabilities per alias. Responses is the default. Pi also supports Chat Completions. The Host builds and attests a Pi model catalog for custom configurations.
 - **Worker image**: pass `DEFAULT_WORKER_IMAGE` unless you built a custom Worker image with extra tools.
 - **Isolation & credentials**: upstream credentials remain in the host Model Gateway and never enter Agent sandboxes. One `createSandbox` handle can configure multiple independent Runtimes.
 
@@ -150,3 +150,52 @@ See the [API reference](./reference/api.md) for exact signatures and recovery se
 `createSandbox({ provider, timeoutSeconds })` accepts a trusted implementation of the root-exported `SandboxProvider` contract. It supplies a stable ID and version, a readiness check, and an image-specific `SandboxManager` for allocation, Worker transport, snapshots, export, stop and deletion. Claim shared-workspace or allowlist capabilities only when the Provider enforces them. Implement uncertain-create and delete reconciliation under the original resource key. The host remains responsible for configuring the Runtime's executor, model routes, Profiles and Services.
 
 Use `resolveSandboxConnection` in project configuration to share the CLI's endpoint, credentials, callback host and image resolution. Explicit fields take precedence over generic `MURM_*` variables, scoped example aliases and upstream fallbacks. Keep the returned connection object in trusted configuration, since it can contain a Lifecycle key.
+
+## Executor, model, and project file configuration
+
+The root package exports `createPiExecutor({ version })`, `createCodexExecutor({ version })`, `createExecutorAdapter(declaration)`, `getExecutorCapabilities(selection)` and `workerImageFor(selection)`. Existing `'pi'` and `'codex'` selections work. Choose one executor per Runtime. Pi supports 1.3.0 (default) and 1.4.0. Codex supports 0.172.0. Use the matching Worker reference in each Profile. `DEFAULT_WORKER_IMAGE` remains the legacy dual-executor image. The Host install does not require either executor.
+
+| Executor | Model client protocol | Context Fork | Steering modes |
+| --- | --- | --- | --- |
+| Pi 1.3.0 / 1.4.0 | Responses, Chat Completions | Yes | `all`, `one-at-a-time` |
+| Codex 0.172.0 | Responses | No | `all` |
+| Image-installed adapter | Explicitly declared protocols | No | Explicitly declared modes |
+
+An external package supplies an `ExecutorAdapter` declaration and an image with a matching root-owned descriptor at `/opt/murm/executors/<kind>.json`. Import the adapter explicitly in your Host configuration. The descriptor names an absolute command, arguments, version-probe arguments, protocol `murm-executor-v1`, version, and the same input capabilities the Host declares. An image can start with the `deploy/worker/Dockerfile` build argument `WORKER_EXECUTOR=none`. Add `org.murm.opensandbox.<kind>-version` and `org.murm.opensandbox.<kind>-protocol` labels for local setup. The actual version probe and startup evidence are checked in the Worker. See the [adapter protocol](../architecture/16-pi-opensandbox-backend.md#image-installed-executor-adapter).
+
+For example, the following fields can be added to a Runtime or to a Harness configuration that forwards them to the Runtime. Set `image: workerImageFor(executor)` in the Harness or its Profiles.
+
+```js
+import { createPiExecutor, workerImageFor } from '@luna-shi/murm';
+
+const executor = createPiExecutor({ version: '1.4.0' });
+const image = workerImageFor(executor);
+const models = {
+  default: {
+    provider: 'my-provider',
+    model: 'my-model',
+    protocol: 'chat-completions',
+    capabilities: { contextWindow: 65536, maxOutputTokens: 8192, tools: true, reasoning: false },
+    upstream: { url: 'https://models.example.com/v1/chat/completions',
+      headers: { authorization: `Bearer ${process.env.MURM_MODEL_TOKEN}` } },
+  },
+};
+const filePolicy = {
+  initial: { maxBytes: 96 * 1024 ** 2, maxFileBytes: 16 * 1024 ** 2, maxFiles: 20000 },
+  snapshot: { maxBytes: 96 * 1024 ** 2, maxFileBytes: 16 * 1024 ** 2, maxFiles: 20000 },
+  replace: { maxBytes: 96 * 1024 ** 2, maxFileBytes: 16 * 1024 ** 2, maxFiles: 20000 },
+  export: { maxBytes: 256 * 1024 ** 2, maxFiles: 25000, maxEntries: 50000 },
+};
+```
+
+Omitting `protocol` keeps Responses. For a custom Pi model, set the actual capabilities explicitly. The compatibility defaults for uncatalogued models are a 32,768-token context, 8,192 output tokens, tools enabled and reasoning disabled. Model capabilities describe what the endpoint accepts. `connection.modelGateway` limits a run's requests, timeout and output. The Runtime records the capability source and applied output ceiling in its manifest. A successful startup checks local wiring.
+
+A trusted Host module can use a `ModelTransport` object as `protocol`. It supplies an ID, a version, an exact client path, upstream URL validation, request preparation and a per-request SSE parser with a terminal receipt. For Pi or Codex declare a supported `clientProtocol` and use its client path. Tokens, replay, revocation, accounting and trace stay on the shared Host gateway. Unknown usage stays unknown.
+
+| Stage | Default total | Default file | Default files | Default time |
+| --- | ---: | ---: | ---: | ---: |
+| `initial`, `snapshot`, `replace` | 16 MiB | 2 MiB | 10,000 | 30 s |
+| `export` | 256 MiB | 256 MiB | 16,384 | 30 s |
+| `session` | 256 MiB | 256 MiB | 16,384 | 600 s |
+
+Set `maxBytes`, `maxFileBytes`, `maxFiles`, `maxEntries` and `timeoutMs` per stage. Bytes are binary byte counts and time is milliseconds. Tree inventories default to 50,000 entries and export inventories to 16,384. `controllerSpoolBytes` defaults to 256 MiB and `workerSpoolBytes` to 512 MiB. The Provider controls available and enforced filesystem capacity. Per-call bounds can tighten Runtime limits. Applications passing a public in-memory `FileTree` still own that in-memory result; the ordinary directory entry point stages initial files on disk. Use a matching Worker to transfer trees above the legacy inline limits. Confirm that the Controller output filesystem and Worker workspace have room for temporary files, the original tree, the replacement, and the requested exports.

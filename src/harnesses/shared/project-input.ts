@@ -1,16 +1,18 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { constants, type BigIntStats } from 'node:fs';
-import { lstat, open, opendir, realpath, type FileHandle } from 'node:fs/promises';
+import { lstat, mkdtemp, open, opendir, realpath, rm, type FileHandle } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify, TextDecoder } from 'node:util';
-import { completeDigest, isFileTreePath, isGitPath, maxFileBytes, maxFiles, maxTotalBytes, snapshotFileSeed } from '../../../scripts/core-file-seed.js';
-import type { FileEntry } from '../../core/types.js';
+import { assertFileManifest, completeDigest, fileSpool, isFileTreePath, isGitPath, stagedFiles, type SpoolFile } from '../../../scripts/core-file-seed.js';
+import { checkFileSpace } from '../../../scripts/file-tree-stream.js';
+import { MAX_COLLECTION_CHUNK_BYTES } from '../../../scripts/core-collection.js';
+import { DEFAULT_FILE_POLICY, type ResolvedFilePolicy } from '../../core/file-policy.js';
 
 const git = promisify(execFile);
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 const maxPathBytes = 4095;
 const maxPathDepth = 128;
-const maxDirectoryEntries = 50_000;
 const directoryFlags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_DIRECTORY;
 const fileFlags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
@@ -78,11 +80,11 @@ function accessPath(directory: FileHandle, name: string) {
   return `/proc/self/fd/${directory.fd}/${name}`;
 }
 
-async function gitFiles(cwd: string, signal: AbortSignal) {
+async function gitFiles(cwd: string, signal: AbortSignal, maxEntries: number) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
   const options = {
     cwd, signal, timeout: 10_000, env: { ...env, LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0' },
-    encoding: 'buffer' as const, maxBuffer: (maxPathBytes + 128) * maxFiles,
+    encoding: 'buffer' as const, maxBuffer: Math.min(64 * 1024 ** 2, (maxPathBytes + 128) * maxEntries),
   };
   let workTree: string;
   try {
@@ -129,22 +131,29 @@ export async function resolveProjectDirectory(cwd: string) {
   throw projectError('INVALID_PROJECT_DIRECTORY', `Project directory is unavailable: ${JSON.stringify(cwd)}`);
 }
 
-export async function captureProject(cwd: string, outputDir: string, signal: AbortSignal) {
-  const deadline = AbortSignal.timeout(30_000);
+export async function captureProject(cwd: string, outputDir: string, signal: AbortSignal, policy: ResolvedFilePolicy = DEFAULT_FILE_POLICY) {
+  const deadline = AbortSignal.timeout(policy.initial.timeoutMs);
   const bounded = AbortSignal.any([signal, deadline]);
+  const directory = await mkdtemp(join(outputDir, '.initial-files-'));
   try {
-    return await readProject(cwd, outputDir, bounded);
+    return await readProject(cwd, outputDir, directory, bounded, policy);
   } catch (error) {
+    await rm(directory, { recursive: true, force: true });
     if (bounded.aborted && bounded.reason === deadline.reason) {
-      throw projectError('PROJECT_FILE_LIMIT', 'Project capture exceeded its 30-second time limit');
+      throw projectError('PROJECT_FILE_LIMIT', 'Project capture exceeded its configured time limit');
+    }
+    if (['ENOSPC', 'EDQUOT', 'FILE_SPACE_INSUFFICIENT'].includes((error as NodeJS.ErrnoException)?.code ?? '')) {
+      throw projectError('PROJECT_FILE_SPACE', 'Controller staging does not have enough free bytes or inodes for this project');
     }
     throw error;
   }
 }
 
-async function readProject(cwd: string, outputDir: string, signal: AbortSignal) {
+async function readProject(cwd: string, outputDir: string, spool: string, signal: AbortSignal, policy: ResolvedFilePolicy) {
   const excluded = isInside(cwd, outputDir) ? relative(cwd, outputDir) : null;
-  const entries: Record<string, FileEntry> = Object.create(null);
+  const entries: SpoolFile[] = [];
+  const budget = policy.initial;
+  const buffer = Buffer.alloc(MAX_COLLECTION_CHUNK_BYTES);
   const skip = (path: string) => isGitPath(path) ||
     (excluded !== null && (path === excluded || path.startsWith(excluded + '/')));
   let bytes = 0;
@@ -167,32 +176,43 @@ async function readProject(cwd: string, outputDir: string, signal: AbortSignal) 
     if (!info.isFile() || info.nlink !== 1n) {
       throw projectError('PROJECT_FILE_UNSUPPORTED', `Project path is not a supported ordinary file: ${JSON.stringify(path)}`);
     }
-    if (++count > maxFiles || info.size > BigInt(maxFileBytes) ||
-        info.size > BigInt(maxTotalBytes - bytes)) {
+    if (++count > budget.maxFiles || info.size > BigInt(budget.maxFileBytes) ||
+        info.size > BigInt(Math.min(budget.maxBytes, policy.controllerSpoolBytes) - bytes)) {
       throw projectError('PROJECT_FILE_LIMIT', `Project exceeds the file count or byte limit at ${JSON.stringify(path)}`);
     }
     const location = accessPath(parent, name);
+    // Check the shared physical filesystem before each file; write failures
+    // still take precedence if another process consumes that space meanwhile.
+    await checkFileSpace(spool, Number(info.size), 1, 'Controller staging');
     const file = await openChecked(location, info, fileFlags, path);
+    let destination: FileHandle | undefined;
     try {
-      const content = Buffer.alloc(Number(info.size) + 1);
+      const filename = String(count);
+      destination = await open(join(spool, filename), 'wx', 0o600);
+      const sha256 = createHash('sha256');
+      const expected = Number(info.size);
       let length = 0;
-      while (length < content.length) {
+      while (length < expected) {
         signal.throwIfAborted();
-        const part = await file.read(content, length, content.length - length, length);
+        const part = await file.read(buffer, 0, Math.min(buffer.length, expected - length), length);
         if (part.bytesRead === 0) break;
         length += part.bytesRead;
+        const bytes = buffer.subarray(0, part.bytesRead);
+        await destination.writeFile(bytes);
+        sha256.update(bytes);
       }
-      if (length !== Number(info.size) || !sameFile(info, await file.stat({ bigint: true })) ||
+      if (length !== expected || !sameFile(info, await file.stat({ bigint: true })) ||
           !sameFile(info, await lstat(location, { bigint: true }).catch(() => { throw sourceChanged(path); }))) {
         throw sourceChanged(path);
       }
-      const data = content.subarray(0, length);
-      if (data.length <= 1024 && /^version https:\/\/git-lfs\.github\.com\/spec\/v1\r?\n(?:ext-[^\r\n]+\r?\n)*oid sha256:[0-9a-f]{64}\r?\nsize [0-9]+\r?\n?$/.test(data.toString('utf8'))) {
+      const data = length <= 1024 ? buffer.subarray(0, length) : null;
+      if (data && /^version https:\/\/git-lfs\.github\.com\/spec\/v1\r?\n(?:ext-[^\r\n]+\r?\n)*oid sha256:[0-9a-f]{64}\r?\nsize [0-9]+\r?\n?$/.test(data.toString('utf8'))) {
         throw projectError('PROJECT_LFS_POINTER', `Git LFS content is not present: ${JSON.stringify(path)}`);
       }
-      entries[path] = { encoding: 'base64', data: data.toString('base64'), mode: (info.mode & 0o111n) ? 0o755 : 0o644 };
+      entries.push({ path, bytes: length, sha256: sha256.digest('hex'), file: filename, mode: (info.mode & 0o111n) ? 0o755 : 0o644 });
       bytes += length;
     } finally {
+      await destination?.close();
       await file.close();
     }
   }
@@ -240,7 +260,7 @@ async function readProject(cwd: string, outputDir: string, signal: AbortSignal) 
       signal.throwIfAborted();
       const name = decodePath(entry.name);
       const path = prefix + name;
-      if (++enumerated > maxDirectoryEntries) {
+      if (++enumerated > budget.maxEntries) {
         throw projectError('PROJECT_FILE_LIMIT', `Project exceeds the directory enumeration limit at ${JSON.stringify(path)}`);
       }
       if (skip(path)) continue;
@@ -256,9 +276,10 @@ async function readProject(cwd: string, outputDir: string, signal: AbortSignal) 
   const root = await openChecked(cwd, before, directoryFlags, '.');
   let selection: 'git-working-tree' | 'directory';
   try {
-    const paths = await gitFiles(cwd, signal);
+    const paths = await gitFiles(cwd, signal, budget.maxEntries);
     selection = paths ? 'git-working-tree' : 'directory';
     if (paths) {
+      if (paths.size > budget.maxEntries) throw projectError('PROJECT_FILE_LIMIT', 'Project exceeds its Git enumeration limit');
       for (const [path, { tracked, gitlink }] of paths) {
         if (skip(path)) continue;
         if (path.endsWith('/')) {
@@ -277,11 +298,13 @@ async function readProject(cwd: string, outputDir: string, signal: AbortSignal) 
     await root.close();
   }
   signal.throwIfAborted();
-  const snapshot = snapshotFileSeed(entries);
-  for (const file of Object.values(snapshot.files)) Object.freeze(file);
+  assertFileManifest(entries, budget);
+  const files = stagedFiles(spool, entries);
+  const source = fileSpool(files)!;
   return Object.freeze({
-    files: Object.freeze(snapshot.files),
-    digest: completeDigest(snapshot.digest),
+    files,
+    manifest: source.entries.map(({ file: _filename, ...entry }) => entry),
+    digest: completeDigest(source.digest),
     selection, fileCount: count, bytes, excludedOutputDirectory: excluded,
   });
 }

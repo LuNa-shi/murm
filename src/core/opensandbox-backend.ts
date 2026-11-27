@@ -2,7 +2,8 @@ import type { AgentEvent, ErrorInfo, InputMode, InterruptReceipt, Profile, Spawn
 import type { SessionFork } from '../../scripts/core-session-fork.js';
 import type { createCoreBridge } from './bridge.js';
 import { renderStartupPrompt } from './startup-prompt.js';
-import type { createCoreModelAccess } from './model-access.js';
+import { snapshotModel, type createCoreModelAccess } from './model-access.js';
+import { resolveFilePolicy, type ResolvedFilePolicy } from './file-policy.js';
 
 export type BackendEvent = {
   [Kind in AgentEvent['type']]: Omit<Extract<AgentEvent, { type: Kind }>, 'agentId'>
@@ -85,6 +86,10 @@ interface WorkerReply {
   status?: string;
 }
 
+type ExecutorStartup =
+  | { kind: 'codex'; version: string; authMode: 'api-key'; threadId: string }
+  | { kind: string; version: string; protocol: string; capabilities: ExecutorCapabilities };
+
 export interface SandboxManager {
   agentRpc(agentId: string, input: Record<string, unknown>, options: {
     timeoutMs: number; since?: number; transportTimeoutMs?: number; signal?: AbortSignal;
@@ -95,9 +100,9 @@ export interface SandboxManager {
   coreSessionSnapshot(agentId: string): Promise<SessionFork>;
   collectCoreSession(agentId: string): AsyncIterable<import('./artifact-collection.js').ArtifactRecord>;
   ensureExecution(options: Record<string, unknown>): Promise<{ sandbox_id: string }>;
-  agentVersions(options: { executionId: string; executor?: 'pi' | 'codex' }): Promise<{ piVersion?: string; [key: string]: unknown }>;
+  agentVersions(options: { executionId: string; executor?: string; externalExecutor?: boolean }): Promise<{ piVersion?: string; [key: string]: unknown }>;
   startAgent(options: Record<string, unknown>): Promise<{
-    backend?: { kind: 'codex'; version: string; authMode: 'api-key'; threadId: string };
+    backend?: ExecutorStartup;
     isolation?: { cpu: number; memoryBytes: number; managementAuthentication: boolean };
   } | undefined>;
   /** Return true only when confirmed stopped. Return false for no running executor before start dispatch.
@@ -145,16 +150,20 @@ interface BackendSpawnOptions {
 }
 
 import type { CreateRuntimeOptions } from './types.js';
-import type { OpenSandboxBackendConfig, Sandbox, SandboxConfig, SandboxProviderConfig } from './backend-config.js';
+import type { ExecutorCapabilities, OpenSandboxBackendConfig, Sandbox, SandboxConfig, SandboxProviderConfig } from './backend-config.js';
 import { selectExecutorDriver, type ExecutorDriver } from './executor-driver.js';
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { isIP } from 'node:net';
 import { createWorkerEventPoll } from './worker-event-poll.js';
 import { resolveSandboxConnection } from './sandbox-connection.js';
 import { validId } from './config.js';
 import { adaptSandboxProvider, checkLocalWorkspaceQuota, createApiOpenSandboxProvider, createLocalOpenSandboxProvider, type OpenSandboxProvider } from './opensandbox-provider.js';
 
-export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'> & { readonly driver: Readonly<ExecutorDriver> };
+export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'> & {
+  readonly driver: Readonly<ExecutorDriver>;
+  readonly filePolicy: ResolvedFilePolicy;
+};
 
 type SandboxSettings = Pick<OpenSandboxBackendConfig, 'sandbox' | 'isolation' | 'provider'>;
 const sandboxes = new WeakMap<Sandbox, SandboxSettings>();
@@ -244,7 +253,7 @@ export function createSandbox(config: SandboxConfig | SandboxProviderConfig): Sa
   return handle;
 }
 
-export function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRuntimeOptions, 'models' | 'executor' | 'connection'>): ResolvedOpenSandboxBackendConfig {
+export function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRuntimeOptions, 'models' | 'executor' | 'connection' | 'filePolicy'>): ResolvedOpenSandboxBackendConfig {
   const settings = sandboxes.get(handle);
   if (!settings) throw invalid('A createSandbox handle is required');
   const { executor, models, connection } = options;
@@ -273,23 +282,23 @@ export function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRun
     throw invalid('modelGateway.maxOutputTokens must be null or a safe integer of at least 16');
   }
   if (!models || !Object.keys(models).length) throw invalid('At least one model alias is required');
-  for (const model of Object.values(models)) {
-    if (typeof model?.provider !== 'string' || typeof model?.model !== 'string') throw invalid('Each model needs provider and model');
-    const url = httpUrl(model.upstream?.url, 'model upstream');
-    if (!url.pathname.endsWith('/v1/responses')) throw invalid('Model upstream must use /v1/responses');
-    if (!model.upstream.headers || typeof model.upstream.headers !== 'object' ||
-        Object.values(model.upstream.headers).some(value => typeof value !== 'string')) throw invalid('Model upstream headers must be strings');
-  }
+  const routes = Object.freeze(Object.fromEntries(Object.entries(models).map(([alias, model]) => {
+    const settings = snapshotModel(model, driver.kind);
+    const protocol = typeof settings.protocol === 'object' ? settings.protocol.id : settings.protocol ?? 'responses';
+    if (driver.adapter && !driver.adapter.modelProtocols.includes(protocol)) {
+      throw invalid(`Executor ${driver.kind} does not support model protocol ${protocol}`);
+    }
+    return [alias, settings];
+  })));
   const snapshot = freeze(structuredClone({
     bridge: { host: connection?.bridge?.host ?? '0.0.0.0', publicUrl },
     modelGateway: { requestTimeoutMs: gateway?.requestTimeoutMs, host: gateway?.host ?? '0.0.0.0', advertiseHost, publicUrl: publicGateway, maxOutputTokens: outputPolicy, maxRequests: requestLimit },
-    models,
   }));
-  return Object.freeze({ ...settings, ...snapshot, driver });
+  return Object.freeze({ ...settings, ...snapshot, models: routes, driver, filePolicy: resolveFilePolicy(options.filePolicy) });
 }
 
 export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, {
-  runtimeId, bridge, modelAccess, registerPrivateValues = () => {}, providers = [config.provider ?? (
+  runtimeId, outputDir, bridge, modelAccess, registerPrivateValues = () => {}, providers = [config.provider ?? (
     config.isolation.network === 'local-docker' ? createLocalOpenSandboxProvider(config) : createApiOpenSandboxProvider(config))],
 }: BackendOptions) {
   const { driver } = config;
@@ -440,13 +449,20 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       registerPrivateValues([...Object.values(credentials.secretEnvironment), ...Object.values(bridgeCredentials.secretEnvironment)]);
       const quota = await provider.prepareSandbox({ sandboxId: sandbox.sandbox_id, agent: identity, bridgeUrl: bridge.publicUrl,
         modelUrl: credentials.baseUrl, additionalEndpoints: profile.network?.allow ?? [], workspace, assertOpen });
-      const versions = await manager.agentVersions({ executionId: agentId, executor: driver.kind });
-      if (versions[`${driver.kind}Version`] !== driver.version) throw invalid(`Backend requires ${driver.kind} ${driver.version}`);
+      const versions = await manager.agentVersions({ executionId: agentId, executor: driver.kind, externalExecutor: Boolean(driver.adapter) });
+      const actualVersion = versions[`${driver.kind}Version`];
+      if (!driver.adapter && actualVersion !== driver.version) {
+        throw invalid(`Worker has ${driver.kind} ${actualVersion ?? 'unknown'}; selected ${driver.version} within ${driver.compatibleVersions.join(', ')}`);
+      }
       assertOpen();
       const model = config.models[profile.model];
       agent.workerStartDispatched = true;
       const startup = await manager.startAgent({ executionId: agentId,
         ...driver.start({ model, baseUrl: credentials.baseUrl, forkSession: Boolean(forkSession) }),
+        filePolicy: config.filePolicy,
+        controllerSpoolDirectory: outputDir,
+        signal,
+        executorVersion: driver.version,
         systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt, driver.kind),
         systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
         writable: options.writable ?? profile.writable,
@@ -456,6 +472,14 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         requireCoreFileProtocol: true, projectQuota: quota, modelCatalogResource: credentials.catalogResource,
         ...(credentials.catalogContent !== undefined ? { modelCatalogContent: credentials.catalogContent } : {}),
         beforeAgentStart: assertOpen });
+      if (driver.adapter) {
+        const receipt = startup?.backend;
+        if (!receipt || !('protocol' in receipt) || receipt.kind !== driver.kind || receipt.version !== driver.version ||
+            receipt.protocol !== driver.adapter.protocol || !isDeepStrictEqual(receipt.capabilities, driver.capabilities)) {
+          throw Object.assign(new Error('Sandbox Manager did not attest the selected executor version, protocol and capabilities'),
+            { code: 'AGENT_STARTUP_CONTRACT' });
+        }
+      }
       const effective = startup?.isolation || quota ? {
         ...startup?.isolation,
         ...(quota ? { disk: { ...quota, scope: 'workspace' as const } } : {}),
@@ -468,7 +492,9 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       consume(agent, ready.records ?? []);
       assertOpen();
       agent.polling = agent.eventPoll.run(signal => readWorkerEvents(agent, signal));
-      return { ...allocation, sandboxId: sandbox.sandbox_id, versions,
+      return { ...allocation, sandboxId: sandbox.sandbox_id, versions: {
+        ...versions, ...(driver.adapter ? { [`${driver.kind}Version`]: startup?.backend?.version } : {}),
+      },
         providerVersion: provider.version, effective, ...(startup?.backend ? { backend: startup.backend } : {}) };
     },
     async snapshotFiles(agentId: string, input: FileSnapshotOptions) {
@@ -595,7 +621,9 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         agent.exited = true;
         agent.onEvent({ type: 'exit', reason: 'Worker confirmed executor stopped', expected: true });
       }
-      return { collectable: stopped };
+      // Rejected startup may leave only a partial workDir. An unadmitted
+      // Agent has no output to collect, even after the Worker confirms stop.
+      return { collectable: stopped && agent.started === true };
     },
     async *collectSession(agentId: string) {
       const agent = agents.get(agentId);

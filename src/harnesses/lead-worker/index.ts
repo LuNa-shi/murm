@@ -17,7 +17,7 @@ const fail = (code: any) => Object.assign(new Error(code), { code });
 const invalidConfiguration = (message: string) => Object.assign(new TypeError(message), { code: 'INVALID_RUN_CONFIGURATION' });
 const bounded = (value: any, fallback: any, maximum: any) => { const result = value ?? fallback; if (!Number.isSafeInteger(result) || result < 1 || result > maximum) throw invalidConfiguration('Invalid lead-worker wait bound'); return result; };
 export async function createLeadWorkerHarness(options: any) {
-  const { runId, image, model = 'default', outputDir, sandbox, executor, models, connection, exportLimit = 64 * 1024 ** 2, helperCount = 2, includeGit = true } = options;
+  const { runId, image, model = 'default', outputDir, sandbox, executor, models, connection, filePolicy, exportLimit = 64 * 1024 ** 2, helperCount = 2, includeGit = true } = options;
   const project = options.projectFiles !== undefined;
   let initialCommit: string | undefined;
   const dynamic: DynamicLeadWorkerOptions | undefined = options.dynamic;
@@ -131,7 +131,7 @@ export async function createLeadWorkerHarness(options: any) {
         env: { ...(initialCommit ? { RUN_INITIAL_COMMIT: initialCommit } : {}), RUN_REPOSITORY: facilities.repositoryUrl, WORK_BRANCH: actor.branch, GITEA_USERNAME: actor.username, GIT_TERMINAL_PROMPT: '0', GIT_AUTHOR_NAME: actor.username, GIT_AUTHOR_EMAIL: `${actor.username}@murm.invalid`, GIT_COMMITTER_NAME: actor.username, GIT_COMMITTER_EMAIL: `${actor.username}@murm.invalid`, RUN_OWNER: facilities.repository.owner, RUN_REPO: facilities.repository.name },
         network: { allow: [new URL(facilities.repositoryUrl).origin] }, services: dynamic ? dynamicServices(role === 'lead' ? 'lead' : 'helper') : { board: (project ? projectBoardPermissions : boardPermissions)[isLead ? 'lead' : 'helper'], gitea: ['pull_request_write'] } }];
     }));
-    runtime = await createRuntime({ sandbox, executor, models, connection, services, profiles, maxAgents: roles.length + (dynamic ? 1 : 0), outputDir, ...(dynamicControl ? { agentAccessPolicy: dynamicControl.agentAccessPolicy } : {}) });
+    runtime = await createRuntime({ sandbox, executor, models, connection, filePolicy, services, profiles, maxAgents: roles.length + (dynamic ? 1 : 0), outputDir, ...(dynamicControl ? { agentAccessPolicy: dynamicControl.agentAccessPolicy } : {}) });
     if (startup.aborted) throw fail('HARNESS_START_ABORTED');
     options.onRuntime?.(runtime, snapshot);
     unsubscribe = runtime.onEvent((event: any) => {

@@ -23,7 +23,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "3fe4457b04085fdd618743dfbf4d810fa28d8d8e180d32f52f45ed38935b0818"
+      "sha256": "f7d942b55b4b783620909aa05b0e7ea6e9e88bf54ebf5584ccf4f6c64c8b3dfe"
     },
     {
       "path": "src/core/bridge.ts",
@@ -31,15 +31,15 @@
     },
     {
       "path": "src/core/startup-prompt.ts",
-      "sha256": "a0a07d64d49ec8effab76dddb84e7be77c340a173bc6370374b27c743fada761"
+      "sha256": "539677f68d6a94bdb7d63dca29c0f9094eab732ea57417d2752253002d06cbde"
     },
     {
       "path": "src/core/opensandbox-backend.ts",
-      "sha256": "2476ba7700dce18d9a5ada0c56b6d655dacd0decc59df1b678a4102913786b21"
+      "sha256": "54e0e38af06b81722bd4f72bcc3baa650092bc6451a3516091f8d7dba533c247"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "474480bf3bfa464f950e929cace6bd7924efd69e7b7a01efa915b2f7ae97f836"
+      "sha256": "070271ec1301ae1b51ed031fa8b6b080453ccacaabd259b2b8b09f44d0df7a8c"
     },
     {
       "path": "scripts/codex-app-server-driver.ts",
@@ -47,11 +47,11 @@
     },
     {
       "path": "scripts/local-setup-smoke.ts",
-      "sha256": "c6b6cadf7fbfd6a003ba081a8cd1a34418aede01d14959d9f27e706bcca930e6"
+      "sha256": "f0cc90aab76142ed4d0e9d54607ace8d7237b99b81fcd9c550a6280fb7b2da4c"
     },
     {
       "path": "scripts/local-setup-upstream.ts",
-      "sha256": "1f2cca17748519c7f1d4b81153e1a206ecefabd4391e9fa5099eede3b798c535"
+      "sha256": "a96b4f1e96f29a4a927f88f9a231d399ff251540cbf7132d801fa15b37ed38e0"
     },
     {
       "path": "examples/bridge-services/handoff.ts",
@@ -63,11 +63,11 @@
     },
     {
       "path": "examples/notes/project.ts",
-      "sha256": "dede0a317049dc2d6ad65343751a1214d213e65c0048811a97ebf9252d824f4d"
+      "sha256": "ecd7db0b5989833817166e81bf1248ee4959d93272873751763284005947e57e"
     },
     {
       "path": "examples/taskpool/project.ts",
-      "sha256": "4b5834a800c98f6a962fa69c9c7706242afcd0b67e1958f90a959605730f98f3"
+      "sha256": "47d3d135f062786b1a043c3888cfe3c37369f0e126eb5cc5929414efd2ceb490"
     },
     {
       "path": "src/harnesses/shared/project-git.ts",
@@ -79,7 +79,7 @@
     },
     {
       "path": "src/harnesses/substrate/index.ts",
-      "sha256": "8cfb7fcec6283f685aa78662111d62cda6c1bf28cf9bbf22df79415eefd19366"
+      "sha256": "a917951eb3ebcd6b32b683d2c19a903bf539cfb5019f8752e49eb8e359a6c1a8"
     },
     {
       "path": "src/harnesses/substrate/substrate.ts",
@@ -91,7 +91,7 @@
     },
     {
       "path": "examples/taskpool/harness.ts",
-      "sha256": "b79b26b13baf5141a2885f64a004f440440f5373feb802b4ef5ad48a197d3c7f"
+      "sha256": "7528eea2264e01e20942c92b401434a67affab67f94ce301021ce389702ca596"
     },
     {
       "path": "examples/substrate/fate-run.ts",
@@ -115,7 +115,7 @@
     },
     {
       "path": "examples/subagents/main.ts",
-      "sha256": "872392ee90da07581014963d1db563953cc60bc13178a9c05c5a5bc3c523da49"
+      "sha256": "f3b9d4abe4514e02c5de664271fe19d94be7e5dc5e940f529c1de9a4539fb1c8"
     },
     {
       "path": "examples/subagents/controller.ts",
@@ -155,7 +155,7 @@
     },
     {
       "path": "src/harnesses/peermesh/team.ts",
-      "sha256": "38338b5a4c7a49dc3587d63688dac63cdf3a3af9fd0ef6a00419e40689cc2c0d"
+      "sha256": "4e17aed7ec824aa2fb9673e65e94a1926d2fb59b2d6d04f2f06b45301d62eb1d"
     },
     {
       "path": "test/fixtures/peermesh-team-kimi.ts",
@@ -171,7 +171,7 @@
     },
     {
       "path": "src/harnesses/lead-worker/index.ts",
-      "sha256": "4403f66114df9cb086041cf93927ba71bb110c67e44754ae84b53867db36fc0b"
+      "sha256": "fe185b9c09889e3ebd47b928a8d78b30fc0e4b3de4550c669c93d069989cbe89"
     },
     {
       "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",

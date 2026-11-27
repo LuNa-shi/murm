@@ -22,10 +22,14 @@ import { registerServicePrivateValues, snapshotServiceRegistry, type ServiceRegi
 
 export { createSandbox } from './opensandbox-backend.js';
 export { resolveSandboxConnection } from './sandbox-connection.js';
-export { getExecutorCapabilities } from './executor-driver.js';
-export { DEFAULT_WORKER_IMAGE } from './worker-image.js';
+export { createCodexExecutor, createExecutorAdapter, createPiExecutor, getExecutorCapabilities } from './executor-driver.js';
+export { EXECUTOR_ADAPTER_PROTOCOL } from './executor-adapter.js';
+export type { BuiltinExecutorSelection, ExecutorAdapter, ExecutorSelection } from './executor-adapter.js';
+export { DEFAULT_WORKER_IMAGE, workerImageFor } from './worker-image.js';
 export { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from './services.js';
 export type { ExecutorCapabilities, ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SandboxConfig, SandboxProviderConfig, SteeringMode } from './backend-config.js';
+export type { ModelCapabilities, ModelProtocol, ModelStreamTerminal, ModelTransport } from './model-transport.js';
+export type { FileBudget, FilePolicy } from './file-policy.js';
 export type { SandboxPreparation, SandboxProvider } from './opensandbox-provider.js';
 export type { SandboxManager } from './opensandbox-backend.js';
 export type { HttpJsonAdapterOptions, ServiceRegistration } from './services.js';
@@ -143,8 +147,13 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
 
   const maxAgents = options.maxAgents;
   // Transport retention bounds apply independently of provider disk quotas.
-  const artifactBounds = config.isolation.network === 'local-docker' ? config.isolation.disk :
-    { bytes: 256 * 1024 ** 2, inodes: 16_384 };
+  const artifactBounds = (phase: 'export' | 'session') => {
+    const budget = config.filePolicy[phase];
+    const disk = config.isolation.network === 'local-docker' ? config.isolation.disk : undefined;
+    return { bytes: Math.min(budget.maxBytes, disk?.bytes ?? budget.maxBytes),
+      inodes: Math.min(budget.maxEntries, disk?.inodes ?? budget.maxEntries),
+      maxFileBytes: budget.maxFileBytes, maxFiles: budget.maxFiles, timeoutMs: budget.timeoutMs };
+  };
   const assemblyDeadline = performance.now() + defaultTimeoutMs;
   const agents = new Map<any, any>();
   const reportPath = join(outputDir, 'runtime.json');
@@ -154,7 +163,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const effectiveConfig = runtimeConfiguration({ config, profiles, registrations, maxAgents, defaultTimeoutMs }, redactor.text);
   const sandboxObservations = new Map<string, unknown>();
   const saveSummary = (status: any, data: any = {}) => writeRecord(reportPath, {
-    runtimeId, status, maxAgents, config: effectiveConfig, evidence: records.snapshot(),
+    runtimeId, status, maxAgents, config: {
+      ...effectiveConfig,
+      models: Object.fromEntries(Object.entries(effectiveConfig.models).map(([alias, model]) =>
+        [alias, { ...model, ...modelAccess?.describe?.()[alias] }])),
+    }, evidence: records.snapshot(),
     sandboxes: Object.fromEntries(sandboxObservations),
     modelLedgers: modelAccess?.ledgerPaths?.() ?? [], modelTrace: modelTrace.snapshot(), ...data,
   });
@@ -293,7 +306,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   let notifying = false;
   const spawnRequests = new Map<any, any>();
   const inputRequests = createInputLedger<InputRequest>(runtimeId);
-  const fileControls = createFileControls({ backend, findAgent, problem, observe, timedOut,
+  const fileControls = createFileControls({ backend, findAgent, problem, observe, timedOut, filePolicy: config.filePolicy,
     isLive: (agent: any) => !closing && isLive(agent) });
   const handlerErrors: any[] = [];
   let handlerErrorCount = 0;
@@ -467,9 +480,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         }
         if (agent.collectable && !agent.sessionArchive && backend.collectSession) {
           stopPhase(agent, 'archive-session');
-          const collect = { paths: ['.'], includeGit: false, maxBytes: artifactBounds.bytes, required: true };
+          const bounds = artifactBounds('session');
+          const collect = { paths: ['.'], includeGit: false, maxBytes: bounds.bytes, required: true };
           [agent.sessionArchive] = await saveAgentArtifacts({ outputDir, agentId: info.id, collect,
-            bounds: artifactBounds, records: () => backend.collectSession(info.id),
+            bounds, records: () => backend.collectSession(info.id),
             destination: 'session', redactStream: redactor.jsonl, privateFiles: true });
           records.record('session-archive', { agentId: info.id, manifestPath: agent.sessionArchive });
         }
@@ -477,7 +491,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           stopPhase(agent, 'collect-artifacts');
           try {
             agent.artifacts = await saveAgentArtifacts({ outputDir, agentId: info.id, collect: agent.collect,
-              bounds: artifactBounds, records: () => backend.collect(info.id, agent.collect) });
+              bounds: artifactBounds('export'), records: () => backend.collect(info.id, agent.collect) });
           } catch (error: any) {
             if (agent.collect.required) throw error;
             agent.optionalCollectionError = errorInfo(error);
@@ -501,15 +515,16 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
 
   async function spawn(input: any, caller: any = 'host') {
     const requestId = input?.requestId;
-    let parameters;
+    let parameters, fileDigest;
     try {
-      parameters = snapshotSpawn(input, profiles, management.knowsService);
+      ({ parameters, fileDigest } = snapshotSpawn(input, profiles, management.knowsService, config.filePolicy.initial));
       config.driver.assertEnvironment?.(parameters.secretEnv);
     }
     catch (error) { throw problem('INVALID_CONTRACT', (error as Error).message, 'spawn', undefined, requestId); }
     if (parameters.forkFrom !== undefined && !config.driver.capabilities.contextFork) throw problem('NOT_ALLOWED', 'Backend does not support Context Fork', 'spawn', undefined, requestId);
     if (caller !== 'host' && parameters.workspace) throw problem('NOT_ALLOWED', 'Only the host can select workspace mounts', 'spawn', undefined, requestId);
-    const fingerprint = createHash('sha256').update(JSON.stringify(Object.entries(parameters).sort())).digest('hex');
+    const { files, ...selection } = parameters;
+    const fingerprint = createHash('sha256').update(JSON.stringify([Object.entries(selection).sort(), fileDigest])).digest('hex');
     const requestKey = JSON.stringify([caller, requestId]);
     let request: any = spawnRequests.get(requestKey);
     if (request) {
@@ -692,6 +707,9 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     const timeoutMs = bound(options, 'interrupt', agentId);
     if (!validId(requestId)) throw problem('INVALID_CONTRACT', 'interrupt requires a requestId', 'interrupt', agentId, requestId);
     const agent = findAgent(agentId, 'interrupt', requestId);
+    if (!config.driver.capabilities.queuedInputCancellation) {
+      throw problem('NOT_ALLOWED', 'Executor does not support fenced interruption with queue cancellation', 'interrupt', agentId, requestId);
+    }
     let request = agent.interruptRequests.get(requestId);
     if (!request) {
       if (closing || !isLive(agent)) throw problem('NOT_ALLOWED', 'Agent is not available to interrupt', 'interrupt', agentId, requestId);

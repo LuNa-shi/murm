@@ -1,6 +1,7 @@
 import type { CollectionSpec, Profile, SpawnOptions } from './types.js';
 import type { OpenSandboxBackendConfig } from './backend-config.js';
 import type { ServiceRegistration } from './services.js';
+import { DEFAULT_FILE_POLICY, type FileBudget } from './file-policy.js';
 
 import { isIPv4 } from 'node:net';
 import { snapshotFileSeed } from '../../scripts/core-file-seed.js';
@@ -81,7 +82,8 @@ export function snapshotProfiles(profiles: Readonly<Record<string, Profile>>, mo
   return snapshots;
 }
 
-export function snapshotSpawn(input: SpawnOptions, profiles: ReadonlyMap<string, Profile>, knowsService: (id: string) => boolean): SpawnOptions {
+export function snapshotSpawn(input: SpawnOptions, profiles: ReadonlyMap<string, Profile>, knowsService: (id: string) => boolean,
+  budget: FileBudget = DEFAULT_FILE_POLICY.initial) {
   if (!record(input) || !validId(input.requestId) || !profiles.has(input.profile) ||
       Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'files', 'bindings', 'secretEnv', 'collect', 'forkFrom', 'workspace'].includes(key)) ||
       (input.writable !== undefined && typeof input.writable !== 'boolean') ||
@@ -103,12 +105,14 @@ export function snapshotSpawn(input: SpawnOptions, profiles: ReadonlyMap<string,
       throw new TypeError('Shared workspace requires an id and read-only or read-write mode');
     }
   }
-  const snapshot = structuredClone(input);
+  const { files, ...configuration } = input;
+  const snapshot: SpawnOptions = structuredClone(configuration);
   if (input.workspace) snapshot.writable = input.workspace.mode === 'read-write';
   const collect = snapshotCollection(input.collect) ?? profiles.get(input.profile)!.collect;
   if (collect !== undefined) snapshot.collect = collect;
-  if (input.files !== undefined) snapshot.files = snapshotFileSeed(input.files).files;
+  const seed = files === undefined ? undefined : snapshotFileSeed(files, budget);
+  if (seed) snapshot.files = seed.files;
   if (snapshot.secretEnv) snapshot.secretEnv = Object.fromEntries(Object.entries(snapshot.secretEnv).sort());
   if (snapshot.bindings) snapshot.bindings = Object.fromEntries(Object.entries(snapshot.bindings).sort());
-  return snapshot;
+  return { parameters: snapshot, fileDigest: seed?.digest ?? null };
 }

@@ -1,4 +1,4 @@
-import { DEFAULT_WORKER_IMAGE, resolveSandboxConnection } from '@luna-shi/murm';
+import { workerImageFor, resolveSandboxConnection } from '@luna-shi/murm';
 
 function required(...names: string[]) {
   for (const name of names) {
@@ -19,7 +19,7 @@ export default {
   model: 'default',
   maxAgents: Number(process.env.MURM_SUBAGENTS_MAX_AGENTS ?? 4),
   maxDepth: Number(process.env.MURM_SUBAGENTS_MAX_DEPTH ?? 3),
-  image: image ?? DEFAULT_WORKER_IMAGE,
+  image: image ?? workerImageFor(executor),
   outputDir: './subagents-runs',
   workTimeoutMs: 120_000,
   closeTimeoutMs: 30_000,

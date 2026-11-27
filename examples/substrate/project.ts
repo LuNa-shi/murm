@@ -6,7 +6,7 @@ import { observeProjectRuntime, projectConfiguration, projectResult } from '../.
 import type { substrateConfiguration } from './project-config.js';
 
 type Configuration = Omit<ReturnType<typeof substrateConfiguration>, 'models' | 'sandbox'> &
-  Pick<CreateRuntimeOptions, 'executor' | 'models'> & { sandbox: SandboxConfig };
+  Pick<CreateRuntimeOptions, 'executor' | 'models' | 'filePolicy'> & { sandbox: SandboxConfig };
 
 const substrate = {
   id: 'substrate',
@@ -27,7 +27,7 @@ const substrate = {
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
     try {
       const report = await runSubstrate({
-        sandbox: sandboxHandle, executor: configuration.executor, connection, models, image, model, poolSize, maxRounds, workTimeoutMs, turnTimeoutMs, closeTimeoutMs,
+        sandbox: sandboxHandle, executor: configuration.executor, connection, filePolicy: configuration.filePolicy, models, image, model, poolSize, maxRounds, workTimeoutMs, turnTimeoutMs, closeTimeoutMs,
         runId: context.runId, outputDir: context.outputDir, question: context.input.prompt, files: context.initial.files,
         onRuntime: (runtime: Parameters<typeof observeProjectRuntime>[0]) => { observation = observeProjectRuntime(runtime, context); },
         onReady: () => context.markRunning(),

@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { chmod, chown, lstat, mkdir, opendir, rm, rmdir, writeFile } from 'node:fs/promises';
+import { chmod, chown, copyFile, lstat, mkdir, opendir, rm, rmdir, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkFileSpace } from './file-tree-stream.js';
 const hash = (value: any) => createHash('sha256').update(value).digest('hex');
 export const canonical = (value: any): string => value === null || typeof value !== 'object' ? JSON.stringify(value)
   : Array.isArray(value) ? `[${value.map(canonical).join(',')}]`
@@ -58,15 +60,21 @@ export class ProjectInstaller {
   declare snapshot: any;
   declare assertOpen: any;
   declare fault: any;
-  declare decode: typeof decodeProjectFiles;
+  declare decode: (files: any) => {
+    bytes: Record<string, Buffer | { file: string }>;
+    manifest: Record<string, { bytes: number; content_hash: string }>;
+    content_hash: string;
+  };
   declare owner: () => { uid: number; gid: number };
   declare excluded: (path: string) => boolean;
+  declare maxDirectories: number;
+  declare timeoutMs: number;
 
   declare held: any;
 
   constructor({ projectDir, controlDir, uid, snapshot, assertOpen, fault = null,
-    decode = decodeProjectFiles, owner = () => ({ uid, gid: uid }), excluded = () => false }: any) {
-    Object.assign(this, { projectDir, controlDir, uid, snapshot, assertOpen, fault, decode, owner, excluded });
+    decode = decodeProjectFiles, owner = () => ({ uid, gid: uid }), excluded = () => false, maxDirectories = 10_000, timeoutMs = 15_000 }: any) {
+    Object.assign(this, { projectDir, controlDir, uid, snapshot, assertOpen, fault, decode, owner, excluded, maxDirectories, timeoutMs });
     this.held = null;
   }
 
@@ -119,7 +127,7 @@ export class ProjectInstaller {
   async #writeTree(before: any, target: any, changed: any, modes: any = Object.create(null)) {
     // Preserve all unaffected file/directory inodes. Only directories that
     // would collide with a target file are removed; ordinary empty dirs stay.
-    const deadline = Date.now() + 15_000;
+    const deadline = Date.now() + this.timeoutMs;
     const { uid, gid } = this.owner();
     for (const path of [...changed].sort((a: any, b: any) => b.split('/').length - a.split('/').length)) {
       if (Date.now() >= deadline) throw busy('Project installation exceeded its write window');
@@ -137,7 +145,9 @@ export class ProjectInstaller {
       const parents = path.split('/').slice(0, -1);
       for (let i = 1; i <= parents.length; i++) await chown(join(this.projectDir, ...parents.slice(0, i)), uid, gid);
       const mode = Object.hasOwn(modes, path) ? modes[path] : 0o644;
-      await writeFile(absolute, target[path], { flag: 'wx', mode });
+      const content = target[path];
+      if (Buffer.isBuffer(content)) await writeFile(absolute, content, { flag: 'wx', mode });
+      else await copyFile(content.file, absolute, constants.COPYFILE_EXCL);
       await chown(absolute, uid, gid);
       await chmod(absolute, mode);
       this.fault?.('after_file_write');
@@ -163,7 +173,7 @@ export class ProjectInstaller {
     const result = Object.create(null);
     let count = 0;
     const visit = async (path: any) => {
-      if (++count > 10_000) throw busy('Directory topology exceeds install bounds');
+      if (++count > this.maxDirectories) throw busy('Directory topology exceeds install bounds');
       const absolute = join(this.projectDir, path);
       const info = await lstat(absolute);
       result[path] = { mode: info.mode & 0o7777, uid: info.uid, gid: info.gid };
@@ -217,81 +227,94 @@ export class ProjectInstaller {
       return this.#public(previous);
     }
     if (this.held) throw busy('Another install is awaiting durable acknowledgement');
-    const original = await this.snapshot(input);
-    if (original.content_hash !== input.expected_content_hash ||
-        (input.expected_file_digest !== undefined && original.file_digest !== input.expected_file_digest)) throw Object.assign(busy('Project changed after apply capture; save before applying again'), { applyBlocker: 'dirty' });
-    const changed = changes(original.manifest, target.manifest);
-    if (fileModes) for (const path of Object.keys(fileModes)) {
-      try {
-        if (((await lstat(join(this.projectDir, path))).mode & 0o7777) !== fileModes[path] && !changed.includes(path)) changed.push(path);
-      } catch (error: any) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error; }
-    }
-    const replacedDirectories: any[] = [];
-    const modes = Object.create(null);
-    for (const path of changed) {
-      try {
-        const info = await lstat(join(this.projectDir, path));
-        if (info.isDirectory() && Object.hasOwn(target.bytes, path)) {
-          await this.#assertReplaceableDirectory(path);
-          replacedDirectories.push(path);
-        }
-        if (info.isFile()) modes[path] = info.mode & 0o7777;
-      } catch (error: any) { if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error; }
-    }
-    const inspect = { pids, projectDir: this.projectDir, changedPaths: changed, replacedDirectories };
-    const inspectionInput = JSON.stringify(inspect);
-    if (Buffer.byteLength(inspectionInput) > 32 * 1024 * 1024) throw invalid('Process inspection metadata exceeds its 32 MiB bound');
+    const original = await this.snapshot(input, { retainBytes: true });
+    let retainBackup = false;
     try {
-      const stdout = await new Promise<any>((resolve: any, reject: any) => {
-        const child = execFile('/usr/bin/setpriv', [`--reuid=${this.uid}`, `--regid=${this.uid}`, '--clear-groups', '--no-new-privs', '--bounding-set=-all', '--inh-caps=-all', '--ambient-caps=-all',
-          process.execPath, fileURLToPath(new URL('./project-processes.js', import.meta.url))], { env: { PATH: '/usr/local/bin:/usr/bin:/bin' }, cwd: '/', timeout: 5000, maxBuffer: 64 * 1024 },
-        (error: any, stdout: any) => error ? reject(error) : resolve(stdout));
-        child.stdin!.on('error', reject);
-        child.stdin!.end(inspectionInput);
-      });
-      if (JSON.parse(stdout).safe !== true) throw new Error('Project process inspection was inconclusive');
-    } catch (error: any) { throw Object.assign(busy('An open project file, mapped file or cwd prevents safe installation'), { applyBlocker: 'active_writer' }); }
-    this.assertOpen(input);
-    const directories = await this.#directories();
-    // Large immutable bytes are written once. Phase transitions only replace a
-    // small receipt, avoiding two simultaneous copies of both complete trees.
-    const { files, ...identity } = input;
-    writeReceipt(`${key}.capture`, { files, original, modes, directories });
-    const receipt = { ...identity, fingerprint, phase: 'installing', changed_paths: changed };
-    try { writeReceipt(key, receipt); }
-    catch (error: any) { try { unlinkSync(`${key}.capture`); } catch {} throw error; }
-    try {
-      this.fault?.('before_write');
-      await this.#writeTree(this.decode(original.files).bytes, target.bytes, changed, fileModes ?? modes);
-      this.fault?.('after_write');
-      this.assertOpen(input);
-      const observed = await this.snapshot(input);
-      if (observed.content_hash !== target.content_hash ||
-          (input.file_digest !== undefined && observed.file_digest !== input.file_digest)) throw new Error('Installed project differs from the planned tree');
-      receipt.phase = 'installed';
-      writeReceipt(key, receipt);
-      this.held = key;
-      this.fault?.('after_installed');
-      return this.#public(receipt);
-    } catch (error: any) {
-      if (this.held === key) throw Object.assign(new Error('Installed apply result needs acknowledgement; query the original request'), { code: 'WORKSPACE_RESULT_UNKNOWN', cause: error });
-      try {
-        // Writers are still paused. Restore all changed paths, including a
-        // partial write, and verify bytes before permitting any resume.
-        const old = this.decode(original.files);
-        const actual = Object.fromEntries(changed.map((path: any) => [path, true]));
-        await this.#writeTree(actual, old.bytes, changed, modes);
-        await this.#restoreDirectories(directories);
-        const restored = await this.snapshot(input);
-        if (restored.content_hash !== original.content_hash || restored.file_digest !== original.file_digest) throw new Error('Apply rollback hash differs');
-        receipt.phase = 'failed'; receipt.error = { code: 'WORKSPACE_REQUEST_ABORTED', message: 'Apply installation rolled back; use a new request ID' };
-        writeReceipt(key, receipt);
-        try { unlinkSync(`${key}.capture`); } catch {}
-        return this.#public(receipt);
-      } catch (rollbackError: any) {
-        this.held = key; // Worker must keep writers paused and close this Agent.
-        throw Object.assign(new Error('Apply rollback could not be verified; Agent must stop'), { code: 'WORKSPACE_RECONCILIATION_REQUIRED', cause: rollbackError });
+      if (original.content_hash !== input.expected_content_hash ||
+          (input.expected_file_digest !== undefined && original.file_digest !== input.expected_file_digest)) throw Object.assign(busy('Project changed after apply capture; save before applying again'), { applyBlocker: 'dirty' });
+      const changed = changes(original.manifest, target.manifest);
+      if (fileModes) for (const path of Object.keys(fileModes)) {
+        try {
+          if (((await lstat(join(this.projectDir, path))).mode & 0o7777) !== fileModes[path] && !changed.includes(path)) changed.push(path);
+        } catch (error: any) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error; }
       }
+      const replacedDirectories: any[] = [];
+      const modes = Object.create(null);
+      for (const path of changed) {
+        try {
+          const info = await lstat(join(this.projectDir, path));
+          if (info.isDirectory() && Object.hasOwn(target.bytes, path)) {
+            await this.#assertReplaceableDirectory(path);
+            replacedDirectories.push(path);
+          }
+          if (info.isFile()) modes[path] = info.mode & 0o7777;
+        } catch (error: any) { if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error; }
+      }
+      const inspect = { pids, projectDir: this.projectDir, changedPaths: changed, replacedDirectories };
+      const inspectionInput = JSON.stringify(inspect);
+      if (Buffer.byteLength(inspectionInput) > 32 * 1024 * 1024) throw invalid('Process inspection metadata exceeds its 32 MiB bound');
+      try {
+        const stdout = await new Promise<any>((resolve: any, reject: any) => {
+          const child = execFile('/usr/bin/setpriv', [`--reuid=${this.uid}`, `--regid=${this.uid}`, '--clear-groups', '--no-new-privs', '--bounding-set=-all', '--inh-caps=-all', '--ambient-caps=-all',
+            process.execPath, fileURLToPath(new URL('./project-processes.js', import.meta.url))], { env: { PATH: '/usr/local/bin:/usr/bin:/bin' }, cwd: '/', timeout: 5000, maxBuffer: 64 * 1024 },
+          (error: any, stdout: any) => error ? reject(error) : resolve(stdout));
+          child.stdin!.on('error', reject);
+          child.stdin!.end(inspectionInput);
+        });
+        if (JSON.parse(stdout).safe !== true) throw new Error('Project process inspection was inconclusive');
+      } catch (error: any) { throw Object.assign(busy('An open project file, mapped file or cwd prevents safe installation'), { applyBlocker: 'active_writer' }); }
+      this.assertOpen(input);
+      const directories = await this.#directories();
+      if (original.dispose) {
+        const writes = changed.filter(path => Object.hasOwn(target.manifest, path));
+        await checkFileSpace(this.projectDir, writes.reduce((sum, path) => sum + target.manifest[path].bytes, 0),
+          writes.length, 'Sandbox replacement after staging the original tree');
+      }
+      // Large immutable bytes are written once. Phase transitions only replace a
+      // small receipt, avoiding two simultaneous copies of both complete trees.
+      const { files, ...identity } = input;
+      writeReceipt(`${key}.capture`, original.dispose
+        ? { original: original.manifest, target: target.manifest, modes, directories }
+        : { files, original, modes, directories });
+      const receipt = { ...identity, fingerprint, phase: 'installing', changed_paths: changed };
+      try { writeReceipt(key, receipt); }
+      catch (error: any) { try { unlinkSync(`${key}.capture`); } catch {} throw error; }
+      try {
+        this.fault?.('before_write');
+        await this.#writeTree(this.decode(original.files).bytes, target.bytes, changed, fileModes ?? modes);
+        this.fault?.('after_write');
+        this.assertOpen(input);
+        const observed = await this.snapshot(input);
+        if (observed.content_hash !== target.content_hash ||
+            (input.file_digest !== undefined && observed.file_digest !== input.file_digest)) throw new Error('Installed project differs from the planned tree');
+        receipt.phase = 'installed';
+        writeReceipt(key, receipt);
+        this.held = key;
+        this.fault?.('after_installed');
+        return this.#public(receipt);
+      } catch (error: any) {
+        if (this.held === key) throw Object.assign(new Error('Installed apply result needs acknowledgement; query the original request'), { code: 'WORKSPACE_RESULT_UNKNOWN', cause: error });
+        try {
+          // Writers are still paused. Restore all changed paths, including a
+          // partial write, and verify bytes before permitting any resume.
+          const old = this.decode(original.files);
+          const actual = Object.fromEntries(changed.map((path: any) => [path, true]));
+          await this.#writeTree(actual, old.bytes, changed, modes);
+          await this.#restoreDirectories(directories);
+          const restored = await this.snapshot(input);
+          if (restored.content_hash !== original.content_hash || restored.file_digest !== original.file_digest) throw new Error('Apply rollback hash differs');
+          receipt.phase = 'failed'; receipt.error = { code: 'WORKSPACE_REQUEST_ABORTED', message: 'Apply installation rolled back; use a new request ID' };
+          writeReceipt(key, receipt);
+          try { unlinkSync(`${key}.capture`); } catch {}
+          return this.#public(receipt);
+        } catch (rollbackError: any) {
+          retainBackup = true;
+          this.held = key; // Worker must keep writers paused and close this Agent.
+          throw Object.assign(new Error('Apply rollback could not be verified; Agent must stop'), { code: 'WORKSPACE_RECONCILIATION_REQUIRED', cause: rollbackError });
+        }
+      }
+    } finally {
+      if (original.dispose && !retainBackup) await original.dispose();
     }
   }
 }

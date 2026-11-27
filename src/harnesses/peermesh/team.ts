@@ -22,7 +22,7 @@ async function bounded(work: any, timeoutMs: any, code: any) {
 
 /** One public Core Runtime with a fixed independently authenticated peer pool. */
 export async function createPeerMeshTeam(options: any) {
-  const { runId, image, outputDir, sandbox, executor, models, connection, model = 'default', exportLimit = 8 * 1024 ** 2, peerKeys = ['a', 'b'] } = options;
+  const { runId, image, outputDir, sandbox, executor, models, connection, filePolicy, model = 'default', exportLimit = 8 * 1024 ** 2, peerKeys = ['a', 'b'] } = options;
   const durationMs = options.project?.durationMs ?? 3_600_000;
   if (options.project !== undefined && (!finite(durationMs) || durationMs > 86_400_000 ||
       typeof options.project?.title !== 'string' || typeof options.project?.body !== 'string' ||
@@ -127,7 +127,7 @@ export async function createPeerMeshTeam(options: any) {
       }
     } : undefined);
     const profiles = Object.fromEntries(facilities.peers.map((peer: any) => [`peer-${peer.key}`, createPeerProfile({ image, model, facilities: { ...facilities, peer } })]));
-    runtime = await createRuntime({ sandbox, executor, models, connection, services: services.services, profiles, maxAgents: peerKeys.length, outputDir }); check();
+    runtime = await createRuntime({ sandbox, executor, models, connection, filePolicy, services: services.services, profiles, maxAgents: peerKeys.length, outputDir }); check();
     options.onRuntime?.(runtime, snapshot);
     unsubscriptions.push(runtime.onEvent((event: any) => {
       const planned = closing || [...stoppedPeers].some((key: any) => peers.get(key)?.id === event.agentId);

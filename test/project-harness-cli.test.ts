@@ -3,7 +3,7 @@ import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { createInterface } from 'node:readline';
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -85,6 +85,8 @@ test('the project CLI launches external ESM with the requested prompt and actual
     { path: 'run', mode: 0o755, bytes: 2, sha256: hash(Buffer.from([0, 255])) },
   ]);
   assert.ok(record.result.reportPath.startsWith(output + '/'));
+  assert.deepEqual(JSON.parse(await readFile(record.result.reportPath, 'utf8')).result, record.result.result);
+  assert.equal((await readdir(join(output, record.runId))).some(name => name.startsWith('.initial-files-')), false);
   assert.equal(await readFile(record.result.prompt.path, 'utf8'), '  检查项目  ');
 });
 

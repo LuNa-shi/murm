@@ -1,4 +1,4 @@
-import { DEFAULT_WORKER_IMAGE, resolveSandboxConnection, type CreateRuntimeOptions, type SandboxConfig } from '@luna-shi/murm';
+import { workerImageFor, resolveSandboxConnection, type CreateRuntimeOptions, type SandboxConfig } from '@luna-shi/murm';
 
 export interface HandoffConfig extends Pick<CreateRuntimeOptions, 'executor' | 'models' | 'connection'> {
   sandbox: SandboxConfig;
@@ -24,7 +24,7 @@ export function handoffConfig(): HandoffConfig {
   const token = process.env.MURM_MODEL_TOKEN ?? process.env.MURM_SDK_MODEL_TOKEN;
   const externalUrl = process.env.MURM_SDK_MESSAGE_URL;
   return {
-    image: image ?? DEFAULT_WORKER_IMAGE,
+    image: image ?? workerImageFor(executor),
     outputDir: process.env.MURM_SDK_OUTPUT ?? './handoff-runs',
     workTimeoutMs: 60_000,
     cleanupTimeoutMs: 30_000,

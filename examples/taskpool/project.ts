@@ -12,7 +12,7 @@ import { ProjectPreflightError } from '../../src/harnesses/shared/project-input.
 import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
 import { runTaskPoolHarness } from './harness.js';
 
-interface Configuration extends Pick<CreateRuntimeOptions, 'connection' | 'models' | 'executor'> {
+interface Configuration extends Pick<CreateRuntimeOptions, 'connection' | 'models' | 'executor' | 'filePolicy'> {
   sandbox: SandboxConfig;
   image: string;
   model?: string;
@@ -62,7 +62,7 @@ const taskpool = {
       const deadlineAt = Date.now() + workTimeoutMs;
       storeCleanupConfirmed = false;
       const report = await runTaskPoolHarness({
-        sandbox, executor, models, connection, image, model, capacity, deadlineAt, closeTimeoutMs,
+        sandbox, executor, models, connection, filePolicy: configuration.filePolicy, image, model, capacity, deadlineAt, closeTimeoutMs,
         taskService, contextService, missionWorkspace, workspaceManager, missionId, workspaceId,
         outputDir: context.outputDir, signal: context.signal, autonomousTasks: true, workspaceCapture: 'core', workspaceMergeEnabled: true,
         controller: {

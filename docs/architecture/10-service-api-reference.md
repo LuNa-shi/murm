@@ -40,13 +40,13 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `af9fd45a15bdf6edceccde3558264adec75c60c8709b60bee402c0388e4bb28f` |
 | [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `3fe4457b04085fdd618743dfbf4d810fa28d8d8e180d32f52f45ed38935b0818` |
-| [src/core/types.ts](../../src/core/types.ts) | `cf92f2f1576e5f754e72436b073f7b5909ca162e1cc21f41834f70ef36377b02` |
+| [src/core/index.ts](../../src/core/index.ts) | `f7d942b55b4b783620909aa05b0e7ea6e9e88bf54ebf5584ccf4f6c64c8b3dfe` |
+| [src/core/types.ts](../../src/core/types.ts) | `1161fe11a40d1da8d229fc7f469bec00c7a139c709010daf7713e7708325619b` |
 | [src/core/services.ts](../../src/core/services.ts) | `823b7c83efd0fc61314c5511177b32b8863f469454cad5c5288bd04e5e82cf96` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
-| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | `2476ba7700dce18d9a5ada0c56b6d655dacd0decc59df1b678a4102913786b21` |
-| [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | `664420efc5ef52b2d16d8f5b31dfb74ca37ee0082d6960c7740b5e48ca3dc877` |
-| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `ded613503868ef9d445ec41f2bb41d24178719913203ef7843accf5c5a5598a3` |
+| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | `54e0e38af06b81722bd4f72bcc3baa650092bc6451a3516091f8d7dba533c247` |
+| [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | `949681fa831b28626abea25dec88beda744e76066f3653d56367441579893ee7` |
+| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `d3c72dbab8426517916d5deb92800556001d32f15593b7ae5cd146868cf0ede5` |
 | [src/core/opensandbox-provider.ts](../../src/core/opensandbox-provider.ts) | `38190bed297b4c5c47340609ed3732377bc1bdbdfd946ffebc0e0b8089b612d7` |
 | [src/core/sandbox-connection.ts](../../src/core/sandbox-connection.ts) | `27c35937b58ae31efb2192ddb0bc11100239b4932d25ea7292bb7df5e7eb80c4` |
 
@@ -3095,10 +3095,14 @@ These are the package entrypoint declarations and the declarations they referenc
 import type { CreateRuntimeOptions, Runtime } from './types.js';
 export { createSandbox } from './opensandbox-backend.js';
 export { resolveSandboxConnection } from './sandbox-connection.js';
-export { getExecutorCapabilities } from './executor-driver.js';
-export { DEFAULT_WORKER_IMAGE } from './worker-image.js';
+export { createCodexExecutor, createExecutorAdapter, createPiExecutor, getExecutorCapabilities } from './executor-driver.js';
+export { EXECUTOR_ADAPTER_PROTOCOL } from './executor-adapter.js';
+export type { BuiltinExecutorSelection, ExecutorAdapter, ExecutorSelection } from './executor-adapter.js';
+export { DEFAULT_WORKER_IMAGE, workerImageFor } from './worker-image.js';
 export { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from './services.js';
 export type { ExecutorCapabilities, ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SandboxConfig, SandboxProviderConfig, SteeringMode } from './backend-config.js';
+export type { ModelCapabilities, ModelProtocol, ModelStreamTerminal, ModelTransport } from './model-transport.js';
+export type { FileBudget, FilePolicy } from './file-policy.js';
 export type { SandboxPreparation, SandboxProvider } from './opensandbox-provider.js';
 export type { SandboxManager } from './opensandbox-backend.js';
 export type { HttpJsonAdapterOptions, ServiceRegistration } from './services.js';
@@ -3110,7 +3114,9 @@ export declare function createRuntime(options: CreateRuntimeOptions): Promise<Ru
 #### dist/src/core/types.d.ts
 
 ```ts
-import type { ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SteeringMode } from './backend-config.js';
+import type { ModelConfig, RuntimeConnectionOptions, Sandbox, SteeringMode } from './backend-config.js';
+import type { ExecutorSelection } from './executor-adapter.js';
+import type { FilePolicy } from './file-policy.js';
 import type { ServiceRegistration, ServiceRegistry } from './services.js';
 import type { ServiceManifest } from './service-types.js';
 export {};
@@ -3131,7 +3137,8 @@ export interface Profile {
 }
 export interface CreateRuntimeOptions {
     sandbox: Sandbox;
-    executor?: ExecutorKind;
+    executor?: ExecutorSelection;
+    filePolicy?: FilePolicy;
     models: Readonly<Record<string, ModelConfig>>;
     connection?: RuntimeConnectionOptions;
     profiles: Readonly<Record<string, Profile>>;
@@ -3623,7 +3630,8 @@ export interface ServiceAdapter {
 import type { AgentEvent, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from './types.js';
 import type { SessionFork } from '../../scripts/core-session-fork.js';
 import type { createCoreBridge } from './bridge.js';
-import type { createCoreModelAccess } from './model-access.js';
+import { type createCoreModelAccess } from './model-access.js';
+import { type ResolvedFilePolicy } from './file-policy.js';
 export type BackendEvent = {
     [Kind in AgentEvent['type']]: Omit<Extract<AgentEvent, {
         type: Kind;
@@ -3689,6 +3697,17 @@ interface WorkerReply {
     };
     status?: string;
 }
+type ExecutorStartup = {
+    kind: 'codex';
+    version: string;
+    authMode: 'api-key';
+    threadId: string;
+} | {
+    kind: string;
+    version: string;
+    protocol: string;
+    capabilities: ExecutorCapabilities;
+};
 export interface SandboxManager {
     agentRpc(agentId: string, input: Record<string, unknown>, options: {
         timeoutMs: number;
@@ -3711,18 +3730,14 @@ export interface SandboxManager {
     }>;
     agentVersions(options: {
         executionId: string;
-        executor?: 'pi' | 'codex';
+        executor?: string;
+        externalExecutor?: boolean;
     }): Promise<{
         piVersion?: string;
         [key: string]: unknown;
     }>;
     startAgent(options: Record<string, unknown>): Promise<{
-        backend?: {
-            kind: 'codex';
-            version: string;
-            authMode: 'api-key';
-            threadId: string;
-        };
+        backend?: ExecutorStartup;
         isolation?: {
             cpu: number;
             memoryBytes: number;
@@ -3772,21 +3787,22 @@ interface BackendSpawnOptions {
     recordAllocation(record: AllocationRecord): void;
 }
 import type { CreateRuntimeOptions } from './types.js';
-import type { OpenSandboxBackendConfig, Sandbox, SandboxConfig, SandboxProviderConfig } from './backend-config.js';
+import type { ExecutorCapabilities, OpenSandboxBackendConfig, Sandbox, SandboxConfig, SandboxProviderConfig } from './backend-config.js';
 import { type ExecutorDriver } from './executor-driver.js';
 import { type OpenSandboxProvider } from './opensandbox-provider.js';
 export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'> & {
     readonly driver: Readonly<ExecutorDriver>;
+    readonly filePolicy: ResolvedFilePolicy;
 };
 export declare function createSandbox(config: SandboxConfig | SandboxProviderConfig): Sandbox;
-export declare function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRuntimeOptions, 'models' | 'executor' | 'connection'>): ResolvedOpenSandboxBackendConfig;
-export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, { runtimeId, bridge, modelAccess, registerPrivateValues, providers, }: BackendOptions): Promise<{
+export declare function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRuntimeOptions, 'models' | 'executor' | 'connection' | 'filePolicy'>): ResolvedOpenSandboxBackendConfig;
+export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, { runtimeId, outputDir, bridge, modelAccess, registerPrivateValues, providers, }: BackendOptions): Promise<{
     spawn({ agentId, profile, options, signal, onEvent, onExecutionStart, onTrace, recordAllocation }: BackendSpawnOptions): Promise<{
         providerId: string;
         resourceKey: string;
         sandboxId: string;
         versions: {
-            [key: string]: unknown;
+            [x: string]: unknown;
             piVersion?: string;
         };
         providerVersion: string | undefined;
@@ -3800,12 +3816,7 @@ export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBacken
                 inodes: number;
             } | undefined;
         } | undefined;
-        backend?: {
-            kind: 'codex';
-            version: string;
-            authMode: 'api-key';
-            threadId: string;
-        } | undefined;
+        backend?: ExecutorStartup | undefined;
     }>;
     snapshotFiles(agentId: string, input: FileSnapshotOptions): Promise<WorkerFileSnapshot>;
     replaceFiles(agentId: string, input: FileReplaceOptions): Promise<WorkerFileReplace>;
@@ -3842,13 +3853,16 @@ export {};
 
 ```ts
 import { resolvePiModelCatalog } from '../agent/model-catalog.js';
-import type { ExecutorCapabilities, ExecutorKind, ModelConfig } from './backend-config.js';
+import type { ExecutorCapabilities, ModelConfig } from './backend-config.js';
+import { type BuiltinExecutorSelection, type ExecutorAdapter, type ExecutorSelection } from './executor-adapter.js';
 type Model = ModelConfig;
 export interface ExecutorDriver {
-    readonly kind: ExecutorKind;
+    readonly kind: string;
     readonly name: string;
     readonly version: string;
     readonly capabilities: ExecutorCapabilities;
+    readonly compatibleVersions: readonly string[];
+    readonly adapter?: ExecutorAdapter;
     readonly defaultMaxOutputTokens?: null;
     assertEnvironment?(environment: Readonly<Record<string, string>> | undefined): void;
     modelCatalogResource?(model: Model): ReturnType<typeof resolvePiModelCatalog>;
@@ -3871,10 +3885,21 @@ export interface ExecutorDriver {
             baseUrl: string;
             version: string;
         };
+    } | {
+        command: string;
+        args: [];
+        externalExecutor: ExecutorAdapter;
     };
 }
+export declare function createPiExecutor({ version }?: {
+    version?: string;
+}): BuiltinExecutorSelection;
+export declare function createCodexExecutor({ version }?: {
+    version?: string;
+}): BuiltinExecutorSelection;
+export declare function createExecutorAdapter(input: ExecutorAdapter): ExecutorAdapter;
 export declare function selectExecutorDriver(executor?: unknown): Readonly<ExecutorDriver>;
-export declare function getExecutorCapabilities(executor: ExecutorKind): ExecutorCapabilities;
+export declare function getExecutorCapabilities(executor: ExecutorSelection): ExecutorCapabilities;
 export {};
 ```
 
@@ -3886,6 +3911,8 @@ export interface Sandbox {
     readonly [sandboxBrand]: true;
 }
 import type { OpenSandboxProvider, SandboxProvider } from './opensandbox-provider.js';
+import type { ModelCapabilities, ModelProtocol, ModelTransport } from './model-transport.js';
+import type { ExecutorSelection } from './executor-adapter.js';
 export interface SandboxProviderConfig {
     provider: SandboxProvider;
     timeoutSeconds?: number;
@@ -3930,6 +3957,8 @@ export interface ExecutorCapabilities {
 export interface ModelConfig {
     provider: string;
     model: string;
+    protocol?: ModelProtocol | ModelTransport;
+    capabilities?: ModelCapabilities;
     upstream: {
         url: string;
         headers: Readonly<Record<string, string>>;
@@ -3953,7 +3982,7 @@ export interface RuntimeConnectionOptions {
 }
 export interface OpenSandboxBackendConfig {
     /** Defaults to Pi. Runtime resolves this selection at assembly. */
-    executor?: ExecutorKind;
+    executor?: ExecutorSelection;
     sandbox: {
         lifecycleBaseUrl?: string;
         apiKey?: string;

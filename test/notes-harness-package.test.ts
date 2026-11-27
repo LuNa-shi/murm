@@ -118,7 +118,7 @@ try {
 } finally {await bridge.close()}
 
 const root='@luna-shi/murm';
-assert.deepEqual(Object.keys(await import(root)).sort(), ['DEFAULT_WORKER_IMAGE','ServiceRegistry','createHttpJsonAdapter','createInProcessAdapter','createRuntime','createSandbox','getExecutorCapabilities','resolveSandboxConnection']);
+assert.deepEqual(Object.keys(await import(root)).sort(), ['DEFAULT_WORKER_IMAGE','EXECUTOR_ADAPTER_PROTOCOL','ServiceRegistry','createCodexExecutor','createExecutorAdapter','createHttpJsonAdapter','createInProcessAdapter','createPiExecutor','createRuntime','createSandbox','getExecutorCapabilities','resolveSandboxConnection','workerImageFor']);
 assert.ok(import.meta.resolve(root).startsWith(new URL('./node_modules/',import.meta.url).href));
 assert.ok(loaded.has(import.meta.resolve(root).slice(packageRoot.length)));
 for (const old of ['/services','/backends/opensandbox','/backends/pi-opensandbox','/package.json']) {
@@ -149,7 +149,8 @@ import { DEFAULT_WORKER_IMAGE, createRuntime, createSandbox, getExecutorCapabili
 type Assert<T extends true> = T;
 type Same<A, B> = [A, B] extends [B, A] ? true : false;
 type CoreExports = Assert<Same<keyof typeof import('@luna-shi/murm'), 'DEFAULT_WORKER_IMAGE' | 'createRuntime' | 'createSandbox' | 'getExecutorCapabilities' |
-  'ServiceRegistry' | 'createInProcessAdapter' | 'createHttpJsonAdapter' | 'resolveSandboxConnection'>>;
+  'ServiceRegistry' | 'createInProcessAdapter' | 'createHttpJsonAdapter' | 'resolveSandboxConnection' | 'EXECUTOR_ADAPTER_PROTOCOL' |
+  'createCodexExecutor' | 'createExecutorAdapter' | 'createPiExecutor' | 'workerImageFor'>>;
 const defaultWorkerImage: string = DEFAULT_WORKER_IMAGE;
 const config: SandboxConfig = {
   lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
@@ -187,8 +188,8 @@ await runtime.send(agent.id, 'Read a note', { requestId: 'invalid', mode: 'later
 registry.registerService({ manifest: {}, adapter });
 // @ts-expect-error OpenSandbox requires its explicit configuration.
 createSandbox({});
-// @ts-expect-error The image pins the CLI releases. Configuration accepts executor names.
-getExecutorCapabilities({ kind: 'pi', version: 'unverified' });
+// @ts-expect-error A built-in version selection uses a version string.
+getExecutorCapabilities({ kind: 'pi', version: 13 });
 await runtime.close();
 `;
   await writeFile(join(installed.directory, 'consumer.mts'), consumer);

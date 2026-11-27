@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import type { createSubagentsHarness } from '../examples/subagents/main.js';
 import { resolveLocalDocker, resolveSubagentsEnvironment } from './local-environment.js';
 import { loadMurmConfig } from '../src/core/sandbox-connection.js';
-import { DEFAULT_WORKER_IMAGE } from '../src/core/worker-image.js';
+import { workerImageFor } from '../src/core/worker-image.js';
 
 const execute = promisify(execFile);
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -160,7 +160,7 @@ export async function initializeSubagentsProject(directory: string, signal: Abor
     const advertiseHost = config.advertiseHost ?? (config.mode === 'local'
       ? (await resolveLocalDocker().catch(() => undefined))?.advertiseHost : undefined);
     const project = await prepareSubagentsProject({
-      directory, image: config.image ?? DEFAULT_WORKER_IMAGE,
+      directory, image: config.image ?? workerImageFor(process.env.MURM_EXECUTOR ?? process.env.MURM_SUBAGENTS_EXECUTOR),
       lifecycleBaseUrl: config.lifecycleBaseUrl, endpointHost: config.endpointHost,
       advertiseHost, signal,
     });

@@ -157,21 +157,60 @@ jobs:
           tags: ${{ env.IMAGE }}:${{ env.VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build and push Worker (pi)
+        if: steps.release.outputs.status != 'published'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: deploy/worker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}-pi
+          build-args: |
+            WORKER_EXECUTOR=pi
+          cache-from: type=gha
+      - name: Build and push Worker (codex)
+        if: steps.release.outputs.status != 'published'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: deploy/worker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}-codex
+          build-args: |
+            WORKER_EXECUTOR=codex
+          cache-from: type=gha
+      - name: Build and push Worker (pi-1.4.0)
+        if: steps.release.outputs.status != 'published'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: deploy/worker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}-pi-1.4.0
+          build-args: |
+            WORKER_EXECUTOR=pi
+            PI_VERSION=1.4.0
+          cache-from: type=gha
       - name: Confirm anonymous access to the versioned Worker
         shell: bash
         run: |
           repository=${IMAGE#ghcr.io/}
-          if ! token=$(curl -fsS --get \
+          token=$(curl -fsS --get \
             --data-urlencode 'service=ghcr.io' \
             --data-urlencode "scope=repository:$repository:pull" \
-            https://ghcr.io/token | jq -er '.token') ||
-            ! curl -fsS --head --output /dev/null \
+            https://ghcr.io/token | jq -er '.token')
+          for tag in "$VERSION" "$VERSION-pi" "$VERSION-codex" "$VERSION-pi-1.4.0"; do
+            if ! curl -fsS --head --output /dev/null \
               --header "Authorization: Bearer $token" \
               --header 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
-              "https://ghcr.io/v2/$repository/manifests/$VERSION"; then
-            echo "::error::Anonymous Worker pull failed. Check that murm-worker is public in GitHub Packages, then rerun the failed job."
-            exit 1
-          fi
+              "https://ghcr.io/v2/$repository/manifests/$tag"; then
+              echo "::error::Anonymous Worker pull failed for $tag. Verify the versioned tag and public access in GitHub Packages."
+              exit 1
+            fi
+          done
       - name: Publish the verified tarball and latest download alias
         if: steps.release.outputs.status != 'published'
         working-directory: ${{ runner.temp }}/murm-release

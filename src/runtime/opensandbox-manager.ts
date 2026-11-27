@@ -1,9 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { ERROR_CODES, MurmError } from '../errors.js';
 import { openSandboxAgentKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
-import { decodeFileSeed, fileProtocol } from '../../scripts/core-file-seed.js';
+import { decodeFileSeed, fileProtocol, fileTransferProtocol, snapshotFileSeed } from '../../scripts/core-file-seed.js';
+import { fileTreeFrames, receiveFileTree } from '../../scripts/file-tree-stream.js';
+import { DEFAULT_FILE_POLICY } from '../core/file-policy.js';
+import type { FileTree } from '../core/types.js';
 import { snapshotCollectionSpec, MAX_COLLECTION_LINE_BYTES } from '../../scripts/core-collection.js';
 
 const DEFAULT_EXECd_PORT = 44772;
@@ -634,13 +638,13 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ writable = false, files, forkSession, workspace, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, modelCatalogContent = null, codex, requireCoreFileProtocol = false, beforeAgentStart = null }: any = {}) {
+  async startAgent({ writable = false, files, forkSession, workspace, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, modelCatalogContent = null, codex, executorVersion, externalExecutor, filePolicy = DEFAULT_FILE_POLICY, controllerSpoolDirectory, signal, requireCoreFileProtocol = false, beforeAgentStart = null }: any = {}) {
     const contract = { protocolVersion: 'murm-core-v1', resources: [] };
     const record: any = this.#record(executionId);
     const signature = (values: any) => Array.isArray(values) && values.every((item: any) => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
       ? JSON.stringify(values.map(({ path, sha256 }: any) => ({ path, sha256 })).sort((a: any, b: any) => a.path.localeCompare(b.path))) : null;
     const expectedVersion = files !== undefined || writable ? 1 : 0;
-    const expectedDigest = expectedVersion === 1 ? decodeFileSeed(files ?? {}).digest : undefined;
+    const expectedDigest = expectedVersion === 1 ? snapshotFileSeed(files ?? {}, filePolicy.initial).digest : undefined;
     if (signature(resources) !== signature(contract.resources)) throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Agent contract');
     if (!record.agentId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Agent Sandbox');
     if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
@@ -673,28 +677,46 @@ export class OpenSandboxManager {
         throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Worker management authentication could not be confirmed');
       }
     }
+    let transfer = false;
     if (requireCoreFileProtocol) {
       const probe = await this.#request(`${endpoint}/core/contract`, {
         absolute: true, method: 'GET', extraHeaders: workerHeaders, timeoutMs: 15_000, allowStatuses: [400, 404],
       });
       const supported = probe.body?.result?.file_protocol;
+      transfer = probe.body?.result?.file_transfer === fileTransferProtocol;
       if (supported !== fileProtocol) {
         throw new MurmError(ERROR_CODES.INVALID_CONTRACT,
           `Core requires Worker file protocol ${fileProtocol}; detected ${supported ?? 'none'}`);
       }
     }
+    if (!transfer) {
+      if (JSON.stringify(filePolicy) !== JSON.stringify(DEFAULT_FILE_POLICY)) {
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Configured file budgets require a Worker with the streamed file protocol');
+      }
+      if (files !== undefined) snapshotFileSeed(files, DEFAULT_FILE_POLICY.initial);
+    }
     const isolation = this.requireManagementAuth ? await this.#checkAgentBoundary(executionId) : undefined;
     beforeAgentStart?.();
     record.coreAgent = true;
+    record.filePolicy = filePolicy;
+    record.controllerSpoolDirectory = controllerSpoolDirectory;
+    record.fileTransfer = transfer;
     record.agent = { endpoint, token: workerToken, headers: workerHeaders, worker_port: this.workerPort, started_at: this.now(), starting: true };
+    const stream = transfer && files !== undefined;
     const startup = await this.#request(`${endpoint}/start`, {
       absolute: true,
       workerStart: true,
       method: 'POST',
       extraHeaders: workerHeaders,
+      ...(stream ? { tree: files, fileBudget: filePolicy.initial } : {}),
+      signal,
       body: {
         command: codex ? 'codex' : required(agentCommand, 'agent_command'),
         ...(codex ? { codex: { model: codex.model, baseUrl: codex.baseUrl } } : {}),
+        ...(executorVersion ? { executor_version: executorVersion } : {}),
+        ...(externalExecutor ? { executor_adapter: {
+          kind: externalExecutor.kind, protocol: externalExecutor.protocol, capabilities: externalExecutor.capabilities,
+        } } : {}),
         ...(forkSession === undefined ? {} : { fork_session: forkSession }),
         args: codex ? [] : args,
         cwd,
@@ -707,13 +729,14 @@ export class OpenSandboxManager {
         resources,
         contract_version: contract.protocolVersion,
         writable,
+        ...(transfer ? { file_policy: filePolicy } : {}),
         ...(workspace ? { shared_workspace: workspace } : {}),
-        ...(files === undefined ? {} : { files }),
+        ...(files === undefined || stream ? {} : { files }),
         ...(projectQuota ? { project_quota: projectQuota } : {}),
         ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}),
         ...(modelCatalogContent ? { model_catalog_content: modelCatalogContent } : {}),
       },
-      timeoutMs: 30_000,
+      timeoutMs: stream ? Math.max(30_000, filePolicy.initial.timeoutMs) : 30_000,
     });
     const receipt = startup.body?.result?.contract;
     if (receipt?.version !== contract.protocolVersion || (requireCoreFileProtocol && receipt.file_protocol !== fileProtocol) || !Array.isArray(receipt.resources) || signature(receipt.resources) !== signature(resources)) {
@@ -723,6 +746,11 @@ export class OpenSandboxManager {
     if (codex && (backend?.kind !== 'codex' || backend.version !== codex.version ||
       backend.authMode !== 'api-key' || typeof backend.threadId !== 'string' || !backend.threadId)) {
       throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest the pinned Codex executor, authentication and Session');
+    }
+    if (externalExecutor && (backend?.kind !== externalExecutor.kind ||
+      backend.version !== executorVersion || backend.protocol !== externalExecutor.protocol ||
+      !isDeepStrictEqual(backend.capabilities, externalExecutor.capabilities))) {
+      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker did not attest the selected adapter protocol, version and capabilities');
     }
     const quotaReceipt = startup.body?.result?.project_quota;
     const catalogReceipt = startup.body?.result?.model_catalog_resource;
@@ -738,7 +766,7 @@ export class OpenSandboxManager {
       throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest initial Core files and workDir permissions');
     }
     record.agent = { endpoint, token: workerToken, headers: workerHeaders, worker_port: this.workerPort, started_at: this.now(), contract: receipt,
-      ...(codex ? { backend: { kind: backend.kind, version: backend.version, authMode: backend.authMode, threadId: backend.threadId } } : {}),
+      ...(codex || externalExecutor ? { backend } : {}),
     };
     this.logger?.({ event: 'sandbox.agent_started', provider: 'opensandbox', execution_id: executionId, sandbox_id: record.sandboxId, worker_port: this.workerPort });
     return { ...record.agent, isolation };
@@ -749,14 +777,14 @@ export class OpenSandboxManager {
    * have the selected executor or the image's Node installation, so manifest evidence
    * must never silently describe the host process.
    */
-  async agentVersions({ executionId, executor = 'pi', piCommand = 'pi', nodeCommand = 'node', timeoutMs = 15_000 }: any = {}) {
+  async agentVersions({ executionId, executor = 'pi', piCommand = 'pi', nodeCommand = 'node', externalExecutor = false, timeoutMs = 15_000 }: any = {}) {
     this.#record(executionId);
     const versions: Record<string, any> = {};
-    if (executor !== 'pi' && executor !== 'codex') {
+    if (!externalExecutor && executor !== 'pi' && executor !== 'codex') {
       throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'unknown Agent executor');
     }
     const commands = [
-      executor === 'codex' ? ['codexVersion', 'codex', 'codex'] : ['piVersion', 'pi', piCommand],
+      ...(externalExecutor ? [] : [executor === 'codex' ? ['codexVersion', 'codex', 'codex'] : ['piVersion', 'pi', piCommand]]),
       ['nodeVersion', 'node', nodeCommand],
     ];
     for (const [field, commandName, command] of commands) {
@@ -841,17 +869,47 @@ export class OpenSandboxManager {
     if (record.agent?.contract?.version !== 'murm-core-v1' || record.stopPromise) {
       throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Core files require the live Agent Worker');
     }
+    if (record.fileTransfer && action === 'snapshot') return this.#streamSnapshot(record, input);
+    const replace = record.fileTransfer && action === 'replace';
+    const { files, ...parameters } = replace ? input as { files: FileTree } : { files: undefined };
     const response = await this.#request(`${record.agent.endpoint}/core/files/${action}`, {
       absolute: true, method: 'POST', extraHeaders: this.#workerHeaders(record),
-      body: input, timeoutMs: 30_000, allowStatuses: [400],
+      ...(replace ? { body: parameters, tree: files, fileBudget: record.filePolicy.replace } : { body: input }),
+      timeoutMs: replace ? record.filePolicy.replace.timeoutMs : 30_000, allowStatuses: [400],
     });
+    return this.#fileReply(response);
+  }
+
+  #fileReply(response: { status: number; body: any }) {
     if (response.status === 400) {
       const { code, error } = response.body ?? {};
-      const recognized = ['CONFLICT', 'INVALID_CONTRACT', 'NOT_ALLOWED', 'WORKSPACE_BUSY', 'OPERATION_UNKNOWN'];
+      const recognized = ['CONFLICT', 'INVALID_CONTRACT', 'NOT_ALLOWED', 'WORKSPACE_BUSY', 'OPERATION_UNKNOWN', 'FILE_SPACE_INSUFFICIENT'];
       throw new MurmError(recognized.includes(code) ? code : 'OPERATION_UNKNOWN',
         typeof error === 'string' ? error : 'Worker could not confirm the Core file operation');
     }
     return responseValue(response.body);
+  }
+
+  async #streamSnapshot(record: any, input: unknown) {
+    const limit = record.filePolicy.snapshot;
+    const requestedBytes = (input as { maxBytes?: number }).maxBytes;
+    const budget = { ...limit, maxBytes: Math.min(requestedBytes ?? limit.maxBytes, limit.maxBytes) };
+    const signal = AbortSignal.timeout(budget.timeoutMs);
+    const response = await this.fetch(`${record.agent.endpoint}/core/files/snapshot`, {
+      method: 'POST', headers: { ...this.#workerHeaders(record), 'content-type': 'application/json', accept: 'application/x-ndjson' },
+      body: JSON.stringify(input), redirect: 'error', signal,
+    });
+    if (response.status === 400) return this.#fileReply({ status: 400, body: await response.json() });
+    if (!response.ok || !response.body || response.headers.get('content-type') !== 'application/x-ndjson') {
+      await response.body?.cancel();
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not return a bound file snapshot stream');
+    }
+    const staged = await receiveFileTree(response.body as AsyncIterable<Uint8Array>, {
+      parent: record.controllerSpoolDirectory, budget, label: 'Controller snapshot staging',
+      maxSpoolBytes: record.filePolicy.controllerSpoolBytes, signal,
+    });
+    try { return { ...staged.meta, files: Object.fromEntries(Object.entries(staged.files)) }; }
+    finally { await staged.dispose(); }
   }
 
   snapshotAgentProject({ executionId }: any) { return this.#projectCall(executionId, 'snapshot'); }
@@ -901,12 +959,15 @@ export class OpenSandboxManager {
   }
 
   async *collectCoreSession(executionId: string) {
-    yield* this.collectCoreFiles(executionId, { paths: ['.'], includeGit: false, required: true, maxBytes: Number.MAX_SAFE_INTEGER }, { session: true });
+    const { filePolicy = DEFAULT_FILE_POLICY } = this.#record(executionId);
+    yield* this.collectCoreFiles(executionId, { paths: ['.'], includeGit: false, required: true, maxBytes: filePolicy.session.maxBytes }, { session: true });
   }
 
   async *collectCoreFiles(executionId: string, input: unknown, { session = false } = {}) {
-    const spec = snapshotCollectionSpec(input);
     const record: any = this.#record(executionId);
+    const budget = (record.filePolicy ?? DEFAULT_FILE_POLICY)[session ? 'session' : 'export'];
+    const requested = snapshotCollectionSpec(input);
+    const spec = { ...requested, maxBytes: Math.min(requested.maxBytes, budget.maxBytes) };
     if (!record.executionStopped || !record.coreAgent || !record.agent || record.stopPromise) {
       throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Core collection requires a confirmed stopped Agent and retained Worker');
     }
@@ -915,7 +976,7 @@ export class OpenSandboxManager {
     if (record[policyKey] && record[policyKey] !== fingerprint) throw new MurmError(ERROR_CODES.CONFLICT, 'Agent collection policy is immutable');
     record[policyKey] = fingerprint;
     const controller = new AbortController();
-    const deadline = setTimeout(() => controller.abort(new Error('Core collection transport deadline')), session ? 610_000 : 30_000);
+    const deadline = setTimeout(() => controller.abort(new Error('Core collection transport deadline')), budget.timeoutMs);
     let response;
     try {
       response = await this.fetch(`${record.agent.endpoint}${session ? '/core/session/archive' : '/core/files/collect'}`, { method: 'POST',
@@ -1158,20 +1219,28 @@ export class OpenSandboxManager {
 
   async #execd(record: any, path: any, options: any) { return this.#request(`${record.execdUrl}${path}`, { ...options, absolute: true, extraHeaders: record.execdHeaders }); }
 
-  async #request(path: any, { method = 'GET', body = undefined, timeoutMs = this.commandTimeoutMs, absolute = false, extraHeaders = {}, allowStatuses = [], workerStart = false, signal, omitLifecycleKey = false }: any = {}) {
+  async #request(path: any, { method = 'GET', body = undefined, tree, fileBudget, timeoutMs = this.commandTimeoutMs, absolute = false, extraHeaders = {}, allowStatuses = [], workerStart = false, signal, omitLifecycleKey = false }: any = {}) {
     const url = absolute ? path : `${this.lifecycleBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('sandbox provider request timed out')), timeoutMs);
     const requestSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
     const headers = { accept: 'application/json', ...extraHeaders };
-    if (body !== undefined) headers['content-type'] = 'application/json';
+    if (body !== undefined) headers['content-type'] = tree ? 'application/x-ndjson' : 'application/json';
+    if (tree && body?.file_policy) headers['x-murm-file-policy'] = JSON.stringify(body.file_policy);
     if (!absolute && !omitLifecycleKey && this.apiKey) headers['OPEN-SANDBOX-API-KEY'] = this.apiKey;
     try {
-      const response = await this.fetch(url, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: requestSignal, redirect: 'error' });
+      const payload = tree ? { body: fileTreeFrames(tree, fileBudget, body, requestSignal), duplex: 'half' } :
+        body === undefined ? {} : { body: JSON.stringify(body) };
+      const response = await this.fetch(url, { method, headers, ...payload, signal: requestSignal, redirect: 'error' });
       const text = await response.text();
       const parsed = response.headers?.get?.('content-type')?.includes('text/event-stream') ? null : (text ? jsonData(text) : {});
-      if (workerStart && response.status === 400 && parsed?.ok === false && parsed.code === ERROR_CODES.AGENT_STARTUP_CONTRACT) {
-        throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker rejected the pinned Agent startup contract');
+      if (workerStart && response.status === 400 && parsed?.ok === false) {
+        if (parsed.code === 'FILE_SPACE_INSUFFICIENT') {
+          throw new MurmError('FILE_SPACE_INSUFFICIENT', 'Sandbox staging or workDir could not hold the initial project');
+        }
+        if (parsed.code === ERROR_CODES.AGENT_STARTUP_CONTRACT) {
+          throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker rejected the pinned Agent startup contract');
+        }
       }
       if (!response.ok && !allowStatuses.includes(response.status)) throw new MurmError(absolute && /\/project\/(snapshot|install|install-result|install-confirm)$/.test(new URL(url).pathname) && [ERROR_CODES.WORKSPACE_BUSY, ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED].includes(parsed?.code)
         ? parsed.code : response.status >= 500 ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT,

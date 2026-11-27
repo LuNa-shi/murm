@@ -46,7 +46,7 @@ setup 检查当前 Docker context，启动 OpenSandbox 并验证 Lifecycle API �
 
 托管服务默认绑定到本机回环 8080 端口。需要时 setup 自动生成仅当前用户可读的 Lifecycle 密钥，优先使用发布的 Worker 镜像，必要时才用包内 Dockerfile 构建。重复执行会复用已托管的服务，保留用户配置和其他部署。无参 `murm setup` 在配置了 Lifecycle 地址时选择已有服务路径，使用默认地址时选择本地路径。
 
-`murm doctor` 检查配置与 Lifecycle 鉴权，无需创建 Sandbox。`murm doctor --smoke` 会启动真实的 Pi 或 Codex Worker，用受控的 Responses 端点验证 Bridge、网关、文件读写、导出和删除。真实模型验证状态单独报告。
+`murm doctor` 检查配置与 Lifecycle 鉴权，无需创建 Sandbox。`murm doctor --smoke` 会启动真实的 Pi 或 Codex Worker，用所选模型协议的受控端点验证 Bridge、网关、文件读写、导出和删除。真实模型验证状态单独报告。
 
 ### 保留严格本地隔离
 
@@ -300,3 +300,7 @@ npm test
 - 阅读 [使用 SDK](sdk.md)，深入理解 Runtime 生命周期、输入回执、产物验证与外部 HTTP Service 接入。
 - 阅读 [构建你自己的 Harness](build-your-harness.md)，设计自己的协作协议、权限矩阵与验收规则。
 - 浏览 [选择 Harness](harnesses/index.md)，对比 `Subagents`、`TaskPool`、`PeerMesh`、`Substrate` 与 `Lead-Worker` 五种内置机制。
+
+### 选择执行器或扩大项目文件预算
+
+继续使用 `murm --harness … --cwd … --prompt …`。在配置中选择执行器和模型，通过 `workerImageFor(executor)` 获取匹配的单执行器镜像，或者用 `MURM_WORKER_IMAGE` 指定已有镜像。将同一配置文件交给 `murm setup --config ./murm.config.mjs` 和 `murm doctor --config ./murm.config.mjs` 验证。Pi 支持 Responses 和 Chat Completions。项目超过默认导入限制时，可在 `filePolicy` 中分别扩大导入、在线操作和最终产物导出的预算。[配置说明与示例](sdk.md#配置执行器模型与文件预算)
