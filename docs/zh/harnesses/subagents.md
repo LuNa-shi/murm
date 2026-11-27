@@ -162,4 +162,4 @@ try {
 - 入口与交互 CLI：[examples/subagents/main.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/main.ts)
 - 控制器、邮箱与中断恢复：[examples/subagents/controller.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/controller.ts)
 - `collaboration` Service Manifest：[examples/subagents/collaboration-service.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/collaboration-service.ts)
-- 运行说明与验证指南：[examples/subagents/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md)
+- 运行说明与实验记录：[examples/subagents/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md) · [ProgramBench `fd` 实验报告](https://github.com/LuNa-shi/murm/blob/main/docs/experiments/EXP-20261125-10-issue199-fd.md)

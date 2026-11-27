@@ -86,4 +86,4 @@ Import `createSubagentsHarness` from the local example module after building. Th
 
 ## Verification
 
-The [Subagents verification guide](../../test/README.md#subagents-verification) describes the regression and native OpenSandbox checks.
+The [Subagents verification guide](../../test/README.md#subagents-verification) describes the regression and native OpenSandbox checks. The [ProgramBench fd experiment](../../docs/experiments/EXP-20261125-10-issue199-fd.md) records a real three-Agent run, including the file handoff, follow-up and independent score.

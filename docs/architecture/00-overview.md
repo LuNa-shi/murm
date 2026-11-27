@@ -78,6 +78,6 @@ The retained domain Runtime and TaskPool-specific mechanisms are documented in c
 
 ## Current implementation and evidence
 
-This manual follows the source inventory in [source-map.json](source-map.json). Generated references reproduce prompt, Service, storage and type declarations; they do not prove every branch has been executed. Issues and PRs preserve acceptance evidence for specific revisions.
+This manual follows the source inventory in [source-map.json](source-map.json). Generated references reproduce prompt, Service, storage and type declarations; they do not prove every branch has been executed. Issues and PRs preserve acceptance evidence, while [experiments](../experiments/INDEX.md) retain the settings and results of their own revisions.
 
 The [known boundaries](09-known-boundaries.md) belong to the current contract. The [dynamic Lead-Worker design](../designs/dynamic-lead-worker.md) remains a future extension tracked by its Issue; its registration and access APIs are not available in this Runtime.

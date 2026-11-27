@@ -131,4 +131,4 @@ node dist/examples/substrate/main.js --fate-run dist/examples/substrate/fate-con
 - 并行轮次驱动：[src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/index.ts)
 - SQLite `substrate` Service：[src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/substrate.ts)
 - 跨成员复用证据审计：[src/harnesses/substrate/collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/collaboration-evidence.ts)
-- CLI 与 FATE Lean 指南：[examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md)
+- CLI 与 FATE Lean 指南：[examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) · [FATE-X #31 运行报告](https://github.com/LuNa-shi/murm/blob/main/docs/experiments/EXP-20261125-20-scalemas-fatex-verified.md)

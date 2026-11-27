@@ -64,10 +64,21 @@ sudo -n /usr/sbin/nft -j list tables >/dev/null
 
 ## 2. Install `@luna-shi/murm` and prepare OpenSandbox & Worker
 
-Install the CLI globally via npm (`--ignore-scripts` is recommended because no install lifecycle scripts are required):
+For a version available on the npm registry, install the CLI globally:
 
 ```bash
 npm install -g --ignore-scripts @luna-shi/murm
+```
+
+### Install a candidate from a checkout
+
+For an unpublished version, run these commands from the murm checkout. Keep the tarball if you also want to install the SDK in a separate project.
+
+```bash
+npm ci --no-audit --no-fund
+pack_dir=$(mktemp -d)
+npm pack --pack-destination "$pack_dir"
+npm install -g --ignore-scripts "$pack_dir"/*.tgz
 ```
 
 Run `murm setup` to prepare and verify the local infrastructure:
@@ -127,30 +138,32 @@ murm doctor --smoke
 
 ## 3. Configure your model endpoint
 
-Set any streaming **OpenAI Responses-compatible endpoint (`/v1/responses`)** and token. Upstream credentials stay in the host Model Gateway and are never placed inside Agent sandboxes:
+Set a streaming **OpenAI Responses-compatible endpoint (`/v1/responses`)** and token for your model. Upstream credentials stay in the host Model Gateway.
 
 ```bash
 export MURM_MODEL_URL='https://api.openai.com/v1/responses'
 export MURM_MODEL_TOKEN='sk-...'
 
 # Optional: defaults to Pi with provider "openai" and model "gpt-5.4".
-# You can use any OpenAI Responses-compatible provider and model ID:
+# Select a provider and model supported by your endpoint:
 # export MURM_MODEL_PROVIDER='openai'
 # export MURM_MODEL_ID='gpt-4.1'
 # export MURM_EXECUTOR='codex'
 ```
 
-- **No manual Worker image configuration needed**: the CLI and SDK automatically default to `ghcr.io/luna-shi/murm-worker:0.2.0` (exported as `DEFAULT_WORKER_IMAGE`). Only set `export MURM_WORKER_IMAGE='your-custom-image:tag'` if you built a custom Worker image with extra toolchains.
+- Subagents, TaskPool, Notes, and Messages default to the matching Worker tag exported as `DEFAULT_WORKER_IMAGE` and accept `MURM_WORKER_IMAGE` for a custom image. SDK callers supply an image in each Profile, as shown below. Rebuild custom images from the matching package version so the Pi catalog and Worker startup contract match.
 - **Connection defaults**: OpenSandbox defaults to `http://127.0.0.1:8080/v1` and the sandbox-visible host address defaults to `172.17.0.1`. Override with `MURM_LIFECYCLE_URL`, `MURM_LIFECYCLE_TOKEN`, and `MURM_ADVERTISE_HOST` if needed.
 
 ## 4. Option A: Run a built-in Harness with the CLI
 
-From any project directory, run a built-in Harness such as `subagents` (or `messages`, `taskpool`, `peermesh`, `substrate`, `lead-worker`):
+From any project directory, run `subagents`, or use the same model setup with `messages`, `notes` or `taskpool`:
 
 ```bash
 cd your-project
 murm --harness subagents --prompt "Audit this project's test coverage and suggest two high-value edge-case tests"
 ```
+
+PeerMesh, Substrate, and Lead–Worker have their own image, model, and Service configuration. Follow their entries in [Choose a Harness](harnesses/index.md).
 
 When finished, stdout prints the structured JSON report (including result, artifacts, and cleanup receipt). Inspect execution traces directly in a browser with the built-in Trace Viewer (no extra package required):
 
@@ -169,6 +182,8 @@ npm init -y
 npm pkg set type=module
 npm install --ignore-scripts @luna-shi/murm
 ```
+
+For an unpublished version, replace the package name in the install command with the absolute path to the tarball you packed above.
 
 Create `handoff.ts` — this self-contained example registers a `messages` Service, spawns two isolated Agents to hand off a value through it, and verifies cleanup:
 

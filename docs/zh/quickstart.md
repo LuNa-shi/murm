@@ -64,10 +64,21 @@ sudo -n /usr/sbin/nft -j list tables >/dev/null
 
 ## 2. 安装 `@luna-shi/murm` 并初始化基础设施
 
-通过 npm 全局安装 CLI（推荐加 `--ignore-scripts`，无需执行依赖生命周期脚本）：
+对于 npm registry 上已有的版本，可以全局安装 CLI：
 
 ```bash
 npm install -g --ignore-scripts @luna-shi/murm
+```
+
+### 从源码检出安装候选包
+
+对于尚未发布的版本，在 murm 的源码目录执行以下命令。如果也要在独立项目中安装 SDK，请保留 tarball。
+
+```bash
+npm ci --no-audit --no-fund
+pack_dir=$(mktemp -d)
+npm pack --pack-destination "$pack_dir"
+npm install -g --ignore-scripts "$pack_dir"/*.tgz
 ```
 
 运行 `murm setup` 一键准备并校验本地执行环境：
@@ -127,30 +138,32 @@ murm doctor --smoke
 
 ## 3. 配置模型端点
 
-配置任意支持流式输出的 **OpenAI Responses 兼容端点（`/v1/responses`）** 和访问密钥。凭据仅保存在宿主机 Model Gateway 中，绝不会注入到 Agent 沙箱内：
+配置模型对应的流式 **OpenAI Responses 兼容端点（`/v1/responses`）** 和访问密钥。上游凭据保存在宿主机 Model Gateway 中。
 
 ```bash
 export MURM_MODEL_URL='https://api.openai.com/v1/responses'
 export MURM_MODEL_TOKEN='sk-...'
 
 # 可选：默认执行器为 pi，provider 为 openai，模型为 gpt-5.4
-# 可按需改为任意 OpenAI Responses 兼容网关与模型 ID：
+# 也可指定该端点支持的提供方与模型：
 # export MURM_MODEL_PROVIDER='openai'
 # export MURM_MODEL_ID='gpt-4.1'
 # export MURM_EXECUTOR='codex'
 ```
 
-- **无需手动配置 Worker 镜像**：所有 CLI 与 SDK 默认自动使用与当前 `@luna-shi/murm` 版本对应的 `ghcr.io/luna-shi/murm-worker:0.2.0`（导出常量 `DEFAULT_WORKER_IMAGE`）。只有当你构建了自定义 Worker 镜像（例如在沙箱中预装 Rust、Lean 或专有工具链）时，才需要通过 `export MURM_WORKER_IMAGE='your-custom-image:tag'` 覆盖。
+- Subagents、TaskPool、Notes 和 Messages 默认使用 `DEFAULT_WORKER_IMAGE` 对应的版本标签，可通过 `MURM_WORKER_IMAGE` 选择自定义镜像。SDK 调用方需要在每个 Profile 中指定镜像，下文有示例。自定义镜像应使用对应包版本的源码重建，使 Pi 模型目录和 Worker 启动约定匹配。
 - **连接默认值**：OpenSandbox 默认 `http://127.0.0.1:8080/v1`，沙箱访问宿主的默认网关地址为 `172.17.0.1`。如需覆盖，可设置 `MURM_LIFECYCLE_URL`、`MURM_LIFECYCLE_TOKEN` 和 `MURM_ADVERTISE_HOST`。
 
 ## 4. 方式 A：通过 CLI 运行第一个内置 Harness
 
-在任意本地代码仓库或项目目录中，直接运行内置的 `subagents`（或 `messages`、`taskpool`、`peermesh`、`substrate`、`lead-worker`）Harness：
+在任意本地代码仓库或项目目录中运行 `subagents`。同一套模型配置也适用于 `messages`、`notes` 和 `taskpool`：
 
 ```bash
 cd your-project
 murm --harness subagents --prompt "检查当前项目的测试覆盖情况，列出两条最值得补充的边界测试"
 ```
+
+PeerMesh、Substrate 和 Lead–Worker 有各自的镜像、模型和 Service 配置。请按[选择 Harness](harnesses/index.md)中的对应入口配置。
 
 运行结束后，stdout 会输出包含结果、导出产物与清理回执的 JSON，完整轨迹保存在输出目录中。你可以直接用内置的 Trace Viewer 在浏览器中查看时间线（无需额外安装包）：
 
@@ -169,6 +182,8 @@ npm init -y
 npm pkg set type=module
 npm install --ignore-scripts @luna-shi/murm
 ```
+
+安装未发布版本时，将安装命令中的包名替换为上一步生成的 tarball 的绝对路径。
 
 创建 `handoff.ts`——下面这段自包含代码注册了一个 `messages` Service，在隔离沙箱中启动两个 Agent 完成值传递，并验证导出结果和资源清理：
 

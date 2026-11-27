@@ -26,7 +26,7 @@ An umbrella research program may contain several linked Issues; each approved Is
 
 ### 2. Register the run
 
-Before each formal run allocate an `EXP-YYYYMMDD-NN` (UTC) identifier in your experiment log or parent Issue. Record the parent Issue, clean code commit and candidate archive, Harness and executor, task/checker inputs, relevant toolchain versions, provider/model, prompt/Profile/Service-schema hashes, Agent capacity, work and cleanup deadlines, resource budget, main observations and stop conditions. For a Lean task, include Lean and Mathlib revisions; other tasks record their own language, build and evaluator versions. A rerun receives a new ID linked to the previous one.
+Before each formal run allocate `EXP-YYYYMMDD-NN` (UTC) in [the experiment index](../experiments/INDEX.md). Record the parent Issue, clean code commit and candidate archive, Harness and executor, task/checker inputs, relevant toolchain versions, provider/model, prompt/Profile/Service-schema hashes, Agent capacity, work and cleanup deadlines, resource budget, main observations and stop conditions. For a Lean task, include Lean and Mathlib revisions; other tasks record their own language, build and evaluator versions. A rerun receives a new ID linked to the previous one.
 
 A formal registration is for experimental traceability, **not a request for per-run approval**. Runs within the Issue's authorized matrix and spending cap can proceed autonomously. Changes outside it return to the human owner before execution.
 
@@ -36,7 +36,7 @@ Declare the runner's working-window timestamps before execution and use the same
 
 Raw Agent transcripts, working files, checker/candidate source, credentials and private state remain in ignored local `experiments/`. Preserve Harness, Runtime, Agent, input/request and Service operation identities together with source revisions. Add the domain identifiers actually used by the Harness: TaskPool needs Mission/Task/Execution/Material/Workspace and Judge identities; a Git-based team needs repository, commit and delivery identities. Mark unavailable inputs or tools as BLOCKED rather than silently substituting.
 
-Structure each report into **Setup**, **Results**, **Analysis**, and **Next steps**. **Results** describe facts, **Analysis** evaluates evidence and competing explanations, and **Next steps** distinguish delegated fixes from pending human decisions. Unknown evidence is not zero. Input admission, execution settlement, checked business success and cleanup are distinct results; high Agent activity or many shared artifacts do not prove meaningful collaboration.
+Follow the [report template](../experiments/TEMPLATE.md). **Results** describe facts, **Analysis** evaluates evidence and competing explanations, and **Next steps** distinguish delegated fixes from pending human decisions. Unknown evidence is not zero. Input admission, execution settlement, checked business success and cleanup are distinct results; high Agent activity or many shared artifacts do not prove meaningful collaboration.
 
 ### 4. Sync decisions and evidence
 

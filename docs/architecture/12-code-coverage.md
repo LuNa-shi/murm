@@ -255,7 +255,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [.github/workflows/ci.yml](../../.github/workflows/ci.yml) | Run Core, Trace Viewer and website checks on pull requests and main | [07-run-configuration](07-run-configuration.md), [22-website](22-website.md) | `806b5fbddf4bcdaf514de6124a3ba207e55bc512b94781644715b9a86e75ca47` |
+| [.github/workflows/ci.yml](../../.github/workflows/ci.yml) | Run Core, Trace Viewer and website checks on pull requests and main | [07-run-configuration](07-run-configuration.md), [22-website](22-website.md) | `961b3a6607c952b2e1f921b74df7428a9be70f2b514a137253ba300b64d0ee9a` |
 
 ### development benchmarks (20)
 
@@ -311,7 +311,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [.env.example](../../.env.example) | Nonsecret example environment-variable names | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `98dca3bed17dfd9c30ff2a09b8d0e5bd7c191d4eb022e6479d9351841031c6c9` |
-| [.github/workflows/release.yml](../../.github/workflows/release.yml) | Tag-driven verification, GHCR multi-arch Worker image publishing, and public npm package publishing | [07-run-configuration](07-run-configuration.md) | `e2c13de96fcd4f9b1177ec159a9230d865416dd0727fe238285e7931bcda5402` |
+| [.github/workflows/release.yml](../../.github/workflows/release.yml) | Tag-driven verification, GHCR multi-arch Worker image publishing, and public npm package publishing | [07-run-configuration](07-run-configuration.md) | `004e5e6d8b806ca7b166d9634dd2e26087c4223f79a08267cc739fb5ac7e26b5` |
 | [.gitignore](../../.gitignore) | Raw evidence and credential retention boundary in the working tree and npm packlist | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `6b8f64521e5686d00b33aef067df0322ed1a34621cf65abe198b47d715183f39` |
 | [deploy/worker/Dockerfile](../../deploy/worker/Dockerfile) | OpenSandbox agent image recipe containing the worker, Pi package and native shell tools | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [18-peermesh-harness](18-peermesh-harness.md) | `e68edb01ae02e9a998fd9419257b41920b165de78c3898797bb6079d90882cb2` |
 | [deploy/worker/pi-models.json](../../deploy/worker/pi-models.json) | Native Pi compatible-provider catalog with runtime environment interpolation | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `5793995e07dbd632f4e1507fb2d76f3452ca2de9921d693bc8c9e4513598fd85` |

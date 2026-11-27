@@ -26,7 +26,9 @@ cd my-project
 murm --harness subagents --prompt "Fix the parser and add tests"
 ```
 
-The CLI and SDK automatically default to the matching prebuilt Worker image (`ghcr.io/luna-shi/murm-worker:0.2.0`, exported as `DEFAULT_WORKER_IMAGE`). Override it with `MURM_WORKER_IMAGE` only if you build a custom image.
+For an unpublished version, [install the candidate from a checkout](docs/en/quickstart.md#install-a-candidate-from-a-checkout) before running `murm setup`.
+
+The Subagents CLI configuration defaults to the matching Worker image tag, exported as `DEFAULT_WORKER_IMAGE`. Override it with `MURM_WORKER_IMAGE` when using a custom image. SDK Profiles take an explicit image.
 
 Use `--harness` to select any built-in (`subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes`, `messages`), a local ESM file, or an installed npm package. In `--mode rpc`, tasks arrive over JSONL with live `status` and `stop` control.
 
@@ -38,7 +40,7 @@ Install `@luna-shi/murm` in your own project:
 npm install --ignore-scripts @luna-shi/murm
 ```
 
-Import `createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, and `createHttpJsonAdapter` from `@luna-shi/murm`. Both Pi (default) and Codex executors work with any OpenAI Responses-compatible provider and model.
+Install a candidate tarball by passing its path in place of the npm package name. Import `createSandbox`, `createRuntime`, `DEFAULT_WORKER_IMAGE`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, and `createHttpJsonAdapter` from `@luna-shi/murm`. Pi is the default executor. Pi and Codex use streaming Responses endpoints that support their request formats.
 
 See the [Quickstart](docs/en/quickstart.md#5-option-b-use-the-sdk-in-your-own-typescript-project) for a self-contained runnable `handoff.ts`, and the [SDK Guide](docs/en/sdk.md) for observation, file controls, external HTTP Services, and cleanup semantics.
 
@@ -74,7 +76,7 @@ npm run build
 npm test
 ```
 
-Check the [Architecture manual](docs/architecture/INDEX.md) for the deeper implementation contracts, generated API/schema references, and prompt composition. The [research context](docs/PROJECT.md) describes the questions behind `murm`, and [ProgramBench Pastel](benchmarks/programbench-pastel/README.md) / [PutnamBench TaskPool](benchmarks/putnambench-taskpool/README.md) document the evaluation drivers.
+Check the [Architecture manual](docs/architecture/INDEX.md) for the deeper implementation contracts, generated API/schema references, and prompt composition. The [research context](docs/PROJECT.md) describes the questions behind `murm`, and [ProgramBench Pastel](benchmarks/programbench-pastel/README.md) / [PutnamBench TaskPool](benchmarks/putnambench-taskpool/README.md) document the evaluation drivers. [Experiment reports](docs/experiments/INDEX.md) preserve observations tied to their original code, model and inputs.
 
 ## License
 

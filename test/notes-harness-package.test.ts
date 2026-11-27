@@ -52,6 +52,10 @@ export default {sandbox:{},image:'unused',outputDir:${JSON.stringify(outputDir)}
 
 test('external installed archive resolves and typechecks public exports and runs its Environment outside checkout', { timeout: 210_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());
+  const packagedDocs = join(installed.directory, 'node_modules', '@luna-shi', 'murm', 'docs');
+  const docsEntries = await readdir(packagedDocs);
+  assert.ok(docsEntries.includes('INDEX.md'));
+  assert.ok(!docsEntries.includes('experiments'));
   const upstream = await createNotesHarnessUpstream(); t.after(() => upstream.close());
   await writeFile(join(installed.directory, 'smoke.mjs'), `
 import assert from 'node:assert/strict';

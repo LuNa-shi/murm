@@ -131,4 +131,4 @@ node dist/examples/substrate/main.js --fate-run dist/examples/substrate/fate-con
 - Concurrent round driver: [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/index.ts)
 - SQLite `substrate` Service: [src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/substrate.ts)
 - Cross-peer reuse auditor: [src/harnesses/substrate/collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/collaboration-evidence.ts)
-- CLI & FATE Lean configs: [examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md)
+- CLI & FATE Lean configs: [examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) · [FATE-X #31 run report](https://github.com/LuNa-shi/murm/blob/main/docs/experiments/EXP-20261125-20-scalemas-fatex-verified.md)

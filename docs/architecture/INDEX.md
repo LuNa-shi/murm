@@ -50,7 +50,7 @@ For a runtime flow, explain its entry point, callers, inputs and defaults, guard
 
 The prompt reference includes repository-controlled text and the conditions under which it is composed and sent. Future task input, external Service content and executor/provider internals are not fixed repository templates. A composed snapshot or prompt hash does not establish the complete conversation of a particular Run.
 
-Generated references and fingerprints are coverage aids. They reproduce code-controlled facts and identify source bytes; they do not prove semantic completeness, successful model execution or scientific progress. Acceptance evidence stays in the relevant Issue/PR.
+Generated references and fingerprints are coverage aids. They reproduce code-controlled facts and identify source bytes; they do not prove semantic completeness, successful model execution or scientific progress. Acceptance evidence stays in the relevant Issue/PR, and historical results stay in their versioned [experiment reports](../experiments/INDEX.md).
 
 ## Current architecture and future changes
 

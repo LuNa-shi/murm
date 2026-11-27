@@ -58,11 +58,21 @@ an offline installation of the packed Core needs. The temporary consumer seeds
 that metadata in the same cache used by the tests. The package tests still
 install offline.
 
-Trace Viewer tests run inside **Core CI** via `npm test`. For **Website CI**,
+**Trace Viewer CI** runs the compiled Viewer reader and server tests from the root
+package. The full Core suite also includes them. For **Website CI**,
 run `npm ci` inside `website/`, then
 `BASE_PATH=/murm SITE_URL=https://luna-shi.github.io npm run build`. The job
 checks for both `dist/index.html` and `dist/zh/index.html`. The Pages workflow
 deploys the merged site separately.
+
+## Release verification
+
+Run the [Release workflow](../../.github/workflows/release.yml) manually with both
+publish inputs cleared to verify a candidate and obtain its npm tarball and SHA-256.
+Publication requires the matching `v<version>` tag. A push of that tag requests
+both publications. npm also requires a public source repository for provenance.
+The npm job publishes the same archive recorded by verification. The first GHCR
+image requires public package visibility before users can pull it anonymously.
 
 ## Documentation changes
 
