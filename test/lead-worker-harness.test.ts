@@ -166,7 +166,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
     work.add(pending); return pending;
   }; } arm();
   if (failure === 'unknown') transport.onStop = agentId => { if (agentId === team.helper1) throw new Error('Controlled stop uncertainty'); };
-  const configuration = { runId: 'test', outputDir: directory, image: 'test', backend: {}, ...(helperCount === 2 ? {} : { helperCount }), turnTimeoutMs: 10000, workTimeoutMs: 30000, closeTimeoutMs: 1000,
+  const configuration = { runId: 'test', outputDir: directory, image: 'test', sandbox: {}, ...(helperCount === 2 ? {} : { helperCount }), turnTimeoutMs: 10000, workTimeoutMs: 30000, closeTimeoutMs: 1000,
     prepare: async () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, repositoryUrl: `${origin}/owner/repo.git`, actors }) };
   if(staged==='stage-deadline')configuration.turnTimeoutMs=1000;
   const report = await runWithReport({ outputDir: directory, closeTimeoutMs: 1000, createRuntime: async () => {

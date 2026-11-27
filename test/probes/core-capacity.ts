@@ -1,3 +1,4 @@
+import { runtimeSettings } from '../fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { once } from 'node:events';
@@ -8,8 +9,8 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { createRuntime } from '@murm/core';
-import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
-import { ServiceRegistry } from '@murm/core/services';
+
+import { ServiceRegistry } from '@murm/core';
 import { runInput } from '../../src/harnesses/shared/run-input.js';
 import { ownedContainers } from '../fixtures/core-runtime-containers.js';
 import { streamResponse } from '../fixtures/core-controlled-upstream.js';
@@ -160,7 +161,7 @@ async function measure(count: number) {
     assert.ok(await availableMemory() > (count + 2) * memoryPerAgent, 'Insufficient headroom for this tier');
     result.hostBaseline = await sample([]);
     const advertiseHost = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-    const backend = createOpenSandboxBackend({
+    const backend = runtimeSettings({
       sandbox: { lifecycleBaseUrl: lifecycle.href, endpointHost: '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' } },
       bridge: { host: '0.0.0.0', publicUrl: `http://${advertiseHost}:{port}` },
       modelGateway: { host: '0.0.0.0', advertiseHost, maxOutputTokens: 128 },
@@ -169,7 +170,7 @@ async function measure(count: number) {
       } } },
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
     });
-    runtime = await createRuntime({ backend, outputDir, services: new ServiceRegistry(), maxAgents: count,
+    runtime = await createRuntime({ ...backend, outputDir, services: new ServiceRegistry(), maxAgents: count,
       profiles: { probe: { prompt: 'Complete the controlled local file task.', image, writable: true, model: 'default', services: {} } } });
     result.runtimeId = runtime.id;
     const agents = [];

@@ -22,7 +22,7 @@ test('installed Notes and subagents CLIs preserve cancellation received during c
     await writeFile(join(installed.directory, 'delayed-config.mjs'), `
 process.send('config-ready');
 await new Promise(resolve => setTimeout(resolve, 150));
-export default {backend:{},image:'unused',outputDir:${JSON.stringify(outputDir)}};
+export default {sandbox:{},image:'unused',outputDir:${JSON.stringify(outputDir)}};
 `);
     const child = fork(join(installed.directory, mode === 'notes' ? 'main.mjs' : 'main.js'), [join(installed.directory, 'delayed-config.mjs')], {
       cwd: installed.directory, env: installed.env, silent: true, timeout: 15_000, killSignal: 'SIGKILL',
@@ -66,15 +66,9 @@ const hooks=registerHooks({load(url,context,nextLoad) {
  if(url.startsWith(packageRoot)) loaded.add(url.slice(packageRoot.length));
  return result;
 }});
-let createRuntime,ServiceRegistry,createOpenSandboxBackend,getOpenSandboxBackendCapabilities;
+let createRuntime,ServiceRegistry,createSandbox,getExecutorCapabilities;
 try {
- const core=await import('@murm/core');
- const services=await import('@murm/core/services');
- const backend=await import('@murm/core/backends/opensandbox');
- await import('@murm/core/backends/pi-opensandbox');
- ({createRuntime}=core);
- ({ServiceRegistry}=services);
- ({createOpenSandboxBackend,getOpenSandboxBackendCapabilities}=backend);
+ ({createRuntime,ServiceRegistry,createSandbox,getExecutorCapabilities}=await import('@murm/core'));
 } finally {hooks.deregister()}
 const domainRoots=['dist/src/task/','dist/src/context/','dist/src/judge/','dist/src/harnesses/taskpool/'];
 assert.deepEqual([...loaded].filter(path=>path==='dist/src/agent/agent-contract.js'||domainRoots.some(root=>path.startsWith(root))),[],
@@ -119,25 +113,20 @@ try {
  assert.deepEqual(notes.records.get(key),record); assert.equal(notes.records.size,1); assert.equal(notes.reads.length,1);
 } finally {await bridge.close()}
 
-const expectedExports = {
- '@murm/core': ['createRuntime', 'finalizeRun'],
- '@murm/core/services': ['ServiceRegistry', 'builtinAgentRegistration', 'createHttpJsonAdapter',
-  'createInProcessAdapter', 'getAdapterMetadata', 'invokeService', 'isJson', 'snapshotServiceRegistry'],
- '@murm/core/backends/opensandbox': ['createOpenSandboxBackend', 'getOpenSandboxBackendCapabilities'],
- '@murm/core/backends/pi-opensandbox': ['createPiOpenSandboxBackend'],
-};
-for (const [specifier, names] of Object.entries(expectedExports)) {
- assert.deepEqual(Object.keys(await import(specifier)).sort(), names);
- assert.ok(import.meta.resolve(specifier).startsWith(new URL('./node_modules/',import.meta.url).href));
- assert.ok(loaded.has(import.meta.resolve(specifier).slice(packageRoot.length)),'Public entry must be observed by the module hook');
+const root='@murm/core';
+assert.deepEqual(Object.keys(await import(root)).sort(), ['ServiceRegistry','createHttpJsonAdapter','createInProcessAdapter','createRuntime','createSandbox','getExecutorCapabilities']);
+assert.ok(import.meta.resolve(root).startsWith(new URL('./node_modules/',import.meta.url).href));
+assert.ok(loaded.has(import.meta.resolve(root).slice(packageRoot.length)));
+for (const old of ['/services','/backends/opensandbox','/backends/pi-opensandbox','/package.json']) {
+ await assert.rejects(import(root+old), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
 }
-const backend={sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1'},bridge:{host:'127.0.0.1',publicUrl:'http://172.17.0.1:{port}'},
-modelGateway:{host:'127.0.0.1',advertiseHost:'172.17.0.1'},models:{default:{provider:'kimi_proxy',model:'k3',upstream:{url:${JSON.stringify(upstream.url)},headers:{}}}},isolation:{network:'local-docker',disk:{bytes:67108864,inodes:4096}}};
-assert.equal(getOpenSandboxBackendCapabilities(createOpenSandboxBackend({...backend,executor:'codex'})).contextFork,false);
-const runtime=await createRuntime({backend:createOpenSandboxBackend(backend),services:new ServiceRegistry(),profiles:{reader:{prompt:'fixed',model:'default',image:'unused',writable:false,services:{}}},maxAgents:2,outputDir:'./preflight'});
+const sandbox={lifecycleBaseUrl:'http://127.0.0.1:1/v1',isolation:{disk:{bytes:67108864,inodes:4096}}};
+const settings={sandbox,connection:{advertiseHost:'172.17.0.1'},models:{default:{provider:'kimi_proxy',model:'k3',upstream:{url:${JSON.stringify(upstream.url)},headers:{}}}}};
+assert.equal(getExecutorCapabilities('codex').contextFork,false);
+const runtime=await createRuntime({...settings,sandbox:createSandbox(sandbox),services:new ServiceRegistry(),profiles:{reader:{prompt:'fixed',model:'default',image:'unused',writable:false,services:{}}},maxAgents:2,outputDir:'./preflight'});
 const closed=await runtime.close(); assert.equal(closed.cleanup,'complete'); assert.deepEqual(closed.agents,[]);
 const controller=new AbortController(); controller.abort();
-const report=await runNotesHarness({backend,image:'unused',outputDir:'./cancelled'},controller.signal);
+const report=await runNotesHarness({...settings,image:'unused',outputDir:'./cancelled'},controller.signal);
 assert.ok(report.businessFailure); assert.equal(report.cleanup,null); assert.ok(report.reportPath);
 console.log(JSON.stringify({resolved:true,closed:true,cancelled:true}));
 `);
@@ -151,23 +140,14 @@ console.log(JSON.stringify({resolved:true,closed:true,cancelled:true}));
     files: ['consumer.mts'],
   }));
   const consumer = `
-import { createRuntime, finalizeRun, type Runtime, type AgentInfo, type AgentEvent, type AgentStatus, type RunFinalization } from '@murm/core';
-import { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from '@murm/core/services';
-import { createOpenSandboxBackend, getOpenSandboxBackendCapabilities, type OpenSandboxBackendConfig } from '@murm/core/backends/opensandbox';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter,
+  type Runtime, type RuntimeEvent, type RuntimeFiles, type SandboxConfig, type FileTree } from '@murm/core';
 type Assert<T extends true> = T;
 type Same<A, B> = [A, B] extends [B, A] ? true : false;
-type CoreExports = Assert<Same<keyof typeof import('@murm/core'), 'createRuntime' | 'finalizeRun'>>;
-type ServiceExports = Assert<Same<keyof typeof import('@murm/core/services'), 'ServiceRegistry' |
-  'builtinAgentRegistration' | 'createHttpJsonAdapter' | 'createInProcessAdapter' | 'getAdapterMetadata' |
-  'invokeService' | 'isJson' | 'snapshotServiceRegistry'>>;
-type BackendExports = Assert<Same<keyof typeof import('@murm/core/backends/opensandbox'),
-  'createOpenSandboxBackend' | 'getOpenSandboxBackendCapabilities'>>;
-const config: OpenSandboxBackendConfig = {
-  sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1' },
-  bridge: { host: '127.0.0.1', publicUrl: 'http://127.0.0.1:{port}' },
-  modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1' },
-  models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1/responses', headers: {} } } },
+type CoreExports = Assert<Same<keyof typeof import('@murm/core'), 'createRuntime' | 'createSandbox' | 'getExecutorCapabilities' |
+  'ServiceRegistry' | 'createInProcessAdapter' | 'createHttpJsonAdapter'>>;
+const config: SandboxConfig = {
+  lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
   isolation: { network: 'local-docker', disk: { bytes: 67108864, inodes: 4096 } },
 };
 const registry = new ServiceRegistry();
@@ -178,40 +158,39 @@ const adapter = createInProcessAdapter({
 registry.registerService({ manifest: { id: 'notes', title: 'Notes', purpose: 'Store notes', provider_version: '1',
   contract_version: '2', endpoint: { transport: 'in-process' }, capabilities: [] }, adapter });
 createHttpJsonAdapter({ token: 'host-only', timeoutMs: 1000 });
-const codex = createOpenSandboxBackend({ ...config, executor: 'codex' });
-const supportsFork: boolean = getOpenSandboxBackendCapabilities(codex).contextFork;
-createPiOpenSandboxBackend(config);
-const runtime: Runtime = await createRuntime({ backend: createOpenSandboxBackend(config),
+const supportsFork: boolean = getExecutorCapabilities('codex').contextFork;
+const runtime: Runtime = await createRuntime({ sandbox: createSandbox(config),
+  models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1/v1/responses', headers: {} } } },
+  connection: { advertiseHost: '172.17.0.1' },
   profiles: { reader: { prompt: 'Read', model: 'default', image: 'image', writable: false, services: {} } },
   services: registry, maxAgents: 2, outputDir: './output' });
-const executeFinalization = (): Promise<RunFinalization<{ verified: boolean }>> =>
-  finalizeRun({ runtime, outputDir: './output', business: { status: 'completed', value: { verified: true } } });
-void executeFinalization;
+const unsubscribe = runtime.onEvent((event: RuntimeEvent) => void event.type);
 const agent = await runtime.spawn({ requestId: 'spawn', profile: 'reader' });
 await runtime.list({ parentId: null, status: ['idle', 'starting'] });
 await runtime.send(agent.id, 'Read a note', { mode: 'followUp', requestId: 'start' });
 await runtime.send(agent.id, 'Read this too', { requestId: 'steer', source: 'mail', steeringMode: 'all', wakeIfIdle: false });
-await runtime.start(agent.id, 'Start a separate phase', { requestId: 'start-compatible' });
-await runtime.steer(agent.id, 'Steer the active phase', { requestId: 'steer-compatible', source: 'host' });
 await runtime.interrupt(agent.id, { requestId: 'interrupt', timeoutMs: 1000 });
-const files = await runtime.files.snapshot(agent.id, { requestId: 'snapshot', paths: ['note.txt'] });
-await runtime.spawn({ requestId: 'fork', profile: 'reader', forkFrom: agent.id, workspace: { mode: 'frozen-copy', files: files.files } });
-await runtime.send(agent.id, 'Read a note', { requestId: 'input', mode: 'followUp' });
+const operations: RuntimeFiles = runtime.files;
+const snapshot = await operations.snapshot(agent.id, { requestId: 'snapshot', paths: ['.'] });
+const files: FileTree = snapshot.files;
+await operations.replace(agent.id, { requestId: 'replace', expectedDigest: snapshot.digest, files, writable: true });
+await runtime.spawn({ requestId: 'fork', profile: 'reader', forkFrom: agent.id, files });
+unsubscribe();
 // @ts-expect-error Core accepts only documented input modes.
 await runtime.send(agent.id, 'Read a note', { requestId: 'invalid', mode: 'later' });
 // @ts-expect-error Services require their complete manifest.
 registry.registerService({ manifest: {}, adapter });
 // @ts-expect-error OpenSandbox requires its explicit configuration.
-createOpenSandboxBackend({});
+createSandbox({});
 // @ts-expect-error The image pins the CLI releases. Configuration accepts executor names.
-createOpenSandboxBackend({ ...config, executor: { kind: 'pi', version: 'unverified' } });
+getExecutorCapabilities({ kind: 'pi', version: 'unverified' });
 await runtime.close();
 `;
   await writeFile(join(installed.directory, 'consumer.mts'), consumer);
   const compiler = fileURLToPath(new URL('./bin/tsc', import.meta.resolve('typescript/package.json')));
   const compilerOptions = { cwd: installed.directory, env: installed.env, timeout: 30_000 };
   const typed = await execute(process.execPath, [compiler, '--project', 'tsconfig.json', '--pretty', 'false', '--listFiles'], compilerOptions);
-  for (const declaration of ['index.d.ts', 'public-services.d.ts', 'backends/opensandbox.d.ts', 'backends/pi-opensandbox.d.ts']) {
+  for (const declaration of ['index.d.ts', 'types.d.ts', 'service-types.d.ts', 'backend-config.d.ts']) {
     assert.ok(typed.stdout.split('\n').includes(join(installed.directory, 'node_modules/@murm/core/dist/src/core', declaration)));
   }
   await writeFile(join(installed.directory, 'consumer.mts'), consumer.replaceAll(/\/\/ @ts-expect-error[^\n]*\n/g, ''));
@@ -219,7 +198,7 @@ await runtime.close();
     assert.equal(error.code, 1);
     assert.match(error.stdout, /InputMode/);
     assert.match(error.stdout, /ServiceManifest/);
-    assert.match(error.stdout, /OpenSandboxBackendConfig/);
+    assert.match(error.stdout, /SandboxConfig/);
     return true;
   });
 });

@@ -73,7 +73,7 @@ for (const capacity of [2, 4]) test(`${capacity} flat Slots contribute distinct 
   };
   const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root, deadlineAt: Date.now() + 25_000,
-    backend: {}, image: 'fixture', model: 'default', capacity,
+    sandbox: {}, image: 'fixture', model: 'default', capacity,
     // Explicit test-only trusted dependency. These are host fixture directories,
     // not native WorkDirs and not a supported production Core snapshot API.
     async snapshotProject({ agentId, executionId, fencingVersion }) {

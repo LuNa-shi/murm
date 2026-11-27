@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
@@ -13,10 +14,10 @@ async function fixture(t, modify = value => value) {
     onGet(id, resource, response) { gets.push(id); return modify({ id, status: { state: 'Running' }, metadata: resource.labels, expiresAt: new Date(Date.now() + 5000000).toISOString() }, response); } });
   provider.allowDeletion();
   const { createRuntime } = await import('@murm/core');
-  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
-  const { ServiceRegistry } = await import('@murm/core/services');
+
+  const { ServiceRegistry } = await import('@murm/core');
   const outputDir = await mkdtemp(join(tmpdir(), 'lifetime-observation-'));
-  runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
+  runtime = await createRuntime({ ...runtimeSettings({
     sandbox: { lifecycleBaseUrl: provider.url, timeoutSeconds: 5100 }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
     modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },

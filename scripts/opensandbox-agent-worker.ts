@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { fileProtocol } from './core-file-seed.js';
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID, createHash } from 'node:crypto';
@@ -281,7 +282,7 @@ async function startAgent(input: any) {
     child = null;
   });
   const nativeSession = await codexDriver?.ready;
-  return { pid: child?.pid, ...(nativeSession ? { backend: { kind: 'codex', version: executorVersion, authMode: 'api-key', threadId: nativeSession.threadId } } : {}), contract: { version: input.contract_version, resources: input.resources },
+  return { pid: child?.pid, ...(nativeSession ? { backend: { kind: 'codex', version: executorVersion, authMode: 'api-key', threadId: nativeSession.threadId } } : {}), contract: { version: input.contract_version, resources: input.resources, file_protocol: fileProtocol },
     ...(projectQuota ? { project_quota: projectQuota } : {}),
     ...(projectFiles ? { project_files: projectFiles } : {}),
     ...(sharedWorkspace ? { shared_workspace: sharedWorkspace } : {}),
@@ -492,7 +493,7 @@ function controlCoreFiles(action: any, input: any) {
   return withAgentPaused(async (pids: number[]) => {
     try { return await coreWorkDir[action](input, pids); }
     catch (error: any) {
-      if (action !== 'snapshot' && ['OPERATION_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED'].includes(error.code)) project.beginClose();
+      if (action === 'replace' && ['WORKSPACE_RECONCILIATION_REQUIRED'].includes(error.code)) project.beginClose();
       throw error;
     }
   });
@@ -503,6 +504,10 @@ const server = createServer(async (request: any, response: any) => {
   try {
     if (request.method === 'GET' && url.pathname === '/health') { send(response, 200, { ok: true, pid: child?.pid ?? null }); return; }
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
+    if (request.method === 'GET' && url.pathname === '/core/contract') {
+      send(response, 200, { ok: true, result: { file_protocol: fileProtocol } });
+      return;
+    }
     if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request, 32 * 1024 ** 2)) }); return; }
     if (request.method === 'POST' && ['/core/files/collect', '/core/session/archive'].includes(url.pathname)) {
       const sessionArchive = url.pathname === '/core/session/archive';
@@ -531,12 +536,8 @@ const server = createServer(async (request: any, response: any) => {
       }
       return;
     }
-    if (request.method === 'POST' && ['/core/files/install', '/core/files/confirm'].includes(url.pathname)) {
-      send(response, 200, { ok: true, result: await controlCoreFiles(url.pathname.split('/').at(-1), await body(request, 32 * 1024 ** 2)) });
-      return;
-    }
-    if (request.method === 'POST' && url.pathname === '/core/files/prepare') {
-      send(response, 200, { ok: true, result: await controlCoreFiles('prepare', await body(request, 32 * 1024 ** 2)) });
+    if (request.method === 'POST' && url.pathname === '/core/files/replace') {
+      send(response, 200, { ok: true, result: await controlCoreFiles('replace', await body(request, 32 * 1024 ** 2)) });
       return;
     }
     if (request.method === 'POST' && ['/core/files/pause', '/core/files/resume'].includes(url.pathname)) {
@@ -563,10 +564,6 @@ const server = createServer(async (request: any, response: any) => {
     }
     if (request.method === 'POST' && url.pathname === '/core/files/snapshot') {
       send(response, 200, { ok: true, result: await controlCoreFiles('snapshot', await body(request)) });
-      return;
-    }
-    if (request.method === 'POST' && url.pathname === '/core/files/grant') {
-      send(response, 200, { ok: true, result: await controlCoreFiles('grant', await body(request)) });
       return;
     }
     if (url.pathname.startsWith('/project/') && !initialized) throw new Error('Agent workspace is not initialized');

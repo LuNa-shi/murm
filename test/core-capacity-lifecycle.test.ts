@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,11 +15,11 @@ async function wait(promise) {
 test('running, unexpectedly exited and pending cleanup Agents retain capacity until confirmed closed', { timeout: 8000 }, async t => {
   const provider = await createLifecycleProvider(t);
   const { createRuntime } = await import('@murm/core');
-  const { ServiceRegistry } = await import('@murm/core/services');
-  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
+  const { ServiceRegistry } = await import('@murm/core');
+
   const outputDir = await mkdtemp(join(tmpdir(), 'core-capacity-fixture-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
-  const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
+  const runtime = await createRuntime({ ...runtimeSettings({
     sandbox: { lifecycleBaseUrl: provider.url }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
     modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },

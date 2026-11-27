@@ -54,7 +54,10 @@ type CollectionRecord =
   | { type: 'fileEnd'; sha256: string }
   | { type: 'end'; totalBytes: number; fileCount: number; directoryCount: number };
 
-export async function* collectCoreWorkDir(root: string, input: any, { signal, maxEntries = MAX_COLLECTION_ENTRIES, timeoutMs = 20_000 }: { signal?: AbortSignal; maxEntries?: number; timeoutMs?: number } = {}): AsyncGenerator<CollectionRecord> {
+export async function* collectCoreWorkDir(root: string, input: any, { signal, maxEntries = MAX_COLLECTION_ENTRIES, timeoutMs = 20_000, fileTree }: {
+  signal?: AbortSignal; maxEntries?: number; timeoutMs?: number;
+  fileTree?: { validPath(path: string): boolean; excluded(path: string): boolean; maxFiles: number; maxFileBytes: number };
+} = {}): AsyncGenerator<CollectionRecord> {
   const spec = snapshotCollectionSpec(input);
   const deadline = performance.now() + timeoutMs;
   const visited = new Set();
@@ -87,10 +90,14 @@ export async function* collectCoreWorkDir(root: string, input: any, { signal, ma
         check();
         const child = path === '.' ? entry.name : `${path}/${entry.name}`;
         pathName(child);
-        if (!spec.includeGit && child === '.git') continue;
+        if (fileTree?.excluded(child) || (!spec.includeGit && child === '.git')) continue;
+        if (fileTree && !fileTree.validPath(child)) throw failure('FileTree traversal encountered an invalid path');
         yield* walk(child);
       }
       return;
+    }
+    if (fileTree && (fileCount >= fileTree.maxFiles || info.size > fileTree.maxFileBytes)) {
+      throw failure('FileTree exceeds its file count or per-file byte limit');
     }
     totalBytes += info.size;
     if (totalBytes > spec.maxBytes) throw failure('Collection exceeds maxBytes');

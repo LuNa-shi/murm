@@ -1,10 +1,10 @@
-import type { Runtime, AgentEvent, InputReceipt } from '../../core/index.js';
+import type { Runtime, RuntimeEvent, InputReceipt } from '../../core/index.js';
 
-type SettledEvent = Extract<AgentEvent, { type: 'settled' }>;
+type SettledEvent = Extract<RuntimeEvent, { type: 'settled' }>;
 type AcceptedInput = Extract<InputReceipt, { status: 'accepted' }>;
 interface InputGuard { active: boolean; unresolved: boolean; used: Set<string> }
 interface RunInputOptions {
-  requestId: string; timeoutMs: number; signal?: AbortSignal; operation?: 'send' | 'start';
+  requestId: string; timeoutMs: number; signal?: AbortSignal;
   beforeSend?: () => void;
   onStarted?: () => void;
 }
@@ -13,7 +13,7 @@ export interface RunInputResult { inputId: string; receipt: AcceptedInput; settl
 const runtimeGuards: any = new WeakMap<Runtime, Map<string, InputGuard>>();
 
 /** Wait for one explicitly owned input on an idle Agent. The caller must exclude all other input sources. */
-export async function runInput(runtime: Runtime, agentId: string, input: string, { requestId, timeoutMs, signal, operation = 'send', beforeSend, onStarted }: RunInputOptions = {} as RunInputOptions): Promise<RunInputResult> {
+export async function runInput(runtime: Runtime, agentId: string, input: string, { requestId, timeoutMs, signal, beforeSend, onStarted }: RunInputOptions = {} as RunInputOptions): Promise<RunInputResult> {
   const failure = (code: string, details?: Record<string, unknown>) => Object.assign(new Error(code), { code, runtimeId: runtime.id, agentId, requestId, ...details });
   if (typeof requestId !== 'string' || !requestId || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2147483647) {
     throw failure('invalid_wait_options');
@@ -60,11 +60,8 @@ export async function runInput(runtime: Runtime, agentId: string, input: string,
     void (async () => {
       try {
         if (done) return;
-        const before = await runtime.get(agentId);
-        if (done) return;
-        if (before.status !== 'idle') throw failure('wait_requires_idle_agent');
         unsubscribe = runtime.onEvent((event) => {
-          if (done || !submitted || event.agentId !== agentId || event.seq <= before.cursor) return;
+          if (done || !submitted || !('agentId' in event) || event.agentId !== agentId) return;
           if (event.type === 'exit' || (event.type === 'error' && event.fatal)) {
             finish(failure(event.type === 'exit' ? 'agent_exited' : 'agent_failed', { ...diagnostic(), event }), true);
           } else if (event.type === 'settled' && !settled) {
@@ -73,11 +70,13 @@ export async function runInput(runtime: Runtime, agentId: string, input: string,
           }
         });
         if (done) { unsubscribe(); return; }
+        const before = await runtime.get(agentId);
+        if (done) return;
+        if (before.status !== 'idle') throw failure('wait_requires_idle_agent');
         beforeSend?.();
         if (done) return;
         submitted = true;
-        receipt = operation === 'start' ? await runtime.start(agentId, input, { requestId })
-          : await runtime.send(agentId, input, { requestId, mode: 'followUp' });
+        receipt = await runtime.send(agentId, input, { requestId, mode: 'followUp' });
         if (done) return;
         if (receipt.status === 'unknown') finish(failure('input_unknown', diagnostic()), true);
         else if (receipt.disposition === 'queued') finish(failure('exclusive_input_was_queued', diagnostic()), true);

@@ -11,7 +11,7 @@ export function createCoreParticipationEvidence({ runtime, agentIds, clockId, no
       !Array.isArray(agentIds) || !agentIds.length || agentIds.some(id => typeof id !== 'string' || !id) || new Set(agentIds).size !== agentIds.length ||
       typeof clockId !== 'string' || !clockId || typeof now !== 'function' || !Number.isSafeInteger(maxInputs) || maxInputs < 1 || maxInputs > 10000) throw new TypeError('Participation evidence requires a fixed team, clock and input bound');
   const members = new Set(agentIds), completed = [], active = new Set();
-  let attempts = 0, lastAtMs = -Infinity;
+  let attempts = 0, observationSequence = 0, lastAtMs = -Infinity;
   function observeTime() {
     const atMs = now();
     if (typeof atMs !== 'number' || !Number.isFinite(atMs) || atMs < 0 || atMs < lastAtMs) throw fail('INVALID_MONOTONIC_OBSERVATION');
@@ -27,21 +27,20 @@ export function createCoreParticipationEvidence({ runtime, agentIds, clockId, no
       observeTime(); attempts++; active.add(agentId);
       let unsubscribe;
       try {
-        const before = await runtime.get(agentId);
-        const observations = new Map(); let observationError;
+        let observed, observationError, submitted = false;
         unsubscribe = runtime.onEvent(event => {
-          if (event.agentId !== agentId || event.type !== 'settled' || event.seq <= before.cursor) return;
-          try {
-            if (observations.size >= 16) throw fail('PARTICIPATION_EVENT_LIMIT');
-            observations.set(event.seq, { atMs: observeTime(), outcome: event.outcome });
-          } catch (error) { observationError = error; }
+          if (!submitted || observed || observationError || event.agentId !== agentId || event.type !== 'settled') return;
+          try { observed = { atMs: observeTime(), seq: ++observationSequence, outcome: event.outcome }; }
+          catch (error) { observationError = error; }
         });
-        const result = await runInput(runtime, agentId, input, options);
+        const result = await runInput(runtime, agentId, input, { ...options, beforeSend() {
+          options.beforeSend?.();
+          submitted = true;
+        } });
         if (observationError) throw observationError;
-        const observed = observations.get(result.settled.seq);
         if (!observed || observed.outcome !== 'completed' || result.settled.agentId !== agentId || result.inputId !== result.receipt.inputId ||
             result.receipt.status !== 'accepted' || result.receipt.disposition !== 'started') throw fail('UNCONFIRMED_PARTICIPATION');
-        const evidence = { runtimeId: runtime.id, clockId, agentId, requestId: options.requestId, inputId: result.inputId, seq: result.settled.seq, atMs: observed.atMs };
+        const evidence = { runtimeId: runtime.id, clockId, agentId, requestId: options.requestId, inputId: result.inputId, seq: observed.seq, atMs: observed.atMs };
         completed.push(evidence);
         return { result, evidence: structuredClone(evidence) };
       } catch (error) {

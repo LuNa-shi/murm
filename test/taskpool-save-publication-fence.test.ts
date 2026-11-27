@@ -48,7 +48,7 @@ async function fixture(t,installed) {
   for(const row of publication.registrations.filter(row=>row.manifest.id!=='task')) services.registerService(row);
   const allowed=Object.fromEntries(publication.registrations.map(row=>[row.manifest.id,row.manifest.capabilities.map(cap=>cap.operation)]));
   allowed.task.push(...discovery.manifest.capabilities.map(cap=>cap.operation));
-  runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Publish fixed bytes',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:1,outputDir:root});
+  runtime=await createRuntime({sandbox: {},profiles:{researcher:{prompt:'Publish fixed bytes',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:1,outputDir:root});
   t.after(async()=>{publication.close();await discovery.close();await runtime.close({timeoutMs:1000});stores.close();await rm(root,{recursive:true,force:true});});
   const agent=await runtime.spawn({profile:'researcher',requestId:'contributor'});
   stores.tasks.registerAgent({agentId:agent.id,missionId:stores.missionId,legacySlotId:'taskpool-save-slot',selectionDeadline:new Date(Date.now()+60000).toISOString()});

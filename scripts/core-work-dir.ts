@@ -1,51 +1,50 @@
-import { chmod, chown, lstat, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, chown, lstat, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import type { FileSnapshot, FileSeed } from '../src/core/types.js';
-import { collectCoreWorkDir, snapshotCollectionSpec } from './core-collection.js';
+import type { FileReplaceOptions, FileSnapshotOptions, FileTree } from '../src/core/types.js';
+import type { WorkerFileReplace, WorkerFileSnapshot } from '../src/core/file-controls.js';
+import { collectCoreWorkDir } from './core-collection.js';
 import { ProjectInstaller, decodeProjectFiles } from './project-install.js';
-import { decodeFileSeed, fileSeedDigest } from './core-file-seed.js';
+import {
+  completeDigest, decodeFileSeed, fileSnapshotSelection, isFileTreePath, isGitPath, maxFileBytes, maxFiles, partialDigest,
+} from './core-file-seed.js';
 
-function failure(code: string, message: string) {
-  return Object.assign(new Error(message), { code });
-}
+const failure = (code: string, message: string) => Object.assign(new Error(message), { code });
+const requestIdValid = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(value);
+const decodeFiles = (files: Record<string, string>) => decodeProjectFiles(files, isFileTreePath);
+const encodeEntries = (entries: ReturnType<typeof decodeFileSeed>['entries']) =>
+  Object.fromEntries(entries.map(entry => [entry.path, entry.bytes.toString('base64')]));
+const rootOwner = { uid: 0, gid: 0 };
 
-interface ExpectedFile {
-  path: string;
-  size: number;
-  mode: number;
-}
-
-interface PreparedReceipt {
-  version: number;
-  digest: string;
-}
+type FileSpec = ReturnType<typeof fileSnapshotSelection>;
+const wholeTree = fileSnapshotSelection({ paths: ['.'] });
 
 export class CoreWorkDir {
-  declare path: string;
-  declare uid: number;
-  declare gid: number;
-  declare assertOpen: () => void;
-
   #pending: Promise<unknown> = Promise.resolve();
-  #prepared = new Map<number, PreparedReceipt>();
-  #current?: { receipt: PreparedReceipt; entries: ExpectedFile[] };
   #writable = false;
   #shared = false;
-  #snapshots = new Map<string, { identity: string; receipt: Omit<FileSnapshot, 'agentId'> }>();
   #snapshotVersion = 0;
+  #snapshots = new Map<string, { identity: string; receipt: WorkerFileSnapshot }>();
+  #replacements = new Map<string, { identity: string; work?: WorkerFileReplace; plan?: Record<string, unknown> }>();
   #installer: ProjectInstaller;
-  #installs = new Map<string, { identity: string; version: number; digest: string; input: any }>();
+  #grantUnknown = false;
+  private readonly path: string;
+  private readonly uid: number;
+  private readonly gid: number;
+  private readonly assertOpen: () => void;
 
   constructor({ path, uid, gid, assertOpen }: { path: string; uid: number; gid: number; assertOpen: () => void }) {
     this.path = path;
     this.uid = uid;
     this.gid = gid;
     this.assertOpen = assertOpen;
-    this.#installer = new ProjectInstaller({ projectDir: path, controlDir: join(dirname(path), '.core-file-installs'), uid,
-      assertOpen: () => this.assertOpen(), snapshot: () => this.#projectSnapshot() });
+    this.#installer = new ProjectInstaller({
+      projectDir: path, controlDir: join(dirname(path), '.core-file-installs'), uid, decode: decodeFiles,
+      owner: () => this.#writable ? { uid, gid } : rootOwner, excluded: isGitPath,
+      assertOpen, snapshot: () => this.#projectSnapshot(),
+    });
   }
 
-  #serialize<T>(operation: () => Promise<T>): Promise<T> {
+  #serialize<T>(operation: () => Promise<T>) {
     const work = this.#pending.then(operation);
     this.#pending = work.catch(() => undefined);
     return work;
@@ -57,46 +56,49 @@ export class CoreWorkDir {
     this.#shared = shared;
     if (shared) { this.#writable = writable; return { writable, version: 0 }; }
     if (files === undefined && !writable) return { writable: false, version: 0 };
-    const prepared = await this.prepare({ version: 1, files: files ?? {} });
-    if (writable) return this.grant(prepared);
-    return { ...prepared, writable: false };
+    const tree = decodeFileSeed(files ?? {});
+    for (const entry of tree.entries) {
+      this.assertOpen();
+      const path = join(this.path, entry.path);
+      await mkdir(dirname(path), { recursive: true, mode: 0o755 });
+      await writeFile(path, entry.bytes, { flag: 'wx', mode: entry.mode });
+      await chmod(path, entry.mode);
+    }
+    if ((await this.#projectSnapshot()).file_digest !== completeDigest(tree.digest)) {
+      throw failure('CONFLICT', 'Initial project does not match the FileTree');
+    }
+    if (writable) await this.#grantWrite(tree.entries);
+    return { writable, version: 1, digest: tree.digest };
   }
 
-  async #readInstalled(entries: ExpectedFile[]) {
-    const root = await lstat(this.path);
-    if (!root.isDirectory() || root.uid !== process.getuid!() || (root.mode & 0o022) !== 0) {
-      throw failure('CONFLICT', 'Prepared FileSeed root is no longer controlled by the Worker');
-    }
-    const actual = [];
-    const checkedDirectories = new Set<string>();
+  async #grantWrite(entries: ReturnType<typeof decodeFileSeed>['entries']) {
+    const directories = new Set([this.path]);
     for (const entry of entries) {
       this.assertOpen();
-      const target = join(this.path, entry.path);
-      for (let directory = dirname(target); directory !== this.path; directory = dirname(directory)) {
-        if (checkedDirectories.has(directory)) continue;
-        const info = await lstat(directory);
-        if (!info.isDirectory() || info.uid !== process.getuid!() || (info.mode & 0o022) !== 0) {
-          throw failure('CONFLICT', 'Prepared FileSeed directory is no longer controlled by the Worker');
-        }
-        checkedDirectories.add(directory);
-      }
-      const info = await lstat(target);
-      if (!info.isFile() || info.uid !== process.getuid!() || info.nlink !== 1 ||
-          (info.mode & 0o7777) !== entry.mode || info.size !== entry.size) {
-        throw failure('CONFLICT', 'Installed FileSeed differs from its expected ordinary file and mode');
-      }
-      actual.push({ path: entry.path, mode: info.mode & 0o7777, bytes: await readFile(target) });
+      const path = join(this.path, entry.path);
+      await chown(path, this.uid, this.gid);
+      for (let directory = dirname(path); directory !== this.path; directory = dirname(directory)) directories.add(directory);
     }
-    return fileSeedDigest(actual);
+    for (const directory of directories) {
+      this.assertOpen();
+      await chown(directory, this.uid, this.gid);
+      await chmod(directory, 0o755);
+    }
+    for (const path of [...directories, ...entries.map(entry => join(this.path, entry.path))]) {
+      const info = await lstat(path);
+      if (info.uid !== this.uid || info.gid !== this.gid || (info.mode & 0o200) === 0) {
+        throw failure('OPERATION_UNKNOWN', 'WorkDir ownership and write permissions were not confirmed');
+      }
+    }
+    this.#writable = true;
   }
 
-  snapshot(input?: { requestId?: unknown; paths?: unknown; includeGit?: unknown; maxBytes?: unknown }) {
+  snapshot(input: FileSnapshotOptions) {
     return this.#serialize(async () => {
       this.assertOpen();
       const { requestId, ...selection } = input ?? {};
-      if (typeof requestId !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId)) throw failure('INVALID_CONTRACT', 'Snapshot requires requestId');
-      const spec = snapshotCollectionSpec(selection);
-      if (spec.maxBytes > 16 * 1024 ** 2) throw failure('INVALID_CONTRACT', 'Snapshot exceeds 16 MiB limit');
+      if (!requestIdValid(requestId)) throw failure('INVALID_CONTRACT', 'Snapshot requires requestId');
+      const spec = fileSnapshotSelection(selection);
       const identity = JSON.stringify(spec);
       const previous = this.#snapshots.get(requestId);
       if (previous) {
@@ -105,17 +107,21 @@ export class CoreWorkDir {
       }
       const files = await this.#capture(spec);
       const { digest } = decodeFileSeed(files);
-      const receipt = { requestId, version: ++this.#snapshotVersion, digest, files };
+      const base = { requestId, version: ++this.#snapshotVersion, files };
+      const receipt: WorkerFileSnapshot = spec.paths[0] === '.'
+        ? { ...base, scope: 'complete', digest: completeDigest(digest) }
+        : { ...base, scope: 'partial', digest: partialDigest(digest) };
       this.#snapshots.set(requestId, { identity, receipt });
       return receipt;
     });
   }
 
-  async #capture(spec: ReturnType<typeof snapshotCollectionSpec>) {
-    const files: Record<string, FileSeed[string]> = Object.create(null);
+  async #capture(spec: FileSpec) {
+    const files: Record<string, FileTree[string]> = Object.create(null);
     let current!: { path: string; mode: number };
     let chunks!: Buffer[];
-    for await (const entry of collectCoreWorkDir(this.path, spec)) {
+    const fileTree = { validPath: isFileTreePath, excluded: isGitPath, maxFiles, maxFileBytes };
+    for await (const entry of collectCoreWorkDir(this.path, spec, { fileTree })) {
       this.assertOpen();
       if (entry.type === 'file') { current = entry; chunks = []; }
       if (entry.type === 'chunk') chunks.push(Buffer.from(entry.data, 'base64'));
@@ -127,147 +133,61 @@ export class CoreWorkDir {
   }
 
   async #projectSnapshot() {
-    const files = await this.#capture(snapshotCollectionSpec({ paths: ['.'], includeGit: false, maxBytes: 16 * 1024 ** 2, required: true }));
-    const encoded = Object.fromEntries(decodeFileSeed(files).entries.map(entry => [entry.path, entry.bytes.toString('base64')]));
-    const snapshot = decodeProjectFiles(encoded);
-    return { files: encoded, manifest: snapshot.manifest, content_hash: snapshot.content_hash };
+    const decoded = decodeFileSeed(await this.#capture(wholeTree));
+    const files = encodeEntries(decoded.entries);
+    const snapshot = decodeFiles(files);
+    return { files, manifest: snapshot.manifest, content_hash: snapshot.content_hash, file_digest: completeDigest(decoded.digest) };
   }
 
-  get installPending() { return this.#installer.held !== null; }
+  get installPending() { return this.#installer.held !== null || this.#grantUnknown; }
 
-  install(input: { requestId: string; version: number; expectedDigest: string; files: FileSeed }, pids: number[]) {
-    return this.#serialize(async () => {
+  replace(input: FileReplaceOptions, pids: number[]) {
+    return this.#serialize(async (): Promise<WorkerFileReplace> => {
       this.assertOpen();
-      if (this.#shared || !this.#writable) throw failure('NOT_ALLOWED', 'Live install requires a private writable workDir');
-      if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(input.requestId) || !Number.isSafeInteger(input.version) || input.version < 1 ||
-          !/^[a-f0-9]{64}$/.test(input.expectedDigest)) throw failure('INVALID_CONTRACT', 'Live install requires request, version and expected digest');
+      const { requestId, expectedDigest, writable } = input ?? {};
+      if (this.#shared) throw failure('NOT_ALLOWED', 'File replacement requires a private workDir');
+      if (!requestIdValid(requestId) || !/^complete:sha256:[a-f0-9]{64}$/.test(expectedDigest) ||
+          (writable !== undefined && writable !== true)) {
+        throw failure('INVALID_CONTRACT', 'Replacement requires requestId, a complete digest and optional writable: true');
+      }
       const target = decodeFileSeed(input.files);
-      const identity = JSON.stringify([input.version, input.expectedDigest, target.digest]);
-      let record = this.#installs.get(input.requestId);
-      if (record && record.identity !== identity) throw failure('CONFLICT', 'Install requestId has different files or expected digest');
+      const digest = completeDigest(target.digest);
+      const identity = JSON.stringify([expectedDigest, digest, writable ?? null]);
+      let record = this.#replacements.get(requestId);
+      if (record && record.identity !== identity) throw failure('CONFLICT', 'Replacement requestId already has different input');
+      if (record?.work) return record.work;
       if (!record) {
+        if (this.installPending) throw failure('WORKSPACE_BUSY', 'A replacement is awaiting verification');
+        record = { identity };
+        this.#replacements.set(requestId, record);
+      }
+      if (!record.plan) {
+        const before = await this.#projectSnapshot();
+        if (before.file_digest !== expectedDigest) throw failure('CONFLICT', 'The complete workDir digest changed after capture');
+        const files = encodeEntries(target.entries);
+        const tree = decodeFiles(files);
         await this.#installer.initialize();
-        if (this.installPending) throw failure('CONFLICT', 'An installation awaits acknowledgement');
-        const before = await this.#capture(snapshotCollectionSpec({ paths: ['.'], includeGit: false, maxBytes: 16 * 1024 ** 2, required: true }));
-        if (decodeFileSeed(before).digest !== input.expectedDigest) throw failure('WORKSPACE_BUSY', 'workDir changed after capture');
-        const source = decodeProjectFiles(Object.fromEntries(decodeFileSeed(before).entries.map(entry => [entry.path, entry.bytes.toString('base64')])));
-        const files = Object.fromEntries(target.entries.map(entry => [entry.path, entry.bytes.toString('base64')]));
-        const tree = decodeProjectFiles(files);
-        record = { identity, version: input.version, digest: target.digest, input: {
-          request_id: input.requestId, execution_id: 'core-files', binding_version: input.version,
-          expected_content_hash: source.content_hash, content_hash: tree.content_hash, files,
+        record.plan = {
+          request_id: requestId, execution_id: 'core-files', binding_version: 1,
+          expected_content_hash: before.content_hash, expected_file_digest: expectedDigest,
+          content_hash: tree.content_hash, file_digest: digest, files,
           file_modes: Object.fromEntries(target.entries.map(entry => [entry.path, entry.mode])),
-        } };
-        this.#installs.set(input.requestId, record);
+        };
       }
-      const receipt = await this.#installer.install(record.input, pids);
-      if (receipt.phase === 'failed') throw failure('CONFLICT', 'Installation rolled back without changing the workDir');
-      if (!['installed', 'committed'].includes(receipt.phase)) throw failure('OPERATION_UNKNOWN', 'Installation is awaiting reconciliation');
-      return { requestId: input.requestId, version: record.version, digest: record.digest, phase: receipt.phase };
-    });
-  }
-
-  confirm(input: { requestId: string; version: number; digest: string }) {
-    return this.#serialize(async () => {
+      const receipt = await this.#installer.install(record.plan, pids);
+      if (receipt.phase === 'failed') {
+        const error = { code: 'WORKSPACE_REQUEST_ABORTED', message: 'Replacement rolled back and restored the workDir', retryable: false };
+        return record.work = { requestId, status: 'failed', error };
+      }
+      if (!['installed', 'committed'].includes(receipt.phase)) throw failure('OPERATION_UNKNOWN', 'Replacement is awaiting reconciliation');
+      if (writable && !this.#writable) {
+        this.#grantUnknown = true;
+        await this.#grantWrite(target.entries);
+        this.#grantUnknown = false;
+      }
       this.assertOpen();
-      const record = this.#installs.get(input.requestId);
-      if (!record || record.version !== input.version || record.digest !== input.digest) throw failure('CONFLICT', 'Confirmation does not match an installation');
-      const receipt = this.#installer.confirm(record.input);
-      return { requestId: input.requestId, version: record.version, digest: record.digest, phase: receipt.phase };
-    });
-  }
-
-  prepare({ version, files }: { version: number; files: unknown }) {
-    return this.#serialize(async () => {
-      this.assertOpen();
-      if (this.#shared) throw failure('NOT_ALLOWED', 'Shared workspace cannot be prepared or granted');
-      if (!Number.isSafeInteger(version) || version < 1) throw failure('INVALID_CONTRACT', 'File preparation requires a positive version');
-      const seed = decodeFileSeed(files);
-      const expected = seed.entries.map(({ path, bytes, mode }) => ({ path, size: bytes.length, mode }));
-      const previous = this.#prepared.get(version);
-      if (previous) {
-        if (previous.digest !== seed.digest) throw failure('CONFLICT', 'File preparation version has different bytes, paths or modes');
-        return previous;
-      }
-      if (this.#writable || (this.#current && version <= this.#current.receipt.version)) {
-        throw failure('CONFLICT', 'File preparation requires a new version of a read-only workDir');
-      }
-      const root = await lstat(this.path);
-      if (!root.isDirectory() || root.uid !== process.getuid!() || (root.mode & 0o7777) !== 0o555 || (await readdir(this.path)).length !== 0) {
-        throw failure('CONFLICT', 'File preparation requires an empty read-only workDir controlled by the Worker');
-      }
-
-      this.assertOpen();
-      try {
-        await chmod(this.path, 0o700);
-        for (const entry of seed.entries) {
-          this.assertOpen();
-          const target = join(this.path, entry.path);
-          await mkdir(dirname(target), { recursive: true, mode: 0o755 });
-          await writeFile(target, entry.bytes, { flag: 'wx', mode: entry.mode });
-          await chmod(target, entry.mode);
-        }
-        if (await this.#readInstalled(expected) !== seed.digest) {
-          throw failure('CONFLICT', 'Installed FileSeed digest differs from the supplied bytes');
-        }
-        this.assertOpen();
-        await chmod(this.path, 0o555);
-        this.assertOpen();
-      } catch (error: any) {
-        try {
-          for (const name of await readdir(this.path)) await rm(join(this.path, name), { recursive: true, force: true });
-          await chmod(this.path, 0o555);
-        } catch {
-          throw failure('OPERATION_UNKNOWN', 'Worker could not confirm safe rollback of file preparation');
-        }
-        if (error.code === 'ENOSPC') throw failure('INVALID_CONTRACT', 'FileSeed exceeds the available workDir quota');
-        throw error;
-      }
-
-      const receipt = Object.freeze({ version, digest: seed.digest });
-      this.#prepared.set(version, receipt);
-      this.#current = { receipt, entries: expected };
-      return receipt;
-    });
-  }
-
-  grant({ version, digest }: PreparedReceipt) {
-    return this.#serialize(async () => {
-      this.assertOpen();
-      if (this.#shared) throw failure('NOT_ALLOWED', 'Shared workspace cannot be prepared or granted');
-      const current = this.#current;
-      if (!current || current.receipt.version !== version || current.receipt.digest !== digest) {
-        throw failure('CONFLICT', 'Write grant does not match the current FileSeed preparation');
-      }
-      if (this.#writable) return { ...current.receipt, writable: true };
-      if (await this.#readInstalled(current.entries) !== digest) throw failure('CONFLICT', 'Prepared files changed before write grant');
-
-      this.assertOpen();
-      try {
-        await chmod(this.path, 0o500);
-        const directories = new Set<string>();
-        for (const entry of current.entries) {
-          this.assertOpen();
-          const target = join(this.path, entry.path);
-          await chown(target, this.uid, this.gid);
-          await chmod(target, entry.mode);
-          for (let directory = dirname(target); directory !== this.path; directory = dirname(directory)) directories.add(directory);
-        }
-        for (const directory of directories) {
-          this.assertOpen();
-          await chown(directory, this.uid, this.gid);
-          await chmod(directory, 0o755);
-        }
-        this.assertOpen();
-        await chown(this.path, this.uid, this.gid);
-        this.assertOpen();
-        await chmod(this.path, 0o755);
-        this.assertOpen();
-      } catch {
-        throw failure('OPERATION_UNKNOWN', 'Worker could not confirm completion of the workDir write grant');
-      }
-      this.#writable = true;
-      return { ...current.receipt, writable: true };
+      this.#installer.confirm(record.plan);
+      return record.work = { requestId, status: 'completed', digest, writable: this.#writable };
     });
   }
 }

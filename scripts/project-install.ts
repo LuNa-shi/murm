@@ -26,13 +26,13 @@ function writeReceipt(path: any, receipt: any, fault: any = null) {
   } finally { try { unlinkSync(temporary); } catch {} }
 }
 
-export function decodeProjectFiles(files: any) {
+export function decodeProjectFiles(files: any, validPath = pathValid) {
   if (!files || typeof files !== 'object' || Array.isArray(files) || Object.keys(files).length > 10_000) throw invalid('Install requires a bounded complete file map');
   const bytes: Record<string, Buffer> = Object.create(null);
   const manifest: Record<string, { bytes: number; content_hash: string }> = Object.create(null);
   let total = 0;
   for (const path of Object.keys(files).sort()) {
-    if (!pathValid(path) || typeof files[path] !== 'string' || files[path].length > 4 * Math.ceil(2 * 1024 * 1024 / 3)) throw invalid('Install file is outside its bounds');
+    if (!validPath(path) || typeof files[path] !== 'string' || files[path].length > 4 * Math.ceil(2 * 1024 * 1024 / 3)) throw invalid('Install file is outside its bounds');
     const value = Buffer.from(files[path], 'base64');
     total += value.length;
     if (value.toString('base64') !== files[path] || value.length > 2 * 1024 * 1024 || total > 16 * 1024 * 1024) throw invalid('Install file encoding or bytes are invalid');
@@ -58,11 +58,15 @@ export class ProjectInstaller {
   declare snapshot: any;
   declare assertOpen: any;
   declare fault: any;
+  declare decode: typeof decodeProjectFiles;
+  declare owner: () => { uid: number; gid: number };
+  declare excluded: (path: string) => boolean;
 
   declare held: any;
 
-  constructor({ projectDir, controlDir, uid, snapshot, assertOpen, fault = null }: any) {
-    Object.assign(this, { projectDir, controlDir, uid, snapshot, assertOpen, fault });
+  constructor({ projectDir, controlDir, uid, snapshot, assertOpen, fault = null,
+    decode = decodeProjectFiles, owner = () => ({ uid, gid: uid }), excluded = () => false }: any) {
+    Object.assign(this, { projectDir, controlDir, uid, snapshot, assertOpen, fault, decode, owner, excluded });
     this.held = null;
   }
 
@@ -116,6 +120,7 @@ export class ProjectInstaller {
     // Preserve all unaffected file/directory inodes. Only directories that
     // would collide with a target file are removed; ordinary empty dirs stay.
     const deadline = Date.now() + 15_000;
+    const { uid, gid } = this.owner();
     for (const path of [...changed].sort((a: any, b: any) => b.split('/').length - a.split('/').length)) {
       if (Date.now() >= deadline) throw busy('Project installation exceeded its write window');
       const absolute = join(this.projectDir, path);
@@ -130,10 +135,10 @@ export class ProjectInstaller {
       try { if ((await lstat(absolute)).isDirectory()) await rm(absolute, { recursive: true }); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
       await mkdir(dirname(absolute), { recursive: true, mode: 0o755 });
       const parents = path.split('/').slice(0, -1);
-      for (let i = 1; i <= parents.length; i++) await chown(join(this.projectDir, ...parents.slice(0, i)), this.uid, this.uid);
+      for (let i = 1; i <= parents.length; i++) await chown(join(this.projectDir, ...parents.slice(0, i)), uid, gid);
       const mode = Object.hasOwn(modes, path) ? modes[path] : 0o644;
       await writeFile(absolute, target[path], { flag: 'wx', mode });
-      await chown(absolute, this.uid, this.uid);
+      await chown(absolute, uid, gid);
       await chmod(absolute, mode);
       this.fault?.('after_file_write');
       const file = openSync(absolute, 'r');
@@ -162,7 +167,10 @@ export class ProjectInstaller {
       const absolute = join(this.projectDir, path);
       const info = await lstat(absolute);
       result[path] = { mode: info.mode & 0o7777, uid: info.uid, gid: info.gid };
-      for await (const entry of await opendir(absolute)) if (entry.isDirectory()) await visit(path ? `${path}/${entry.name}` : entry.name);
+      for await (const entry of await opendir(absolute)) {
+        const child = path ? `${path}/${entry.name}` : entry.name;
+        if (entry.isDirectory() && !this.excluded(child)) await visit(child);
+      }
     };
     await visit('');
     return result;
@@ -186,10 +194,18 @@ export class ProjectInstaller {
     }
   }
 
+  async #assertReplaceableDirectory(path: string) {
+    for await (const entry of await opendir(join(this.projectDir, path))) {
+      const child = `${path}/${entry.name}`;
+      if (this.excluded(child)) throw busy('A directory containing excluded data cannot be replaced by a file');
+      if (entry.isDirectory()) await this.#assertReplaceableDirectory(child);
+    }
+  }
+
   async install(input: any, pids: any) {
     this.assertOpen(input);
     const key = this.#key(input);
-    const target = decodeProjectFiles(input.files);
+    const target = this.decode(input.files);
     if (target.content_hash !== input.content_hash || !/^[a-f0-9]{64}$/.test(input.expected_content_hash)) throw invalid('Install manifest hashes disagree');
     const fileModes = input.file_modes;
     if (fileModes !== undefined && (!fileModes || Object.keys(fileModes).sort().join('\0') !== Object.keys(target.bytes).sort().join('\0') ||
@@ -202,7 +218,8 @@ export class ProjectInstaller {
     }
     if (this.held) throw busy('Another install is awaiting durable acknowledgement');
     const original = await this.snapshot(input);
-    if (original.content_hash !== input.expected_content_hash) throw Object.assign(busy('Project changed after apply capture; save before applying again'), { applyBlocker: 'dirty' });
+    if (original.content_hash !== input.expected_content_hash ||
+        (input.expected_file_digest !== undefined && original.file_digest !== input.expected_file_digest)) throw Object.assign(busy('Project changed after apply capture; save before applying again'), { applyBlocker: 'dirty' });
     const changed = changes(original.manifest, target.manifest);
     if (fileModes) for (const path of Object.keys(fileModes)) {
       try {
@@ -214,7 +231,10 @@ export class ProjectInstaller {
     for (const path of changed) {
       try {
         const info = await lstat(join(this.projectDir, path));
-        if (info.isDirectory() && Object.hasOwn(target.bytes, path)) replacedDirectories.push(path);
+        if (info.isDirectory() && Object.hasOwn(target.bytes, path)) {
+          await this.#assertReplaceableDirectory(path);
+          replacedDirectories.push(path);
+        }
         if (info.isFile()) modes[path] = info.mode & 0o7777;
       } catch (error: any) { if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error; }
     }
@@ -242,11 +262,12 @@ export class ProjectInstaller {
     catch (error: any) { try { unlinkSync(`${key}.capture`); } catch {} throw error; }
     try {
       this.fault?.('before_write');
-      await this.#writeTree(decodeProjectFiles(original.files).bytes, target.bytes, changed, fileModes ?? modes);
+      await this.#writeTree(this.decode(original.files).bytes, target.bytes, changed, fileModes ?? modes);
       this.fault?.('after_write');
       this.assertOpen(input);
       const observed = await this.snapshot(input);
-      if (observed.content_hash !== target.content_hash) throw new Error('Installed project differs from the planned tree');
+      if (observed.content_hash !== target.content_hash ||
+          (input.file_digest !== undefined && observed.file_digest !== input.file_digest)) throw new Error('Installed project differs from the planned tree');
       receipt.phase = 'installed';
       writeReceipt(key, receipt);
       this.held = key;
@@ -257,12 +278,12 @@ export class ProjectInstaller {
       try {
         // Writers are still paused. Restore all changed paths, including a
         // partial write, and verify bytes before permitting any resume.
-        const old = decodeProjectFiles(original.files);
+        const old = this.decode(original.files);
         const actual = Object.fromEntries(changed.map((path: any) => [path, true]));
         await this.#writeTree(actual, old.bytes, changed, modes);
         await this.#restoreDirectories(directories);
         const restored = await this.snapshot(input);
-        if (restored.content_hash !== original.content_hash) throw new Error('Apply rollback hash differs');
+        if (restored.content_hash !== original.content_hash || restored.file_digest !== original.file_digest) throw new Error('Apply rollback hash differs');
         receipt.phase = 'failed'; receipt.error = { code: 'WORKSPACE_REQUEST_ABORTED', message: 'Apply installation rolled back; use a new request ID' };
         writeReceipt(key, receipt);
         try { unlinkSync(`${key}.capture`); } catch {}

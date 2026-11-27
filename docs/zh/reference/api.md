@@ -9,147 +9,80 @@ order: 12
 
 ## 公共包入口
 
-下面是一个包的四个导出路径。当前清单仍有 `private: true`，安装方式请使用 SDK 指南中的 tarball 配方。
+所有类型和六个运行时值从 `@murm/core` 导入。运行时值为 `createSandbox`, `createRuntime`, `getExecutorCapabilities`, `ServiceRegistry`, `createInProcessAdapter`, `createHttpJsonAdapter`。
 
-| 入口路径 | 公开导出 | 用途 |
-| --- | --- | --- |
-| `@murm/core` | `createRuntime`、`finalizeRun`（及全部 Core 类型） | 创建、控制并结束一次 Run |
-| `@murm/core/services` | `ServiceRegistry`、`createInProcessAdapter`、`createHttpJsonAdapter`、`builtinAgentRegistration`、`getAdapterMetadata`、`invokeService`、`isJson`、`snapshotServiceRegistry` | 定义、校验并注册 v2 Services |
-| `@murm/core/backends/opensandbox` | `createOpenSandboxBackend`、`getOpenSandboxBackendCapabilities`（及 `OpenSandboxBackendConfig`、`BackendCapabilities`、`ExecutorKind`） | 配置 OpenSandbox 内的 Pi 或 Codex 并查询执行器能力 |
-| `@murm/core/backends/pi-opensandbox` | `createPiOpenSandboxBackend`（及 `PiOpenSandboxBackendConfig`） | 已弃用的 Pi 专用工厂；改用通用入口并设置 `executor: 'pi'` |
+## Runtime 管理
 
-## Run 收尾
+用 `runtime.profiles.register/get/list` 管理不可变 Profile，用 `runtime.services.register/get/list/retire` 管理 Service 目录，用 `runtime.access.get/grant/revoke` 调整现有 Agent 的操作授权。变更请求使用稳定的请求 ID。Service 退役关闭新调用接纳，等待已获准的工作收敛，并返回当前状态。应用负责部署和外部设施清理。
 
-应用确定业务结果后，从 `@murm/core` 导入 `finalizeRun`。传入已创建的 Runtime、输出根目录和 `business` 结果。成功用 `status: 'completed'` 和 JSON 值，失败或取消用 `status: 'failed'` 或 `'cancelled'` 和应用错误码及消息。返回值分别包含 `coreClose`、`artifactVerification`、`facilities` 和 `reportSaveFailure`。
-
-可选的 `verifyArtifacts` 读取已经取得的 Core 关闭回执，包括 pending 回执，并检查自己需要的导出文件；Core 关闭状态为 unknown 时，验证保持 pending。只把本次应用拥有的设施登记到 `ownedFacilities`。产物验证尝试之后，仅在 Core 清理已完成时调用设施关闭回调；产物验证失败会独立记录。Core 返回 pending 时，报告保留待处理资源身份和相关设施。收尾有独立的 `cleanupTimeoutMs`，默认 60,000 ms，回调会收到对应 AbortSignal。宿主等待到期时若尚无 Core 回执，关闭状态为 `unknown`。报告保存成功时返回 `outputDir/<runtime.id>/run-finalization.json` 的路径。
-
-如果设施关闭回调在期限到期时已经发出，`lateFacilityCleanup.current()` 可查询其晚到回执，`lateFacilityReportPath` 指向回调结束后保存的独立记录。每个 Runtime 对象只接受一次收尾调用，重复调用报 `CONFLICT`。如需核对待处理工作，应调用同一 Runtime 的 `close` 并核对原来的设施句柄。
-
-## 实时观察
-
-```ts
-runtime.observe(options?: RuntimeObservationOptions): RuntimeObservation
-```
-
-`runtime.observe()` 一次返回当前 `snapshot` 和紧接同一游标之后的异步迭代器 `events`。用 `runtime.observe({ after: lastCursor })` 续读时返回 `snapshot: null`，应把增量应用到已有状态。遇到 `gap` 时重新调用 `observe()` 取得快照。Runtime 保留 256 条更新，最多允许 64 个活动订阅，每个订阅可有一个等待中的读取。调用 `cancel()`、触发 AbortSignal 或退出 `for await` 可释放订阅；Runtime 关闭本身不会结束订阅。游标只属于同一个存活的 Runtime 实例，不能用来恢复重启后的进程。
-
-更新类型包括 `runtime`、`agent`、`input`、`execution`、`service`、`management`、`trace-gap`、`persistence` 与 `gap`。输入回执、实际执行边界、Service attempt 和清理各有对应字段。该流只提供精简的身份与状态；输出文本通过 `onEvent` 读取，详细载荷见保存的 trace。Runtime 游标给实时增量排序，Agent 序号给旧版 Agent 事件排序，`recordSeq` 在可用时引用 Run 持久证据。原生执行事件缺少输入身份时，关联状态为 `unknown`。需要核对输入时使用原请求 ID。快照与持久化事件提供写入进度和丢失记录。
+先调用 `onEvent` 订阅，再读取 `runtime.management.get()`。缓冲读取期间的管理事件，并应用其中编号大于快照 `sequence` 的事件。发现编号跳跃时重新读取。管理请求、结果、快照和事件类型均从根入口导入。见 [Runtime 管理](../../architecture/15-core-runtime.md#runtime-management)。
 
 ## `createRuntime(options)`
 
 ```ts
-createRuntime(options: CreateRuntimeOptions): Promise<Runtime>
+import { createRuntime, createSandbox, ServiceRegistry } from '@murm/core';
+
+const runtime = await createRuntime({
+  sandbox: createSandbox({
+    lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
+    isolation: { disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+  }),
+  connection: { advertiseHost: '172.17.0.1' },
+  models: {
+    default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: modelUrl, headers: modelHeaders } },
+  },
+  services: new ServiceRegistry(),
+  profiles: { reader: { model: 'default', image, writable: false, services: {} } },
+  maxAgents: 2,
+  outputDir,
+});
 ```
 
-| 字段 | 必填 | 说明 |
-| --- | --- | --- |
-| `backend` | 是 | 由 `createOpenSandboxBackend()` 创建的一次性后端句柄；认领后仅归属当前 Runtime |
-| `profiles` | 是 | 角色名 → `Profile` 映射，装配时深拷贝冻结；未知模型别名、未注册 Service 操作或 `spawnProfiles` 中引用不存在的角色会立即抛 `INVALID_CONTRACT` |
-| `services` | 是 | 已注册完成的 `ServiceRegistry`（ID `agent` 为内置 Agent Service 保留） |
-| `maxAgents` | 是 | 正安全整数，限定并发 Agent 槽位上限 |
-| `outputDir` | 是 | 根输出目录；Core 将本次运行全部记录写入 `outputDir/<runtime.id>/` |
-| `modelAccessPolicy` | 否 | 同步 Model Gateway 门控（`authorize(caller): ModelPermit \| null`、`withCommit(commit)`），供 [TaskPool](../harnesses/taskpool.md) 等租约型 Harness 使用 |
-| `agentAccessPolicy` | 否 | 同步检查 Agent 发起的权限查询、授予和撤销，默认拒绝这些操作 |
+`createSandbox` 保存 OpenSandbox 部署配置，`kind` 默认 `opensandbox`。指定 Lifecycle URL、磁盘容量和 inode 数。可选 `timeoutSeconds` 默认 3600，至少为 60 且必须是安全整数。Runtime 的 `connection.advertiseHost` 为 Bridge 和 Model Gateway 提供容器可达的宿主 IPv4。需要时可单独设置 `connection.bridge` 和 `connection.modelGateway`。宿主路由凭据保留在受信任的进程中。
 
-装配过程受固定 60 秒的宿主等待限制。Runtime 保存初始 Profile 和 Service 注册表的快照，调用 `spawn()` 时才分配 Agent 沙箱。后端与执行器在装配时选定，贯穿本次运行。
+Runtime 拥有 `executor`（默认 Pi）、`models`、`connection`、`profiles`、`services`、`maxAgents` 与 `outputDir`。`getExecutorCapabilities('pi' | 'codex')` 无网络副作用。两者支持 steer、followUp、条件输入和队列取消；Pi 额外支持 Context Fork 与显式 `one-at-a-time`，两者支持 `all`。模型上游使用 `/v1/responses`。`connection.modelGateway.maxOutputTokens: null` 保留执行器的输出参数。
 
-## Runtime 管理
+## Agent 生命周期
 
-| 接口 | 操作 |
-| --- | --- |
-| `runtime.profiles` | `register({ id, requestId, profile })`、`get(id)`、`list()` |
-| `runtime.services` | `register({ requestId, registration, deploymentRef, implementationId, ownership })`、`get(id)`、`list()`、`retire({ serviceId, requestId, timeoutMs? })` |
-| `runtime.access` | `get(agentId)`、`grant({ agentId, serviceId, operations, requestId, binding? })`、`revoke({ agentId, serviceId, operations, requestId })` |
+`spawn({ requestId, profile, parentId?, forkFrom?, writable?, files?, workspace?, secretEnv? })` 创建空闲 Agent。 `files` 为私有目录提供初始内容。共享目录用 `workspace: { id, mode: 'read-only' | 'read-write' }`。`forkFrom` 从同一 Runtime 中的活跃 Agent 复制会话上下文，能力检查在分配资源前执行。空闲 Agent 继续占用 Slot。 `get(agentId)` 返回当前 `AgentInfo`，`list({ parentId?, status? })` 返回快照列表。 `runtime.state` 为 `open`、`closing` 或 `closed`。
 
-登记后的 Profile 可用于后续创建 Agent，引用的模型、执行器能力和 Service 操作必须可用。登记 Service 会发布已就绪的 v2 Service。宿主或 Harness 负责部署，并传入部署引用、稳定的实现 ID 和所有权（`run` 或 `external`）。Profile 和 Service ID 不可覆盖。退役时，Service 会立即从发现列表移除并停止接收新调用，再等待已接收的调用结束并导出可选状态。等待超时后，状态可以保留为 `retiring`。
+## 输入投递与事件
 
-Profile 为每个 Agent 设置初始访问权限。授予或撤销操作会更新该 Agent 的权限，实际发生变更时才递增权限版本。Agent ID、Session 和工作目录保持连续。可信宿主首次为该 Service 授权时可以附带绑定。Agent 通过 Bridge 调用 `swarm agent access_get`、`swarm agent grant` 或 `swarm agent revoke`，须拥有对应的操作权限，且宿主的 `agentAccessPolicy` 必须明确允许目标和所请求的操作。Agent 请求禁止给自己授予或撤销权限，也无法传入绑定。
+`runtime.send(agentId, text, { requestId, mode?, wakeIfIdle?, source?, steeringMode? })` 默认 `mode: 'steer'` 与 `wakeIfIdle: true`。`followUp` 请求在当前工作之后推进。条件发送可返回 `not-accepted/idle`。`accepted` 包含 `started`、`queued` 或 `handled`。未知时保留原身份和参数重试。改变参数产生 `CONFLICT`。输入受理回执只描述接纳。
 
-用原请求 ID 和参数重放变更以取得原回执。重放 Service 登记时还须使用原 Adapter。冲突的重放返回 `CONFLICT`。通过 `runtime.observe()` 的管理快照和更新跟踪登记、退役及授权变更。[Core Runtime 架构](../../architecture/15-core-runtime.md#runtime-management)
+### 实时观察
 
-## Agent 生命周期：`spawn`、`get`、`list`
-
-```ts
-runtime.spawn(options: SpawnOptions): Promise<AgentInfo>
-runtime.get(agentId: string): Promise<AgentInfo>
-runtime.list(filter?: AgentListFilter): Promise<AgentInfo[]>
-```
-
-- **`spawn(options)`**：注册 `agentId` 并预占槽位，启动容器与所选执行器会话并确认就绪，以 `status: 'idle'` 返回且不触发初始推理。相同 `requestId` 与参数重放会返回原结果；相同 `requestId` 但参数不同抛 `CONFLICT`。
-  - 支持字段：`requestId`、`profile`、`parentId`、`forkFrom`（同一 Runtime 内活跃 Agent）、`writable`（覆盖 `Profile.writable`）、`files`（`FileSeed`，上限 10,000 文件 / 单文件 2 MiB / 总计 16 MiB）、`workspace`（`{ id, mode: 'read-only' | 'read-write' }` 或 `{ mode: 'frozen-copy', files }`）、`bindings`、`secretEnv`、`collect`。
-- **`get(agentId)`**：返回独立的 `AgentInfo` 快照（`id`、`profile`、`parentId?`、`status`、`cursor`、`latestOutput?`、`lastError?`、`lastStop?`），关闭后仍可读。
-- **`list(filter?)`**：按创建顺序返回快照，支持按 `parentId`（`null` 表示根 Agent 或传指定父 ID）与 `status`（单个或数组）过滤。
-- **状态流转**：`starting` → `idle` ⇄ `running` → `closing` → `closed`（异常崩溃为 `exited`）。容量槽位直到容器确认销毁进入 `closed` 后才释放。
-
-## 输入投递与事件：`send`、`start`、`steer`、`onEvent`
-
-```ts
-runtime.send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>
-runtime.send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>
-
-// 共用同一宿主账本的便捷别名（新建 Harness 建议统一使用 runtime.send）
-runtime.start(agentId: string, input: string, options: { requestId: string }): Promise<InputReceipt>
-runtime.steer(agentId: string, input: string, options: SteerOptions): Promise<InputReceipt>
-
-runtime.onEvent(handler: (event: AgentEvent) => void): () => void
-```
-
-| 选项 | 默认值 | 行为 |
-| --- | --- | --- |
-| `requestId` | *(必填)* | 1–128 位标识符（`[A-Za-z0-9_.:-]`）；用于幂等去重与 `unknown` 回执对账 |
-| `mode` | `'steer'` | steer 引导当前执行，followUp 排在当前执行之后；Pi 在工具批次后注入 steer，Codex 对当前原生 turn 发送 steer |
-| `wakeIfIdle` | `true` | `true` 唤醒 `idle` Agent；`false` 请求只向 Worker 观察到的活动执行投递，空闲时返回 `{ inputId, status: 'not-accepted', reason: 'idle' }` |
-| `source` | `'host'` | 可选审计来源标签（1–256 字符），与真实鉴权身份分开记录 |
-| `steeringMode` | 由执行器决定 | 仅与 `mode: 'steer'` 配合。Pi 初始采用 `'one-at-a-time'`，可持续切换到 `'all'`；Codex 仅支持显式 `'all'`，选择前查询后端 capabilities |
-
-- **受理回执**：
-  - `{ inputId, status: 'accepted', disposition: 'started' | 'queued' | 'handled' }`
-  - `{ inputId, status: 'not-accepted', reason: 'idle' }` *(仅当 `wakeIfIdle: false`)*
-  - `{ inputId, status: 'unknown' }` —— 用**完全相同的 `requestId` 和参数**重试即可向 Worker 查询原 RPC 账本，不会重复注入。
-
-提交后若应用超时或 AbortSignal 结束宿主等待，请保留原 request ID 和参数。结果未知时，用同样的 `send` 调用核对原回执。需要中断当前轮次时调用 `interrupt`，关闭 Agent 时调用 `stop`。缺少输入关联的 `settled` 只提供 Agent 执行收束信息，应用自行检查业务是否完成。
-
-- **事件流（`AgentEvent`）** —— 每条事件均带 `agentId` 与单调递增 `seq`：
-  - `{ type: 'output', text }`
-  - `{ type: 'settled', outcome: 'completed' | 'failed' | 'aborted', output?, error? }`
-  - `{ type: 'error', error, fatal }` —— `fatal: true` 时 Core 会在回调执行前同步吊销 Bridge/模型令牌并封锁新请求。
-  - `{ type: 'exit', reason, expected }`
+`onEvent(listener)` 返回取消订阅函数。先订阅再发起生命周期操作，并用 `get/list/state` 初始化视图。订阅从注册时起收到 `output`、`settled`、`error`、`exit`、`agentChanged`、`runtimeChanged`。后二者使用查询获取当前值。它们可以在操作回执前到达。监听者的异常与拒绝相互隔离，取消订阅影响该监听者。 `settled` 表示 Agent 当前执行已完成、失败或中止。应用通过自己的 Service 和业务记录验证任务完成。
 
 ## 受控文件原语（`runtime.files`）
 
 ```ts
-runtime.files.prepare(agentId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>
-runtime.files.grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>
-runtime.files.snapshot(agentId: string, options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }): Promise<FileSnapshot>
-runtime.files.install(agentId: string, options: { requestId: string; expected: FileSnapshot; files: FileSeed }): Promise<FileInstall>
-runtime.files.installStatus(agentId: string, options: { requestId: string }): Promise<FileInstall | null>
-runtime.files.confirm(agentId: string, options: { requestId: string }): Promise<FileInstall>
+const original = await runtime.files.snapshot(agentId, { requestId: 'capture-1', paths: ['.'] });
+const receipt = await runtime.files.replace(agentId, {
+  requestId: 'replace-1',
+  expectedDigest: original.digest,
+  files: nextTree,
+  writable: true,
+});
 ```
 
-- **`prepare` + `grant`**：向空的只读工作目录写入不可变 `FileSeed` 并返回冻结对象 `PreparedFiles`（`agentId`、`version`、`digest`）；将原内存对象传入 `grant()` 即可在线解锁写权限。
-- **`snapshot`**：由 Worker 暂停写入进程（共享挂载暂停全部持有者）后返回一致快照 `{ agentId, requestId, version, digest, files }`（上限 16 MiB，`includeGit` 需显式开启）。
-- **`install` + `confirm`**：在写者围栏下核对当前目录与 `expected: FileSnapshot` 一致后替换工作区，保持写者暂停直到宿主提交领域状态并调用 `confirm()` 放行；`installStatus()` 可无副作用查询已缓存回执。
-- **`collect`**：可在 `Profile.collect` 或 `spawn({ collect })` 声明 `{ paths, includeGit, allowMissingGit?, maxBytes, required }`。`required: true` 导出失败时会保留容器并返回 `cleanup: 'pending'`。
+`FileTree` 是从项目相对路径到 UTF-8 或 base64 普通文件的映射，可指定 `0644` 或 `0755`。父目录隐式生成。完整快照使用 `paths: ['.']`，显式子路径返回部分摘要。上限为 10000 个文件、单文件 2 MiB、总计 16 MiB；`maxBytes` 可缩小快照上限。受保护路径和链接不属于文件树。
+
+`replace` 接收完整摘要，安装整个私有目标树，包括删除缺失文件和变更模式。省略 `writable` 保留权限，`true` 可从只读切为可写。同一 Agent 和 Session 继续运行。摘要冲突或共享目录替换会被拒绝。Worker 在恢复写者后返回 `completed`。已确认回滚返回 `failed`；未知结果按同一个请求 ID 和参数查询。成功回执的重试保留 Agent 后续修改。
 
 ## 中断、停止与关闭
 
-```ts
-runtime.interrupt(agentId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>
-runtime.stop(agentId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>
-runtime.close(options?: { timeoutMs?: number }): Promise<CloseReceipt>
-```
+`interrupt(agentId, { requestId, timeoutMs? })` 中断执行、清除排队输入并保留 Session、文件与 Slot。未确认时沿用请求 ID 再试。
 
-- **`interrupt`**：推进执行世代号、取消该 Agent 挂起的 Bridge 调用、要求执行器 Worker 清空队列并中止当前执行并返回 `{ interruptId, status: 'interrupted' | 'unknown', discardedInputHashes? }`，同时完整保留容器、会话、文件与槽位。
-- **`stop` / `close`**：严格按 **停止执行器 → 归档原生会话 → 导出 `collect` 产物 → 销毁沙箱并释放槽位** 的顺序执行（`close()` 还会关闭 Bridge/Gateway、调用可选 `exportState()`、刷盘日志并原子写入 `runtime.json`）。上述顺序适用于每个 Agent 内部；`close()` 并行启动 Agent 清理与入口关闭。默认 `timeoutMs: 60_000`，重试跳过已完成阶段。pending 表示仍有未确认工作，原清理操作可能还在执行。
+`stop(agentId, { timeoutMs? })` 发起时撤销模型和 Bridge 权限，确认停止后依次归档 Session、收集文件、删除 Sandbox 并释放 Slot。 `close({ timeoutMs? })` 处理所有 Agent、Runtime 宿主端点和报告。默认 60 秒。回执区分执行 `stopped/unknown` 和清理 `complete/pending`。必需导出失败保留 Sandbox。重复操作接续未完成的工作。现有外部 Service 保留自己的生命周期。
 
 ## Service v2 协议与内置 `agent` Service
 
 - **注册（`ServiceRegistry.registerService`）**：要求 `contract_version: '2'`、唯一 `id`（不得使用保留名 `'agent'`）、`title`、`purpose`、`provider_version`、`endpoint`（`in-process` 或 `http-json`）及非空 `capabilities`。Schema 使用 Ajv `8.20.0` 严格同步 draft-07 编译（不做强制转换与默认值注入）。
 - **调用（`ServiceAdapter.invoke`）**：接收 `{ manifest, capability, input, envelope: { operation_id }, caller: { runtimeId, agentId, profile, binding? }, signal, assertAuthorized }`。单次超时默认 `30_000` ms（可在能力上通过 `timeout_ms` 配置 `1..86_400_000`）。
-- **状态导出（`ServiceAdapter.exportState({ signal })`）**：在显式退役 Service 或关闭 Runtime 时调用，结果写入 `service-state.<id>.json`。每次尝试最多 30 秒。Core 复用成功的导出结果，失败后可以重试。
+- **状态导出（`ServiceAdapter.exportState({ signal })`）**：`runtime.close()` 期间调用一次（30 秒上限），落盘至 `service-state.<id>.json`。
 - **HTTP JSON 协议（`createHttpJsonAdapter`）**：向 `endpoint.url + (capability.path ?? '/v2/' + capability.operation)` 发送 POST `{ input, envelope, caller }`，附带 `Idempotency-Key: <operation_id>` 与可选宿主 `Authorization: Bearer <token>`，要求返回 `{ "ok": true, "result": <json> }`（上限 2 MiB，禁用重定向）。
-- **内置 `agent` Service**：通过 `Profile.services.agent` 设置初始控制操作权限（`spawn`、`get`、`send`、`stop`）。权限管理操作还需通过宿主策略检查。[Runtime 管理](#runtime-管理)
+- **内置 `agent` Service**：通过 `Profile.services.agent` 逐项授权 `['spawn', 'get', 'send', 'stop']`。
   - `spawn` 需配合 `Profile.spawnProfiles` 白名单；`fork: true` 需配合 `Profile.allowContextFork: true`。
   - `get` 与 `send` 可操作自身或直属子 Agent；`stop` 仅可操作直属子 Agent。
 
@@ -180,7 +113,7 @@ swarm agent stop <agent-id> --request-id stop-1
 
 ## 仓库内部辅助函数与前台 CLI
 
-下面的 helper 是内置 Harness 使用的源码，不属于额外的包导出。外部 SDK 用户应使用公开 Runtime 方法与 `finalizeRun`，或参照可运行 SDK 示例编写自己的策略。
+下面的 helper 是内置 Harness 使用的源码，不属于额外的包导出。外部 SDK 用户应使用公开 Runtime 方法，或参照可运行 SDK 示例编写自己的策略。
 
 - **`src/harnesses/shared/run-input.ts`**（`runInput`）：单输入源独占轮次辅助函数（确认 `idle`、先订阅再发送、等待 `'started'` 与对应 `settled`）。
 - **`src/harnesses/shared/run-report.ts`**（`runWithReport`）：按 `createRuntime` → `run` → 有界 `close` → 可选 `afterClose` 执行，在 `harness-report.json` 中独立保留 `businessFailure`、`cleanupFailure` 与 `reportSaveFailure`。
@@ -190,58 +123,6 @@ swarm agent stop <agent-id> --request-id stop-1
 node dist/scripts/run-harness.js --config <host-config.mjs>
 node dist/scripts/read-harness-result.js --run-directory <dir> --runtime-id <id>
 ```
-
-## OpenSandbox 后端配置
-
-```ts
-import { createOpenSandboxBackend, getOpenSandboxBackendCapabilities } from '@murm/core/backends/opensandbox';
-
-const backend = createOpenSandboxBackend({
-  executor: 'pi',
-  sandbox: {
-    lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
-    endpointHost: '127.0.0.1',
-    apiKey: process.env.OPEN_SANDBOX_API_KEY,
-    resourceLimits: { cpu: '1', memory: '1Gi' },
-    commandTimeoutMs: 20_000,
-    timeoutSeconds: 3600, // 可选；安全整数 >= 60，默认 3600
-  },
-  bridge: {
-    host: '0.0.0.0',
-    publicUrl: 'http://172.17.0.1:{port}', // 容器可达的非回环 IPv4
-  },
-  modelGateway: {
-    host: '0.0.0.0',
-    advertiseHost: '172.17.0.1',
-    requestTimeoutMs: 120_000,       // 默认 120_000
-    maxOutputTokens: null,           // 保留执行器参数，不施加宿主 token 上限
-    selectionReasoningEffort: 'low', // 可选；仅对 selection 阶段许可生效
-  },
-  models: {
-    default: {
-      provider: 'kimi_proxy',
-      model: 'k3',
-      upstream: {
-        url: 'https://your-model-endpoint/v1/responses',
-        headers: { authorization: `Bearer ${process.env.MODEL_TOKEN}` },
-      },
-    },
-  },
-  isolation: {
-    network: 'local-docker',
-    disk: { bytes: 64 * 1024 ** 2, inodes: 4096 },
-  },
-});
-```
-
-当前后端使用 OpenSandbox 分配与本地 Docker 隔离。`executor` 默认是 `'pi'`，仓库适配的执行器版本为 Pi `1.3.0` 和 Codex `0.172.0`。模型上游 URL 必须以 `/v1/responses` 结尾。省略输出上限时使用所选执行器的策略：Pi Gateway 默认 32,768，Codex 保留执行器原参数。
-
-```ts
-const capabilities = getOpenSandboxBackendCapabilities(backend);
-console.log(capabilities.contextFork, capabilities.steeringModes);
-```
-
-两种执行器都支持 active steer、follow-up、条件输入、队列取消、模型请求授权与原始请求 trace。Context Fork 目前只有 Pi 支持。公共后端句柄没有暴露 provider 注册或直接分配沙箱的方法。
 
 ## 错误码与恢复策略
 

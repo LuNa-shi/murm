@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { mkdir, readFile } from 'node:fs/promises';
@@ -113,15 +114,15 @@ if swarm collaboration spawn_agent --task-name extra --message extra --fork-turn
   });
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const config = { image, outputDir, maxAgents: 4, maxDepth: 2, workTimeoutMs: 90_000, closeTimeoutMs: 25_000, goal: 'ROOT_TASK',
-    backend: {
-      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-        endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY },
+    sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
+      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } },
+    connection: {
       bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
       modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 512, requestTimeoutMs: 60_000 },
-      models: { default: { provider: 'kimi_proxy', model: 'k3',
-        upstream: { url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {} } } },
-      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
     },
+    models: { default: { provider: 'kimi_proxy', model: 'k3',
+      upstream: { url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {} } } },
   };
   const report = await runSubagentsHarness(config, undefined, async (env, signal) => {
     for (;;) {
@@ -250,7 +251,7 @@ for (const workspaceMode of ['private', 'shared']) {
       workTimeoutMs: 65_000, closeTimeoutMs: 25_000,
       collect: { paths: ['delivery.txt'], includeGit: false, maxBytes: 4096, required: true },
       ...(workspaceMode === 'shared' ? { workspace: { root: { id: 'team', mode: 'read-write' }, child: { id: 'team', mode: 'read-write' } } } : {}),
-      backend: {
+      ...runtimeSettings({
         sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
           endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
@@ -258,7 +259,7 @@ for (const workspaceMode of ['private', 'shared']) {
         models: { default: { provider: 'kimi_proxy', model: 'k3',
           upstream: { url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {} } } },
         isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
-      },
+      }),
     });
     assert.equal(upstreamError, undefined);
     assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure));

@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { Server } from 'node:net';
@@ -8,12 +9,12 @@ import test from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { createRuntime } from '@murm/core';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
-import { ServiceRegistry } from '@murm/core/services';
+
+import { ServiceRegistry } from '@murm/core';
 
 function options(outputDir, model = 'k3', sandbox = {}) {
   return {
-    backend: createPiOpenSandboxBackend({
+    ...runtimeSettings({
       sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1', ...sandbox },
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
@@ -231,7 +232,7 @@ test('starting Agent reserves capacity before provider allocation and retains it
   assert.equal((await runtime.close()).cleanup, 'complete');
 });
 
-test('Runtime snapshots Profiles and a backend belongs to exactly one Runtime', { timeout: 5000 }, async t => {
+test('Runtime snapshots Profiles and a reusable Sandbox creates independently owned Runtimes', { timeout: 5000 }, async t => {
   const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-test-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const provider = await lifecycleFixture(t);
@@ -239,7 +240,10 @@ test('Runtime snapshots Profiles and a backend belongs to exactly one Runtime', 
   config.profiles.writer.model = 'default';
   const runtime = await createRuntime(config);
   t.after(() => runtime.close());
-  await assert.rejects(createRuntime(config), { code: 'INVALID_CONTRACT', operation: 'createRuntime' });
+  const peerRuntime = await createRuntime(config);
+  assert.notEqual(peerRuntime.id, runtime.id);
+  assert.equal((await peerRuntime.close()).cleanup, 'complete');
+  assert.equal(runtime.state, 'open');
   config.profiles.writer.image = 'mutated-image:must-not-run';
   config.profiles.writer.model = 'absent';
   config.profiles.added = { ...config.profiles.writer };

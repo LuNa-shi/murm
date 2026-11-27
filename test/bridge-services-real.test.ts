@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { execFile, fork } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -8,8 +9,8 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
 import { createRuntime } from '@murm/core';
-import { ServiceRegistry } from '@murm/core/services';
-import { createOpenSandboxBackend } from '@murm/core/backends/opensandbox';
+import { ServiceRegistry } from '@murm/core';
+
 import { createMessageService } from '../examples/bridge-services/messages.js';
 import { createGhIssuesService } from '../examples/bridge-services/gh-issues.js';
 import { runInput } from '../src/harnesses/shared/run-input.js';
@@ -67,7 +68,7 @@ async function openHarness(t, label, registrations, profiles, commands) {
   for (const profile of Object.values(profiles)) Object.assign(profile, { image, model: 'default', writable: true });
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const runtime = await createRuntime({ profiles, services, outputDir, maxAgents: Object.keys(profiles).length,
-    backend: createOpenSandboxBackend({ sandbox: {
+    ...runtimeSettings({ sandbox: {
       lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
       resourceLimits: { cpu: '1', memory: '1Gi' },

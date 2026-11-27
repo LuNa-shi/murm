@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import { createSubagentsStages } from '../test-support/subagents/stages.js';
 
 function controlledRuntime() {
-  let listener; let parentSeq = 0;
+  let listener;
+  const workerEventSequences = new Map();
   const children = ['a', 'b', 'c']; const sent = [];
   const core = {
     async get(id) { return { id, status: 'idle', ...(children.includes(id) ? { parentId: 'parent' } : {}) }; },
@@ -12,8 +13,12 @@ function controlledRuntime() {
       sent.push({ agentId, input, ...options });
       return { status: 'accepted', disposition: 'queued', inputId: `input-${sent.length}` };
     },
-    child(id, seq, output, outcome = 'completed') { listener({ agentId: id, seq, type: 'settled', outcome, output }); },
-    parent(output) { listener({ agentId: 'parent', seq: ++parentSeq, type: 'settled', outcome: 'completed', output: JSON.stringify(output) }); },
+    child(id, seq, output, outcome = 'completed') {
+      if (seq <= (workerEventSequences.get(id) ?? 0)) return;
+      workerEventSequences.set(id, seq);
+      listener({ agentId: id, type: 'settled', outcome, output });
+    },
+    parent(output) { listener({ agentId: 'parent', type: 'settled', outcome: 'completed', output: JSON.stringify(output) }); },
   };
   return { core, children, sent };
 }

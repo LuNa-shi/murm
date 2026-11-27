@@ -118,11 +118,11 @@ The current public backend is **OpenSandbox with same-host Linux Docker isolatio
 | --- | --- | --- |
 | Harness | Roles, collaboration policy, Service state, work deadlines, and business verification | Your application code |
 | Core Runtime | Agent identities and capacity, input receipts, observation, file operations, and cleanup | `@murm/core` |
-| Service integration | Manifest validation, adapters, and operation registration | `@murm/core/services` |
-| OpenSandbox backend | Executor selection, Sandbox configuration, and supported execution capabilities | `@murm/core/backends/opensandbox` |
+| Service integration | Manifest validation, adapters, and operation registration | `@murm/core` |
+| OpenSandbox backend | Executor selection, Sandbox configuration, and supported execution capabilities | `@murm/core` |
 | External facilities | Independent databases, HTTP services, Git/chat servers, and their deployment | Application or facility owner |
 
-The backend handle is created by `createOpenSandboxBackend()` and can be consumed by one Runtime. `Backend` is an opaque public type. The provider and executor interfaces inside Core are implementation boundaries, not a public registration API for arbitrary backend plugins.
+Use `createSandbox` to capture OpenSandbox settings. Each Runtime selects its executor and owns its host connections and model configuration.
 
 ## Runtime creation establishes the host control plane
 
@@ -146,9 +146,9 @@ Pi runs in RPC mode with `read`, `write`, `edit`, and `bash`. Its project extens
 | Steering modes | `all`, `one-at-a-time` | `all` |
 | Model-request authorization and raw request tracing | Supported | Supported |
 
-Use `getOpenSandboxBackendCapabilities()` to check the selected handle. A Harness should gate optional behavior on those capabilities instead of assuming that executor sessions are interchangeable.
+Use `getExecutorCapabilities(executor)` to check the selected executor. A Harness should gate optional behavior on those capabilities instead of assuming that executor sessions are interchangeable.
 
-The Worker also performs two controlled file flows. `prepare → grant` stages an empty read-only working directory and grants write access. `snapshot → install → confirm` replaces an existing writable private working directory under a writer fence. These controls are host Runtime APIs, while permission to call the built-in `agent` Service grants only that Service's operations.
+The Worker uses the same `FileTree` at startup, snapshot and private directory replacement. `files.replace` checks a complete digest, can enable writing after success, and preserves the Agent and Session.
 
 ## A Service request travels through the Bridge
 
@@ -192,7 +192,7 @@ Registered credentials are redacted from saved traces. This does not remove the 
 
 `stop()` stops executor work and exports the native session and declared artifacts before deleting the Sandbox. Required export failure retains the resource for follow-up. `close()` closes admission, reconciles in-flight work, stops Agents, exports Service state when provided, and reports complete or pending cleanup.
 
-`finalizeRun()` adds the application's outcome and artifact check to that Core close receipt. It cleans up explicitly supplied `ownedFacilities` only after Core cleanup is complete. A pre-existing external Service should not be listed as an owned facility. Business failure, artifact failure, pending cleanup, and report-save failure remain separately visible.
+The application uses the `runtime.close()` receipt to check exported artifacts and close its own facilities.
 
 | Run path | Contents |
 | --- | --- |
@@ -203,7 +203,7 @@ Registered credentials are redacted from saved traces. This does not remove the 
 | `model-access/` and `model-trace/` | Attempt ledgers and request/response traces |
 | `<agentId>/session/` | Exported native executor session |
 | `<agentId>/artifacts/` | Collected files and their manifest |
-| `run-finalization.json` | Public SDK application finalization report |
+| `handoff-report.json` | Public SDK application finalization report |
 | `harness-report.json` | Report produced by existing repository Harness wrappers |
 
 For implementation detail, see [Core Runtime](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/15-core-runtime.md), [OpenSandbox backend](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/16-pi-opensandbox-backend.md), and [prompt composition](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/08-prompts.md). For writing an application, continue with [Build Your Own Harness](build-your-harness.md).

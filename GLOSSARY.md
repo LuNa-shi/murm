@@ -7,14 +7,14 @@ These terms describe the current implementation. Read [How murm works](docs/en/c
 | Term | Meaning |
 | --- | --- |
 | **Harness** | The host application that composes Profiles, Services and a collaboration policy. It chooses when to create Agents, route work, check results and finish. |
-| **Core** | The reusable library exposed through the `@murm/core` package. Its primary public entries cover Runtime, Services and the OpenSandbox backend. |
+| **Core** | The reusable library exposed through the `@murm/core` package. Its root entry provides Sandbox and Runtime creation, Service author APIs and public types. |
 | **Runtime** | One live Core instance managing its Agents, capacity, authenticated Service access, input delivery, observation and cleanup. |
 | **Run** | One execution of a Harness, identified and recorded through a Runtime. A Harness adds its own business outcome and evidence. |
 | **Agent** | A Runtime-owned execution identity with its own Sandbox, working directory and Session. A settled Agent can receive another input. |
-| **Profile** | A named Agent configuration containing its prompt, model, image, Service permissions and optional control/file settings. Runtime creation captures its definition. |
-| **Backend** | The execution and resource integration used by the Runtime. The public OpenSandbox factory selects the Pi or Codex executor and returns a handle claimed by one Runtime. |
+| **Profile** | A named Agent configuration containing its prompt, model, image, Service permissions and optional control/file settings. Runtime creation captures its definition. A host can register additional immutable definitions during the Run. |
+| **Backend** | The execution and resource integration used by the Runtime. The Runtime resolves the Pi or Codex executor during assembly and uses the OpenSandbox backend to allocate and control Agent resources. |
 | **Executor** | The Agent implementation running inside the Sandbox: Pi or Codex. Capabilities such as context fork differ between executors. |
-| **Sandbox** | An Agent's isolated execution environment, allocated through OpenSandbox. The supported deployment uses Docker-backed OpenSandbox on the same host. |
+| **Sandbox** | An Agent's isolated execution environment, allocated through OpenSandbox. The supported deployment uses Docker-backed OpenSandbox on the same host. The public `createSandbox` factory registers the reusable deployment settings used to assemble Runtimes. |
 | **Worker** | The container image and guest-side programs that implement the murm execution protocol, tools and selected executor. |
 | **Slot** | One unit of a Runtime's configured Agent capacity. An idle or settled Agent still occupies it; confirmed cleanup releases it. |
 | **Session** | An Agent's conversation and executor context retained across input turns. A Session is distinct from the current execution activity. |
@@ -32,9 +32,9 @@ These terms describe the current implementation. Read [How murm works](docs/en/c
 | **Steer** | Input offered while the Agent is working, subject to the executor's supported steering modes. It is the default `send` mode. |
 | **Follow-up** | Input queued for a subsequent execution opportunity. The API spelling is `followUp`. |
 | **Settled** | The executor has stopped automatically continuing its current activity. The Agent, Session and Slot remain; the Harness still decides whether the task succeeded. |
-| **Observation cursor** | The Runtime-scoped sequence used to join a snapshot to live updates or resume within the retained event window. It is not durable process restart. |
+| **Runtime event** | A live notification delivered through `onEvent`. Query current state through `get`, `list` or `runtime.state`. Persisted Worker ordering belongs to Run diagnostics. |
 | **Business outcome** | The Harness's decision that its job completed, failed or was cancelled. It is recorded separately from cleanup and artifact verification. |
-| **Artifact verification** | A host check of exported results. `finalizeRun` records whether the configured check passed, failed, timed out or was not requested. |
+| **Artifact verification** | A host check of exported results. The bundled application finalizer records whether the configured check passed, failed, timed out or was not requested. |
 | **Cleanup receipt** | A statement of confirmed execution/resource cleanup and anything pending or retained. A timeout does not prove that a resource was destroyed. |
 
 See the [SDK guide](docs/en/sdk.md), [Run lifecycle](docs/en/run-lifecycle.md) and [types reference](docs/en/reference/types.md) for the actual method signatures and status values.

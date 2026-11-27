@@ -1,18 +1,57 @@
-export type ExecutorKind = 'pi' | 'codex';
+declare const sandboxBrand: unique symbol;
 
-export interface BackendCapabilities {
+export interface Sandbox {
+  readonly [sandboxBrand]: true;
+}
+
+export interface SandboxConfig {
+  kind?: 'opensandbox';
+  lifecycleBaseUrl: string;
+  apiKey?: string;
+  execdToken?: string;
+  endpointHost?: string;
+  resourceLimits?: { cpu: string; memory: string };
+  commandTimeoutMs?: number;
+  timeoutSeconds?: number;
+  isolation: {
+    network?: 'local-docker';
+    disk: { bytes: number; inodes: number };
+  };
+}
+
+export type ExecutorKind = 'pi' | 'codex';
+export type SteeringMode = 'all' | 'one-at-a-time';
+
+export interface ExecutorCapabilities {
   readonly activeSteer: boolean;
   readonly followUp: boolean;
   readonly conditionalInput: boolean;
   readonly queuedInputCancellation: boolean;
   readonly contextFork: boolean;
-  readonly modelRequestAuthorization: boolean;
-  readonly rawModelRequestTrace: boolean;
-  readonly steeringModes: readonly ('all' | 'one-at-a-time')[];
+  readonly steeringModes: readonly SteeringMode[];
+}
+
+export interface ModelConfig {
+  provider: string;
+  model: string;
+  upstream: { url: string; headers: Readonly<Record<string, string>> };
+}
+
+export interface RuntimeConnectionOptions {
+  advertiseHost?: string;
+  bridge?: { host?: string; publicUrl?: string };
+  modelGateway?: {
+    host?: string;
+    advertiseHost?: string;
+    requestTimeoutMs?: number;
+    maxOutputTokens?: number | null;
+    /** Maximum new upstream attempts per Runtime and model alias, including unknown outcomes. */
+    maxRequests?: number;
+  };
 }
 
 export interface OpenSandboxBackendConfig {
-  /** Defaults to Pi. The backend resolves this selection when the handle is created. */
+  /** Defaults to Pi. Runtime resolves this selection at assembly. */
   executor?: ExecutorKind;
   sandbox: {
     lifecycleBaseUrl: string;
@@ -33,18 +72,10 @@ export interface OpenSandboxBackendConfig {
     maxRequests?: number;
     /** null preserves executor output parameters without a host token clamp. */
     maxOutputTokens?: number | null;
-    /** Sets upstream reasoning effort for requests admitted in the selection phase. */
-    selectionReasoningEffort?: 'low';
   };
-  models: Readonly<Record<string, {
-    provider: string;
-    model: string;
-    upstream: { url: string; headers: Readonly<Record<string, string>> };
-  }>>;
+  models: Readonly<Record<string, ModelConfig>>;
   isolation: {
     network: 'local-docker';
     disk: { bytes: number; inodes: number };
   };
 }
-
-export type PiOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'>;

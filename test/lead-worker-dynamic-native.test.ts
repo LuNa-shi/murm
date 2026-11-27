@@ -49,17 +49,14 @@ test('dynamic Lead-Worker runs via the installed package with native Pi, Gitea a
     upstream = await createDynamicLeadWorkerUpstream();
     const configuration = { runId, image, outputDir, gitea: facility.gitea, turnTimeoutMs: 150_000, workTimeoutMs: 240_000,
       closeTimeoutMs: 55_000, exportLimit: 16 * 1024 ** 2, dynamic: { variant: 'orders-a', serviceImage, candidatePath },
-      backend: {
-        sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-          endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
-        bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-        modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 25_000, maxOutputTokens: 512, maxRequests: 64 },
-        models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
-        isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
-      },
+      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+          endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000, isolation: { disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } },
+      connection: { bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
+        modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 25_000, maxOutputTokens: 512, maxRequests: 64 } },
+      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
     };
     const configPath = join(directory, 'config.mjs');
-    await writeFile(configPath, `const config=${JSON.stringify(configuration)};config.backend.sandbox.apiKey=process.env.MURM_CORE_TEST_API_KEY;export default config;\n`, { mode: 0o600 });
+    await writeFile(configPath, `const config=${JSON.stringify(configuration)};config.sandbox.apiKey=process.env.MURM_CORE_TEST_API_KEY;export default config;\n`, { mode: 0o600 });
     let exit = 0;
     try {
       const result = await execute(process.execPath, [join(packageDir, 'main.js'), configPath], {

@@ -12,7 +12,7 @@ test('offline archive ships the native PeerMesh host configuration and declared 
   t.after(() => installed.close());
   const root = join(installed.directory, 'node_modules/@murm/core');
   const metadata = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-  assert.ok(metadata.exports['./backends/pi-opensandbox']);
+  assert.deepEqual(Object.keys(metadata.exports), ['.']);
 
   for (const path of [
     'dist/test/fixtures/peermesh-installed-host.js',
@@ -59,11 +59,14 @@ test('offline archive ships the native PeerMesh host configuration and declared 
   };
   const imported = await execute(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
+    import { createSandbox } from '@murm/core';
     import config from ${JSON.stringify(config.href)};
+    assert.equal(typeof createSandbox, 'function');
     assert.equal(config.mode, 'peermesh');
     assert.equal(config.options.runId, 'installed-fixture');
     assert.equal(config.options.project.title, 'Installed project');
-    assert.ok(config.options.backend);
+    assert.ok(config.options.sandbox);
+    assert.ok(config.options.models.default);
     assert.equal(typeof config.options.startBoard, 'function');
   `], {
     cwd: installed.directory,

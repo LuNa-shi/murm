@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
 import { transport } from './fixtures/core-agent-service-backend.js';
-import { decodeFileSeed } from '../scripts/core-file-seed.js';
+import { decodeFileSeed, partialDigest } from '../scripts/core-file-seed.js';
 
 const execute = promisify(execFile);
 const hook = registerHooks({ resolve(specifier, context, next) {
@@ -51,7 +51,7 @@ test('Board work wakes original Agents and a ready checker on normal CLI binding
   transport.onSnapshot = (agentId, { requestId, paths }) => {
     assert.equal(agentId, team.lead);
     assert.deepEqual(paths, ['checker.mjs']);
-    return { requestId, version: 1, digest: decodeFileSeed(source).digest, files: source };
+    return { requestId, version: 1, scope: 'partial', digest: partialDigest(decodeFileSeed(source).digest), files: source };
   };
   let deployments = 0, calls = 0, verify = 0, removed = 0;
   let harness;
@@ -68,7 +68,7 @@ test('Board work wakes original Agents and a ready checker on normal CLI binding
     await rm(directory, { recursive: true, force: true });
   });
   harness = await createLeadWorkerHarness({
-    runId: 'test', outputDir: directory, image: 'test', backend: {}, turnTimeoutMs: null, workTimeoutMs: 1_800_000,
+    runId: 'test', outputDir: directory, image: 'test', sandbox: {}, turnTimeoutMs: null, workTimeoutMs: 1_800_000,
     prepare: () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, repositoryUrl,
       actors: { lead: actors.lead, helper1: actors.helper1, helper2: actors.helper2 }, prepareMember: () => actors.checker }),
     dynamic: {

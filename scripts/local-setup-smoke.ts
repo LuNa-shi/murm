@@ -4,9 +4,8 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
-import { createRuntime, type AgentEvent, type CloseReceipt, type PendingCleanup, type Runtime } from '../src/core/index.js';
-import { ServiceRegistry } from '../src/core/public-services.js';
-import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
+import { createRuntime, createSandbox, ServiceRegistry, type RuntimeEvent, type CloseReceipt,
+  type PendingCleanup, type Runtime, type RuntimeConnectionOptions, type SandboxConfig } from '../src/core/index.js';
 import { createLocalSetupUpstream, SETUP_MARKER, SETUP_READ, SETUP_RESULT } from './local-setup-upstream.js';
 
 export interface LocalSmokeOptions {
@@ -17,7 +16,8 @@ export interface LocalSmokeOptions {
   advertiseHost: string;
   signal?: AbortSignal;
   timeoutMs?: number;
-  backend?: Parameters<typeof createPiOpenSandboxBackend>[0];
+  sandbox?: SandboxConfig;
+  connection?: RuntimeConnectionOptions;
 }
 
 export interface LocalSmokeCheck {
@@ -91,15 +91,16 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
         output_schema: { type: 'object', properties: { verified: { const: true } }, required: ['verified'], additionalProperties: false } }],
     }, adapter: { invoke(request) { request.assertAuthorized(); serviceCaller = request.caller.agentId; return { verified: true }; } } });
     runtime = await createRuntime({
-      backend: createPiOpenSandboxBackend({
-        ...options.backend,
-        sandbox: { commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' }, ...options.backend?.sandbox,
-          lifecycleBaseUrl: options.lifecycleBaseUrl, endpointHost: options.endpointHost ?? '127.0.0.1', apiKey: options.apiKey },
-        bridge: { host: '0.0.0.0', publicUrl: `http://${options.advertiseHost}:{port}`, ...options.backend?.bridge },
-        modelGateway: { host: '0.0.0.0', advertiseHost: options.advertiseHost, requestTimeoutMs: 20_000, maxOutputTokens: 128, ...options.backend?.modelGateway },
-        models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
-        isolation: options.backend?.isolation ?? { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+      sandbox: createSandbox({
+        commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' },
+        isolation: { disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } }, ...options.sandbox,
+        lifecycleBaseUrl: options.lifecycleBaseUrl, endpointHost: options.endpointHost, apiKey: options.apiKey,
       }),
+      connection: {
+        advertiseHost: options.advertiseHost, ...options.connection,
+        modelGateway: { requestTimeoutMs: 20_000, maxOutputTokens: 128, ...options.connection?.modelGateway },
+      },
+      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
       profiles: { probe: { prompt: SETUP_PROFILE_PROMPT, model: 'default', image: options.image,
         writable: true, services: { 'setup-probe': ['verify'] } } },
       services, maxAgents: 1, outputDir: temporary,
@@ -113,10 +114,10 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
     if (agent.status !== 'idle') throw new Error('worker');
     passed(stage, 'Host reached the real Worker with murm-core-v1 and Pi 1.3.0 startup checks');
     stage = 'agent-bridge-gateway';
-    let settle!: (event: AgentEvent) => void;
-    const settled = new Promise<AgentEvent>(resolve => { settle = resolve; });
+    let settle!: (event: RuntimeEvent) => void;
+    const settled = new Promise<RuntimeEvent>(resolve => { settle = resolve; });
     unsubscribe = runtime.onEvent(event => {
-      if (event.agentId === agent.id && (event.type === 'settled' || event.type === 'exit')) settle(event);
+      if ((event.type === 'settled' || event.type === 'exit') && event.agentId === agent.id) settle(event);
     });
     const input = await untilAborted(runtime.send(agent.id, SETUP_FOLLOW_UP,
       { requestId: 'setup-smoke-input', mode: 'followUp' }), signal);

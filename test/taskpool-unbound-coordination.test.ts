@@ -27,7 +27,7 @@ async function fixture(t, { coordination = true, autonomousTasks = false } = {})
   services.registerService(discovery);
   const allowed = { task: discovery.manifest.capabilities.map(capability => capability.operation) };
   if (!coordination) allowed.task = allowed.task.filter(operation => !['task_revise','task_cancel'].includes(operation));
-  runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Revise unowned public Task responsibilities',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:2,outputDir:root});
+  runtime=await createRuntime({sandbox: {},profiles:{researcher:{prompt:'Revise unowned public Task responsibilities',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:2,outputDir:root});
   t.after(async()=>{await discovery.close();await runtime.close({timeoutMs:1000});stores.close();await rm(root,{recursive:true,force:true});});
   const cli=async(agent,...args)=>{
     const credentials=controls.credentials.get(agent.id);assert.ok(credentials);

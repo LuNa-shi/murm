@@ -19,15 +19,16 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   return next(specifier, context);
 } });
 const { createRuntime } = await import('@murm/core');
-const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
-const { ServiceRegistry } = await import('@murm/core/services');
+const { runtimeSettings } = await import('./fixtures/core-runtime-settings.js');
+
+const { ServiceRegistry } = await import('@murm/core');
 hooks.deregister();
 
 async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', services = new ServiceRegistry(), permissions = {}, writable = true, maxAgents = 1, upstreamHeaders = {} } = {}) {
   provider.reset();
   const outputDir = await mkdtemp(join(tmpdir(), 'core-pi-input-'));
   const runtime = await createRuntime({
-    backend: createPiOpenSandboxBackend({
+    ...runtimeSettings({
       sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
@@ -133,7 +134,7 @@ test('handled receipt cannot restore idle after actual Pi execution begins', asy
   const snapshot = await runtime.get(agent.id);
   assert.equal(snapshot.status, 'running');
   assert.equal(snapshot.latestOutput, 'Active execution output');
-  assert.deepEqual(events.map(event => event.type), ['output']);
+  assert.deepEqual(events.filter(event => event.type !== 'agentChanged').map(event => event.type), ['output']);
 });
 
 test('unknown original submission stays unknown when receipt lookup loses authorization or the Agent closes', async t => {
@@ -204,11 +205,11 @@ test('a fatal history gap fences authority before subscribers while preserving r
   await fatal;
   assert.equal((await observed.denied).status, 403);
   const snapshot = await observed.snapshot;
-  assert.equal(snapshot.cursor, observed.event.seq);
+  assert.equal('cursor' in snapshot || 'seq' in observed.event, false);
   assert.match(snapshot.lastError.message, /gap/);
   assert.equal(snapshot.status, 'running'); // No evidence that Pi physically exited.
   await assert.rejects(runtime.send(agent.id, 'fresh input', { requestId: 'fresh' }), { code: 'NOT_ALLOWED' });
-  await assert.rejects(runtime.files.prepare(agent.id, { requestId: 'prepare', files: {} }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(runtime.files.snapshot(agent.id, { requestId: 'capture', paths: ['.'] }), { code: 'NOT_ALLOWED' });
   await assert.rejects(runtime.spawn({ profile: 'worker', parentId: agent.id, requestId: 'child' }), { code: 'NOT_ALLOWED' });
   await assert.rejects(runtime.spawn({ profile: 'worker', requestId: 'before-cleanup' }), { code: 'CONFLICT' });
   provider.responses.set(unknown.inputId, { response: { id: unknown.inputId, command: 'prompt', success: true, data: { disposition: 'started' } }, records: [] });
@@ -437,209 +438,56 @@ test('Gateway records both request bodies and complete success, rejection and in
   assert.equal(traces.get('interrupt').result.reason, 'transport_interrupted');
 });
 
-test('public observation cuts a consistent snapshot and replays fast execution after its cursor', { timeout: 5000 }, async t => {
+test('subscribed output and settlement can precede send acknowledgement without Worker duplicates', async t => {
   const { runtime, agent, outputDir } = await setup(t);
-  const subscription = runtime.observe();
-  t.after(() => subscription.events.return());
-  assert.equal(subscription.snapshot.runtimeState, 'open');
-  assert.equal(subscription.snapshot.agents.find(item => item.id === agent.id)?.status, 'idle');
+  const updates = [];
+  const off = runtime.onEvent(event => updates.push(event));
+  t.after(off);
+  assert.equal(runtime.state, 'open');
+  assert.equal((await runtime.list({ status: 'idle' }))[0].id, agent.id);
   provider.wrapperReplay = true;
   provider.wait = async message => {
     provider.publish({ type: 'agent_start' });
-    provider.publish({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'body stored in Trace' }], stopReason: 'stop' } });
+    provider.publish({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'early output' }], stopReason: 'stop' } });
     provider.publish({ type: 'agent_settled' });
     provider.responses.set(message.id, { response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'started' } } });
   };
-
-  const receipt = await runtime.send(agent.id, 'private input text', { requestId: 'observe-fast' });
-  const resumed = runtime.observe({ after: subscription.snapshot.cursor });
-  t.after(() => resumed.events.return());
-  assert.equal(resumed.snapshot, null);
-  const updates = [];
-  for await (const update of resumed.events) {
-    assert.notEqual(update.type, 'gap');
-    updates.push(update);
-    if (update.type === 'input' && update.state === 'accepted') break;
-  }
-  const live = [];
-  for (const _ of updates) live.push((await subscription.events.next()).value);
-  assert.deepEqual(live, updates);
-  const started = updates.find(item => item.type === 'execution' && item.phase === 'started');
-  const settled = updates.find(item => item.type === 'execution' && item.phase === 'settled');
-  assert.ok(started);
-  assert.ok(settled);
-  assert.equal(started.agent.execution, 'active');
-  assert.equal(settled.agent.execution, 'inactive');
-  assert.equal(started.association, 'unknown');
-  assert.equal(settled.association, 'unknown');
-  const accepted = updates.at(-1);
-  assert.equal(accepted.requestId, 'observe-fast');
-  assert.equal(accepted.inputId, receipt.inputId);
-  assert.ok(accepted.cursor.sequence > started.cursor.sequence);
-  assert.doesNotMatch(JSON.stringify(updates), /body stored in Trace|private input text/);
+  const receipt = await runtime.send(agent.id, 'private input text', { requestId: 'event-fast' });
+  assert.equal(receipt.disposition, 'started');
   await runtime.close();
-  const records = (await readFile(join(outputDir, runtime.id, 'evidence.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
-  assert.equal(records.find(row => row.seq === started.recordSeq)?.eventType, 'agent_start');
-  assert.equal(records.find(row => row.seq === settled.recordSeq)?.eventType, 'agent_settled');
+  assert.deepEqual(updates.filter(row => ['output', 'settled'].includes(row.type)), [
+    { type: 'output', agentId: agent.id, text: 'early output' },
+    { type: 'settled', agentId: agent.id, outcome: 'completed', output: 'early output' },
+  ]);
+  const records = (await readFile(join(outputDir, runtime.id, 'evidence.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.ok(records.some(row => row.eventType === 'agent_start'));
+  assert.ok(records.some(row => row.eventType === 'agent_settled'));
 });
 
-test('a slow cursor gets a gap while a fast subscriber and cancellation remain independent', { timeout: 5000 }, async t => {
-  const { runtime, agent } = await setup(t);
-  const slow = runtime.observe();
-  const fast = runtime.observe();
-  const abort = new AbortController();
-  const cancelled = runtime.observe({ signal: abort.signal });
-  t.after(() => { slow.cancel(); fast.cancel(); cancelled.cancel(); });
-  const cancelledWait = cancelled.events.next();
-  abort.abort();
-  assert.deepEqual(await cancelledWait, { done: true, value: undefined });
-  provider.wait = async message => {
-    provider.responses.set(message.id, { response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'handled' } } });
-  };
-  const other = runtime.observe();
-  const left = (async () => {
-    for await (const _ of other.events) throw new Error('consumer isolated');
-  })();
-  const failed = assert.rejects(left, /consumer isolated/);
-
-  for (let index = 0; index < 90; index++) {
-    const requestId = `observe-burst-${index}`;
-    await runtime.send(agent.id, 'fixed', { requestId });
-    const received = [];
-    for (let step = 0; step < 3; step++) received.push((await fast.events.next()).value);
-    assert.deepEqual(received.map(update => update.state), ['registered', 'dispatched', 'accepted']);
-    assert.ok(received.every(update => update.requestId === requestId));
-  }
-  await failed;
-  const gap = (await slow.events.next()).value;
-  assert.equal(gap.type, 'gap');
-  assert.equal(gap.reason, 'slow-consumer');
-  assert.deepEqual(gap.after, slow.snapshot.cursor);
-  assert.equal((await slow.events.next()).done, true);
-
-  const expired = runtime.observe({ after: slow.snapshot.cursor });
-  t.after(() => expired.cancel());
-  assert.equal((await expired.events.next()).value.reason, 'cursor-expired');
-  assert.throws(() => runtime.observe({ after: { runtimeId: 'another-runtime', sequence: 0 } }), { code: 'INVALID_CONTRACT' });
-  const fresh = runtime.observe();
-  fresh.cancel();
-  assert.equal(fresh.snapshot.agents.find(item => item.id === agent.id)?.status, 'idle');
+test('querying status from an Agent notification captures pre-start and first readiness', async t => {
+  const { runtime, agent } = await setup(t, { maxAgents: 2 });
+  const captured = [];
+  t.after(runtime.onEvent(event => {
+    if (event.type === 'agentChanged') captured.push(runtime.get(event.agentId));
+  }));
+  const child = await runtime.spawn({ requestId: 'event-child', profile: 'worker', parentId: agent.id });
+  const states = (await Promise.all(captured)).filter(row => row.id === child.id);
+  assert.equal(states[0].status, 'starting');
+  assert.equal(states.at(-1).status, 'idle');
+  assert.ok(states.every(row => row.parentId === agent.id));
 });
 
-test('public observation reports durable evidence loss alongside real-time observations', { timeout: 5000 }, async t => {
+test('a pending close stays visible and an eventual close publishes the confirmed state', async t => {
   const { runtime, agent, outputDir } = await setup(t);
-  const subscription = runtime.observe();
-  t.after(() => subscription.cancel());
-  const evidence = join(outputDir, runtime.id, 'evidence.jsonl');
-  while (true) {
-    const check = runtime.observe();
-    check.cancel();
-    if (!check.snapshot.evidence.pending) break;
-    await delay(1);
-  }
-  await rm(evidence);
-  await mkdir(evidence);
-  await runtime.send(agent.id, 'fixed', { requestId: 'observe-evidence-loss' });
-  let lost;
-  for await (const update of subscription.events) {
-    if (update.type === 'persistence') { lost = update; break; }
-  }
-  assert.ok(lost.evidence.lost > 0);
-  const snapshot = runtime.observe();
-  snapshot.cancel();
-  assert.ok(snapshot.snapshot.evidence.lost >= lost.evidence.lost);
-  const receipt = await runtime.close();
-  assert.equal(receipt.cleanup, 'pending');
-  assert.ok(receipt.pending.some(item => item.error?.code === 'EVIDENCE_INCOMPLETE'));
-});
-
-test('public observation continues across pending and retried Runtime close', { timeout: 5000 }, async t => {
-  const { runtime, agent, outputDir } = await setup(t);
-  const subscription = runtime.observe();
-  t.after(() => subscription.cancel());
+  const states = [];
+  t.after(runtime.onEvent(event => { if (event.type === 'runtimeChanged') states.push(runtime.state); }));
   const summary = join(outputDir, runtime.id, 'runtime.json');
   await rm(summary);
   await mkdir(summary);
-  const pending = await runtime.close();
-  assert.equal(pending.cleanup, 'pending');
-  const during = runtime.observe();
-  during.cancel();
-  assert.equal(during.snapshot.runtimeState, 'closing');
-  assert.equal(during.snapshot.cleanup, 'pending');
-  assert.equal(during.snapshot.agents.find(item => item.id === agent.id)?.cleanup?.status, 'complete');
+  assert.equal((await runtime.close()).cleanup, 'pending');
+  assert.equal(runtime.state, 'closing');
+  assert.equal((await runtime.get(agent.id)).lastStop.cleanup, 'complete');
   await rm(summary, { recursive: true });
-  const closed = await runtime.close();
-  assert.equal(closed.cleanup, 'complete');
-  const states = [];
-  for await (const update of subscription.events) {
-    if (update.type === 'runtime') {
-      states.push(update.runtimeState);
-      if (update.runtimeState === 'closed') break;
-    }
-  }
-  assert.deepEqual(states, ['closing', 'closing', 'closing', 'closed']);
-  assert.equal(JSON.parse(await readFile(summary, 'utf8')).status, 'closed');
-});
-
-test('public Service observation matches the durable Bridge attempt identity', { timeout: 5000 }, async t => {
-  const services = new ServiceRegistry();
-  services.registerService({ manifest: notesManifest(), adapter: createNotesService().adapter });
-  const { runtime, agent, outputDir } = await setup(t, { services, permissions: { notes: ['put'] } });
-  const subscription = runtime.observe();
-  t.after(() => subscription.cancel());
-  const response = await bridgeCall(agent.id, 'put', { service_id: 'notes', payload: { key: 'trace', text: 'private note body' } });
-  assert.equal(response.ok, true);
-  const updates = [];
-  for await (const update of subscription.events) {
-    if (update.type === 'service') {
-      updates.push(update);
-      if (update.state === 'settled') break;
-    }
-  }
-  assert.deepEqual(updates.map(update => update.state), ['validation', 'validation', 'invocation', 'settled']);
-  assert.equal(new Set(updates.map(update => update.attemptId)).size, 1);
-  assert.ok(updates.every(update => update.operationId === 'fixed-operation' && update.agentId === agent.id));
-  assert.doesNotMatch(JSON.stringify(updates), /private note body/);
-  await runtime.close();
-  const records = (await readFile(join(outputDir, runtime.id, 'evidence.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
-  for (const update of updates) assert.equal(records.find(row => row.seq === update.recordSeq)?.attemptId, update.attemptId);
-});
-
-test('a spawn crossing the snapshot cursor is visible before the new Agent starts work', { timeout: 5000 }, async t => {
-  const { runtime, agent } = await setup(t, { maxAgents: 2 });
-  const observation = runtime.observe();
-  t.after(() => observation.cancel());
-  assert.deepEqual(observation.snapshot.agents.map(item => item.id), [agent.id]);
-  const child = await runtime.spawn({ requestId: 'observe-child', profile: 'worker', parentId: agent.id });
-  const statuses = [];
-  for await (const item of observation.events) {
-    if (item.type !== 'agent' || item.agent.id !== child.id) continue;
-    assert.equal(item.agent.parentId, agent.id);
-    statuses.push(item.agent.status);
-    if (item.agent.status === 'idle') break;
-  }
-  assert.equal(statuses[0], 'starting');
-  assert.equal(statuses.at(-1), 'idle');
-});
-
-test('an executor exit during a turn clears the public execution state', { timeout: 5000 }, async t => {
-  const { runtime, agent } = await setup(t);
-  const observation = runtime.observe();
-  t.after(() => observation.cancel());
-  provider.wrapperReplay = true;
-  provider.wait = async message => {
-    provider.publish({ type: 'agent_start' });
-    provider.publish({ type: 'worker_exit', code: 1 });
-    provider.responses.set(message.id, { response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'started' } } });
-  };
-  await runtime.send(agent.id, 'fixed', { requestId: 'observe-exited-execution' });
-  let exit;
-  for await (const update of observation.events) {
-    if (update.type === 'agent' && update.cause === 'exit') { exit = update; break; }
-  }
-  const replay = runtime.observe();
-  replay.cancel();
-  assert.equal(exit.agent.status, 'exited');
-  assert.equal(exit.agent.execution, 'inactive');
-  assert.deepEqual(replay.snapshot.agents.find(item => item.id === agent.id), exit.agent);
+  assert.equal((await runtime.close()).cleanup, 'complete');
+  assert.deepEqual(states, ['closing', 'closed']);
 });

@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { once } from 'node:events';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createPiOpenSandboxBackend } from '../../dist/src/core/backends/pi-opensandbox.js';
+import { createSandbox } from '../../dist/src/core/index.js';
 import { streamResponse } from '../../dist/test/fixtures/core-controlled-upstream.js';
 
 export const tool = (call, command, timeout = 20) => ({ type: 'function_call', id: `fc_${call}`, call_id: call,
@@ -52,20 +52,23 @@ export async function localUpstream(route, requestLimit, timeoutMs = 120_000) {
     close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
 }
 
-export function localBackend(upstream, diskMiB = 64, { timeoutSeconds = 180, maxOutputTokens = 2048, requestTimeoutMs = 30_000,
+export function localRuntimeSettings(upstream, diskMiB = 64, { timeoutSeconds = 180, maxOutputTokens = 2048, requestTimeoutMs = 30_000,
   resourceLimits = { cpu: '1', memory: '1Gi' } } = {}) {
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   if (typeof upstream === 'string') upstream = { url: upstream, headers: {} };
-  return createPiOpenSandboxBackend({
-    sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+  return {
+    sandbox: createSandbox({ lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
       apiKey: process.env.MURM_CORE_TEST_API_KEY, timeoutSeconds, commandTimeoutMs: 20_000,
-      ...(resourceLimits === null ? {} : { resourceLimits }) },
-    bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-    modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs, maxOutputTokens },
+      ...(resourceLimits === null ? {} : { resourceLimits }),
+      isolation: { network: 'local-docker', disk: { bytes: diskMiB * 1024 ** 2, inodes: 8192 } },
+    }),
+    connection: {
+      bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
+      modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs, maxOutputTokens },
+    },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream } },
-    isolation: { network: 'local-docker', disk: { bytes: diskMiB * 1024 ** 2, inodes: 8192 } },
-  });
+  };
 }
 
 export const saveReceipt = (dir, data) => writeFile(join(dir, 'receipt.json'), JSON.stringify(data, null, 2) + '\n', { mode: 0o600 });

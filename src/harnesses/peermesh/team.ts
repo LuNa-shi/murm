@@ -22,7 +22,7 @@ async function bounded(work: any, timeoutMs: any, code: any) {
 
 /** One public Core Runtime with a fixed independently authenticated peer pool. */
 export async function createPeerMeshTeam(options: any) {
-  const { runId, image, outputDir, backend, model = 'default', exportLimit = 8 * 1024 ** 2, peerKeys = ['a', 'b'] } = options;
+  const { runId, image, outputDir, sandbox, executor, models, connection, model = 'default', exportLimit = 8 * 1024 ** 2, peerKeys = ['a', 'b'] } = options;
   const durationMs = options.project?.durationMs ?? 3_600_000;
   if (options.project !== undefined && (!finite(durationMs) || durationMs > 86_400_000 ||
       typeof options.project?.title !== 'string' || typeof options.project?.body !== 'string' ||
@@ -127,11 +127,11 @@ export async function createPeerMeshTeam(options: any) {
       }
     } : undefined);
     const profiles = Object.fromEntries(facilities.peers.map((peer: any) => [`peer-${peer.key}`, createPeerProfile({ image, model, facilities: { ...facilities, peer } })]));
-    runtime = await createRuntime({ backend, services: services.services, profiles, maxAgents: peerKeys.length, outputDir }); check();
+    runtime = await createRuntime({ sandbox, executor, models, connection, services: services.services, profiles, maxAgents: peerKeys.length, outputDir }); check();
     unsubscriptions.push(runtime.onEvent((event: any) => {
       const planned = closing || [...stoppedPeers].some((key: any) => peers.get(key)?.id === event.agentId);
       if (!planned && (event.type === 'exit' || (event.type === 'error' && event.fatal))) {
-        unavailablePeers.set(event.agentId, { type: event.type, seq: event.seq });
+        unavailablePeers.set(event.agentId, { type: event.type });
       }
     }));
     for (const peer of facilities.peers) {
@@ -146,9 +146,9 @@ export async function createPeerMeshTeam(options: any) {
       const router = createPeerMeshRouter({ ...(options.project ? {
         workTimeoutMs: durationMs + 120_000, turnTimeoutMs: durationMs, maxBatches: 256, idleNudgeMs: 120_000, maxNudges: 8,
       } : {}), ...options.router, mapping, onFence: failRouting,
-        steerInput: options.project ? (text: string, requestId: string) => runtime.steer(agent.id, text, { requestId, source: 'peermesh-peer-notice', steeringMode: 'all' }) : undefined,
+        steerInput: options.project ? (text: string, requestId: string) => runtime.send(agent.id, text, { requestId, mode: 'steer', source: 'peermesh-peer-notice', steeringMode: 'all' }) : undefined,
         runInput: (text: any, wait: any) => {
-          const send = () => runInput(runtime, agent.id, text, { ...wait, operation: options.project ? 'start' : 'send', signal: AbortSignal.any([signal, wait.signal]) });
+          const send = () => runInput(runtime, agent.id, text, { ...wait, signal: AbortSignal.any([signal, wait.signal]) });
           return inputAdmission ? inputAdmission.run(send) : send();
         },
         readContext: options.router?.readContext ?? (async ({ signal }: any) => (await board('GET', `/board/${encodeURIComponent(facilities.boardId)}/read?viewer=${encodeURIComponent(peer.board.workerId)}`, undefined, { signal })).rendered) });

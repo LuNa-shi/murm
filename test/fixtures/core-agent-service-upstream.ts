@@ -1,12 +1,13 @@
+import { runtimeSettings } from './core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+
 import { streamResponse } from './core-controlled-upstream.js';
 
 export function agentControlBackend(upstream, sandbox, { host = '172.17.0.1', listen = '0.0.0.0' } = {}) {
   const model = url => ({ provider: 'kimi_proxy', model: 'k3', upstream: { url, headers: {} } });
-  return createPiOpenSandboxBackend({
+  return runtimeSettings({
     sandbox: { ...sandbox, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
     bridge: { host: listen, publicUrl: `http://${host}:{port}` },
     modelGateway: { host: listen, advertiseHost: host, requestTimeoutMs: 80_000, maxOutputTokens: 128 },
@@ -31,7 +32,7 @@ const first=cli(...args); const duplicate=cli(...args);
 assert.equal(first.agent.id,duplicate.agent.id); assert.equal(first.agent.parentId,${JSON.stringify(parentId)}); assert.equal(first.initialInput.status,'accepted');
 const one=await wait(first.agent.id,'CHILD_ONE');
 const second=cli('agent','send','--agent-id',one.id,'--text','FIXED_CHILD_TWO','--mode','followUp','--request-id','child-second'); assert.equal(second.status,'accepted');
-const two=await wait(one.id,'CHILD_TWO'); assert.ok(two.cursor>one.cursor);
+const two=await wait(one.id,'CHILD_TWO'); assert.equal(two.latestOutput,'CHILD_TWO');
 const stopped=cli('agent','stop','--agent-id',two.id,'--request-id','child-stop'); assert.equal(stopped.execution,'stopped'); assert.equal(stopped.cleanup,'complete');
 assert.equal(cli('agent','get','--agent-id',two.id).status,'closed');
 console.log(JSON.stringify({childId:two.id,parentId:two.parentId,duplicate:true,rounds:2,cleanup:'complete',denied:true,forged:true}));

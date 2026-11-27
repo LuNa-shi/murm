@@ -4,10 +4,15 @@ import { stableStringify } from '../protocol/envelope.js';
 import { ERROR_CODES, MurmError } from '../errors.js';
 import { assertNewExecutionWork } from '../task/execution-budget.js';
 import { publishWorkspace } from './workspace-publication.js';
+import type { CompleteFileDigest, FileTree } from '../core/types.js';
 
 const hash = (value: any) => createHash('sha256').update(value).digest('hex');
 const json = (value: any) => JSON.stringify(value);
 const invalid = (message: any) => new MurmError(ERROR_CODES.INVALID_CONTRACT, message);
+export const isPublishedProjectPath = (path: string) => !path.includes('\\') && !path.includes('\0') &&
+  !path.split('/').some(part => !part || ['.', '..', '.git', '.pi', '.swarm', '.env', 'node_modules'].includes(part) ||
+    part.startsWith('.swarm-') || part.startsWith('.env.'));
+
 const changed = (before: any, after: any) => [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()
   .filter((path: any) => before[path]?.content_hash !== after[path]?.content_hash || before[path]?.bytes !== after[path]?.bytes);
 
@@ -84,7 +89,7 @@ export class ExecutionWorkspace {
     const files = Object.create(null), manifest = Object.create(null);
     let total = 0;
     for (const path of Object.keys(snapshot.files).sort()) {
-      if (path.includes('\\') || path.includes('\0') || path.split('/').some((part: any) => !part || ['.', '..', '.git', '.pi', '.swarm', '.env', 'node_modules'].includes(part) || part.startsWith('.swarm-') || part.startsWith('.env.'))) throw invalid('Snapshot path is outside the project');
+      if (!isPublishedProjectPath(path)) throw invalid('Snapshot path is outside the project');
       const encoded = snapshot.files[path];
       if (typeof encoded !== 'string' || encoded.length > 4 * Math.ceil(2 * 1024 * 1024 / 3)) throw invalid('Snapshot content must be bounded base64 bytes');
       const bytes = Buffer.from(encoded, 'base64');
@@ -95,7 +100,7 @@ export class ExecutionWorkspace {
       manifest[path] = { bytes: bytes.length, content_hash: hash(bytes) };
     }
     if (stableStringify(manifest) !== stableStringify(snapshot.manifest) || hash(stableStringify(manifest)) !== snapshot.content_hash) throw invalid('Snapshot content and manifest disagree');
-    return { files, manifest, content_hash: snapshot.content_hash };
+    return { files, manifest, content_hash: snapshot.content_hash, core: snapshot.core as { digest: CompleteFileDigest; files: FileTree } | undefined };
   }
 
   async #capture(execution: any, identity: any) {
@@ -211,6 +216,18 @@ export class ExecutionWorkspace {
           captured = { kind: 'apply', state_version: current.version, source: captured.source, ...plan,
             snapshot_request_id: `taskpool:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}`,
             files: Object.fromEntries(Object.entries(plan.files).map(([path, bytes]: any) => [path, Buffer.from(bytes).toString('base64')])) };
+          if (snapshot.core) {
+            const privateFiles = Object.entries(snapshot.core.files).filter(([path]) => !isPublishedProjectPath(path));
+            captured.core = {
+              expectedDigest: snapshot.core.digest,
+              files: Object.fromEntries([
+                ...privateFiles,
+                ...Object.entries(captured.files).map(([path, data]) => [
+                  path, { encoding: 'base64', data, mode: snapshot.core!.files[path]?.mode ?? 0o644 },
+                ]),
+              ]),
+            };
+          }
         } else if (input.resolved) captured.conflicts = this.#resolveConflicts(current.conflicts, snapshot.files);
         this.db.exec('BEGIN IMMEDIATE');
         try {
@@ -259,11 +276,100 @@ export class ExecutionWorkspace {
     return [];
   }
 
+  async #completeCoreApply(row: any, captured: any, identity: any, closedConfirmed: boolean) {
+    const requestId = `apply:${hash(stableStringify([row.execution_id, row.request_id]))}`;
+    try {
+      if (row.phase === 'captured') {
+        if (closedConfirmed) {
+          const error = new MurmError(ERROR_CODES.WORKSPACE_REQUEST_ABORTED, 'Execution closed before file replacement was dispatched', { worktree_closed: true });
+          this.#fail(row, error);
+          throw error;
+        }
+        this.db.exec('BEGIN IMMEDIATE');
+        try {
+          assertServiceCommitSettled(this.db);
+          this.guard(identity);
+          this.db.prepare("UPDATE execution_workspace_requests SET phase = 'installing', updated_at = ? WHERE execution_id = ? AND request_id = ? AND phase = 'captured'")
+            .run(new Date().toISOString(), row.execution_id, row.request_id);
+          this.db.exec('COMMIT');
+        } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+        row = this.#request(row.execution_id, row.request_id);
+      }
+      if (row.phase === 'installing') {
+        if (!closedConfirmed) this.guard(identity);
+        // Core checks the original identity and returns its retained receipt even
+        // after the Agent has written again or stopped. Keep the same complete tree.
+        let receipt;
+        try {
+          receipt = await this.sandbox.replaceAgentProject({ executionId: row.execution_id, requestId, ...captured.core });
+        } catch (error: any) {
+          if (closedConfirmed && error.code === ERROR_CODES.NOT_ALLOWED) {
+            const aborted = new MurmError(ERROR_CODES.WORKSPACE_REQUEST_ABORTED, 'Execution closed without a file replacement receipt', {
+              installation: 'unknown', worktree_closed: true,
+            });
+            this.#fail(row, aborted);
+            throw aborted;
+          }
+          if ([ERROR_CODES.WORKSPACE_BUSY, ERROR_CODES.INVALID_CONTRACT, ERROR_CODES.CONFLICT].includes(error.code)) {
+            this.#fail(row, error);
+            throw error;
+          }
+          throw error;
+        }
+        if (receipt.status === 'failed') {
+          const error = new MurmError(receipt.error.code, receipt.error.message);
+          this.#fail(row, error);
+          throw error;
+        }
+        if (receipt.status !== 'completed') {
+          if (!closedConfirmed) throw new MurmError(ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, 'Core file replacement is awaiting its original receipt');
+          const error = new MurmError(ERROR_CODES.WORKSPACE_REQUEST_ABORTED, 'Execution closed before file replacement could be confirmed', {
+            installation: 'unknown', worktree_closed: true,
+          });
+          this.#fail(row, error);
+          throw error;
+        }
+        this.db.prepare("UPDATE execution_workspace_requests SET phase = 'installed', updated_at = ? WHERE execution_id = ? AND request_id = ?")
+          .run(new Date().toISOString(), row.execution_id, row.request_id);
+      }
+
+      // The Worker has resumed. Reconcile SQL from the captured plan and
+      // receipt without inspecting or writing files the Agent may have changed.
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        assertServiceCommitSettled(this.db);
+        const execution = this.guard(identity, { receiptOnly: true });
+        if (execution.fencing_version !== identity.fencingVersion) throw new MurmError(ERROR_CODES.FENCED, 'Apply owner fence changed before lineage commit');
+        const result = this.#commitApplyLineage(row, captured, execution);
+        this.db.prepare("UPDATE execution_workspace_requests SET phase = 'done', captured_json = NULL, result_json = ?, updated_at = ? WHERE execution_id = ? AND request_id = ?")
+          .run(json(result), new Date().toISOString(), row.execution_id, row.request_id);
+        this.db.exec('COMMIT');
+        return result;
+      } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    } catch (error: any) {
+      if (this.#request(row.execution_id, row.request_id).phase === 'failed') throw error;
+      this.onPending?.(row.execution_id, 'apply');
+      throw new MurmError(ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, 'Apply result is pending reconciliation; retry the original request ID', undefined, { retryable: true, cause: error });
+    }
+  }
+
+  #commitApplyLineage(row: any, captured: any, execution: any) {
+    const current = this.#state(execution);
+    const applied = [...current.applied_revisions, { revision: captured.source_revision, base_revision: captured.base_revision, request_id: row.request_id, content_hash: captured.content_hash, already_included: captured.already_included }];
+    const updated = this.db.prepare(`UPDATE execution_workspace_state SET parents_json = ?, applied_json = ?, conflicts_json = ?, pending_apply = ?, version = version + 1, updated_at = ? WHERE execution_id = ? AND version = ?`)
+      .run(json(captured.parents), json(applied), json(captured.conflicts), captured.already_included ? current.pending_apply : 1, new Date().toISOString(), row.execution_id, captured.state_version);
+    if (updated.changes !== 1) throw new MurmError(ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED, 'Apply lineage must reconcile with its original Execution version');
+    return { workspace_id: captured.workspace_id, execution_id: row.execution_id, initial_revision: current.initial_revision,
+      base_revision: captured.base_revision, source_revision: captured.source_revision, parents: captured.parents, conflicts: captured.conflicts,
+      content_hash: captured.content_hash, changed_paths: captured.changed_paths, already_included: captured.already_included, applied_revisions: applied };
+  }
+
   // Persist lineage before confirming the Worker acknowledgement and resuming writers.
   async #completeApply(row: any, identity: any, { closedConfirmed = false }: any = {}) {
     const captured: any = JSON.parse(row.captured_json);
     const execution = this.guard(identity, { receiptOnly: true });
     if (captured.source.execution_id !== execution.execution_id || captured.source.agent_id !== execution.owner_ref || captured.source.fencing_version !== identity.fencingVersion) throw invalid('Apply capture identity differs from its E');
+    if (captured.core) return this.#completeCoreApply(row, captured, identity, closedConfirmed);
     const workerId = `apply:${hash(stableStringify([row.execution_id, row.request_id]))}`;
     const workerInput = { executionId: row.execution_id, request_id: workerId, snapshot_request_id: captured.snapshot_request_id, expected_content_hash: captured.expected_content_hash, content_hash: captured.content_hash, files: captured.files };
     const expectedFingerprint = hash(stableStringify({ expected_content_hash: captured.expected_content_hash, content_hash: captured.content_hash }));
@@ -318,14 +424,7 @@ export class ExecutionWorkspace {
         this.db.exec('BEGIN IMMEDIATE');
         try {
           assertServiceCommitSettled(this.db);
-          const current = this.#state(this.guard(identity));
-          const applied = [...current.applied_revisions, { revision: captured.source_revision, base_revision: captured.base_revision, request_id: row.request_id, content_hash: captured.content_hash, already_included: captured.already_included }];
-          const updated = this.db.prepare(`UPDATE execution_workspace_state SET parents_json = ?, applied_json = ?, conflicts_json = ?, pending_apply = ?, version = version + 1, updated_at = ? WHERE execution_id = ? AND version = ?`)
-            .run(json(captured.parents), json(applied), json(captured.conflicts), captured.already_included ? current.pending_apply : 1, new Date().toISOString(), row.execution_id, captured.state_version);
-          if (updated.changes !== 1) throw new MurmError(ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED, 'Apply install must reconcile E lineage before resuming writers');
-          const result = { workspace_id: captured.workspace_id, execution_id: row.execution_id, initial_revision: current.initial_revision,
-            base_revision: captured.base_revision, source_revision: captured.source_revision, parents: captured.parents, conflicts: captured.conflicts,
-            content_hash: captured.content_hash, changed_paths: captured.changed_paths, already_included: captured.already_included, applied_revisions: applied };
+          const result = this.#commitApplyLineage(row, captured, this.guard(identity));
           this.db.prepare("UPDATE execution_workspace_requests SET phase = 'installed', result_json = ?, updated_at = ? WHERE execution_id = ? AND request_id = ?")
             .run(json(result), new Date().toISOString(), row.execution_id, row.request_id);
           this.db.exec('COMMIT');

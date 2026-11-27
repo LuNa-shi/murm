@@ -15,11 +15,11 @@ Harness 是决定 Agent 如何协作的程序。它通过 SDK 创建 Runtime，�
 
 `createRuntime()` 保存这些配置的快照，启动宿主侧网关并创建 Run 记录。随后 `runtime.spawn()` 分配 Sandbox、启动持久化执行器会话。返回的 Agent 最初处于 idle；创建 Agent 本身不会向模型提交任务。
 
-Harness 在发送输入之前调用 `runtime.observe()` 建立观察，再通过 `runtime.send()` 和稳定的 `requestId` 投递工作。输入回执告诉调用方这次输入是否被接纳，实际执行情况则需要继续观察。
+Harness 在发送输入之前调用 `runtime.onEvent(listener)` 建立观察，再通过 `runtime.send()` 和稳定的 `requestId` 投递工作。输入回执告诉调用方这次输入是否被接纳，实际执行情况则需要继续观察。
 
 writer 在 Sandbox 中发现自己有权使用的 Service 操作，通过本地 shell 工具执行 `swarm messages put`。宿主 Bridge 验证调用者身份、检查权限、校验输入，再调用注册的实现。信息由此进入 Service 状态，reader 可以通过 `swarm messages get` 读取它。
 
-Harness 确认预期 Service 操作与 Agent 执行都已完成，再推进下一步。最后，`finalizeRun()` 关闭 Runtime，让应用检查导出的产物，并分别记录业务结果、产物校验与资源清理状态。Messages 示例会把 reader 导出的字节与最初提供的值比较，因此成功判断有实际产物作为依据。
+Harness 确认预期 Service 操作与 Agent 执行都已完成，再推进下一步。最后，Harness 调用 `runtime.close()`，检查导出的产物，并分别记录业务结果、产物校验与资源清理状态。Messages 示例会把 reader 导出的字节与最初提供的值比较，因此成功判断有实际产物作为依据。
 
 ## 各个概念分别负责什么
 
@@ -32,7 +32,7 @@ Harness 确认预期 Service 操作与 Agent 执行都已完成，再推进下�
         <li>角色 Profile 与结束条件</li>
       </ul>
     </div>
-    <div class="dd-arrow-h" aria-hidden="true">◄── spawn · send · observe ──►</div>
+    <div class="dd-arrow-h" aria-hidden="true">◄── spawn · send · onEvent ──►</div>
     <div class="dd-box dd-indigo">
       <div class="dd-box-title">RUNTIME</div>
       <div class="dd-sandbox-stack">
@@ -106,7 +106,7 @@ Harness 确认预期 Service 操作与 Agent 执行都已完成，再推进下�
 
 Runtime 创建时会保存 Profiles 和注册 Service manifests 的快照。之后修改原始配置对象，或继续在原 registry 上注册 Service，都不会重新配置这个 Runtime。Service 的共享业务状态仍可变化，例如任务池可以持续创建和认领 Task，而它对外提供的操作契约保持不变。
 
-每个 Runtime 通过 backend 选择一个执行器。OpenSandbox 后端支持 Pi 和 Codex。Harness 依赖特定能力时，应查询 `getOpenSandboxBackendCapabilities()`：Pi 支持上下文分叉和两种 steering 模式；Codex 当前支持 `all` 模式，不支持上下文分叉。
+每个 Runtime 通过 Runtime 配置选择一个执行器。OpenSandbox 后端支持 Pi 和 Codex。Harness 依赖特定能力时，应查询 `getExecutorCapabilities(executor)`：Pi 支持上下文分叉和两种 steering 模式；Codex 当前支持 `all` 模式，不支持上下文分叉。
 
 ## Services 定义具体协作机制
 

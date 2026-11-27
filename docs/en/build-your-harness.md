@@ -30,7 +30,7 @@ A Service registration pairs a **v2 manifest** with an adapter. The manifest des
 Here is the complete [`messages.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/messages.ts) used by the handoff:
 
 ```ts
-import { createHttpJsonAdapter, createInProcessAdapter, type ServiceRegistration } from '@murm/core/services';
+import { createHttpJsonAdapter, createInProcessAdapter, type ServiceRegistration } from '@murm/core';
 
 const key = { type: 'string', minLength: 1, maxLength: 64 };
 const text = { type: 'string', minLength: 1, maxLength: 2048 };
@@ -145,8 +145,7 @@ An idle Agent still occupies a Slot. Finishing a Task, finishing an execution, a
 
 ## 5. Verify the result and close the Run
 
-Use `finalizeRun()` once for the application outcome. Give cleanup its own deadline, supply `verifyArtifacts` for checks on exported files, and list only application-owned resources in `ownedFacilities`. Existing external services retain their own lifecycle.
+Stop dispatching work and call `runtime.close({ timeoutMs })`. Evaluate business, exported artifacts and cleanup independently. Close application-owned facilities after Core cleanup, keeping dependencies available for any pending recovery.
 
-Keep the report's business, artifact verification, Core close, facility cleanup, and save outcomes separate. A correct answer with pending cleanup needs follow-up; clean teardown alone does not establish a correct answer. The [SDK guide](sdk.md) explains the report contract and [Run lifecycle](run-lifecycle.md) explains resource retention.
 
 Before broadening a new Harness, verify a small complete Run: expected Service transitions, correct role permissions, real artifact content, and no unaccounted pending resources. Then test the mechanism's defining behavior, such as exclusive claims, cross-Agent reuse, or parent ownership. The existing [Harness guides](harnesses/index.md) describe these distinct behaviors and their boundaries.

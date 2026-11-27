@@ -52,14 +52,15 @@ const router = createPeerMeshRouter({
   mapping: { agentId: agent.id, workerId: peer.board.workerId },
   // Direct messages and Board updates steer an active turn at Pi's next tool boundary
   steerInput: (text: string, requestId: string) =>
-    runtime.steer(agent.id, text, {
+    runtime.send(agent.id, text, {
+      mode: 'steer',
       requestId,
       source: 'peermesh-peer-notice',
       steeringMode: 'all',
     }),
   // Full work batches run serially with a fresh Board snapshot prepended
   runInput: (text, wait) =>
-    runInput(runtime, agent.id, text, { ...wait, operation: 'start', signal }),
+    runInput(runtime, agent.id, text, { ...wait, signal }),
   readContext: async ({ signal }) =>
     (await board('GET', `/board/${boardId}/read?viewer=${peer.board.workerId}`, undefined, { signal })).rendered,
 });

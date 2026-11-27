@@ -42,10 +42,10 @@ From the checkout root:
 node dist/examples/bridge-services/handoff.js
 ```
 
-The program prints observation cursors and event kinds to stderr. Its final stdout line is a JSON record containing the handoff identity, original submission request IDs, and report. By default, the report is saved at:
+The program prints event kinds to stderr. Its final stdout line is a JSON record containing the handoff identity, original submission request IDs, and report. By default, the report is saved at:
 
 ```text
-handoff-runs/<runtimeId>/run-finalization.json
+handoff-runs/<runtimeId>/handoff-report.json
 ```
 
 The handoff uses only public package imports. Open [`handoff.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/handoff.ts) to follow the complete sequence: create the Service and Runtime, begin observation, run each role, check Service operations and execution completion, and call `finalizeRun` with an exported-file check.

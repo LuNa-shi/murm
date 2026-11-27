@@ -1,73 +1,71 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createOpenSandboxBackend, getOpenSandboxBackendCapabilities } from '@murm/core/backends/opensandbox';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { createSandbox, getExecutorCapabilities } from '@murm/core';
 import { claimOpenSandboxBackend } from '../src/core/opensandbox-backend.js';
 
-test('the configured backend freezes executor selection and exposes its capabilities before Runtime assembly', async () => {
-  const { configuration } = await import('./fixtures/core-input-backend.js');
-  const config = { ...configuration, sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1' }, executor: 'codex' };
-  const codex = createOpenSandboxBackend(config);
-  config.executor = 'pi';
-  const caps = getOpenSandboxBackendCapabilities(codex);
-  assert.equal(caps.contextFork, false);
-  assert.deepEqual(caps.steeringModes, ['all']);
-  assert.ok(Object.isFrozen(caps));
-  const selected = claimOpenSandboxBackend(codex);
+const sandboxConfig = {
+  lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
+  isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+};
+const runtimeConfig = {
+  connection: { advertiseHost: '172.17.0.1' },
+  models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:9999/v1/responses', headers: {} } } },
+};
+
+test('executor capabilities are static, immutable, and independent of Sandbox allocation', () => {
+  const codex = getExecutorCapabilities('codex');
+  assert.equal(codex.contextFork, false);
+  assert.deepEqual(codex.steeringModes, ['all']);
+  assert.ok(Object.isFrozen(codex));
+  assert.ok(Object.isFrozen(codex.steeringModes));
+  assert.equal(getExecutorCapabilities('pi').contextFork, true);
+  assert.throws(() => getExecutorCapabilities('toString'), { code: 'INVALID_CONTRACT' });
+  const sandbox = createSandbox(sandboxConfig);
+  const selected = claimOpenSandboxBackend(sandbox, { ...runtimeConfig, executor: 'codex' });
   assert.equal(selected.driver.kind, 'codex');
   assert.equal(selected.driver.version, '0.172.0');
   assert.equal(selected.modelGateway.maxOutputTokens, null);
-  assert.equal(claimOpenSandboxBackend(createOpenSandboxBackend({ ...config, executor: undefined })).driver.kind, 'pi');
-  assert.equal(claimOpenSandboxBackend(createPiOpenSandboxBackend(config)).driver.kind, 'pi');
-  assert.throws(() => createOpenSandboxBackend({ ...config, executor: 'toString' }), { code: 'INVALID_CONTRACT' });
-  assert.throws(() => getOpenSandboxBackendCapabilities({}), { code: 'INVALID_CONTRACT' });
+  assert.equal(claimOpenSandboxBackend(sandbox, runtimeConfig).driver.kind, 'pi');
 });
 
-test('backend rejects unsupported deployment before allocating resources', () => {
-  assert.throws(() => createPiOpenSandboxBackend({ isolation: { network: 'remote' } }), { code: 'INVALID_CONTRACT' });
+test('the local Sandbox handle is opaque and Runtime owns executor, model and connection settings', () => {
+  const sandbox = createSandbox(sandboxConfig);
+  assert.ok(Object.isFrozen(sandbox));
+  assert.deepEqual(Object.keys(sandbox), []);
+  for (const config of [{
+    ...sandboxConfig, isolation: { ...sandboxConfig.isolation, network: 'remote' },
+  }, { ...sandboxConfig, isolation: { network: 'local-docker' } }, { ...sandboxConfig, executor: 'pi' }]) {
+    assert.throws(() => createSandbox(config), { code: 'INVALID_CONTRACT' });
+  }
+  assert.throws(() => claimOpenSandboxBackend(sandbox, { ...runtimeConfig, connection: { advertiseHost: 'localhost' } }), { code: 'INVALID_CONTRACT' });
+  assert.throws(() => claimOpenSandboxBackend(sandbox, { ...runtimeConfig, executor: 'toString' }), { code: 'INVALID_CONTRACT' });
+  assert.throws(() => claimOpenSandboxBackend({}, runtimeConfig), { code: 'INVALID_CONTRACT' });
 });
 
-test('backend accepts the supported local deployment as an opaque handle', () => {
-  const config = {
-    sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1' },
-    bridge: { host: '0.0.0.0', publicUrl: 'http://172.17.0.1:{port}' },
-    modelGateway: { host: '0.0.0.0', advertiseHost: '172.17.0.1' },
-    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:9999/v1/responses', headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
-  };
-  const handle = createPiOpenSandboxBackend(config);
-  assert.ok(Object.isFrozen(handle));
-  assert.deepEqual(Object.keys(handle), []);
-  assert.throws(() => createPiOpenSandboxBackend({ ...config, isolation: { network: 'local-docker' } }), { code: 'INVALID_CONTRACT' });
-  assert.throws(() => createPiOpenSandboxBackend({ ...config, modelGateway: { host: '0.0.0.0', advertiseHost: 'localhost' } }), { code: 'INVALID_CONTRACT' });
-});
-
-test('backend validates finite sandbox lifetime bounds before allocating resources', async () => {
-  const { configuration } = await import('./fixtures/core-input-backend.js');
+test('Sandbox validates finite lifetime bounds and snapshots the caller configuration', () => {
   for (const timeoutSeconds of [null, '5100', 0, 59, 60.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
-    assert.throws(() => createPiOpenSandboxBackend({ ...configuration, sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1', timeoutSeconds } }), { code: 'INVALID_CONTRACT' });
+    assert.throws(() => createSandbox({ ...sandboxConfig, timeoutSeconds }), { code: 'INVALID_CONTRACT' });
   }
-  for (const timeoutSeconds of [60, 5100, 86400, Number.MAX_SAFE_INTEGER]) assert.ok(createPiOpenSandboxBackend({ ...configuration, sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1', timeoutSeconds } }));
-});
-
-test('backend freezes an explicit natural output policy and rejects malformed token policies before allocation', async () => {
-  const { configuration } = await import('./fixtures/core-input-backend.js');
-  const config = { ...configuration, sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1' },
-    modelGateway: { ...configuration.modelGateway, maxOutputTokens: null } };
-  const handle = createPiOpenSandboxBackend(config); config.modelGateway.maxOutputTokens = 16;
-  assert.equal(claimOpenSandboxBackend(handle).modelGateway.maxOutputTokens, null);
-  for (const value of [false, 'none', 0, 15, NaN, Infinity, 16.5]) {
-    assert.throws(() => createPiOpenSandboxBackend({ ...config, modelGateway: { ...config.modelGateway, maxOutputTokens: value } }), { code: 'INVALID_CONTRACT' });
+  for (const timeoutSeconds of [60, 5100, Number.MAX_SAFE_INTEGER]) {
+    assert.ok(createSandbox({ ...sandboxConfig, timeoutSeconds }));
   }
-});
-
-
-test('backend snapshots the lifetime before the caller can mutate configuration', async () => {
-  const { configuration } = await import('./fixtures/core-input-backend.js');
-  const config = { ...configuration, sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1', timeoutSeconds: 5100 } };
-  const handle = createPiOpenSandboxBackend(config);
-  config.sandbox.timeoutSeconds = 7200;
-  const frozen = claimOpenSandboxBackend(handle);
+  const config = { ...sandboxConfig, timeoutSeconds: 5100 };
+  const handle = createSandbox(config);
+  config.timeoutSeconds = 7200;
+  const frozen = claimOpenSandboxBackend(handle, runtimeConfig);
   assert.equal(frozen.sandbox.timeoutSeconds, 5100);
   assert.ok(Object.isFrozen(frozen.sandbox));
+});
+
+test('Runtime snapshots natural model output policy and validates bounds', () => {
+  const sandbox = createSandbox(sandboxConfig);
+  const config = { ...runtimeConfig, connection: { ...runtimeConfig.connection, modelGateway: { maxOutputTokens: null } } };
+  const resolved = claimOpenSandboxBackend(sandbox, config);
+  config.connection.modelGateway.maxOutputTokens = 16;
+  assert.equal(resolved.modelGateway.maxOutputTokens, null);
+  for (const maxOutputTokens of [false, 'none', 0, 15, NaN, Infinity, 16.5]) {
+    assert.throws(() => claimOpenSandboxBackend(sandbox, {
+      ...runtimeConfig, connection: { ...runtimeConfig.connection, modelGateway: { maxOutputTokens } },
+    }), { code: 'INVALID_CONTRACT' });
+  }
 });

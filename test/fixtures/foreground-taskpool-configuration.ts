@@ -21,7 +21,7 @@ const stores = await createTaskPoolStores(outputDir, { persistent: true });
 export default { mode: 'taskpool', timeoutMs: 15_000, options: {
   taskService: stores.tasks, contextService: stores.context, missionWorkspace: stores.workspace,
   workspaceManager: stores.manager, missionId: stores.missionId, workspaceId: stores.workspaceId,
-  outputDir, backend: {}, model: 'default', image: 'fixture', capacity: 1,
+  outputDir, sandbox: {}, model: 'default', image: 'fixture', capacity: 1,
   deadlineAt: Date.now() + 15_000, closeTimeoutMs: 1000,
   controller: { automaticContinuation: false, async beforeInitialDispatch({ agentIds }) {
     const agentId = agentIds[0];

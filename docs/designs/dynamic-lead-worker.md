@@ -13,7 +13,7 @@
 | `runtime.profiles.register/get/list` | 用 `requestId`、ID 和完整定义登记不可变 Profile，返回 ID 和定义摘要。查询统一覆盖初始与动态定义。 |
 | `runtime.services.register/get/list/retire` | 登记已经 ready 的 manifest、adapter、部署引用及归属。退役以 Service ID、`requestId` 和有界期限发起，返回退役或仍待排空的状态。 |
 | `runtime.access.get/grant/revoke` | 读取当前实例权限和版本；按 Agent、Service 和 operation 增删权限。变更携带 `requestId`，grant 可携带受信 binding 引用。 |
-| 管理快照与订阅 | 快照携带变更编号，增量可无遗漏衔接；公开查询和事件隐藏秘密。 |
+| `runtime.management.get()` 与 `onEvent` 的 `management` 事件 | 查询一致的 Profile、Service 与实例权限管理快照；事件携带同一管理专用递增编号和有序变更。公开查询和事件隐藏秘密。 |
 
 登记复用现有校验，检查模型别名、执行者能力、资源配置及引用的 Service operations。Profile 和 Service ID 在同一 Run 内不可覆盖或复用。spawn 沿用现有实现和 Slot 规则，在分配资源前确认所引用的 Service 仍可用。运行中新增定义和服务目录与初始定义使用同一校验、查询及调用路径。
 
@@ -24,6 +24,8 @@ Service 发布须完成校验和 readiness，并在 Runtime 仍接纳时一次�
 撤权使受影响的在途授权失效并发出取消信号。合作式 in-process adapter 必须将 `assertAuthorized()` 和同步副作用放在同一无 `await` 的提交段。重新 grant 使用新授权代次，旧调用继续失效。撤权保留已经发生的副作用；对发出的 HTTP 请求，无法确认远端结果时保留 unknown/pending。退役期间的排空同样受撤权及 Runtime 关闭约束。
 
 管理操作按 Run、可信 caller、operation、target 和 `requestId` 去重。同请求同参数复用结果，参数冲突拒绝；unknown 以原请求核对。服务登记同时核对部署与实现身份。部署和增员在创建资源前建立回执身份。关闭开始后拒绝新登记、grant 和 spawn，宿主仍可查询原请求并继续撤权、退役、停止和清理。迟到的资源列入关闭清单。该保证以同一个存活宿主进程为边界。受控记录保留初始配置和变更历史，以及非秘密定义、实现/部署引用、源码摘要、可信 caller、请求、授权版本、调用接纳和收尾回执。
+
+[#255 的公共 SDK 合同](core-harness/01-core.md#53-事件合同) 适用于共同入口。#235 的动态登记、退役与授权保持独立验收。动态能力生效的候选把管理变更装入 `RuntimeEvent` 的 `{ type: "management", change: RuntimeManagementChange }` 分支。观察者先订阅并缓存通知，再调用 `runtime.management.get()`，只应用大于快照 sequence 的管理变更；发现编号不连续则重读管理快照。这个编号仅排序管理变更；授权本身的版本继续由 `runtime.access` 返回。旧 Runtime.observe 的管理投影迁移至共同的 onEvent，Core 通用事件仍无公开游标。Profile/Service 目录、实例授权与相关类型沿用同一根包导出。实施时核对 [#251](https://github.com/LuNa-shi/murm/pull/251) 的最终合入修订与该衔接合同。
 
 ## Agent 入口与资源归属
 

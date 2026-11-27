@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'node:http';
@@ -5,11 +6,10 @@ import { once } from 'node:events';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createRuntime } from '@murm/core';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
-import { ServiceRegistry } from '@murm/core/services';
+
+import { ServiceRegistry } from '@murm/core';
 import { TaskService } from '../src/task/task-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
-import { createTaskPoolModelAccessPolicy } from '../src/harnesses/taskpool/model-access-policy.js';
 import { createTaskPoolAgentCoordinator } from '../src/harnesses/taskpool/agent-coordinator.js';
 import { createCappedUpstream } from './fixtures/core-capped-upstream.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
@@ -96,15 +96,14 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
   if (typeof image !== 'string' || !/(?:^sha256:|@sha256:)[a-f0-9]{64}$/.test(image)) throw new Error('TASKPOOL_PINNED_IMAGE_REQUIRED');
   report.image = image;
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-  const policy = createTaskPoolModelAccessPolicy({ taskService: tasks, missionId: 'taskpool:model-acceptance', runtimeId: () => runtime?.id, deadline: () => deadlineAt });
-  runtime = await createRuntime({ backend: createPiOpenSandboxBackend({ sandbox: {
+  runtime = await createRuntime({ ...runtimeSettings({ sandbox: {
     lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
     apiKey: process.env.MURM_CORE_TEST_API_KEY, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
     bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 60_000, maxOutputTokens: report.maxOutputTokens },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: proxy.url, headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } }), profiles: {
     readonly: { prompt: 'Reply with exactly TASKPOOL_SELECTION_OK. Do not call tools.', image, model: 'default', writable: false, services: {} } },
-    services: new ServiceRegistry(), modelAccessPolicy: policy, maxAgents: 1, outputDir });
+    services: new ServiceRegistry(), maxAgents: 1, outputDir });
   report.runtimeId = runtime.id;
   report.resources[runtime.id] = { initialEmpty: (await ownedContainers(runtime.id)).length === 0 };
   const coordinator = createTaskPoolAgentCoordinator({ runtime, taskService: tasks, missionId: 'taskpool:model-acceptance' });
@@ -126,33 +125,32 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
   assert.ok(Number.isSafeInteger(observed.usage?.inputTokens) && Number.isSafeInteger(observed.usage?.outputTokens));
   report.usageObserved = true;
   if (!live) {
-    const interrupted = settled();
     const heldInputStartedMonotonic = performance.now();
     report.revocation = { heldInputAt: Date.now(), requestTimeoutMs: 60_000 };
     await runtime.send(agent.id, 'Reply with exactly TASKPOOL_SELECTION_OK. Do not call tools.', { requestId: 'taskpool-held-selection', mode: 'followUp' });
     await Promise.race([held, new Promise((_, reject) => { const timeout = setTimeout(() => reject(new Error('Held upstream not observed')), 20_000); timeout.unref(); held.finally(() => clearTimeout(timeout)); })]);
     Object.assign(report.revocation, { heldBeforeTransition: Boolean(heldSocket && !heldSocket.destroyed), maxElapsedMs: 5000 });
     if (!report.revocation.heldBeforeTransition) throw new Error('TASKPOOL_HELD_SOCKET_CLOSED_BEFORE_REVOKE');
-    tasks.requestAgentStop(agent.id, 'controlled-domain-revoke');
     report.revocation.domainTransitionAt = Date.now();
     domainTransitionMonotonic = performance.now();
     report.revocation.requestAgeAtTransitionMs = domainTransitionMonotonic - heldInputStartedMonotonic;
+    tasks.requestAgentStop(agent.id, 'controlled-stop-revoke');
+    const stopping = runtime.stop(agent.id, { timeoutMs: 20_000 });
     let revocationTimer;
     try {
       await Promise.race([
-        Promise.all([heldSocketClosed, interrupted.then(revoked => {
-          report.revocation.settledAt = Date.now();
-          report.revocation.settledElapsedMs = performance.now() - domainTransitionMonotonic;
-          report.revocation.outcome = revoked.outcome;
+        Promise.all([heldSocketClosed, stopping.then(revoked => {
+          report.revocation.stopReceiptAt = Date.now();
+          report.revocation.stopReceiptElapsedMs = performance.now() - domainTransitionMonotonic;
+          report.revocation.execution = revoked.execution;
         })]),
         new Promise((_, reject) => { revocationTimer = setTimeout(() => reject(new Error('TASKPOOL_DOMAIN_REVOCATION_NOT_PROMPT')), 5000); }),
       ]);
     } finally { clearTimeout(revocationTimer); }
     if (!promptRevocationVerified(report.revocation)) throw new Error('TASKPOOL_DOMAIN_REVOCATION_EVIDENCE_INVALID');
     report.streamRevoked = true;
-    const denied = settled();
-    await runtime.send(agent.id, 'Reply with exactly TASKPOOL_SELECTION_OK.', { requestId: 'taskpool-denied-selection', mode: 'followUp' });
-    assert.equal((await denied).outcome, 'failed');
+    assert.equal((await stopping).execution, 'stopped');
+    await assert.rejects(runtime.send(agent.id, 'Reply with exactly TASKPOOL_SELECTION_OK.', { requestId: 'taskpool-denied-selection', mode: 'followUp' }), { code: 'NOT_ALLOWED' });
     assert.equal(localArrivals, 2); assert.equal(localAccepted, 2); report.deniedBeforeUpstream = true;
   } else tasks.requestAgentStop(agent.id, 'hosted-selection-complete');
   const stop = await runtime.stop(agent.id, { timeoutMs: 20_000 });

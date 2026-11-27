@@ -1,6 +1,6 @@
 import { chmodSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { createInProcessAdapter, type JsonValue, type ServiceCaller, type ServiceCapability, type ServiceRegistry, type ServiceManifest, type ServiceRequest } from '@murm/core/services';
+import { createInProcessAdapter, type JsonValue, type ServiceCaller, type ServiceCapability, type ServiceRegistry, type ServiceManifest, type ServiceRequest } from '@murm/core';
 import { stableStringify } from '../../src/protocol/envelope.js';
 import { referenceHelp, validateRationale } from '../../src/harnesses/substrate/paper-substrate.js';
 import { fatePins, sha256, type FateVerdict } from './fate-checker.js';

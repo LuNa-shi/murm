@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createLifetimeProbeBudget, lifetimeProbePlan, runLifetimeProbe } from './fixtures/native-lifetime-probe.js';
@@ -26,14 +27,14 @@ test('native lifetime gateway limits start production Core without allocating or
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   const { createRuntime } = await import('@murm/core');
-  const { ServiceRegistry } = await import('@murm/core/services');
-  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
+  const { ServiceRegistry } = await import('@murm/core');
+
   const root = await mkdtemp(join(tmpdir(), 'lifetime-config-'));
   let runtime;
   t.after(async () => { try { if (runtime) await runtime.close({ timeoutMs: 1000 }); } finally { await rm(root, { recursive: true, force: true }); } });
   runtime = await createRuntime({ outputDir: root, services: new ServiceRegistry(), maxAgents: lifetimeProbePlan.agents,
     profiles: { worker: { image: 'fixture', prompt: 'Wait.', writable: false, model: 'default', services: {} } },
-    backend: createPiOpenSandboxBackend({
+    ...runtimeSettings({
       sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1', timeoutSeconds: lifetimeProbePlan.timeoutSeconds, resourceLimits: lifetimeProbePlan.resourceLimits },
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1', ...lifetimeProbePlan.modelGatewayLimits },

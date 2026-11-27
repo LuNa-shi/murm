@@ -4,7 +4,7 @@ import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { createHttpJsonAdapter } from '@murm/core/services';
+import { createHttpJsonAdapter } from '@murm/core';
 import type { DynamicDeploymentRequest } from '../../src/harnesses/lead-worker/dynamic.js';
 
 const localEndpoint = 'http://127.0.0.1:8080';

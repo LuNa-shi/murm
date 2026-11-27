@@ -4,7 +4,6 @@ import { registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { createHttpJsonAdapter, ServiceRegistry } from '@murm/core/services';
 import { transport } from './fixtures/core-agent-service-backend.js';
 
 const hooks = registerHooks({ resolve(specifier, context, next) {
@@ -13,7 +12,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
-const { createRuntime } = await import('@murm/core');
+const { createRuntime, createHttpJsonAdapter, ServiceRegistry } = await import('@murm/core');
 hooks.deregister();
 
 const initial = { prompt: 'Initial Worker', model: 'default', image: 'test', writable: true, services: {} };
@@ -22,7 +21,7 @@ async function setup(t) {
   transport.reset();
   const outputDir = await mkdtemp(join(tmpdir(), 'murm-dynamic-registry-'));
   const runtime = await createRuntime({
-    backend: {}, services: new ServiceRegistry(), profiles: { worker: initial }, maxAgents: 3, outputDir,
+    sandbox: {}, services: new ServiceRegistry(), profiles: { worker: initial }, maxAgents: 3, outputDir,
   });
   t.after(async () => {
     await runtime.close({ timeoutMs: 1_000 });
@@ -34,9 +33,10 @@ async function setup(t) {
 test('a Runtime registers a copied Profile once and spawns it through the same live directory', async t => {
   const runtime = await setup(t);
   const worker = await runtime.spawn({ profile: 'worker', requestId: 'worker' });
-  const changes = runtime.observe();
-  t.after(() => changes.cancel());
-  assert.deepEqual(changes.snapshot.management.profiles.map(entry => entry.id), ['worker']);
+  const changes = [];
+  t.after(runtime.onEvent(event => { if (event.type === 'management') changes.push(event); }));
+  const baseline = runtime.management.get();
+  assert.deepEqual(baseline.profiles.map(entry => entry.id), ['worker']);
 
   const profile = { ...initial, prompt: 'Review delivered orders' };
   const input = { id: 'orders-checker', requestId: 'register-checker', profile };
@@ -52,7 +52,10 @@ test('a Runtime registers a copied Profile once and spawns it through the same l
   await assert.rejects(runtime.profiles.register({
     id: 'wrong-model', requestId: 'bad', profile: { ...initial, model: 'unknown' },
   }), { code: 'INVALID_CONTRACT' });
-  const { value: observed } = await changes.events.next();
+  assert.equal(changes.length, 1);
+  const [observed] = changes;
+  assert.equal(observed.change.sequence, baseline.sequence + 1);
+  assert.deepEqual(runtime.management.get().profiles.map(entry => entry.id), ['worker', 'orders-checker']);
   assert.equal(observed.type, 'management');
   assert.equal(observed.change.operation, 'profile.register');
   assert.equal(observed.change.sequence, first.sequence);

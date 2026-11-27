@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -70,7 +71,7 @@ test('subagents host closes its complete dynamic tree and verifies adoption thro
     }
   }; }
   arm();
-  const report = await runSubagentsHarness({ backend: { sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' }, models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 33554432, inodes: 2048 } } }, image: 'test', outputDir, supplements: ['USER_SUPPLEMENT'], workTimeoutMs: 3000, closeTimeoutMs: 1000 });
+  const report = await runSubagentsHarness({ ...runtimeSettings({ sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' }, models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 33554432, inodes: 2048 } } }), image: 'test', outputDir, supplements: ['USER_SUPPLEMENT'], workTimeoutMs: 3000, closeTimeoutMs: 1000 });
   assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure) + String(nativeError ?? '')); assert.equal(report.cleanupFailure, null);
   assert.equal(report.cleanup.agents.length, 3); assert.equal(report.cleanup.cleanup, 'complete');
   assert.equal(report.result.eventSeq, 2, 'The premature first parent final cannot become valid after later dispatches');
@@ -131,10 +132,10 @@ for (const [childCount, pending] of [[3, false], [7, false], [3, true]]) {
       }
     }; }
     arm();
-    const report = await runSubagentsHarness({ childCount, backend: { sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
+    const report = await runSubagentsHarness({ childCount, ...runtimeSettings({ sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
-      isolation: { network: 'local-docker', disk: { bytes: 33554432, inodes: 2048 } } }, image: 'test', outputDir, workTimeoutMs: 3000, closeTimeoutMs: 1000 });
+      isolation: { network: 'local-docker', disk: { bytes: 33554432, inodes: 2048 } } }), image: 'test', outputDir, workTimeoutMs: 3000, closeTimeoutMs: 1000 });
     assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure));
     assert.equal(report.result.childCount, childCount);
     assert.equal(transport.spawns.size, childCount + 1); assert.equal(report.cleanup.agents.length, childCount + 1);
@@ -152,20 +153,20 @@ for (const [childCount, pending] of [[3, false], [7, false], [3, true]]) {
 test('invalid subagents child counts fail before Agent creation', async () => {
   transport.reset();
   for (const childCount of [1, 8, 2.5, '3']) {
-    await assert.rejects(runSubagentsHarness({ childCount, backend: {}, outputDir: 'unused' }), TypeError);
+    await assert.rejects(runSubagentsHarness({ childCount, sandbox: {}, outputDir: 'unused' }), TypeError);
   }
   assert.equal(transport.spawns.size, 0);
 });
 
 test('four staged groups use real Core and parent Agent Service inputs without ending at the first integration', async t => {
   const { createRuntime } = await import('@murm/core');
-  const { ServiceRegistry } = await import('@murm/core/services');
+  const { ServiceRegistry } = await import('@murm/core');
   const { runInput } = await import('../src/harnesses/shared/run-input.js');
   const { createSubagentsStages } = await import('../test-support/subagents/stages.js');
   transport.reset(); transport.collectable = true;
   const outputDir = await mkdtemp(join(tmpdir(), 'subagents-stages-'));
   const common = { prompt: 'Controlled stage contract.', model: 'default', image: 'test', writable: true, services: {} };
-  const runtime = await createRuntime({ backend: {}, outputDir, maxAgents: 4, services: new ServiceRegistry(), profiles: {
+  const runtime = await createRuntime({ sandbox: {}, outputDir, maxAgents: 4, services: new ServiceRegistry(), profiles: {
     parent: { ...common, services: { agent: ['spawn', 'get', 'send', 'stop'] }, spawnProfiles: ['child'] }, child: common,
   } });
   let stages;

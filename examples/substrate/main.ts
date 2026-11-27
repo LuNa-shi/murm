@@ -3,21 +3,20 @@ import { pathToFileURL } from 'node:url';
 import { isFateBenchmark } from './fate-checker.js';
 
 export async function runSubstrateExample(config: any, signal: any) {
-  const { createOpenSandboxBackend } = await import('@murm/core/backends/opensandbox');
+  const { createSandbox } = await import('@murm/core');
   if (config.fate !== undefined) {
-    const selected = config.backend.models[config.model ?? 'default'];
+    const selected = config.models[config.model ?? 'default'];
     const supportedModel = (selected?.provider === 'kimi_proxy' && selected.model === 'k3') ||
       (selected?.provider === 'gpt_proxy' && selected.model === 'gpt-6.1-sol');
     if (!supportedModel) {
       throw Object.assign(new Error('The FATE example supports kimi_proxy/k3 and gpt_proxy/gpt-6.1-sol'), { code: 'FATE_MODEL_INVALID' });
     }
     const { runFateSubstrate } = await import('./fate-run.js');
-    return runFateSubstrate({ ...config, backend: createOpenSandboxBackend({
-      ...config.backend, modelGateway: { ...config.backend.modelGateway, maxOutputTokens: null },
-    }) }, signal);
+    return runFateSubstrate({ ...config, sandbox: createSandbox(config.sandbox),
+      connection: { ...config.connection, modelGateway: { ...config.connection?.modelGateway, maxOutputTokens: null } } }, signal);
   }
   const { runSubstrate } = await import('../../src/harnesses/substrate/index.js');
-  return runSubstrate({ ...config, backend: createOpenSandboxBackend(config.backend) }, signal);
+  return runSubstrate({ ...config, sandbox: createSandbox(config.sandbox) }, signal);
 }
 
 const failed = (report: any) => report.businessFailure || report.cleanupFailure || report.reportSaveFailure ||

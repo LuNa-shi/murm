@@ -57,10 +57,9 @@ export async function runTaskPoolHandoff({ request, runtime, taskService, missio
     const inputs = await bounded(() => prepareTaskPoolInputs({ execution: taken.execution, taskService, missionWorkspace, workspaceId, workspaceManager,
       contextService, preview, check: () => lease.check() }));
     lease.check();
-    request.stage = 'prepare-files';
-    const prepared = await bounded(() => runtime.files.prepare(agentId, { requestId: `${id}:prepare`, files: inputs.files }));
+    request.stage = 'capture-files';
+    const snapshot = await bounded(() => runtime.files.snapshot(agentId, { requestId: `${id}:snapshot`, paths: ['.'] }));
     lease.check();
-    request.prepared = prepared;
     lease.stop();
     // Refresh after stopping heartbeat; its last successful renewal may have
     // advanced state_version since the initial reservation.
@@ -73,8 +72,12 @@ export async function runTaskPoolHandoff({ request, runtime, taskService, missio
     execution = taskService.dispatch('start_execution', { core_id: agent.core_id, started_at: new Date(now).toISOString(),
       execution_deadline: new Date(now + timeout).toISOString(), handoff_deadline: new Date(now + Math.max(0, timeout - handoffLeadMs)).toISOString() },
     executionEnvelope(execution, `${id}:start`)).execution;
-    request.stage = 'grant-files';
-    await bounded(() => runtime.files.grant({ requestId: `${id}:grant`, prepared }));
+    request.stage = 'replace-files';
+    const options = { requestId: `${id}:replace`, expectedDigest: snapshot.digest, files: inputs.files, writable: true };
+    let replacement = await bounded(() => runtime.files.replace(agentId, options));
+    if (replacement.status === 'unknown') replacement = await bounded(() => runtime.files.replace(agentId, options));
+    if (replacement.status === 'unknown') throw new MurmError('OPERATION_UNKNOWN', 'TaskPool file replacement has no receipt');
+    if (replacement.status === 'failed') throw new MurmError(replacement.error.code, replacement.error.message);
     const core = await bounded(() => runtime.get(agentId));
     checkSignal();
     taskService.assertMissionResearchOpen(missionId); taskService.assertAgentDeadline(agentId);
@@ -82,10 +85,10 @@ export async function runTaskPoolHandoff({ request, runtime, taskService, missio
     execution = taskService.getExecution(executionId);
     if (owner?.state !== 'ACTIVE' || owner.execution_id !== executionId || execution.state !== 'RUNNING' || execution.owner_ref !== agentId ||
         execution.fencing_version !== fence || taskService.getTask(execution.task_id)?.spec_version !== execution.spec_version || Date.now() >= Math.min(Date.parse(execution.execution_deadline), Date.parse(execution.lease_expires_at))) {
-      throw failure('TaskPool ownership changed during file grant');
+      throw failure('TaskPool ownership changed during file replacement');
     }
     if (!['idle', 'running'].includes(core.status)) throw failure('Core Agent closed during taskpool handoff');
-    const handoff: any = { agentId, executionId, executionFence: fence, prepared: { ...prepared }, workspaceRevision: execution.workspace_input.revision };
+    const handoff: any = { agentId, executionId, executionFence: fence, replacement, workspaceRevision: execution.workspace_input.revision };
     request.stage = 'complete';
     request.handoff = handoff;
     return { task: taskService.getTask(execution.task_id), execution, materials: inputs.materials,

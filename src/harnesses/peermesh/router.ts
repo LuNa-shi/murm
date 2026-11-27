@@ -17,7 +17,8 @@ export function createPeerMeshRouter({ mapping, runInput, readContext, steerInpu
       ![workTimeoutMs, turnTimeoutMs, contextTimeoutMs, idleNudgeMs].every(finite) || idleNudgeMs < 10 || !Number.isSafeInteger(maxNudges) || maxNudges < 0 || maxNudges > 8 ||
       !Number.isSafeInteger(maxBatches) || maxBatches < 1 || maxBatches > 256) throw new TypeError('Router requires one trusted mapping, input/context functions and finite limits');
   const peerMapping = Object.freeze({ agentId: mapping.agentId, workerId: mapping.workerId });
-  const rows: any = new Map(), queue: any[] = [], waiters: any = new Set(), events: any[] = [], seenEvents: any = new Set();
+  const rows: any = new Map(), queue: any[] = [], waiters: any = new Set(), events: any[] = [];
+  let batchSettlement: number | undefined;
   const lifetime: any = new AbortController(); const deadlineAt = Date.now() + workTimeoutMs;
   let ready = false, started = false, accepting = true, fenced = false, active: any, activeContext: any, pumping = false;
   let steerOpen = false;
@@ -104,6 +105,7 @@ export function createPeerMeshRouter({ mapping, runInput, readContext, steerInpu
       while (accepting && queue.length) {
         const row = active = queue.shift(); row.state = 'context';
         steerStarted = false;
+        batchSettlement = undefined;
         try {
           activeContext = new AbortController();
           const contextSignal = AbortSignal.any([activeContext.signal, lifetime.signal, AbortSignal.timeout(Math.min(contextTimeoutMs, remaining()))]);
@@ -124,7 +126,7 @@ export function createPeerMeshRouter({ mapping, runInput, readContext, steerInpu
             onStarted: () => { if (accepting) { steerOpen = true; steerQueuedNotice(); } } });
           steerOpen = false;
           await steering;
-          if (steerStarted && accepting) await waitForSteerSettlement(result.settled.seq);
+          if (steerStarted && accepting) await waitForSteerSettlement(batchSettlement ?? events.length);
           Object.assign(row, { state: 'completed', inputId: result.inputId, receipt: result.receipt, settled: clone(result.settled) });
         } catch (error: any) {
           if (row.state === 'cancelled') continue;
@@ -202,11 +204,12 @@ export function createPeerMeshRouter({ mapping, runInput, readContext, steerInpu
       });
     },
     stop,
-    observe(event: any) { if (event.agentId !== peerMapping.agentId || !['settled', 'error', 'exit'].includes(event.type) || seenEvents.has(event.seq)) return;
+    observe(event: any) { if (event.agentId !== peerMapping.agentId || !['settled', 'error', 'exit'].includes(event.type)) return;
       if (events.length >= 512) { fence('ROUTER_EVENT_LIMIT'); lifetime.abort(); return; }
       if (event.type === 'settled' || event.type === 'exit' || event.fatal) steerOpen = false;
-      seenEvents.add(event.seq);
-      events.push({ agentId: event.agentId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}), ...(event.fatal ? { fatal: true } : {}) });
+      const seq = events.length + 1;
+      if (active?.state === 'submitted' && event.type === 'settled') batchSettlement ??= seq;
+      events.push({ agentId: event.agentId, seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}), ...(event.fatal ? { fatal: true } : {}) });
       notify();
     },
     finishClose(receipt: any) {

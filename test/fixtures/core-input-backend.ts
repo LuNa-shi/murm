@@ -1,3 +1,4 @@
+export const createSandbox = () => Object.freeze({});
 import { selectExecutorDriver } from '../../src/core/executor-driver.js';
 
 export const configuration = {

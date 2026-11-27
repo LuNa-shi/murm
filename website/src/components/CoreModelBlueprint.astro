@@ -13,17 +13,17 @@ const ZONES = isZh
       all: {
         tag: '总览',
         note: '左侧是你编写的 Harness 控制循环，它操控中央 Runtime 沙盘里的各个隔离沙箱；沙箱通过外部 Host Gateway 接入可定制共享 Services，所有运行轨迹实时流入右侧 Trace 显示器。',
-        code: 'createRuntime({ backend, profiles, services, maxAgents, outputDir })',
+        code: 'createRuntime({ sandbox, models, connection, profiles, services, maxAgents, outputDir })',
       },
       harness: {
         tag: 'HARNESS · 控制循环',
         note: '由你编写的 TypeScript 程序：订阅沙盘事件、执行协作规则、路由消息，并决定何时中断或结束整个集群。',
-        code: 'const observation = runtime.observe({ signal })',
+        code: 'const unsubscribe = runtime.onEvent(listener)',
       },
       runtime: {
         tag: 'RUNTIME · 沙盘舞台',
         note: '集群运行底座：统一管理容器生命周期、并发槽位、受控文件交接以及“先归档再销毁”的清理流程。',
-        code: 'const runtime = await createRuntime({ backend, profiles, services, maxAgents, outputDir })',
+        code: 'const runtime = await createRuntime({ sandbox, models, connection, profiles, services, maxAgents, outputDir })',
       },
       sandbox: {
         tag: 'SANDBOXES & AGENTS',
@@ -42,7 +42,7 @@ const ZONES = isZh
       },
       trace: {
         tag: 'RUN TRACE MONITOR',
-        note: '模型请求、工具调用、Service 交互和原生会话形成 Run 记录；SDK 提供观察游标和清理回执，报告证据缺口及待处理资源。',
+        note: '模型请求、工具调用、Service 交互和原生会话形成 Run 记录；Run 记录提供诊断，SDK 返回清理回执，报告证据缺口及待处理资源。',
         code: 'outputDir/<runtimeId>/{runtime.json, evidence.jsonl, service-calls.jsonl, <agentId>/}',
       },
     }
@@ -50,17 +50,17 @@ const ZONES = isZh
       all: {
         tag: 'OVERVIEW',
         note: 'Your Harness runs the control loop on the left, steering isolated Sandboxes inside the Runtime arena, routing shared Services through the external Gateway, and streaming every Run to the Trace monitor.',
-        code: 'createRuntime({ backend, profiles, services, maxAgents, outputDir })',
+        code: 'createRuntime({ sandbox, models, connection, profiles, services, maxAgents, outputDir })',
       },
       harness: {
         tag: 'HARNESS · CONTROL LOOP',
         note: 'The TypeScript program you write. It subscribes to arena events, enforces coordination rules, routes messages, and decides when the swarm finishes.',
-        code: 'const observation = runtime.observe({ signal })',
+        code: 'const unsubscribe = runtime.onEvent(listener)',
       },
       runtime: {
         tag: 'RUNTIME · THE ARENA',
         note: 'The sandtable engine managing container lifecycles, concurrency slots, file handoffs, and archive-before-delete cleanup across the whole swarm.',
-        code: 'const runtime = await createRuntime({ backend, profiles, services, maxAgents, outputDir })',
+        code: 'const runtime = await createRuntime({ sandbox, models, connection, profiles, services, maxAgents, outputDir })',
       },
       sandbox: {
         tag: 'SANDBOXES & AGENTS',
@@ -79,7 +79,7 @@ const ZONES = isZh
       },
       trace: {
         tag: 'RUN TRACE MONITOR',
-        note: 'Model, tool, Service, and session records form the Run archive. Observation cursors and cleanup receipts expose gaps and pending resources.',
+        note: 'Model, tool, Service, and session records form the Run archive. Run records expose diagnostic gaps and cleanup receipts identify pending resources.',
         code: 'outputDir/<runtimeId>/{runtime.json, evidence.jsonl, service-calls.jsonl, <agentId>/}',
       },
     };

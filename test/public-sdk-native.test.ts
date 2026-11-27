@@ -135,7 +135,7 @@ const config = handoffConfig();
 config.workTimeoutMs = ${mode === 'without-handoff' ? 12000 : 45000};
 const abort = new AbortController();
 const result = await runMessageHandoff(config, abort.signal, update => {
-  if (${mode === 'cancelled'} && update.type === 'execution' && update.phase === 'started') abort.abort();
+  if (${mode === 'cancelled'} && update.type === 'output') abort.abort();
 });
 process.stdout.write(JSON.stringify(result));
 `);
@@ -171,13 +171,13 @@ process.stdout.write(JSON.stringify(result));
       assert.deepEqual(JSON.parse(await readFile(reportPath, 'utf8')), savedFields);
       if (mode === 'without-handoff' || mode === 'cancelled') {
         assert.equal(report.business.status, mode === 'without-handoff' ? 'failed' : 'cancelled');
-        assert.equal(report.business.error.code, mode === 'without-handoff' ? 'HANDOFF_TIMEOUT' : 'HANDOFF_CANCELLED');
+        assert.equal(report.business.error.code, mode === 'without-handoff' ? 'HANDOFF_SERVICE_UNCONFIRMED' : 'HANDOFF_CANCELLED');
         assert.equal(submissions.length, 1);
-        assert.equal(report.artifactVerification.status, 'not-requested');
+        assert.equal(report.artifactVerification.status, mode === 'without-handoff' ? 'failed' : 'not-requested');
         if (mode === 'without-handoff') assert.deepEqual(upstream.observations.map(item => item.role), ['Publish', 'Publish']);
         else assert.ok(upstream.observations.every(item => item.role === 'Publish'));
       } else {
-        assert.match(stderr, /^\d+ execution$/m);
+        assert.match(stderr, /^settled$/m);
         assert.equal(report.business.status, 'completed');
         assert.equal(report.artifactVerification.status, 'passed');
         assert.equal(submissions.length, 2);
@@ -210,14 +210,11 @@ process.stdout.write(JSON.stringify(result));
   await t.test('installed Codex rejects unsupported Context Fork authority before allocation', async () => {
     await writeFile(join(project, 'unsupported.mjs'), `
 import assert from 'node:assert/strict';
-import { createRuntime } from '@murm/core';
-import { createOpenSandboxBackend, getOpenSandboxBackendCapabilities } from '@murm/core/backends/opensandbox';
-import { ServiceRegistry } from '@murm/core/services';
+import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry } from '@murm/core';
 import { handoffConfig } from './build/handoff-config.js';
 const config = handoffConfig();
-const backend = createOpenSandboxBackend(config.backend);
-assert.equal(getOpenSandboxBackendCapabilities(backend).contextFork, false);
-await assert.rejects(createRuntime({ backend, services: new ServiceRegistry(), maxAgents: 1, outputDir: config.outputDir,
+assert.equal(getExecutorCapabilities(config.executor).contextFork, false);
+await assert.rejects(createRuntime({ sandbox: createSandbox(config.sandbox), executor: config.executor, models: config.models, connection: config.connection, services: new ServiceRegistry(), maxAgents: 1, outputDir: config.outputDir,
   profiles: { worker: { model: 'default', image: config.image, writable: true, services: {}, allowContextFork: true } } }), error => {
   assert.equal(error.code, 'INVALID_CONTRACT');
   assert.equal(error.cleanup, 'complete');

@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
@@ -9,7 +10,7 @@ import { promisify } from 'node:util';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+
 import { runTaskPoolHarness } from '../src/harnesses/taskpool/harness.js';
 import { TaskService } from '../src/task/task-service.js';
 import { ContextService } from '../src/context/context-service.js';
@@ -19,12 +20,13 @@ import { makeEnvelope } from '../src/protocol/envelope.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';
+import { OpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { openSandboxAgentKey } from '../src/runtime/opensandbox-metadata.js';
 
 const execute = promisify(execFile);
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-function script(role, revision = null, notification = null, recipient = null) {
+function script(role, revision = null, notification = null, recipient = null, injectApplyFailure = false) {
   const commands = role === 'finish' ? `
 finished=cli('task','finish','--outcome','done','--request-id','B-finish')
 result={'role':'finish','same_process':os.getcwd()==before,'finished':finished}
@@ -74,7 +76,29 @@ assert 'native λ ' in published['content']
 before_apply=cli('workspace','status','--request-id','B-status')
 assert not before_apply['dirty']
 assert open('consumer.txt','rb').read()==b'CONSUMER_PROGRESS\\n'
-applied=cli('workspace','apply','--from',${JSON.stringify(revision)},'--request-id','B-apply')
+args=('workspace','apply','--from',${JSON.stringify(revision)},'--request-id','B-apply')
+if ${injectApplyFailure ? 'True' : 'False'}:
+ def pending(*args):
+  p=subprocess.run(['swarm']+list(args),capture_output=True,text=True,timeout=45)
+  assert p.returncode!=0 and 'WORKSPACE_RESULT_UNKNOWN' in p.stderr, p.stdout+p.stderr
+ pending(*args)
+ assert open('lemma.txt','rb').read().startswith('native λ '.encode())
+ open('post-replace.txt','wb').write(b'progress after lost receipt')
+ pending(*args)
+ p=subprocess.run(['swarm','workspace','save','--request-id','B-blocked-save'],capture_output=True,text=True,timeout=45)
+ assert p.returncode!=0 and 'WORKSPACE_RESULT_UNKNOWN' in p.stderr, p.stdout+p.stderr
+ pending('workspace','apply','--from',${JSON.stringify(revision)},'--request-id','B-blocked-apply')
+ p=subprocess.run(['swarm','task','finish','--outcome','done','--request-id','B-blocked-finish'],capture_output=True,text=True,timeout=45)
+ assert p.returncode!=0 and 'WORKSPACE_BUSY' in p.stderr, p.stdout+p.stderr
+ open('apply-pending-checked','wb').close()
+ while not os.path.exists('apply-fault-cleared'):
+  time.sleep(.05)
+ os.remove('apply-pending-checked')
+ os.remove('apply-fault-cleared')
+applied=cli(*args)
+assert cli(*args)==applied
+if ${injectApplyFailure ? 'True' : 'False'}:
+ assert open('post-replace.txt','rb').read()==b'progress after lost receipt'
 assert open('consumer.txt','rb').read()==b'CONSUMER_PROGRESS\\n'
 text=open('lemma.txt','rb').read()
 binary=open('lemma.bin','rb').read()
@@ -85,7 +109,7 @@ saved=cli('workspace','save','--material-ids',material_ids,'--request-id','B-int
 feedback=cli('task','feedback','--notification-id',${JSON.stringify(notification?.notification_id ?? '')},'--decision','adopted','--action','applied_revision_and_saved_proof_progress','--request-id','B-adoption-feedback')
 result={'feedback':feedback,'role':'B-apply','revision':saved['revision'],'text':text.hex(),'binary':binary.hex(),'same_process':os.getcwd()==before,'applied':applied,'parents':saved['parents']}
 `;
-  return `python3 - <<'TASKPOOL_NATIVE_SCRIPT'\nimport os,json,subprocess,secrets\nROLE=${JSON.stringify(role)}\nbefore=os.getcwd()\nassert before=='/workspace/project'\ndef cli(*args):\n p=subprocess.run(['swarm']+list(args),capture_output=True,text=True,timeout=45)\n assert p.returncode==0, p.stderr\n return json.loads(p.stdout)\n${commands}\nprint(json.dumps(result))\nTASKPOOL_NATIVE_SCRIPT`;
+  return `python3 - <<'TASKPOOL_NATIVE_SCRIPT'\nimport os,json,subprocess,secrets,time\nROLE=${JSON.stringify(role)}\nbefore=os.getcwd()\nassert before=='/workspace/project'\ndef cli(*args):\n p=subprocess.run(['swarm']+list(args),capture_output=True,text=True,timeout=45)\n assert p.returncode==0, p.stderr\n return json.loads(p.stdout)\n${commands}\nprint(json.dumps(result))\nTASKPOOL_NATIVE_SCRIPT`;
 }
 
 const nativeOptions = {
@@ -116,6 +140,19 @@ async function checkNativeAdoption(t, materialNotificationMode) {
   const findNotice = () => evidence.B && tasks.listUnprocessedNotifications(evidence.B.task, evidence.B.execution)
     .find(row => row.notification_type === 'material_available' && row.material_id === evidence.A?.material);
   let arrivals = 0, starts = 0, notificationInputs = 0, adoptionNotification, failure, runtimeId, report;
+  const injectApplyFailure = materialNotificationMode === 'followUp';
+  const applyCalls: string[] = [];
+  if (injectApplyFailure) {
+    const fileOperation = OpenSandboxManager.prototype.coreFileOperation;
+    t.mock.method(OpenSandboxManager.prototype, 'coreFileOperation', async function (agentId, action, input) {
+      const receipt = await fileOperation.call(this, agentId, action, input);
+      if (action === 'replace' && input.requestId.startsWith('apply:')) {
+        applyCalls.push(input.requestId);
+        if (applyCalls.length === 1) throw Object.assign(new Error('Lost a completed Worker response'), { code: 'OPERATION_UNKNOWN' });
+      }
+      return receipt;
+    });
+  }
   const continueB = Promise.withResolvers();
   const awaiting = new Map();
   const evidenceFor = name => {
@@ -183,7 +220,7 @@ async function checkNativeAdoption(t, materialNotificationMode) {
         }
         const material = routing ? { material_id: evidence.A.material } : apply ? adoptionNotification : null;
         item = { type: 'function_call', id: `native_call_${next}`, call_id: `native_${next}`, name: 'bash', arguments: JSON.stringify({
-          command: script(next, apply?.[1] ?? null, material, routing ? evidence.B.task : null), timeout: 120 }) };
+          command: script(next, apply?.[1] ?? null, material, routing ? evidence.B.task : null, injectApplyFailure), timeout: 120 }) };
       }
       response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse('k3', arrivals, item));
     } catch (error) {
@@ -199,7 +236,7 @@ async function checkNativeAdoption(t, materialNotificationMode) {
   t.after(() => clearTimeout(budget));
   try {
     report = await runTaskPoolHarness({
-      backend: createPiOpenSandboxBackend({ sandbox: {
+      ...runtimeSettings({ sandbox: {
         lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
         apiKey: process.env.MURM_CORE_TEST_API_KEY, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 150_000, maxOutputTokens: 4096 },
@@ -233,10 +270,33 @@ async function checkNativeAdoption(t, materialNotificationMode) {
         assert.equal(routed.link.producer_execution_id, a.execution);
         adoptionNotification ??= findNotice();
         assert.ok(adoptionNotification, 'A response link must create a durable notice for B');
+        if (injectApplyFailure) {
+          tasks.db.exec(`CREATE TEMP TRIGGER reject_apply_lineage BEFORE UPDATE OF applied_json ON execution_workspace_state
+            WHEN NEW.applied_json != OLD.applied_json BEGIN SELECT RAISE(ABORT, 'injected apply SQL failure'); END`);
+        }
         await controller.tick();
         const admitted = controller.snapshot().inputs.find(row => row.requestId === `taskpool:notification:${b.execution}:${adoptionNotification.notification_id}`);
         assert.equal(admitted?.receipt.disposition, materialNotificationMode === 'steer' ? 'queued' : 'started');
         continueB.resolve();
+        if (injectApplyFailure) {
+          const pending = tasks.db.prepare("SELECT phase FROM execution_workspace_requests WHERE execution_id = ? AND phase = 'installed'");
+          const injectionDeadline = Date.now() + 25_000;
+          for (;;) {
+            if (failure) throw new Error(failure);
+            assert.ok(Date.now() < injectionDeadline, 'Apply SQL pending and interlock must become observable');
+            if (pending.get(b.execution)?.phase === 'installed') {
+              try {
+                await execute('docker', ['exec', bContainer, 'test', '-f', '/workspace/project/apply-pending-checked']);
+                break;
+              } catch { /* The Agent has not reached its pending-save assertion yet. */ }
+            }
+            await wait(100);
+          }
+          assert.deepEqual(applyCalls, [applyCalls[0], applyCalls[0]], 'An original-ID retry reads the retained Worker receipt');
+          assert.equal(JSON.parse(tasks.db.prepare('SELECT applied_json FROM execution_workspace_state WHERE execution_id = ?').get(b.execution).applied_json).length, 0);
+          tasks.db.exec('DROP TRIGGER reject_apply_lineage');
+          await execute('docker', ['exec', bContainer, 'touch', '/workspace/project/apply-fault-cleared']);
+        }
         const integrated = await evidenceFor('B-apply');
         while ((await runtime.get(bAgent)).status !== 'idle') { assert.ok(Date.now() < deadlineAt); await wait(25); }
         assert.deepEqual(await sessionEvidence(bContainer, execute), before);
@@ -259,6 +319,11 @@ async function checkNativeAdoption(t, materialNotificationMode) {
         assert.deepEqual(Buffer.from(exported.files['lemma.txt']), Buffer.from(a.text, 'hex'));
         assert.deepEqual(Buffer.from(exported.files['lemma.bin']), Buffer.from(a.binary, 'hex'));
         assert.equal(Buffer.from(exported.files['consumer.txt']).toString(), 'CONSUMER_PROGRESS\nADOPTED_LEMMA\n');
+        if (injectApplyFailure) {
+          assert.deepEqual(applyCalls, [applyCalls[0], applyCalls[0]], 'SQL recovery must never dispatch another replacement');
+          assert.equal(Buffer.from(exported.files['post-replace.txt']).toString(), 'progress after lost receipt');
+          evidence.applyRecovery = { originalRequestId: applyCalls[0], workerReceipts: applyCalls.length, postReplaceBytesRetained: true };
+        }
         assert.equal(exported.manifest['lemma.bin'].content_hash, sha256(Buffer.from(a.binary, 'hex')));
         const integratedSource = (await workspace.listRevisions({ workspaceId: initial.workspace_id }))
           .find(row => row.revision === integrated.revision)?.source;

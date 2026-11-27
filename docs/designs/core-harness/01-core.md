@@ -9,7 +9,7 @@
 
 murm Core 是面向开发者的 minimal multi-agent harness。它负责运行独立 Agent、提供连续输入和运行事件、落实执行隔离与能力授权。Harness 通过公开模块编写协作逻辑，组合任务池、消息、公共成果库或其他共享服务。
 
-**文档状态：本阶段目标规范；新接口与迁移尚待实现和验收。** 更新：2026-11-23。Q1–Q8 为已确认产品决策；精确 API、类型、manifest v2 与 backend 迁移是实施目标。它们尚未作为新版本实现，示例不构成真实 backend 验收证据。本阶段权威关系与变更规则见[阶段入口](README.md)。
+**文档状态：本阶段目标规范；新接口与迁移尚待实现和验收。** 本次修订对应 #255。Q1–Q8 记录首版决策，本次公共 SDK 目标按 #255 更新。精确 API 与类型见附录 A。它们尚未作为新版本实现，示例不构成真实 backend 验收证据。本阶段权威关系与变更规则见[阶段入口](README.md)。
 
 配套阅读：[2026-11-23｜Harness 设计：Build your own swarm](02-harness.md)。本文是公共 API 的定义来源；配套文档展示五种 Harness 的装配、协作流程和验收。
 
@@ -78,27 +78,18 @@ Runtime、Bridge 和 Harness 在同一宿主进程内运行；业务 Service 可
 
 ### 3.1 模块入口
 
-| 建议入口 | 提供内容 |
-| --- | --- |
-| `@murm/core` | `createRuntime`、Runtime、Profile、事件、资源和操作回执类型 |
-| `@murm/core/services` | ServiceRegistry、manifest / adapter 合同、createInProcessAdapter |
-| `@murm/core/backends/pi-opensandbox` | 当前 backend 工厂及其配置类型 |
-| Core 内部 | Agent 登记、Worker RPC、Bridge、模型 token、网络/磁盘隔离、在途请求与清理记录 |
-
-包名是建议名，尚不表示已发布。首版可在一个 npm 包中使用多个 exports；物理拆包不影响这里的依赖方向。**Q1 已确认：首版仅支持 Pi 1.3.0 + OpenSandbox，不公开通用第三方 backend 插件接口。** Backend 作为内部执行边界和工厂返回的不透明句柄使用，以后扩展其他执行器不属于首版验收。一个 backend 句柄由一个 Runtime 持有；多个 Runtime 分别创建句柄。
+[#255](https://github.com/LuNa-shi/murm/issues/255) 更新本阶段的 SDK 合同。npm 包 `@murm/core` 只公开根入口，JS 与 TS 的运行时导出为 `createSandbox`、`createRuntime`、`getExecutorCapabilities`、`ServiceRegistry`、`createInProcessAdapter`、`createHttpJsonAdapter`。附录 A 枚举全部基础公共类型。子路径、旧工厂/能力查询、Service 内部装配函数和应用收尾函数从包入口移除。CLI 继续通过包的 bin 安装。
 
 ### 3.2 创建 Runtime
 
 ```ts
-import { createRuntime } from "@murm/core";
-import { ServiceRegistry } from "@murm/core/services";
-import { createPiOpenSandboxBackend }
-  from "@murm/core/backends/pi-opensandbox";
+import { createRuntime, createSandbox, ServiceRegistry } from "@murm/core";
 
-const services = new ServiceRegistry();
-// 在这里注册 Harness 的 manifest + adapter。
 const runtime = await createRuntime({
-  backend: createPiOpenSandboxBackend(config.backend),
+  sandbox: createSandbox(config.sandbox),
+  executor: "pi",
+  models: config.models,
+  connection: config.connection,
   profiles: {
     worker: {
       prompt: "完成明确的工作，保留可检查的结果。",
@@ -106,69 +97,52 @@ const runtime = await createRuntime({
       writable: true, services: {},
     },
   },
-  services, maxAgents: 2, outputDir: config.outputDir,
+  services: new ServiceRegistry(),
+  maxAgents: 2,
+  outputDir: config.outputDir,
 });
 ```
 
-`createRuntime` 完成以下装配后返回：取得注册表与 Profile 的不可变快照；合入内置 Agent Service 并拒绝保留 ID `agent` 被覆盖；校验 Profile 引用的操作和可 spawn 的角色；校验 backend 能力、模型与部署配置；创建本次记录目录、Bridge 和模型访问入口。它尚未分配 Agent sandbox。
+先复制并校验 Sandbox、模型与 Profile，取得 Service Registry 的初始快照，登记内置 `agent` Service，核对模型别名、执行器能力、服务权限和可创建角色。可提前判断的错误在分配 Agent 资源前拒绝。Runtime 创建记录目录和可信连接入口，spawn 选择资源归属并分配 Sandbox。静态装配保持冻结的注册快照。[#235](../dynamic-lead-worker.md) 定义运行中对目录的受控变更。
 
-**Q2 首版：ServiceRegistry 和 Profile 在 `createRuntime` 前装配，运行中不可增删/修改，Runtime 使用冻结快照。** 运行时仍可按已注册 Profile 动态 spawn Agent，并由宿主向具体 Agent 提供 spawn 允许的初始输入、文件、bindings 或 secretEnv；这不等于修改 Profile 或注册表。动态轮换已存活 Agent 的凭据不在首版范围。
+### 3.3 配置与资源归属
 
-[#235 的 Q2 后续扩展](../dynamic-lead-worker.md)规定运行中的受控 Profile/Service 新增、Service 退役与实例级授权。静态装配仍使用独立快照，新增与退役经公开 Runtime 接口提交。
-
-### 3.3 当前 backend 的部署与模型配置
-
-`createPiOpenSandboxBackend(config)` 返回配置句柄，由 createRuntime 启动需要的内部入口。Profile.model 是 models 表的键；Profile.image 选择每个 Agent 的镜像。工厂的完整类型在附录 A，参数分组如下。
-
-| 配置组 | 必填内容 | 可选内容与用途 |
-| --- | --- | --- |
-| sandbox | lifecycleBaseUrl | apiKey、execdToken、endpointHost、resourceLimits、commandTimeoutMs；映射已有 OpenSandboxManager 配置 |
-| bridge | host、publicUrl | publicUrl 使用当前部署支持的 `{port}` 占位，必须从 Agent 网络可达 |
-| modelGateway | host、advertiseHost | requestTimeoutMs、maxOutputTokens；实际请求期限再受 Core/领域授权收紧 |
-| models | 别名 → provider、model、upstream.url/headers | upstream 凭据仅在宿主持有；Profile 只引用别名 |
-| isolation | network=`local-docker`、disk.bytes/inodes | 声明当前网络与磁盘执行前提 |
-
-这些分组是对现有装配参数的包装。当前 backend 首版范围是 Pi 1.3.0、OpenSandbox 的本地 Docker 部署、现有 HTTP(S) `/v1/responses` 模型路径和时间上限模式。它依赖宿主对本地 sandbox 网络/磁盘的受控操作，不承诺任意远程 OpenSandbox、任意 Pi 协议或所有 provider 已可直接使用。模型别名必须与镜像内经过校验的 catalog 匹配；额外模型和其他预算策略按明确合同扩展。
-
-[#236](https://github.com/LuNa-shi/murm/issues/236) 在现有 backend 内交付 OpenSandbox 服务选择和资源归属合同。一次 Runtime 创建每个 Agent 前，按显式或确定性规则选定一套 OpenSandbox。派发前记录服务身份和原创建请求身份，观察到 sandbox ID 时再记录服务身份与 sandbox ID 的组合。文件与 Worker 操作、查询、删除和创建结果未知时的核对均使用原服务，避免跨服务重发。在同一 Runtime 内，各服务可返回相同的 sandbox ID。旧本地配置使用一个默认目标，Harness 的 `spawn`、输入、文件和关闭调用沿用现有接口。
-
-运行 sandbox 的一侧承担网络与文件隔离。此次实现保留现有本地 Docker 的控制口边界、byte/inode 配额、私有目录与既有共享挂载模式，以及停执行、必需导出、删除确认的顺序。普通 setup/init/doctor 继续验证同机部署。验收使用两个独立测试端点检查服务归属、相同 sandbox ID 及创建响应丢失，再用真实同机部署验证 Pi/Codex 的共同路径、工作目录及收尾。两个测试端点的结果属于接口证据。生产远程模式另行验证同一 Harness 跨两台 sandbox 主机、Bridge/模型入口双向可达、隔离及真实回收后，才纳入支持范围。千 Agent 的容量测试独立于此次接口交付。
-
-createRuntime 内部建立 Bridge、模型入口和记录目录，spawn 才分配 sandbox。模型 gateway 的 upstream headers、provider 管理凭据、内部 token 不进入 Profile.env 或 Agent 的 secretEnv。当前 manager 将 image 固定在构造器；迁移时需按 Profile 选择资源配置，不能静默让所有角色使用同一镜像。
-
-来源：[现有 runner 装配](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/benchmark/putnam-runner.js)、[OpenSandboxManager](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/runtime/opensandbox-manager.js)、[模型访问入口](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/agent/bot-model-access.js)。
-
-### 3.4 模型调用的领域授权接缝
-
-现有 AgentModelAccess 直接读取 TaskService、Mission、Execution、lease 和 deadline。仅将 Runtime 与 Bridge 去 Task 化，独立 Agent 的模型请求仍会被旧校验拒绝。因此 Core 的基础身份与存活校验必须独立；TaskPool 的领域限制通过可选 `modelAccessPolicy` 接入。
-
-| 接口 | 合同 |
+| 所属 | 参数及默认值 |
 | --- | --- |
-| `authorize(caller)` | 同步返回 ModelPermit 或 null；caller 的 Runtime/Agent/Profile/model 由 Core 确定 |
-| `ModelPermit` | phase、有限 deadlineAt；需要持续核验归属时提供 lease.key/version/expiresAt；两个时间戳均为 Unix epoch 毫秒 |
-| `withCommit(commit)` | 同步、恰好一次执行 commit；不得 await、延后执行或重复提交 |
+| Sandbox | `kind` 默认 `opensandbox`；服务 URL 和磁盘字节/inode 上限必填；管理凭据与 endpointHost 可选；同机 `local-docker` 为唯一隔离模式且是默认值。资源默认 2 CPU、2 GiB，命令期限 120 秒，Sandbox 生命周期 3600 秒且至少 60 秒。 |
+| Runtime | `executor` 默认 Pi，可显式选 Codex。非空模型表、Profiles、Services、maxAgents 和专用 outputDir 由宿主提供。模型上游为无内嵌凭据的 HTTP(S) `/v1/responses`，用 headers 携带凭据。 |
+| Runtime 连接 | `connection.advertiseHost` 接收 setup/项目配置确定的同机可达 IPv4。Bridge 和网关监听地址默认 `0.0.0.0`；Bridge 默认 `http://<advertiseHost>:{port}`，网关默认用同一可达地址。可分别显式覆盖；两个目的地址均须可解析为当前支持的非 loopback IPv4 字面量。若两个可达地址都已有显式配置，可省略共同地址；无法确定时在装配阶段指出缺失字段。 |
+| 模型请求 | 网关默认 120 秒；Pi 默认最多 32768 输出 token，Codex 默认保留执行器参数。显式 `null` 保留参数，数值须为不小于 16 的安全整数。 |
+| Profile / spawn | Profile 选择模型别名、镜像、提示、服务权限、初始 writable、网络附加目标与产物政策；spawn 可提供父子关系、fork、文件、bindings、secretEnv 或共享挂载，以及允许的 writable/collect 覆盖。 |
 
-未配置 policy 时，Core 执行自身的身份、存活、关闭、模型配置和请求期限检查，采用 work 阶段，不要求任何 Task。配置 policy 后，在同一个 withCommit 窗口内先检查 Core 状态，再读取领域 permit、预留请求账本并启动 upstream 请求，退出窗口后才等待网络 IO。policy 返回 null、抛错或 permit 无效均拒绝调用。
+`createSandbox` 校验并复制本地配置，返回不透明的接入对象。Runtime 为自己的 Agent 持有实际 Sandbox 和清理记录；在创建派发前记录原请求和服务身份，获得 ID 后按服务身份与 Sandbox ID 的组合寻址。响应丢失、查询、文件操作与删除均回原服务核对。继续遵守 [#236](https://github.com/LuNa-shi/murm/issues/236) 的资源路由与同机边界。OpenSandbox 管理凭据和模型上游 headers 留在可信宿主，Agent 仅使用自身的 Bridge/网关凭据；日志和返回对象脱敏。现有 setup/doctor/模板迁移配置来源，SDK 没有第二套 executor 或 models 值。
 
-有 lease 的模型流持续复核授权；key/version 变化、租约或期限失效时中止原请求。Core stop 和 token revoke 也主动中止自己管理的请求。TaskPool 将当前 validateAgent 逻辑提取成 policy，映射原有 Execution ID/fencing/lease；withCommit 复用 `TaskService.withServiceLifecycleWrite`。该同步窗口保护授权与提交的先后，不宣称数据库与 HTTP 具有原子事务。[当前 gateway 授权与账本](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/agent/responses-budget-gateway.js) · [Task 生命周期窗口](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/task/task-service.js)
+`getExecutorCapabilities(executor)` 同步读取静态能力，无网络、监听器和资源分配。Pi 支持上下文分支及 `all`、`one-at-a-time`；Codex 不支持分支且仅支持 `all`。两者报告 active steer、follow-up、条件输入、已排队输入清除能力。Profile 或 spawn 请求不支持的能力时前置拒绝。两个执行器继续使用各自原生 Session 归档格式。
+
+### 3.4 模型访问与停止
+
+Core 核验 Runtime、Agent 身份、活跃状态和模型绑定，执行通用单请求时限和配置的输出限制。开始 stop 时同步撤销该 Agent 的新请求准入，取消已准入的本地连接，再等待执行器终止、归档和删除。Runtime close 发起各 Agent 的停止，不以首个资源清理完成作为其他 Agent 撤销的前置条件。连接中止证明本地控制已生效；上游实际计算与计费由其自身执行。
+
+Harness 为 selection、Agent、Execution、Mission 期限和主动关闭建立停止触发，周期 reconcile 补偿遗漏。TaskPool 只有看到 `execution: "stopped"` 才可结束或重新开放任务，只有 `cleanup: "complete"` 才释放原 Slot。Service caller、任务所有权、租约、fence 和提交校验继续独立执行。模型 phase、permit、`withCommit` 和 selection 专用推理配置从 SDK 移除。
 
 ## 4. Runtime API 与状态
 
 ### 4.1 公共接口索引
 
-| API | 作用 | 成功回执 |
-| --- | --- | --- |
-| `createRuntime(options)` | 装配本次运行 | 可接纳 Agent 的 Runtime |
-| `spawn(options)` | 创建身份、资源、bindings 和会话，**不提交工作输入** | 就绪的 AgentInfo |
-| `get(agentId)` | 读取当前保存的状态 | AgentInfo；关闭后记录仍可读 |
-| `send(agentId, input, {requestId, mode?})` | 提交输入；省略 mode 默认 `steer`，显式 `followUp` 等当前工作收束 | InputReceipt，说明接纳结果 |
-| `onEvent(handler)` | 订阅运行事件 | 取消订阅函数 |
-| `files.prepare(agentId, options)` | 准备空且只读的工作目录 | PreparedFiles，含版本与摘要 |
-| `files.grant(options)` | 对当前 prepared 资源开放写权限 | GrantReceipt |
-| `stop(agentId, {timeoutMs})` | 停止一个 Agent 并收尾 | StopReceipt，分开报告执行与清理 |
-| `close({timeoutMs})` | 关闭本 Runtime 并收尾全部登记资源 | CloseReceipt，含所有 Agent 与 Runtime 自身的清理结果 |
+| API | 作用及结果 |
+| --- | --- |
+| `runtime.id / runtime.state` | 标识与实时只读状态 `open / closing / closed`；开始关闭即 closing，确认完整关闭后才 closed。 |
+| `spawn(options)` | 分配资源，安装初始文件，启动执行器并确认就绪，返回 AgentInfo。 |
+| `get(agentId) / list(filter?)` | 读取当前 Agent 信息；支持按父 ID 与状态过滤；清理中和终态均可从 `lastStop` 读取当前回执。 |
+| `send(agentId, input, options)` | 唯一输入入口，返回接纳回执。 |
+| `interrupt(agentId, options)` | 中断当前执行，并报告已知丢弃的排队项；保留 Agent、Session、目录与 Slot。 |
+| `onEvent(handler)` | 订阅实时事件，返回取消订阅函数。 |
+| `files.snapshot(agentId, options)` | 返回一致的完整或部分文件快照。 |
+| `files.replace(agentId, options)` | 在完整摘要基线上安装目标树，可同时开放写入。 |
+| `stop(agentId, options?)` | 停止一个 Agent，处理归档、产物与资源删除，返回 StopReceipt。 |
+| `close(options?)` | 停止新工作并收尾 Runtime 登记的资源，返回 CloseReceipt。 |
 
-精确类型集中在附录 A。`spawn → 建立 Harness 路由 → send` 是所有宿主示例的启动顺序。这样可以分别处理资源创建失败和输入接纳未知，避免初始输入掩盖已创建的 Agent 身份。
+先订阅再 spawn。spawn 就绪后建立 Harness 路由，再 send。接纳、执行收束、业务结果和清理各有独立判定。
 
 ### 4.2 Agent 状态
 
@@ -187,9 +161,9 @@ Core 在调用 provider 创建资源之前分配 agentId、预留容量并登记
 
 ### 4.3 错误与幂等
 
-公共错误使用稳定 `code`、操作名与对象身份，详情包含可检查的原因。参数、权限、状态与版本冲突在已知未执行时直接报错；外部调用已经发出而结果无法确定时报告 unknown / pending，不把连接失败等同于远端未执行。
+公共错误使用稳定 `code`、操作名与对象身份，详情包含可检查的原因。参数、权限、状态或摘要冲突在已知未执行时直接报错；外部调用已经发出而结果无法确定时报告 unknown / pending，不把连接失败等同于远端未执行。
 
-createRuntime、spawn、files.prepare/grant 与 send 的单次宿主等待也必须有上限；本稿统一建议默认 60 秒，底层较短的超时仍适用。到期时，资源操作通过 ResourceError 报告 pending/OPERATION\_UNKNOWN，send 返回 unknown；这是观察上限，不是远端取消或整个 Harness 的总预算。底层重试不能无限延长这个上限。
+createRuntime、spawn、files.snapshot/replace 与 send 的单次宿主等待也必须有上限；本稿统一建议默认 60 秒，底层较短的超时仍适用。到期时，replace 与 send 返回各自的 unknown 回执，其余无法确认的资源操作通过 ResourceError 报告 pending/OPERATION_UNKNOWN；这是观察上限，不是远端取消或整个 Harness 的总预算。底层重试不能无限延长这个上限。
 
 已有 Runtime 继续接管迟到的资源结果，后续 close 覆盖它们。createRuntime 失败时尚无可用 Runtime，由工厂内部保留初始化与清理记录、接收迟到结果并收尾，通过 ResourceError 提供 pending 状态和可用的报告位置。首版资源 API 不接 AbortSignal；Harness 的取消在该有界操作返回后进入收尾。
 
@@ -201,7 +175,7 @@ createRuntime、spawn、files.prepare/grant 与 send 的单次宿主等待也必
 | SERVICE\_TIMEOUT / SERVICE\_UNAVAILABLE | backend 或 Service 调用失败；是否可重试仍要结合提交状态 |
 | OPERATION\_UNKNOWN | 资源变更可能已发生，需保留请求身份核对 |
 
-请求去重键为 `runtime + caller + operation + target + requestId`。相同键与相同参数复用同一次提交，参数不同报冲突。send 的重试用于读取同一提交记录；unknown 在取得新证据后可以更新，但不能因此再次写入 Pi。并发 stop / close 复用同一收尾流程，后续调用可重试 pending 项。
+请求去重键为 `runtime + caller + operation + target + requestId`。相同键与相同参数复用同一次提交，参数不同报冲突。files.replace 以 Runtime 内的 requestId 标识该次替换，目标 Agent 是绑定参数之一。send 的重试用于读取同一提交记录；unknown 在取得新证据后可以更新，但不能因此再次写入 Pi。并发 stop / close 复用同一收尾流程，后续调用可重试 pending 项。
 
 去重必须贯穿 Core、adapter 和 Worker。现有 adapter 会在部分超时后重试，而 Worker 只缓存完成结果，存在进行中请求被再次提交的窗口；迁移时需加入进行中请求复用，或禁用未知结果的透明重投。[adapter RPC](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/agent/opensandbox-agent-adapter.js) · [Worker RPC](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/scripts/opensandbox-agent-worker.mjs)
 
@@ -217,36 +191,37 @@ createRuntime、spawn、files.prepare/grant 与 send 的单次宿主等待也必
 | running | 排队，待当前工作本来准备结束时处理 | 排队，在 backend 支持的执行边界加入当前工作 |
 | starting / exited / closing / closed | 拒绝 | 拒绝 |
 
-当前 Pi 的 steer 在工具执行边界交付，不能立即打断正在运行的长 Bash。followUp 可在同一次底层 run 中继续被消费，因此不能假定每条输入之间都有一个 settled。interrupt 涉及取消队列和当前执行，保持为单独的后续扩展。[Pi RPC 输入](https://github.com/earendil-works/pi/blob/71023aec1546d6d677a65669c5665c0927ce0dd0/packages/coding-agent/docs/rpc-commands.md) · [Pi 会话执行](https://github.com/earendil-works/pi/blob/71023aec1546d6d677a65669c5665c0927ce0dd0/packages/coding-agent/src/core/agent-session.ts)
+当前 Pi 的 steer 在工具执行边界交付，不能立即打断正在运行的长 Bash。followUp 可在同一次底层 run 中继续被消费，因此不能假定每条输入之间都有一个 settled。interrupt 单独取消当前执行和支持取消的已排队输入，保留原 Session。[Pi RPC 输入](https://github.com/earendil-works/pi/blob/71023aec1546d6d677a65669c5665c0927ce0dd0/packages/coding-agent/docs/rpc-commands.md) · [Pi 会话执行](https://github.com/earendil-works/pi/blob/71023aec1546d6d677a65669c5665c0927ce0dd0/packages/coding-agent/src/core/agent-session.ts)
 
 ### 5.2 接纳与完成
 
 - `accepted`：取得 backend 的接纳回执。`started` 表示开始执行，`queued` 表示进入队列，`handled` 表示已由扩展处理，未必产生模型执行。
+- `not-accepted`：`wakeIfIdle: false` 且派发时空闲，未接纳；省略该选项则允许从 idle 唤醒。
 - `unknown`：请求可能已交付，当前没有确定回执；保留 inputId，不能换 ID 自动重发。
 - `settled`：当前会话执行收束。事件携带这一执行的 outcome、output 与 error 快照；`completed` 只表示执行收束成功，业务是否完成由 Harness 验收。
 
-**本稿的最低合同不承诺每条 inputId 对应独立完成事件。** inputId 用于提交身份、去重和排查；多条输入可能被合并处理。精确追踪每条输入消费与完成属于更强的后续合同，不以事件 cursor 推测。
+**本稿的最低合同不承诺每条 inputId 对应独立完成事件。** inputId 用于提交身份、去重和排查；多条输入可能被合并处理。inputId 或 requestId 均不附加到缺少归因证据的 settled。source 用于可信审计；steeringMode 只能用执行器支持的值。
 
 需要“提交一项工作并等待”的 Harness，可在唯一输入源、初始 idle、无待消费输入和自动续轮的条件下，将一次新 send 与后续 settled 关联。这个有期限 helper 放在 Harness；PeerMesh 的串行 router 可使用该条件。多来源子结果和实时纠正不能直接套用它。实现与限制见配套 Harness 文档。
 
 ### 5.3 事件合同
 
-| 事件 | 内容与用途 |
+| RuntimeEvent.type | 字段与来源 |
 | --- | --- |
-| output | 一条已形成的 assistant 文本输出；不把底层任意 token 增量作为稳定 API |
-| settled | 本次执行 outcome=`completed / failed / aborted`，及对应 output/error 快照 |
-| error | 错误快照与 fatal 标记；fatal 表示当前 Agent 无法继续正常执行 |
-| exit | 执行进程已确认退出；expected 区分受控停止与意外退出，不代表 sandbox 已删除 |
+| `output` | `agentId, text`，执行器的完整助手消息。 |
+| `settled` | `agentId, outcome, output?, error?`，Worker 报告本轮执行 completed / failed / aborted。 |
+| `error` | `agentId, error, fatal`，执行器或运行路径的错误。 |
+| `exit` | `agentId, reason, expected`，执行器退出。 |
+| `agentChanged` | `agentId`，创建、就绪、忙闲、退出、关闭或可查询清理阶段改变后发出。 |
+| `runtimeChanged` | Runtime 状态改变后发出。 |
 
-每个 Agent 的 seq 单调递增。Core 先更新状态、cursor 和结果，再同步通知订阅者。订阅者抛出的异常被记录，不能中断 Core 或其他订阅；Core 不等待 handler 发起的异步业务。Harness 自己管理任务队列、错误、去重和取消。
-
-订阅是本次宿主进程内的实时事件出口，不保证任意历史重放或跨进程恢复。backend 在首次模型执行前完成事件绑定；事件通道出现不可恢复缺口时必须报告错误，不能继续伪造完整执行序列。Subagents 回传使用 settled 的输出与错误快照，`get.lastError` 仅供诊断。
+Worker 收集原生事件，Core 先写入公开状态，再按处理顺序分发。重复读取同一 Worker 前缀不重复发事件，缺口仍走内部检测和诊断。每个订阅拿到独立副本，隔离同步异常及 Promise 拒绝；Core 不等待业务处理，异步刷新由应用合并或串行。订阅后读 `runtime.state` 和 `runtime.list()`，随后在变更通知时重读；先订阅再 spawn/send 可捕获快速错误或早于回执返回的输出。取消只移除该监听。若已打印 output，则按需从 settled 读取最终结果，避免重复打印。公开事件没有序号、游标、Service attempt 或回放；持久 Trace 和离线 Viewer 继续读取 Run 文件。
 
 ## 6. Profile、Service 与权限
 
 ### 6.1 Profile 的配置边界
 
-Profile 由宿主建立并冻结。`model` 选择 backend 配置中的模型别名；`image` 包含角色所需私有命令；`writable` 和 collect 是资源默认值；`services` 列出可调用的 Service operations。宿主 spawn 可覆盖本稿明确开放的资源参数；Agent 不能通过工作输入修改这些政策。
+Profile 由宿主建立并冻结。`model` 选择 Runtime 模型表中的别名；`image` 包含角色所需私有命令；`writable` 和 collect 是资源默认值；`services` 列出可调用的 Service operations。宿主 spawn 可覆盖本稿明确开放的资源参数；Agent 不能通过工作输入修改这些政策。
 
 `Profile.env` 是宿主显式给该角色的非秘密环境变量；不会任意继承宿主环境。`SpawnOptions.secretEnv` 是宿主发给特定 Agent 使用的受限凭据。目标 Agent 能读取这些凭据；其值不进入 AgentInfo、事件和普通日志。真正的模型 upstream 凭据、Worker 管理 token 和 Core 保留字段由受信侧管理，禁止覆盖。
 
@@ -282,7 +257,7 @@ Core 统一装配普通 Agent 的初始 system prompt。开头介绍隔离 Sandb
 | agent get | agent-id | 检查同一 Runtime，目标为自己或直接 child |
 | agent send | agent-id、input、request-id、可选 mode（默认 steer） | 检查同一 Runtime，目标为自己或直接 child，按 send 合同提交 |
 | agent stop | agent-id、request-id | 检查目标为直接 child；返回子 Agent 的停止回执 |
-| files.prepare/grant、bindings、secretEnv、collect 覆盖 | 不通过 Agent Service 暴露 | 仅宿主 API 使用 |
+| files.snapshot/replace、bindings、secretEnv、collect 覆盖 | 不通过 Agent Service 暴露 | 仅宿主 API 使用 |
 
 Agent Service 的 spawn 是便利组合：先创建 Agent，再按指定 mode 提交初始输入；未提供 mode 时按 Q4 使用 steer，返回 `AgentSpawnReceipt`。其中 initialInput 在未提供 input 时为 null，提交后为 InputReceipt，明确拒绝时为 `{status: "rejected", error}`。输入未知或被拒绝仍保留 `agent.id`，不能把它误报成资源未创建。相同 spawn requestId 复用同一个 child 与初始输入提交，不重新创建或换 ID 重发。全局 child 事件处理器必须先安装。
 
@@ -290,35 +265,63 @@ Agent Service 的 spawn 是便利组合：先创建 Agent，再按指定 mode �
 
 首例不提供通过 agent stop 同步关闭调用者自身的语义，避免在 Bash 回执发出前杀死调用进程；既有 `agent exit` 的兼容行为留在 TaskPool adapter。宿主始终可 stop 任意本 Runtime Agent。父 Agent 权限、递归深度与资源默认值由 Profile/Harness 决定。
 
-## 7. 文件准备、授权与产物
+## 7. 文件、权限与产物
 
-### 7.1 初始文件与准备回执
+### 7.1 受管文件树
 
-FileSeed 是相对于 workDir 的普通文件集合，支持 utf8 / base64 内容及 `0644 / 0755` 模式，默认 0644。拒绝绝对路径、路径逃逸、越界链接和未支持的特殊文件。摘要覆盖规范路径、实际字节和模式；既有文件大小限制由 backend 明确校验，不得静默截断。
+三条入口使用同一文件规范，根均为 Agent 的 workDir。初始安装在 executor 启动前完成；普通私有目录的初始 writable 由 spawn 覆盖或 Profile 给出。
 
-spawn 的 files 在模型工作前安装；writable=true 的 Agent 完成准备与授权后才返回 idle。`files.prepare` 用于后续准备尚为空且只读的目录，允许 TaskPool 的发现会话正在等待 take 调用返回；文件操作由受信 Worker 暂停相关写入者并执行。它不承担任意覆盖运行目录的职责。
+| 项目 | FileTree V1 规则 |
+| --- | --- |
+| 普通文件与目录 | 文件由规范相对路径映射到 UTF-8 或带标准 padding 的规范 base64 字节；模式仅 0644 / 0755，省略为 0644。目录由路径派生，不表示空目录；替换删除缺失的受管文件，可清理由此变空的派生目录，含排除项的父目录保留。捕获普通文件按执行位归为 0644 / 0755，安装目标文件设置对应模式，并按实际 writable 设置属主。 |
+| 路径校验 | 路径区分大小写，拒绝绝对路径、盘符绝对路径、反斜杠、NUL、空段、点段、父段、非法 Unicode、父文件冲突；路径最多 4095 UTF-8 字节且每段最多 255 字节。 |
+| Core 专用位置 | Session、凭据、Worker 控制与内部安装日志位于 workDir 之外，无法通过文件路径引用。 |
+| 普通隐藏文件 | `.gitignore`、`.config/app` 等普通隐藏文件按相同规则处理。TaskPool 的项目发布过滤由 Workspace Service 执行。 |
+| Git 管理数据 | 任一层的 `.git` 路径保留在受管范围外。初始文件、替换输入及显式快照选择拒绝该路径；遍历时跳过；现有 Git 数据不受替换影响。独立的停止导出继续支持显式收集 Git。 |
+| 链接或特殊对象 | 受管范围内拒绝软链接、硬链接、设备、FIFO 和 socket，遍历与写入均检查祖先；遇到可能越界或非受管内容阻挡的路径时在修改前拒绝。 |
+| 限制 | 单文件 2 MiB、总字节 16 MiB、最多 10,000 文件。部分和完整快照均遵守这些上限，可指定更小的快照 maxBytes。超限报错，禁止截断或将漏项作为删除依据。 |
 
-prepare 返回 `{agentId, version, digest}`。grant 只接受 Core 已登记的当前有效回执，校验 Agent、版本、摘要和关闭状态；调用者伪造的同形对象不能获得权限。重复 requestId 返回原回执。授权与关闭共享状态检查；结果未知时进入核对或停止，不继续正常交接。
+摘要为 SHA-256，输入是按路径以 JS 字符串默认比较排序的 JSON 数组，每项是 `[path, numericMode, sha256(bytes)]`，内部哈希用小写十六进制，外部哈希计算 UTF-8 JSON，无空白。完整摘要格式为 `complete:sha256:<hex>`，部分为 `partial:sha256:<hex>`。编码不同但路径、字节、模式相同的目标等价。只在 paths 的规范选择为整根（含 `.`）时给完整摘要，部分就算恰巧读取了全部文件也只能得到部分摘要。快照保留单调捕获序号 `version` 用于诊断，替换只比较摘要。
 
-<a id="72-与-flat-的交接"></a>
+M0 验收 fixture 使用如下初始树和在线目标。其余对象由测试从实际工作目录种入。
 
-### 7.2 与 TaskPool 的交接
+| 工作目录内容 | 初始树 / 完整快照 | 在线替换目标及预期 |
+| --- | --- | --- |
+| `README.md`，字节 `old\n`，0644 | 包含 | 更新为 `new\n` |
+| `bin/run`，字节 `run\n`，0755 | 包含 | 相同字节改为 0644，摘要改变 |
+| `.config/local`，字节 `x` | 包含 | 省略即删除 |
+| `.gitignore`，字节 `out\n` | 包含 | 保留；用 base64 提供时等价 |
+| `data.bin` | 初始缺失 | 新增字节 `00 ff`（base64 `AP8=`） |
+| `.git/config` 与 `nested/.git` | 不进入树；直接请求拒绝 | 安装前后 Git 对象保持 |
+| `empty/` | 不表示 | 摘要不含该目录 |
+| `outside` 软链、硬链、FIFO；独立负例 | 完整捕获拒绝 | 无静默遗漏或跟随；部分选择隔离于该对象仍可成功 |
+| `../escape`、`/rooted`、`a` 与 `a/b`；独立负例 | 输入拒绝 | 初始与在线使用同一校验 |
 
-TaskPool 决定 Task 认领、Workspace revision、Execution lease/fence、输入来源和失败补偿；Core 只执行确定的文件准备和权限操作。Task fencing version 与 PreparedFiles.version 分别表示领域归属和资源版本，由 TaskPool 保存映射，不能互相代替。
+另核对恰好达到每个限制的 fixture 与超限一个字节/文件的负例，以及只选 `README.md` 后以部分摘要尝试替换无副作用。上述 fixture 的好路径同时覆盖只读保持、开放写入与同 Session 在线更新。
 
-TaskPool 在 prepare 期间保留租约检查；在 start\_execution 前停止准备期 heartbeat、刷新领域版本，再调用 grant，并进行授权后的领域复核。失效或结果未知时先 stop Agent，确认 execution=stopped 后再释放任务归属。此过程不声称 Task 数据库与文件系统具有跨组件原子事务。[现有 prepare/start/grant](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/runtime/runtime.js)
+### 7.2 一次文件替换与 Workspace 协议
+
+`snapshot` 在 Worker 控制的安全边界采集一致树；同 ID 和相同选择返回原捕获。无安全窗口时返回 busy，读操作结果未知时用原身份核对。共享项目可按已有模式挂载；必须证明采集窗口覆盖全部写者，否则返回 busy。`replace` 对任意共享项目拒绝，私有只读和私有可写项目均可替换。
+
+`replace` 在当前 Runtime 内先按该操作的 requestId 查找既有请求，再核对 Agent、完整 expectedDigest、规范目标树和 `writable`；同 ID 改参报 CONFLICT。新操作在 Worker 控制下确认没有不安全的活跃写者、打开文件或阻塞目录，捕获完整摘要并和 expectedDigest 比较，再按完整目标执行新增、删除、字节与模式更新。省略 `writable` 保持现状，`true` 在安装验证后开放写入，不接受 `false`。Core 验证字节、文件模式和真实权限后记录结果，恢复自身持有的执行控制，才确认 completed。Agent 和 Session 保持原身份。版本不匹配报 CONFLICT，安全窗口不可取得报 WORKSPACE_BUSY，均发生于修改前。
+
+修改中失败且旧文件、权限和执行控制已确认恢复后，返回 `failed`，保存失败回执。已经派发、超时或无法确认安装、回滚、权限或释放状态时返回 `unknown`，保留原 Worker 记录和未解除的控制，拒绝冲突操作；同 ID 先核对或继续原操作。安全条件不能恢复时由宿主 stop/close 收尾。确认结果后重复原请求只返回该次回执，即使 Agent 已继续写入也不覆盖。停止/替换竞争时缺少确定证据即保持 unknown。Worker 在就绪检查中声明新文件控制协议；缺少支持时在文件修改前以 INVALID_CONTRACT 拒绝并指明所需协议和检测到的版本，Core 不尝试旧阶段操作。幂等范围是活 Runtime，宿主崩溃后不承诺自动恢复。
+
+Workspace Service 先固定版本、合并并记下 pending 意图，保存原 Core 请求与可重建的目标。Core 返回 completed 后，Service 再持久化版本、parents、冲突和来源。文件完成而业务记录失败时，用原回执向前完成记录；期间互锁冲突 save/apply 和依赖状态的 finish，保留同一业务请求身份。TaskPool 的初次只读交接在开放写入前确立可信 Execution 归属与 fence，失败或未知保留归属直到确认停止。TaskPool 具体流程见 [Harness 设计](02-harness.md#63-运行流程与关键接线)。
 
 ### 7.3 收尾采集
 
-**Q3 已确认：Agent 间不直接共享 workDir；Git、Service 或显式 artifact 才是跨 Agent 成果交接通道。**
+Agent 默认使用私有 workDir。跨 Agent 成果可经 Git、Service 或显式 artifact 交接；现有共享只读/可写挂载仍可显式配置，不能用于在线 replace。
 
 collect 在分配资源前登记并在 Agent 生命周期内固定，所有 stop/close 路径使用同一政策。paths 相对于 workDir；includeGit 明确是否包含 Git 历史；maxBytes 是硬上限；required 指定失败是否阻止资源删除。省略 collect 时仅保留 Core 运行记录，不承诺私有目录中的文件会自动保存。
 
-includeGit 与 paths 的组合应得到可解释的归档清单；超限或文件缺失明确报告，不截断后宣称成功。导出在 Agent 进程停止后由仍存活的 Worker 执行，结果写到本次 outputDir 的 Agent 子目录。启动凭据置于进程环境或受信位置，不作为普通 FileSeed 混入 workDir；Agent 自行写入工作目录的内容仍属于其文件，不能声称归档会自动识别并删除所有秘密。
+includeGit 与 paths 的组合应得到可解释的归档清单；超限或文件缺失明确报告，不截断后宣称成功。导出在 Agent 进程停止后由仍存活的 Worker 执行，结果写到本次 outputDir 的 Agent 子目录。启动凭据置于进程环境或受信位置，不作为普通 FileTree 内容 混入 workDir；Agent 自行写入工作目录的内容仍属于其文件，不能声称归档会自动识别并删除所有秘密。
 
 现有 Workspace snapshot 排除 `.git`，要求 ACTIVE Execution，并有限额；新的 Agent 收尾导出必须有独立的 Agent 资源授权，支持 closing 状态。[当前 snapshot](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/scripts/sandbox-project.mjs)
 
 ## 8. 停止、关闭与记录
+
+应用自行组织业务结论、产物校验和设施回收；仓内宿主可以复用内部 finalizer。公共 SDK 以 stop/close 回执交付 Core 的结果。外部服务及其已有数据由外部 owner 持有，Runtime 自有资源按原归属收尾。
 
 ### 8.1 停止执行、保存成果、删除运行环境
 
@@ -328,11 +331,11 @@ includeGit 与 paths 的组合应得到可解释的归档清单；超限或文�
 
 正常收尾按以下顺序执行：
 
-1. 目标 Agent 进入 closing，关闭它的新工作入口；停止模型执行和它启动的相关命令，确认文件不再被这些进程修改。
-2. 保留 Worker 的受控文件连接，按 collect 保存指定文件、所需 Git 历史、输出与错误，并记录保存位置。
-3. 必须保存的成果已保存成功后，销毁 sandbox、撤销访问并确认结果，最后释放 Slot。
+1. 目标 Agent 进入 closing，同步关闭新工作与模型请求入口，取消本地在途模型连接，再停止执行和相关命令。
+2. 确认执行终止后保留受控 Worker 连接，归档原生 Session，按 collect 保存指定文件与 Git 历史，记录产物位置和错误。
+3. 必需归档和产物保存完成后删除 Sandbox。确认删除及该 Agent 所需资源清理后释放 Slot。
 
-collect.required 表示 Harness 在启动前声明“这些成果必须保存”。**已确认：如果 Agent 已停止，但这些 required 成果没有保存成功，就暂时保留该 sandbox 和 Slot，报告失败原因，排查后可重试 stop/close。** 好处是避免直接删除尚未保存的成果；代价是该资源和容量暂时不能释放，可能影响后续 Agent 启动。保留现场的范围与期限由宿主后续处置，首版不增加自动恢复系统。
+collect.required 表示 Harness 在启动前声明“这些成果必须保存”。**已确认：如果 Agent 已停止，但原生 Session 或 required 成果没有保存成功，就暂时保留该 sandbox 和 Slot，报告失败原因，排查后可重试 stop/close。** 好处是避免直接删除尚未保存的成果；代价是该资源和容量暂时不能释放，可能影响后续 Agent 启动。保留现场的范围与期限由宿主后续处置，首版不增加自动恢复系统。
 
 已推送到共享 Git、已写入公共 Service 的数据按 Harness 的保留政策处理。本节主要解决仍在 Agent 私有目录中的成果。可选采集失败会保留错误记录，并允许继续销毁；若连 Agent 是否已停止都无法确认，则记录 execution=unknown，不能按“已停止”释放领域工作。
 
@@ -340,7 +343,7 @@ collect.required 表示 Harness 在启动前声明“这些成果必须保存”
 
 ### 8.2 有期限的 close
 
-关闭操作的等待时间有上限，避免一次保存或删除故障让宿主程序一直卡住。stop/close 的 timeoutMs 必须为正且有限；省略时本稿建议最多等待 60 秒。时间到了就返回当前进度与未完成项，后续可以检查原因并重试；超时本身不表示操作已经成功，也不表示远端请求已取消。
+关闭操作的等待时间有上限，避免一次保存或删除故障让宿主程序一直卡住。stop/close 的 timeoutMs 必须为正且有限；省略时以 60 秒为单次宿主等待上限。时间到了就返回当前进度与未完成项，后续可以检查原因并重试；超时本身不表示操作已经成功，也不表示远端请求已取消。
 
 回执中的状态分别回答两个问题：
 
@@ -371,10 +374,10 @@ ResourceError 在已创建身份时提供 runtimeId/agentId/requestId，并尽�
 | --- | --- | --- |
 | Runtime / TaskService Agent 登记 | 通用身份和资源进入 Runtime；领域关联留 TaskPool | 不重复维护两套资源生命周期；保留在途启动与 shutdown 追踪 |
 | Pi / OpenSandbox adapter | backend 内部 | 暴露统一接纳回执、事件、退出；保留同一 Session |
-| AgentModelAccess / ResponsesBudgetGateway | 通用模型身份与 TaskPool 授权适配分离 | 无 Task Agent 可请求模型；TaskPool 保留本版的时间/输出上限、lease、fence 与生命周期提交检查 |
+| AgentModelAccess / ResponsesBudgetGateway | Core 负责模型身份与停止撤销，TaskPool 负责期限触发 | 通用请求限制与业务提交的 lease/fence 独立核验 |
 | Bridge / Registry / adapters | 通用 Service 接入 | caller 贯穿整条链；执行 schema 校验；v1 TaskPool 授权显式兼容 |
 | agent contract / Worker 资源校验 | Profile 装配 | 受信资源与镜像验证保留；角色 prompt 可配置 |
-| sandbox-project / manager | prepare/grant 与独立收尾导出 | Agent 资源版本替代通用路径中的 Task 授权 |
+| sandbox-project / manager | 完整树替换与独立收尾导出 | Core 持有文件回执，Service 持有领域版本与授权 |
 | public/secret env 过滤 | 显式宿主配置 | 保留键不能覆盖；合入 Git token 的位置不能再被旧 allowlist 删除 |
 | DockerAgentNetwork / 磁盘隔离 | 当前 backend | 保留本地身份校验，增加 Profile 端点；拒绝未支持部署 |
 | Task loop / controller / notification / watchdog | TaskPool Harness | 选工、续轮、stall 判断与 Task 完成规则不进入 Core |
@@ -391,7 +394,7 @@ ResourceError 在已创建身份时提供 runtimeId/agentId/requestId，并尽�
 | 无 Task 启动 | 不建立 Mission/Execution 即可创建 Agent、调用模型并使用自定义 Service |
 | 连续输入 | 同一 Agent 两次工作共享 Session/workDir；默认 steer 与显式 followUp 的接纳、执行边界正确 |
 | 权限 | Profile 不允许的操作被拒，caller 不可伪造；子 Agent 不能覆盖宿主资源政策 |
-| 文件交接 | TaskPool 的只读发现、prepare/grant、失败停执行与补偿保持原行为 |
+| 文件交接 | TaskPool 先确立任务归属，再替换文件并开放写入；在线更新与 pending 恢复保留同一 Agent |
 | 请求重试 | 回执延迟或丢失不会导致同一 input 重复提交 |
 | 事件与结束 | 快速完成、fatal、意外 exit、宿主取消均有确定报告；不无限等待 |
 | 资源收尾 | 部分创建失败、创建与关闭并发、必需导出失败均无未登记资源或提前删除 |
@@ -407,7 +410,7 @@ ResourceError 在已创建身份时提供 runtimeId/agentId/requestId，并尽�
 | --- | --- |
 | Q1 底层 Agent | A：首版仅 Pi + OpenSandbox；内部保留 backend 边界，不公开多执行器插件 |
 | Q2 运行中配置 | A：Profile 与 Service 启动前注册并冻结；允许按已有 Profile 动态创建 Agent |
-| Q3 文件共享 | A：各 Agent 独立 sandbox/workDir，不提供共享目录；通过 Git/Service/显式 artifact 协作 |
+| Q3 文件共享 | 首版默认独立 Sandbox/workDir，通过 Git/Service/显式 artifact 协作；现有显式共享挂载按 §7 保留 |
 | Q4 输入默认值 | B：默认 steer；显式 followUp 可用，PeerMesh 串行 router 选择 followUp |
 | Q5 idle 状态 | A：Session/workDir/Slot 持续保留，直到明确 stop |
 | Q6 导出失败 | A：预先标为 required 的成果导出失败时保留 sandbox/Slot 并报告 pending |
@@ -431,10 +434,10 @@ ResourceError 在已创建身份时提供 runtimeId/agentId/requestId，并尽�
 
 | 尚未完成的交接 | 风险与完成条件 |
 | --- | --- |
-| 无 Task 的模型访问与 TaskPool 兼容 | 把 AgentModelAccess 的 Mission/Task/Execution 检查从通用 gateway 移到 TaskPool policy；无 Task Agent 真正调用模型，TaskPool 的 lease/fence/时间与输出限制回归通过 |
+| 无 Task 的模型访问与 TaskPool 兼容 | Harness 期限触发停止；无 Task Agent 可调用模型；Core 停止撤销与 TaskPool 的 lease/fence/业务提交分别通过回归 |
 | Service 身份及 v1/v2 兼容 | caller 在 Bridge→Registry→in-process/HTTP adapter 中不丢失；schema 校验实际执行；TaskPool 原领域授权不能因升级 manifest 被绕过 |
 | send 幂等和事件边界 | Pi/Worker/adapter 对同一在途 requestId 不重复投递；accepted 不能被误认为执行完成；PeerMesh 串行批次的 followUp 与 settled 在真实运行中正确关联 |
-| TaskPool 的文件交接与关闭竞争 | Task 认领、准备期 heartbeat、文件版本、grant、租约失效和 runtime.close 并发时不出现越权写入或双 owner；失败先停执行再补偿 |
+| TaskPool 的文件交接与关闭竞争 | Task 认领、在线 replace、租约失效和 runtime.close 并发不出现越权写入或双 owner；替换与 Service 提交分别恢复 |
 | 受限导出与 pending 处置 | 拆开 stop、导出和 sandbox 删除；能保存未 push Git 历史及未提交文件；required 导出失败保留现场；关闭后能根据报告发现与人工处置残留资源 |
 | 仓库外开发者入口 | 新包 API 与类型实际可用，独立目录中的最小示例可以注册自己的 Service、驱动 Agent 两轮并取得产物和清理回执 |
 
@@ -444,21 +447,297 @@ ResourceError 在已创建身份时提供 runtimeId/agentId/requestId，并尽�
 
 Q1–Q8 已批准为首版产品决策；上述工程合同仍需实现与验收。本次将两篇设计及推进计划纳入仓库，作为本阶段权威规范；合入 main 后据固定文档版本建立总 issue 与分阶段执行 issues。需求变更先更新本目录，再同步受影响任务。
 
-## 附录 A：公共类型参考
+## 附录 A：公共类型清单
 
-以下类型属于本稿提出的新 API，按模块实现时可拆分文件；公共含义以正文行为合同为准。ServiceManifest v2 与 Backend 配置同样是待实施合同。
+下列声明是 #255 的基础 SDK 目标清单。代码只从根入口显式导出这些名称。#235 生效时另按其固定合同加入动态管理成员及必要类型，仍经同一根入口与事件入口。
 
 ```ts
-// Proposed public contracts. This file does not implement the Core runtime.
-export type InputMode = "followUp" | "steer";
+declare const sandboxBrand: unique symbol;
+export interface Sandbox {
+  readonly [sandboxBrand]: true;
+}
+
+export interface SandboxConfig {
+  kind?: "opensandbox";
+  lifecycleBaseUrl: string;
+  apiKey?: string;
+  execdToken?: string;
+  endpointHost?: string;
+  resourceLimits?: { cpu: string; memory: string };
+  commandTimeoutMs?: number;
+  timeoutSeconds?: number;
+  isolation: {
+    network?: "local-docker";
+    disk: { bytes: number; inodes: number };
+  };
+}
+
+export type ExecutorKind = "pi" | "codex";
+export type SteeringMode = "all" | "one-at-a-time";
+export interface ExecutorCapabilities {
+  readonly activeSteer: boolean;
+  readonly followUp: boolean;
+  readonly conditionalInput: boolean;
+  readonly queuedInputCancellation: boolean;
+  readonly contextFork: boolean;
+  readonly steeringModes: readonly SteeringMode[];
+}
+
+export interface ModelConfig {
+  provider: string;
+  model: string;
+  upstream: { url: string; headers: Readonly<Record<string, string>> };
+}
+
+export interface RuntimeConnectionOptions {
+  advertiseHost?: string;
+  bridge?: { host?: string; publicUrl?: string };
+  modelGateway?: {
+    host?: string;
+    advertiseHost?: string;
+    requestTimeoutMs?: number;
+    maxOutputTokens?: number | null;
+  };
+}
+
+export interface CreateRuntimeOptions {
+  sandbox: Sandbox;
+  executor?: ExecutorKind;
+  models: Readonly<Record<string, ModelConfig>>;
+  connection?: RuntimeConnectionOptions;
+  profiles: Readonly<Record<string, Profile>>;
+  services: ServiceRegistry;
+  maxAgents: number;
+  outputDir: string;
+}
+
+export declare function createSandbox(config: SandboxConfig): Sandbox;
+export declare function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
+export declare function getExecutorCapabilities(executor: ExecutorKind): ExecutorCapabilities;
+
+export interface Profile {
+  /** Optional Harness instructions added to the standard startup prompt. */
+  prompt?: string;
+  model: string;
+  image: string;
+  writable: boolean;
+  services: Readonly<Record<string, readonly string[]>>;
+  spawnProfiles?: readonly string[];
+  allowContextFork?: boolean;
+  env?: Readonly<Record<string, string>>;
+  network?: { allow: readonly string[] };
+  collect?: CollectionSpec;
+}
+
+export interface FileEntry {
+  readonly encoding: "utf8" | "base64";
+  readonly data: string;
+  readonly mode?: 0o644 | 0o755;
+}
+export type FileTree = Readonly<Record<string, FileEntry>>;
+export type CompleteFileDigest = `complete:sha256:${string}`;
+export type PartialFileDigest = `partial:sha256:${string}`;
+
+export interface FileSnapshotOptions {
+  requestId: string;
+  paths: readonly string[];
+  maxBytes?: number;
+}
+export interface CompleteFileSnapshotOptions extends FileSnapshotOptions {
+  paths: readonly ["."];
+}
+export interface CompleteFileSnapshot {
+  readonly agentId: string;
+  readonly requestId: string;
+  readonly version: number;
+  readonly files: FileTree;
+  readonly scope: "complete";
+  readonly digest: CompleteFileDigest;
+}
+export interface PartialFileSnapshot {
+  readonly agentId: string;
+  readonly requestId: string;
+  readonly version: number;
+  readonly files: FileTree;
+  readonly scope: "partial";
+  readonly digest: PartialFileDigest;
+}
+export type FileSnapshot = CompleteFileSnapshot | PartialFileSnapshot;
+
+export interface FileReplaceOptions {
+  requestId: string;
+  expectedDigest: CompleteFileDigest;
+  files: FileTree;
+  writable?: true;
+}
+export type FileReplaceReceipt = {
+  readonly agentId: string;
+  readonly requestId: string;
+} & (
+  | { readonly status: "completed"; readonly digest: CompleteFileDigest; readonly writable: boolean }
+  | { readonly status: "failed"; readonly error: ErrorInfo }
+  | { readonly status: "unknown" }
+);
+
+export interface CollectionSpec {
+  paths: readonly string[];
+  includeGit: boolean;
+  allowMissingGit?: boolean;
+  maxBytes: number;
+  required: boolean;
+}
+
+export interface WorkspaceOptions {
+  id: string;
+  mode: "read-only" | "read-write";
+}
+
+export interface SpawnOptions {
+  requestId: string;
+  profile: string;
+  forkFrom?: string;
+  parentId?: string;
+  writable?: boolean;
+  files?: FileTree;
+  bindings?: Readonly<Record<string, string>>;
+  secretEnv?: Readonly<Record<string, string>>;
+  workspace?: WorkspaceOptions;
+  collect?: CollectionSpec;
+}
+
+export interface ErrorInfo {
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
+export interface ResourceError extends Error {
+  code: string;
+  operation: string;
+  runtimeId?: string;
+  agentId?: string;
+  requestId?: string;
+  cleanup: "complete" | "pending";
+  reportPath?: string;
+  details: readonly ErrorInfo[];
+}
+
+export type AgentStatus = "starting" | "idle" | "running" | "exited" | "closing" | "closed";
+
+export interface AgentListFilter {
+  parentId?: string | null;
+  status?: AgentStatus | readonly AgentStatus[];
+}
+
+export interface AgentInfo {
+  id: string;
+  profile: string;
+  parentId?: string;
+  status: AgentStatus;
+  latestOutput?: string;
+  lastError?: ErrorInfo;
+  lastStop?: StopReceipt;
+}
+
+export type RuntimeState = "open" | "closing" | "closed";
+export type InputMode = "steer" | "followUp";
+export interface SendOptions {
+  requestId: string;
+  mode?: InputMode;
+  source?: string;
+  steeringMode?: SteeringMode;
+  wakeIfIdle?: boolean;
+}
+export type InputReceipt =
+  | { inputId: string; status: "accepted"; disposition: "started" | "queued" | "handled" }
+  | { inputId: string; status: "unknown" };
+export type ConditionalInputReceipt =
+  | InputReceipt
+  | { inputId: string; status: "not-accepted"; reason: "idle" };
+
+export type AgentInitialInputResult =
+  | InputReceipt
+  | { status: "rejected"; error: ErrorInfo }
+  | null;
+export interface AgentSpawnReceipt {
+  agent: AgentInfo;
+  initialInput: AgentInitialInputResult;
+}
+
+export interface InterruptOptions {
+  requestId: string;
+  timeoutMs?: number;
+}
+export interface InterruptReceipt {
+  interruptId: string;
+  status: "interrupted" | "unknown";
+  discardedInputHashes?: readonly string[];
+}
+export interface StopOptions { timeoutMs?: number }
+export interface CloseOptions { timeoutMs?: number }
+
+export type RuntimeEvent =
+  | { type: "output"; agentId: string; text: string }
+  | { type: "settled"; agentId: string; outcome: "completed" | "failed" | "aborted"; output?: string; error?: ErrorInfo }
+  | { type: "error"; agentId: string; error: ErrorInfo; fatal: boolean }
+  | { type: "exit"; agentId: string; reason: string; expected: boolean }
+  | { type: "agentChanged"; agentId: string }
+  | { type: "runtimeChanged" };
+
+export interface PendingCleanup {
+  kind: "agent" | "bridge" | "model" | "backend" | "report";
+  id: string;
+  action: "await-startup" | "stop-execution" | "archive-session" | "collect-artifacts" | "delete-sandbox" | "close" | "save";
+  error?: ErrorInfo;
+  resourceKey?: string;
+  providerId?: string;
+  sandboxId?: string;
+  creation?: "created" | "pending" | "absent";
+  executionStopped?: boolean;
+}
+
+export interface StopReceipt {
+  agentId: string;
+  execution: "stopped" | "unknown";
+  cleanup: "complete" | "pending";
+  artifacts: readonly string[];
+  sessionArchive?: string;
+  errors: readonly ErrorInfo[];
+  pending?: PendingCleanup;
+}
+
+export interface CloseReceipt {
+  agents: readonly StopReceipt[];
+  cleanup: "complete" | "pending";
+  errors: readonly ErrorInfo[];
+  pending: readonly PendingCleanup[];
+  outputDir: string;
+  reportPath?: string;
+  evidence: { path?: string; recorded: number; lost: number; pending: number };
+}
+
+export interface RuntimeFiles {
+  snapshot(agentId: string, options: CompleteFileSnapshotOptions): Promise<CompleteFileSnapshot>;
+  snapshot(agentId: string, options: FileSnapshotOptions): Promise<FileSnapshot>;
+  replace(agentId: string, options: FileReplaceOptions): Promise<FileReplaceReceipt>;
+}
+export interface Runtime {
+  readonly id: string;
+  readonly state: RuntimeState;
+  spawn(options: SpawnOptions): Promise<AgentInfo>;
+  get(agentId: string): Promise<AgentInfo>;
+  list(filter?: AgentListFilter): Promise<AgentInfo[]>;
+  send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
+  send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
+  interrupt(agentId: string, options: InterruptOptions): Promise<InterruptReceipt>;
+  onEvent(handler: (event: RuntimeEvent) => void | Promise<void>): () => void;
+  stop(agentId: string, options?: StopOptions): Promise<StopReceipt>;
+  close(options?: CloseOptions): Promise<CloseReceipt>;
+  readonly files: RuntimeFiles;
+}
+
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
-declare const backendBrand: unique symbol;
-export interface Backend { readonly [backendBrand]: true }
-
-export declare class ServiceRegistry {
-  registerService(registration: { manifest: ServiceManifest; adapter: ServiceAdapter }): void;
-}
 export interface ServiceManifest {
   id: string;
   title: string;
@@ -468,6 +747,7 @@ export interface ServiceManifest {
   endpoint: { transport: "in-process" } | { transport: "http-json"; url: string };
   capabilities: readonly ServiceCapability[];
 }
+
 export interface ServiceCapability {
   name: string;
   operation: string;
@@ -479,13 +759,17 @@ export interface ServiceCapability {
   output_schema: Record<string, unknown>;
   errors: readonly { code: string; retryable: boolean }[];
   path?: string;
+  /** Host-registered invocation deadline, 1..86400000 ms. Defaults to 30000. */
+  timeout_ms?: number;
 }
+
 export interface ServiceCaller {
   runtimeId: string;
   agentId: string;
   profile: string;
   binding?: string;
 }
+
 export interface ServiceRequest {
   manifest: ServiceManifest;
   capability: ServiceCapability;
@@ -493,180 +777,30 @@ export interface ServiceRequest {
   envelope: { operation_id: string; [key: string]: unknown };
   caller: ServiceCaller;
   signal: AbortSignal;
+  /** Recheck caller authority immediately before a Service commits its side effect. */
+  assertAuthorized(): void;
 }
+
 export interface ServiceAdapter {
   invoke(request: ServiceRequest): JsonValue | Promise<JsonValue>;
+  /** Optional bounded host-only snapshot called during Runtime close. */
+  exportState?(options: { signal: AbortSignal }): JsonValue | Promise<JsonValue>;
+}
+
+export interface ServiceRegistration {
+  manifest: ServiceManifest;
+  adapter: ServiceAdapter;
+}
+export interface HttpJsonAdapterOptions {
+  token?: string;
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+}
+export declare class ServiceRegistry {
+  registerService(registration: ServiceRegistration): void;
 }
 export declare function createInProcessAdapter(implementation: ServiceAdapter): ServiceAdapter;
-
-export interface Profile {
-  prompt: string;
-  model: string;
-  image: string;
-  writable: boolean;
-  services: Readonly<Record<string, readonly string[]>>;
-  spawnProfiles?: readonly string[];
-  collect?: CollectionSpec;
-  env?: Readonly<Record<string, string>>;
-  network?: { allow: readonly string[] };
-}
-export interface CreateRuntimeOptions {
-  backend: Backend;
-  profiles: Readonly<Record<string, Profile>>;
-  services: ServiceRegistry;
-  maxAgents: number;
-  outputDir: string;
-  modelAccessPolicy?: ModelAccessPolicy;
-}
-export interface ModelCaller {
-  readonly runtimeId: string;
-  readonly agentId: string;
-  readonly profile: string;
-  readonly model: string;
-}
-export interface ModelPermit {
-  phase: "selection" | "work" | "closeout";
-  deadlineAt: number;
-  lease?: { key: string; version: number; expiresAt: number };
-}
-export interface ModelAccessPolicy {
-  authorize(caller: ModelCaller): ModelPermit | null;
-  withCommit<T>(commit: () => T): T;
-}
-
-// Exported by @murm/core/backends/pi-opensandbox.
-export interface PiOpenSandboxBackendConfig {
-  sandbox: {
-    lifecycleBaseUrl: string;
-    apiKey?: string;
-    execdToken?: string;
-    endpointHost?: string;
-    resourceLimits?: { cpu: string; memory: string };
-    commandTimeoutMs?: number;
-  };
-  bridge: { host: string; publicUrl: string };
-  modelGateway: {
-    host: string;
-    advertiseHost: string;
-    requestTimeoutMs?: number;
-    maxOutputTokens?: number;
-  };
-  models: Readonly<Record<string, {
-    provider: string;
-    model: string;
-    upstream: { url: string; headers: Readonly<Record<string, string>> };
-  }>>;
-  isolation: {
-    network: "local-docker";
-    disk: { bytes: number; inodes: number };
-  };
-}
-export declare function createPiOpenSandboxBackend(config: PiOpenSandboxBackendConfig): Backend;
-export interface FileEntry {
-  encoding: "utf8" | "base64";
-  data: string;
-  mode?: 0o644 | 0o755;
-}
-export type FileSeed = Readonly<Record<string, FileEntry>>;
-export interface CollectionSpec {
-  paths: readonly string[];
-  includeGit: boolean;
-  maxBytes: number;
-  required: boolean;
-}
-export interface SpawnOptions {
-  requestId: string;
-  profile: string;
-  parentId?: string;
-  writable?: boolean;
-  files?: FileSeed;
-  bindings?: Readonly<Record<string, string>>;
-  secretEnv?: Readonly<Record<string, string>>;
-  collect?: CollectionSpec;
-}
-export interface ErrorInfo {
-  code: string;
-  message: string;
-  retryable: boolean;
-}
-export interface ResourceError extends Error {
-  code: string;
-  operation: string;
-  runtimeId?: string;
-  agentId?: string;
-  requestId?: string;
-  cleanup: "complete" | "pending";
-  reportPath?: string;
-  details: readonly ErrorInfo[];
-}
-export interface AgentInfo {
-  id: string;
-  profile: string;
-  parentId?: string;
-  status: "starting" | "idle" | "running" | "exited" | "closing" | "closed";
-  cursor: number;
-  latestOutput?: string;
-  lastError?: ErrorInfo;
-  lastStop?: StopReceipt;
-}
-export type InputReceipt =
-  | { inputId: string; status: "accepted"; disposition: "started" | "queued" | "handled" }
-  | { inputId: string; status: "unknown" };
-export type AgentInitialInputResult =
-  | InputReceipt
-  | { status: "rejected"; error: ErrorInfo }
-  | null;
-export interface AgentSpawnReceipt {
-  agent: AgentInfo;
-  initialInput: AgentInitialInputResult;
-}
-export type AgentEvent = { agentId: string; seq: number } & (
-  | { type: "output"; text: string }
-  | { type: "settled"; outcome: "completed" | "failed" | "aborted";
-      output?: string; error?: ErrorInfo }
-  | { type: "error"; error: ErrorInfo; fatal: boolean }
-  | { type: "exit"; reason: string; expected: boolean }
-);
-export interface PreparedFiles {
-  agentId: string;
-  version: number;
-  digest: string;
-}
-export interface GrantReceipt {
-  agentId: string;
-  version: number;
-  writable: true;
-}
-export interface StopReceipt {
-  agentId: string;
-  execution: "stopped" | "unknown";
-  cleanup: "complete" | "pending";
-  artifacts: readonly string[];
-  errors: readonly ErrorInfo[];
-}
-export interface CloseReceipt {
-  agents: readonly StopReceipt[];
-  cleanup: "complete" | "pending";
-  errors: readonly ErrorInfo[];
-  outputDir: string;
-  reportPath?: string;
-}
-export interface Runtime {
-  readonly id: string;
-  spawn(options: SpawnOptions): Promise<AgentInfo>;
-  get(agentId: string): Promise<AgentInfo>;
-  send(agentId: string, input: string, options: {
-    requestId: string; mode?: InputMode; // omitted => steer
-  }): Promise<InputReceipt>;
-  onEvent(handler: (event: AgentEvent) => void): () => void;
-  stop(agentId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
-  close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
-  files: {
-    prepare(agentId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
-    grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
-  };
-}
-export declare function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
+export declare function createHttpJsonAdapter(options?: HttpJsonAdapterOptions): ServiceAdapter;
 ```
 
 ## 附录 B：输入参考与设计依据

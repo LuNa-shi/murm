@@ -23,7 +23,7 @@ test('flat foreground input uses the current controller Task binding and stops w
   let snapshot;
   const report = await runForegroundHarness({ mode: 'taskpool', timeoutMs: 10_000, options: {
     ...stores, taskService: stores.tasks, contextService: stores.context, missionWorkspace: stores.workspace,
-    workspaceManager: stores.manager, outputDir: root, backend: {}, model: 'default', image: 'fixture', capacity: 1,
+    workspaceManager: stores.manager, outputDir: root, sandbox: {}, model: 'default', image: 'fixture', capacity: 1,
     deadlineAt: Date.now() + 10_000, closeTimeoutMs: 1000,
     // Trusted fixture only. Production live Workspace capture remains unavailable.
     snapshotProject: async () => { throw new Error('No capture is needed for this feedback check'); },

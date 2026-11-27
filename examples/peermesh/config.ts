@@ -31,22 +31,15 @@ const startBoard = createBoardLauncher({
   python: setting('BOARD_PYTHON') ?? 'python3',
 });
 
-const { createOpenSandboxBackend } = await import('@murm/core/backends/opensandbox');
+const { createSandbox } = await import('@murm/core');
 const host = setting('HOST') ?? '172.17.0.1';
-const backend = createOpenSandboxBackend({
-  sandbox: {
-    lifecycleBaseUrl: setting('LIFECYCLE_URL') ?? 'http://127.0.0.1:8080/v1',
-    endpointHost: setting('ENDPOINT_HOST') ?? '127.0.0.1',
-    apiKey: setting('LIFECYCLE_TOKEN'),
-    timeoutSeconds: Math.ceil((timeoutMs + closeTimeoutMs) / 1_000),
-    resourceLimits: { cpu: '1', memory: '1Gi' },
-    commandTimeoutMs: 20_000,
-  },
-  bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-  modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 2048, requestTimeoutMs: 25_000 },
-  models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: {
-    url: modelUrl, headers: modelToken ? { authorization: `Bearer ${modelToken}` } : {},
-  } } },
+const sandbox = createSandbox({
+  lifecycleBaseUrl: setting('LIFECYCLE_URL') ?? 'http://127.0.0.1:8080/v1',
+  endpointHost: setting('ENDPOINT_HOST') ?? '127.0.0.1',
+  apiKey: setting('LIFECYCLE_TOKEN'),
+  timeoutSeconds: Math.ceil((timeoutMs + closeTimeoutMs) / 1_000),
+  resourceLimits: { cpu: '1', memory: '1Gi' },
+  commandTimeoutMs: 20_000,
   isolation: { network: 'local-docker', disk: { bytes: 128 * 1024 ** 2, inodes: 8192 } },
 });
 
@@ -54,7 +47,11 @@ export default {
   mode: 'peermesh',
   timeoutMs,
   options: {
-    runId, image, backend, gitea, mattermost, startBoard,
+    runId, image, sandbox, gitea, mattermost, startBoard,
+    connection: { advertiseHost: host, modelGateway: { maxOutputTokens: 2048, requestTimeoutMs: 25_000 } },
+    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: {
+      url: modelUrl, headers: modelToken ? { authorization: `Bearer ${modelToken}` } : {},
+    } } },
     project, peerKeys: Array.from({ length: peerCount }, (_, index) => String.fromCharCode(97 + index)),
     outputDir: setting('OUTPUT_DIR') ?? './peermesh-runs', closeTimeoutMs,
     secretValues: [modelToken, mysqlDsn],

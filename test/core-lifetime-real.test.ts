@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
@@ -28,9 +29,9 @@ test('four idle native Core Agents attest actual provider lifetime and terminal 
   let runtime, receiptSaved = false, probing = false;
   try {
     const { createRuntime } = await import('@murm/core');
-    const { ServiceRegistry } = await import('@murm/core/services');
-    const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
-    const backend = createPiOpenSandboxBackend({
+    const { ServiceRegistry } = await import('@murm/core');
+
+    const backend = runtimeSettings({
       sandbox: { lifecycleBaseUrl: lifecycle, endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey,
         timeoutSeconds: lifetimeProbePlan.timeoutSeconds, resourceLimits: lifetimeProbePlan.resourceLimits, commandTimeoutMs: 30000 },
       bridge: { host: '0.0.0.0', publicUrl: process.env.MURM_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
@@ -39,7 +40,7 @@ test('four idle native Core Agents attest actual provider lifetime and terminal 
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 * 1024, inodes: 4096 } },
     });
     runtime = await budget.run(async () => {
-      const created = await createRuntime({ backend, outputDir, maxAgents: lifetimeProbePlan.agents, services: new ServiceRegistry(),
+      const created = await createRuntime({ ...backend, outputDir, maxAgents: lifetimeProbePlan.agents, services: new ServiceRegistry(),
       profiles: { worker: { image, prompt: 'Wait for host input.', writable: false, model: 'default', services: {} } } });
       runtime = created;
       await writeFile(join(outputDir, 'lifetime-owner.json'), JSON.stringify({ runtimeId: created.id, plan: lifetimeProbePlan,

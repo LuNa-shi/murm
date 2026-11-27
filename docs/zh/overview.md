@@ -27,13 +27,7 @@ order: 0
 
 SDK 的包名是 `@murm/core`。下面是同一个包中的导入路径：
 
-| 导入路径 | 用途 |
-| --- | --- |
-| `@murm/core` | 创建 Runtime、控制和观察 Agent、完成 Run 收尾，同时导出公共类型 |
-| `@murm/core/services` | 定义 Service，接入进程内或 HTTP 实现 |
-| `@murm/core/backends/opensandbox` | 配置由 Pi 或 Codex 执行的 OpenSandbox 后端，查询后端能力 |
-
-包中还保留 `@murm/core/backends/pi-opensandbox`，供指定 Pi 的调用方使用。新 Harness 可以采用通用的 OpenSandbox 入口。当前 `package.json` 仍标记为私有包，安装方式是源码 checkout 或 `npm pack` 生成的 tarball；具体步骤见 [SDK 指南](sdk.md)。
+公开值和类型统一从 `@murm/core` 导入。使用 `createSandbox` 设置 OpenSandbox，使用 `createRuntime` 管理 Agent、Service、文件与清理。当前包通过 checkout 或 `npm pack` tarball 安装。详见 [SDK 指南](sdk.md)。
 
 ## 理解不同的协作机制
 

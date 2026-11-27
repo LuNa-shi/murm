@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { assertShippedModelPair } from '../agent/model-catalog.js';
-import type { BackendCapabilities, ExecutorKind, OpenSandboxBackendConfig } from './backend-config.js';
+import type { ExecutorCapabilities, ExecutorKind, ModelConfig } from './backend-config.js';
 
-type Model = OpenSandboxBackendConfig['models'][string];
+type Model = ModelConfig;
 
 export interface ExecutorDriver {
   readonly kind: ExecutorKind;
   readonly name: string;
   readonly version: string;
-  readonly capabilities: BackendCapabilities;
+  readonly capabilities: ExecutorCapabilities;
   readonly defaultMaxOutputTokens?: null;
   assertEnvironment?(environment: Readonly<Record<string, string>> | undefined): void;
   modelCatalogResource?(model: Model): ReturnType<typeof assertShippedModelPair>;
@@ -26,8 +26,6 @@ const sharedCapabilities = {
   followUp: true,
   conditionalInput: true,
   queuedInputCancellation: true,
-  modelRequestAuthorization: true,
-  rawModelRequestTrace: true,
 };
 
 const pi: ExecutorDriver = {
@@ -76,4 +74,9 @@ export function selectExecutorDriver(executor: unknown = 'pi'): Readonly<Executo
     throw Object.assign(new Error(`executor must be one of ${Object.keys(drivers).join(', ')}`), { code: 'INVALID_CONTRACT' });
   }
   return drivers[executor as ExecutorKind];
+}
+
+export function getExecutorCapabilities(executor: ExecutorKind): ExecutorCapabilities {
+  if (executor === undefined) throw Object.assign(new TypeError('executor is required'), { code: 'INVALID_CONTRACT' });
+  return selectExecutorDriver(executor).capabilities;
 }

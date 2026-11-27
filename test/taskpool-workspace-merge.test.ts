@@ -37,7 +37,7 @@ async function fixture(t,options={}) {
   for(const row of publication.registrations.filter(row=>row.manifest.id!=='task')) services.registerService(row);
   const allowed=Object.fromEntries(publication.registrations.map(row=>[row.manifest.id,row.manifest.capabilities.map(cap=>cap.operation)]));
   allowed.task.push(...discovery.manifest.capabilities.map(cap=>cap.operation));
-  runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Merge fixed public inputs',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:2,outputDir:root});
+  runtime=await createRuntime({sandbox: {},profiles:{researcher:{prompt:'Merge fixed public inputs',model:'default',image:'fixture',writable:false,services:allowed}},services,maxAgents:2,outputDir:root});
   t.after(async()=>{publication.close();await discovery.close();await runtime.close({timeoutMs:1000});await publication.waitForMerges?.({timeoutMs:1000});stores.close();await rm(root,{recursive:true,force:true});});
   const cli=async(agent,...args)=>{
     const credentials=controls.credentials.get(agent.id);assert.ok(credentials);

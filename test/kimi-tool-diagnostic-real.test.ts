@@ -1,3 +1,4 @@
+import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -8,7 +9,6 @@ import { promisify } from 'node:util';
 const execute = promisify(execFile);
 import { createRuntime } from '../src/core/index.js';
 import { ServiceRegistry } from '../src/core/services.js';
-import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
 import { runInput } from '../src/harnesses/shared/run-input.js';
 import { parsePrivateUpstreamHeaders } from './fixtures/taskpool-model-acceptance.js';
 import { createCappedUpstream } from './fixtures/core-capped-upstream.js';
@@ -36,7 +36,7 @@ test('one Kimi Agent diagnoses its actual Bash result continuation with at most 
       maxInputBytes: 128 * 1024, maxAggregateInputBytes: 256 * 1024, filename: diagnosticFilename, marker: diagnosticMarker,
       recordGeometry: true, failFast: true, onFailure: () => work.abort() });
     const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-    runtime = await work.create(() => createRuntime({ backend: createPiOpenSandboxBackend({
+    runtime = await work.create(() => createRuntime({ ...runtimeSettings({
       sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
         apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
       bridge: { host: '0.0.0.0', publicUrl: process.env.MURM_CORE_TEST_BRIDGE_URL ?? `http://${host}:{port}` },

@@ -26,7 +26,7 @@ export function createPeerProfile({ image, model = 'default', facilities }: any)
 
 /** A single input owner. Core owns the Agent; Harness owns facilities. */
 export async function createPeerMeshHarness(options: any) {
-  const { runId, image, model = 'default', exportLimit, outputDir, backend } = options;
+  const { runId, image, model = 'default', exportLimit, outputDir, sandbox, executor, models, connection } = options;
   if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId) || typeof image !== 'string' || !image || !Number.isSafeInteger(exportLimit) || exportLimit < 1) throw new TypeError('PeerMesh Harness requires run, image and actual export limit');
   if (options.signal !== undefined && !(options.signal instanceof AbortSignal)) throw new TypeError('PeerMesh startup signal must be an AbortSignal');
   const checkStartup = () => { if (options.signal?.aborted) throw Object.assign(new Error('PeerMesh startup aborted'), { code: 'HARNESS_START_ABORTED' }); };
@@ -71,12 +71,12 @@ export async function createPeerMeshHarness(options: any) {
     const repository: any = new URL(facilities.repositoryUrl);
     if (repository.origin !== new URL(facilities.endpoints.gitea).origin || repository.username || repository.password || repository.search || repository.hash) throw new TypeError('Git repository must use the configured credential-free Gitea origin');
     checkStartup();
-    runtime = await createRuntime({ backend, services: service.services, maxAgents: 1, outputDir,
+    runtime = await createRuntime({ sandbox, executor, models, connection, services: service.services, maxAgents: 1, outputDir,
       profiles: { peer: createPeerProfile({ image, model, facilities }) } });
     checkStartup();
     unsubscribe = runtime.onEvent((event: any) => {
       // Core owns raw execution evidence. The Harness report keeps indexes.
-      events.push({ agentId: event.agentId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
+      events.push({ agentId: event.agentId, seq: events.length + 1, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
     });
     checkStartup();
     peer = await runtime.spawn({ requestId: `spawn-${runId}`, profile: 'peer', bindings: service.bindings,
@@ -89,7 +89,7 @@ export async function createPeerMeshHarness(options: any) {
         const row: any = { requestId: wait?.requestId }; inputs.push(row);
         try {
           const result = await runInput(runtime, peer.id, input, { ...wait, signal: AbortSignal.any([lifetime.signal, ...(wait?.signal ? [wait.signal] : [])]) });
-          Object.assign(row, { inputId: result.inputId, status: 'completed', settledSeq: result.settled.seq });
+          Object.assign(row, { inputId: result.inputId, status: 'completed' });
           return result;
         } catch (error: any) { Object.assign(row, { inputId: error.inputId, code: error.code ?? 'INPUT_FAILED' }); throw error; }
       },

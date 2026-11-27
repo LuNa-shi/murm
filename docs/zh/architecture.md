@@ -118,11 +118,11 @@ murm 应用在可信宿主上运行 Harness。Harness 为一次 Run 创建 Runti
 | --- | --- | --- |
 | Harness | 角色、协作规则、Service 状态、工作截止时间和业务验收 | 你的应用代码 |
 | Core Runtime | Agent 身份与容量、输入回执、运行观察、文件操作和清理 | `@murm/core` |
-| Service 接入 | Manifest 校验、adapter 与操作注册 | `@murm/core/services` |
-| OpenSandbox 后端 | 执行器选择、Sandbox 配置与执行能力 | `@murm/core/backends/opensandbox` |
+| Service 接入 | Manifest 校验、adapter 与操作注册 | `@murm/core` |
+| OpenSandbox 后端 | 执行器选择、Sandbox 配置与执行能力 | `@murm/core` |
 | 外部设施 | 独立数据库、HTTP 服务、Git/聊天服务及其部署 | 应用或设施维护方 |
 
-`createOpenSandboxBackend()` 创建的 backend handle 只能供一个 Runtime 使用。公开的 `Backend` 是不透明类型；Core 内部的 provider 和 executor 接口属于实现边界，并不是任意后端插件的公开注册接口。
+使用 `createSandbox` 捕获 OpenSandbox 配置。Runtime 决定使用 Pi 或 Codex，并拥有运行时的宿主连接与模型配置。
 
 ## Runtime 创建时建立宿主控制面
 
@@ -146,9 +146,9 @@ Pi 以 RPC 模式运行，提供 `read`、`write`、`edit`、`bash`，启动配�
 | Steering 模式 | `all`、`one-at-a-time` | `all` |
 | 模型请求授权与原始请求追踪 | 支持 | 支持 |
 
-通过 `getOpenSandboxBackendCapabilities()` 查询当前 handle 的能力。Harness 应据此启用可选行为，而不应假设两种执行器的会话能力完全相同。
+通过 `getExecutorCapabilities(executor)` 查询所选执行器的能力。Harness 应据此启用可选行为，而不应假设两种执行器的会话能力完全相同。
 
-Worker 还执行两条受控文件流程：`prepare → grant` 为初始为空的只读工作目录准备文件并授予写权限；`snapshot → install → confirm` 在暂停写入者的保护下替换已有的可写私有工作目录。这些是宿主 Runtime 接口；授予内置 `agent` Service 权限，只授予该 Service 自己的操作。
+Worker 用同一个 `FileTree` 安装初始文件、捕获快照和替换私有目录。 `files.replace` 按完整摘要校验，成功后可开放写入，保留 Agent 和 Session。
 
 ## 一次 Service 调用如何经过 Bridge
 
@@ -192,7 +192,7 @@ Core 对已注册凭证做日志脱敏，但这不会移除私有任务内容、
 
 `stop()` 停止执行器工作，先导出原生会话与声明的产物，再删除 Sandbox。必需导出失败时会保留资源。`close()` 关闭新工作的接纳，协调在途操作，停止 Agents，在 adapter 提供导出能力时保存 Service 状态，并报告清理是 complete 还是 pending。
 
-`finalizeRun()` 在 Core close 回执之外加入应用结果与产物检查。只有 Core 清理完成，它才会清理调用方明确传入的 `ownedFacilities`。已有外部 Service 不应列为应用拥有的设施。业务失败、产物失败、清理 pending 和报告保存失败都有独立字段。
+应用根据 `runtime.close()` 的回执检查导出产物，然后清理自己拥有的设施。
 
 | Run 路径 | 内容 |
 | --- | --- |
@@ -203,7 +203,7 @@ Core 对已注册凭证做日志脱敏，但这不会移除私有任务内容、
 | `model-access/` 与 `model-trace/` | Attempt 记录与请求/响应轨迹 |
 | `<agentId>/session/` | 导出的原生执行器会话 |
 | `<agentId>/artifacts/` | 收集的文件与 manifest |
-| `run-finalization.json` | 公开 SDK 的应用收尾报告 |
+| `handoff-report.json` | 公开 SDK 的应用收尾报告 |
 | `harness-report.json` | 现有仓库 Harness 封装生成的报告 |
 
 实现细节见 [Core Runtime](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/15-core-runtime.md)、[OpenSandbox 后端](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/16-pi-opensandbox-backend.md) 和 [提示词组合](https://github.com/LuNa-shi/murm/blob/main/docs/architecture/08-prompts.md)。编写应用可以继续阅读 [构建你自己的 Harness](build-your-harness.md)。
