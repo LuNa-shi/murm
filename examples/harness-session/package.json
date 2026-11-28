@@ -1,0 +1,15 @@
+{
+  "name": "@luna-shi/murm-example-harness-session",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.19.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "sdk": "node dist/sdk.js",
+    "rpc": "node dist/rpc.js",
+    "start": "node dist/terminal.js"
+  },
+  "dependencies": { "@luna-shi/murm": "^0.2.0" },
+  "devDependencies": { "@types/node": "26.6.5", "typescript": "7.0.2" }
+}
