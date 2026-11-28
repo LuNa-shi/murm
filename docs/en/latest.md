@@ -6,6 +6,8 @@ order: 15
 badge: v0.2.0
 ---
 
+The v0.2.0 track in [Build your first SDK Harness](first-harness.md) uses this exact release and documents its version query and strict Sandbox setup.
+
 **`murm v0.2.0`** (released **2026-11-27**) is the first public open-source release of `@luna-shi/murm` — a unified TypeScript SDK, host CLI, and zero-dependency browser Trace Viewer for building and observing isolated multi-agent Harnesses.
 
 This page describes the published v0.2.0 artifact. The [current-source Quickstart](quickstart.md) uses newer setup and Provider APIs; those instructions require a tarball built from the current checkout.

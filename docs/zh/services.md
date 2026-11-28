@@ -190,3 +190,5 @@ swarm board search --query 'cache' --request-id search-1
 ---
 
 **下一步**：在 **[观测与调试（Trace Viewer）](trace-viewer.md)** 里直接体验真实的可缩放泳道图，看清模型调用与 Service 协作交接是如何被记录下来的。
+
+候选包的 `swarm service invoke <service> <operation> --help` 显示类型和必填项。Schema 示例和 `SERVICE_INPUT_INVALID` 恢复流程见[交接教程](first-harness.md)。

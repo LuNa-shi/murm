@@ -12,6 +12,7 @@ const projectUsage = [
 ].join('\n');
 export const murmUsage = [
   'Usage: murm                         Start an interactive session in the current project',
+  'Usage: murm --version',
   projectUsage, setupUsage, initUsage, doctorUsage,
   'Usage: murm trace --root <runs-dir> [--port 8787] [--open]',
 ].join('\n');

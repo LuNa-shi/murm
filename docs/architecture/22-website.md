@@ -38,3 +38,6 @@ The [documentation index](../INDEX.md) is the repository reading map. Public gui
 After Astro generates the site, `scripts/check-links.mjs` walks every HTML page, resolves same-origin `href` and `src` values under the configured base, checks destination files and HTML anchors, and compares documentation route sets across locales. Both landing pages must exist. A missing base prefix, output file, anchor or counterpart page fails the build and therefore both Website CI and the Pages build. External link reachability and browser interaction are outside this offline check.
 
 For a repository-prefix build, use `BASE_PATH=/murm SITE_URL=https://luna-shi.github.io npm --prefix website run build`. For a root-path preview, build without a base override. Editing user guide content also participates in `npm run docs:check`, which validates repository-relative file links and anchors before publication.
+
+
+The first SDK Harness documentation links the version 1 download route. The Markdown link processor maps the example's tracked source links to the deployment base, while GitHub continues to render those same links as repository paths. Astro emits the TypeScript files and compiler config directly from the executable example, so the two locales serve identical bytes and the link check covers each download.

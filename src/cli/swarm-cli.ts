@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { Ajv } from 'ajv';
 import { requestHttp } from '../protocol/http-request.js';
 const CORE_AGENT_OPERATIONS = ['spawn', 'get', 'send', 'stop', 'access_get', 'grant', 'revoke'];
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -74,6 +75,71 @@ function flagInput(options: any) {
     if (options[from] !== undefined) result[to] = parseScalar(options[from]);
   }
   return result;
+}
+
+type InputSchema = {
+  type?: string;
+  properties?: Record<string, InputSchema>;
+  required?: string[];
+  examples?: unknown[];
+  default?: unknown;
+  const?: unknown;
+  enum?: unknown[];
+  minLength?: number;
+};
+
+function schemaExample(schema: InputSchema, depth = 0): unknown {
+  if (depth > 8) return undefined;
+  if (schema.examples?.length) return schema.examples[0];
+  if (schema.const !== undefined) return schema.const;
+  if (schema.default !== undefined) return schema.default;
+  if (schema.enum?.length) return schema.enum[0];
+  switch (schema.type) {
+    case 'object': return Object.fromEntries((schema.required ?? []).map(name =>
+      [name, schemaExample(schema.properties?.[name] ?? {}, depth + 1)]));
+    case 'string': return 'x'.repeat(Math.max(1, Math.min(schema.minLength ?? 1, 200)));
+    case 'integer':
+    case 'number': return 1;
+    case 'boolean': return true;
+    case 'array': return [];
+    case 'null': return null;
+  }
+}
+
+function quote(value: string): string {
+  return "'" + value.replaceAll("'", "'\\''") + "'";
+}
+
+function inputHelp(command: string, schema: InputSchema): string {
+  const required = schema.required ?? [];
+  const properties = Object.entries(schema.properties ?? {});
+  const flag = (name: string) => name.replaceAll('_', '-');
+  const supportsFlag = (name: string) => /^[a-zA-Z0-9_]+$/.test(name) && !RESERVED.has(flag(name)) &&
+    !['all', 'resolved', 'operation-id'].includes(flag(name));
+  const lines = properties.map(([name, field]) => `  ${supportsFlag(name) ? '--' + flag(name) : name + ' (JSON only)'} <${field.type ?? 'JSON'}>${required.includes(name) ? ' (required)' : ''}`);
+  try {
+    const input = schemaExample(schema);
+    // Only print a concrete invocation when the example satisfies the schema.
+    if (input && typeof input === 'object' && !Array.isArray(input) &&
+        new Ajv({ strict: true, addUsedSchema: false, logger: false }).compile(schema)(input)) {
+      const fields = Object.entries(input);
+      if (fields.every(([name, value]) => supportsFlag(name) &&
+          JSON.stringify(parseScalar(typeof value === 'string' ? value : JSON.stringify(value))) === JSON.stringify(value))) {
+        lines.push(`  ${command}${fields.map(([name, value]) => ` --${flag(name)}=${quote(typeof value === 'string' ? value : JSON.stringify(value))}`).join('')}`);
+      }
+      lines.push(`  printf '%s' ${quote(JSON.stringify(input))} | ${command} --stdin`);
+    }
+  } catch {
+    // Legacy manifests and schemas with constraints that need real data still show their contract.
+  }
+  return lines.length ? lines.join('\n') + '\n' : '';
+}
+
+function cliInputError(service: string, operation: string, expected: string, actual: string, remedy: string) {
+  return Object.assign(new Error('Could not read Service input'), {
+    code: 'CLI_ERROR',
+    details: { service_id: service, operation, request_outcome: 'not_executed', validation: [{ pointer: '', expected, actual }], remedy },
+  });
 }
 
 function envelope(options: any, service: any) {
@@ -281,7 +347,11 @@ export function createSwarmCli(commands?: SwarmCommands) {
   function writeManifestHelp(stdout: any, command: string, provider: any, capabilities: any[]) {
     stdout.write(`Usage: ${command} [--input <json-file> | --stdin] [--request-id <id>]\n${provider.purpose}\n`);
     stdout.write('Use an actual input schema property name as a flag, replacing underscores with hyphens. Use a JSON object with --input or --stdin for structured input.\n');
-    for (const capability of capabilities) stdout.write(`${capability.operation}: ${capability.description}\n${capability.help.when}\nside_effect=${capability.side_effect}; idempotent=${capability.idempotent}\nInput schema: ${JSON.stringify(capability.input_schema)}\nOutput schema: ${JSON.stringify(capability.output_schema)}\nErrors: ${JSON.stringify(capability.errors)}\n`);
+    for (const capability of capabilities) {
+      const invocation = command.endsWith('<operation>') ? command.replace('<operation>', capability.operation) : command;
+      stdout.write(`${capability.operation}: ${capability.description}\n${capability.help.when}\nside_effect=${capability.side_effect}; idempotent=${capability.idempotent}\nInput schema: ${JSON.stringify(capability.input_schema)}\nOutput schema: ${JSON.stringify(capability.output_schema)}\nErrors: ${JSON.stringify(capability.errors)}\n`);
+      stdout.write(inputHelp(invocation, capability.input_schema ?? {}));
+    }
     return 0;
   }
 
@@ -289,6 +359,8 @@ export function createSwarmCli(commands?: SwarmCommands) {
     const [service, operation] = args;
     if (args.length !== 2 || !service || !operation) {
       if (options.help) { stdout.write('Usage: swarm service invoke <service-id> <operation> [--input <json-file> | --stdin]\n'); return 0; }
+      if (service && operation) throw cliInputError(service, operation, 'input flags or a JSON object', 'positional arguments',
+        'Run the operation with --help. Replace extra positional arguments with the documented flags, --input or --stdin.');
       throw new Error('service invoke requires one registered service ID and one operation');
     }
     if (!process.env.MURM_BRIDGE_URL || process.env.MURM_BRIDGE_CONTRACT_VERSION !== '2') {
@@ -298,7 +370,12 @@ export function createSwarmCli(commands?: SwarmCommands) {
     const capability = provider.capabilities?.find((item: any) => item.operation === operation);
     if (!capability) throw new Error(`service ${service} does not advertise capability ${operation}`);
     if (options.help) return writeManifestHelp(stdout, `swarm service invoke ${service} ${operation}`, provider, [capability]);
-    const input = { ...(await inputFrom(options)), ...flagInput(options) };
+    let input;
+    try { input = { ...(await inputFrom(options)), ...flagInput(options) }; }
+    catch {
+      throw cliInputError(service, operation, 'one readable JSON object', 'invalid input source',
+        'Use either --input with a readable JSON file or --stdin with a JSON object. Run the operation with --help for fields.');
+    }
     // The v2 manifest validates target fields; the Bridge determines the caller from its credential.
     if (options['actor-ref'] !== undefined) throw new Error('Agent identity comes from the protected Bridge; identity overrides are not allowed');
     return writeResult(await bridgeCall(operation, input, options, service, capability.timeout_ms), options, stdout);

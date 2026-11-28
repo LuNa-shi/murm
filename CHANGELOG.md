@@ -5,6 +5,7 @@ For a feature walkthrough of the current release, see [What's New (v0.2.0)](docs
 
 ## Unreleased
 
+- Added a versioned, independently installable two-Agent SDK walkthrough, `murm --version`, setup phase timings and connection details, and Service input examples with field diagnostics.
 - The SDK root exports the Harness author contract. Subagents, TaskPool, PeerMesh, Lead–Worker and Substrate build and start in their own directories from the same candidate archive.
 - Service commands advertised at startup use `swarm service invoke <service> <operation>`. TaskPool retains its shorthand commands and owns its Task, Material, Workspace, Mission and Judge implementation.
 - Fixed Lead–Worker verification and FATE have dedicated checkout launch paths under `dist/benchmarks/`. The ordinary project examples take a directory and prompt.
