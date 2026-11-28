@@ -68,6 +68,20 @@ For each authorized fault window, allocate a fresh durable Run on the pinned dep
 | Required export destination fails, then the closing Controller exits | Check the retained allocation owner, reason and actual expiry. Recover before expiry, retry from the original Run directory, verify file digests, and confirm deletion. |
 | Disk, Service, consumer or event backpressure | Record queue, memory and latency before, during and after the fault. Verify old event delivery is either replayed once by cursor or reported as a gap. Pending controls and resources remain visible through recovery. |
 
-The [approved Issue matrix](https://github.com/LuNa-shi/murm/issues/273) specifies the full evidence set. Reuse the local [recovery probe](../../test/core-runtime-recovery-real.test.ts) for its process and receipt checks. The probe itself targets a local OpenSandbox provider. On Kubernetes, use [the recovery contract](../../docs/architecture/24-runtime-recovery.md) with the original callback endpoint, Node, boot and durable Run directory.
+The [approved Issue matrix](https://github.com/LuNa-shi/murm/issues/273) specifies the full evidence set. The [native recovery probe](../../test/core-runtime-recovery-real.test.ts) verifies Controller process loss and retained export with a real Worker and scripted Responses. Run it inside the Runtime Pod while the benchmark listener is idle. The Pod needs the pinned checkout, a private persistent output directory, and read access to Pods and BatchSandbox objects in the Sandbox namespace. The probe sends one input per Run and checks that recovery sends no additional model request.
+
+```sh
+export MURM_CORE_RECOVERY_REAL_TEST=1 MURM_CORE_TEST_KUBERNETES=1
+export MURM_CORE_TEST_IMAGE="$MURM_WORKER_IMAGE"
+export MURM_CORE_TEST_LIFECYCLE_URL="${OPEN_SANDBOX_ENDPOINT%/}/v1"
+export MURM_CORE_TEST_API_KEY="$OPEN_SANDBOX_API_KEY"
+export MURM_CORE_TEST_ADVERTISE_HOST="$MURM_RUNTIME_SERVICE_HOST"
+export MURM_CORE_TEST_CALLBACK_PORT=3100
+export MURM_CORE_TEST_OUTPUT_DIR=/var/lib/murm/results/recovery
+export KUBECONFIG=/etc/murm/kubeconfig
+node --test --test-concurrency=1 dist/test/core-runtime-recovery-real.test.js
+```
+
+The probe checks that a second Controller cannot acquire the original Run while its writer is active. It then stops and replaces the Controller process inside the same Pod, keeping the Node, boot and callback address fixed. It checks original Sandbox absence through Lifecycle, the Kubernetes inventory, and the read-only Run ledger. Point `KUBECONFIG` at the mounted read-only audit configuration for the Runtime. Use [the recovery contract](../../docs/architecture/24-runtime-recovery.md) for the remaining fault scenarios.
 
 After each fault, restore the infrastructure and make a fresh ownership inventory before starting another test. Compare all Run intents and known Sandbox IDs with the original Lifecycle endpoint, Pod UIDs, BatchSandbox inventory and declared persistent resources. Read the ledger after the writer has stopped. A cleaned Run requires zero pending and zero unowned resources. If an export is intentionally retained mid-test, record its owner and actual expiry and complete export and cleanup before closing the test. Keep raw inventories private and include the longest recovery time, peak unresolved allocations and reconciliation result in the reviewed summary.

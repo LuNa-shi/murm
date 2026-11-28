@@ -1,16 +1,19 @@
 import { once } from 'node:events';
 import { createRuntime, createSandbox, recoverRuntime, ServiceRegistry, type CreateRuntimeOptions } from '@luna-shi/murm';
+import { finishCleanup } from '../../benchmarks/kubernetes/cleanup.js';
 
 const [mode, outputDir, configuration, runDirectory] = process.argv.slice(2);
-const { image, callbackHost, callbackPort, modelPort, deploymentId } = JSON.parse(configuration);
+const { image, callbackHost, callbackPort, modelPort, deploymentId, kubernetes } = JSON.parse(configuration);
 const options: CreateRuntimeOptions = {
   sandbox: createSandbox({
     endpoint: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
     apiKey: process.env.MURM_CORE_TEST_API_KEY, timeoutSeconds: 300,
+    ...(kubernetes ? { egressMode: 'dns+nft' } : {}),
     resourceRequests: { cpu: '1', memory: '1Gi' }, resourceLimits: { cpu: '1', memory: '1Gi' },
   }),
-  connection: { bindPort: callbackPort, publicUrl: `http://${callbackHost}:${callbackPort}` },
+  connection: { ...(kubernetes ? { bindHost: '0.0.0.0' } : {}), bindPort: callbackPort, publicUrl: `http://${callbackHost}:${callbackPort}` },
   profiles: { worker: { model: 'default', image, writable: true, services: {},
+    ...(kubernetes ? { network: { allow: [] } } : {}),
     collect: { paths: ['recovered.txt'], maxBytes: 1024, includeGit: false, required: true } } },
   models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `http://127.0.0.1:${modelPort}/v1/responses`, headers: {} } } },
   services: new ServiceRegistry(),
@@ -42,6 +45,9 @@ try {
     }
   } else {
     const runtime = await recoverRuntime({ ...options, runDirectory, cleanupOnly: mode === 'cleanup' });
+    const close = () => kubernetes
+      ? finishCleanup(timeoutMs => runtime.close({ timeoutMs }), performance.now() + 60_000)
+      : runtime.close({ timeoutMs: 20_000 });
     const agents = await runtime.list();
     if (mode === 'finish-close') {
       if (runtime.state !== 'closing' || agents[0]?.status !== 'closing') throw new Error('Persisted shutdown unexpectedly reopened work');
@@ -49,9 +55,9 @@ try {
       try { await runtime.send(agents[0].id, 'A new input must remain fenced.', { requestId: 'blocked' }); }
       catch (error) { rejection = (error as { code?: string }).code; }
       if (rejection !== 'NOT_ALLOWED') throw new Error('Recovered closing Run admitted a new input');
-      process.send?.({ step: 'closed', receipt: await runtime.close({ timeoutMs: 20_000 }) });
+      process.send?.({ step: 'closed', receipt: await close() });
     } else if (mode === 'cleanup') {
-      process.send?.({ step: 'closed', receipt: await runtime.close({ timeoutMs: 20_000 }) });
+      process.send?.({ step: 'closed', receipt: await close() });
     } else {
       const [agent] = agents;
       if (!agent) throw new Error('Recovered Runtime has no original Agent');
@@ -60,7 +66,7 @@ try {
       const probe = await runtime.probeWorkerEvent(agent.id, { requestId: 'after', timeoutMs: 8000 });
       const snapshot = await runtime.files.snapshot(agent.id, { requestId: 'recovered-files', paths: ['recovered.txt'] });
       process.send?.({ step: 'closed', agentId: agent.id, replay, probe,
-        content: snapshot.files['recovered.txt'], receipt: await runtime.close({ timeoutMs: 20_000 }) });
+        content: snapshot.files['recovered.txt'], receipt: await close() });
     }
   }
 } catch (error) {

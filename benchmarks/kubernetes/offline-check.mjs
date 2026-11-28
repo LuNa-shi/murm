@@ -12,6 +12,7 @@ try {
   const example = JSON.parse(await readFile(new URL('./manifest.example.json', import.meta.url)));
   for (const tier of [2, 8, 32, 128, 1024]) {
     const manifest = { ...structuredClone(example), tier, ...(tier >= 32 ? { workloadMode: 'mock-api' } : {}), implementationCommit: '0'.repeat(40), prerequisiteCommit: '1'.repeat(40),
+      runtimePublicUrl: 'http://192.0.2.10:3100',
       workerImage: 'registry.example.net/offline-worker@sha256:' + '2'.repeat(64), maxDurationMs: tier >= 32 ? 600_000 : 18_000_000,
       maxModelRequests: 1_000_000, budget: { ...example.budget, maxComputeHours: 100_000,
         existingResourceDescription: 'Offline check only; no resources authorized' } };
@@ -42,6 +43,10 @@ try {
     assert.equal(refused.status, 2);
     assert.equal(JSON.parse(refused.stderr.trim().split('\n').find(line => line.startsWith('{'))).status, 'not-run');
     assert.match(refused.stderr, /Explicit owner experiment approval is required/);
+    await writeFile(filename, JSON.stringify({ ...manifest, runtimePublicUrl: 'http://runtime.example.net:3100' }));
+    const nonNumericCallback = run([]);
+    assert.equal(nonNumericCallback.status, 2);
+    assert.match(nonNumericCallback.stderr, /requires the Runtime callback Service IPv4 address/);
     manifest.authorization.approved = true;
     manifest.authorization.source = "Offline rejection test; no owner permission";
     manifest.authorization.approvedManifestSha256 = parsed.manifestSha256;
