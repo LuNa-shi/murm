@@ -198,3 +198,63 @@ test('project close bounds a held steer and keeps facilities for a later close r
   assert.equal((await f.harness.close({ timeoutMs: 2000 })).cleanup, 'complete');
   assert.equal(facilityClosed, true);
 });
+
+test('targeted user input waits for the next peer batch and stopPeer fences its source before Core stop', async t => {
+  let context = 'BOARD_BEFORE';
+  const stoppedSources = new Set();
+  const order = [];
+  const f = await setup(t, { router: {
+    workTimeoutMs: 5000, turnTimeoutMs: 3000, maxNudges: 0,
+    readContext: async () => context,
+    subscribe: async ({ mapping }) => ({ ready: true, async stop() {
+      stoppedSources.add(mapping.agentId); order.push({ kind: 'source', agentId: mapping.agentId });
+    } }),
+  } });
+  const until = async predicate => {
+    const end = Date.now() + 2000;
+    while (!predicate()) { assert.ok(Date.now() < end); await new Promise(resolve => setImmediate(resolve)); }
+  };
+  const initial = f.harness.snapshot();
+  const aId = initial.peers[0].agentId, bId = initial.peers[1].agentId;
+  const a = f.harness.kickoff('a', 'A initial held work');
+  const b = f.harness.kickoff('b', 'B initial work');
+  await until(() => transport.submissions.size === 2);
+  const aInput = [...transport.submissions].find(([, row]) => row.agentId === aId)[0];
+  const bInput = [...transport.submissions].find(([, row]) => row.agentId === bId)[0];
+  settle(bInput, 'B initial complete');
+  assert.equal((await f.harness.wait('b', b.batchId)).state, 'completed');
+  const input = { recipient: 'a', input: 'A directed user follow-up', requestId: 'common-input' };
+  const queued = f.harness.input(input);
+  assert.equal(queued.state, 'queued');
+  assert.equal(f.harness.input(input).batchId, queued.batchId);
+  assert.throws(() => f.harness.input({ ...input, input: 'changed same request' }), { code: 'BATCH_CONFLICT' });
+  assert.equal(transport.submissions.size, 2);
+  assert.equal(f.harness.snapshot().peers[1].router.batches.length, 1);
+  context = 'BOARD_AFTER_QUEUE';
+  settle(aInput, 'A initial complete');
+  assert.equal((await f.harness.wait('a', a.batchId)).state, 'completed');
+  await until(() => transport.submissions.size === 3);
+  const user = [...transport.submissions].find(([, row]) => row.agentId === aId && row.input.includes('A directed user follow-up'));
+  assert.ok(user);
+  assert.equal(user[1].mode, 'followUp');
+  const batch = JSON.parse(user[1].input.slice(user[1].input.indexOf('\n') + 1));
+  assert.equal(batch.source, 'user');
+  assert.equal(batch.context, 'BOARD_AFTER_QUEUE');
+  settle(user[0], 'A user complete');
+  assert.equal((await f.harness.wait('a', queued.batchId)).state, 'completed');
+  transport.onStop = agentId => {
+    assert.equal(stoppedSources.has(agentId), true);
+    const peer = f.harness.snapshot().peers.find(row => row.agentId === agentId);
+    assert.equal(peer.router.accepting, false);
+    order.push({ kind: 'core', agentId });
+  };
+  const stopped = await f.harness.stopPeer('a', { timeoutMs: 1000 });
+  assert.equal(stopped.cleanup, 'complete');
+  assert.deepEqual(order.filter(row => row.agentId === aId).map(row => row.kind), ['source', 'core']);
+  assert.throws(() => f.harness.input({ recipient: 'a', input: 'closed target', requestId: 'after-stop' }), { code: 'UNKNOWN_RECIPIENT' });
+  transport.next = id => settle(id, 'B continues');
+  const continued = f.harness.input({ recipient: 'b', input: 'B work after A stop', requestId: 'b-continues' });
+  assert.equal((await f.harness.wait('b', continued.batchId)).state, 'completed');
+  assert.equal(f.harness.snapshot().peers[1].stopped, undefined);
+  transport.onStop = undefined;
+});
