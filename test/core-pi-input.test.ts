@@ -18,7 +18,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
-const { createRuntime } = await import('@luna-shi/murm');
+const { createHarnessSession, createRuntime } = await import('@luna-shi/murm');
 const { runtimeSettings } = await import('./fixtures/core-runtime-settings.js');
 
 const { ServiceRegistry } = await import('@luna-shi/murm');
@@ -494,8 +494,27 @@ test('a pending close stays visible and an eventual close publishes the confirme
 });
 
 test('live session controls require Guest attestation and preserve native queue receipts across retries', async t => {
-  const { runtime, agent } = await setup(t);
+  const { runtime, agent, outputDir } = await setup(t);
+  const cwd = await mkdtemp(join(tmpdir(), 'unattested-peer-project-'));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const registered = Promise.withResolvers<void>();
+  const session = createHarnessSession({ id: 'unattested-worker', apiVersion: 1, async run(context) {
+    const unregister = context.registerAgentControls({ runtime });
+    context.markRunning(); registered.resolve();
+    await new Promise(resolve => context.signal.addEventListener('abort', resolve, { once: true }));
+    unregister();
+    return { outcome: 'cancelled', reason: 'stopped', artifacts: [], cleanup: { status: 'complete' } };
+  } }, { outputRoot: outputDir });
+  t.after(async () => { await session.stop({ requestId: 'stop' }); await session.completion; });
+  await session.start({ cwd, prompt: 'Check Worker capabilities' }, { requestId: 'start' });
+  await registered.promise;
   await assert.rejects(runtime.session.getStats(agent.id), { code: 'OPERATION_UNSUPPORTED' });
+  const absent = (await session.describe()).agents[agent.id];
+  for (const operation of ['getState', 'getStats', 'getMessages'] as const) {
+    assert.deepEqual(absent[operation], { supported: false, available: false, reason: 'OPERATION_UNSUPPORTED' });
+    await assert.rejects(session.agents[operation](agent.id), { code: 'OPERATION_UNSUPPORTED' });
+  }
+  assert.equal(provider.messages.some(message => message.type.startsWith('core_session_get_')), false);
   provider.publish({ type: 'core_session_ready', version: '1.3.0', capabilities: {
     configure: true, compact: true, abortRetry: true, clearQueue: true, state: true, stats: true, messages: true, context: true, beforeCompact: true,
   } });
@@ -504,6 +523,10 @@ test('live session controls require Guest attestation and preserve native queue 
     provider.responses.set(message.id, { response: { id: message.id, command: message.type, success: true, data: { status: 'completed', discardedInputHashes: ['a'.repeat(64)], discardedContextIds: ['context-one'] } } });
   };
   await runtime.send(agent.id, 'attestation trigger', { requestId: 'attestation' });
+  const present = (await session.describe()).agents[agent.id];
+  for (const operation of ['getState', 'getStats', 'getMessages'] as const) {
+    assert.deepEqual(present[operation], { supported: true, available: true });
+  }
   const receipt = await runtime.session.clearQueue(agent.id, { requestId: 'clear' });
   assert.equal(receipt.status, 'completed');
   assert.deepEqual(receipt.discardedContextIds, ['context-one']);

@@ -40,11 +40,11 @@ This section is generated from executable exports and checked against the source
 | [test-support/taskpool-legacy/services-bridge.ts](../../test-support/taskpool-legacy/services-bridge.ts) | `bddb5744b172e34d5939b958f5e92946f736d6816b31c9b54938976ded8e1ca6` |
 | [examples/services/mathlib-search/service.json](../../examples/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5b436c6d7062a7b9fb0fd434af1375b9c050999cfa76bd6d97dac88558dca8b3` |
-| [src/core/index.ts](../../src/core/index.ts) | `26c030b2a4072380f1b5ab29d96453042fde878c518dd4911853028a3f7a441a` |
+| [src/core/index.ts](../../src/core/index.ts) | `d256ac6f8efd9b859b24ebc902ce2a02552d0091d1bc17031f9f5d5d043700d1` |
 | [src/core/types.ts](../../src/core/types.ts) | `e17977d64d7393e4120c95a76a5be8222a0fb3dc4de8a1ee8b0d224e6ddc57f7` |
 | [src/core/services.ts](../../src/core/services.ts) | `794352ccfa8e02f63c4db087f1c165308198c6766c0d8c3cf8872e1b9c0617ab` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
-| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `d314392a70dc6c1360f5baf64df93d5b1033f16fb345c039f34cef8b1ddd199e` |
+| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `c32c3319e6d7ff133d642b1ad11f9cd44158903d65c1e1ff94e618111513aa41` |
 | [src/core/sandbox/executor-driver.ts](../../src/core/sandbox/executor-driver.ts) | `182e80680d8ea6e1729d524a6927d800a91caffd3657ed796706ebaad9d28131` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `04d9109564513eb6996ebd3e05dbc95b842276decb47c133cdf3e92bdb754c58` |
 | [src/core/sandbox/opensandbox-provider.ts](../../src/core/sandbox/opensandbox-provider.ts) | `b9c953413bde9906cd7e5166f9442fcbe01d6980c23da6bb062d2e6d18d42256` |
@@ -3833,6 +3833,7 @@ export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'e
 export declare function createSandbox(config: SandboxConfig | SandboxProviderConfig): Sandbox;
 export declare function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRuntimeOptions, 'models' | 'executor' | 'connection' | 'filePolicy'>): ResolvedOpenSandboxBackendConfig;
 export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, { runtimeId, outputDir, bridge, modelAccess, registerPrivateValues, providers, }: BackendOptions): Promise<{
+    sessionCapabilities(agentId: string): import("../session-types.js").AgentSessionCapabilities | undefined;
     spawn({ agentId, profile, options, signal, onEvent, onExecutionStart, onTrace, recordAllocation, beforeCompact }: BackendSpawnOptions): Promise<{
         providerId: string;
         resourceKey: string;

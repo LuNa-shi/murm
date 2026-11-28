@@ -456,6 +456,9 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
   }
 
   return {
+    sessionCapabilities(agentId: string) {
+      return agents.get(agentId)?.sessionReady ? driver.capabilities.session : undefined;
+    },
     async spawn({ agentId, profile, options = {} as SpawnOptions, signal, onEvent, onExecutionStart, onTrace, recordAllocation, beforeCompact }: BackendSpawnOptions) {
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
       if (options.forkFrom !== undefined && !driver.capabilities.contextFork) throw Object.assign(new Error('Backend does not support Context Fork'), { code: 'NOT_ALLOWED' });

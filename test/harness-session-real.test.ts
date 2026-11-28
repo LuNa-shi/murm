@@ -224,6 +224,21 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task']) {
     await session.respond(childQuestion.questionId, 'CHILD_VALUE', { requestId: 'answer-child' });
     await completed('CHILD_ANSWER_OK');
 
+    await send('SESSION_QOLD', 'old-execution-question');
+    const oldQuestion = await wait('pending old Root execution question', async () =>
+      (await session.getState()).questions.find(question => question.status === 'pending' && question.agentId === root));
+    assert.equal(agentReceipt(await session.agents.interrupt(root, { requestId: 'interrupt-question' })).status, 'interrupted');
+    await wait('interrupted Root question cancelled', async () =>
+      (await session.getState()).questions.find(question => question.questionId === oldQuestion.questionId)?.status === 'cancelled');
+    await send('SESSION_QNEW', 'new-execution-question');
+    const newQuestion = await wait('pending new Root execution question', async () =>
+      (await session.getState()).questions.find(question => question.status === 'pending' && question.agentId === root));
+    assert.notEqual(newQuestion.questionId, oldQuestion.questionId);
+    await assert.rejects(session.respond(oldQuestion.questionId, 'LATE_OLD_EXECUTION_ANSWER', { requestId: 'late-old-answer' }), { code: 'QUESTION_CLOSED' });
+    assert.equal((await session.getState()).questions.find(question => question.questionId === newQuestion.questionId)?.status, 'pending');
+    await session.respond(newQuestion.questionId, 'NEW_EXECUTION_ANSWER', { requestId: 'answer-new-execution' });
+    assert.equal((await completed('NEW_EXECUTION_ANSWER_OK')).agentId, root);
+
     await send('SESSION_HOLD_QUEUE', 'hold-queue');
     await wait('active Root before clearing queue', async () => (await session.agents.getState(root)).active);
     assert.equal(agentReceipt(await session.agents.send(root, 'QUEUED_TEXT_TO_DISCARD', { requestId: 'queued-text', mode: 'followUp' })).disposition, 'queued');
@@ -268,7 +283,8 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task']) {
     assert.equal(result.initial.digest.startsWith('complete:sha256:'), true);
     assert.ok(result.artifacts.some(artifact => artifact.kind === 'session-archive' && typeof artifact.path === 'string'));
     assert.equal(result.reportSaveFailure, null);
-    assert.equal(result.questions.filter(question => question.status === 'answered').length, 2);
+    assert.equal(result.questions.filter(question => question.status === 'answered').length, 3);
+    assert.equal(result.questions.filter(question => question.status === 'cancelled').length, 1);
     assert.equal(upstream.failure, undefined);
     if (exited) assert.deepEqual(await exited, [1, null]);
   });

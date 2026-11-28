@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createProjectHost, type HarnessInput, type HarnessJson, type HarnessInputHandler, type HarnessInputPreparation, type ProjectHarness } from './project-harness.js';
 import { projectError, resolveHarnessInput } from './project-input.js';
-import { fenceRuntimeAdmissions, reconcileRuntimeReceipt } from '../core/runtime-admissions.js';
+import { fenceRuntimeAdmissions, readRuntimeSessionCapabilities, reconcileRuntimeReceipt } from '../core/runtime-admissions.js';
 import { createRedactor } from '../core/run-records.js';
 import type { RuntimeSession } from '../core/session-types.js';
 import { stableStringify } from '../protocol/stable-json.js';
@@ -88,7 +88,6 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   const records = new Map<string, OperationRecord>();
   const registrations = new Set<HarnessAgentRegistration>();
   const targets = new Map<string, HarnessAgentRegistration>();
-  const nativeCapabilities = new Map<string, import('../core/session-types.js').AgentSessionCapabilities>();
   const targetStates = new Map<string, string>();
   const questions = new Map<string, QuestionRecord>();
   const questionRequests = new Map<string, QuestionRecord>();
@@ -114,16 +113,20 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     const agents: Record<string, NonNullable<HarnessDescriptor['agents'][string]>> = {};
     for (const [id, registration] of targets) {
       const declared = declaredCapabilities(registration, id);
+      const native = readRuntimeSessionCapabilities(registration.runtime, id);
       agents[id] = Object.fromEntries(Object.entries(declared).map(([name, capability]) => {
         const operation = name as HarnessOperation;
         const handlerRequired = ['send', 'interrupt', 'clearQueue', 'stop', 'compact', 'abortRetry'].includes(name);
-        const supported = capability.supported && executorSupports(id, operation) && (!handlerRequired || !!registration.handlers?.[operation]);
+        const context = capability.context === true && native?.context === true;
+        const supported = capability.supported && executorSupports(native, operation) && (!handlerRequired || !!registration.handlers?.[operation]) &&
+          (name !== 'send' || context || capability.text === true);
         const state = targetStates.get(id);
         const unavailable = stopping || !!result ? 'RUN_STOPPING' : ['exited', 'closing', 'closed'].includes(state ?? '') ? 'SESSION_UNAVAILABLE'
-          : state === 'starting' ? 'AGENT_NOT_READY' : name === 'compact' && state !== 'idle' ? 'OPERATION_BUSY' : undefined;
+          : state === 'starting' ? 'AGENT_NOT_READY' : !supported ? 'OPERATION_UNSUPPORTED'
+          : (capability.available === false || (name === 'compact' && state !== 'idle')) ? capability.reason ?? 'OPERATION_BUSY' : undefined;
         return [name, { ...capability, supported, available: supported && capability.available !== false && !unavailable,
           ...(unavailable ? { reason: unavailable } : {}),
-          ...(name === 'send' ? { context: capability.context === true && nativeCapabilities.get(id)?.context !== false } : {}),
+          ...(name === 'send' ? { context } : {}),
         }];
       }));
     }
@@ -144,10 +147,14 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       questions: [...questions.values()].map(record => record.value), output: [...output.values()], observedAt,
       ...(result ? { result: { ...result, result: undefined, acceptance: undefined, operations: result.operations?.slice(0, 16), artifacts: result.artifacts.slice(0, 16), snapshotTruncated: true } } : {}) }), limits.snapshotBytes) as HarnessState;
   }
+  function deliver(listener: (event: HarnessEvent) => void, event: HarnessEvent) {
+    try { void Promise.resolve(listener(event)).catch(() => {}); }
+    catch { /* One subscriber cannot fail the Run. */ }
+  }
   function publish(event: HarnessEvent) {
     observedAt = new Date().toISOString();
     for (const listener of [...listeners]) {
-      try { listener(structuredClone(redactor.value(event)) as HarnessEvent); } catch { /* One subscriber cannot fail the Run. */ }
+      if (listeners.has(listener)) deliver(listener, structuredClone(redactor.value(event)) as HarnessEvent);
     }
   }
   function changed() { publish({ type: 'state', state: snapshot() }); }
@@ -374,13 +381,11 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       configure: { supported: false }, compact: { supported: false }, abortRetry: { supported: false }, clearQueue: { supported: false },
       send: { supported: false }, interrupt: { supported: false }, stop: { supported: false }, ...declared };
   }
-  function executorSupports(agentId: string, operation: HarnessOperation) {
-    const capability = nativeCapabilities.get(agentId);
-    if (!capability) return true;
+  function executorSupports(capability: ReturnType<typeof readRuntimeSessionCapabilities>, operation: HarnessOperation) {
     const names = { getState: 'state', getStats: 'stats', getMessages: 'messages', send: null, interrupt: null, stop: null,
       configure: 'configure', compact: 'compact', clearQueue: 'clearQueue', abortRetry: 'abortRetry' } as const;
     const name = names[operation];
-    return name === null || capability[name];
+    return name === null || capability?.[name] === true;
   }
   async function registrationFor(agentId: string) {
     if (typeof agentId !== 'string' || !agentId || agentId.length > 128) throw projectError('INVALID_AGENT', 'Expected an Agent identity');
@@ -391,31 +396,38 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   }
   async function query(operation: 'getState' | 'getStats' | 'getMessages', agentId: string, options?: unknown) {
     const registration = await registrationFor(agentId);
+    assertTargetReady(agentId);
     const capability = declaredCapabilities(registration, agentId)[operation];
-    if (!capability?.supported || !executorSupports(agentId, operation)) throw projectError('OPERATION_UNSUPPORTED', 'Agent query is unsupported');
+    if (!capability?.supported || !executorSupports(readRuntimeSessionCapabilities(registration.runtime, agentId), operation)) throw projectError('OPERATION_UNSUPPORTED', 'Agent query is unsupported');
+    if (capability.available === false) throw projectError('OPERATION_BUSY', capability.reason ?? 'Agent query is temporarily unavailable');
     const native = (registration.runtime as typeof registration.runtime & { session: RuntimeSession }).session;
     if (!native) throw projectError('OPERATION_UNSUPPORTED', 'Executor has no session queries');
     const response = registration.handlers?.[operation]
       ? await registration.handlers[operation]!(agentId, options ?? null, { requestId: '', signal: host.signal })
       : operation === 'getMessages' ? await native.getMessages(agentId, options as Parameters<RuntimeSession['getMessages']>[1])
       : await native[operation](agentId);
-    if (operation === 'getState') nativeCapabilities.set(agentId, (response as Awaited<ReturnType<RuntimeSession['getState']>>).capabilities);
     return jsonCopy(response);
+  }
+  function assertTargetReady(agentId: string) {
+    const state = targetStates.get(agentId);
+    if (state === 'starting') throw projectError('AGENT_NOT_READY', 'Agent Session is starting');
+    if (['exited', 'closing', 'closed'].includes(state ?? '')) throw projectError('SESSION_UNAVAILABLE', 'Agent Session is closed');
   }
   async function control(operation: HarnessOperation, agentId: string, payload: unknown, request: HarnessRequest) {
     return mutate('agent.' + operation, { agentId, payload }, request, async () => {
       admit();
       const registration = await registrationFor(agentId);
       admit();
+      assertTargetReady(agentId);
       const capability = declaredCapabilities(registration, agentId)[operation];
-      if (!capability?.supported || !executorSupports(agentId, operation)) throw projectError('OPERATION_UNSUPPORTED', 'Harness or executor does not support this Agent operation');
+      const nativeCapabilities = readRuntimeSessionCapabilities(registration.runtime, agentId);
+      if (!capability?.supported || !executorSupports(nativeCapabilities, operation)) throw projectError('OPERATION_UNSUPPORTED', 'Harness or executor does not support this Agent operation');
       if (capability.available === false) throw projectError('OPERATION_BUSY', capability.reason ?? 'Agent operation is temporarily unavailable');
-      if (['exited', 'closing', 'closed'].includes(targetStates.get(agentId) ?? '')) throw projectError('SESSION_UNAVAILABLE', 'Agent Session is closed');
       if (operation === 'send') {
         const send = payload as { input: unknown; options: { mode?: string; delivery?: string } };
         if (typeof send.input === 'string') {
           if (capability.text !== true || (capability.modes && !capability.modes.includes(send.options.mode ?? 'steer'))) throw projectError('OPERATION_UNSUPPORTED', 'Harness does not support this text delivery');
-        } else if (nativeCapabilities.get(agentId)?.context === false || capability.context !== true || !send.options.delivery || !capability.deliveries?.includes(send.options.delivery)) throw projectError('OPERATION_UNSUPPORTED', 'Harness does not support this context delivery');
+        } else if (nativeCapabilities?.context !== true || capability.context !== true || !send.options.delivery || !capability.deliveries?.includes(send.options.delivery)) throw projectError('OPERATION_UNSUPPORTED', 'Harness does not support this context delivery');
       }
       if (operation === 'configure' && capability.fields) {
         const paths = Object.entries(payload as Record<string, unknown>).flatMap(([key, value]) => value && typeof value === 'object' && !Array.isArray(value)
@@ -469,12 +481,15 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       if (typeof handler !== 'function') throw projectError('INVALID_SUBSCRIBER', 'An event handler is required');
       let initializing = true;
       const buffered: HarnessEvent[] = [];
-      const listener = (event: HarnessEvent) => { if (initializing) buffered.push(event); else handler(event); };
+      const listener = (event: HarnessEvent) => {
+        if (initializing) { buffered.push(event); return; }
+        return handler(event);
+      };
       listeners.add(listener);
-      try { if (subscribeOptions?.initialSnapshot) handler({ type: 'snapshot', state: snapshot() }); }
+      try { if (subscribeOptions?.initialSnapshot) deliver(handler, { type: 'snapshot', state: snapshot() }); }
       catch { listeners.delete(listener); }
       initializing = false;
-      for (const event of buffered) { try { handler(event); } catch {} }
+      for (const event of buffered) deliver(handler, event);
       return () => { listeners.delete(listener); };
     },
     start(raw, request) {

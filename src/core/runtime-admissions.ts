@@ -1,4 +1,5 @@
 import type { Runtime } from './types.js';
+import type { AgentSessionCapabilities } from './session-types.js';
 
 const fences = new WeakMap<Runtime, () => void>();
 export function registerRuntimeAdmissionFence(runtime: Runtime, fence: () => void): void {
@@ -21,4 +22,13 @@ export function reconcileRuntimeReceipt(runtime: Runtime, agentId: string, opera
   const query = receiptQueries.get(runtime);
   if (!query) return Promise.resolve({ status: 'unknown', requestId });
   return query(agentId, operation, requestId);
+}
+
+type SessionCapabilityReader = (agentId: string) => AgentSessionCapabilities | undefined;
+const sessionCapabilities = new WeakMap<Runtime, SessionCapabilityReader>();
+export function registerRuntimeSessionCapabilities(runtime: Runtime, read: SessionCapabilityReader): void {
+  sessionCapabilities.set(runtime, read);
+}
+export function readRuntimeSessionCapabilities(runtime: Runtime, agentId: string): AgentSessionCapabilities | undefined {
+  return sessionCapabilities.get(runtime)?.(agentId);
 }

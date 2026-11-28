@@ -496,6 +496,38 @@ test('the typed RPC client uses a fresh snapshot cut and preserves Unicode input
 });
 
 
+test('the typed RPC client restores pending questions and partial output before a later event in the same chunk', async () => {
+  const transport = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough() });
+  const client = new HarnessRpcClient(transport);
+  const captured = { phase: 'running', questions: [{ questionId: 'question', status: 'pending' }],
+    output: [{ messageId: 'message', text: 'partial', complete: false }] };
+  const later = { ...captured, business: { task: 'updated' } };
+  const frame = (...rows: unknown[]) => transport.stdout.write(rows.map(row => JSON.stringify(row)).join('\n') + '\n');
+  transport.stdin.on('data', bytes => {
+    const request = JSON.parse(bytes.toString());
+    assert.equal(request.operation, 'status');
+    frame(
+      { type: 'event', event: {}, sessionEvent: { type: 'state', state: { phase: 'starting' } } },
+      { type: 'reply', id: request.id, result: captured },
+      { type: 'event', event: {}, sessionEvent: { type: 'state', state: later } },
+    );
+  });
+  frame({ type: 'ready', version: 'v1', harness: { id: 'test', apiVersion: 1 }, descriptor: {}, status: {} });
+  const events: unknown[] = [];
+  const latest = Promise.withResolvers<void>();
+  const unsubscribe = client.onEvent(event => {
+    events.push(event);
+    if (event.type === 'state') latest.resolve();
+  }, { initialSnapshot: true });
+  try {
+    await latest.promise;
+    assert.deepEqual(events, [{ type: 'snapshot', state: captured }, { type: 'state', state: later }]);
+  } finally {
+    unsubscribe();
+    transport.emit('close');
+  }
+});
+
 test('the typed RPC client reserves capacity for answers and overall stop', async () => {
   const transport = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough() });
   const client = new HarnessRpcClient(transport);

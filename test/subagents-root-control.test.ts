@@ -107,6 +107,46 @@ test('late Root clear receipt restores its original child without deleting later
   } finally { controller.beginClose(); controller.dispose(); }
 });
 
+test('manual Root compaction and input dispatch exclude each other', async () => {
+  const boundary = executorBoundary();
+  const controller = createSubagentsController(boundary.runtime, { maxDepth: 2 });
+  controller.attachRoot('root');
+  const compacting = Promise.withResolvers<void>();
+  const compacted = Promise.withResolvers<void>();
+  const dispatching = Promise.withResolvers<void>();
+  const dispatched = Promise.withResolvers<void>();
+  const send = boundary.runtime.send;
+  boundary.runtime.send = async (...args) => {
+    dispatching.resolve();
+    await dispatched.promise;
+    return send(...args);
+  };
+  boundary.runtime.session.compact = async () => {
+    compacting.resolve();
+    await compacted.promise;
+    return { status: 'completed' };
+  };
+  try {
+    const compact = controller.compactRoot({ requestId: 'compact' });
+    await compacting.promise;
+    await assert.rejects(controller.submitUser('Send during compact', 'during-compact'), { code: 'OPERATION_BUSY' });
+    assert.equal(boundary.runtime.sent.length, 0);
+    compacted.resolve();
+    assert.equal((await compact).status, 'completed');
+    const input = controller.submitUser('Send after compact', 'after-compact');
+    await dispatching.promise;
+    await assert.rejects(controller.compactRoot({ requestId: 'while-dispatching' }), { code: 'OPERATION_BUSY' });
+    dispatched.resolve();
+    assert.equal((await input).status, 'accepted');
+    assert.equal(boundary.runtime.sent.length, 1);
+  } finally {
+    compacted.resolve();
+    dispatched.resolve();
+    controller.beginClose();
+    controller.dispose();
+  }
+});
+
 test('reconciled queued Root input settles its child inbox and never resubmits the user work', async () => {
   const boundary = executorBoundary();
   const controller = createSubagentsController(boundary.runtime, { maxDepth: 2 });

@@ -89,7 +89,7 @@ test('public Harness control reconciles the original native receipt after the Ag
   const ready = Promise.withResolvers<void>();
   const session = createHarnessSession({ id: 'native-receipt', apiVersion: 1, async run(context) {
     observation = observeProjectRuntime(runtime, context, undefined, {
-      capabilities: { configure: { supported: true } },
+      capabilities: { configure: { supported: true, fields: ['thinkingLevel'] } },
     });
     context.markRunning(); ready.resolve();
     await new Promise(resolve => context.signal.addEventListener('abort', resolve, { once: true }));
@@ -98,10 +98,14 @@ test('public Harness control reconciles the original native receipt after the Ag
   } }, { outputRoot });
   await session.start({ cwd: project, prompt: 'work' }, { requestId: 'start' });
   await ready.promise;
+  await assert.rejects(session.agents.configure('foreign-agent', { thinkingLevel: 'low' }, { requestId: 'wrong-target' }), { code: 'AGENT_NOT_FOUND' });
+  await assert.rejects(session.agents.configure(agent.id, { retry: { enabled: false } }, { requestId: 'forbidden-field' }), { code: 'OPERATION_UNSUPPORTED' });
+  assert.equal(transport.sessionCalls.length, 0);
   transport.sessionReply = ({ query }) => query ? { status: 'applied' } : { status: 'unknown' };
   const first = await session.agents.configure(agent.id, { thinkingLevel: 'low' }, { requestId: 'setting' });
   assert.equal(first.status, 'unknown');
   await runtime.stop(agent.id);
+  await assert.rejects(session.agents.configure(agent.id, { thinkingLevel: 'low' }, { requestId: 'closed-target' }), { code: 'SESSION_UNAVAILABLE' });
   const confirmed = await session.agents.configure(agent.id, { thinkingLevel: 'low' }, { requestId: 'setting' });
   assert.equal(confirmed.status, 'applied');
   assert.equal(confirmed.operationId, first.operationId);
@@ -122,4 +126,55 @@ test('text and structured context share one public send request identity in both
   await assert.rejects(runtime.send(agent.id, context, { requestId: 'text-first', delivery: 'append' }), { code: 'CONFLICT' });
   assert.equal(transport.sessionCalls.length, before);
   assert.deepEqual(await runtime.send(agent.id, context, { requestId: 'context-first', delivery: 'append' }), first);
+});
+
+test('Harness stop bypasses a full input queue and fences a late handler at its Runtime', async t => {
+  const { createHarnessSession } = await import('@luna-shi/murm');
+  const cwd = await mkdtemp(join(tmpdir(), 'session-stop-project-'));
+  const outputRoot = await mkdtemp(join(tmpdir(), 'session-stop-output-'));
+  t.after(async () => { await rm(cwd, { recursive: true, force: true }); await rm(outputRoot, { recursive: true, force: true }); });
+  const { runtime, agent } = await setup(t);
+  const ready = Promise.withResolvers<void>();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const attempted = Promise.withResolvers<PromiseSettledResult<unknown>[]>();
+  let dispatches = 0;
+  const session = createHarnessSession({ id: 'session-stop-fence', apiVersion: 1, input: true, async run(context) {
+    const unregister = context.registerAgentControls({ runtime });
+    context.registerInput(async () => {
+      dispatches++;
+      entered.resolve();
+      await release.promise;
+      attempted.resolve(await Promise.allSettled([
+        runtime.send(agent.id, 'late', { requestId: 'late-send' }),
+        runtime.spawn({ profile: 'worker', requestId: 'late-spawn' }),
+      ]));
+      return null;
+    });
+    context.markRunning();
+    ready.resolve();
+    await new Promise(resolve => context.signal.addEventListener('abort', resolve, { once: true }));
+    unregister();
+    return { outcome: 'cancelled', reason: 'stopped', artifacts: [], cleanup: { status: 'complete' } };
+  } }, { outputRoot, limits: { inputQueue: 1 } });
+  t.after(async () => { release.resolve(); await session.stop({ requestId: 'stop' }); await session.completion; });
+  await session.start({ cwd, prompt: 'Work' }, { requestId: 'start' });
+  await ready.promise;
+  const active = session.input('hold', { requestId: 'active' });
+  await entered.promise;
+  const queued = session.input('queued', { requestId: 'queued' });
+  void queued.catch(() => {});
+  await assert.rejects(session.input('excess', { requestId: 'excess' }), { code: 'REQUEST_LIMIT' });
+  await session.stop({ requestId: 'stop' });
+  assert.equal((await session.completion)?.cleanup.status, 'complete');
+  assert.equal((await active).status, 'unknown');
+  release.resolve();
+  await assert.rejects(queued, { code: 'RUN_STOPPING' });
+  for (const result of await attempted.promise) {
+    assert.equal(result.status, 'rejected');
+    assert.equal(result.reason.code, 'NOT_ALLOWED');
+  }
+  assert.equal(dispatches, 1);
+  assert.equal(transport.spawned.length, 1);
+  assert.equal(transport.submissions.size, 0);
 });

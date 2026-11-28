@@ -37,7 +37,7 @@ export async function createHarnessSessionUpstream(seed: string) {
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       const rows: any[] = body.input;
       const users = rows.filter(row => row.role === 'user').flatMap(row => row.content ?? []).map(block => block.text ?? '');
-      const marker = users.filter(value => /SESSION_(READ|SECOND|INTERRUPT|CHILD|RESUME|QUESTIONS|ASKER|HOLD_QUEUE|CONTEXT_STEER|CONTEXT_FOLLOW|AFTER_QUEUE|RETRY)/.test(value)).at(-1);
+      const marker = users.filter(value => /SESSION_(READ|SECOND|INTERRUPT|CHILD|RESUME|QUESTIONS|ASKER|QOLD|QNEW|HOLD_QUEUE|CONTEXT_STEER|CONTEXT_FOLLOW|AFTER_QUEUE|RETRY)/.test(value)).at(-1);
       const output = (id: string) => rows.find(row => row.type === 'function_call_output' && row.call_id === id)?.output;
       const all = JSON.stringify(rows);
       let item;
@@ -94,6 +94,18 @@ export async function createHarnessSessionUpstream(seed: string) {
           assert.ok(String(output('root-question')).includes('ROOT_VALUE'));
           assert.ok(!String(output('root-question')).includes('CHILD_VALUE'));
           item = text('root-answer', 'ROOT_ANSWER_OK');
+        }
+      } else if (marker?.includes('SESSION_QOLD')) {
+        stage = 'old-question';
+        assert.equal(output('old-root-question'), undefined, 'a cancelled Service call cannot resume the old execution');
+        item = service('old-root-question', 'service invoke user-interaction ask', { text: 'Old Root execution question' });
+      } else if (marker?.includes('SESSION_QNEW')) {
+        stage = output('new-root-question') ? 'new-answer' : 'new-question';
+        if (stage === 'new-question') item = service('new-root-question', 'service invoke user-interaction ask', { text: 'New Root execution question' });
+        else {
+          assert.ok(String(output('new-root-question')).includes('NEW_EXECUTION_ANSWER'));
+          assert.ok(!all.includes('LATE_OLD_EXECUTION_ANSWER'));
+          item = text('new-answer', 'NEW_EXECUTION_ANSWER_OK');
         }
       } else if (marker?.includes('SESSION_HOLD_QUEUE')) {
         stage = 'held-queue';

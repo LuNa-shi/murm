@@ -42,6 +42,7 @@ test('answering an existing question and stopping bypass a stalled input', async
     const stalled = session.input('wait', { requestId: 'input' });
     const reply = await session.respond('q', 'yes', { requestId: 'answer' });
     assert.equal(reply.status, 'answered');
+    await assert.rejects(session.respond('q', 'different', { requestId: 'answer' }), { code: 'REQUEST_ID_CONFLICT' });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(answer, 'yes');
     await session.stop({ requestId: 'stop' });
@@ -118,6 +119,8 @@ test('initial snapshots precede reentrant state changes and live output replaces
   try {
     await session.start({ cwd, prompt: 'work' }, { requestId: 'start' }); const context = await ready.promise;
     const phases: string[] = [];
+    const detachBroken = session.onEvent(async () => { throw new Error('A subscriber rejected'); }, { initialSnapshot: true });
+    const detachSlow = session.onEvent(async () => { await new Promise(() => {}); });
     const unsubscribe = session.onEvent(event => {
       phases.push(event.type);
       if (event.type === 'snapshot') context.updateStatus({ business: { work: 'new' } });
@@ -130,6 +133,7 @@ test('initial snapshots precede reentrant state changes and live output replaces
     assert.equal(output.length, 1); assert.equal(output[0]!.complete, true); assert.equal('text' in output[0]!, false);
     unsubscribe(); assert.equal((await session.getState()).phase, 'running');
     await session.stop({ requestId: 'stop' }); await session.completion;
+    detachSlow(); detachBroken();
   } finally { await rm(cwd, { recursive: true, force: true }); await rm(outputRoot, { recursive: true, force: true }); }
 });
 

@@ -1,4 +1,4 @@
-import { registerRuntimeAdmissionFence, registerRuntimeReceiptQuery } from './runtime-admissions.js';
+import { registerRuntimeAdmissionFence, registerRuntimeReceiptQuery, registerRuntimeSessionCapabilities } from './runtime-admissions.js';
 import type { BeforeCompactDecision, BeforeCompactRequest, ContextInput, ContextInputReceipt, ContextSendOptions } from './session-types.js';
 import { createSessionControls } from './session-controls.js';
 import type {
@@ -988,5 +988,6 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     admissionsFenced = true;
     for (const agent of agents.values()) cancelHooks(agent.info.id);
   });
+  registerRuntimeSessionCapabilities(runtime, backend.sessionCapabilities);
   return runtime;
 }

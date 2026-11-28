@@ -19,6 +19,7 @@ export const transport = {
 export const claimOpenSandboxBackend = () => ({ ...configuration, driver: selectExecutorDriver() });
 export async function openOpenSandboxBackend() {
   return {
+    sessionCapabilities() { return selectExecutorDriver().capabilities.session; },
     async spawn({ agentId, onEvent, options }) {
       transport.spawned.push({ agentId, options });
       transport.listeners.set(agentId, onEvent);
