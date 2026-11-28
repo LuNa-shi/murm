@@ -186,3 +186,5 @@ Because `swarm service list` shows only permitted operations, Agents never waste
 ---
 
 **Next:** explore the live zoomable swimlane right in the docs in **[Trace Viewer](trace-viewer.md)**.
+
+On current candidates, `swarm service invoke <service> <operation> --help` lists input types and required fields. For schema-derived examples and safe recovery from `SERVICE_INPUT_INVALID`, follow the [handoff walkthrough](first-harness.md#4-diagnose-and-extend).

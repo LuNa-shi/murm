@@ -31,10 +31,15 @@ test('the public installer uses a user prefix when the npm global prefix cannot 
   const directory = await mkdtemp(join(tmpdir(), 'murm-install-prefix-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await symlink(process.execPath, join(directory, 'node'));
+  const prefix = join(directory, '.local');
+  const modules = join(prefix, 'lib/node_modules/@luna-shi/murm');
+  await mkdir(modules, { recursive: true });
+  await writeFile(join(modules, 'package.json'), '{"version":"0.2.0"}');
   await writeFile(join(directory, 'npm'), `#!/bin/sh
 case "$1" in
   prefix) echo /dev/null;;
-  root) echo /dev/null/lib/node_modules;;
+  root)
+    if [ "$#" = 4 ]; then printf '%s\\n' "$4/lib/node_modules"; else echo /dev/null/lib/node_modules; fi;;
   *) printf '%s\\n' "$@";;
 esac
 `, { mode: 0o700 });
@@ -43,8 +48,9 @@ esac
   });
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(result.stdout.trim().split('\n'), [
-    'install', '--global', '--prefix', join(directory, '.local'), '--ignore-scripts', '--allow-remote=root',
+    'install', '--global', '--prefix', prefix, '--ignore-scripts', '--allow-remote=root',
     'https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz',
+    `Installed murm 0.2.0 at ${prefix}/bin/murm`,
   ]);
   assert.match(result.stderr, /export PATH="\$HOME\/\.local\/bin:\$PATH"/);
 });
@@ -62,10 +68,14 @@ case "$1" in
 esac
 `, { mode: 0o700 });
   const prefix = join(directory, "team's tools");
+  const modules = join(prefix, 'lib/node_modules/@luna-shi/murm');
+  await mkdir(modules, { recursive: true });
+  await writeFile(join(modules, 'package.json'), '{"version":"0.2.1"}');
   const env = { ...process.env, HOME: directory, TEST_PREFIX: prefix,
     PATH: `${directory}:${process.env.PATH}` };
   const result = spawnSync('/bin/sh', [installer], { env, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), `Installed murm 0.2.1 at ${prefix}/bin/murm`);
   const pathCommand = result.stderr.split('\n').find(line => line.trim().startsWith('export PATH='));
   assert.ok(pathCommand);
   const shell = spawnSync('/bin/sh', ['-c', pathCommand + '\nprintf "%s" "$PATH"'], { env, encoding: 'utf8' });

@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 
-import { realpath, stat } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseMurmCommand } from './murm-arguments.js';
 
 const args = process.argv.slice(2);
-if (args[0] === 'trace') {
+if (args.length === 1 && args[0] === '--version') {
+  const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
+  console.log(manifest.version);
+} else if (args[0] === 'trace') {
   const viewerCommand = '../src/trace-viewer/command.mjs';
   try {
     const { runTraceCommand } = await import(viewerCommand) as {
@@ -85,7 +88,7 @@ if (args[0] === 'trace') {
     try {
       const report = command.command === 'init'
         ? await (await import('./local-setup-template.js')).initializeSubagentsProject(command.directory, controller.signal)
-        : await (await import('./local-setup.js')).runLocalCommand(command, controller.signal);
+        : await (await import('./local-setup.js')).runLocalCommand(command, controller.signal, process.stderr.isTTY ? message => console.error(message) : undefined);
       console.log(JSON.stringify(report, null, 2));
       process.exitCode = signalCode ?? (report.ok ? 0 : 1);
     } catch {

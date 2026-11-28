@@ -5,6 +5,8 @@ section: CORE BUILDING BLOCKS
 order: 9
 ---
 
+For the installed release or a candidate archive, start with [Build your first SDK Harness](first-harness.md).
+
 Now let's combine all six building blocks into a **real multi-agent Swarm** — a **Parallel Research & Synthesis Swarm**:
 
 - **3 parallel researchers (`researcher`)**: run in isolated read-only sandboxes, investigate the same target concurrently, and use a shared `FindingsBoard` Service to publish findings, search what peers found, and cite earlier entries.

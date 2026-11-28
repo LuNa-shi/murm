@@ -5,6 +5,8 @@ section: 参考手册
 order: 16
 ---
 
+`murm --version` 输出当前候选包的版本。已发布的 v0.2.0 使用安装时的 npm prefix 查询，例如 `npm ls -g @luna-shi/murm --depth=0`。
+
 `@luna-shi/murm` 包含两个可执行命令：**`murm`**（运行在可信 Linux 宿主机上）与 **`swarm`**（预装在 Worker 容器内，供 Agent 经 Service Bridge 调用共享服务）。
 
 ## 宿主机 CLI（`murm`）

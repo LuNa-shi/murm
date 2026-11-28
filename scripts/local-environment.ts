@@ -8,7 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { OpenSandboxSdk } from '../src/core/sandbox/opensandbox-sdk.js';
-import { localApiKeyPath, loopbackLifecycle, resolveSandboxConnection } from '../src/core/sandbox/sandbox-connection.js';
+import { localApiKeyPath, loopbackLifecycle, resolveSandboxConnection, resolveSandboxConnectionWithSources } from '../src/core/sandbox/sandbox-connection.js';
 
 const execute = promisify(execFile);
 export const localProviderImage = 'opensandbox/server:release-1.2.1@sha256:07f9b39adb8cadf68357dd1b86367068210e960fc4cb50e11b75176387557ea7';
@@ -61,7 +61,7 @@ function check(id: string, ok: boolean, detail: string, remedy?: string): Diagno
 }
 
 export async function resolveLocalEnvironment(partial: Partial<LocalEnvironmentConfig> = {}, scope?: string) {
-  const environment = resolveSandboxConnection(partial, scope);
+  const environment = resolveSandboxConnectionWithSources(partial, scope);
   return { ...environment, mode: environment.endpointSource === 'default' ? 'local' as const : 'existing' as const };
 }
 
@@ -170,7 +170,7 @@ export async function checkLocalProvider(config: LocalEnvironmentConfig, { requi
   const [healthy, denied] = await Promise.all([providerHealthy(config, true), requireAuth ? providerHealthy(config, false) : true]);
   return [
     check('provider.health', healthy, healthy ? 'OpenSandbox lifecycle listing is reachable with the configured credentials.' : 'OpenSandbox lifecycle listing failed.',
-      'Check the endpoint, TLS trust, and lifecycle API key.'),
+      'Check MURM_LIFECYCLE_URL (or sandbox.lifecycleBaseUrl in --config), TLS trust, and the lifecycle API key. Rerun the same command.'),
     ...(requireAuth ? [check('provider.authentication', denied && !!config.apiKey,
       denied && config.apiKey ? 'Lifecycle rejects requests without the configured API key.' : 'Lifecycle authentication could not be confirmed.',
       'Configure a lifecycle API key on OpenSandbox and pass it through trusted murm configuration.')] : []),

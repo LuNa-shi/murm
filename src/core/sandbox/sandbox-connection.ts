@@ -104,7 +104,7 @@ function loadSavedConnection(): ConnectionInput {
   return saved;
 }
 
-export function resolveSandboxConnection(input: ConnectionInput = {}, scope?: string, { useSaved = true } = {}) {
+export function resolveSandboxConnectionWithSources(input: ConnectionInput = {}, scope?: string, { useSaved = true } = {}) {
   const environment = process.env;
   const example = (name: string) => scope ? environment[`MURM_${scope}_${name}`] || undefined : undefined;
   const explicit = input.endpoint === undefined ? undefined : lifecycleUrl(input.endpoint, 'endpoint');
@@ -137,19 +137,35 @@ export function resolveSandboxConnection(input: ConnectionInput = {}, scope?: st
   const endpointHost = input.endpointHost ?? (environment.MURM_ENDPOINT_HOST || undefined) ?? example('ENDPOINT_HOST');
   if (endpointHost !== undefined) throw connectionError('endpointHost was removed. Configure OpenSandbox to publish a reachable endpoint.');
   const publicUrl = input.publicUrl ?? (environment.MURM_RUNTIME_PUBLIC_URL || undefined) ?? stored.publicUrl;
+  const from = (settings: readonly (readonly [string, string | undefined])[]) =>
+    settings.find(([, value]) => value !== undefined && value !== '');
+  const callback = from([
+    ['config', input.advertiseHost], ['MURM_ADVERTISE_HOST', environment.MURM_ADVERTISE_HOST],
+    [`MURM_${scope}_ADVERTISE_HOST`, example('ADVERTISE_HOST')], ['saved', stored.advertiseHost],
+    ['docker0', local ? networkInterfaces().docker0?.find(address => address.family === 'IPv4')?.address : undefined],
+  ]);
+  const worker = from([
+    ['config', input.image], ['MURM_WORKER_IMAGE', environment.MURM_WORKER_IMAGE],
+    [`MURM_${scope}_IMAGE`, example('IMAGE')], ['saved', stored.image],
+  ]);
   return {
     lifecycleBaseUrl,
     apiKey: input.apiKey ?? (environment.OPEN_SANDBOX_API_KEY || environment.MURM_LIFECYCLE_TOKEN || example('LIFECYCLE_TOKEN') ||
       environment.OPENSANDBOX_API_KEY || undefined) ?? stored.apiKey ?? (local && readPrivateFile(localApiKeyPath(local), 256)),
-    advertiseHost: input.advertiseHost ?? (environment.MURM_ADVERTISE_HOST || undefined) ?? example('ADVERTISE_HOST') ??
-      stored.advertiseHost ?? (local ? networkInterfaces().docker0?.find(address => address.family === 'IPv4')?.address : undefined),
+    advertiseHost: callback?.[1],
     publicUrl: publicUrl === undefined ? undefined : normalizeRuntimePublicUrl(publicUrl),
-    image: input.image ?? (environment.MURM_WORKER_IMAGE || undefined) ?? example('IMAGE') ?? stored.image,
+    image: worker?.[1],
     useServerProxy: input.useServerProxy ?? stored.useServerProxy,
     egressMode: input.egressMode ?? stored.egressMode,
     endpointHost: undefined,
     endpointSource,
+    sources: { lifecycleBaseUrl: endpointSource, advertiseHost: callback?.[0], image: worker?.[0] },
   };
+}
+
+export function resolveSandboxConnection(...settings: Parameters<typeof resolveSandboxConnectionWithSources>) {
+  const { sources: _sources, ...connection } = resolveSandboxConnectionWithSources(...settings);
+  return connection;
 }
 
 export async function saveSandboxConnection(input: ConnectionInput & { lifecycleBaseUrl: string }) {

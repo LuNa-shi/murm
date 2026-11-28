@@ -20,6 +20,12 @@ test('schemas reject invalid input before effects and report bad output without 
     assert.equal(result.error.code, 'SERVICE_INPUT_INVALID');
     assert.equal(result.error.details.operation_id, 'fixed-request');
   }
+  const invalid = await call('put', { key: { private: 'never-echo-this' }, text: 'ok' });
+  assert.deepEqual(invalid.error.details.validation, [
+    { pointer: '/key', expected: 'string', actual: 'object' },
+  ]);
+  assert.equal(invalid.error.details.request_outcome, 'not_executed');
+  assert.ok(!JSON.stringify(invalid.error).includes('never-echo-this'));
   assert.equal(writes, 0);
   const result = await call('put', { key: 'one', text: 'fixed' });
   assert.equal(result.error.code, 'SERVICE_OUTPUT_INVALID');
@@ -109,4 +115,31 @@ test('an authorized Service named constructor receives no inherited binding', as
   agent.bindings = {};
   assert.equal((await call('get', { key: 'one' }, { service_id: 'constructor' })).ok, true);
   assert.deepEqual(caller, { runtimeId: 'run-one', agentId: 'agent-one', profile: 'writer' });
+});
+
+test('installed swarm help describes an authorized operation and its executable input forms', async t => {
+  let writes = 0;
+  const { credentials } = await setup(t, { invoke({ input }) { writes++; return { ...input, author: 'agent-one' }; } });
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execute = promisify(execFile);
+  const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
+  const args = ['dist/scripts/swarm.js', 'service', 'invoke', 'notes', 'put'];
+  const { stdout } = await execute(process.execPath, [...args, '--help'], { env });
+  assert.match(stdout, /--key .*string.*required/);
+  assert.match(stdout, /swarm service invoke notes put .*--key=/);
+  assert.match(stdout, /swarm service invoke notes put --stdin/);
+  await assert.rejects(execute(process.execPath, [...args, '--key=123', '--text=private-value'], { env }), error => {
+    assert.equal(error.code, 2);
+    const diagnostic = JSON.parse(error.stderr);
+    assert.equal(diagnostic.code, 'SERVICE_INPUT_INVALID');
+    assert.equal(diagnostic.details.request_outcome, 'not_executed');
+    assert.deepEqual(diagnostic.details.validation, [{ pointer: '/key', expected: 'string', actual: 'number' }]);
+    assert.ok(!error.stderr.includes('private-value'));
+    return true;
+  });
+  assert.equal(writes, 0);
+  const result = await execute(process.execPath, [...args, '--key=key', '--text=text'], { env });
+  assert.deepEqual(JSON.parse(result.stdout), { key: 'key', text: 'text', author: 'agent-one' });
+  assert.equal(writes, 1);
 });

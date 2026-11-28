@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "b747b89affd2931863c156fc64e70a29f7ba13c9",
+  "runtime_baseline": "76aa64dee48052dcf2b861f1fa876eebcbb3b5d6",
   "reviewed_date": "2026-11-28",
   "scope_roots": [
     "src",
@@ -12,7 +12,8 @@
     "examples/taskpool/deploy",
     "examples/taskpool/services/judge",
     "test-support/taskpool-legacy",
-    "benchmarks/kubernetes"
+    "benchmarks/kubernetes",
+    "examples/first-harness"
   ],
   "scope_root_files": [
     "package.json",
@@ -3411,6 +3412,54 @@
         "docs/architecture/24-runtime-recovery.md"
       ],
       "role": "Operator procedure, acceptance boundaries and approval gates for Kubernetes deployment and workload verification."
+    },
+    {
+      "path": "examples/first-harness/config.ts",
+      "category": "SDK example",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Resolves connection and model settings for the installed SDK archive"
+    },
+    {
+      "path": "examples/first-harness/handoff.ts",
+      "category": "SDK example",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Registers the first Harness handoff operations and records authorized caller evidence"
+    },
+    {
+      "path": "examples/first-harness/main.ts",
+      "category": "SDK example",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Runs the first SDK Harness, terminal question, artifact verification and cleanup"
+    },
+    {
+      "path": "examples/first-harness/turn.ts",
+      "category": "SDK example",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Implements a bounded Agent turn over the public Runtime event and send interfaces"
+    },
+    {
+      "path": "examples/first-harness/tsconfig.json",
+      "category": "SDK example",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Compiles the example as an external TypeScript consumer"
+    },
+    {
+      "path": "website/src/pages/downloads/first-harness/v1/[file].ts",
+      "category": "website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Serves the versioned first Harness sources and compiler configuration"
     }
   ]
 }
