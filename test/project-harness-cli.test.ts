@@ -4,13 +4,13 @@ import { createHash } from 'node:crypto';
 import { EventEmitter, once } from 'node:events';
 import { createInterface } from 'node:readline';
 import { PassThrough } from 'node:stream';
-import { HarnessRpcClient } from '@luna-shi/murm';
+import { createHarnessSession, HarnessRpcClient } from '@luna-shi/murm';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const execute = promisify(execFile);
 const cli = fileURLToPath(new URL('../scripts/murm.js', import.meta.url));
@@ -421,6 +421,52 @@ test('failed report persistence preserves separate business, export and cleanup 
   });
 });
 
+test('large multibyte results stay complete on disk and share a bounded SDK, RPC, and foreground result', { timeout: 15_000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-project-large-report-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const project = join(directory, 'project');
+  await mkdir(project);
+  const module = join(directory, 'harness.mjs');
+  await writeFile(module, `
+    export default { id: 'large-result', apiVersion: 1, async run(context) {
+      context.markRunning();
+      return { outcome: 'completed', reason: 'done', result: '界'.repeat(3 * 1024 * 1024),
+        artifacts: [], export: { status: 'complete' }, cleanup: { status: 'complete' } };
+    }};
+  `);
+  const input = { cwd: project, prompt: 'A task' };
+  const outputRoot = join(directory, 'runs');
+  const session = createHarnessSession((await import(pathToFileURL(module).href)).default, { outputRoot });
+  let sdkEvent: unknown;
+  session.onEvent(event => { if (event.type === 'result') sdkEvent = event.result; });
+  await session.start(input, { requestId: 'start' });
+  const sdk = (await session.completion)!;
+  assert.deepEqual(sdkEvent, sdk);
+  assert.equal((await session.getState()).result?.outcome, 'completed');
+
+  const rpc = rpcClient(t, directory, ['--harness', module, '--mode', 'rpc', '--output-dir', outputRoot]);
+  const client = new HarnessRpcClient(rpc.child);
+  await client.start(input, { requestId: 'start' });
+  const rpcResult = (await client.completion)!;
+  assert.deepEqual(await rpc.exit, [0, null]);
+
+  const { stdout } = await execute(process.execPath, [cli, '--harness', module, '--cwd', project,
+    '--prompt', input.prompt, '--output-dir', outputRoot], { cwd: directory });
+  assert.equal(stdout.trim().split('\n').length, 1);
+  const foreground = JSON.parse(stdout).result;
+  for (const result of [sdk, rpcResult, foreground]) {
+    assert.ok(Buffer.byteLength(JSON.stringify(result)) <= 256 * 1024);
+    assert.equal(result.snapshotTruncated, true);
+    assert.equal(result.outcome, 'completed');
+    assert.equal(result.export?.status, 'complete');
+    assert.equal(result.cleanup.status, 'complete');
+    assert.equal(result.reportSaveFailure, null);
+    const saved = JSON.parse(await readFile(result.reportPath!, 'utf8'));
+    assert.equal(saved.runId, result.runId);
+    assert.equal(saved.result, '界'.repeat(3 * 1024 * 1024));
+  }
+});
+
 test('startup error from a loaded module preserves unconfirmed cleanup', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'murm-project-external-startup-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -553,5 +599,77 @@ test('the typed RPC client reserves capacity for answers and overall stop', asyn
     input.close();
     transport.emit('close');
     await Promise.all(pending);
+  }
+});
+
+test('ten thousand RPC status reads can precede answering and stopping the same Run', { timeout: 30_000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-query-budget-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const module = join(directory, 'harness.mjs');
+  await writeFile(module, `
+    export default { id: 'status-flood', apiVersion: 1, questions: true, async run(context) {
+      context.markRunning();
+      await context.askUser({ requestId: 'confirm', questionId: 'confirm', kind: 'confirm', text: 'Ready?' },
+        { id: 'work', signal: context.signal });
+      context.updateStatus({ business: 'answered' });
+      await new Promise(resolve => context.signal.addEventListener('abort', resolve, { once: true }));
+      return { outcome: 'cancelled', reason: 'stopped', artifacts: [], cleanup: { status: 'complete' } };
+    }};
+  `);
+  const transport = spawn(process.execPath, [cli, '--harness', module, '--mode', 'rpc', '--interaction', 'questions', '--output-dir', './runs'],
+    { cwd: directory, stdio: 'pipe' });
+  t.after(() => { if (transport.exitCode === null) transport.kill('SIGKILL'); });
+  const client = new HarnessRpcClient(transport);
+  const pending = Promise.withResolvers<void>();
+  const answered = Promise.withResolvers<void>();
+  const unsubscribe = client.onEvent(event => {
+    if (event.type === 'question' && event.question.status === 'pending') pending.resolve();
+    if (event.type === 'state' && event.state.business === 'answered') answered.resolve();
+  });
+  t.after(unsubscribe);
+  await client.start({ cwd: directory, prompt: 'work' }, { requestId: 'start' });
+  await pending.promise;
+  for (let count = 0; count < 10_000; count++) {
+    assert.equal((await client.getState()).phase, 'running');
+  }
+  assert.equal((await client.respond('confirm', false, { requestId: 'answer' })).status, 'answered');
+  await answered.promise;
+  assert.equal((await client.getState()).business, 'answered');
+  assert.equal((await client.stop({ requestId: 'stop' })).status, 'accepted');
+  assert.equal((await client.completion)?.cleanup.status, 'complete');
+});
+
+test('an RPC client with a blocked observer delivers control and results and signals observation overflow', async () => {
+  const transport = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough() });
+  const client = new HarnessRpcClient(transport);
+  const frame = (record: unknown) => transport.stdout.write(JSON.stringify(record) + '\n');
+  transport.stdin.on('data', bytes => {
+    const request = JSON.parse(bytes.toString());
+    frame({ type: 'reply', id: request.id, result: { status: 'accepted' } });
+    if (request.operation === 'stop') frame({ type: 'result', result: { outcome: 'cancelled', cleanup: { status: 'complete' } } });
+  });
+  frame({ type: 'ready', version: 'v1', harness: { id: 'test', apiVersion: 1 }, descriptor: {}, status: { runId: 'active' } });
+  const barrier = Promise.withResolvers<void>();
+  const failed = Promise.withResolvers<Error>();
+  let invoked = 0;
+  const slow = client.onEvent(async () => { invoked++; await barrier.promise; }, { ...{ onError: failed.resolve } });
+  let next = 0;
+  const fast = client.onEvent(event => {
+    if (event.type === 'event' && event.event === next) next++;
+  });
+  try {
+    for (let index = 0; index < 10_000; index++) {
+      frame({ type: 'event', event: { index }, sessionEvent: { type: 'event', runId: 'active', event: index } });
+    }
+    assert.equal(invoked, 1);
+    assert.equal(next, 10_000);
+    assert.equal((await failed.promise as Error & { code: string }).code, 'OBSERVATION_OVERFLOW');
+    slow();
+    barrier.resolve();
+    assert.equal((await client.stop({ requestId: 'stop' })).status, 'accepted');
+    assert.equal((await client.completion)?.cleanup.status, 'complete');
+    assert.equal(invoked, 1);
+  } finally {
+    barrier.resolve(); slow(); fast(); transport.emit('close');
   }
 });

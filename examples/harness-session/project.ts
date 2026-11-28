@@ -1,9 +1,9 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { HarnessJson, ProjectHarness } from '@luna-shi/murm';
+import type { HarnessJson, Harness } from '@luna-shi/murm';
 
 /** A deterministic author-contract example with two independent business questions. */
-const harness: ProjectHarness = {
+const harness: Harness = {
   apiVersion: 1,
   id: 'session-example',
   lifetimes: ['task', 'interactive'],

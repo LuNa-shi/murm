@@ -1,6 +1,6 @@
 import {
   createSandbox, type CreateRuntimeOptions, type SandboxConfig, decodeFileTree,
-  type HarnessJson, type ProjectHarness, checkGitProject, ProjectPreflightError, observeProjectRuntime,
+  type HarnessJson, type Harness, checkGitProject, ProjectPreflightError, observeProjectRuntime,
   projectConfiguration, projectResult,
 } from '@luna-shi/murm';
 import { join } from 'node:path';
@@ -158,6 +158,6 @@ const taskpool = {
       }
     }
   },
-} satisfies ProjectHarness;
+} satisfies Harness;
 
 export default taskpool;

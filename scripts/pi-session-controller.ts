@@ -1,16 +1,14 @@
 import { randomUUID, createHash } from 'node:crypto';
+import { trackPiMessageIdentity } from './pi-message-identity.js';
 
 export const PI_SESSION_CAPABILITIES = Object.freeze({ configure: true, compact: true, abortRetry: true,
   clearQueue: true, state: true, stats: true, messages: true, context: true, beforeCompact: true });
 
-type ContextEntry = { inputId: string; delivery: string; input: any; status: string };
+type ContextEntry = { inputId: string; delivery: string; input: any; status: string; generation: number };
 export function createPiSessionController(session: any, options: {
   emit(record: any): void; isStarting?(): boolean; version?: string; configuration?: any; beforeCompact?: { timeoutMs?: number };
 }) {
   const pending = new Map<string, ContextEntry>();
-  const messagesSeen = new Set<unknown>((session.sessionManager?.getEntries?.() ?? session.messages ?? []).map((entry: any) => entry.id ?? entry));
-  const nativeMessageIds = new WeakMap<object, string>();
-  const entryMessageIds = new Map<string, string>();
   const decisions = new Map<string, { epoch: number; finish(decision: string, reason?: string): void }>();
   const toolActivity = new Map<string, string>();
   const counts = { successfulAutoCompactions: 0, manual: 0, failed: 0, cancelled: 0 };
@@ -19,44 +17,28 @@ export function createPiSessionController(session: any, options: {
   let compacting: { id: string; reason: string } | undefined;
   const emit = options.emit;
   const error = (message: string, code = 'INVALID_CONTRACT') => Object.assign(new Error(message), { code });
-  function disposition(entry: ContextEntry, status: string) {
+  const messages = trackPiMessageIdentity(session, {
+    canDeliver(inputId) {
+      const entry = pending.get(inputId);
+      return !!entry && (entry.delivery === 'append' || entry.generation === epoch);
+    },
+    onAppend(inputId, entryId, messageId) {
+      const entry = pending.get(inputId);
+      if (entry) disposition(entry, 'appended', { entryId, messageId });
+    },
+  });
+  function disposition(entry: ContextEntry, status: string, evidence?: { entryId: string; messageId: string }) {
     entry.status = status;
-    emit({ type: 'core_context_disposition', inputId: entry.inputId, delivery: entry.delivery, status, executionEpoch: epoch });
+    emit({ type: 'core_context_disposition', inputId: entry.inputId, delivery: entry.delivery, status, executionEpoch: epoch, ...evidence });
     if (status === 'appended' || status === 'discarded') pending.delete(entry.inputId);
   }
-  function messageIdentity(message: any) {
-    let identity = nativeMessageIds.get(message);
-    const entries = session.sessionManager?.buildSessionProjection?.().entries ?? [];
-    for (const projected of entries) {
-      const part = projected.messages.findIndex((item: any) => item === message || JSON.stringify(item) === JSON.stringify(message));
-      if (part < 0) continue;
-      const key = `${projected.sourceEntry.id}:${part}`;
-      identity ??= entryMessageIds.get(key) ?? key;
-      entryMessageIds.set(key, identity);
-      break;
-    }
-    identity ??= randomUUID();
-    nativeMessageIds.set(message, identity);
-    return identity;
-  }
-  function observeContexts() {
-    for (const record of session.sessionManager?.getEntries?.() ?? session.messages ?? []) {
-      const identity = record.id ?? record;
-      if (messagesSeen.has(identity)) continue;
-      messagesSeen.add(identity);
-      const message = record.type === 'custom_message' ? { ...record, role: 'custom' } : record.message ?? record;
-      if (message.role !== 'custom') continue;
-      const entry = [...pending.values()].find(item => item.status !== 'pending-next-turn' &&
-        item.input.customType === message.customType && item.input.content === message.content &&
-        JSON.stringify(item.input.details) === JSON.stringify(message.details));
-      if (entry) disposition(entry, 'appended');
-    }
-  }
   function discardPending(preserveAppends = false) {
-    observeContexts();
     const entries = [...pending.values()].filter(entry => !preserveAppends || entry.delivery !== 'append');
     const ids = entries.map(entry => entry.inputId);
-    for (const entry of entries) disposition(entry, 'discarded');
+    for (const entry of entries) {
+      messages.discard(entry.inputId);
+      disposition(entry, 'discarded');
+    }
     return ids;
   }
   function configuration() {
@@ -68,7 +50,6 @@ export function createPiSessionController(session: any, options: {
       ...(settings.retry ? { retry: { ...session.settingsManager.getRetrySettings(), enabled: session.autoRetryEnabled } } : {}) };
   }
   function state() {
-    observeContexts();
     return { observedAt: new Date().toISOString(), executor: { kind: 'pi', version: options.version ?? 'unknown' },
       capabilities: PI_SESSION_CAPABILITIES, configuration: configuration(),
       model: { provider: session.model?.provider ?? '', id: session.model?.id ?? '' },
@@ -104,7 +85,6 @@ export function createPiSessionController(session: any, options: {
         if (generation !== epoch || fenced) throw error('Input generation changed', 'NOT_ALLOWED');
         entry.status = 'pending-append';
         await session.sendCustomMessage(entry.input, { triggerTurn: false });
-        observeContexts();
       }
   }
   return {
@@ -118,12 +98,11 @@ export function createPiSessionController(session: any, options: {
       return { ...queue, discardedContextIds: discardPending() };
     },
     observe(event: any) {
-      observeContexts();
       if (event.type === 'tool_execution_start') toolActivity.set(event.toolCallId, event.toolName);
       if (event.type === 'tool_execution_end') toolActivity.delete(event.toolCallId);
       if (event.type === 'agent_settled') toolActivity.clear();
       if (['message_start', 'message_update', 'message_end'].includes(event.type) && event.message) {
-        return { ...event, messageId: messageIdentity(event.message) };
+        return { ...event, messageId: messages.observe(event.type, event.message) };
       }
       if (event.type.startsWith('summarization_retry_') && compacting) return { ...event, compactionId: compacting.id, reason: compacting.reason };
       if (event.type === 'compaction_start') {
@@ -194,17 +173,17 @@ export function createPiSessionController(session: any, options: {
         const limit = command.limit ?? 100;
         const maxBytes = command.maxBytes ?? 262144;
         if (!Number.isInteger(limit) || limit < 1 || limit > 1000 || !Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 1048576) throw error('Invalid message bounds');
-        const messages: any[] = [];
+        const all = messages.messages();
+        const selected: typeof all = [];
         let bytes = 0;
-        for (let index = session.messages.length - 1; index >= 0 && messages.length < limit; index--) {
-          const message = session.messages[index];
-          const item = { ...message, id: messageIdentity(message) };
+        for (let index = all.length - 1; index >= 0 && selected.length < limit; index--) {
+          const item = all[index];
           const size = Buffer.byteLength(JSON.stringify(item));
           if (bytes + size > maxBytes) break;
           bytes += size;
-          messages.unshift(item);
+          selected.unshift(item);
         }
-        return { messages, truncated: messages.length < session.messages.length, observedAt: new Date().toISOString() };
+        return { messages: selected, truncated: selected.length < all.length, observedAt: new Date().toISOString() };
       }
       if (fenced) throw error('Session is fenced', 'NOT_ALLOWED');
       if (command.executionEpoch !== undefined && command.executionEpoch !== epoch) throw error('Stale session operation', 'NOT_ALLOWED');
@@ -230,17 +209,17 @@ export function createPiSessionController(session: any, options: {
           !['append', 'nextTurn', 'steer', 'followUp'].includes(command.delivery) || Buffer.byteLength(JSON.stringify(input)) > 262144) throw error('Invalid context input');
         const active = !session.isIdle;
         if (['steer', 'followUp'].includes(command.delivery) && !active && command.wakeIfIdle === false) return { status: 'not-accepted', reason: 'idle' };
-        const entry: ContextEntry = { inputId: command.id, delivery: command.delivery,
+        const entry: ContextEntry = { inputId: command.id, delivery: command.delivery, generation: epoch,
           input: { customType: input.customType, content: input.content, details: input.details, display: input.display ?? false },
           status: command.delivery === 'nextTurn' ? 'pending-next-turn' : 'pending-append' };
         pending.set(entry.inputId, entry);
+        messages.track(entry.input, entry.inputId);
         if (command.delivery === 'nextTurn') { disposition(entry, entry.status); return { status: entry.status, inputId: command.id }; }
         const triggerTurn = command.delivery !== 'append';
         if (triggerTurn && !active) await beforePrompt();
         const operation = session.sendCustomMessage(entry.input, { triggerTurn, ...(triggerTurn ? { deliverAs: command.delivery } : {}) });
         if (triggerTurn && !active) void operation.catch((failure: any) => emit({ type: 'error', message: failure.message }));
         else await operation;
-        observeContexts();
         const status = triggerTurn ? active ? 'queued' : 'started' : pending.has(entry.inputId) ? 'pending-append' : 'appended';
         if (pending.has(entry.inputId)) disposition(entry, status);
         return { status, inputId: command.id };

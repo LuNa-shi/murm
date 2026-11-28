@@ -119,6 +119,30 @@
       "role": "Shared project Session admission, request replay, question lifecycle, events and stop barriers"
     },
     {
+      "path": "src/harness/harness-session-view.ts",
+      "category": "Project Harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "UTF-8 budgets for terminal results and recoverable live snapshots"
+    },
+    {
+      "path": "src/harness/harness-event-stream.ts",
+      "category": "Project Harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Ordered bounded Session and RPC client subscriptions and invalidation"
+    },
+    {
+      "path": "src/protocol/session-queries.ts",
+      "category": "Backend",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Native query classification used by the Host and Worker correlation paths"
+    },
+    {
       "path": "src/harness/project-rpc-client.ts",
       "category": "Project Harness",
       "chapters": [
@@ -151,6 +175,14 @@
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Guest SDK Session settings, native input queues, retry, compaction, events and export"
+    },
+    {
+      "path": "scripts/pi-message-identity.ts",
+      "category": "Backend",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Pi native context handoff, archive entry identity and stable message projection"
     },
     {
       "path": "examples/agent-session.ts",

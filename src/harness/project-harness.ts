@@ -9,8 +9,8 @@ import { captureProject, isInside, projectError, ProjectPreflightError, resolveP
 import { saveReport } from './run-report.js';
 import { resolveFilePolicy, type FilePolicy } from '../core/file-policy.js';
 import { fileSpool } from '../core/files/core-file-seed.js';
-import type { HarnessAgentRegistration, HarnessAnswer, HarnessInputDescriptor, HarnessLifetime, HarnessQuestionRequest, HarnessQuestionSource } from './harness-session-types.js';
-export { createHarnessSession, captureHarnessSnapshot, getHarnessExitCode, harnessSessionSignal, stopHarnessTransport } from './harness-session.js';
+import type { HarnessAgentRegistration, HarnessAnswer, HarnessInputDescriptor, HarnessLifetime, HarnessQuestionRequest, HarnessQuestionSource, HarnessResult } from './harness-session-types.js';
+export { createHarnessSession, captureHarnessSnapshot, getHarnessExitCode, getHarnessRunId, harnessSessionSignal, stopHarnessTransport } from './harness-session.js';
 export type * from './harness-session-types.js';
 
 export type HarnessInput = Readonly<{ cwd: string; prompt: string }>;
@@ -23,7 +23,7 @@ type Cleanup = { status: 'complete' | 'pending'; receipt?: HarnessJson; pending?
 
 export type HarnessInputPreparation = (input: HarnessJson, request: Readonly<{ requestId: string; signal: AbortSignal }>) => unknown;
 
-export interface ProjectHarnessResult {
+interface HarnessRunOutcome {
   outcome: 'completed' | 'failed' | 'cancelled';
   reason: string;
   result?: HarnessJson;
@@ -33,7 +33,7 @@ export interface ProjectHarnessResult {
   cleanup: Cleanup;
 }
 
-export interface ProjectHarnessContext {
+export interface HarnessContext {
   readonly input: HarnessInput;
   readonly initial: InitialProject;
   readonly configuration: unknown;
@@ -51,16 +51,24 @@ export interface ProjectHarnessContext {
   registerInput(handler: HarnessInputHandler, descriptor?: HarnessInputDescriptor, prepare?: HarnessInputPreparation, reconcile?: HarnessInputHandler): void;
 }
 
-export interface ProjectHarness {
+export interface Harness {
   readonly apiVersion: 1;
   readonly id: string;
   readonly input?: true;
   readonly lifetimes?: readonly HarnessLifetime[];
   readonly questions?: boolean;
+  /** @deprecated Use inputDescriptor. When both are supplied, inputDescriptor takes precedence. */
   readonly inputDescription?: HarnessInputDescriptor;
   readonly inputDescriptor?: HarnessInputDescriptor;
-  run(context: ProjectHarnessContext): Promise<ProjectHarnessResult>;
+  run(context: HarnessContext): Promise<HarnessRunOutcome>;
 }
+
+/** @deprecated Use Harness. */
+export type ProjectHarness = Harness;
+/** @deprecated Use HarnessContext. */
+export type ProjectHarnessContext = HarnessContext;
+/** @deprecated Derive the author result from Harness.run. Use HarnessResult for Session completion. */
+export type ProjectHarnessResult = Awaited<ReturnType<Harness['run']>>;
 
 function moduleSpecifier(directory: string, specifier: string) {
   if (isAbsolute(specifier) || specifier.startsWith('./') || specifier.startsWith('../')) {
@@ -115,9 +123,9 @@ type StartupOptions = {
   configuration?: unknown;
   outputRoot?: string;
   stopTimeoutMs?: number;
-  finalizeResult?: (result: ProjectHarnessResult) => ProjectHarnessResult;
+  finalizeResult: (result: ProjectHarnessResult) => ProjectHarnessResult & Pick<HarnessResult, 'operations' | 'questions'>;
 };
-type RunResult = Omit<ProjectHarnessResult, 'reason'> & {
+type RunResult = ProjectHarnessResult & Pick<HarnessResult, 'operations' | 'questions'> & {
   runId: string;
   harness: { id: string; apiVersion: 1 };
   cwd: string;
@@ -211,7 +219,6 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
   const stopDeadline = Promise.withResolvers<never>();
   // stopDeadline can expire while a Harness is finishing.
   void stopDeadline.promise.catch(() => {});
-  let inputHandler: HarnessInputHandler | undefined;
   let runId: string | null = null;
   let phase: Phase = 'idle';
   let information: HarnessStatusInfo = {};
@@ -293,13 +300,7 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
           publish({ kind: 'status', ...status() });
         },
         emit: publish,
-        registerInput(handler) {
-          signal.throwIfAborted();
-          if (definition.input !== true || typeof handler !== 'function' || inputHandler) {
-            throw projectError('INVALID_HARNESS_INPUT_HANDLER', 'Harness input must be declared and registered once');
-          }
-          inputHandler = handler;
-        },
+        registerInput() {},
       }));
     };
     let workFinished = false;
@@ -323,11 +324,10 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
       publishing = false;
       phase = 'finished';
     }
-    business = options.finalizeResult?.(business) ?? business;
     let saved: RunResult;
     try {
       const result: RunResult = {
-        ...business, runId: id, harness, cwd, initial, prompt: {
+        ...options.finalizeResult(business), runId: id, harness, cwd, initial, prompt: {
           path: promptPath, sha256: createHash('sha256').update(raw.prompt).digest('hex'),
         },
         stopReason: reason, failure, reportSaveFailure: null,
@@ -363,14 +363,5 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
       setImmediate(begin.resolve);
       return { accepted, completion };
     },
-    get completion() { return completion; },
-    async input(payload: HarnessJson, requestId: string) {
-      if (!definition.input) throw projectError('OPERATION_UNSUPPORTED', 'This Harness does not accept additional input');
-      if (reason !== null || !publishing) throw projectError('RUN_STOPPING', 'Input admission is closed');
-      if (phase !== 'running' || !inputHandler) throw projectError('RUN_NOT_READY', 'Harness input route is not ready');
-      return inputHandler(payload, { requestId, signal: controller.signal });
-    },
   };
 }
-
-export type ProjectHost = ReturnType<typeof createProjectHost>;

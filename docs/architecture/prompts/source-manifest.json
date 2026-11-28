@@ -35,7 +35,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "d256ac6f8efd9b859b24ebc902ce2a02552d0091d1bc17031f9f5d5d043700d1"
+      "sha256": "88a57a3de51ff87cdecd7a4762a91e30e087c47d85d2d0ac32af0531f6a547bd"
     },
     {
       "path": "src/core/bridge.ts",
@@ -47,11 +47,11 @@
     },
     {
       "path": "src/core/sandbox/opensandbox-backend.ts",
-      "sha256": "b7853856aae700455d06a9f399903cfb5c49a8c2d1e61c0b313662c56e197d68"
+      "sha256": "30487cee3b2e68fda5dd5b2e5f2470178745c22171ad08c935486cb8ab93494a"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "f3727bbe4c306a6fe8744fa646711cf71efdb9f8918a45d3c2f6da9a3a0e36ee"
+      "sha256": "77eee82123b4719988d2fe90c015c6d98e6d978386788cd510b507d6677430d1"
     },
     {
       "path": "scripts/codex-app-server-driver.ts",
@@ -75,11 +75,11 @@
     },
     {
       "path": "examples/notes/project.ts",
-      "sha256": "cf34aad317ae3104adf9fcadf11bf5dc603caaa7863a761655758f49469f745b"
+      "sha256": "3bfef8aa583b6cf2f8c586fb8001d39e4761eb3d4a9f6bc691add74b35d7dce9"
     },
     {
       "path": "examples/taskpool/project.ts",
-      "sha256": "2f226e6299a801f561c4dea30bceaafdb520c48391d4079a5be98431c3e5fc0c"
+      "sha256": "58b62e358caf483f65e5054a11831ba3ce73f2b4c7b88d622e2314b2dc3e5d6e"
     },
     {
       "path": "src/harness/project-git.ts",

@@ -1,5 +1,5 @@
 import {
-  createSandbox, type CreateRuntimeOptions, type SandboxConfig, type ProjectHarness,
+  createSandbox, type CreateRuntimeOptions, type SandboxConfig, type Harness,
   ProjectPreflightError, observeProjectRuntime, projectConfiguration, projectResult,
 } from '@luna-shi/murm';
 import { runSubstrate } from './harness/index.js';
@@ -52,6 +52,6 @@ const substrate = {
       observation?.close();
     }
   },
-} satisfies ProjectHarness;
+} satisfies Harness;
 
 export default substrate;

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { runSubagentsHarness } from './main.js';
 import {
   createInProcessAdapter, getExecutorCapabilities, type AgentSessionPatch, type ContextInput, type ContextSendOptions,
-  type HarnessJson, type ProjectHarness, type ProjectHarnessContext, type SendOptions, type ServiceManifest,
+  type HarnessJson, type Harness, type HarnessContext, type SendOptions, type ServiceManifest,
   ProjectPreflightError, observeProjectRuntime, projectConfiguration, projectResult,
 } from '@luna-shi/murm';
 
@@ -40,7 +40,7 @@ const questionManifest: ServiceManifest = {
   }],
 };
 
-function userQuestions(context: ProjectHarnessContext) {
+function userQuestions(context: HarnessContext) {
   return {
     manifest: questionManifest,
     adapter: createInProcessAdapter({
@@ -163,6 +163,6 @@ const subagents = {
       observation?.close();
     }
   },
-} satisfies ProjectHarness;
+} satisfies Harness;
 
 export default subagents;

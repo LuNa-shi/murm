@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createProjectHost, type HarnessInput, type HarnessJson, type HarnessInputHandler, type HarnessInputPreparation, type ProjectHarness } from './project-harness.js';
+import { createProjectHost, type HarnessInput, type HarnessJson, type HarnessInputHandler, type HarnessInputPreparation, type Harness } from './project-harness.js';
 import { projectError, resolveHarnessInput } from './project-input.js';
 import { fenceRuntimeAdmissions, readRuntimeSessionCapabilities, reconcileRuntimeReceipt } from '../core/runtime-admissions.js';
 import { createRedactor } from '../core/run-records.js';
 import type { RuntimeSession } from '../core/session-types.js';
 import { stableStringify } from '../protocol/stable-json.js';
+import { boundHarnessState, defaultSnapshotBytes, jsonBytes, publicHarnessResult } from './harness-session-view.js';
+import { HarnessEventStream } from './harness-event-stream.js';
 import type { HarnessAgentRegistration, HarnessAgents, HarnessAnswer, HarnessAnswerReceipt, HarnessDescriptor, HarnessEvent,
   HarnessInputDescriptor, HarnessInputReceipt, HarnessOperation, HarnessQuestion, HarnessQuestionRequest, HarnessQuestionSource,
   HarnessRequest, HarnessResult, HarnessSession, HarnessSessionOptions, HarnessStartReceipt, HarnessState, HarnessStopReceipt } from './harness-session-types.js';
@@ -29,6 +31,7 @@ interface QuestionRecord {
 }
 interface SessionInternals {
   snapshot: () => HarnessState;
+  runId: () => string | null;
   signal: AbortSignal;
   stop: (reason: string) => void;
   exitCode: () => number | undefined;
@@ -46,6 +49,7 @@ export function harnessSessionSignal(session: HarnessSession) {
 }
 export function stopHarnessTransport(session: HarnessSession, reason: string) { internals.get(session)?.stop(reason); }
 export function getHarnessExitCode(session: HarnessSession) { return internals.get(session)?.exitCode(); }
+export function getHarnessRunId(session: HarnessSession) { return internals.get(session)?.runId() ?? null; }
 
 function requestIdentity(request: HarnessRequest) {
   if (!request || typeof request.requestId !== 'string' || !request.requestId || request.requestId.length > 128) {
@@ -68,7 +72,7 @@ function jsonCopy<T>(value: T, maxBytes = 262_144): T {
 function fingerprint(value: unknown) { return createHash('sha256').update(stableStringify(value)).digest('hex'); }
 
 /** One live Run. The Harness retains ownership of collaboration and resource cleanup. */
-export function createHarnessSession(definition: ProjectHarness, options: HarnessSessionOptions = {}): HarnessSession {
+export function createHarnessSession(definition: Harness, options: HarnessSessionOptions = {}): HarnessSession {
   if (!definition || definition.apiVersion !== 1 || typeof definition.id !== 'string' || !/^[a-z0-9][a-z0-9_.:-]{0,127}$/.test(definition.id) || typeof definition.run !== 'function') {
     throw projectError('INVALID_HARNESS_MODULE', 'Harness requires apiVersion 1, a stable id and run(context)');
   }
@@ -79,10 +83,12 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   const lifetimes = definition.lifetimes ?? ['task'];
   if (!lifetimes.includes(lifetime)) throw projectError('OPERATION_UNSUPPORTED', 'This Harness does not support the requested lifetime');
   const limits = { inputQueue: 64, inputBytes: 262_144, mutations: 4096, questions: 64, questionBytes: 262_144,
-    handlerTimeoutMs: 10_000, snapshotBytes: 262_144, ...options.limits };
+    handlerTimeoutMs: 10_000, snapshotBytes: defaultSnapshotBytes, ...options.limits };
   for (const value of Object.values(limits)) if (!Number.isSafeInteger(value) || value < 1) {
     throw projectError('INVALID_RUN_CONFIGURATION', 'Session limits must be positive safe integers');
   }
+  if (limits.snapshotBytes < 16 * 1024) throw projectError('INVALID_RUN_CONFIGURATION', 'Snapshot budget must be at least 16 KiB');
+  const questionBudget = Math.min(limits.questionBytes, Math.floor(limits.snapshotBytes / 3));
   const redactor = createRedactor([process.env.OPEN_SANDBOX_API_KEY, process.env.MURM_EXECD_ACCESS_TOKEN]);
   const clientCapabilities = Object.freeze({ questions: options.clientCapabilities?.questions === true });
   const records = new Map<string, OperationRecord>();
@@ -91,7 +97,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   const targetStates = new Map<string, string>();
   const questions = new Map<string, QuestionRecord>();
   const questionRequests = new Map<string, QuestionRecord>();
-  const listeners = new Set<(event: HarnessEvent) => void>();
+  const events = new HarnessEventStream();
   const output = new Map<string, HarnessJson>();
   let inputDescription: HarnessInputDescriptor = definition.inputDescriptor ?? definition.inputDescription ?? {};
   let prepareInput: HarnessInputPreparation | undefined;
@@ -101,6 +107,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   let result: HarnessResult | undefined;
   let exitCode: number | undefined;
   let stopping = false;
+  let finalizing = false;
   let fenceFailed = false;
   let queuedCount = 0;
   let queuedBytes = 0;
@@ -121,7 +128,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
         const supported = capability.supported && executorSupports(native, operation) && (!handlerRequired || !!registration.handlers?.[operation]) &&
           (name !== 'send' || context || capability.text === true);
         const state = targetStates.get(id);
-        const unavailable = stopping || !!result ? 'RUN_STOPPING' : ['exited', 'closing', 'closed'].includes(state ?? '') ? 'SESSION_UNAVAILABLE'
+        const unavailable = stopping || finalizing ? 'RUN_STOPPING' : ['exited', 'closing', 'closed'].includes(state ?? '') ? 'SESSION_UNAVAILABLE'
           : state === 'starting' ? 'AGENT_NOT_READY' : !supported ? 'OPERATION_UNSUPPORTED'
           : (capability.available === false || (name === 'compact' && state !== 'idle')) ? capability.reason ?? 'OPERATION_BUSY' : undefined;
         return [name, { ...capability, supported, available: supported && capability.available !== false && !unavailable,
@@ -131,8 +138,8 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       }));
     }
     return { id: definition.id, apiVersion: 1, lifetimes,
-      input: { supported: definition.input === true, available: !!inputHandler && host.status().phase === 'running' && !stopping && !result, ...inputDescription },
-      questions: { supported: definition.questions === true, available: definition.questions === true && clientCapabilities.questions && !stopping && !result,
+      input: { supported: definition.input === true, available: !!inputHandler && host.status().phase === 'running' && !stopping && !finalizing, ...inputDescription },
+      questions: { supported: definition.questions === true, available: definition.questions === true && clientCapabilities.questions && !stopping && !finalizing,
         ...(!clientCapabilities.questions ? { reason: 'QUESTION_CHANNEL_UNAVAILABLE' } : {}) }, agents };
   }
   function boundedView(value: HarnessJson, bytes: number): HarnessJson {
@@ -141,21 +148,16 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   }
   function snapshot(): HarnessState {
     const current = host.status();
-    return jsonCopy(redactor.value({ ...current,
+    return boundHarnessState({ ...current,
       agents: boundedView(current.agents, Math.floor(limits.snapshotBytes / 8)),
       business: boundedView(current.business, Math.floor(limits.snapshotBytes / 8)), lifetime, capabilities: descriptor(), clientCapabilities,
-      questions: [...questions.values()].map(record => record.value), output: [...output.values()], observedAt,
-      ...(result ? { result: { ...result, result: undefined, acceptance: undefined, operations: result.operations?.slice(0, 16), artifacts: result.artifacts.slice(0, 16), snapshotTruncated: true } } : {}) }), limits.snapshotBytes) as HarnessState;
-  }
-  function deliver(listener: (event: HarnessEvent) => void, event: HarnessEvent) {
-    try { void Promise.resolve(listener(event)).catch(() => {}); }
-    catch { /* One subscriber cannot fail the Run. */ }
+      questions: structuredClone(result ? result.questions ?? [] : [...questions.values()].map(record => record.value)),
+      output: structuredClone([...output.values()]), observedAt, result,
+    }, limits.snapshotBytes);
   }
   function publish(event: HarnessEvent) {
     observedAt = new Date().toISOString();
-    for (const listener of [...listeners]) {
-      if (listeners.has(listener)) deliver(listener, structuredClone(redactor.value(event)) as HarnessEvent);
-    }
+    events.publish(event.type === 'event' ? redactor.value(event) as HarnessEvent : event);
   }
   function changed() { publish({ type: 'state', state: snapshot() }); }
   function recordOutput(raw: HarnessJson) {
@@ -186,31 +188,30 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   }
   function closeQuestions(reason: string) { for (const record of questions.values()) settleQuestion(record, 'cancelled', reason); }
   function stop(reason: string) {
-    if (!stopping && !result) {
+    if (!stopping && !finalizing) {
       stopping = true;
       for (const registration of registrations) {
         try { fenceRuntimeAdmissions(registration.runtime); } catch { fenceFailed = true; }
         try { registration.fence?.(); } catch { fenceFailed = true; }
       }
-      closeQuestions(reason);
+      closeQuestions('run-stopping');
       host.stop(reason);
       changed();
     }
   }
-  const wrapped: ProjectHarness = { ...definition, async run(context) {
-    const returned = await definition.run({ ...context, lifetime, clientCapabilities, agentEventsManaged: true,
+  const wrapped: Harness = { ...definition, async run(context) {
+    return definition.run({ ...context, lifetime, clientCapabilities, agentEventsManaged: true,
       registerInput(handler, description, prepare, reconcile) {
-        context.signal.throwIfAborted();
+        admit();
         if (!definition.input || inputHandler || typeof handler !== 'function') throw projectError('INVALID_HARNESS_INPUT_HANDLER', 'Declare and register one input handler');
+        inputDescription = jsonCopy(description ?? inputDescription);
         inputHandler = handler;
         prepareInput = prepare;
         reconcileInput = reconcile;
-        inputDescription = jsonCopy(description ?? inputDescription);
-        context.registerInput(handler);
         changed();
       },
       registerAgentControls(registration) {
-        context.signal.throwIfAborted();
+        admit();
         if (!registration?.runtime || [...registrations].some(existing => existing.runtime === registration.runtime)) throw projectError('INVALID_AGENT_REGISTRATION', 'Register one owned Runtime once');
         registrations.add(registration);
         void refreshTargets(registration);
@@ -226,11 +227,11 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       },
       askUser: ask,
     });
-    closeQuestions('run-finished');
-    return { ...returned, questions: [...questions.values()].map(record => structuredClone(record.value)), operations: operationSummaries() };
   } };
   const host = createProjectHost(wrapped, { launchDirectory: options.launchDirectory ?? process.cwd(), ...options,
     finalizeResult(business) {
+      finalizing = true;
+      closeQuestions('run-finished');
       return { ...business,
         ...(fenceFailed ? { cleanup: { ...business.cleanup, status: 'pending' as const, pending: ['runtime-dispatch-fence-unconfirmed'] } } : {}),
         questions: [...questions.values()].map(record => structuredClone(record.value)), operations: operationSummaries(),
@@ -271,7 +272,10 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       }
       return existing.settled ? Promise.resolve(existing.result as T) : existing.promise as Promise<T>;
     }
-    try { validate?.(); } catch (error) { return Promise.reject(error); }
+    try {
+      validate?.();
+      if (operation !== 'stop') admit();
+    } catch (error) { return Promise.reject(error); }
     if ((!reserved && records.size >= limits.mutations) || records.size >= limits.mutations + limits.questions + 1) return Promise.reject(projectError('REQUEST_LIMIT', 'Session mutation identities are full'));
     const deferred = Promise.withResolvers<T>();
     const record: OperationRecord = { operation, fingerprint: hash, promise: deferred.promise, settled: false };
@@ -326,7 +330,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       ((value as { harnessEffects?: { status?: string } }).harnessEffects?.status === 'pending'));
   }
   function admit() {
-    if (stopping || result || host.signal.aborted) throw projectError('RUN_STOPPING', 'Run admission is closed');
+    if (stopping || finalizing || host.signal.aborted) throw projectError('RUN_STOPPING', 'Run admission is closed');
   }
   async function ask(request: HarnessQuestionRequest, source: HarnessQuestionSource): Promise<HarnessAnswer> {
     try {
@@ -338,31 +342,42 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       source.assertAuthorized?.();
       if (source.agentId) await registrationFor(source.agentId);
       admit();
-      if (request.agentId !== source.agentId || (source.agentId && !targets.has(source.agentId))) throw projectError('QUESTION_SOURCE_MISMATCH', 'Question source does not own the target Agent');
-      if (!['text', 'choice', 'confirm'].includes(request.kind) || typeof request.text !== 'string' || !request.text.trim()) throw projectError('INVALID_QUESTION', 'A question kind and text are required');
-      if (request.kind === 'choice' && (!request.options?.length || request.options.some(option => typeof option.id !== 'string' || !option.id || typeof option.label !== 'string') || new Set(request.options.map(option => option.id)).size !== request.options.length)) throw projectError('INVALID_QUESTION', 'Choice questions require unique option IDs');
-      if (request.kind !== 'choice' && request.options !== undefined) throw projectError('INVALID_QUESTION', 'Only choice questions accept options');
-      const timeoutMs = request.timeoutMs ?? 60_000;
+      if (source.signal.aborted) throw projectError('QUESTION_CANCELLED', 'source-cancelled');
+      if (source.agentId) source.assertAuthorized?.();
+      if (raw.agentId !== source.agentId || (source.agentId && !targets.has(source.agentId))) throw projectError('QUESTION_SOURCE_MISMATCH', 'Question source does not own the target Agent');
+      if (!['text', 'choice', 'confirm'].includes(raw.kind) || typeof raw.text !== 'string' || !raw.text.trim()) throw projectError('INVALID_QUESTION', 'A question kind and text are required');
+      if (raw.kind === 'choice' && (!Array.isArray(raw.options) || !raw.options.length || raw.options.some(option => typeof option?.id !== 'string' || !option.id || typeof option.label !== 'string' || jsonBytes(option.id) > 60 * 1024) || new Set(raw.options.map(option => option.id)).size !== raw.options.length)) throw projectError('INVALID_QUESTION', 'Choice questions require unique option IDs that fit an answer frame');
+      if (raw.kind !== 'choice' && raw.options !== undefined) throw projectError('INVALID_QUESTION', 'Only choice questions accept options');
+      const timeoutMs = raw.timeoutMs ?? 60_000;
       if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000) throw projectError('INVALID_QUESTION', 'Question timeout must be 1 to 3600000 ms');
       const hash = fingerprint([raw, source.id, source.agentId ?? null]);
-      const previous = questionRequests.get(request.requestId);
+      const previous = questionRequests.get(raw.requestId);
       if (previous) {
         if (previous.fingerprint !== hash) throw projectError('REQUEST_ID_CONFLICT', 'Question requestId identifies different parameters');
         return previous.promise;
       }
-      const bytes = Buffer.byteLength(JSON.stringify(raw));
-      if (questions.size >= limits.questions || questionBytes + bytes > Math.min(limits.questionBytes, Math.floor(limits.snapshotBytes / 3))) throw projectError('QUESTION_LIMIT', 'Question capacity is full');
-      const questionId = request.questionId ?? randomUUID();
+      const questionId = raw.questionId ?? randomUUID();
       if (typeof questionId !== 'string' || !questionId || questionId.length > 128 || questions.has(questionId)) throw projectError('QUESTION_ID_CONFLICT', 'Question identity is already used or invalid');
       const deferred = Promise.withResolvers<HarnessAnswer>();
-      const value: HarnessQuestion = { ...raw, questionId, sourceId: source.id, createdAt: new Date().toISOString(), deadline: new Date(Date.now() + timeoutMs).toISOString(), status: 'pending' };
+      const value: HarnessQuestion = {
+        requestId: raw.requestId, questionId, kind: raw.kind, text: redactor.text(raw.text),
+        ...(raw.options ? { options: raw.options.map(({ id, label }) => ({ id, label: redactor.text(label) })) } : {}),
+        agentId: raw.agentId, businessRef: redactor.value(raw.businessRef) as HarnessJson | undefined, sourceId: source.id,
+        createdAt: new Date().toISOString(), deadline: new Date(Date.now() + timeoutMs).toISOString(), status: 'pending',
+        ...(raw.kind === 'text' ? { maxAnswerBytes: 16 * 1024 } : {}),
+      };
+      const answerBytes = value.maxAnswerBytes ?? (value.kind === 'confirm' ? jsonBytes(false)
+        : value.options!.reduce((largest, option) => Math.max(largest, jsonBytes(option.id)), 0));
+      const bytes = jsonBytes({ ...value, status: 'cancelled', reason: 'source-unauthorized', answer: null })
+        - jsonBytes(null) + answerBytes + 1;
+      if (questions.size >= limits.questions || questionBytes + bytes > questionBudget) throw projectError('QUESTION_LIMIT', 'Question capacity is full');
       let timer: NodeJS.Timeout;
       let authorizationTimer: NodeJS.Timeout | undefined;
       const cancelled = () => settleQuestion(record, 'cancelled', 'source-cancelled');
       const record: QuestionRecord = { value, fingerprint: hash, promise: deferred.promise, resolve: deferred.resolve, reject: deferred.reject, source,
         release() { clearTimeout(timer); clearInterval(authorizationTimer); source.signal.removeEventListener('abort', cancelled); } };
       questions.set(questionId, record);
-      questionRequests.set(request.requestId, record);
+      questionRequests.set(raw.requestId, record);
       questionBytes += bytes;
       timer = setTimeout(() => settleQuestion(record, 'expired', 'deadline'), timeoutMs);
       source.signal.addEventListener('abort', cancelled, { once: true });
@@ -371,7 +386,8 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       }, 100);
       record.promise = deferred.promise.then(answer => { admit(); source.signal.throwIfAborted(); source.assertAuthorized?.(); return answer; });
       void record.promise.catch(() => {});
-      publish({ type: 'question', runId: host.status().runId, question: structuredClone(value) });
+      if (source.signal.aborted) cancelled();
+      else publish({ type: 'question', runId: host.status().runId, question: structuredClone(value) });
       return record.promise;
     } catch (error) { return Promise.reject(error); }
   }
@@ -454,8 +470,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     if (record.source.signal.aborted) { settleQuestion(record, 'cancelled', 'source-cancelled'); throw projectError('QUESTION_CANCELLED', 'Question source was cancelled'); }
     try { record.source.assertAuthorized?.(); } catch (error) { settleQuestion(record, 'cancelled', 'source-unauthorized'); throw error; }
     if ((value.kind === 'confirm' && typeof answer !== 'boolean') || (value.kind !== 'confirm' && typeof answer !== 'string') || (value.kind === 'choice' && !value.options!.some(option => option.id === answer))) throw projectError('INVALID_ANSWER', 'Answer does not match the question kind or options');
-    jsonCopy(answer, 65_536);
-    if (questionBytes + Buffer.byteLength(JSON.stringify(answer)) > Math.min(limits.questionBytes, Math.floor(limits.snapshotBytes / 3))) throw projectError('QUESTION_LIMIT', 'Answer exceeds the retained question budget');
+    if (value.maxAnswerBytes !== undefined && jsonBytes(answer) > value.maxAnswerBytes) throw projectError('INVALID_ANSWER', 'Answer exceeds the declared text byte limit');
     return record;
   }
   const agents: HarnessAgents = {
@@ -478,31 +493,23 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     async describe() { for (const registration of registrations) await refreshTargets(registration); return structuredClone(descriptor()); },
     async getState() { return snapshot(); },
     onEvent(handler, subscribeOptions) {
-      if (typeof handler !== 'function') throw projectError('INVALID_SUBSCRIBER', 'An event handler is required');
-      let initializing = true;
-      const buffered: HarnessEvent[] = [];
-      const listener = (event: HarnessEvent) => {
-        if (initializing) { buffered.push(event); return; }
-        return handler(event);
-      };
-      listeners.add(listener);
-      try { if (subscribeOptions?.initialSnapshot) deliver(handler, { type: 'snapshot', state: snapshot() }); }
-      catch { listeners.delete(listener); }
-      initializing = false;
-      for (const event of buffered) deliver(handler, event);
-      return () => { listeners.delete(listener); };
+      const subscription = events.subscribe(handler, subscribeOptions);
+      if (subscribeOptions?.initialSnapshot) {
+        try { subscription.start({ type: 'snapshot', state: snapshot() }); }
+        catch { subscription.close(projectError('OBSERVATION_UNAVAILABLE', 'Snapshot could not be created')); }
+      }
+      return () => subscription.close();
     },
     start(raw, request) {
       return mutate('start', raw, request, () => {
-        admit();
         const input = resolveHarnessInput(raw, options.launchDirectory ?? process.cwd());
         const started = host.start(input);
         completion = started.completion.then(finished => {
           exitCode = finished.code;
-          closeQuestions('run-finished');
-          result = { ...finished.result, operations: operationSummaries(), ...(fenceFailed ? { cleanup: { ...finished.result.cleanup, status: 'pending' as const, pending: ['runtime-dispatch-fence-unconfirmed'] } } : {}), questions: [...questions.values()].map(record => structuredClone(record.value)) };
-          changed();
+          result = publicHarnessResult(finished.result);
           publish({ type: 'result', result });
+          try { changed(); }
+          catch { publish({ type: 'event', runId: result.runId, event: { kind: 'observation-error', code: 'OBSERVATION_UNAVAILABLE' } }); }
           return result;
         });
         setImmediate(changed);
@@ -511,7 +518,6 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     },
     input(payload, request) {
       return mutate('input', payload, request, () => {
-        admit();
         if (!definition.input) throw projectError('OPERATION_UNSUPPORTED', 'This Harness does not accept input');
         if (!inputHandler || host.status().phase !== 'running') throw projectError('RUN_NOT_READY', 'Harness input route is not ready');
         const copy = jsonCopy(payload, limits.inputBytes);
@@ -536,7 +542,6 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       return mutate('answer', { questionId, answer }, request, () => {
         const record = answerRecord(questionId, answer);
         const value = record.value;
-        questionBytes += Buffer.byteLength(JSON.stringify(answer));
         value.status = 'answered'; value.answer = answer;
         record.release(); record.resolve(answer);
         publish({ type: 'question', runId: host.status().runId, question: structuredClone(value) });
@@ -551,6 +556,6 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     },
     get completion() { return completion; },
   };
-  internals.set(session, { snapshot, signal: host.signal, stop, exitCode: () => exitCode });
+  internals.set(session, { snapshot, runId: () => host.status().runId, signal: host.signal, stop, exitCode: () => exitCode });
   return session;
 }

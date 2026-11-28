@@ -1,5 +1,5 @@
 import { createRuntime, createSandbox, MurmError, ProjectPreflightError, observeProjectRuntime, projectConfiguration, projectResult,
-  runInput, runWithReport, type CreateRuntimeOptions, type ProjectHarness, type SandboxConfig } from '@luna-shi/murm';
+  runInput, runWithReport, type CreateRuntimeOptions, type Harness, type SandboxConfig } from '@luna-shi/murm';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createNotes } from './main.js';
@@ -85,6 +85,6 @@ const notesHarness = {
       observation?.close();
     }
   },
-} satisfies ProjectHarness;
+} satisfies Harness;
 
 export default notesHarness;

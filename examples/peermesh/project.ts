@@ -1,5 +1,5 @@
 import {
-  createSandbox, type CreateRuntimeOptions, type SandboxConfig, type HarnessJson, type ProjectHarness,
+  createSandbox, type CreateRuntimeOptions, type SandboxConfig, type HarnessJson, type Harness,
   ProjectPreflightError, checkGitProject, observeProjectRuntime, projectConfiguration,
   projectResult,
 } from '@luna-shi/murm';
@@ -134,6 +134,6 @@ const peerMesh = {
       observation?.close();
     }
   },
-} satisfies ProjectHarness;
+} satisfies Harness;
 
 export default peerMesh;

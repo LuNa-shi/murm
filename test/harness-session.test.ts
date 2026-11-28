@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,6 +21,49 @@ test('a repeated start retains its admitted Run and a changed operation conflict
     assert.equal((await session.completion)!.outcome, 'completed');
     assert.deepEqual(await session.start({ cwd, prompt: 'work' }, { requestId: 'start' }), first);
   } finally { await rm(cwd, { recursive: true, force: true }); await rm(outputRoot, { recursive: true, force: true }); }
+});
+
+test('an exceptional Run fences new work before cancelling questions and saving its terminal record', async t => {
+  const cwd = await mkdtemp(join(tmpdir(), 'murm-session-project-'));
+  const outputRoot = await mkdtemp(join(tmpdir(), 'murm-session-output-'));
+  t.after(async () => {
+    await rm(cwd, { recursive: true, force: true });
+    await rm(outputRoot, { recursive: true, force: true });
+  });
+  const afterCancellation = Promise.withResolvers<readonly [boolean, unknown, unknown]>();
+  const observedQuestions: string[] = [];
+  let finalEvent: unknown;
+  const session = createHarnessSession({ apiVersion: 1, id: 'exception', input: true, questions: true, async run(context) {
+    context.registerInput(() => null);
+    context.markRunning();
+    const source = { id: 'work', signal: context.signal };
+    void context.askUser({ requestId: 'first', questionId: 'first', kind: 'confirm', text: 'Continue?' }, source).catch(async () => {
+      const saved = existsSync(join(context.outputDir, 'project-run.json'));
+      const errorCode = (error: { code?: string }) => error.code;
+      const question = context.askUser({ requestId: 'second', questionId: 'second', kind: 'confirm', text: 'Continue now?' }, source).catch(errorCode);
+      const input = session.input('more work', { requestId: 'late-input' }).catch(errorCode);
+      afterCancellation.resolve([saved, await question, await input]);
+    });
+    throw new Error('Business failed');
+  } }, { outputRoot, clientCapabilities: { questions: true } });
+  session.onEvent(event => {
+    if (event.type === 'question') observedQuestions.push(event.question.status);
+    if (event.type === 'result') finalEvent = event.result;
+  });
+
+  await session.start({ cwd, prompt: 'work' }, { requestId: 'start' });
+  const completed = (await session.completion)!;
+  const persisted = JSON.parse(await readFile(completed.reportPath!, 'utf8'));
+
+  assert.deepEqual(await afterCancellation.promise, [false, 'RUN_STOPPING', 'RUN_STOPPING']);
+  assert.equal(completed.outcome, 'failed');
+  assert.deepEqual(observedQuestions, ['pending', 'cancelled']);
+  assert.deepEqual(persisted.questions, completed.questions);
+  assert.deepEqual(persisted.operations, completed.operations);
+  assert.deepEqual(persisted.operations.map((operation: { requestId: string }) => operation.requestId), ['start']);
+  assert.deepEqual(completed.questions?.map(({ status, reason }) => [status, reason]), [['cancelled', 'run-finished']]);
+  assert.deepEqual((await session.getState()).questions, completed.questions);
+  assert.deepEqual(finalEvent, completed);
 });
 
 test('answering an existing question and stopping bypass a stalled input', async () => {
@@ -86,6 +130,40 @@ test('question identities isolate concurrent sources and cancellation rejects la
   } finally { await rm(cwd, { recursive: true, force: true }); await rm(outputRoot, { recursive: true, force: true }); }
 });
 
+test('a question near the byte limit reserves its answer before admitting other questions', async t => {
+  const cwd = await mkdtemp(join(tmpdir(), 'murm-question-budget-'));
+  const outputRoot = await mkdtemp(join(tmpdir(), 'murm-question-budget-output-'));
+  t.after(async () => {
+    await rm(cwd, { recursive: true, force: true });
+    await rm(outputRoot, { recursive: true, force: true });
+  });
+  const offered = Promise.withResolvers<void>();
+  const choiceId = '选'.repeat(6_000);
+  const session = createHarnessSession({ apiVersion: 1, id: 'budget', questions: true, async run(context) {
+    context.markRunning();
+    const source = { id: 'work', signal: context.signal };
+    const choice = context.askUser({ requestId: 'choice', kind: 'choice', questionId: 'choice', text: 'Choose',
+      options: [{ id: choiceId, label: 'First' }, { id: 'other', label: 'Other' }] }, source);
+    const confirm = context.askUser({ requestId: 'confirm', kind: 'confirm', questionId: 'confirm', text: 'Confirm?' }, source);
+    void choice.catch(() => {});
+    void confirm.catch(() => {});
+    await assert.rejects(context.askUser({ requestId: 'too-large', kind: 'text', text: '界'.repeat(6_000), timeoutMs: 100 }, source), { code: 'QUESTION_LIMIT' });
+    context.updateStatus({ agents: '界'.repeat(50_000), business: '界'.repeat(50_000) });
+    offered.resolve();
+    const result = await Promise.all([choice, confirm]);
+    return { outcome: 'completed', reason: 'done', artifacts: [], cleanup: { status: 'complete' }, result };
+  } }, { outputRoot, clientCapabilities: { questions: true }, limits: { questionBytes: 40_000 } });
+  await session.start({ cwd, prompt: 'work' }, { requestId: 'start' });
+  await Promise.race([offered.promise, session.completion!.then(result => { throw new Error(result.reason); })]);
+  const state = await session.getState();
+  assert.deepEqual(state.questions.map(question => question.questionId), ['choice', 'confirm']);
+  assert.equal(state.questions[0].options?.[0].id, choiceId);
+  assert.ok(Buffer.byteLength(JSON.stringify(state)) <= 256 * 1024);
+  await session.respond('choice', choiceId, { requestId: 'answer-choice' });
+  await session.respond('confirm', false, { requestId: 'answer-confirm' });
+  assert.deepEqual((await session.completion)?.result, [choiceId, false]);
+});
+
 test('a timed-out input reconciles its original late receipt without invoking the handler twice', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'murm-session-project-'));
   const outputRoot = await mkdtemp(join(tmpdir(), 'murm-session-output-'));
@@ -135,6 +213,53 @@ test('initial snapshots precede reentrant state changes and live output replaces
     await session.stop({ requestId: 'stop' }); await session.completion;
     detachSlow(); detachBroken();
   } finally { await rm(cwd, { recursive: true, force: true }); await rm(outputRoot, { recursive: true, force: true }); }
+});
+
+test('a slow SDK observer is invalidated without stalling other observers, stop, or completion', async t => {
+  const cwd = await mkdtemp(join(tmpdir(), 'murm-observation-project-'));
+  const outputRoot = await mkdtemp(join(tmpdir(), 'murm-observation-output-'));
+  const ready = Promise.withResolvers<ProjectHarnessContext>();
+  const barrier = Promise.withResolvers<void>();
+  const failed = Promise.withResolvers<Error>();
+  t.after(async () => {
+    barrier.resolve();
+    await rm(cwd, { recursive: true, force: true });
+    await rm(outputRoot, { recursive: true, force: true });
+  });
+  const session = createHarnessSession({ apiVersion: 1, id: 'observation', async run(context) {
+    context.markRunning();
+    ready.resolve(context);
+    await new Promise(resolve => context.signal.addEventListener('abort', resolve, { once: true }));
+    return { outcome: 'cancelled', reason: 'stopped', artifacts: [], cleanup: { status: 'complete' } };
+  } }, { outputRoot });
+  await session.start({ cwd, prompt: 'work' }, { requestId: 'start' });
+  const context = await ready.promise;
+  let invoked = 0;
+  const detach = session.onEvent(async () => { invoked++; await barrier.promise; }, {
+    initialSnapshot: true, ...{ onError: failed.resolve },
+  });
+  let next = 0;
+  const observedResult = Promise.withResolvers<void>();
+  const fast = session.onEvent(event => {
+    if (event.type === 'event' && typeof event.event === 'number' && event.event === next) next++;
+    if (event.type === 'result') observedResult.resolve();
+  });
+  try {
+    for (let index = 0; index < 10_000; index++) context.emit(index);
+    assert.equal(invoked, 1);
+    assert.equal(next, 10_000);
+    assert.equal((await failed.promise as Error & { code: string }).code, 'OBSERVATION_OVERFLOW');
+    detach();
+    barrier.resolve();
+    assert.equal((await session.stop({ requestId: 'stop' })).status, 'accepted');
+    assert.equal((await session.completion)?.cleanup.status, 'complete');
+    await observedResult.promise;
+    assert.equal(invoked, 1);
+  } finally {
+    detach(); fast();
+    await session.stop({ requestId: 'stop' });
+    await session.completion;
+  }
 });
 
 test('input reconciliation keeps its captured binding and publishes changed receipts without stale overwrite', async () => {

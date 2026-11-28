@@ -1,6 +1,6 @@
 import type { Runtime, InputReceipt, ConditionalInputReceipt, InterruptReceipt, StopReceipt, SendOptions } from '../core/types.js';
 import type { AgentSessionPatch, AgentSessionState, AgentSessionStats, AgentSessionMessages, ContextInput, ContextSendOptions, ContextInputReceipt, SessionControlReceipt } from '../core/session-types.js';
-import type { HarnessInput, HarnessJson, ProjectHarness, ProjectHarnessResult } from './project-harness.js';
+import type { HarnessInput, HarnessJson, Harness } from './project-harness.js';
 
 export type HarnessLifetime = 'task' | 'interactive';
 export type HarnessRequest = Readonly<{ requestId: string }>;
@@ -57,6 +57,8 @@ export interface HarnessQuestion {
   createdAt: string;
   deadline: string;
   status: 'pending' | 'answered' | 'cancelled' | 'expired';
+  /** Maximum UTF-8 bytes of the JSON-encoded string answer, including its quotes. */
+  maxAnswerBytes?: number;
   reason?: string;
   answer?: HarnessAnswer;
 }
@@ -73,6 +75,7 @@ export interface HarnessState {
   output: readonly HarnessJson[];
   stopReason: string | null;
   observedAt: string;
+  snapshotTruncated?: boolean;
   result?: HarnessResult;
 }
 export type HarnessEvent =
@@ -82,6 +85,11 @@ export type HarnessEvent =
   | Readonly<{ type: 'question'; runId: string | null; question: HarnessQuestion }>
   | Readonly<{ type: 'operation'; runId: string | null; requestId: string; operation: string; result: unknown }>
   | Readonly<{ type: 'result'; result: HarnessResult }>;
+export interface HarnessSubscriptionOptions {
+  initialSnapshot?: boolean;
+  /** Called independently of the event handler when this subscription can no longer deliver an ordered view. */
+  onError?: (error: Error) => void;
+}
 export interface HarnessStartReceipt { runId: string; phase: 'starting'; status: 'accepted' }
 export interface HarnessInputReceipt {
   status: 'accepted' | 'unknown' | 'not_submitted';
@@ -91,7 +99,7 @@ export interface HarnessInputReceipt {
 }
 export interface HarnessAnswerReceipt { status: 'answered' | 'cancelled' | 'expired'; questionId: string; answer?: HarnessAnswer }
 export interface HarnessStopReceipt { status: 'accepted'; runId: string | null; phase: HarnessPhase; reason: string }
-export type HarnessResult = ProjectHarnessResult & {
+export type HarnessResult = Awaited<ReturnType<Harness['run']>> & {
   runId: string;
   harness: Readonly<{ id: string; apiVersion: 1 }>;
   stopReason: string | null;
@@ -134,7 +142,7 @@ export interface HarnessSession {
   input(payload: HarnessJson, request: HarnessRequest): Promise<HarnessInputReceipt>;
   respond(questionId: string, answer: HarnessAnswer, request: HarnessRequest): Promise<HarnessAnswerReceipt>;
   getState(): Promise<HarnessState>;
-  onEvent(handler: (event: HarnessEvent) => void, options?: { initialSnapshot?: boolean }): () => void;
+  onEvent(handler: (event: HarnessEvent) => void, options?: HarnessSubscriptionOptions): () => void;
   readonly agents: HarnessAgents;
   stop(request: HarnessRequest & { reason?: string }): Promise<HarnessStopReceipt>;
   readonly completion: Promise<HarnessResult> | undefined;
@@ -149,4 +157,4 @@ export interface HarnessSessionOptions {
   clientCapabilities?: Readonly<{ questions?: boolean }>;
   limits?: Readonly<{ inputQueue?: number; inputBytes?: number; mutations?: number; questions?: number; questionBytes?: number; handlerTimeoutMs?: number; snapshotBytes?: number }>;
 }
-export type HarnessSessionFactory = (definition: ProjectHarness, options?: HarnessSessionOptions) => HarnessSession;
+export type HarnessSessionFactory = (definition: Harness, options?: HarnessSessionOptions) => HarnessSession;

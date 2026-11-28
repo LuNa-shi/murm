@@ -1,5 +1,5 @@
 import {
-  createSandbox, type CreateRuntimeOptions, type SandboxConfig, type ProjectHarness,
+  createSandbox, type CreateRuntimeOptions, type SandboxConfig, type Harness,
   ProjectPreflightError, checkGitProject, observeProjectRuntime, projectConfiguration,
   projectResult,
 } from '@luna-shi/murm';
@@ -59,6 +59,6 @@ const leadWorker = {
       observation?.close();
     }
   },
-} satisfies ProjectHarness;
+} satisfies Harness;
 
 export default leadWorker;
