@@ -1,6 +1,7 @@
 import { once } from 'node:events';
 import { createRuntime, createSandbox, recoverRuntime, ServiceRegistry, type CreateRuntimeOptions } from '@luna-shi/murm';
 import { finishCleanup } from '../../benchmarks/kubernetes/cleanup.js';
+import { reconcileRuntimeReceipt } from '../../src/core/runtime-admissions.js';
 
 const [mode, outputDir, configuration, runDirectory] = process.argv.slice(2);
 const { image, callbackHost, callbackPort, modelPort, deploymentId, kubernetes } = JSON.parse(configuration);
@@ -62,10 +63,12 @@ try {
       const [agent] = agents;
       if (!agent) throw new Error('Recovered Runtime has no original Agent');
       if (agent.status !== 'idle') throw new Error(`Recovery did not reopen the same Agent: ${agent.status} ${agent.lastError?.code ?? ''}`);
+      // The replacement Controller must be able to query with no prompt text.
+      const queried = await reconcileRuntimeReceipt(runtime, agent.id, 'send', 'once');
       const replay = await runtime.send(agent.id, 'Return the scripted answer.', { requestId: 'once' });
       const probe = await runtime.probeWorkerEvent(agent.id, { requestId: 'after', timeoutMs: 8000 });
       const snapshot = await runtime.files.snapshot(agent.id, { requestId: 'recovered-files', paths: ['recovered.txt'] });
-      process.send?.({ step: 'closed', agentId: agent.id, replay, probe,
+      process.send?.({ step: 'closed', agentId: agent.id, queried, replay, probe,
         content: snapshot.files['recovered.txt'], receipt: await close() });
     }
   }

@@ -9,6 +9,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
+import { DatabaseSync } from 'node:sqlite';
 import { checkLedger } from '../benchmarks/kubernetes/check-ledger.js';
 import { openSandboxRuntimeKey } from '../src/core/sandbox/opensandbox-metadata.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
@@ -62,7 +63,7 @@ async function verifyKubernetesCleanup(runtimeId: string) {
   }
 }
 
-async function probeRecovery(retainExport: boolean) {
+async function probeRecovery(retainExport: boolean, loseReceipt = false) {
   const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.match(image ?? '', kubernetes ? /@sha256:[a-f0-9]{64}$/ : /^sha256:[a-f0-9]{64}$/);
   const callbackHost = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
@@ -134,11 +135,28 @@ async function probeRecovery(retainExport: boolean) {
     }
     await terminate(controller);
     if (blocker) await rm(blocker);
+    if (loseReceipt) {
+      // Test-only crash-window injection: restore the durable input record to
+      // its pre-acknowledgement state while the original Worker retains the reply.
+      const db = new DatabaseSync(join(original, 'allocations.sqlite'));
+      try {
+        const rows = db.prepare('SELECT request_key, body FROM allocation_inputs').all();
+        const row = rows.find(row => JSON.parse(String(row.body)).requestId === 'once');
+        assert.ok(row);
+        const input = JSON.parse(String(row.body));
+        assert.equal(input.state, 'accepted');
+        assert.equal(input.inputId, admitted.receipt.inputId);
+        input.state = 'dispatched';
+        delete input.receipt;
+        db.prepare('UPDATE allocation_inputs SET body = ? WHERE request_key = ?').run(JSON.stringify(input), row.request_key);
+      } finally { db.close(); }
+    }
     controller = run(retainExport ? 'finish-close' : 'recover', original);
     const recovered = await next(controller);
     assert.equal(recovered.step, 'closed');
     if (!retainExport) {
       assert.equal(recovered.agentId, admitted.agentId);
+      assert.deepEqual(recovered.queried, admitted.receipt);
       assert.deepEqual(recovered.replay, admitted.receipt);
       assert.equal(recovered.probe.requestId, 'after');
       assert.equal(Buffer.from(recovered.content.data, 'base64').toString(), 'survives controller restart\n');
@@ -173,5 +191,7 @@ async function probeRecovery(retainExport: boolean) {
 const native = { skip: process.env.MURM_CORE_RECOVERY_REAL_TEST !== '1', timeout: kubernetes ? 300_000 : 115_000 };
 test('one real Worker survives Controller SIGKILL, replays a known input and exports from the existing Sandbox', native,
   () => probeRecovery(false));
+test('a replacement Controller queries an unconfirmed text receipt using only its original Request ID', native,
+  () => probeRecovery(false, true));
 test('a later Controller finishes retained export without reopening a durably closing Run', native,
   () => probeRecovery(true));

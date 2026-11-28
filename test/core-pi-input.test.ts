@@ -8,6 +8,7 @@ import { registerHooks } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
 import { provider } from './fixtures/core-pi-transport.js';
+import { reconcileRuntimeReceipt } from '../src/core/runtime-admissions.js';
 import { createNotesService, notesManifest } from './fixtures/core-notes-service.js';
 
 // Controlled OpenSandbox and Docker boundary, with the actual Core adapter.
@@ -78,6 +79,28 @@ test('adapter receipt recovery never repeats a prompt after a socket failure', a
   assert.equal(accepted.inputId, unknown.inputId);
   assert.equal(provider.messages.filter(message => message.type === 'prompt').length, 1);
   assert.equal(provider.messages.filter(message => message.type === 'get_rpc_result').length, 1);
+});
+
+test('receipt-only lookup and identical send join one original text query', async t => {
+  const { runtime, agent } = await setup(t);
+  const requestId = 'receipt-only';
+  const first = await runtime.send(agent.id, 'fixed', { requestId });
+  assert.equal(first.status, 'unknown');
+  assert.equal((await reconcileRuntimeReceipt(runtime, agent.id, 'send', 'missing')).status, 'unknown');
+  provider.responses.set(first.inputId, { response: {
+    id: first.inputId, command: 'prompt', success: true, data: { disposition: 'started' },
+  }, records: [] });
+  const [one, two, replay] = await Promise.all([
+    reconcileRuntimeReceipt(runtime, agent.id, 'send', requestId),
+    reconcileRuntimeReceipt(runtime, agent.id, 'send', requestId),
+    runtime.send(agent.id, 'fixed', { requestId }),
+  ]);
+  assert.deepEqual(one, { inputId: first.inputId, status: 'accepted', disposition: 'started' });
+  assert.deepEqual(two, one);
+  assert.deepEqual(replay, one);
+  assert.equal(provider.messages.filter(message => message.type === 'prompt').length, 1);
+  assert.deepEqual(provider.messages.filter(message => message.type === 'get_rpc_result').map(message => message.id), [first.inputId]);
+  await assert.rejects(runtime.send(agent.id, 'different', { requestId }), { code: 'CONFLICT' });
 });
 
 test('prompt acknowledgement replays unread Worker prefix before its own response', async t => {
