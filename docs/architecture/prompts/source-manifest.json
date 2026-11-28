@@ -35,7 +35,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "143d007b73f9b8682d22885c5e4160d9d88124b3cb6500d744385bae241c3a0b"
+      "sha256": "60a23e0fdfe7c7dc86b816506dd90b54bb4ad5d233d90aa0e0f1d4a3560bcb1e"
     },
     {
       "path": "src/core/bridge.ts",
@@ -79,7 +79,7 @@
     },
     {
       "path": "examples/taskpool/project.ts",
-      "sha256": "1e43c061631f1a415a910d8bf452584351f97b75f209f544dc273dbb2fa3c081"
+      "sha256": "2f226e6299a801f561c4dea30bceaafdb520c48391d4079a5be98431c3e5fc0c"
     },
     {
       "path": "src/harness/project-git.ts",
@@ -99,7 +99,7 @@
     },
     {
       "path": "examples/taskpool/harness/controller.ts",
-      "sha256": "5077b97e8b8c3598f7994d9a40aa928bba83f4ffcf0777c81a7b0d3802746d62"
+      "sha256": "f7c5d36359f3a77cd4096aac13b06777c71cd3cd550107d88cb579aa0ed359db"
     },
     {
       "path": "examples/taskpool/harness/harness.ts",
@@ -127,11 +127,11 @@
     },
     {
       "path": "examples/subagents/main.ts",
-      "sha256": "afdcf18530e41e87000461f81bc2489b33aca5ee781a30fbe9cb1e2779d8f234"
+      "sha256": "a866c4ed479dd187d73e97e8c8caa11238f544809ce7c64fc3f3f11324a83699"
     },
     {
       "path": "examples/subagents/harness/controller.ts",
-      "sha256": "e0ff674e9b2589cdee15cc33b9dc61b9fd49d95f48bdedec700ce47e70758203"
+      "sha256": "8482301a0d2aa669330ae34c042032e259c95ed107106d431d8efa12232960b3"
     },
     {
       "path": "examples/subagents/prompts/prompts.ts",
