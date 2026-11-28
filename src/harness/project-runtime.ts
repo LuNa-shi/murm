@@ -1,11 +1,14 @@
 import type { Runtime } from '@luna-shi/murm';
 import { ProjectPreflightError } from './project-input.js';
+import type { HarnessAgentRegistration } from './harness-session-types.js';
 import type { HarnessJson, ProjectHarnessContext, ProjectHarnessResult } from './project-harness.js';
 
 const json = (value: unknown): HarnessJson => JSON.parse(JSON.stringify(value));
 
 /** Subscribe before spawn and serialize reads prompted by state changes. */
-export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessContext, business?: () => unknown) {
+export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessContext, business?: () => unknown | Promise<unknown>,
+  controls: Omit<HarnessAgentRegistration, 'runtime'> = {}) {
+  const unregister = context.registerAgentControls({ runtime, ...controls });
   let pending = false;
   let refreshing = false;
   let closed = false;
@@ -19,8 +22,9 @@ export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessC
         pending = false;
         try {
           const agents = await runtime.list();
-          if (!closed) context.updateStatus({
-            agents: json(agents), business: json({ runtimeId: runtime.id, runtimeState: runtime.state, detail: business?.() ?? null }),
+          const detail = await business?.() ?? null;
+          if (!closed && !context.signal.aborted) context.updateStatus({
+            agents: json(agents), business: json({ runtimeId: runtime.id, runtimeState: runtime.state, detail }),
           });
         } catch {
           if (!closed) context.emit({ kind: 'observation-error', code: 'RUNTIME_STATE_UNAVAILABLE' });
@@ -34,12 +38,12 @@ export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessC
   const unsubscribe = runtime.onEvent(event => {
     if (event.type === 'agentChanged' || event.type === 'runtimeChanged' || event.type === 'management') {
       void refresh();
-    } else if (!closed) {
+    } else if (!closed && !context.agentEventsManaged) {
       context.emit({ kind: 'agent', event: json(event) });
     }
   });
   void refresh();
-  return { refresh, close() { closed = true; unsubscribe(); } };
+  return { refresh, close() { closed = true; unsubscribe(); unregister(); } };
 }
 
 export async function projectConfiguration<C>(context: ProjectHarnessContext, defaults: () => Promise<{ default: unknown }>) {

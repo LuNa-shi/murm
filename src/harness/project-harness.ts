@@ -9,14 +9,19 @@ import { captureProject, isInside, projectError, ProjectPreflightError, resolveP
 import { saveReport } from './run-report.js';
 import { resolveFilePolicy, type FilePolicy } from '../core/file-policy.js';
 import { fileSpool } from '../core/files/core-file-seed.js';
+import type { HarnessAgentRegistration, HarnessAnswer, HarnessInputDescriptor, HarnessLifetime, HarnessQuestionRequest, HarnessQuestionSource } from './harness-session-types.js';
+export { createHarnessSession, captureHarnessSnapshot, getHarnessExitCode, harnessSessionSignal, stopHarnessTransport } from './harness-session.js';
+export type * from './harness-session-types.js';
 
 export type HarnessInput = Readonly<{ cwd: string; prompt: string }>;
 type InitialProject = Awaited<ReturnType<typeof captureProject>>;
 export type HarnessJson = null | boolean | number | string | readonly HarnessJson[] | { readonly [key: string]: HarnessJson };
-type HarnessStatusInfo = Readonly<{ agents?: HarnessJson; business?: HarnessJson }>;
-type HarnessInputHandler = (input: HarnessJson, request: Readonly<{ requestId: string; signal: AbortSignal }>) =>
+export type HarnessStatusInfo = Readonly<{ agents?: HarnessJson; business?: HarnessJson }>;
+export type HarnessInputHandler = (input: HarnessJson, request: Readonly<{ requestId: string; signal: AbortSignal; binding?: HarnessJson }>) =>
   Promise<HarnessJson> | HarnessJson;
 type Cleanup = { status: 'complete' | 'pending'; receipt?: HarnessJson; pending?: HarnessJson; retained?: HarnessJson };
+
+export type HarnessInputPreparation = (input: HarnessJson, request: Readonly<{ requestId: string; signal: AbortSignal }>) => HarnessJson;
 
 export interface ProjectHarnessResult {
   outcome: 'completed' | 'failed' | 'cancelled';
@@ -35,16 +40,25 @@ export interface ProjectHarnessContext {
   readonly runId: string;
   readonly outputDir: string;
   readonly signal: AbortSignal;
+  readonly lifetime: HarnessLifetime;
+  readonly agentEventsManaged?: boolean;
+  readonly clientCapabilities: Readonly<{ questions: boolean }>;
+  registerAgentControls(registration: HarnessAgentRegistration): () => void;
+  askUser(request: HarnessQuestionRequest, source: HarnessQuestionSource): Promise<HarnessAnswer>;
   markRunning(): void;
   updateStatus(status: HarnessStatusInfo): void;
   emit(event: HarnessJson): void;
-  registerInput(handler: HarnessInputHandler): void;
+  registerInput(handler: HarnessInputHandler, descriptor?: HarnessInputDescriptor, prepare?: HarnessInputPreparation): void;
 }
 
 export interface ProjectHarness {
   readonly apiVersion: 1;
   readonly id: string;
   readonly input?: true;
+  readonly lifetimes?: readonly HarnessLifetime[];
+  readonly questions?: boolean;
+  readonly inputDescription?: HarnessInputDescriptor;
+  readonly inputDescriptor?: HarnessInputDescriptor;
   run(context: ProjectHarnessContext): Promise<ProjectHarnessResult>;
 }
 
@@ -93,11 +107,12 @@ export async function loadProjectHarness(directory: string, specifier: string, b
 }
 
 type Phase = 'idle' | 'starting' | 'running' | 'stopping' | 'finished';
-type StopReason = 'requested' | 'input-ended' | 'input-failed' | 'output-failed' | 'SIGINT' | 'SIGTERM';
+type StopReason = string;
 type Failure = { code: string; message: string };
 type StartupOptions = {
   launchDirectory: string;
   configPath?: string;
+  configuration?: unknown;
   outputRoot?: string;
   stopTimeoutMs?: number;
 };
@@ -238,7 +253,7 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
       await writeFile(path, raw.prompt, { flag: 'wx', mode: 0o600 });
       promptPath = path;
       signal.throwIfAborted();
-      const configuration = await loadConfiguration(options.launchDirectory, options.configPath);
+      const configuration = options.configuration ?? await loadConfiguration(options.launchDirectory, options.configPath);
       signal.throwIfAborted();
       let filePolicy;
       try { filePolicy = resolveFilePolicy((configuration as { filePolicy?: FilePolicy } | undefined)?.filePolicy); }
@@ -255,6 +270,9 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
       enteredHarness = true;
       return validateResult(await definition.run({
         input: Object.freeze({ cwd, prompt: raw.prompt }), initial: captured, configuration, runId: id, outputDir, signal,
+        lifetime: 'task', clientCapabilities: { questions: false },
+        registerAgentControls() { return () => {}; },
+        askUser() { return Promise.reject(projectError('OPERATION_UNSUPPORTED', 'No question channel is available')); },
         markRunning() {
           signal.throwIfAborted();
           if (phase !== 'starting') return;
