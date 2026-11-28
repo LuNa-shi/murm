@@ -185,13 +185,15 @@ test('doctor uses the shared lifecycle environment and requires an authenticated
   t.after(() => server.close());
   const address = server.address() as { port: number };
   const { stdout } = await promisify(execFile)(process.execPath, [cli, 'doctor'], {
-    env: { PATH: '/does-not-exist', MURM_LIFECYCLE_URL: `http://127.0.0.1:${address.port}/v1`, MURM_LIFECYCLE_TOKEN: 'doctor-test-key' },
+    env: { PATH: '/does-not-exist', MURM_LIFECYCLE_URL: `http://127.0.0.1:${address.port}/v1`,
+      MURM_LIFECYCLE_TOKEN: 'doctor-test-key', MURM_RUNTIME_PUBLIC_URL: 'https://runtime.example.test:8443/private-route' },
   });
   const report = JSON.parse(stdout);
   assert.equal(report.infrastructure, 'preflight-passed');
+  assert.equal(report.connection.callbackOrigin, 'https://runtime.example.test:8443');
   assert.ok(requests.includes(undefined));
   assert.ok(requests.includes('doctor-test-key'));
-  assert.doesNotMatch(stdout, /doctor-test-key/);
+  assert.doesNotMatch(stdout, /doctor-test-key|private-route/);
 });
 
 test('configured doctor preserves shell values while loading an adjacent environment', async t => {
@@ -211,7 +213,10 @@ test('configured doctor preserves shell values while loading an adjacent environ
   const filename = join(directory, 'config.mjs');
   await writeFile(filename, `export default {
     image: 'unused', sandbox: { lifecycleBaseUrl: process.env.TEST_CONFIG_URL },
-    connection: { advertiseHost: '172.17.0.1' },
+    connection: { advertiseHost: '172.17.0.1',
+      bridge: { publicUrl: 'https://legacy-runtime.example.test/bridge-prefix' },
+      modelGateway: { publicUrl: 'https://legacy-runtime.example.test/bridge-prefix' },
+    },
   };`);
   const { stdout } = await promisify(execFile)(process.execPath, [cli, 'doctor', '--config', filename], {
     env: { PATH: '/does-not-exist', MURM_LIFECYCLE_URL: 'http://127.0.0.1:1/v1', MURM_LIFECYCLE_TOKEN: 'shell-test-key' },
@@ -220,7 +225,8 @@ test('configured doctor preserves shell values while loading an adjacent environ
   assert.equal(report.mode, 'existing');
   assert.equal(report.infrastructure, 'preflight-passed');
   assert.equal(report.lifecycleSource, 'config');
-  assert.doesNotMatch(stdout, /shell-test-key|file-test-credential/);
+  assert.equal(report.connection.callbackOrigin, 'https://legacy-runtime.example.test');
+  assert.doesNotMatch(stdout, /shell-test-key|file-test-credential|bridge-prefix/);
 });
 
 test('local setup preserves a port conflict without sending it a lifecycle key', async t => {

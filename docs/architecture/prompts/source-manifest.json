@@ -59,7 +59,7 @@
     },
     {
       "path": "scripts/local-setup-smoke.ts",
-      "sha256": "6e07f4deef18c8a15d23be151974cb33732ed9854348619ceca10fdb61204894"
+      "sha256": "7fea735503fb17eaec5d3cea1c6efee551305dcc9333233584bd3bd40b11e198"
     },
     {
       "path": "scripts/local-setup-upstream.ts",

@@ -31,6 +31,7 @@ export interface LocalSmokeCheck {
   id: string;
   status: 'passed' | 'failed';
   message: string;
+  remedy?: string;
 }
 
 export interface LocalSmokeReceipt {
@@ -162,7 +163,11 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
       ? (receipt.interrupted ? 'Local probe interrupted' : 'Local probe deadline exceeded')
       : error instanceof Error && 'code' in error && typeof error.code === 'string' && /^[A-Z_]+$/.test(error.code)
         ? `Infrastructure probe failed (${error.code}). Check the configured Worker and network routes.`
-        : 'Infrastructure probe failed. Check doctor diagnostics and retained resource identities' });
+        : 'Infrastructure probe failed. Check doctor diagnostics and retained resource identities',
+      ...(stage === 'agent-bridge-gateway' && !receipt.interrupted ? {
+        remedy: 'Check that the Sandbox can reach connection.publicUrl, the Runtime listener port, and the Bridge and Model Gateway proxy routes. Rerun murm doctor --smoke.',
+      } : {}),
+    });
   } finally {
     unsubscribe?.();
     if (runtime) {

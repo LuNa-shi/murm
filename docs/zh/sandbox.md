@@ -43,7 +43,7 @@ const remote = createSandbox({
 
 优先级为显式 SDK/CLI 配置、进程环境、保存的连接、本地默认值。连接保存在仅当前用户可读写的配置中。工厂捕获配置，`runtime.spawn()` 才分配资源。
 
-Runtime 使用 `connection: { publicUrl: 'https://runtime.example.net/murm' }` 声明一个 Sandbox 可达的回调地址。高级监听参数为 `bindHost` 与 `bindPort`。反向代理路径前缀会保留。OpenSandbox 应发布控制端可达的 endpoint 及所需 headers。
+Runtime 使用 `connection: { publicUrl: 'https://runtime.example.net/murm' }` 声明一个 Sandbox 可达的回调地址。高级监听参数为 `bindHost` 与 `bindPort`。反向代理路径前缀会保留。doctor 报告会显示所配置的回调源地址。如果 Sandbox 无法回连 Runtime，smoke 检查会提示核对回调地址、监听端口和代理路由。OpenSandbox 应发布控制端可达的 endpoint 及所需 headers。
 
 ## 资源与旧配置迁移
 

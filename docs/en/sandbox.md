@@ -43,7 +43,7 @@ const remote = createSandbox({
 
 Explicit SDK or CLI settings override environment values, saved connection, then local defaults. Connection settings live in the owner-only user configuration. The factory snapshots configuration. Allocation begins at `runtime.spawn()`.
 
-Pass `connection: { publicUrl: 'https://runtime.example.net/murm' }` to Runtime for a single reachable callback. `bindHost` and `bindPort` are advanced listener settings. Reverse-proxy prefixes are preserved. Configure OpenSandbox to publish reachable endpoint addresses and headers.
+Pass `connection: { publicUrl: 'https://runtime.example.net/murm' }` to Runtime for a single reachable callback. `bindHost` and `bindPort` are advanced listener settings. Reverse-proxy prefixes are preserved. The doctor report lists the configured callback origin. If the Sandbox cannot reach the Runtime, the smoke check points to the callback address, listener port and proxy routes. Configure OpenSandbox to publish reachable endpoint addresses and headers.
 
 ## Resource and migration boundaries
 
