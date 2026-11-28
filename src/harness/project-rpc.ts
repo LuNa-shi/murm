@@ -101,7 +101,7 @@ function dispatch(session: HarnessSession, request: RpcRequest, launchDirectory:
       const target = requiredString(agentId);
       if (typeof payload === 'string') {
         return session.agents.send(target, payload, {
-          ...optional(options, ['mode', 'wakeIfIdle', 'source', 'steeringMode', 'timeoutMs']), ...identity,
+          ...optional(options, ['mode', 'wakeIfIdle', 'source', 'steeringMode']), ...identity,
         } as SendOptions);
       }
       const context = named(payload, ['type', 'customType', 'content', 'details', 'display']);
@@ -148,6 +148,9 @@ function eventRecord(event: HarnessEvent) {
       return { type: 'event', runId: event.state.runId, event: { kind: 'status', ...event.state }, sessionEvent: event };
     case 'event':
       return { ...event, sessionEvent: event };
+    case 'operation':
+      if (event.operation === 'start') return undefined;
+      return { type: 'event', runId: event.runId, event: { kind: event.type, ...event }, sessionEvent: event };
     default:
       return { type: 'event', runId: event.runId, event: { kind: event.type, ...event }, sessionEvent: event };
   }
@@ -221,7 +224,14 @@ export async function runProjectRpc(
       const work = dispatch(session, request, launchDirectory);
       watchCompletion();
       void Promise.resolve(work).then(
-        value => send(reply(request.id, value)),
+        value => {
+          const record = reply(request.id, value);
+          if (request.operation === 'input' && request.requestId === undefined && signal.aborted &&
+              value && typeof value === 'object' && 'status' in value && value.status === 'unknown') {
+            // v1 clients receive cancellation of queued input before the active unknown receipt.
+            setImmediate(() => send(record));
+          } else send(record);
+        },
         error => send(errorRecord(failureCode(error, 'INVALID_REQUEST'), request.id)),
       );
     } catch (error) {
