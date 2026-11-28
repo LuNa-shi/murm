@@ -97,6 +97,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   let inputDescription: HarnessInputDescriptor = definition.inputDescriptor ?? definition.inputDescription ?? {};
   let prepareInput: HarnessInputPreparation | undefined;
   let inputHandler: HarnessInputHandler | undefined;
+  let reconcileInput: HarnessInputHandler | undefined;
   let completion: Promise<HarnessResult> | undefined;
   let result: HarnessResult | undefined;
   let exitCode: number | undefined;
@@ -191,11 +192,12 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   }
   const wrapped: ProjectHarness = { ...definition, async run(context) {
     const returned = await definition.run({ ...context, lifetime, clientCapabilities, agentEventsManaged: true,
-      registerInput(handler, description, prepare) {
+      registerInput(handler, description, prepare, reconcile) {
         context.signal.throwIfAborted();
         if (!definition.input || inputHandler || typeof handler !== 'function') throw projectError('INVALID_HARNESS_INPUT_HANDLER', 'Declare and register one input handler');
         inputHandler = handler;
         prepareInput = prepare;
+        reconcileInput = reconcile;
         inputDescription = jsonCopy(description ?? inputDescription);
         context.registerInput(handler);
         changed();
@@ -258,11 +260,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     if (existing) {
       if (existing.fingerprint !== hash) return Promise.reject(projectError('REQUEST_ID_CONFLICT', 'requestId already identifies different parameters or operation'));
       if (existing.settled && existing.reconcile && isUnknown(existing.result)) {
-        return existing.reconcile().then(value => {
-          existing.result = jsonCopy(value);
-          publish({ type: 'operation', runId: host.status().runId, requestId: id, operation, result: existing.result });
-          return existing.result as T;
-        });
+        return observeHandler(existing.reconcile(), id, existing.result).then(value => updateReceipt(id, value) as T);
       }
       return existing.settled ? Promise.resolve(existing.result as T) : existing.promise as Promise<T>;
     }
@@ -273,14 +271,27 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     records.set(id, record);
     try {
       Promise.resolve(run()).then(value => {
-        record.result = jsonCopy(value);
-        record.settled = true;
-        deferred.resolve(record.result as T);
-        publish({ type: 'operation', runId: host.status().runId, requestId: id, operation, result: record.result });
+        deferred.resolve(updateReceipt(id, value) as T);
       }, error => { record.failed = true; deferred.reject(error); }).catch(error => { record.failed = true; deferred.reject(error); });
     } catch (error) { record.failed = true; deferred.reject(error); }
     void deferred.promise.catch(() => {});
     return deferred.promise;
+  }
+  function updateReceipt(requestId: string, value: unknown) {
+    const record = records.get(requestId);
+    if (!record) return jsonCopy(value);
+    const copy = jsonCopy(value);
+    // Preserve the first confirmed outcome if an older timeout or query arrives later.
+    if (record.settled && !isUnknown(record.result)) return record.result;
+    if (record.settled && stableStringify(record.result) === stableStringify(copy)) return record.result;
+    record.result = copy;
+    record.settled = true;
+    publish({ type: 'operation', runId: host.status().runId, requestId, operation: record.operation, result: copy });
+    return copy;
+  }
+  function inputReceipt(value: HarnessJson, requestId: string): HarnessInputReceipt {
+    const state = value && typeof value === 'object' && !Array.isArray(value) && 'status' in value ? value.status : null;
+    return { status: state === 'unknown' || state === 'not_submitted' ? state : 'accepted', requestId, result: jsonCopy(value) };
   }
   function observeHandler<T>(work: Promise<T>, requestId: string, unknown: T): Promise<T> {
     const deferred = Promise.withResolvers<T>();
@@ -290,9 +301,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     host.signal.addEventListener('abort', expired, { once: true });
     if (host.signal.aborted) expired();
     void work.then(value => {
-      const record = records.get(requestId);
-      if (record) { record.result = jsonCopy(value); record.settled = true; }
-      deferred.resolve(value);
+      deferred.resolve(updateReceipt(requestId, value) as T);
     }, deferred.reject).finally(() => {
       clearTimeout(timer);
       host.signal.removeEventListener('abort', expired);
@@ -498,11 +507,10 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
         const work = inputTail.then(async () => {
           queuedCount--; queuedBytes -= bytes;
           admit();
-          const handled = Promise.resolve(inputHandler!(copy, { requestId: request.requestId, signal: host.signal, binding }))
-            .then(value => {
-              const state = value && typeof value === 'object' && !Array.isArray(value) && 'status' in value ? value.status : null;
-              return { status: state === 'unknown' || state === 'not_submitted' ? state : 'accepted', requestId: request.requestId, result: jsonCopy(value) } as HarnessInputReceipt;
-            });
+          const originalRequest = { requestId: request.requestId, signal: host.signal, binding };
+          if (reconcileInput) records.get(request.requestId)!.reconcile = () =>
+            Promise.resolve(reconcileInput!(copy, originalRequest)).then(value => inputReceipt(value, request.requestId));
+          const handled = Promise.resolve(inputHandler!(copy, originalRequest)).then(value => inputReceipt(value, request.requestId));
           return observeHandler(handled, request.requestId, { status: 'unknown', requestId: request.requestId });
         });
         inputTail = work.then(() => {}, () => {});

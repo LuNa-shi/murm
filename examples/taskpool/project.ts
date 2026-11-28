@@ -126,6 +126,8 @@ const taskpool = {
             },
             feedbackDescription,
             payload => JSON.parse(JSON.stringify(controller.captureFeedback(feedbackInput(payload).taskId))),
+            async (_payload, { requestId }) => JSON.parse(JSON.stringify(await controller.reconcileFeedback(requestId,
+              (agentId, originalId) => observation!.reconcile(agentId, 'send', originalId)))),
           );
         },
       });

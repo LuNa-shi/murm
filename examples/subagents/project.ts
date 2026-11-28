@@ -147,6 +147,9 @@ const subagents = {
           }, rootInput, input => {
             parseInput(input);
             return harness.inputFence();
+          }, async (_input, { requestId }) => {
+            const id = createHash('sha256').update(requestId).digest('hex');
+            return JSON.parse(JSON.stringify(await observation!.reconcile(harness.rootId, 'send', `user:rpc:${id}`)));
           });
           context.markRunning();
         },

@@ -48,7 +48,7 @@ export interface ProjectHarnessContext {
   markRunning(): void;
   updateStatus(status: HarnessStatusInfo): void;
   emit(event: HarnessJson): void;
-  registerInput(handler: HarnessInputHandler, descriptor?: HarnessInputDescriptor, prepare?: HarnessInputPreparation): void;
+  registerInput(handler: HarnessInputHandler, descriptor?: HarnessInputDescriptor, prepare?: HarnessInputPreparation, reconcile?: HarnessInputHandler): void;
 }
 
 export interface ProjectHarness {

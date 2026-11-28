@@ -132,3 +132,40 @@ test('initial snapshots precede reentrant state changes and live output replaces
     await session.stop({ requestId: 'stop' }); await session.completion;
   } finally { await rm(cwd, { recursive: true, force: true }); await rm(outputRoot, { recursive: true, force: true }); }
 });
+
+test('input reconciliation keeps its captured binding and publishes changed receipts without stale overwrite', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'murm-input-reconcile-'));
+  const outputRoot = await mkdtemp(join(tmpdir(), 'murm-input-reconcile-output-'));
+  const ready = Promise.withResolvers<void>();
+  const original = Promise.withResolvers<any>();
+  const captured = { executionId: 'original-execution', owner: 'original-agent', fence: 4 };
+  let calls = 0;
+  const receipts: any[] = [];
+  const session = createHarnessSession({ id: 'input-receipts', apiVersion: 1, input: true, async run(context) {
+    context.registerInput(async () => { calls++; return original.promise; }, undefined, () => ({ ...captured }),
+      async (_input, request) => {
+        assert.deepEqual(request.binding, { executionId: 'original-execution', owner: 'original-agent', fence: 4 });
+        return { status: 'accepted', inputId: 'original-input' };
+      });
+    context.markRunning(); ready.resolve();
+    await new Promise(resolve => context.signal.addEventListener('abort', resolve, { once: true }));
+    return { outcome: 'cancelled', reason: 'stopped', artifacts: [], cleanup: { status: 'complete' } };
+  } }, { outputRoot, limits: { handlerTimeoutMs: 10 } });
+  session.onEvent(event => { if (event.type === 'operation' && event.operation === 'input') receipts.push(event.result); });
+  try {
+    await session.start({ cwd, prompt: 'work' }, { requestId: 'start' }); await ready.promise;
+    assert.equal((await session.input('feedback', { requestId: 'feedback' })).status, 'unknown');
+    captured.fence = 5;
+    const accepted = await session.input('feedback', { requestId: 'feedback' });
+    assert.equal(accepted.result.inputId, 'original-input');
+    original.resolve({ status: 'unknown' });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(await session.input('feedback', { requestId: 'feedback' }), accepted);
+    assert.equal(calls, 1);
+    assert.deepEqual(receipts.map(receipt => receipt.status), ['unknown', 'accepted']);
+    await session.stop({ requestId: 'stop' }); await session.completion;
+  } finally {
+    original.resolve({ status: 'unknown' });
+    await rm(cwd, { recursive: true, force: true }); await rm(outputRoot, { recursive: true, force: true });
+  }
+});

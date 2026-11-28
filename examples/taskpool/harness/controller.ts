@@ -432,6 +432,21 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
     notify(){checkDomain();if(!closing) void enqueue(reconcile).catch(()=>{});},
     captureFeedback,
     feedback,
+    async reconcileFeedback(requestId: string, query: (agentId: string, requestId: string) => Promise<any>) {
+      const previous = feedbackRequests.get(requestId);
+      if (!previous) return { status: 'unknown', requestId };
+      const original = await previous.work;
+      if (original.status !== 'unknown') return structuredClone(original);
+      const receipt = await query(original.agentId, requestId);
+      if (receipt.status === 'unknown') return structuredClone(original);
+      const confirmed = { ...original, status: receipt.status, receipt };
+      const input = inputs.find(row => row.requestId === requestId && row.agentId === original.agentId);
+      if (input) Object.assign(input, confirmed);
+      const agent = agents.get(original.agentId);
+      if (agent) agent.uncertain = inputs.some(row => row.agentId === original.agentId && row.status === 'unknown');
+      previous.work = Promise.resolve(confirmed);
+      return structuredClone(confirmed);
+    },
     flush:()=>chain,
     snapshot,
     wait:()=>complete.promise,
