@@ -1,6 +1,6 @@
 import {
   createSandbox, type CreateRuntimeOptions, type SandboxConfig, decodeFileTree,
-  type ProjectHarness, checkGitProject, ProjectPreflightError, observeProjectRuntime,
+  type HarnessJson, type ProjectHarness, checkGitProject, ProjectPreflightError, observeProjectRuntime,
   projectConfiguration, projectResult,
 } from '@luna-shi/murm';
 import { join } from 'node:path';
@@ -9,6 +9,7 @@ import { makeEnvelope } from './persistence/envelope.js';
 import { MissionWorkspace } from './services/workspace/mission-workspace.js';
 import { WorkspaceManager } from './services/workspace/workspace-manager.js';
 import { TaskService } from './services/task/task-service.js';
+import type { createTaskPoolController } from './harness/controller.js';
 import { runTaskPoolHarness } from './harness/harness.js';
 
 interface Configuration extends Pick<CreateRuntimeOptions, 'connection' | 'models' | 'executor' | 'filePolicy'> {
@@ -20,9 +21,28 @@ interface Configuration extends Pick<CreateRuntimeOptions, 'connection' | 'model
   closeTimeoutMs?: number;
 }
 
+const feedbackDescription = {
+  description: 'Deliver feedback to the current execution of a Task.',
+  schema: { type: 'object', required: ['taskId', 'input'], additionalProperties: false, properties: {
+    taskId: { type: 'string' }, input: { type: 'string' }, mode: { enum: ['steer', 'followUp'] },
+  } },
+} as const;
+
+function feedbackInput(payload: HarnessJson) {
+  if (!payload || typeof payload !== 'object' || !('taskId' in payload) || !('input' in payload) ||
+      typeof payload.taskId !== 'string' || !payload.taskId || typeof payload.input !== 'string' || !payload.input.trim() ||
+      Object.keys(payload).some(key => !['taskId', 'input', 'mode'].includes(key)) ||
+      ('mode' in payload && payload.mode !== 'steer' && payload.mode !== 'followUp')) {
+    throw Object.assign(new TypeError('Expected Task ID, feedback text and optional mode'), { code: 'INVALID_HARNESS_INPUT' });
+  }
+  return { taskId: payload.taskId, input: payload.input, mode: 'mode' in payload ? payload.mode : 'steer' };
+}
+
 const taskpool = {
   id: 'taskpool',
   apiVersion: 1,
+  input: true,
+  inputDescriptor: feedbackDescription,
   async run(context) {
     const configuration = await projectConfiguration<Configuration>(context, () => import('./config.js'));
     const { executor, models, connection, image, model = 'default', capacity = 2, workTimeoutMs = 120_000,
@@ -69,8 +89,37 @@ const taskpool = {
           discoveryWorkflow: 'Keep Tasks small and coordinate via the public Task list. Save project changes as a Workspace revision and merge the result before marking implementation work done.',
           beforeInitialDispatch: () => context.markRunning(),
         },
-        onRuntime: (runtime: Parameters<typeof observeProjectRuntime>[0], controller: { snapshot(): unknown }) => {
-          observation = observeProjectRuntime(runtime, context, () => controller.snapshot());
+        onRuntime: (runtime: Parameters<typeof observeProjectRuntime>[0], controller: ReturnType<typeof createTaskPoolController>) => {
+          const state = async () => {
+            const view = controller.snapshot();
+            const current = await missionWorkspace.get({ workspaceId, signal: context.signal });
+            const tasks = taskService.listTasks({ missionId, availableOnly: false, scanAll: true, limit: 100,
+              states: ['OPEN', 'RUNNING', 'BLOCKED', 'DONE', 'CANCELED'] });
+            return {
+              missionId, workspaceId, workspaceRevision: current.main_revision, closing: view.closing,
+              completion: view.completion, agents: view.agents, inputs: view.inputs.slice(-32),
+              tasks: tasks.map((task: { task_id: string; state: string }) => ({
+                taskId: task.task_id, state: task.state,
+                executions: taskService.listExecutions(task.task_id, { includeTerminal: false }).map((execution: {
+                  execution_id: string; owner_ref: string; fencing_version: number; state: string;
+                }) => ({
+                  executionId: execution.execution_id, owner: execution.owner_ref, fence: execution.fencing_version, state: execution.state,
+                })),
+              })),
+            };
+          };
+          observation = observeProjectRuntime(runtime, context, state, { fence: () => controller.halt() });
+          context.registerInput(
+            async (payload, { requestId, binding, signal }) => {
+              signal.throwIfAborted();
+              const feedback = feedbackInput(payload);
+              const receipt = await controller.feedback({ ...feedback, requestId },
+                binding as ReturnType<typeof controller.captureFeedback>);
+              return JSON.parse(JSON.stringify(receipt));
+            },
+            feedbackDescription,
+            payload => controller.captureFeedback(feedbackInput(payload).taskId),
+          );
         },
       });
       const result = projectResult(report, context, { missionId, workspaceId, initialRevision: workspace.main_revision });

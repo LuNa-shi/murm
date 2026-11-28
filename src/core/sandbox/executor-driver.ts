@@ -39,6 +39,8 @@ const pi: ExecutorDriver = {
   version: '1.3.0',
   compatibleVersions: Object.freeze(['1.3.0', '1.4.0']),
   capabilities: Object.freeze({ ...sharedCapabilities, contextFork: true,
+    session: Object.freeze({ configure: true, compact: true, abortRetry: true, clearQueue: true,
+      state: true, stats: true, messages: true, context: true, beforeCompact: true }),
     steeringModes: Object.freeze(['all', 'one-at-a-time'] as const) }),
   modelCatalogResource: resolvePiModelCatalog,
   credentials(model, baseUrl, token) {

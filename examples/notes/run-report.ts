@@ -1,1 +1,1 @@
-export * from '../../src/harness/run-report.js';
+export { runWithReport } from '@luna-shi/murm';

@@ -32,6 +32,7 @@ export type ExecutorKind = 'pi' | 'codex';
 export type SteeringMode = 'all' | 'one-at-a-time';
 
 export interface ExecutorCapabilities {
+  readonly session?: import('./session-types.js').AgentSessionCapabilities;
   readonly activeSteer: boolean;
   readonly followUp: boolean;
   readonly conditionalInput: boolean;

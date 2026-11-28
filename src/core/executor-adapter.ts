@@ -32,7 +32,12 @@ export function snapshotExecutorCapabilities(value: ExecutorCapabilities) {
       value.steeringModes.some(mode => mode !== 'all' && mode !== 'one-at-a-time')) {
     throw new TypeError('Executor capabilities must declare supported input and session operations');
   }
-  return Object.freeze({ activeSteer: value.activeSteer, followUp: value.followUp, conditionalInput: value.conditionalInput,
+  const session = value.session;
+  if (session !== undefined && (!session || Object.values(session).some(flag => typeof flag !== 'boolean') ||
+      ['configure', 'compact', 'abortRetry', 'clearQueue', 'state', 'stats', 'messages', 'context', 'beforeCompact'].some(key => typeof (session as unknown as Record<string, unknown>)[key] !== 'boolean'))) {
+    throw new TypeError('Invalid session capabilities');
+  }
+  return Object.freeze({ ...(session ? { session: Object.freeze({ ...session }) } : {}), activeSteer: value.activeSteer, followUp: value.followUp, conditionalInput: value.conditionalInput,
     queuedInputCancellation: value.queuedInputCancellation, contextFork: value.contextFork,
     steeringModes: Object.freeze([...value.steeringModes].sort()) });
 }
