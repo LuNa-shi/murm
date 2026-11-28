@@ -11,49 +11,105 @@ const isZh = lang === 'zh';
 const copy = isZh
   ? {
       eyebrow: '01 · 为什么选择 MURM',
-      title: '在同一底座上构建不同协作机制',
-      descPre: '角色、任务分配和共享状态由你的 Harness 决定。',
-      descPost: ' 提供隔离执行、Service 接入、统一 CLI 与内置轨迹观测。',
+      title: '为什么不从零拼脚本，也不被单拓扑框架绑死？',
+      descPre: '用极简内核提供容器隔离、安全网关与全链路观测，把协作结构彻底还给你。',
+      descPost: ' 让你更快部署、清晰解耦、平滑扩展到任意多智能体形态。',
       cards: [
         {
           title: '换拓扑，不换 Runtime',
-          desc: '在子智能体树、任务池、对等工程师网格与引文图谱之间自由切换，无需改动底层引擎。',
+          desc: '在子智能体树、任务池、对等工程师网格与共享研究黑板之间自由切换，底层运行引擎一行不改。',
         },
         {
-          title: '隔离执行与明确权限',
-          desc: '每个 Agent 运行在独立容器与配额边界内，模型密钥始终留在宿主机上，绝不进入沙箱。',
+          title: '隔离清晰，密钥留在宿主机',
+          desc: '每个 Agent 运行在独立 OpenSandbox 容器中，模型密钥与外部凭据始终留在宿主机网关。',
         },
         {
-          title: '通过可定制 Services 协作',
-          desc: '自由创建任务板、邮箱、Git 或验证器等共享服务——例如 Agent A 通过某个 Service 发布发现或补丁，Agent B 通过同一 Service 读取并续做，全部经由 Schema 校验网关。',
+          title: '共享协作层自由插拔',
+          desc: 'Agent A 通过共享 Service 写入发现或代码状态，Agent B 读取并续做——任务池、邮箱、Git 或验证器皆可即插即用。',
         },
         {
           title: '每次运行，全程可检视',
-          desc: '会话、模型请求与 Service 调用完整落盘，用内置 murm trace 浏览器直接回放时间线并核对清理回执。',
+          desc: '模型请求、工具执行、跨 Agent 交接与导出文件自动归档，一条 murm trace 命令即可缩放回放。',
+        },
+      ],
+      compareTitle: '与其他多智能体方案的架构对比',
+      compareCols: ['对比维度', '工作流 / 图框架（如 LangGraph / CrewAI）', '单拓扑开源 Agent / 自研脚本（如 Agensh）', 'murm'],
+      compareRows: [
+        {
+          dim: '架构清晰度',
+          workflow: '偏无状态提示词节点编排；容器隔离、文件快照与长会话控制需自行补齐',
+          bespoke: '围绕单一固定协作模式实现，切换拓扑往往需要重写调度器与鉴权层',
+          murm: '极简 Runtime 与协作层彻底解耦，只改 Harness 和 Services 即可换拓扑',
+        },
+        {
+          dim: '部署体验',
+          workflow: '沙箱、密钥隔离与日志采集需按项目各自拼装',
+          bespoke: '常绑定特定环境或重型外部基础设施',
+          murm: '单一安装包 + murm setup --mode local 一键就绪，也支持接入远程 OpenSandbox',
+        },
+        {
+          dim: '并发与扩展',
+          workflow: '进程内共享内存/目录，多 Agent 并发写代码易互相踩踏',
+          bespoke: '难以在不同团队规模、角色镜像与领域验证器之间复用',
+          murm: '每 Agent 独立容器、显式并发槽位与角色镜像，从 2 人平滑扩展到大规模集群',
+        },
+        {
+          dim: '调试透明度',
+          workflow: '日志分散在外部平台，难以关联文件变更与跨 Agent 调用',
+          bespoke: '多依赖文本日志，跨 Agent 因果交接难以追溯',
+          murm: '内置零依赖 murm trace 泳道视图，一键贯通模型上下文、协作交接与产物',
         },
       ],
     }
   : {
       eyebrow: '01 · WHY MURM',
-      title: 'Build different mechanisms on one runtime',
-      descPre: 'Your Harness defines roles, work allocation, and shared state. ',
-      descPost: ' supplies isolated execution, Service integration, a host CLI, and built-in trace observation.',
+      title: 'Why murm instead of custom glue or single-pattern tools?',
+      descPre: 'A minimal runtime owns container isolation, host-gated secrets, and trace replay — leaving coordination completely open. ',
+      descPost: ' gives you cleaner boundaries, faster deployment, and effortless scaling across topologies.',
       cards: [
         {
           title: 'Swap topologies, not runtimes',
-          desc: 'Switch between subagents, task pools, peer meshes, or citation graphs without touching the core engine.',
+          desc: 'Move between subagent trees, leased task pools, peer meshes, or shared research boards without touching the core engine.',
         },
         {
-          title: 'Isolated execution and explicit authority',
-          desc: 'Every agent runs in its own container with strict quotas; model keys never leave the host.',
+          title: 'Clean isolation, host-only keys',
+          desc: 'Every agent runs in its own OpenSandbox container while model keys and external credentials stay strictly on the host.',
         },
         {
-          title: 'Coordinate through customized services',
-          desc: 'Plug in task boards, mailboxes, Git repos, or formal verifiers — e.g. Agent A publishes a finding or patch via a Service and Agent B reads it to build on it, all behind one schema-checked gateway.',
+          title: 'Pluggable shared Services',
+          desc: 'Agent A writes a finding or patch through a shared Service and Agent B reads it — plug in boards, pools, Git, or verifiers.',
         },
         {
           title: 'Every run, fully inspectable',
-          desc: 'Inspect saved sessions, model exchanges, and Service handoffs in the built-in murm trace browser alongside artifact and cleanup receipts.',
+          desc: 'Model calls, tool runs, cross-agent handoffs, and exported files are archived automatically for instant murm trace replay.',
+        },
+      ],
+      compareTitle: 'How murm compares across architectures',
+      compareCols: ['Dimension', 'Workflow / graph frameworks (LangGraph, CrewAI)', 'Single-topology agents / custom scripts (e.g. Agensh)', 'murm'],
+      compareRows: [
+        {
+          dim: 'Architectural clarity',
+          workflow: 'Built for stateless prompt graphs; sandboxing, file snapshots, and persistent sessions are DIY glue',
+          bespoke: 'Wired around one fixed pattern; changing team topology means rewriting runner and auth logic',
+          murm: 'Minimal core separates execution from collaboration — swap only the Harness and Services',
+        },
+        {
+          dim: 'Deployment',
+          workflow: 'Container lifecycle, secret brokering, and trace storage assembled per project',
+          bespoke: 'Often coupled to custom local setups or fixed external stacks',
+          murm: 'One package + murm setup --mode local (or connect to a shared OpenSandbox service)',
+        },
+        {
+          dim: 'Scaling',
+          workflow: 'Shared process state and host directories collide as parallel coding agents grow',
+          bespoke: 'Hard to reuse cleanly across team sizes, role images, and external verifiers',
+          murm: 'Per-agent containers, explicit capacity slots, and per-role images scale cleanly',
+        },
+        {
+          dim: 'Observability',
+          workflow: 'External dashboards disconnected from sandbox files and agent-to-agent handoffs',
+          bespoke: 'Mostly plain text logs with limited cross-agent causality',
+          murm: 'Built-in zero-dependency murm trace UI linking model contexts, handoffs, and artifacts',
         },
       ],
     };
@@ -117,5 +173,34 @@ const copy = isZh
       <h3>{copy.cards[3].title}</h3>
       <p>{copy.cards[3].desc}</p>
     </article>
+  </div>
+
+  <div class="why-compare-wrap" data-reveal style="--reveal-delay: 240ms">
+    <div class="why-compare-head">
+      <span class="pixel-badge">{isZh ? '架构对比' : 'COMPARISON'}</span>
+      <h3>{copy.compareTitle}</h3>
+    </div>
+    <div class="why-compare-scroll">
+      <table class="why-compare-table">
+        <thead>
+          <tr>
+            <th>{copy.compareCols[0]}</th>
+            <th>{copy.compareCols[1]}</th>
+            <th>{copy.compareCols[2]}</th>
+            <th class="why-col-murm">{copy.compareCols[3]}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {copy.compareRows.map((row) => (
+            <tr>
+              <td class="why-dim">{row.dim}</td>
+              <td>{row.workflow}</td>
+              <td>{row.bespoke}</td>
+              <td class="why-col-murm">{row.murm}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   </div>
 </section>

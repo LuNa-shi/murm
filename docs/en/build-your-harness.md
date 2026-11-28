@@ -125,10 +125,11 @@ export function createBoardRegistration(board: FindingsBoard): ServiceRegistrati
 Give `researcher` read-only workspace access plus board read/write, and give `synthesizer` board read-only plus workspace write + `collect`:
 
 ```ts
-// 1. Sandbox config (connects to local or remote OpenSandbox)
+// 1. Resolve OpenSandbox settings (auto-loads the local key from `murm setup --mode local` and env vars)
+const conn = resolveSandboxConnection();
 const sandbox = createSandbox({
-  lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-  apiKey: process.env.MURM_LIFECYCLE_TOKEN,
+  lifecycleBaseUrl: conn.lifecycleBaseUrl,
+  apiKey: conn.apiKey,
 });
 
 // 2. Register the shared board
@@ -140,21 +141,21 @@ services.registerService(createBoardRegistration(board));
 const runtime = await createRuntime({
   sandbox,
   executor: process.env.MURM_EXECUTOR === 'codex' ? 'codex' : 'pi',
-  connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
+  connection: { advertiseHost: conn.advertiseHost },
   models: { /* configured from MURM_MODEL_URL & MURM_MODEL_TOKEN — see full code */ },
   services,
   profiles: {
     researcher: {
       prompt: 'Inspect the workspace, search peer findings with `swarm board search`, and publish verified findings via `swarm board publish`.',
       model: 'default',
-      image: DEFAULT_WORKER_IMAGE,
+      image: conn.image ?? DEFAULT_WORKER_IMAGE,
       writable: false,
       services: { board: ['publish', 'search'] },
     },
     synthesizer: {
       prompt: 'Read all team findings via `swarm board search` and write a clear `report.md` in the workspace.',
       model: 'default',
-      image: DEFAULT_WORKER_IMAGE,
+      image: conn.image ?? DEFAULT_WORKER_IMAGE,
       writable: true,
       services: { board: ['search'] },
       collect: { paths: ['report.md'], includeGit: false, maxBytes: 1_048_576, required: true },
@@ -165,79 +166,148 @@ const runtime = await createRuntime({
 });
 ```
 
-## Step 4: Run the parallel Swarm control loop
+## Step 4: Run the parallel Swarm control loop (with timeouts & verification)
 
-First, create a tiny `runTurn()` helper backed by `runtime.onEvent()` so waiting for parallel Agents stays clean:
+In real multi-agent systems, always keep four states distinct: **input accepted** (`send` receipt) ≠ **turn completed** (`settled.outcome === 'completed'`) ≠ **business goal delivered** (verified board findings and exported `report.md`) ≠ **runtime cleanup complete** (`closeReceipt.cleanup === 'complete'`).
+
+First, create a `runTurn()` helper with an explicit **timeout**, fail-fast handling for fatal `error` / unexpected `exit`, and an explicit check on `settled.outcome`:
 
 ```ts
-const waiters = new Map<string, (outcome: string) => void>();
+type TurnWaiter = {
+  resolve: (outcome: 'completed' | 'failed' | 'aborted') => void;
+  reject: (err: Error) => void;
+  cancel: () => void;
+};
 
-// Subscribe before spawning or sending any input
+const waiters = new Map<string, TurnWaiter>();
+
+// Subscribe before spawning or sending any input; handle settled, fatal error, and unexpected exit
 const unsubscribe = runtime.onEvent((event) => {
+  const waiter = 'agentId' in event ? waiters.get(event.agentId) : undefined;
+  if (!waiter) return;
+
   if (event.type === 'settled') {
-    const resolve = waiters.get(event.agentId);
-    if (resolve) {
-      waiters.delete(event.agentId);
-      resolve(event.outcome);
-    }
+    waiters.delete(event.agentId);
+    waiter.resolve(event.outcome);
+  } else if (event.type === 'error' && event.fatal) {
+    waiters.delete(event.agentId);
+    waiter.reject(new Error(`Agent ${event.agentId} fatal error: ${event.error.message}`));
+  } else if (event.type === 'exit' && !event.expected) {
+    waiters.delete(event.agentId);
+    waiter.reject(new Error(`Agent ${event.agentId} exited unexpectedly: ${event.reason}`));
   }
 });
 
-async function runTurn(agentId: string, text: string, requestId: string): Promise<string> {
-  let resolveTurn!: (outcome: string) => void;
-  const done = new Promise<string>((r) => { resolveTurn = r; });
-  waiters.set(agentId, resolveTurn);
+async function runTurn(
+  agentId: string,
+  text: string,
+  requestId: string,
+  timeoutMs = 120_000,
+): Promise<void> {
+  let cancelTimer = () => {};
+  const settled = new Promise<'completed' | 'failed' | 'aborted'>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      waiters.delete(agentId);
+      reject(new Error(`Agent ${agentId} timed out after ${timeoutMs}ms (${requestId})`));
+    }, timeoutMs);
+    cancelTimer = () => clearTimeout(timer);
+    waiters.set(agentId, {
+      resolve: (outcome) => { cancelTimer(); resolve(outcome); },
+      reject: (err) => { cancelTimer(); reject(err); },
+      cancel: cancelTimer,
+    });
+  });
 
-  const receipt = await runtime.send(agentId, text, { requestId, mode: 'followUp' });
-  if (receipt.status !== 'accepted') {
+  try {
+    const receipt = await runtime.send(agentId, text, { requestId, mode: 'followUp' });
+    if (receipt.status !== 'accepted') {
+      throw new Error(`Input not accepted for ${agentId}: ${receipt.status}`);
+    }
+  } catch (err) {
+    waiters.get(agentId)?.cancel();
     waiters.delete(agentId);
-    throw new Error(`Input not accepted: ${receipt.status}`);
+    throw err;
   }
-  return done;
+
+  // settled only means the turn stopped — explicitly require outcome === 'completed'
+  const outcome = await settled;
+  if (outcome !== 'completed') {
+    throw new Error(`Agent ${agentId} did not complete turn: ${outcome}`);
+  }
 }
 ```
 
-Now drive 3 researchers concurrently across two rounds, then synthesize and close cleanly:
+Now drive 3 researchers concurrently across two rounds, independently verify shared board artifacts between stages, and report **business delivery** separately from **Runtime cleanup**:
 
 ```ts
-// 1. Spawn 3 researchers concurrently with the same read-only seed files
-const peers = await Promise.all(
-  [1, 2, 3].map((i) =>
-    runtime.spawn({ requestId: `spawn-r${i}`, profile: 'researcher', files: seedFiles }),
-  ),
-);
+let synthId: string | undefined;
+let businessError: string | null = null;
 
-// 2. Round 1: independent parallel exploration
-await Promise.all(
-  peers.map((peer, i) =>
-    runTurn(
-      peer.id,
-      `Goal: ${goal}\nYou are researcher #${i + 1}. Inspect the files, check the board, and publish your key findings.`,
-      `r1-peer-${i + 1}`,
+try {
+  // 1. Spawn 3 researchers concurrently with the same read-only seed files
+  const peers = await Promise.all(
+    [1, 2, 3].map((i) =>
+      runtime.spawn({ requestId: `spawn-r${i}`, profile: 'researcher', files: seedFiles }),
     ),
-  ),
-);
+  );
 
-// 3. Round 2: cross-check teammates' findings in the same persistent sessions
-await Promise.all(
-  peers.map((peer, i) =>
-    runTurn(
-      peer.id,
-      'Run `swarm board search` to read every teammate entry, then publish a follow-up finding with `cites` covering gaps or counterpoints.',
-      `r2-peer-${i + 1}`,
+  // 2. Round 1: independent parallel exploration
+  await Promise.all(
+    peers.map((peer, i) =>
+      runTurn(
+        peer.id,
+        `Goal: ${goal}\nYou are researcher #${i + 1}. Inspect the files, check the board, and publish your key findings.`,
+        `r1-peer-${i + 1}`,
+      ),
     ),
-  ),
-);
+  );
 
-// 4. Retire researchers and spawn the synthesizer to write report.md
-await Promise.all(peers.map((peer) => runtime.stop(peer.id)));
-const synth = await runtime.spawn({ requestId: 'spawn-synth', profile: 'synthesizer', files: seedFiles });
-await runTurn(synth.id, `Synthesize all ${board.search().length} board findings into report.md.`, 'synth-1');
+  // Independently verify shared state before advancing
+  const round1Count = board.search().length;
+  if (round1Count === 0) throw new Error('Round 1 produced zero findings on the shared board');
 
-// 5. Archive traces & exported report.md, then verify cleanup
-const receipt = await runtime.close({ timeoutMs: 60_000 });
-unsubscribe();
-console.log('Findings:', board.search().length, 'Cleanup:', receipt.cleanup);
+  // 3. Round 2: cross-check teammates' findings in the same persistent sessions
+  await Promise.all(
+    peers.map((peer, i) =>
+      runTurn(
+        peer.id,
+        'Run `swarm board search` to read every teammate entry, then publish a follow-up finding with `cites` covering gaps or counterpoints.',
+        `r2-peer-${i + 1}`,
+      ),
+    ),
+  );
+  if (board.search().length <= round1Count) {
+    throw new Error('Round 2 produced no follow-up findings');
+  }
+
+  // 4. Retire researchers and spawn the synthesizer to write report.md
+  await Promise.all(peers.map((peer) => runtime.stop(peer.id)));
+  const synth = await runtime.spawn({ requestId: 'spawn-synth', profile: 'synthesizer', files: seedFiles });
+  synthId = synth.id;
+  await runTurn(synth.id, `Synthesize all ${board.search().length} board findings into report.md.`, 'synth-1');
+} catch (err) {
+  businessError = err instanceof Error ? err.message : String(err);
+} finally {
+  // 5. Always archive and clean up containers regardless of business errors
+  const closeReceipt = await runtime.close({ timeoutMs: 60_000 });
+  unsubscribe();
+
+  // 6. Independently verify exported report.md, keeping delivery separate from cleanup
+  const synthFiles = closeReceipt.agents
+    .find((agent) => agent.agentId === synthId)
+    ?.artifacts.find((p) => p.endsWith('/artifacts/files'));
+  let reportBytes = 0;
+  if (synthFiles) {
+    try {
+      reportBytes = (await readFile(join(synthFiles, 'report.md'), 'utf8')).trim().length;
+    } catch { /* Report file missing or unreadable; reportBytes stays 0 */ }
+  }
+
+  const businessOk = !businessError && board.search().length >= 2 && reportBytes > 0;
+  const cleanupOk = closeReceipt.cleanup === 'complete';
+  console.log(JSON.stringify({ businessOk, businessError, findings: board.search().length, reportBytes, cleanupOk }, null, 2));
+  if (!businessOk || !cleanupOk) process.exitCode = 1;
+}
 ```
 
 ## Step 5: Run it and inspect the Swarm in Trace Viewer
@@ -399,11 +469,14 @@ export function createBoardRegistration(board: FindingsBoard): ServiceRegistrati
 ### Complete file 3: `run-swarm.ts`
 
 ```ts
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   DEFAULT_WORKER_IMAGE,
   ServiceRegistry,
   createRuntime,
   createSandbox,
+  resolveSandboxConnection,
   type FileTree,
 } from '@luna-shi/murm';
 import { FindingsBoard } from './board.js';
@@ -437,9 +510,10 @@ const board = new FindingsBoard();
 const services = new ServiceRegistry();
 services.registerService(createBoardRegistration(board));
 
+const conn = resolveSandboxConnection();
 const sandbox = createSandbox({
-  lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-  apiKey: process.env.MURM_LIFECYCLE_TOKEN,
+  lifecycleBaseUrl: conn.lifecycleBaseUrl,
+  apiKey: conn.apiKey,
 });
 
 const modelUrl = process.env.MURM_MODEL_URL;
@@ -448,7 +522,7 @@ if (!modelUrl) throw new Error('Set MURM_MODEL_URL before running');
 const runtime = await createRuntime({
   sandbox,
   executor: process.env.MURM_EXECUTOR === 'codex' ? 'codex' : 'pi',
-  connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
+  connection: { advertiseHost: conn.advertiseHost },
   models: {
     default: {
       provider: process.env.MURM_MODEL_PROVIDER ?? 'openai',
@@ -467,7 +541,7 @@ const runtime = await createRuntime({
       prompt:
         'You are part of a parallel research swarm. Inspect the workspace, run `swarm board search` to see peer findings, and call `swarm board publish` with concrete verified insights.',
       model: 'default',
-      image: process.env.MURM_WORKER_IMAGE ?? DEFAULT_WORKER_IMAGE,
+      image: conn.image ?? DEFAULT_WORKER_IMAGE,
       writable: false,
       services: { board: ['publish', 'search'] },
     },
@@ -475,7 +549,7 @@ const runtime = await createRuntime({
       prompt:
         'Call `swarm board search` to read every team finding and citation, then write a concise `report.md` in the workspace.',
       model: 'default',
-      image: process.env.MURM_WORKER_IMAGE ?? DEFAULT_WORKER_IMAGE,
+      image: conn.image ?? DEFAULT_WORKER_IMAGE,
       writable: true,
       services: { board: ['search'] },
       collect: { paths: ['report.md'], includeGit: false, maxBytes: 1_048_576, required: true },
@@ -485,29 +559,68 @@ const runtime = await createRuntime({
   outputDir: './swarm-runs',
 });
 
-const waiters = new Map<string, (outcome: string) => void>();
+type TurnWaiter = {
+  resolve: (outcome: 'completed' | 'failed' | 'aborted') => void;
+  reject: (err: Error) => void;
+  cancel: () => void;
+};
+
+const waiters = new Map<string, TurnWaiter>();
 const unsubscribe = runtime.onEvent((event) => {
+  const waiter = 'agentId' in event ? waiters.get(event.agentId) : undefined;
+  if (!waiter) return;
+
   if (event.type === 'settled') {
-    const resolve = waiters.get(event.agentId);
-    if (resolve) {
-      waiters.delete(event.agentId);
-      resolve(event.outcome);
-    }
+    waiters.delete(event.agentId);
+    waiter.resolve(event.outcome);
+  } else if (event.type === 'error' && event.fatal) {
+    waiters.delete(event.agentId);
+    waiter.reject(new Error(`Agent ${event.agentId} fatal error: ${event.error.message}`));
+  } else if (event.type === 'exit' && !event.expected) {
+    waiters.delete(event.agentId);
+    waiter.reject(new Error(`Agent ${event.agentId} exited unexpectedly: ${event.reason}`));
   }
 });
 
-async function runTurn(agentId: string, text: string, requestId: string): Promise<string> {
-  let resolveTurn!: (outcome: string) => void;
-  const done = new Promise<string>((r) => { resolveTurn = r; });
-  waiters.set(agentId, resolveTurn);
+async function runTurn(
+  agentId: string,
+  text: string,
+  requestId: string,
+  timeoutMs = 120_000,
+): Promise<void> {
+  let cancelTimer = () => {};
+  const settled = new Promise<'completed' | 'failed' | 'aborted'>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      waiters.delete(agentId);
+      reject(new Error(`Agent ${agentId} timed out after ${timeoutMs}ms (${requestId})`));
+    }, timeoutMs);
+    cancelTimer = () => clearTimeout(timer);
+    waiters.set(agentId, {
+      resolve: (outcome) => { cancelTimer(); resolve(outcome); },
+      reject: (err) => { cancelTimer(); reject(err); },
+      cancel: cancelTimer,
+    });
+  });
 
-  const receipt = await runtime.send(agentId, text, { requestId, mode: 'followUp' });
-  if (receipt.status !== 'accepted') {
+  try {
+    const receipt = await runtime.send(agentId, text, { requestId, mode: 'followUp' });
+    if (receipt.status !== 'accepted') {
+      throw new Error(`Input not accepted for ${agentId}: ${receipt.status}`);
+    }
+  } catch (err) {
+    waiters.get(agentId)?.cancel();
     waiters.delete(agentId);
-    throw new Error(`Input not accepted for ${agentId}: ${receipt.status}`);
+    throw err;
   }
-  return done;
+
+  const outcome = await settled;
+  if (outcome !== 'completed') {
+    throw new Error(`Agent ${agentId} did not complete turn: ${outcome}`);
+  }
 }
+
+let synthId: string | undefined;
+let businessError: string | null = null;
 
 try {
   const peers = await Promise.all(
@@ -527,6 +640,11 @@ try {
     ),
   );
 
+  const round1Count = board.search().length;
+  if (round1Count === 0) {
+    throw new Error('Round 1 produced zero findings on the shared board');
+  }
+
   // Round 2: cross-check and cite peers
   await Promise.all(
     peers.map((peer, i) =>
@@ -538,6 +656,10 @@ try {
     ),
   );
 
+  if (board.search().length <= round1Count) {
+    throw new Error('Round 2 produced no follow-up findings');
+  }
+
   await Promise.all(peers.map((peer) => runtime.stop(peer.id)));
 
   // Synthesize final report.md
@@ -546,26 +668,58 @@ try {
     profile: 'synthesizer',
     files: seedFiles,
   });
+  synthId = synth.id;
   await runTurn(
     synth.id,
     `Synthesize all ${board.search().length} findings on the board into report.md.`,
     'synth-1',
   );
+} catch (err) {
+  businessError = err instanceof Error ? err.message : String(err);
 } finally {
-  const receipt = await runtime.close({ timeoutMs: 60_000 });
+  const closeReceipt = await runtime.close({ timeoutMs: 60_000 });
   unsubscribe();
+
+  // Independently verify collected report.md and separate delivery from cleanup
+  const synthFiles = closeReceipt.agents
+    .find((agent) => agent.agentId === synthId)
+    ?.artifacts.find((p) => p.endsWith('/artifacts/files'));
+  let reportBytes = 0;
+  if (synthFiles) {
+    try {
+      reportBytes = (await readFile(join(synthFiles, 'report.md'), 'utf8')).trim().length;
+    } catch {
+      // Missing report keeps reportBytes at 0
+    }
+  }
+
+  const allFindings = board.search();
+  const businessOk = !businessError && allFindings.length >= 2 && reportBytes > 0;
+  const cleanupOk = closeReceipt.cleanup === 'complete';
+
   console.log(
     JSON.stringify(
       {
         runtimeId: runtime.id,
-        findings: board.search().length,
-        cleanup: receipt.cleanup,
-        reportPath: receipt.reportPath,
+        business: {
+          ok: businessOk,
+          error: businessError,
+          findings: allFindings.length,
+          citedFindings: allFindings.filter((f) => f.cites.length > 0).length,
+          reportBytes,
+        },
+        cleanup: {
+          ok: cleanupOk,
+          status: closeReceipt.cleanup,
+          pending: closeReceipt.pending.length,
+          reportPath: closeReceipt.reportPath,
+        },
       },
       null,
       2,
     ),
   );
+  if (!businessOk || !cleanupOk) process.exitCode = 1;
 }
 ```
 

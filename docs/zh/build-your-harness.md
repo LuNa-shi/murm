@@ -123,10 +123,11 @@ export function createBoardRegistration(board: FindingsBoard): ServiceRegistrati
 把前面注册好的 `board` Service 和两个权限分明的角色交给 `createRuntime()`：
 
 ```ts
-// 1. 准备沙箱配置（连接本地或远程 OpenSandbox 服务）
+// 1. 解析本地或远程 OpenSandbox 连接（自动读取 murm setup --mode local 生成的本机密钥与环境变量）
+const conn = resolveSandboxConnection();
 const sandbox = createSandbox({
-  lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-  apiKey: process.env.MURM_LIFECYCLE_TOKEN,
+  lifecycleBaseUrl: conn.lifecycleBaseUrl,
+  apiKey: conn.apiKey,
 });
 
 // 2. 注册共享黑板
@@ -138,7 +139,7 @@ services.registerService(createBoardRegistration(board));
 const runtime = await createRuntime({
   sandbox,
   executor: process.env.MURM_EXECUTOR === 'codex' ? 'codex' : 'pi',
-  connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
+  connection: { advertiseHost: conn.advertiseHost },
   models: { /* 读取 MURM_MODEL_URL / MURM_MODEL_TOKEN，见文末完整代码 */ },
   services,
   profiles: {
@@ -146,7 +147,7 @@ const runtime = await createRuntime({
     researcher: {
       prompt: '你是并行调研小组的成员。检查工作区文件，用 `swarm board search` 查看队友进展，用 `swarm board publish` 发布独立发现或引用补充队友条目。',
       model: 'default',
-      image: DEFAULT_WORKER_IMAGE,
+      image: conn.image ?? DEFAULT_WORKER_IMAGE,
       writable: false,
       services: { board: ['publish', 'search'] },
     },
@@ -154,7 +155,7 @@ const runtime = await createRuntime({
     synthesizer: {
       prompt: '用 `swarm board search` 读取全部团队发现，核对引用关系，在工作区写入简明清晰的 `report.md`。',
       model: 'default',
-      image: DEFAULT_WORKER_IMAGE,
+      image: conn.image ?? DEFAULT_WORKER_IMAGE,
       writable: true,
       services: { board: ['search'] },
       collect: { paths: ['report.md'], includeGit: false, maxBytes: 1_048_576, required: true },
@@ -165,81 +166,150 @@ const runtime = await createRuntime({
 });
 ```
 
-## 第 4 步：编写 Swarm 并行控制循环（事件驱动）
+## 第 4 步：编写 Swarm 并行控制循环（事件驱动 + 独立验收）
 
-先写一个小型辅助函数 `runTurn()`，把“发消息 + 等待 `settled` 事件”封干净，这样后面并行驱动 3 名研究员时代码非常直观：
+在真实多智能体系统里，**一定要把四件事分开**：消息被受理（`send` 回执）≠ 本轮正常完成（`settled.outcome === 'completed'`）≠ 业务交付达标（黑板产出与导出文件有效）≠ 底层资源清理干净（`closeReceipt.cleanup === 'complete'`）。
+
+先写一个带**超时保护**、**异常快速失败**与 **`outcome` 校验** 的辅助函数 `runTurn()`，确保任何 Agent 崩溃或卡死都不会让宿主无限等待：
 
 ```ts
-// 按 agentId 记录当前正在等待收束的 Promise 回调
-const waiters = new Map<string, (outcome: string) => void>();
+type TurnWaiter = {
+  resolve: (outcome: 'completed' | 'failed' | 'aborted') => void;
+  reject: (err: Error) => void;
+  cancel: () => void;
+};
 
-// 务必在 spawn / send 之前订阅事件
+// 按 agentId 记录当前正在等待收束的 Promise 回调
+const waiters = new Map<string, TurnWaiter>();
+
+// 务必在 spawn / send 之前订阅事件，同时监听 settled、致命 error 与意外 exit
 const unsubscribe = runtime.onEvent((event) => {
+  const waiter = 'agentId' in event ? waiters.get(event.agentId) : undefined;
+  if (!waiter) return;
+
   if (event.type === 'settled') {
-    const resolve = waiters.get(event.agentId);
-    if (resolve) {
-      waiters.delete(event.agentId);
-      resolve(event.outcome);
-    }
+    waiters.delete(event.agentId);
+    waiter.resolve(event.outcome);
+  } else if (event.type === 'error' && event.fatal) {
+    waiters.delete(event.agentId);
+    waiter.reject(new Error(`Agent ${event.agentId} 致命错误: ${event.error.message}`));
+  } else if (event.type === 'exit' && !event.expected) {
+    waiters.delete(event.agentId);
+    waiter.reject(new Error(`Agent ${event.agentId} 意外退出: ${event.reason}`));
   }
 });
 
-// 向指定 Agent 发送一轮任务并等待它收束
-async function runTurn(agentId: string, text: string, requestId: string): Promise<string> {
-  let resolveTurn!: (outcome: string) => void;
-  const done = new Promise<string>((r) => { resolveTurn = r; });
-  waiters.set(agentId, resolveTurn);
+// 向指定 Agent 发送一轮任务：校验受理、限制最大等待时间并核对 outcome === 'completed'
+async function runTurn(
+  agentId: string,
+  text: string,
+  requestId: string,
+  timeoutMs = 120_000,
+): Promise<void> {
+  let cancelTimer = () => {};
+  const settled = new Promise<'completed' | 'failed' | 'aborted'>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      waiters.delete(agentId);
+      reject(new Error(`Agent ${agentId} 执行超时（>${timeoutMs}ms，${requestId}）`));
+    }, timeoutMs);
+    cancelTimer = () => clearTimeout(timer);
+    waiters.set(agentId, {
+      resolve: (outcome) => { cancelTimer(); resolve(outcome); },
+      reject: (err) => { cancelTimer(); reject(err); },
+      cancel: cancelTimer,
+    });
+  });
 
-  const receipt = await runtime.send(agentId, text, { requestId, mode: 'followUp' });
-  if (receipt.status !== 'accepted') {
+  try {
+    const receipt = await runtime.send(agentId, text, { requestId, mode: 'followUp' });
+    if (receipt.status !== 'accepted') {
+      throw new Error(`输入未被接纳（${agentId}）: ${receipt.status}`);
+    }
+  } catch (err) {
+    waiters.get(agentId)?.cancel();
     waiters.delete(agentId);
-    throw new Error(`输入未被接纳: ${receipt.status}`);
+    throw err;
   }
-  return done;
+
+  // settled 只代表本轮停了下来，必须显式检查是否为 completed
+  const outcome = await settled;
+  if (outcome !== 'completed') {
+    throw new Error(`Agent ${agentId} 本轮未正常完成: ${outcome}`);
+  }
 }
 ```
 
-现在用 `Promise.all` 并行驱动 3 名研究员完成两轮自主协作，再交给综合员收束：
+现在用 `Promise.all` 并行驱动 3 名研究员完成两轮协作，在关键节点**独立核查黑板成果**，最后在 `finally` 里先归档清理，再把**业务交付验收**和 **Runtime 清理回执**分开报告：
 
 ```ts
-// 1. 并行启动 3 名研究员（每名都拿到同一份只读项目文件）
-const peers = await Promise.all(
-  [1, 2, 3].map((i) =>
-    runtime.spawn({ requestId: `spawn-r${i}`, profile: 'researcher', files: seedFiles }),
-  ),
-);
+let synthId: string | undefined;
+let businessError: string | null = null;
 
-// 2. 第 1 轮：三名研究员并行从不同视角自由探索并发布发现
-await Promise.all(
-  peers.map((peer, i) =>
-    runTurn(
-      peer.id,
-      `调研目标：${goal}\n你是研究员 #${i + 1}，请先检索黑板再发布你独立发现的关键问题。`,
-      `r1-peer-${i + 1}`,
+try {
+  // 1. 并行启动 3 名研究员（每名都拿到同一份只读项目文件）
+  const peers = await Promise.all(
+    [1, 2, 3].map((i) =>
+      runtime.spawn({ requestId: `spawn-r${i}`, profile: 'researcher', files: seedFiles }),
     ),
-  ),
-);
+  );
 
-// 3. 第 2 轮：保留原会话上下文，互相查阅队友第 1 轮条目并引用/补充盲区
-await Promise.all(
-  peers.map((peer, i) =>
-    runTurn(
-      peer.id,
-      '请调用 `swarm board search` 阅读所有队友刚才发布的发现，针对遗漏点或不同看法补充一条带 `cites` 引用的新条目。',
-      `r2-peer-${i + 1}`,
+  // 2. 第 1 轮：三名研究员并行从不同视角自由探索并发布发现
+  await Promise.all(
+    peers.map((peer, i) =>
+      runTurn(
+        peer.id,
+        `调研目标：${goal}\n你是研究员 #${i + 1}，请先检索黑板再发布你独立发现的关键问题。`,
+        `r1-peer-${i + 1}`,
+      ),
     ),
-  ),
-);
+  );
 
-// 4. 释放研究员容器并唤醒综合员产出最终 report.md
-await Promise.all(peers.map((peer) => runtime.stop(peer.id)));
-const synth = await runtime.spawn({ requestId: 'spawn-synth', profile: 'synthesizer', files: seedFiles });
-await runTurn(synth.id, `基于黑板上共 ${board.search().length} 条发现，整合撰写 report.md。`, 'synth-1');
+  // 独立验收第 1 轮共享成果：防止全员空跑却继续进入下一阶段
+  const round1Count = board.search().length;
+  if (round1Count === 0) throw new Error('第 1 轮未在共享黑板产生任何有效发现');
 
-// 5. 归档并校验清理回执
-const receipt = await runtime.close({ timeoutMs: 60_000 });
-unsubscribe();
-console.log('黑板条目数:', board.search().length, '清理状态:', receipt.cleanup);
+  // 3. 第 2 轮：保留原会话上下文，互相查阅队友第 1 轮条目并引用/补充盲区
+  await Promise.all(
+    peers.map((peer, i) =>
+      runTurn(
+        peer.id,
+        '请调用 `swarm board search` 阅读所有队友刚才发布的发现，针对遗漏点或不同看法补充一条带 `cites` 引用的新条目。',
+        `r2-peer-${i + 1}`,
+      ),
+    ),
+  );
+  if (board.search().length <= round1Count) {
+    throw new Error('第 2 轮未产出任何交叉补充条目');
+  }
+
+  // 4. 释放研究员容器并唤醒综合员产出最终 report.md
+  await Promise.all(peers.map((peer) => runtime.stop(peer.id)));
+  const synth = await runtime.spawn({ requestId: 'spawn-synth', profile: 'synthesizer', files: seedFiles });
+  synthId = synth.id;
+  await runTurn(synth.id, `基于黑板上共 ${board.search().length} 条发现，整合撰写 report.md。`, 'synth-1');
+} catch (err) {
+  businessError = err instanceof Error ? err.message : String(err);
+} finally {
+  // 5. 无论业务成败，始终归档并清理容器
+  const closeReceipt = await runtime.close({ timeoutMs: 60_000 });
+  unsubscribe();
+
+  // 6. 独立校验导出的 report.md，并把「业务交付结果」与「Runtime 清理回执」分开输出
+  const synthFiles = closeReceipt.agents
+    .find((agent) => agent.agentId === synthId)
+    ?.artifacts.find((p) => p.endsWith('/artifacts/files'));
+  let reportBytes = 0;
+  if (synthFiles) {
+    try {
+      reportBytes = (await readFile(join(synthFiles, 'report.md'), 'utf8')).trim().length;
+    } catch { /* 报告文件缺失或不可读，保持 reportBytes = 0 */ }
+  }
+
+  const businessOk = !businessError && board.search().length >= 2 && reportBytes > 0;
+  const cleanupOk = closeReceipt.cleanup === 'complete';
+  console.log(JSON.stringify({ businessOk, businessError, findings: board.search().length, reportBytes, cleanupOk }, null, 2));
+  if (!businessOk || !cleanupOk) process.exitCode = 1;
+}
 ```
 
 ## 第 5 步：运行并在 Trace Viewer 中回放
@@ -401,11 +471,14 @@ export function createBoardRegistration(board: FindingsBoard): ServiceRegistrati
 ### 完整文件 3：`run-swarm.ts`
 
 ```ts
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   DEFAULT_WORKER_IMAGE,
   ServiceRegistry,
   createRuntime,
   createSandbox,
+  resolveSandboxConnection,
   type FileTree,
 } from '@luna-shi/murm';
 import { FindingsBoard } from './board.js';
@@ -439,9 +512,10 @@ const board = new FindingsBoard();
 const services = new ServiceRegistry();
 services.registerService(createBoardRegistration(board));
 
+const conn = resolveSandboxConnection();
 const sandbox = createSandbox({
-  lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-  apiKey: process.env.MURM_LIFECYCLE_TOKEN,
+  lifecycleBaseUrl: conn.lifecycleBaseUrl,
+  apiKey: conn.apiKey,
 });
 
 const modelUrl = process.env.MURM_MODEL_URL;
@@ -450,7 +524,7 @@ if (!modelUrl) throw new Error('请先设置 MURM_MODEL_URL');
 const runtime = await createRuntime({
   sandbox,
   executor: process.env.MURM_EXECUTOR === 'codex' ? 'codex' : 'pi',
-  connection: { advertiseHost: process.env.MURM_ADVERTISE_HOST ?? '172.17.0.1' },
+  connection: { advertiseHost: conn.advertiseHost },
   models: {
     default: {
       provider: process.env.MURM_MODEL_PROVIDER ?? 'openai',
@@ -469,7 +543,7 @@ const runtime = await createRuntime({
       prompt:
         '你是并行调研小组成员。阅读工作区文件，调用 `swarm board search` 查看队友进展，并调用 `swarm board publish` 发布具体、可核验的发现。',
       model: 'default',
-      image: process.env.MURM_WORKER_IMAGE ?? DEFAULT_WORKER_IMAGE,
+      image: conn.image ?? DEFAULT_WORKER_IMAGE,
       writable: false,
       services: { board: ['publish', 'search'] },
     },
@@ -477,7 +551,7 @@ const runtime = await createRuntime({
       prompt:
         '调用 `swarm board search` 读取团队全部发现与引用链，在工作区写入结构清晰的 `report.md`。',
       model: 'default',
-      image: process.env.MURM_WORKER_IMAGE ?? DEFAULT_WORKER_IMAGE,
+      image: conn.image ?? DEFAULT_WORKER_IMAGE,
       writable: true,
       services: { board: ['search'] },
       collect: { paths: ['report.md'], includeGit: false, maxBytes: 1_048_576, required: true },
@@ -487,29 +561,68 @@ const runtime = await createRuntime({
   outputDir: './swarm-runs',
 });
 
-const waiters = new Map<string, (outcome: string) => void>();
+type TurnWaiter = {
+  resolve: (outcome: 'completed' | 'failed' | 'aborted') => void;
+  reject: (err: Error) => void;
+  cancel: () => void;
+};
+
+const waiters = new Map<string, TurnWaiter>();
 const unsubscribe = runtime.onEvent((event) => {
+  const waiter = 'agentId' in event ? waiters.get(event.agentId) : undefined;
+  if (!waiter) return;
+
   if (event.type === 'settled') {
-    const resolve = waiters.get(event.agentId);
-    if (resolve) {
-      waiters.delete(event.agentId);
-      resolve(event.outcome);
-    }
+    waiters.delete(event.agentId);
+    waiter.resolve(event.outcome);
+  } else if (event.type === 'error' && event.fatal) {
+    waiters.delete(event.agentId);
+    waiter.reject(new Error(`Agent ${event.agentId} fatal error: ${event.error.message}`));
+  } else if (event.type === 'exit' && !event.expected) {
+    waiters.delete(event.agentId);
+    waiter.reject(new Error(`Agent ${event.agentId} exited unexpectedly: ${event.reason}`));
   }
 });
 
-async function runTurn(agentId: string, text: string, requestId: string): Promise<string> {
-  let resolveTurn!: (outcome: string) => void;
-  const done = new Promise<string>((r) => { resolveTurn = r; });
-  waiters.set(agentId, resolveTurn);
+async function runTurn(
+  agentId: string,
+  text: string,
+  requestId: string,
+  timeoutMs = 120_000,
+): Promise<void> {
+  let cancelTimer = () => {};
+  const settled = new Promise<'completed' | 'failed' | 'aborted'>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      waiters.delete(agentId);
+      reject(new Error(`Agent ${agentId} timed out after ${timeoutMs}ms (${requestId})`));
+    }, timeoutMs);
+    cancelTimer = () => clearTimeout(timer);
+    waiters.set(agentId, {
+      resolve: (outcome) => { cancelTimer(); resolve(outcome); },
+      reject: (err) => { cancelTimer(); reject(err); },
+      cancel: cancelTimer,
+    });
+  });
 
-  const receipt = await runtime.send(agentId, text, { requestId, mode: 'followUp' });
-  if (receipt.status !== 'accepted') {
+  try {
+    const receipt = await runtime.send(agentId, text, { requestId, mode: 'followUp' });
+    if (receipt.status !== 'accepted') {
+      throw new Error(`Input not accepted for ${agentId}: ${receipt.status}`);
+    }
+  } catch (err) {
+    waiters.get(agentId)?.cancel();
     waiters.delete(agentId);
-    throw new Error(`Input not accepted for ${agentId}: ${receipt.status}`);
+    throw err;
   }
-  return done;
+
+  const outcome = await settled;
+  if (outcome !== 'completed') {
+    throw new Error(`Agent ${agentId} did not complete turn: ${outcome}`);
+  }
 }
+
+let synthId: string | undefined;
+let businessError: string | null = null;
 
 try {
   const peers = await Promise.all(
@@ -529,6 +642,11 @@ try {
     ),
   );
 
+  const round1Count = board.search().length;
+  if (round1Count === 0) {
+    throw new Error('Round 1 produced zero findings on the shared board');
+  }
+
   // 第 2 轮：交叉查阅与引用补充
   await Promise.all(
     peers.map((peer, i) =>
@@ -540,6 +658,10 @@ try {
     ),
   );
 
+  if (board.search().length <= round1Count) {
+    throw new Error('Round 2 produced no follow-up findings');
+  }
+
   await Promise.all(peers.map((peer) => runtime.stop(peer.id)));
 
   // 综合员汇总并导出 report.md
@@ -548,26 +670,58 @@ try {
     profile: 'synthesizer',
     files: seedFiles,
   });
+  synthId = synth.id;
   await runTurn(
     synth.id,
     `请基于黑板上全部 ${board.search().length} 条发现，撰写最终的 report.md。`,
     'synth-1',
   );
+} catch (err) {
+  businessError = err instanceof Error ? err.message : String(err);
 } finally {
-  const receipt = await runtime.close({ timeoutMs: 60_000 });
+  const closeReceipt = await runtime.close({ timeoutMs: 60_000 });
   unsubscribe();
+
+  // 独立校验归档出的 report.md 文件，将业务交付与清理回执分开汇报
+  const synthFiles = closeReceipt.agents
+    .find((agent) => agent.agentId === synthId)
+    ?.artifacts.find((p) => p.endsWith('/artifacts/files'));
+  let reportBytes = 0;
+  if (synthFiles) {
+    try {
+      reportBytes = (await readFile(join(synthFiles, 'report.md'), 'utf8')).trim().length;
+    } catch {
+      // 导出文件缺失时 reportBytes 保持 0
+    }
+  }
+
+  const allFindings = board.search();
+  const businessOk = !businessError && allFindings.length >= 2 && reportBytes > 0;
+  const cleanupOk = closeReceipt.cleanup === 'complete';
+
   console.log(
     JSON.stringify(
       {
         runtimeId: runtime.id,
-        findings: board.search().length,
-        cleanup: receipt.cleanup,
-        reportPath: receipt.reportPath,
+        business: {
+          ok: businessOk,
+          error: businessError,
+          findings: allFindings.length,
+          citedFindings: allFindings.filter((f) => f.cites.length > 0).length,
+          reportBytes,
+        },
+        cleanup: {
+          ok: cleanupOk,
+          status: closeReceipt.cleanup,
+          pending: closeReceipt.pending.length,
+          reportPath: closeReceipt.reportPath,
+        },
       },
       null,
       2,
     ),
   );
+  if (!businessOk || !cleanupOk) process.exitCode = 1;
 }
 ```
 

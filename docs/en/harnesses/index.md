@@ -55,4 +55,15 @@ Each of the five examples can be copied to another directory, installed against 
 - **Substrate**: **No claims at all**. Peers explore freely and cite earlier findings to build cumulative progress.
 - **Subagents**: **Split by the parent**. The parent divides responsibilities and guides or interrupts children directly.
 
-> **Combining ideas for your own Swarm?** See **[Build a Swarm Harness](../build-your-harness.md)** to combine a shared blackboard, custom roles, or an external HTTP backend.
+## Designing your own MAS from requirements
+
+When none of the five built-in templates fits your task verbatim, work backward from four concrete design choices:
+
+| Design decision | What your task needs | Recommended pattern |
+| --- | --- | --- |
+| **1. Shared state & Services** | Lightweight local experiments / transactional history & citation queries / existing Python, Go, or verifier services | Plain TS class (`createInProcessAdapter`) / host SQLite Service / external HTTP Service (`createHttpJsonAdapter`) |
+| **2. Communication style** | Open-ended knowledge sharing / explicit parent-child handoffs / urgent mid-turn course corrections | Shared blackboard or citation store / directed mailbox turns / `send({ mode: 'steer', wakeIfIdle: false })` so idle agents aren't woken unnecessarily |
+| **3. Division of labor & conflicts** | Strict single-writer edits / flat peer negotiation / open parallel exploration | Read-only start + timed exclusive lease + `files.replace({ writable: true })` / personal Git branches + PR verification / unrestricted exploration + explicit citations |
+| **4. Control loop & verification** | No hung waits, no empty deliveries, no leaked containers | Always bound turns with a timeout and fail fast on `error` / unexpected `exit`; verify `settled.outcome === 'completed'`, **independent business deliverables**, and **`receipt.cleanup === 'complete'`** separately |
+
+> **Ready to build one?** See **[Build a Swarm Harness](../build-your-harness.md)** for a complete, verified multi-agent Research Swarm implementing all four principles.
