@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createProjectHost, type HarnessInput, type HarnessJson, type HarnessInputHandler, type HarnessInputPreparation, type ProjectHarness } from './project-harness.js';
 import { projectError, resolveHarnessInput } from './project-input.js';
+import { fenceRuntimeAdmissions } from '../core/runtime-admissions.js';
 import { createRedactor } from '../core/run-records.js';
 import type { RuntimeSession } from '../core/session-types.js';
 import { stableStringify } from '../protocol/stable-json.js';
@@ -95,6 +96,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   let result: HarnessResult | undefined;
   let exitCode: number | undefined;
   let stopping = false;
+  let fenceFailed = false;
   let queuedCount = 0;
   let queuedBytes = 0;
   let questionBytes = 0;
@@ -107,7 +109,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     for (const [id, registration] of targets) {
       const declared = declaredCapabilities(registration, id);
       agents[id] = Object.fromEntries(Object.entries(declared).map(([name, capability]) => [name, {
-        ...capability, supported: capability.supported && executorSupports(id, name as HarnessOperation), available: capability.supported && executorSupports(id, name as HarnessOperation) && !stopping && !result && !['stopped', 'failed'].includes(targetStates.get(id) ?? ''),
+        ...capability, supported: capability.supported && executorSupports(id, name as HarnessOperation), available: capability.supported && executorSupports(id, name as HarnessOperation) && !stopping && !result && !['exited', 'closing', 'closed'].includes(targetStates.get(id) ?? ''),
         ...(stopping || result ? { reason: 'RUN_STOPPING' } : {}),
       }]));
     }
@@ -166,7 +168,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     if (!stopping && !result) {
       stopping = true;
       for (const registration of registrations) {
-        try { registration.fence?.(); } catch { /* The Harness result must report unconfirmed cleanup. */ }
+        try { fenceRuntimeAdmissions(registration.runtime); registration.fence?.(); } catch { fenceFailed = true; }
       }
       closeQuestions(reason);
       host.stop(reason);
@@ -186,7 +188,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       },
       registerAgentControls(registration) {
         context.signal.throwIfAborted();
-        if (!registration?.runtime || registrations.has(registration)) throw projectError('INVALID_AGENT_REGISTRATION', 'Register one owned Runtime once');
+        if (!registration?.runtime || [...registrations].some(existing => existing.runtime === registration.runtime)) throw projectError('INVALID_AGENT_REGISTRATION', 'Register one owned Runtime once');
         registrations.add(registration);
         void refreshTargets(registration);
         const unsubscribe = registration.runtime.onEvent(event => {
@@ -213,15 +215,18 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   async function refreshTargets(registration: HarnessAgentRegistration) {
     try {
       const listed = await registration.runtime.list();
-      for (const agent of listed) targetStates.set(agent.id, agent.status);
+      let updated = false;
+      for (const agent of listed) { if (targetStates.get(agent.id) !== agent.status) updated = true; targetStates.set(agent.id, agent.status); }
       const ids = registration.targets ? await registration.targets() : listed.map(agent => agent.id);
       if (!registrations.has(registration)) return;
-      for (const [id, owner] of targets) if (owner === registration && !ids.includes(id)) targets.delete(id);
+      if (ids.some(id => !listed.some(agent => agent.id === id))) throw projectError('AGENT_NOT_FOUND', 'Registered target is outside its Runtime');
+      for (const [id, owner] of targets) if (owner === registration && !ids.includes(id)) { targets.delete(id); updated = true; }
       for (const id of ids) {
         if (targets.has(id) && targets.get(id) !== registration) throw projectError('AGENT_ID_CONFLICT', 'Agent belongs to another registered Runtime');
+        if (!targets.has(id)) updated = true;
         targets.set(id, registration);
       }
-      changed();
+      if (updated) changed();
     } catch (error) { publish({ type: 'event', runId: host.status().runId, event: { kind: 'observation-error', code: 'RUNTIME_STATE_UNAVAILABLE' } }); }
   }
   function mutate<T>(operation: string, payload: unknown, request: HarnessRequest, run: () => Promise<T> | T, reserved = false): Promise<T> {
@@ -246,7 +251,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
         record.settled = true;
         deferred.resolve(record.result as T);
         publish({ type: 'operation', runId: host.status().runId, requestId: id, operation, result: record.result });
-      }, error => deferred.reject(error));
+      }, error => deferred.reject(error)).catch(deferred.reject);
     } catch (error) { deferred.reject(error); }
     void deferred.promise.catch(() => {});
     return deferred.promise;
@@ -255,6 +260,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     const deferred = Promise.withResolvers<T>();
     const expired = () => deferred.resolve(unknown);
     const timer = setTimeout(expired, limits.handlerTimeoutMs);
+    void deferred.promise.finally(() => { clearTimeout(timer); host.signal.removeEventListener('abort', expired); }).catch(() => {});
     host.signal.addEventListener('abort', expired, { once: true });
     if (host.signal.aborted) expired();
     void work.then(value => {
@@ -322,14 +328,13 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     } catch (error) { return Promise.reject(error); }
   }
   function declaredCapabilities(registration: HarnessAgentRegistration, id: string) {
-    return typeof registration.capabilities === 'function' ? registration.capabilities(id) : registration.capabilities ?? {
-      getState: { supported: true }, getStats: { supported: true }, getMessages: { supported: true },
-    };
+    const declared = typeof registration.capabilities === 'function' ? registration.capabilities(id) : registration.capabilities;
+    return { getState: { supported: true }, getStats: { supported: true }, getMessages: { supported: true }, ...declared };
   }
   function executorSupports(agentId: string, operation: HarnessOperation) {
     const capability = nativeCapabilities.get(agentId);
     if (!capability) return true;
-    const names = { getState: 'state', getStats: 'stats', getMessages: 'messages', send: 'context', interrupt: null, stop: null,
+    const names = { getState: 'state', getStats: 'stats', getMessages: 'messages', send: null, interrupt: null, stop: null,
       configure: 'configure', compact: 'compact', clearQueue: 'clearQueue', abortRetry: 'abortRetry' } as const;
     const name = names[operation];
     return name === null || capability[name];
@@ -361,13 +366,13 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       admit();
       const capability = declaredCapabilities(registration, agentId)[operation];
       if (!capability?.supported || !executorSupports(agentId, operation)) throw projectError('OPERATION_UNSUPPORTED', 'Harness or executor does not support this Agent operation');
-      if (capability.available === false) throw projectError('AGENT_BUSY', capability.reason ?? 'Agent operation is temporarily unavailable');
-      if (['stopped', 'failed'].includes(targetStates.get(agentId) ?? '')) throw projectError('SESSION_UNAVAILABLE', 'Agent Session is closed');
+      if (capability.available === false) throw projectError('OPERATION_BUSY', capability.reason ?? 'Agent operation is temporarily unavailable');
+      if (['exited', 'closing', 'closed'].includes(targetStates.get(agentId) ?? '')) throw projectError('SESSION_UNAVAILABLE', 'Agent Session is closed');
       if (operation === 'send') {
         const send = payload as { input: unknown; options: { mode?: string; delivery?: string } };
         if (typeof send.input === 'string') {
           if (capability.text !== true || (capability.modes && !capability.modes.includes(send.options.mode ?? 'steer'))) throw projectError('OPERATION_UNSUPPORTED', 'Harness does not support this text delivery');
-        } else if (capability.context !== true || !send.options.delivery || !capability.deliveries?.includes(send.options.delivery)) throw projectError('OPERATION_UNSUPPORTED', 'Harness does not support this context delivery');
+        } else if (nativeCapabilities.get(agentId)?.context === false || capability.context !== true || !send.options.delivery || !capability.deliveries?.includes(send.options.delivery)) throw projectError('OPERATION_UNSUPPORTED', 'Harness does not support this context delivery');
       }
       if (operation === 'configure' && capability.fields) {
         const paths = Object.entries(payload as Record<string, unknown>).flatMap(([key, value]) => value && typeof value === 'object' && !Array.isArray(value)
@@ -423,7 +428,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
         completion = started.completion.then(finished => {
           exitCode = finished.code;
           closeQuestions('run-finished');
-          result = { ...finished.result, questions: [...questions.values()].map(record => structuredClone(record.value)) };
+          result = { ...finished.result, ...(fenceFailed ? { cleanup: { ...finished.result.cleanup, status: 'pending' as const, pending: ['runtime-dispatch-fence-unconfirmed'] } } : {}), questions: [...questions.values()].map(record => structuredClone(record.value)) };
           changed();
           publish({ type: 'result', result });
           return result;

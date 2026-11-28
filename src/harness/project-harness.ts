@@ -17,11 +17,11 @@ export type HarnessInput = Readonly<{ cwd: string; prompt: string }>;
 type InitialProject = Awaited<ReturnType<typeof captureProject>>;
 export type HarnessJson = null | boolean | number | string | readonly HarnessJson[] | { readonly [key: string]: HarnessJson };
 export type HarnessStatusInfo = Readonly<{ agents?: HarnessJson; business?: HarnessJson }>;
-export type HarnessInputHandler = (input: HarnessJson, request: Readonly<{ requestId: string; signal: AbortSignal; binding?: HarnessJson }>) =>
+export type HarnessInputHandler = (input: HarnessJson, request: Readonly<{ requestId: string; signal: AbortSignal; binding?: unknown }>) =>
   Promise<HarnessJson> | HarnessJson;
 type Cleanup = { status: 'complete' | 'pending'; receipt?: HarnessJson; pending?: HarnessJson; retained?: HarnessJson };
 
-export type HarnessInputPreparation = (input: HarnessJson, request: Readonly<{ requestId: string; signal: AbortSignal }>) => HarnessJson;
+export type HarnessInputPreparation = (input: HarnessJson, request: Readonly<{ requestId: string; signal: AbortSignal }>) => unknown;
 
 export interface ProjectHarnessResult {
   outcome: 'completed' | 'failed' | 'cancelled';
@@ -148,6 +148,13 @@ async function loadConfiguration(directory: string, path: string | undefined): P
   for (const key of ['cwd', 'prompt', 'input', 'workload']) {
     if (Object.hasOwn(value, key)) throw projectError('INVALID_RUN_CONFIGURATION', `Run configuration cannot supply ${key}`);
   }
+  return validateConfiguration(value);
+}
+
+function validateConfiguration(value: unknown) {
+  if (value !== undefined && (!value || typeof value !== 'object' || Array.isArray(value) || ['cwd', 'prompt', 'input', 'workload'].some(key => Object.hasOwn(value, key)))) {
+    throw projectError('INVALID_RUN_CONFIGURATION', 'Run configuration must be an object without task input fields');
+  }
   return value;
 }
 
@@ -253,7 +260,7 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
       await writeFile(path, raw.prompt, { flag: 'wx', mode: 0o600 });
       promptPath = path;
       signal.throwIfAborted();
-      const configuration = options.configuration ?? await loadConfiguration(options.launchDirectory, options.configPath);
+      const configuration = options.configuration !== undefined ? validateConfiguration(options.configuration) : await loadConfiguration(options.launchDirectory, options.configPath);
       signal.throwIfAborted();
       let filePolicy;
       try { filePolicy = resolveFilePolicy((configuration as { filePolicy?: FilePolicy } | undefined)?.filePolicy); }
