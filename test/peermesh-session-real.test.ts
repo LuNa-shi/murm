@@ -71,9 +71,9 @@ test('PeerMesh HarnessSession directs native next-batch input and stops one memb
     const config = await stack.start(); deadline = Date.now() + 120_000;
     session = sdk.createHarnessSession(peerMesh, { outputRoot: join(directory, 'runs'), stopTimeoutMs: 90_000, configuration: {
       ...config, image, executor: sdk.createPiExecutor({ version: process.env.MURM_CORE_TEST_PI_VERSION ?? '1.3.0' }), peerKeys: ['a', 'b'], durationMs: 120_000, closeTimeoutMs: 70_000,
-      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
+      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
         resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000, isolation: { network: 'api' } },
-      connection: { bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 128, requestTimeoutMs: 60_000 } },
+      connection: { advertiseHost: host, modelGateway: { maxOutputTokens: 128, requestTimeoutMs: 60_000 } },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `http://127.0.0.1:${(upstream.address() as any).port}/v1/responses`, headers: {} } } },
       router: { workTimeoutMs: 120_000, turnTimeoutMs: 60_000, maxBatches: 4, maxNudges: 0 },
       prepare: async (options: any) => { facilities = await preparePeerMeshFacilities(options); return facilities; },

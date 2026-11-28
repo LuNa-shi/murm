@@ -54,12 +54,12 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task', 'editable']) 
       executor: { kind: 'pi', version: process.env.MURM_CORE_TEST_PI_VERSION ?? '1.3.0' },
       sandbox: {
         lifecycleBaseUrl: endpoint.endsWith('/v1') ? endpoint : endpoint.replace(/\/$/, '') + '/v1',
-        endpointHost: settings.endpointHost ?? '127.0.0.1', apiKey: settings.apiKey,
+        apiKey: settings.apiKey,
         commandTimeoutMs: 20_000, isolation: { network: 'api' },
       },
       connection: {
-        bridge: { host: '0.0.0.0', publicUrl: `http://${settings.advertiseHost}:{port}` },
-        modelGateway: { host: '0.0.0.0', advertiseHost: settings.advertiseHost, requestTimeoutMs: 30_000, maxRequests: 48 },
+        advertiseHost: settings.advertiseHost,
+        modelGateway: { requestTimeoutMs: 30_000, maxRequests: 48 },
       },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
       rootSession: { compaction: { enabled: false, keepRecentTokens: 32 }, retry: { enabled: true, baseDelayMs: 5_000 } },
