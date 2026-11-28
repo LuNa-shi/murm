@@ -152,3 +152,44 @@ test('Guest native SDK carries context into actual model requests and runs selec
   assert.equal(records.filter(r => r.type === 'core_context_disposition' && r.status === 'appended').length, 2);
   child.stdin.end();
 });
+
+test('native automatic compaction commits three summaries and stops before the fourth summary request', { timeout: 25000 }, async t => {
+  const { createAgentControlsUpstream } = await import('./fixtures/core-agent-controls-upstream.js');
+  const { startNativePiSession } = await import('./fixtures/native-pi-session.js');
+  const upstream = await createAgentControlsUpstream({ requestLimit: 12 });
+  t.after(() => upstream.close());
+  const native = await startNativePiSession(t, { upstream: upstream.url,
+    configuration: { tools: [], compaction: { enabled: true, reserveTokens: 3000, keepRecentTokens: 500 }, retry: { enabled: false } },
+    beforeCompact: { timeoutMs: 1000 } });
+  native.onRecord(record => {
+    if (record.type === 'core_before_compact') native.send({ type: 'core_before_compact_decision', id: `decision-${record.compactionId}`,
+      compactionId: record.compactionId, executionEpoch: record.executionEpoch,
+      decision: record.successfulAutoCompactions < 3 ? 'allow' : 'stop' });
+  });
+  for (let round = 0; round < 5; round++) {
+    const settled = native.records.filter(record => record.type === 'agent_settled').length;
+    await native.command(`prompt-${round}`, 'prompt', { message: `ROUND ${round} ` + 'long history content '.repeat(500) });
+    await native.waitFor(() => native.records.filter(record => record.type === 'agent_settled').length > settled);
+  }
+  assert.equal(upstream.failure, undefined);
+  assert.equal(upstream.requests.filter(request => request.kind === 'ordinary').length, 5);
+  assert.equal(upstream.requests.filter(request => request.kind === 'summary').length, 3);
+  const gates = native.records.filter(record => record.type === 'core_before_compact');
+  assert.deepEqual(gates.map(record => record.successfulAutoCompactions), [0, 1, 2, 3]);
+  assert.equal(new Set(gates.map(record => record.compactionId)).size, 4);
+  const entries = await native.command('archive', 'get_entries');
+  assert.equal(entries.entries.filter((entry: any) => entry.type === 'compaction').length, 3);
+  const stats = await native.command('stats', 'core_session_get_stats');
+  assert.equal(stats.compactions.successfulAutoCompactions, 3);
+  assert.equal(stats.compactions.manual, 0);
+  const stopped = native.records.find(record => record.type === 'core_before_compact_result' && record.decision === 'stop');
+  assert.equal(stopped.compactionId, gates[3].compactionId);
+  const final = native.records.find(record => record.type === 'compaction_end' && record.compactionId === stopped.compactionId);
+  assert.equal(final.aborted, true);
+  const requestsAtStop = upstream.requests.length;
+  native.send({ id: 'late-prompt', type: 'prompt', message: 'must remain fenced' });
+  const rejected = await native.waitFor(() => native.records.find(record => record.type === 'response' && record.id === 'late-prompt'));
+  assert.equal(rejected.success, false);
+  assert.equal(rejected.code, 'NOT_ALLOWED');
+  assert.equal(upstream.requests.length, requestsAtStop);
+});
