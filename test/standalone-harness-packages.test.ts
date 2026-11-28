@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
+import { tmpdir } from 'node:os';
 import { test } from 'node:test';
 import { execute, preparePackageArchive } from './fixtures/notes-installed-package.js';
 
 const examples = ['subagents', 'taskpool', 'peermesh', 'lead-worker', 'substrate'];
 
 test('each collaboration package builds and runs its own project entry from an exact installed SDK archive', { timeout: 240_000 }, async t => {
-  const directory = await mkdtemp(join('/tmp', 'murm-standalone-examples-'));
+  const directory = await mkdtemp(join(tmpdir(), 'murm-standalone-examples-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const checkout = await realpath(join(import.meta.dirname, '../..'));
   const offset = relative(checkout, await realpath(directory));
@@ -22,8 +23,9 @@ test('each collaboration package builds and runs its own project entry from an e
   await execute('tar', ['-xzf', archive, ...examples.map(example => `package/examples/${example}`)], { cwd: directory, timeout: 30_000 });
 
   for (const example of examples) {
-    await t.test(example, async () => {
+    await t.test(example, async exampleTest => {
       const cwd = join(directory, 'package', 'examples', example);
+      exampleTest.after(() => rm(join(cwd, 'node_modules'), { recursive: true, force: true }));
       await execute('npm', ['install', '--prefer-offline', '--no-save', '--ignore-scripts', '--no-audit', '--no-fund', archive], {
         cwd, env, timeout: 60_000,
       });
