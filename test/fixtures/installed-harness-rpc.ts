@@ -21,17 +21,26 @@ export async function runInstalledHarnessRpc(installation: { directory: string; 
   child.stderr.setEncoding('utf8').on('data', chunk => { diagnostic = (diagnostic + chunk).slice(-8192); });
   const session: HarnessRpcClient = new installed.HarnessRpcClient(child);
   const snapshots: HarnessState[] = [];
-  const events: HarnessEvent[] = [];
+  const eventKinds = new Set<HarnessEvent['type']>();
   const observedAgents = new Map<string, unknown>();
+  const phases = new Set<HarnessState['phase']>();
+  const runIds = new Set<string>();
+  let businessObserved = false;
   let latest: HarnessState | undefined;
+  const observeState = (state: HarnessState) => {
+    latest = state;
+    phases.add(state.phase);
+    if (state.runId) runIds.add(state.runId);
+    businessObserved ||= state.business !== null && state.business !== undefined;
+    if (snapshots.length < 64) snapshots.push(state);
+  };
   let result: HarnessResult | undefined;
   let status = 1;
   let timer: NodeJS.Timeout | undefined;
   const unsubscribe = session.onEvent(event => {
-    if (events.length < 1024) events.push(event);
+    eventKinds.add(event.type);
     if (event.type === 'snapshot' || event.type === 'state') {
-      latest = event.state;
-      if (snapshots.length < 64) snapshots.push(event.state);
+      observeState(event.state);
     }
   }, { initialSnapshot: true });
   const limit = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Installed Harness RPC workload deadline exceeded')), options.timeoutMs); });
@@ -46,8 +55,7 @@ export async function runInstalledHarnessRpc(installation: { directory: string; 
     const polling = async () => {
       while (!result) {
         const state = await session.getState();
-        latest = state;
-        if (snapshots.length < 64) snapshots.push(state);
+        observeState(state);
         const agents = Array.isArray(state.agents) ? state.agents : [];
         for (const agent of agents) {
           if (!agent || typeof agent !== 'object' || !('id' in agent) || typeof agent.id !== 'string' || !('status' in agent) || !['idle', 'running'].includes(String(agent.status)) || observedAgents.has(agent.id)) continue;
@@ -64,16 +72,17 @@ export async function runInstalledHarnessRpc(installation: { directory: string; 
     child.stdin.end();
     const [code] = await Promise.race([exited, limit]);
     status = typeof code === 'number' ? code : 1;
-    assert.ok(snapshots.some(state => state.runId === result!.runId));
-    assert.ok(events.some(event => event.type === 'result'));
+    assert.ok(runIds.has(result.runId));
+    assert.ok(phases.has('running'), 'The installed Harness must publish its running phase');
+    assert.ok(eventKinds.has('result'));
     assert.ok(observedAgents.size > 0, 'The installed client must query real live Agent state');
     return { result, status, diagnostic, observation: {
       initialSnapshot: snapshots[0], finalState: latest,
-      runIds: [...new Set(snapshots.map(state => state.runId).filter(Boolean))],
-      phases: [...new Set(snapshots.map(state => state.phase))],
+      runIds: [...runIds],
+      phases: [...phases],
       agents: [...observedAgents].map(([agentId, state]) => ({ agentId, state })),
-      eventKinds: [...new Set(events.map(event => event.type))],
-      businessObserved: snapshots.some(state => state.business !== null && state.business !== undefined),
+      eventKinds: [...eventKinds],
+      businessObserved,
     } };
   } finally {
     clearTimeout(timer);
