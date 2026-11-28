@@ -214,3 +214,52 @@ test('native automatic compaction commits three summaries and stops before the f
   assert.equal(rejected.code, 'NOT_ALLOWED');
   assert.equal(upstream.requests.length, requestsAtStop);
 });
+
+
+test('interrupt cancels a held compaction decision and rejects its late allow across generations', async () => {
+  const records: any[] = [];
+  const session = { isIdle: false, messages: [], sessionId: 'native-session', clearQueue: () => ({ steering: [], followUp: [] }), abort: async () => {} };
+  const controller = createPiSessionController(session, { emit: record => records.push(record), beforeCompact: { timeoutMs: 1000 } });
+  const pending = controller.beforeCompact({ reason: 'overflow', signal: new AbortController().signal });
+  const gate = records.find(record => record.type === 'core_before_compact');
+  assert.equal(gate.reason, 'overflow');
+  await controller.interrupt(1);
+  assert.deepEqual(await pending, { cancel: true });
+  await assert.rejects(controller.command({ type: 'core_before_compact_decision', compactionId: gate.compactionId, executionEpoch: 0, decision: 'allow' }), { code: 'NOT_ALLOWED' });
+  assert.equal(records.filter(record => record.type === 'core_before_compact_result').length, 1);
+  assert.equal(records.find(record => record.type === 'core_before_compact_result').reason, 'interrupted');
+});
+
+for (const channel of ['lost-decision', 'eof', 'worker-exit'])
+test(`native held compaction stays closed after ${channel}`, { timeout: 20000 }, async t => {
+  const { once } = await import('node:events');
+  const { createAgentControlsUpstream } = await import('./fixtures/core-agent-controls-upstream.js');
+  const { startNativePiSession } = await import('./fixtures/native-pi-session.js');
+  const upstream = await createAgentControlsUpstream({ requestLimit: 4 }); t.after(() => upstream.close());
+  const native = await startNativePiSession(t, { upstream: upstream.url,
+    configuration: { tools: [], compaction: { enabled: true, reserveTokens: 3000, keepRecentTokens: 500 }, retry: { enabled: false } },
+    beforeCompact: { timeoutMs: channel === 'lost-decision' ? 100 : 10000 } });
+  for (let round = 0; round < 3 && !native.records.some(record => record.type === 'core_before_compact'); round++) {
+    const settled = native.records.filter(record => record.type === 'agent_settled').length;
+    await native.command(`channel-prompt-${round}`, 'prompt', { message: `CHANNEL ROUND ${round} ` + 'long history content '.repeat(500) });
+    await native.waitFor(() => native.records.some(record => record.type === 'core_before_compact') || native.records.filter(record => record.type === 'agent_settled').length > settled);
+  }
+  const gate = native.records.find(record => record.type === 'core_before_compact'); assert.ok(gate);
+  if (channel === 'lost-decision') {
+    await native.waitFor(() => native.records.some(record => record.type === 'core_before_compact_result' && record.reason === 'HOOK_TIMEOUT'));
+    native.send({ type: 'core_before_compact_decision', id: 'late-channel-allow', compactionId: gate.compactionId, executionEpoch: gate.executionEpoch, decision: 'allow' });
+    const rejected = await native.waitFor(() => native.records.find(record => record.id === 'late-channel-allow'));
+    assert.equal(rejected.success, false); assert.equal(rejected.code, 'NOT_ALLOWED');
+    assert.equal((await native.command('channel-entries', 'get_entries')).entries.filter((entry: any) => entry.type === 'compaction').length, 0);
+  } else {
+    const exit = once(native.child, 'exit');
+    if (channel === 'eof') native.child.stdin.end(); else native.child.kill('SIGKILL');
+    const [code, signal] = await Promise.race([exit, new Promise<never>((_resolve, reject) => { const timer = setTimeout(() => reject(new Error('Guest exit deadlocked behind gate')), 3000); timer.unref(); })]);
+    if (channel === 'eof') {
+      assert.equal(code, 0);
+      assert.equal(native.records.find(record => record.type === 'core_before_compact_result')?.decision, 'cancel');
+    } else assert.equal(signal, 'SIGKILL');
+  }
+  assert.equal(upstream.failure, undefined);
+  assert.equal(upstream.requests.filter(request => request.kind === 'summary').length, 0);
+});

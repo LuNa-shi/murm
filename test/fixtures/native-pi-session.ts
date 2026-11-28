@@ -41,7 +41,7 @@ export async function startNativePiSession(t: any, options: { configuration?: an
   };
   const send = (message: any) => child.stdin.write(JSON.stringify(message) + '\n');
   await waitFor(() => records.find(record => record.type === 'core_session_ready'));
-  return { directory, records, waitFor, send, onRecord(handler: (record: any) => void) { listeners.add(handler); },
+  return { child, directory, records, waitFor, send, onRecord(handler: (record: any) => void) { listeners.add(handler); },
     async command(id: string, type: string, values = {}) {
       send({ id, type, ...values });
       const reply = await waitFor(() => records.find(record => record.type === 'response' && record.id === id));
