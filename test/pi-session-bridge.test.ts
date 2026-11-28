@@ -19,6 +19,23 @@ test('next-turn context stays outside the current execution and clearQueue disca
   assert.equal(events.filter(e => e.type === 'core_context_disposition' && e.status === 'discarded').length, 1);
 });
 
+test('idle structured turn promotes deferred context before either delivery starts', async () => {
+  for (const delivery of ['steer', 'followUp']) {
+    const calls: any[] = [];
+    const messages: any[] = [];
+    const session = { isIdle: true, messages, sendCustomMessage: async (input: any, options: any) => {
+      calls.push({ content: input.content, ...options });
+      messages.push({ role: 'custom', ...input });
+    } };
+    const controller = createPiSessionController(session, { emit() {} });
+    await controller.command({ type: 'core_context', id: 'deferred', input: { type: 'context', customType: 'note', content: 'NEXT' }, delivery: 'nextTurn' });
+    await controller.command({ type: 'core_context', id: 'wake', input: { type: 'context', customType: 'note', content: 'WAKE' }, delivery });
+    assert.deepEqual(calls, [{ content: 'NEXT', triggerTurn: false }, { content: 'WAKE', triggerTurn: true, deliverAs: delivery }]);
+    await controller.beforePrompt();
+    assert.equal(calls.length, 2);
+  }
+});
+
 test('Guest native Pi SDK applies settings and appends structured context without a model request', { timeout: 20000 }, async t => {
   const { mkdtemp, writeFile, mkdir, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');

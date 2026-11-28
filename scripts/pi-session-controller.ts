@@ -94,9 +94,7 @@ export function createPiSessionController(session: any, options: {
     emit({ type: 'core_session_event', event: { type: 'settings', ...result } });
     return result;
   }
-  return {
-    get fenced() { return fenced; },
-    async beforePrompt() {
+  async function beforePrompt() {
       if (fenced) throw error('Session is fenced', 'NOT_ALLOWED');
       if (!session.isIdle) return;
       const generation = epoch;
@@ -106,7 +104,10 @@ export function createPiSessionController(session: any, options: {
         await session.sendCustomMessage(entry.input, { triggerTurn: false });
         observeContexts();
       }
-    },
+  }
+  return {
+    get fenced() { return fenced; },
+    beforePrompt,
     async interrupt(nextEpoch?: number) {
       epoch = nextEpoch ?? epoch + 1;
       for (const decision of [...decisions.values()]) decision.finish('cancel', 'interrupted');
@@ -230,6 +231,7 @@ export function createPiSessionController(session: any, options: {
         pending.set(entry.inputId, entry);
         if (command.delivery === 'nextTurn') { disposition(entry, entry.status); return { status: entry.status, inputId: command.id }; }
         const triggerTurn = command.delivery !== 'append';
+        if (triggerTurn && !active) await beforePrompt();
         const operation = session.sendCustomMessage(entry.input, { triggerTurn, ...(triggerTurn ? { deliverAs: command.delivery } : {}) });
         if (triggerTurn && !active) void operation.catch((failure: any) => emit({ type: 'error', message: failure.message }));
         else await operation;
