@@ -33,7 +33,8 @@ main() {
     if [ "$prefix" = "$HOME/.local" ]; then
       printf '%s\n' '  export PATH="$HOME/.local/bin:$PATH"' >&2
     else
-      printf '  %s/bin\n' "$prefix" >&2
+      quoted_bin=$(printf '%s' "$prefix/bin" | sed "s/'/'\\\\''/g")
+      printf "  export PATH='%s':\$PATH\n" "$quoted_bin" >&2
     fi
   fi
 }

@@ -12,6 +12,7 @@ All notable changes to **murm** (`@luna-shi/murm`) are tracked here and in the r
 - Runtime accepts image-installed executor adapters and verified Pi version selections. Worker images install the selected executable. Pi also supports Chat Completions and the Host accepts trusted transports. Separate project file budgets and disk-backed transfer support larger directory inputs.
 - Linux setup can connect to an authenticated OpenSandbox service or prepare a local service before the Worker. The API policy is the default. The strict local policy retains explicitly configured workspace quotas and network rules.
 - The SDK accepts an external Sandbox Provider through `createSandbox`. Setup, doctor and built-in configurations share connection defaults. The infrastructure probe supports Pi and Codex.
+- The CLI installer falls back to a home-directory prefix when the global npm prefix is unwritable. Setup identifies failed OpenSandbox image pulls and explains how to retry a Worker build, including with a mirrored Node base image.
 
 ## v0.2.0 — 2026-11-27
 

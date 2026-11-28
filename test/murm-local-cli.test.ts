@@ -33,8 +33,8 @@ test('the public installer uses a user prefix when the npm global prefix cannot 
   await symlink(process.execPath, join(directory, 'node'));
   await writeFile(join(directory, 'npm'), `#!/bin/sh
 case "$1" in
-  prefix) echo /proc;;
-  root) echo /proc/lib/node_modules;;
+  prefix) echo /dev/null;;
+  root) echo /dev/null/lib/node_modules;;
   *) printf '%s\\n' "$@";;
 esac
 `, { mode: 0o700 });
@@ -47,6 +47,30 @@ esac
     'https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz',
   ]);
   assert.match(result.stderr, /export PATH="\$HOME\/\.local\/bin:\$PATH"/);
+});
+
+test('the public installer prints a copyable PATH command for a writable custom prefix', async t => {
+  if (!await readFile(installer).catch(() => false)) return t.skip('The website is outside the installed package.');
+  const directory = await mkdtemp(join(tmpdir(), 'murm-install-path-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await symlink(process.execPath, join(directory, 'node'));
+  await writeFile(join(directory, 'npm'), `#!/bin/sh
+case "$1" in
+  prefix) printf '%s\\n' "$TEST_PREFIX";;
+  root) printf '%s\\n' "$TEST_PREFIX/lib/node_modules";;
+  *) exit 0;;
+esac
+`, { mode: 0o700 });
+  const prefix = join(directory, "team's tools");
+  const env = { ...process.env, HOME: directory, TEST_PREFIX: prefix,
+    PATH: `${directory}:${process.env.PATH}` };
+  const result = spawnSync('/bin/sh', [installer], { env, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const pathCommand = result.stderr.split('\n').find(line => line.trim().startsWith('export PATH='));
+  assert.ok(pathCommand);
+  const shell = spawnSync('/bin/sh', ['-c', pathCommand + '\nprintf "%s" "$PATH"'], { env, encoding: 'utf8' });
+  assert.equal(shell.status, 0, shell.stderr);
+  assert.equal(shell.stdout, `${prefix}/bin:${env.PATH}`);
 });
 
 test('the host bin and checkout entry advertise the same setup command', async () => {

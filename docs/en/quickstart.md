@@ -19,7 +19,7 @@ sudo apt-get install -y docker.io git curl ca-certificates
 sudo systemctl enable --now docker.service
 ```
 
-Run `docker info` as the user who will run murm. If access to the system socket is denied, have the host administrator grant access and sign in again after a group change. The [Docker group grants root-equivalent access](https://docs.docker.com/engine/install/linux-postinstall/). For a shared OpenSandbox service, install Git and curl and skip the local Docker steps.
+For local OpenSandbox, run `docker info` as the user who will run murm. If access to the system socket is denied, have the host administrator grant access and sign in again after a group change. The [Docker group grants root-equivalent access](https://docs.docker.com/engine/install/linux-postinstall/). If Docker is already installed or you are using a shared OpenSandbox service, Ubuntu and Debian users can install just the client tools with `sudo apt-get update && sudo apt-get install -y git curl ca-certificates`.
 
 ```bash
 curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
@@ -80,6 +80,17 @@ See [Sandboxes](sandbox.md) and [Host Gateway](gateway.md) for proxy routing and
 - **murm Worker.** Local setup uses a compatible cached image first, then tries the selected release tag. If the default pull fails, it builds the selected executor from the installed package's `deploy/worker/Dockerfile`. The build still needs a Node base image, Debian packages and npm dependencies. Check those sources and retry setup, or run the build command printed in the failure report from the installed package directory or matching checkout. The Dockerfile accepts `--build-arg NODE_IMAGE=<trusted-mirror-reference>` for the same Node base image in a mirror.
 - **Transfer a Worker from another machine.** On a machine with access to the registries, pull or build a compatible Worker for the target Docker Engine's CPU architecture and run `docker save -o worker.tar IMAGE`. Copy the archive and run `docker load -i worker.tar` in the target Docker context. If the imported tag differs from the selected default, export `MURM_WORKER_IMAGE=IMAGE` before setup and keep it set for the example. With an existing service, the Worker must be available on that service's engine.
 
+To skip the GHCR pull and build the default Pi Worker yourself from a package built from the current source:
+
+```bash
+(
+  cd "$(dirname "$(readlink -f "$(command -v murm)")")/../.." &&
+    docker build -f deploy/worker/Dockerfile -t murm-worker:local --build-arg WORKER_EXECUTOR=pi .
+) &&
+  export MURM_WORKER_IMAGE=murm-worker:local &&
+  murm setup
+```
+
 </details>
 
 For a quick Lifecycle check later, run `murm doctor`. Use `murm doctor --smoke` to repeat the full infrastructure probe.
@@ -104,7 +115,9 @@ Look for the result in the terminal, then open the run in Trace Viewer:
 murm trace --root ./runs --port 8787 --open
 ```
 
-Over SSH, the Viewer prints a port-forwarding command to run on your laptop. For a different provider, set `MURM_MODEL_URL` to its streaming Responses URL and choose a model your key can access. The [CLI Reference](reference/cli.md) covers configuration and executor selection.
+Over SSH, the Viewer prints a port-forwarding command to run on your laptop. If you connected using an SSH alias, mapped port, or jump host, use the same connection settings in that command.
+
+For a different provider, set `MURM_MODEL_URL` to its streaming Responses URL and choose a model your key can access. The [CLI Reference](reference/cli.md) covers configuration and executor selection.
 
 ## Next steps
 

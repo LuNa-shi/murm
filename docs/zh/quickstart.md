@@ -19,7 +19,7 @@ sudo apt-get install -y docker.io git curl ca-certificates
 sudo systemctl enable --now docker.service
 ```
 
-用实际运行 murm 的用户执行 `docker info`。如果系统 Docker socket 拒绝访问，请让管理员授权。用户组变更后需要重新登录。[`docker` 用户组具有等同于 root 的权限](https://docs.docker.com/engine/install/linux-postinstall/)。接入已有 OpenSandbox 服务时，只需准备 Git 和 curl，可以跳过本机 Docker 步骤。
+使用本机 OpenSandbox 时，用实际运行 murm 的用户执行 `docker info`。如果系统 Docker socket 拒绝访问，请让管理员授权。用户组变更后需要重新登录。[`docker` 用户组具有等同于 root 的权限](https://docs.docker.com/engine/install/linux-postinstall/)。如果本机已装 Docker，或要接入已有的 OpenSandbox 服务，Ubuntu 和 Debian 用户可以运行 `sudo apt-get update && sudo apt-get install -y git curl ca-certificates` 补齐客户端工具。
 
 ```bash
 curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
@@ -80,6 +80,17 @@ murm setup --mode existing
 - **murm Worker。** 本机 setup 先复用兼容缓存，再尝试拉取所选版本。默认镜像拉取失败时，会用安装包自带的 `deploy/worker/Dockerfile` 构建所选执行器。构建仍需要 Node 基础镜像、Debian 软件包和 npm 依赖。检查这些来源后重试 setup，或进入安装包目录或同版本的源码仓库运行报告给出的构建命令。如果有可信镜像站提供同一个 Node 基础镜像，可以传入 `--build-arg NODE_IMAGE=<可信镜像引用>`。
 - **从另一台机器导入 Worker。** 在网络可用的机器上拉取或构建兼容且与目标 Docker Engine CPU 架构一致的 Worker，用 `docker save -o worker.tar IMAGE` 导出。将文件传到目标机器，在目标 Docker context 中执行 `docker load -i worker.tar`。如果导入的标签和默认标签不同，先设置 `MURM_WORKER_IMAGE=IMAGE`，并在运行示例时保留该环境变量。接入已有服务时，Worker 镜像需在服务端的引擎上可用。
 
+如果安装的是当前源码构建的包，可以跳过 GHCR 拉取，直接构建默认的 Pi Worker：
+
+```bash
+(
+  cd "$(dirname "$(readlink -f "$(command -v murm)")")/../.." &&
+    docker build -f deploy/worker/Dockerfile -t murm-worker:local --build-arg WORKER_EXECUTOR=pi .
+) &&
+  export MURM_WORKER_IMAGE=murm-worker:local &&
+  murm setup
+```
+
 </details>
 
 以后可用 `murm doctor` 快速检查 Lifecycle；要重跑完整基础设施探针，用 `murm doctor --smoke`。
@@ -104,7 +115,9 @@ murm --harness subagents --prompt 'Read README.md and report its heading.' --out
 murm trace --root ./runs --port 8787 --open
 ```
 
-通过 SSH 运行时，Trace Viewer 会打印一条在你电脑上运行的端口转发命令。如果使用其他模型提供方，请把 `MURM_MODEL_URL` 换成其流式 Responses URL，并选择你的 key 有权访问的模型。执行器和其他配置见 [CLI 参考](reference/cli.md)。
+通过 SSH 运行时，Trace Viewer 会打印一条在你电脑上运行的端口转发命令。如果你使用 SSH 别名、映射端口或跳板机连接，请在转发命令中沿用相同的连接配置。
+
+如果使用其他模型提供方，请把 `MURM_MODEL_URL` 换成其流式 Responses URL，并选择你的 key 有权访问的模型。执行器和其他配置见 [CLI 参考](reference/cli.md)。
 
 ## 下一步
 
