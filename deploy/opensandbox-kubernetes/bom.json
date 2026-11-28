@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "opensandbox": {
+    "version": "1.2.1",
+    "sourceCommit": "db708c218771a8d311356f0e96552c15df6e097a",
+    "sourceRepository": "https://github.com/opensandbox-group/OpenSandbox.git",
+    "chart": "manifests/charts/opensandbox",
+    "sdk": "@alibaba-group/opensandbox@1.2.1",
+    "sdkLockfile": "npm-shrinkwrap.json",
+    "images": {
+      "server": "docker.io/opensandbox/server:release-1.2.1@sha256:07f9b39adb8cadf68357dd1b86367068210e960fc4cb50e11b75176387557ea7",
+      "controller": "docker.io/opensandbox/controller:release-1.2.1@sha256:cf44111b69920f711a245f8a7dea6be1709e2a135d0aa8be151978571e1b915f",
+      "ingress": "docker.io/opensandbox/ingress:release-1.2.1@sha256:832fb8e8ef55c8b038e4b0d83aa100d4ba320efe776796fe36832f9f9c479896",
+      "execd": "docker.io/opensandbox/execd:release-1.2.1@sha256:6b12d17844ac7167271488302c71934e47f76abb9ddab19ec8529bd1c1c56b23",
+      "egress": "docker.io/opensandbox/egress:release-1.2.1@sha256:84b98d3b5989a87389c977f6433f8cd3c7998d03aa15aaae41ebcb15b7eb8000",
+      "imageCommitter": "docker.io/opensandbox/image-committer:release-1.2.1@sha256:75ef864be01b81fc57d65624b5a371705580680b15c4eb6183faeecc584388a9"
+    }
+  },
+  "murm": {
+    "workerProtocol": "murm-core-v2",
+    "piVersion": "1.3.0",
+    "codexVersion": "0.172.0",
+    "workerImage": "operator-supplied digest in site.json",
+    "runtimeImage": "operator-supplied digest in site.json"
+  },
+  "observations": {
+    "registryDigestsRetrievedAt": "2026-11-28",
+    "kubernetes": "not-run; recorded by inspect.mjs on the target cluster",
+    "cni": "not-run; operator identifies CNI workload selectors in site.json",
+    "csi": "not-run; recorded by inspect.mjs on the target cluster",
+    "highestVerifiedAgents": 0
+  }
+}

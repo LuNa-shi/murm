@@ -244,6 +244,10 @@ Implement an independent color-output formatting or conversion component. Publis
 Read both earlier peers’ Board FACTs and use their components from the current main. Implement the CLI and offline build (compile.sh). Prioritize a runnable subset and verify it with the reference. Commit and push the full candidate and open a PR. Return plain JSON {"adopted_files":["relative file path"],"checks":["reference command and observed result"]}.
 ```
 
+## Durable Controller recovery
+
+Recovery reconnects the original Worker and restores receipts and event cursors. It stages no replacement system prompt and sends no new initial user prompt. Unknown submissions are queried by their original identities. Cleanup-only recovery and a persisted closing Run do not reopen business input. Unresolved Services, missing event history or conflicting Worker ownership fence input and require reconciliation. The control probe emits a transport event and supplies no model text. [Recovery ordering](24-runtime-recovery.md)
+
 ## Guest session configuration and Harness questions
 
 Core renders the ordinary startup prompt from the profile and selected tool descriptions. The Worker starts the Pi SDK Session using the configured tool loadout, settings and explicit resource paths. Pi composes its prompt using the loaded skills, extensions and context files. Those resource texts are delivery inputs and their identities and load result are projected by the Guest. The default resource set is empty. Structured context preserves its custom type, text, display and details. Append and nextTurn join native context at their corresponding safe boundaries. Steering and follow-up pass through the native delivery path.

@@ -66,7 +66,7 @@ const runtime = await createRuntime({
 
 ## 2. 如果你要监控运行过程：`runtime.onEvent()`
 
-Runtime 不会主动替你决定下一步怎么协作，而是把集群中发生的所有关键变化实时推送到 `runtime.onEvent()`。**务必在调用 `spawn()` 或 `send()` 之前先注册监听**，这样不会漏掉早期事件。
+请在调用 `spawn()` 或 `send()` 之前注册监听。每个监听器最多同时保留 32 个未完成回调。回调完成后，该监听器会收到带丢失计数的 `subscriberGap`。调用 `get()`、`list()` 或 `management.get()` 可以重新同步视图。
 
 最常用的事件对应四类常见需求：
 
@@ -154,6 +154,52 @@ if (receipt.cleanup !== 'complete') {
 ---
 
 **下一步**：学习如何定义角色、拉起持久化 Agent 会话、发消息与中断恢复——**[Agent 与 Profile](agents.md)**。
+
+## 持久化恢复与 Kubernetes
+
+应用具备可验证的恢复合同时，可在创建 Run 时开启持久化资源归属：
+
+```ts
+const options = {
+  // 提供原始 sandbox、models、profiles、services 和 outputDir。
+  ...applicationOptions,
+  connection: {
+    publicUrl: process.env.MURM_RUNTIME_PUBLIC_URL,
+    bindHost: '0.0.0.0',
+    bindPort: 3100,
+  },
+  persistence: { deploymentId: 'cluster-a', contract: 'harness-v1', retainForMs: 900_000 },
+  operationLimits: { prepare: 8, stop: 8, transfer: 4, queued: 1024, waitMs: 60_000 },
+};
+```
+
+回调地址必须固定并能从所有 Worker 到达，Run 目录必须使用私有持久化存储，恢复配置必须与原合同匹配。Kubernetes 部署把 Runtime Service 的 ClusterIP 写入回调 URL，Sandbox 可按精确的 IPv4 和端口规则连接，无需查询 DNS。准备、停止和传输各有独立的有界队列。持久化模式的保留期默认 15 分钟。
+
+旧 Controller 退出后，SDK 可以重新连接同一批仍存活的 Worker：
+
+```ts
+import { recoverRuntime } from '@luna-shi/murm';
+
+const runtime = await recoverRuntime({
+  ...options,
+  runDirectory: '/private/runs/original-runtime-id',
+  restoreService: async definition => trustedServiceResolver(definition),
+});
+```
+
+`trustedServiceResolver` 由应用实现，按持久化业务状态返回合同匹配的 Service 注册；无法恢复时返回 `undefined`。配置中重新提供原始选项和受信宿主凭据。动态注册且不在初始配置内的 Service 必须通过此入口解析。未解析的 Service 会阻止 Agent 恢复权限。Harness 调度和 Service 业务恢复需要各自的持久化合同。Core 对账原输入 ID 和 Worker 游标，不会重新发送初始 prompt。
+
+当前接管要求同一 Linux 主机和同一次系统启动，并取得 SQLite 独占写入锁。Kubernetes 模板通过 Downward API 传入节点身份，原节点同一次系统启动期间更换 Pod 名称仍可恢复。换节点或重启节点后拒绝接管。当前没有自动 Controller 故障转移或 Worker 进程替换能力。已经进入关闭的 Run 只继续收尾。需要主动收尾时，可设置 `cleanupOnly: true` 或使用 CLI：
+
+```sh
+murm recover --run-dir /private/runs/original-runtime-id --config /private/recovery.mjs
+```
+
+配置模块的默认导出可以是原始 options 对象，也可以是返回该对象的零参数异步工厂。此命令始终只恢复清理权限，再调用 `close()`，输出回执；清理完成退出 0，仍有待处理项则退出 1。资源继续留账。必需导出失败时保留 Sandbox，并报告保留截止时间及实际 `expiresAt`；应在有限到期时间前重试。服务未确认所需保留窗口时检查 `retain-at-risk`。
+
+`runtime.probeWorkerEvent(agentId, { requestId, timeoutMs })` 通过真实鉴权 Worker 事件链路测量 Core 的观测时间，不调用模型。当前 Worker 使用有界游标长轮询；事件缺口会暂停新工作权限并保留不确定资源。
+
+[Kubernetes 部署配置](../../deploy/opensandbox-kubernetes/README.md) 固定官方组件并生成私有部署输入。[容量工作负载](../../benchmarks/kubernetes/README.md) 默认只输出 `not-run` 计划。两台 worker VM 上的验收覆盖了 2 个 Sandbox 使用真实 Kimi K3 交接，以及 8 个 Sandbox 使用受控模型接口持续工作 15 分钟。32、128 和 1,024 档各通过三轮本机 mock Agent API 验证，覆盖正式 SDK 的接纳、持久归属、事件、导出与回收。这三个档位的真实集群容量仍未验证。工作负载通过后仍需独立完成故障与恢复矩阵，才能声明容量。大规模实验开始前必须得到 owner 批准。完整归属、重试和回收流程见 [Architecture](../architecture/24-runtime-recovery.md)。
 
 ## 会话控制与 Harness 收尾
 

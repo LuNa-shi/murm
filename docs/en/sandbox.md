@@ -70,3 +70,7 @@ The optional `egressMode: 'dns+nft'` declares an administrator-prepared packet-p
 Custom integrations use `createSandbox({ provider, timeoutSeconds })` and retain the public `SandboxProvider` contract. Administrator recipes and version pins are in the deployment guide.
 
 [Runtime](runtime.md) · [Host Gateway](gateway.md) · [Deployment](../../deploy/README.md)
+
+## Kubernetes deployment
+
+Use one OpenSandbox cluster endpoint and a stable Runtime callback. Kubernetes schedules Sandbox Pods across prepared worker nodes. Persistent ownership supports same-host, same-boot recovery under an exclusive writer; automatic cross-node Controller takeover is unavailable. Cluster acceptance ran real Sandbox workloads at sizes 2 and 8 on two worker VMs. Tiers 32, 128 and 1,024 passed local mock Agent API checks for the Sandbox lifecycle. See [Runtime](runtime.md) · [Deployment](../../deploy/opensandbox-kubernetes/README.md)

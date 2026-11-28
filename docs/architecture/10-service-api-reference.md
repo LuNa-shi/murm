@@ -40,13 +40,13 @@ This section is generated from executable exports and checked against the source
 | [test-support/taskpool-legacy/services-bridge.ts](../../test-support/taskpool-legacy/services-bridge.ts) | `bddb5744b172e34d5939b958f5e92946f736d6816b31c9b54938976ded8e1ca6` |
 | [examples/services/mathlib-search/service.json](../../examples/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5b436c6d7062a7b9fb0fd434af1375b9c050999cfa76bd6d97dac88558dca8b3` |
-| [src/core/index.ts](../../src/core/index.ts) | `12fe51bdf08a37242e22645fefcf2a4303aec45ec37c089c7f2bd3a8598b09dc` |
-| [src/core/types.ts](../../src/core/types.ts) | `8605c771b4a6fcfd0d7b13160a856eb33ee685d0e12e8c83ea8f183fc9b6166a` |
+| [src/core/index.ts](../../src/core/index.ts) | `cb8f080899151f94e0896ac02d1775189da55f09c1c160533a2925b2f6665c9d` |
+| [src/core/types.ts](../../src/core/types.ts) | `40541748e91eb4890f32954c0627d6e3ce2d69fc2dc4f5bbafedbb52d7d5c30b` |
 | [src/core/services.ts](../../src/core/services.ts) | `794352ccfa8e02f63c4db087f1c165308198c6766c0d8c3cf8872e1b9c0617ab` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
-| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `5fb4a9e40dbcddbc193e62b44483ed4c14f20923ef5f6d51ecc13b78732de1c1` |
+| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `ebde466a84a1ac06f5026448680562733697254c0c0033ba777f0dda8c267061` |
 | [src/core/sandbox/executor-driver.ts](../../src/core/sandbox/executor-driver.ts) | `182e80680d8ea6e1729d524a6927d800a91caffd3657ed796706ebaad9d28131` |
-| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `b8e4a7706afd3b0248e0dd4ccac249cbde4fb8d619ca450799b0ec210e728dc5` |
+| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `be1c5c7db4876f5632f6f855af3e16e8f59c46a5a76b3f27a934508e15cbdf47` |
 | [src/core/sandbox/opensandbox-provider.ts](../../src/core/sandbox/opensandbox-provider.ts) | `eb98901a846c1ce294621d7a173cec46787ba4bf18b4edc65afc5c867e968c37` |
 | [src/core/sandbox/sandbox-connection.ts](../../src/core/sandbox/sandbox-connection.ts) | `2f7337b6fcbfd9f3df6735dfdf42be0d8f06b4c732963b21d4cdbd331b2f9249` |
 
@@ -3092,7 +3092,7 @@ These are the package entrypoint declarations and the declarations they referenc
 #### dist/src/core/index.d.ts
 
 ```ts
-import type { CreateRuntimeOptions, Runtime } from './types.js';
+import type { CreateRuntimeOptions, RecoverRuntimeOptions, Runtime } from './types.js';
 export type * from './session-types.js';
 export { createHarnessSession } from '../harness/project-harness.js';
 export type { Harness, HarnessContext, HarnessInput, HarnessInputHandler, HarnessInputPreparation, HarnessJson, HarnessStatusInfo, ProjectHarness, ProjectHarnessContext, ProjectHarnessResult, } from '../harness/project-harness.js';
@@ -3123,17 +3123,20 @@ export { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from '
 export type { ExecutorCapabilities, ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SandboxConfig, SandboxProviderConfig, SteeringMode } from './backend-config.js';
 export type { ModelCapabilities, ModelProtocol, ModelStreamTerminal, ModelTransport } from './model/model-transport.js';
 export type { FileBudget, FilePolicy } from './file-policy.js';
+export type { OperationLimits } from './operation-queue.js';
 export type { SandboxPreparation, SandboxProvider } from './sandbox/opensandbox-provider.js';
 export type { SandboxManager } from './sandbox/opensandbox-backend.js';
 export type { HttpJsonAdapterOptions, ServiceRegistration } from './services.js';
 export type { JsonValue, ServiceAdapter, ServiceCaller, ServiceCapability, ServiceManifest, ServiceRequest } from './service-types.js';
-export type { AgentAccess, AgentAccessGrant, AgentAccessMutation, AgentAccessPolicy, AgentAccessRequest, AgentInfo, AgentInitialInputResult, AgentListFilter, AgentSpawnReceipt, AgentStatus, CloseOptions, CloseReceipt, CollectionSpec, CompleteFileDigest, CompleteFileSnapshot, CompleteFileSnapshotOptions, ConditionalInputReceipt, CreateRuntimeOptions, ErrorInfo, FileEntry, FileReplaceOptions, FileReplaceReceipt, FileSnapshot, FileSnapshotOptions, FileTree, InputMode, InputReceipt, InterruptOptions, InterruptReceipt, PartialFileDigest, PartialFileSnapshot, PendingCleanup, Profile, ProfileDefinition, ProfileRegistration, ResourceError, Runtime, RuntimeEvent, RuntimeFiles, RuntimeManagementChange, RuntimeManagementSnapshot, RuntimeServiceDefinition, RuntimeServiceRegistration, RuntimeState, SendOptions, ServiceRetirement, SpawnOptions, StopOptions, StopReceipt, WorkspaceOptions, } from './types.js';
+export type { AgentAccess, AgentAccessGrant, AgentAccessMutation, AgentAccessPolicy, AgentAccessRequest, AgentInfo, AgentInitialInputResult, AgentListFilter, AgentSpawnReceipt, AgentStatus, CloseOptions, CloseReceipt, CollectionSpec, CompleteFileDigest, CompleteFileSnapshot, CompleteFileSnapshotOptions, ConditionalInputReceipt, CreateRuntimeOptions, RecoverRuntimeOptions, ErrorInfo, FileEntry, FileReplaceOptions, FileReplaceReceipt, FileSnapshot, FileSnapshotOptions, FileTree, InputMode, InputReceipt, InterruptOptions, InterruptReceipt, PartialFileDigest, PartialFileSnapshot, PendingCleanup, Profile, ProfileDefinition, ProfileRegistration, ResourceError, Runtime, RuntimeEvent, RuntimeFiles, RuntimeManagementChange, RuntimeManagementSnapshot, RuntimeServiceDefinition, RuntimeServiceRegistration, RuntimeState, SendOptions, ServiceRetirement, SpawnOptions, StopOptions, StopReceipt, WorkspaceOptions, } from './types.js';
 export declare function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
+export declare function recoverRuntime(options: RecoverRuntimeOptions): Promise<Runtime>;
 ```
 
 #### dist/src/core/types.d.ts
 
 ```ts
+import type { OperationLimits } from './operation-queue.js';
 import type { ModelConfig, RuntimeConnectionOptions, Sandbox, SteeringMode } from './backend-config.js';
 import type { ExecutorSelection } from './executor-adapter.js';
 import type { FilePolicy } from './file-policy.js';
@@ -3169,6 +3172,17 @@ export interface CreateRuntimeOptions {
     outputDir: string;
     agentAccessPolicy?: AgentAccessPolicy;
     hooks?: RuntimeHooks;
+    operationLimits?: OperationLimits;
+    persistence?: {
+        deploymentId: string;
+        contract: string;
+        retainForMs?: number;
+    };
+}
+export interface RecoverRuntimeOptions extends CreateRuntimeOptions {
+    runDirectory: string;
+    cleanupOnly?: boolean;
+    restoreService?(definition: RuntimeServiceDefinition): Promise<ServiceRegistration | undefined>;
 }
 export interface FileEntry {
     readonly encoding: 'utf8' | 'base64';
@@ -3312,7 +3326,10 @@ export interface AgentSpawnReceipt {
 }
 export type AgentEvent = {
     agentId: string;
-} & (SessionEvent | {
+} & ({
+    type: 'workerProbe';
+    requestId: string;
+} | SessionEvent | {
     type: 'output';
     text: string;
 } | {
@@ -3334,6 +3351,9 @@ export type RuntimeEvent = AgentEvent | {
     agentId: string;
 } | {
     type: 'runtimeChanged';
+} | {
+    type: 'subscriberGap';
+    dropped: number;
 } | {
     type: 'management';
     change: RuntimeManagementChange;
@@ -3364,6 +3384,8 @@ export interface PendingCleanup {
         reason: 'archive-session' | 'collect-artifacts';
         status: 'retained' | 'retain-at-risk';
         autoRenewing: boolean;
+        deadline?: string;
+        owner?: string;
     };
 }
 export interface StopReceipt {
@@ -3454,6 +3476,7 @@ export type AgentAccessGrant = AgentAccessMutation & {
     readonly binding?: string;
 };
 export interface RuntimeManagementSnapshot {
+    readonly recoveryBlockedServices?: readonly string[];
     readonly sequence: number;
     readonly profiles: readonly ProfileDefinition[];
     readonly services: readonly RuntimeServiceDefinition[];
@@ -3478,11 +3501,27 @@ export type RuntimeManagementChange = {
 export interface Runtime {
     readonly id: string;
     readonly state: RuntimeState;
+    diagnostics(): {
+        renewing: number;
+        eventReads: number;
+        pendingSubscriberCallbacks: number;
+        queues: Record<'prepare' | 'stop' | 'transfer' | 'reconcile', {
+            active: number;
+            queued: number;
+        }>;
+    };
     readonly session: RuntimeSession;
     spawn(options: SpawnOptions): Promise<AgentInfo>;
     get(agentId: string): Promise<AgentInfo>;
     list(filter?: AgentListFilter): Promise<AgentInfo[]>;
     interrupt(agentId: string, options: InterruptOptions): Promise<InterruptReceipt>;
+    probeWorkerEvent(agentId: string, options: {
+        requestId: string;
+        timeoutMs?: number;
+    }): Promise<{
+        requestId: string;
+        elapsedMs: number;
+    }>;
     send(agentId: string, input: string, options: SendOptions & {
         wakeIfIdle?: true;
     }): Promise<InputReceipt>;
@@ -3659,6 +3698,7 @@ export interface ServiceAdapter {
 #### dist/src/core/sandbox/opensandbox-backend.d.ts
 
 ```ts
+import type { AllocationLedger, AllocationRecord as LedgerAllocation } from '../allocation-ledger.js';
 import type { BeforeCompactDecision, BeforeCompactRequest } from '../session-types.js';
 import type { AgentEvent, ErrorInfo, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from '../types.js';
 import type { SessionFork } from '../../../scripts/core-session-fork.js';
@@ -3743,7 +3783,14 @@ interface BackendAgent {
     };
     retaining?: 'archive-session' | 'collect-artifacts';
     retainAtRisk?: boolean;
+    retainUntil?: string;
     deleting?: boolean;
+    workerIdentity?: {
+        workerInstanceId: string;
+        streamEpoch: string;
+    };
+    recovery?: () => Promise<void>;
+    uncertain?: boolean;
 }
 type WorkerRecord = {
     worker_sequence: number;
@@ -3760,6 +3807,9 @@ type WorkerRecord = {
         stopReason?: string;
         errorMessage?: string;
     };
+} | {
+    type: 'controller_probe';
+    traceId: string;
 } | {
     type: 'worker_error';
     message: string;
@@ -3784,6 +3834,7 @@ type WorkerRecord = {
 });
 interface WorkerReply {
     records?: WorkerRecord[];
+    state?: string;
     response?: {
         id?: string;
         command?: string;
@@ -3873,6 +3924,11 @@ interface BackendOptions {
     modelAccess: Awaited<ReturnType<typeof createCoreModelAccess>>;
     registerPrivateValues?: (values: readonly unknown[]) => void;
     providers?: readonly OpenSandboxProvider[];
+    durability?: {
+        ledger: AllocationLedger;
+        retainForMs: number;
+        renewConcurrency: number;
+    };
 }
 interface AllocationRecord {
     state: string;
@@ -3881,6 +3937,7 @@ interface AllocationRecord {
     timeoutSeconds?: number;
     sandboxId?: string;
     observation?: string;
+    rejection?: boolean;
     expiresAt?: string | null;
 }
 interface BackendSpawnOptions {
@@ -3908,7 +3965,7 @@ export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'e
 };
 export declare function createSandbox(config?: SandboxConfig | SandboxProviderConfig): Sandbox;
 export declare function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRuntimeOptions, 'models' | 'executor' | 'connection' | 'filePolicy'>): ResolvedOpenSandboxBackendConfig;
-export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, { runtimeId, outputDir, bridge, modelAccess, registerPrivateValues, providers, }: BackendOptions): Promise<{
+export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, { runtimeId, outputDir, bridge, modelAccess, registerPrivateValues, durability, providers, }: BackendOptions): Promise<{
     sessionCapabilities(agentId: string): import("../session-types.js").AgentSessionCapabilities | undefined;
     spawn({ agentId, profile, options, signal, onEvent, onExecutionStart, onTrace, recordAllocation, beforeCompact }: BackendSpawnOptions): Promise<{
         providerId: string;
@@ -3926,15 +3983,27 @@ export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBacken
         } | undefined;
         backend?: ExecutorStartup | undefined;
     }>;
+    recover(record: LedgerAllocation, handlers: Pick<BackendSpawnOptions, 'onEvent' | 'onExecutionStart' | 'onTrace' | 'beforeCompact'>): Promise<{
+        available: boolean;
+        executionStopped: boolean;
+        terminal: boolean;
+    }>;
+    resume(agentId: string): void;
     snapshotFiles(agentId: string, input: FileSnapshotOptions): Promise<WorkerFileSnapshot>;
     replaceFiles(agentId: string, input: FileReplaceOptions): Promise<WorkerFileReplace>;
-    send(agentId: string, input: string, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle }: {
+    send(agentId: string, input: string, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle, queryOnly }: {
         mode: InputMode;
         inputId: string;
         steeringMode?: SendOptions['steeringMode'];
         executionEpoch: number;
         wakeIfIdle: boolean;
+        queryOnly?: boolean;
     }): Promise<BackendInputReceipt>;
+    diagnostics(): {
+        eventReads: number;
+        renewing: number;
+    };
+    probeWorkerEvent(agentId: string, id: string, timeoutMs: number): Promise<void>;
     sessionCommand(agentId: string, command: string, payload: Record<string, unknown>, query: boolean): Promise<unknown>;
     interrupt(agentId: string, { interruptId, executionEpoch }: {
         interruptId: string;
@@ -3951,16 +4020,19 @@ export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBacken
         creation: 'created' | 'pending' | 'absent';
         executionStopped: boolean;
         expiresAt?: string | null;
-        providerId: string;
+        providerId: string | undefined;
         retention?: {
             reason: "archive-session" | "collect-artifacts";
-            status: string;
+            status: "retain-at-risk" | "retained";
             autoRenewing: boolean;
+            deadline?: string | undefined;
+            owner?: string | undefined;
         } | undefined;
     } | undefined;
-    retain(agentId: string, reason: NonNullable<BackendAgent['retaining']>): void;
+    retain(agentId: string, reason: NonNullable<BackendAgent['retaining']>, deadline?: string): void;
     finishRetention(): Promise<void>;
     destroy(agentId: string): Promise<void>;
+    detach(): Promise<void>;
     close(): Promise<void>;
 }>;
 export {};
@@ -4049,6 +4121,10 @@ export interface SandboxConfig {
         cpu: string;
         memory: string;
     };
+    resourceRequests?: {
+        cpu: string;
+        memory: string;
+    };
     commandTimeoutMs?: number;
     timeoutSeconds?: number;
     isolation?: {
@@ -4118,6 +4194,10 @@ export interface OpenSandboxBackendConfig {
         publicUrl?: string;
         advertiseHost?: string;
         resourceLimits?: {
+            cpu: string;
+            memory: string;
+        };
+        resourceRequests?: {
             cpu: string;
             memory: string;
         };

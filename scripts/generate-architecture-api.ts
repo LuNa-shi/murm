@@ -60,7 +60,9 @@ for (const source of sourcePaths.filter((path: any) => path.startsWith('src/core
   api += `\n#### ${declaration}\n${fence('ts', await readFile(resolve(root, declaration), 'utf8'))}`;
 }
 
+const { ALLOCATION_SCHEMA_SQL } = await import('../src/core/allocation-ledger.js');
 const schemas = [
+  ['Core Runtime allocation ownership', 'src/core/allocation-ledger.ts', ALLOCATION_SCHEMA_SQL],
   ['Automatic service history', 'examples/taskpool/persistence/service-history.ts', SERVICE_HISTORY_SCHEMA_SQL],
   ['Task-owned independent service commit gates', 'examples/taskpool/persistence/service-peer-schema.ts', SERVICE_COMMIT_SCHEMA_SQL],
   ['Context peer receipts', 'examples/taskpool/persistence/service-peer-schema.ts', CONTEXT_PEER_SCHEMA_SQL],

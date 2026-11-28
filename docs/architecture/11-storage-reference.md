@@ -12,6 +12,7 @@ This chapter lists the exported SQLite schemas for this tree. A restarted proces
 | MissionWorkspace | Public Mission Git repository, immutable numeric revisions, main, merge/freeze receipts and index | Unsaved guest edits and live checker work |
 | Workspace Manager | File content plus `.swarm/workspace.json`, revision/checkpoint metadata; local Git commits/refs are separate filesystem history | Live process working memory and unsaved shell edits |
 | Observation Store | Experiment registry, ordered events, operator payload, redacted Agent payload and payload hash | SSE connections, event-emitter subscriptions, server caches and client projection |
+| Core Runtime allocation owner | Run closing intent, original Sandbox identity, independent stop/deletion observations, Worker epoch and cursor, input receipts and export checkpoints | The actual Worker process, CNI state and unconfirmed transport requests |
 | Core model gateway | Runtime policy pin, Agent request attempts, observed usage, bounded HTTP diagnostics and eligible replay receipts | Agent credentials and live HTTP transport |
 | Registry/Bridge | Manifest/profile hashes can be recorded in run metadata; source/bundle files define defaults | Registered adapters, readiness cache, Bridge token, current binding, deferred lifecycle callback |
 | Sandbox | Registered Agents publish files through explicit public save; compatibility paths retain checkpoint/progress | Container/process state, background job handles; cleanup and saving are separate steps |
@@ -19,6 +20,8 @@ This chapter lists the exported SQLite schemas for this tree. A restarted proces
 Production uses `project.sqlite` for Task/Mission/Workspace coordination, `context.sqlite` for Material state, and `judge.sqlite` for diagnostic checking. Core creates one owner-private SQLite ledger per configured model alias under the Runtime's `model-access` directory. The alias's SHA-256 determines its filename. Each service owns its connection and schema. Independent peers exchange explicit HTTP commands and receipts. The Task-owned durable gate orders revocation against Context commit and actual Judge spawn. Unknown outcomes remain fenced until exact reconciliation. Resource-unit ownership survives Judge crashes independently of the in-memory checker promise. Current service compositions use the configured local or independent service boundaries. See [Services](04-services.md#independent-contextjudge-deployment) for order, bounds and cleanup.
 
 The Task-owned `service_commit_gate` holds one unresolved exact command and digest; `service_commit_events` retains notification delivery work. Context owns `context_peer_receipts` for terminal gate outcomes. Judge owns `judge_peer_phases` for one-shot phase/generation receipts. The private `judge-checker-resources.ndjson` ledger names only allocated/settled systemd resources and is fsynced before launch. These are recovery records, not new research entities.
+
+Durable Core Runs keep `allocations.sqlite` in an owner-only Run directory. The database uses full SQLite synchronization and an exclusive same-host writer. `allocation_run` contains the configuration fingerprint, host identity, controller epoch and closing intent. `allocations` uniquely associates each Agent and request with its intended resource. `allocation_resources` holds separate stop and deletion observations for each observed Sandbox. `allocation_inputs` stores request fingerprints and receipts. `allocation_events` stores committed records by Worker stream epoch and sequence. Private reconnect credentials in this database must stay outside reports and source control. [Allocation and recovery](24-runtime-recovery.md)
 
 ## How to interpret the tables
 
@@ -62,6 +65,30 @@ Durable state can outlive a Session, but runtime recovery still has to validate 
 ## Generated SQL schema reference
 
 The SQL below is the complete exported create-schema text, including checks, keys and indexes. It is schema text, not an export of a user database. The `tasks` interpolation is expanded. Constructors initialize the current schema on new databases. Shared `operations` declarations intentionally appear in several owners because the services can share a SQLite connection.
+
+### Core Runtime allocation ownership
+
+Source: [src/core/allocation-ledger.ts](../../src/core/allocation-ledger.ts); source SHA-256: `377a9087b964335e1bc97ca5c84c0922b3fb126b0657fc6a8570228eae6c43a9`.
+
+```sql
+CREATE TABLE IF NOT EXISTS allocation_run (id INTEGER PRIMARY KEY CHECK (id = 1), body TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS allocations (
+  resource_key TEXT PRIMARY KEY, agent_id TEXT NOT NULL UNIQUE, request_key TEXT NOT NULL UNIQUE,
+  state TEXT NOT NULL, body TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS allocation_resources (
+  resource_key TEXT NOT NULL REFERENCES allocations(resource_key), sandbox_id TEXT NOT NULL,
+  body TEXT NOT NULL, PRIMARY KEY (resource_key, sandbox_id)
+);
+CREATE TABLE IF NOT EXISTS allocation_inputs (
+  request_key TEXT PRIMARY KEY, resource_key TEXT NOT NULL REFERENCES allocations(resource_key), body TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS allocation_events (
+  resource_key TEXT NOT NULL REFERENCES allocations(resource_key), stream_epoch TEXT NOT NULL,
+  sequence INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY (resource_key, stream_epoch, sequence)
+);
+PRAGMA user_version = 1;
+```
 
 ### Automatic service history
 
@@ -139,7 +166,7 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 
 ### Core Runtime model attempts
 
-Source: [src/core/model/responses-budget-gateway.ts](../../src/core/model/responses-budget-gateway.ts); source SHA-256: `ab6b08700d9a589115d4c49db5d327198979bb9715885f7faca83e3990288c85`.
+Source: [src/core/model/responses-budget-gateway.ts](../../src/core/model/responses-budget-gateway.ts); source SHA-256: `7087903a0443601443695522eea3c45956d8da2a30789d3f5ed5fd8149fa020c`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS runtime_model_policies (

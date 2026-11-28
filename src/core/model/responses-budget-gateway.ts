@@ -322,11 +322,12 @@ export class ResponsesBudgetGateway {
     void work.then(() => this.#working.delete(work), () => this.#working.delete(work));
   };
 
-  issueToken({ runtimeId, agentId }: any = {}) {
+  issueToken({ runtimeId, agentId, restoredToken }: any = {}) {
     if (this.#closing || typeof runtimeId !== 'string' || !runtimeId || typeof agentId !== 'string' || !agentId) {
       throw new Error('A live gateway and a trusted Runtime/Agent binding are required');
     }
-    const token = randomBytes(32).toString('base64url');
+    const token = restoredToken ?? randomBytes(32).toString('base64url');
+    if (!/^[a-zA-Z0-9_-]{43}$/.test(token) || this.#tokens.has(token)) throw new Error('Model control identity is invalid');
     this.#tokens.set(token, { runtimeId, agentId });
     return token;
   }

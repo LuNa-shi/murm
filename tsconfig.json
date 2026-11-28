@@ -15,5 +15,5 @@
     }
   },
   "exclude": ["**/node_modules", "**/dist"],
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "examples/**/*.ts", "test-support/**/*.ts", "benchmarks/fate/**/*.ts", "benchmarks/lead-worker-orders/**/*.ts"]
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "examples/**/*.ts", "test-support/**/*.ts", "benchmarks/fate/**/*.ts", "benchmarks/lead-worker-orders/**/*.ts", "benchmarks/kubernetes/**/*.ts"]
 }

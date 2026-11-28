@@ -315,3 +315,37 @@ test('spawn rejects reserved credentials and host policy overrides before dispat
     });
   }
 });
+
+test('an overloaded subscriber gets a counted gap and does not prevent Runtime close', async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'murm-subscriber-limit-'));
+  t.after(() => rm(outputDir, { recursive: true, force: true }));
+  const config = options(outputDir);
+  config.profiles.writer.model = 'default';
+  const runtime = await createRuntime(config);
+  const pending: (() => void)[] = [];
+  const gaps: number[] = [];
+  const unsubscribe = runtime.onEvent(event => {
+    if (event.type === 'subscriberGap') {
+      gaps.push(event.dropped);
+      return;
+    }
+    return new Promise<void>(resolve => pending.push(resolve));
+  });
+  try {
+    for (let index = 0; index < 36; index++) {
+      await runtime.profiles.register({ id: `reader-${index}`, requestId: `register-${index}`,
+        profile: config.profiles.writer });
+    }
+    assert.equal(pending.length, 32);
+    assert.deepEqual(gaps, []);
+    assert.equal(runtime.management.get().profiles.length, 37);
+    pending.shift()!();
+    await delay(0);
+    assert.deepEqual(gaps, [4]);
+    assert.equal((await runtime.close()).cleanup, 'complete');
+  } finally {
+    unsubscribe();
+    for (const resolve of pending) resolve();
+    await runtime.close();
+  }
+});

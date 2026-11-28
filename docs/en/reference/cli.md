@@ -112,3 +112,11 @@ node dist/scripts/read-harness-result.js --run-directory <dir> --runtime-id <id>
 Set `--lifetime task|interactive` to choose an admitted lifetime. The default is `task`. Subagents supports continuous foreground `interactive` work until a configured deadline or stop. Set `--interaction none|questions` to declare an answer channel. The default is `none`. The explicit foreground form with `--prompt` starts immediately. When interactive or question-enabled, it exchanges later commands as JSONL. The `--mode rpc` form starts after a `run` command.
 
 Use `describe` for supported operations, `status` for the current snapshot, `answer` with a `questionId`, and `agent.getState`, `agent.getStats`, `agent.getMessages` for native queries. Available member mutations are `agent.configure`, `agent.compact`, `agent.abortRetry`, `agent.clearQueue`, `agent.send`, `agent.interrupt` and `agent.stop`. Each Harness decides which mutations its targets permit. `stop` ends the Run. Wait for the final result record to learn what was saved or cleaned up.
+
+## murm recover
+
+```sh
+murm recover --run-dir /private/runs/original-runtime-id --config /private/recovery.mjs
+```
+
+The config module default export is the original Runtime options object or an async zero-argument options factory. This command performs cleanup-only recovery, calls `close()`, prints its receipt and exits 0 only for complete cleanup. It requires the same-host, same-boot exclusive writer and matching durable configuration. Pending resources stay in the ledger with finite retention deadlines. See [Runtime recovery](../runtime.md#durable-recovery-and-kubernetes).

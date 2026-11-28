@@ -237,7 +237,8 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
     throw error;
   }
   return {
-    credentialsForAgent(agentId: string, alias: string): {
+    credentialsForAgent(agentId: string, alias: string, restoredToken?: string): {
+      token: string;
       environment: Record<string, string>;
       secretEnvironment: Record<string, string>;
       baseUrl: string;
@@ -249,11 +250,11 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
         throw Object.assign(new Error('Model credentials require a fresh live Agent and its configured model'),
           { code: 'NOT_ALLOWED', runtimeId, agentId });
       }
-      const token = entry.gateway!.issueToken({ runtimeId, agentId });
+      const token = entry.gateway!.issueToken({ runtimeId, agentId, restoredToken });
       tokens.set(agentId, { token, gateway: entry.gateway! });
       return {
         ...driver.credentials(entry.model, entry.baseUrl!, token),
-        baseUrl: entry.baseUrl!,
+        token, baseUrl: entry.baseUrl!,
         catalogResource: entry.catalogResource,
         ...(entry.catalogContent !== undefined ? { catalogContent: entry.catalogContent } : {}),
       };

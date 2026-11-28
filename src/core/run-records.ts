@@ -143,6 +143,7 @@ export function runtimeConfiguration({ config, profiles, registrations, maxAgent
         { id: 'opensandbox', version: 'sdk-1.2.1' },
       constraints: {
         requested: { ...sandbox.resourceLimits },
+        ...(sandbox.resourceRequests ? { schedulingRequests: sandbox.resourceRequests } : {}),
         ...(provider ? {} : { configured: { cpu: redact(cpu), memory: redact(memory) } }),
       },
     },
@@ -178,8 +179,8 @@ export type RunEvidenceRecord = Readonly<Record<string, unknown>> & {
   at: string;
 };
 
-export function createRunRecords(outputDir: string, runtimeId: string) {
-  const path = join(outputDir, 'evidence.jsonl');
+export function createRunRecords(outputDir: string, runtimeId: string, controllerEpoch?: number) {
+  const path = join(outputDir, controllerEpoch === undefined ? 'evidence.jsonl' : `evidence-recovery-${controllerEpoch}.jsonl`);
   let queued: string[] = [];
   let queuedBytes = 0;
   let writer: Promise<void> | undefined;

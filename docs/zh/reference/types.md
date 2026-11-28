@@ -488,6 +488,23 @@ export interface HttpJsonAdapterOptions {
 
 [服务接口与 HTTP 传输见 API 参考。](api.md#service-协议与内置-agent-service)
 
+## Durable Runtime options
+
+```ts
+import type { CreateRuntimeOptions, RecoverRuntimeOptions } from "@luna-shi/murm";
+
+// CreateRuntimeOptions additions
+// persistence?: { deploymentId: string; contract: string; retainForMs?: number };
+// operationLimits?: { prepare?: number; stop?: number; transfer?: number; queued?: number; waitMs?: number };
+
+// RecoverRuntimeOptions extends CreateRuntimeOptions
+// runDirectory: string;
+// cleanupOnly?: boolean;
+// restoreService?(definition: RuntimeServiceDefinition): Promise<ServiceRegistration | undefined>;
+```
+
+默认值和恢复前提见 [Runtime](../runtime.md#持久化恢复与-kubernetes)。
+
 ## HarnessSession 类型
 
 `Harness` 和 `HarnessContext` 是作者合同。`HarnessSessionOptions` 配置一次协作，`HarnessDescriptor` 与 `HarnessState` 提供能力与当前投影。`HarnessEvent` 区分初始快照、实时状态、问题、操作回执、运行事件和结果。`HarnessAgents` 返回 Runtime 查询和控制回执。协作控制器可以在 `core` 回执旁附 `harnessEffects`。`HarnessResult` 保留业务、产物、清理、命令和问题的处置证据。

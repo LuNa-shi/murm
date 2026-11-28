@@ -11,7 +11,7 @@ export function createModelTrace(outputDir: string, redactor: ReturnType<typeof 
   const json = (value: unknown) => JSON.stringify(redactor.value(value)) + '\n';
 
   return {
-    initialize: () => mkdir(path, { mode: 0o700 }),
+    initialize: () => mkdir(path, { recursive: true, mode: 0o700 }),
     snapshot: () => ({ path, recorded, lost, pending: started - recorded - lost }),
     begin(request: Record<string, unknown>) {
       const id = randomUUID();

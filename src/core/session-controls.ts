@@ -1,7 +1,8 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { stableStringify } from '../protocol/stable-json.js';
 import { snapshotContext, snapshotSessionConfig } from './session-config.js';
 import { validId } from './config.js';
+import type { AllocationLedger } from './allocation-ledger.js';
 import type { AgentSessionPatch, ContextInput, ContextInputReceipt, ContextSendOptions, RuntimeSession, SessionControlReceipt } from './session-types.js';
 
 interface Agent {
@@ -34,10 +35,15 @@ export function createSessionControls(options: {
   record(type: string, value: Record<string, unknown>): void;
   sanitize(value: unknown): unknown;
   activity(agent: Agent): void;
+  durable?<T>(action: (owner: AllocationLedger) => T): T | undefined;
 }) {
   const requests = new Map<string, ControlEntry>();
   const serial = new Map<string, Promise<unknown>>();
   const reservations = new Set<string>();
+  const caller = (name: SessionMutation) => name === 'context' ? 'host' : 'host-session';
+  const command = (name: SessionMutation) => name === 'context' ? 'core_context' :
+    `core_session_${({ abortRetry: 'abort_retry', clearQueue: 'clear_queue' } as Record<string, string>)[name] ?? name}`;
+  const durableParams = (parameters: unknown) => parameters as { sessionCommand?: SessionMutation; executionEpoch?: number };
   const capability = (name: keyof NonNullable<typeof options.capabilities.session>, operation: string, agentId: string) => {
     if (!options.capabilities.session?.[name]) throw options.problem('OPERATION_UNSUPPORTED', 'Executor does not support this session operation', operation, agentId);
   };
@@ -61,35 +67,64 @@ export function createSessionControls(options: {
     const key = JSON.stringify([agentId, requestId]);
     const fingerprint = stableStringify({ name, payload });
     let entry = requests.get(key);
+    const parameterFingerprint = createHash('sha256').update(fingerprint).digest('hex');
+    const saved = entry ? undefined : options.durable?.(owner => owner.input(agentId, caller(name), requestId));
+    if (saved && (saved.parameterFingerprint !== parameterFingerprint || durableParams(saved.parameters)?.sessionCommand !== name)) {
+      throw options.problem('CONFLICT', 'requestId already identifies another input or Session operation', operation, agentId, requestId);
+    }
+    if (saved?.state === 'accepted') return structuredClone(saved.receipt);
     if (entry && entry.fingerprint !== fingerprint) throw options.problem('CONFLICT', 'requestId already identifies another session operation', operation, agentId, requestId);
     if (!entry) {
       capability(name, operation, agentId);
-      live(agentId, operation, requestId);
+      const dispatched = saved !== undefined && saved.state !== 'reserved';
+      if (!dispatched) live(agentId, operation, requestId);
       if (requests.size >= 8192) throw options.problem('CAPACITY_EXCEEDED', 'Session request identity capacity reached', operation, agentId, requestId);
-      if (agent.interruption || !options.canSend(agent) || reservations.has(agentId)) throw options.problem('BUSY', 'Agent has a pending exclusive operation', operation, agentId, requestId);
-      entry = { id: randomUUID(), name, payload, fingerprint, dispatched: false, executionEpoch: agent.executionEpoch };
+      if (!dispatched && (agent.interruption || !options.canSend(agent) || reservations.has(agentId))) {
+        throw options.problem('BUSY', 'Agent has a pending exclusive operation', operation, agentId, requestId);
+      }
+      const id = saved?.inputId ?? randomUUID();
+      const executionEpoch = durableParams(saved?.parameters)?.executionEpoch ?? agent.executionEpoch;
+      if (!saved) options.durable?.(owner => owner.reserveInput({
+        resourceKey: agentId, caller: caller(name), requestId, inputId: id, parameterFingerprint,
+        parameters: { sessionCommand: name, executionEpoch },
+      }));
+      entry = { id, name, payload, fingerprint, dispatched, executionEpoch };
       requests.set(key, entry);
     }
     if (entry.result !== undefined) return structuredClone(entry.result);
     const operationEntry = entry;
     if (!entry.work) {
       const work = async () => {
-        if (!operationEntry.dispatched && (!options.available(agent) || !options.canSend(agent))) throw options.problem('SESSION_UNAVAILABLE', 'Agent stopped before session dispatch', operation, agentId, requestId);
+        if (!operationEntry.dispatched && (!options.available(agent) || !options.canSend(agent) ||
+            operationEntry.executionEpoch !== agent.executionEpoch)) {
+          throw options.problem('SESSION_UNAVAILABLE', 'Agent stopped or changed epoch before Session dispatch', operation, agentId, requestId);
+        }
         if (name === 'compact' && !operationEntry.dispatched && (agent.info.status !== 'idle' || agent.nativeExecuting || agent.activityClaims.size || reservations.has(agentId))) {
           return { operationId: operationEntry.id, agentId, requestId, status: 'busy', reason: 'Agent has active or starting work' };
         }
         const exclusive = name === 'compact';
         if (exclusive) reservations.add(agentId);
         const queryOnly = operationEntry.dispatched;
-        operationEntry.dispatched = true;
         const inputClaim = name === 'context' && ['steer', 'followUp'].includes(payload.delivery as string) && payload.wakeIfIdle !== false;
-        if (inputClaim && !queryOnly) { agent.activityClaims.add(operationEntry); options.activity(agent); }
         try {
-          const command = name === 'context' ? 'core_context' : `core_session_${({ abortRetry: 'abort_retry', clearQueue: 'clear_queue' } as Record<string, string>)[name] ?? name}`;
-          const data = await options.backend.sessionCommand(agentId, command, { id: operationEntry.id, executionEpoch: operationEntry.executionEpoch, ...payload }, queryOnly) as Record<string, unknown>;
+          if (!queryOnly) {
+            const allocation = options.durable?.(owner => owner.get(agentId));
+            if (allocation) {
+              const expiry = Date.parse(allocation.expiresAt ?? '');
+              if (!Number.isFinite(expiry) || expiry - Date.now() < 5000) {
+                throw options.problem('SERVICE_UNAVAILABLE', 'Sandbox lease has insufficient confirmed time for Session dispatch', operation, agentId, requestId);
+              }
+              options.durable?.(owner => owner.recordInput(agentId, caller(name), requestId, 'dispatched'));
+            }
+          }
+          operationEntry.dispatched = true;
+          if (inputClaim && !queryOnly) { agent.activityClaims.add(operationEntry); options.activity(agent); }
+          const data = await options.backend.sessionCommand(agentId, command(name), { id: operationEntry.id, executionEpoch: operationEntry.executionEpoch, ...payload }, queryOnly) as Record<string, unknown>;
           const identity = name === 'context' ? { inputId: operationEntry.id } : { operationId: operationEntry.id, agentId, requestId };
           const result = { ...options.sanitize(data) as object, ...identity };
-          if ((result as any).status !== 'unknown') {
+          const confirmed = (result as { status?: string }).status !== 'unknown';
+          options.durable?.(owner => owner.recordInput(agentId, caller(name), requestId, confirmed ? 'accepted' : 'unknown', confirmed ? result : undefined));
+          if (confirmed) {
             operationEntry.result = result;
             if (inputClaim && ['not-accepted', 'failed'].includes((result as any).status)) { agent.activityClaims.delete(operationEntry); options.activity(agent); }
           }
@@ -131,12 +166,26 @@ export function createSessionControls(options: {
   };
   return {
     api: Object.freeze(api),
-    hasContext(agentId: string, requestId: string) { return requests.get(JSON.stringify([agentId, requestId]))?.name === 'context'; },
-    reconcile(agentId: string, operation: string, requestId: string) {
+    hasContext(agentId: string, requestId: string) {
+      if (requests.get(JSON.stringify([agentId, requestId]))?.name === 'context') return true;
+      const saved = options.durable?.(owner => owner.input(agentId, 'host', requestId));
+      return durableParams(saved?.parameters)?.sessionCommand === 'context';
+    },
+    async reconcile(agentId: string, operation: string, requestId: string) {
       const entry = requests.get(JSON.stringify([agentId, requestId]));
-      const name = operation === 'send' ? 'context' : operation;
-      if (!entry || !entry.dispatched || entry.name !== name) return Promise.resolve({ status: 'unknown', requestId });
-      return mutation(agentId, entry.name, entry.payload, requestId);
+      const name = operation === 'send' ? 'context' : operation as SessionMutation;
+      if (entry?.dispatched && entry.name === name) return mutation(agentId, entry.name, entry.payload, requestId);
+      const saved = options.durable?.(owner => owner.input(agentId, caller(name), requestId));
+      const parameters = durableParams(saved?.parameters);
+      if (!saved || saved.state === 'reserved' || parameters?.sessionCommand !== name) return { status: 'unknown', requestId };
+      if (saved.state === 'accepted') return structuredClone(saved.receipt);
+      const data = await options.backend.sessionCommand(agentId, command(name), { id: saved.inputId, executionEpoch: parameters.executionEpoch }, true);
+      const identity = name === 'context' ? { inputId: saved.inputId } : { operationId: saved.inputId, agentId, requestId };
+      const result = { ...options.sanitize(data) as object, ...identity };
+      if ((result as { status?: string }).status !== 'unknown') {
+        options.durable?.(owner => owner.recordInput(agentId, caller(name), requestId, 'accepted', result));
+      }
+      return result;
     },
     reserved: (agentId: string) => reservations.has(agentId),
     async context(agentId: string, input: ContextInput, request: ContextSendOptions): Promise<ContextInputReceipt> {

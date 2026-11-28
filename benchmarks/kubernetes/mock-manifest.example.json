@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "workloadMode": "mock-api",
+  "tier": 32,
+  "outputDirectory": "experiments/mock-api-32",
+  "waves": 3,
+  "rounds": 2,
+  "concurrency": 16,
+  "maxDurationMs": 600000
+}

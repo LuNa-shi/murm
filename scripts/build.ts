@@ -19,7 +19,7 @@ compile('tsconfig.json');
 
 // Preserve the relative locations used by runtime scripts and compiled tests.
 // The Docker build supplies the production trees only.
-for (const directory of ['src', 'scripts', 'deploy', 'examples', 'benchmarks/fate', 'benchmarks/lead-worker-orders', 'test']) {
+for (const directory of ['src', 'scripts', 'deploy', 'examples', 'benchmarks/fate', 'benchmarks/lead-worker-orders', 'benchmarks/kubernetes', 'test']) {
   const source = resolve(root, directory);
   if (!(await stat(source).catch(error => {
     if (error.code === 'ENOENT') return null;

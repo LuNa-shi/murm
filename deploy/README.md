@@ -68,3 +68,7 @@ Profile IP/port restrictions require actual packet-policy enforcement. `dns+nft`
 Built-in Runtime rejects legacy exact Workspace byte/inode requests and live shared mounts before creating resources. File transfer budgets remain configured through `filePolicy`. A trusted custom Provider can offer additional measured storage capabilities. Volume capacity, writable-layer quota and file-transfer limits have distinct scopes.
 
 To uninstall a setup-managed service, first close all Runtimes using it and independently confirm their Sandbox deletions or retained ownership. Use Docker to inspect and remove the exact `murm-opensandbox-<port>` service created by setup. Its owner-labelled state directory and saved user connection should be removed only when no retained resources depend on them. Never delete shared or externally operated volumes as part of individual Agent cleanup. A saved connection can be replaced through `murm setup --mode existing`.
+
+## Kubernetes cluster profile
+
+The [Kubernetes deployment profile](opensandbox-kubernetes/README.md) renders the official OpenSandbox 1.2.1 umbrella chart from a pinned source commit and registry digests. It supplies a single-active Lifecycle Server, authenticated Ingress routing, persistent Server/Runtime volumes and read-only cluster inventory. The application supplies a matching Runtime image and its explicit bootstrap/recovery command. Cluster acceptance and capacity remain `not-run` until their approved protocol is executed.

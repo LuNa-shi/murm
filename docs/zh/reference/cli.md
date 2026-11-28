@@ -112,3 +112,11 @@ node dist/scripts/read-harness-result.js --run-directory <dir> --runtime-id <id>
 `--lifetime task|interactive` 选择生命周期，默认 `task`。Subagents 支持持续到期限或停止的前台 `interactive`。`--interaction none|questions` 声明客户端是否能回答，默认 `none`。带 `--prompt` 的显式前台入口立即发起工作。启用互动或问答后通过 JSONL 接收后续命令。`--mode rpc` 等待 `run` 命令启动。
 
 `describe` 查询能力，`status` 读取当前快照，`answer` 按 `questionId` 回答，`agent.getState`、`agent.getStats`、`agent.getMessages` 查询底层会话。成员变更可用 `agent.configure`、`agent.compact`、`agent.abortRetry`、`agent.clearQueue`、`agent.send`、`agent.interrupt` 与 `agent.stop`，实际开放范围由 Harness 和执行器决定。`stop` 收尾整个 Run。最终结果分别记录保存和清理事实。
+
+## murm recover
+
+```sh
+murm recover --run-dir /private/runs/original-runtime-id --config /private/recovery.mjs
+```
+
+配置模块默认导出原始 Runtime options 对象或返回 options 的零参数异步工厂。命令只恢复清理权限，调用 `close()` 并输出回执；仅清理完成时退出 0。需要同主机、同 boot 的独占 writer 和匹配的持久化配置。待处理资源继续留账，并保留有限截止时间。参见 [Runtime 恢复](../runtime.md#持久化恢复与-kubernetes)。

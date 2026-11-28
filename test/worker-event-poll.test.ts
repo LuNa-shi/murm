@@ -92,3 +92,23 @@ test('a bounded Worker history request times out at the transport and is abortab
   await stopped;
   assert.equal(active, 0);
 });
+
+test('long polls reissue immediately after a page and stop cancels the single suspended read', async () => {
+  const poll = createWorkerEventPoll({ longPoll: true });
+  const active = Promise.withResolvers<void>();
+  let reads = 0;
+  let cancelled = false;
+  const work = poll.run(async signal => {
+    reads++;
+    if (reads === 1) return false;
+    active.resolve();
+    await new Promise<void>(resolve => signal.addEventListener('abort', () => { cancelled = true; resolve(); }, { once: true }));
+    return true;
+  });
+  await active.promise;
+  assert.equal(reads, 2);
+  poll.stop();
+  await work;
+  assert.equal(cancelled, true);
+  assert.equal(reads, 2);
+});

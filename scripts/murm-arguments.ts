@@ -6,6 +6,7 @@ export const setupUsage = [
   'Existing mode saves the authenticated connection. Run murm doctor --smoke to verify Worker and Runtime callbacks.',
 ].join('\n');
 export const initUsage = 'Usage: murm init --template subagents --dir <directory>';
+const recoverUsage = 'Usage: murm recover --run-dir <directory> --config <module>';
 export const doctorUsage = 'Usage: murm doctor [--config <module>] [--smoke]';
 const projectUsage = [
   'Usage: murm --harness <module> --prompt <text> [--cwd <directory>] [--config <module>] [--output-dir <directory>] [--lifetime task|interactive] [--interaction none|questions]',
@@ -18,7 +19,7 @@ const projectUsage = [
 export const murmUsage = [
   'Usage: murm                         Start an interactive session in the current project',
   'Usage: murm --version',
-  projectUsage, setupUsage, initUsage, doctorUsage,
+  projectUsage, setupUsage, initUsage, doctorUsage, recoverUsage,
   'Usage: murm trace --root <runs-dir> [--port 8787] [--open]',
 ].join('\n');
 
@@ -35,13 +36,13 @@ export type ProjectCommand = {
   interaction?: 'none' | 'questions';
 } & ({ mode: 'foreground'; cwd?: string; prompt: string } | { mode: 'rpc' });
 
-type MurmCommand = LocalCommand | { command: 'init'; directory: string } | { command: 'interactive' } | ProjectCommand;
+type MurmCommand = LocalCommand | { command: 'init'; directory: string } | { command: 'interactive' } | ProjectCommand | { command: 'recover'; directory: string; configPath: string };
 
 export function parseMurmCommand(args: string[]): MurmCommand | { help: string } {
   const [command, ...options] = args;
   if (command === undefined) return { command: 'interactive' };
   if (command === '--help' && options.length === 0) return { help: murmUsage };
-  const usages = { setup: setupUsage, init: initUsage, doctor: doctorUsage };
+  const usages = { setup: setupUsage, init: initUsage, doctor: doctorUsage, recover: recoverUsage };
   const usage = Object.hasOwn(usages, command) ? usages[command as keyof typeof usages] : murmUsage;
   if (options.length === 1 && options[0] === '--help' && usage !== murmUsage) return { help: usage };
   try {
@@ -74,6 +75,10 @@ export function parseMurmCommand(args: string[]): MurmCommand | { help: string }
         args: options, options: { template: { type: 'string' }, dir: { type: 'string' } },
       });
       if (values.template === 'subagents' && values.dir) return { command, directory: values.dir };
+    }
+    if (command === 'recover') {
+      const { values } = parseArgs({ args: options, options: { 'run-dir': { type: 'string' }, config: { type: 'string' } } });
+      if (values['run-dir'] && values.config) return { command, directory: values['run-dir'], configPath: values.config };
     }
     if (command === 'doctor') {
       const { values } = parseArgs({

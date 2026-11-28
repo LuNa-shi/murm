@@ -1,3 +1,4 @@
+import type { OperationLimits } from './operation-queue.js';
 import type { ModelConfig, RuntimeConnectionOptions, Sandbox, SteeringMode } from './backend-config.js';
 import type { ExecutorSelection } from './executor-adapter.js';
 import type { FilePolicy } from './file-policy.js';
@@ -34,6 +35,14 @@ export interface CreateRuntimeOptions {
   outputDir: string;
   agentAccessPolicy?: AgentAccessPolicy;
   hooks?: RuntimeHooks;
+  operationLimits?: OperationLimits;
+  persistence?: { deploymentId: string; contract: string; retainForMs?: number };
+}
+
+export interface RecoverRuntimeOptions extends CreateRuntimeOptions {
+  runDirectory: string;
+  cleanupOnly?: boolean;
+  restoreService?(definition: RuntimeServiceDefinition): Promise<ServiceRegistration | undefined>;
 }
 
 export interface FileEntry {
@@ -175,6 +184,7 @@ export interface AgentSpawnReceipt {
 }
 
 export type AgentEvent = { agentId: string } & (
+  | { type: 'workerProbe'; requestId: string }
   | SessionEvent
   | { type: 'output'; text: string }
   | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
@@ -185,6 +195,7 @@ export type AgentEvent = { agentId: string } & (
 export type RuntimeEvent = AgentEvent
   | { type: 'agentChanged'; agentId: string }
   | { type: 'runtimeChanged' }
+  | { type: 'subscriberGap'; dropped: number }
   | { type: 'management'; change: RuntimeManagementChange };
 
 export type RuntimeState = 'open' | 'closing' | 'closed';
@@ -212,6 +223,8 @@ export interface PendingCleanup {
     reason: 'archive-session' | 'collect-artifacts';
     status: 'retained' | 'retain-at-risk';
     autoRenewing: boolean;
+    deadline?: string;
+    owner?: string;
   };
 }
 
@@ -305,6 +318,7 @@ export interface AgentAccessMutation {
 export type AgentAccessGrant = AgentAccessMutation & { readonly binding?: string };
 
 export interface RuntimeManagementSnapshot {
+  readonly recoveryBlockedServices?: readonly string[];
   readonly sequence: number;
   readonly profiles: readonly ProfileDefinition[];
   readonly services: readonly RuntimeServiceDefinition[];
@@ -324,11 +338,18 @@ export type RuntimeManagementChange = {
 export interface Runtime {
   readonly id: string;
   readonly state: RuntimeState;
+  diagnostics(): {
+    renewing: number;
+    eventReads: number;
+    pendingSubscriberCallbacks: number;
+    queues: Record<'prepare' | 'stop' | 'transfer' | 'reconcile', { active: number; queued: number }>;
+  };
   readonly session: RuntimeSession;
   spawn(options: SpawnOptions): Promise<AgentInfo>;
   get(agentId: string): Promise<AgentInfo>;
   list(filter?: AgentListFilter): Promise<AgentInfo[]>;
   interrupt(agentId: string, options: InterruptOptions): Promise<InterruptReceipt>;
+  probeWorkerEvent(agentId: string, options: { requestId: string; timeoutMs?: number }): Promise<{ requestId: string; elapsedMs: number }>;
   send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
   send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
   send(agentId: string, input: ContextInput, options: ContextSendOptions): Promise<ContextInputReceipt>;

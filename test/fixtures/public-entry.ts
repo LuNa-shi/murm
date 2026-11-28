@@ -5,7 +5,7 @@ export const rootExports = [
   'createInputAdmission', 'createOwnedResources', 'createPiExecutor', 'createRuntime',
   'createSandbox', 'decodeFileTree', 'getExecutorCapabilities', 'httpClient',
   'importGitTree', 'initializeGitRepository', 'isGitTreePath', 'observeProjectRuntime',
-  'projectConfiguration', 'projectResult', 'readHarnessResult', 'requestHttp',
+  'projectConfiguration', 'projectResult', 'readHarnessResult', 'recoverRuntime', 'requestHttp',
   'resolveSandboxConnection', 'runInput', 'runWithReport', 'seedTeamRepository',
   'seededCheckoutInstruction', 'snapshotFileTree', 'stableStringify', 'workerImageFor',
 ];

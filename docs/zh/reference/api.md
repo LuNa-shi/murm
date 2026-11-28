@@ -26,6 +26,7 @@ npm install --ignore-scripts /absolute/path/to/luna-shi-murm-0.2.0.tgz
 | `createSandbox(config)` | 函数 | 创建不可变、可复用的 OpenSandbox 连接配置句柄，或接入自定义 `{ provider }` `SandboxProvider`。 |
 | `resolveSandboxConnection(overrides?)` | 函数 | 按与 CLI 一致的优先级解析 Lifecycle 地址、本地密钥与默认镜像（仅在可信宿主配置中使用）。 |
 | `createRuntime(options)` | 异步函数 | 启动单次 Run 的控制面（`outputDir/<runtimeId>/`、Service Bridge、Model Gateway），支持 `executor` 与 `filePolicy` 预算。 |
+| `recoverRuntime(options)` | 异步函数 | 在可验证的同主机归属下恢复持久化 Run，支持只清理和动态 Service 重建。 |
 | `createPiExecutor({ version })` / `createCodexExecutor({ version })` | 函数 | 显式选择受支持的内置执行器版本（Pi `1.3.0` / `1.4.0`、Codex `0.172.0`）；也可继续用 `'pi'` / `'codex'` 简写。 |
 | `createExecutorAdapter(declaration)` / `EXECUTOR_ADAPTER_PROTOCOL` | 函数 / 常量 | 声明并校验镜像内安装的外部执行器适配器（协议 `murm-executor-v1`）。 |
 | `DEFAULT_WORKER_IMAGE` / `workerImageFor(selection)` | 常量 / 函数 | 官方双执行器镜像，或与选定执行器匹配的单执行器 Worker 镜像标签。 |
@@ -96,7 +97,7 @@ const runtime = await createRuntime({
   - 默认 `mode: 'steer'` 且 `wakeIfIdle: true`；传入 `mode: 'followUp'` 将输入排在当前执行之后。
   - 返回 `InputReceipt`（`{ status: 'accepted', disposition: 'started' | 'queued' | 'handled' }` 或 `{ status: 'unknown' }`），当 `wakeIfIdle: false` 且目标空闲时返回 `{ status: 'not-accepted', reason: 'idle' }`。
   - 遇到 `unknown` 时必须使用完全相同的 `requestId` 和参数重试对账；同一 `requestId` 修改参数会抛出 `CONFLICT`。
-- **`runtime.onEvent(listener)`**：返回 `unsubscribe()` 取消订阅函数。先订阅再执行 `spawn`/`send`，随后通过 `get`/`list`/`state` 读取当前视图。
+- **`runtime.onEvent(listener)`**：返回 `unsubscribe()` 取消订阅函数。先订阅再执行 `spawn`/`send`，随后通过 `get`/`list`/`state` 读取当前视图。 异步回调积压到 32 个时，监听器会在一个回调完成后收到带计数的 `subscriberGap`，随后可重新读取当前状态。
   - 推送 `output`、`settled`、`error`、`exit`、`agentChanged`、`runtimeChanged` 与 `management` 事件。
   - 事件可能在 `send()` 返回之前到达；单个监听者的异常彼此隔离并记录到账本。
 
@@ -152,6 +153,12 @@ const receipt = await runtime.files.replace(agentId, {
 | Runtime 输入 `OPERATION_UNKNOWN` / `status: 'unknown'` | 派发后宿主等待超时或传输中断 | 必须使用**完全相同的 `requestId` 与参数**重放对账 |
 | `SERVICE_TIMEOUT` / 未知 Service 写入 | Adapter 可能已经产生副作用 | 保留 `operation_id` 并按该 Service 的幂等契约核对状态；Registry 不会自动重试写入 |
 | `cleanup: 'pending'` | 停止执行、会话归档、必选 `collect` 或删除沙箱尚未完成 | 检查 `pending[].action` 与 `errors`，排除障碍后在同一 Runtime 上重试 `stop()` / `close()` |
+
+## recoverRuntime and Worker probes
+
+`recoverRuntime(options: RecoverRuntimeOptions): Promise<Runtime>` 从包根公开导出。选项扩展 `CreateRuntimeOptions`，增加 `runDirectory`、可选 `cleanupOnly` 和 `restoreService(definition): Promise<ServiceRegistration | undefined>`。创建选项新增 `persistence: { deploymentId, contract, retainForMs? }` 与 `operationLimits`。恢复校验原合同和同主机、同 boot 归属。
+
+`runtime.probeWorkerEvent(agentId, { requestId, timeoutMs? })` 在关联的 Worker 事件到达 Core 后返回 `{ requestId, elapsedMs }`。该方法要求 Agent 存活，使用普通事件接纳链路。参见 [Runtime 恢复](../runtime.md#持久化恢复与-kubernetes)。
 
 ## HarnessSession
 

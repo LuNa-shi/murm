@@ -70,3 +70,7 @@ Runtime 使用 `connection: { publicUrl: 'https://runtime.example.net/murm' }` �
 自定义集成使用 `createSandbox({ provider, timeoutSeconds })`，遵循公开 `SandboxProvider` 合同。管理员配方与版本 pin 见部署指南。
 
 [Runtime](runtime.md) · [宿主网关](gateway.md) · [部署](../../deploy/README.md)
+
+## Kubernetes 部署
+
+一个 Runtime 使用一个 OpenSandbox 集群入口和固定回调地址，由 Kubernetes 调度 Sandbox Pod。持久化归属支持独占 writer 下的同主机、同 boot 恢复；当前没有跨节点自动接管。在两台 worker VM 上已运行 2 和 8 档的真实 Sandbox 工作负载。32、128 和 1,024 档通过本机 mock Agent API 的 Sandbox 生命周期检查。参见 [Runtime](runtime.md) · [Deployment](../../deploy/opensandbox-kubernetes/README.md)
