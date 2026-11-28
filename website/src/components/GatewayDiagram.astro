@@ -33,7 +33,7 @@ const p = isZh ? 'zh' : 'en';
     <!-- TRUSTED HOST ZONE -->
     <rect x="16" y="14" width="848" height="296" rx="8" fill="var(--bg-elevated)" stroke="var(--ink)" stroke-width="1.6" />
     <text x="32" y="37" class="dsvg-zone-title">{isZh ? '可信宿主机（TRUSTED HOST）' : 'TRUSTED HOST'}</text>
-    <text x="848" y="37" text-anchor="end" class="dsvg-zone-sub">{isZh ? 'Node.js 进程 · 持有凭据、Services 与权威运行账本' : 'Node.js process · owns secrets, Services, and authoritative ledgers'}</text>
+    <text x="848" y="37" text-anchor="end" class="dsvg-zone-sub">{isZh ? '持有凭据、共享 Services 与运行账本' : 'Holds secrets, Services & run logs'}</text>
     <line x1="16" y1="47" x2="864" y2="47" stroke="var(--border)" stroke-width="1" />
 
     <!-- Host Row 1 -->
@@ -65,16 +65,16 @@ const p = isZh ? 'zh' : 'en';
     <rect x="32" y="206" width="388" height="88" rx="5" class="dsvg-card-service" />
     <rect x="32" y="206" width="388" height="4" rx="2" fill="var(--sch-indigo)" />
     <text x="46" y="229" class="dsvg-title">Service Bridge (HTTP)</text>
-    <text x="46" y="249" class="dsvg-body">{isZh ? '• Bearer 令牌鉴权 → 绑定真实 agentId' : '• Bearer token auth → verified agentId'}</text>
-    <text x="46" y="267" class="dsvg-body">{isZh ? '• Profile.services 白名单与 JSON Schema 校验' : '• Profile.services ACL & JSON Schema check'}</text>
-    <text x="46" y="285" class="dsvg-body">{isZh ? '• 派发至进程内或外部 HTTP Service 并回传结果' : '• Dispatches to in-process or HTTP Service & replies'}</text>
+    <text x="46" y="249" class="dsvg-body">{isZh ? '• 临时令牌鉴权 → 绑定真实 agentId' : '• Per-agent token → verified agentId'}</text>
+    <text x="46" y="267" class="dsvg-body">{isZh ? '• 调用前校验权限与入参，返回时校验输出' : '• Checks permissions & input pre-call, output post-call'}</text>
+    <text x="46" y="285" class="dsvg-body">{isZh ? '• 转发至进程内或外部 HTTP Service 并回传结果' : '• Forwards to in-process or HTTP Service & replies'}</text>
 
     <rect x="460" y="206" width="388" height="88" rx="5" class="dsvg-card" />
     <rect x="460" y="206" width="388" height="4" rx="2" fill="var(--sch-teal)" />
-    <text x="474" y="229" class="dsvg-title">Model Gateway (/v1/responses)</text>
+    <text x="474" y="229" class="dsvg-title">Model Gateway</text>
     <text x="474" y="249" class="dsvg-body">{isZh ? '• 每 Agent 独立可即时吊销令牌' : '• Per-agent revocable bearer token'}</text>
     <text x="474" y="267" class="dsvg-body">{isZh ? '• 仅在宿主机注入上游模型 API 密钥' : '• Injects upstream API keys strictly on host'}</text>
-    <text x="474" y="285" class="dsvg-body">{isZh ? '• 可选 modelAccessPolicy 同步租约门控' : '• Optional synchronous modelAccessPolicy gate'}</text>
+    <text x="474" y="285" class="dsvg-body">{isZh ? '• 支持按请求检查任务租约并及时中止' : '• Optional per-request lease check & abort'}</text>
 
     <!-- Host Internal Routes -->
     <path d="M 154 202 V 162" fill="none" stroke="var(--sch-indigo)" stroke-width="1.9" marker-start={`url(#ag-ar-in-${p})`} marker-end={`url(#ag-ar-in-${p})`} />

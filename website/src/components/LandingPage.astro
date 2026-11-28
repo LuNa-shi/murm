@@ -38,14 +38,20 @@ const copy = isZh
       m2Title: '一个集群如何在 murm 上运行',
       m2DescPre: '你只需编写 ',
       m2DescHighlight: 'Harness',
-      m2DescPost: '（定义角色 Profiles、注册共享 Services 与编排控制循环），通过 Runtime 驱动隔离沙箱中的 Agents，经宿主机网关调用 Services，并用内置 Trace Viewer 观测执行与验证产物。',
+      m2DescPost: '，把角色、共享状态和控制循环交给 Runtime，即可驱动隔离沙箱中的多个 Agent 协同工作。',
       m2Link: '阅读核心概念 →',
-      m3Eyebrow: '03 · 一个 RUNTIME，五种 HARNESS',
-      m3Title: '同一底座，驱动五种协作拓扑',
-      m3DescPre: '点击任意卡片切换协作流程示意，或点击图例 ',
-      m3DescHighlight: '放大查看',
-      m3DescPost: '。五种拓扑共用同一套 Runtime，零引擎修改。',
-      m3Link: '对比全部五种拓扑 →',
+      m3Eyebrow: '03 · 观测与调试（TRACE VIEWER）',
+      m3Title: '像时间轴一样回放每次多智能体运行',
+      m3DescPre: '零额外依赖，一条 ',
+      m3DescHighlight: 'murm trace',
+      m3DescPost: ' 命令即可缩放多 Agent 泳道、查看模型上下文与跨 Agent 协作交接，并核对导出产物与清理回执。',
+      m3Link: '体验真实交互泳道 →',
+      m4Eyebrow: '04 · 一个 RUNTIME，五种 HARNESS',
+      m4Title: '同一底座，驱动五种协作拓扑',
+      m4DescPre: '点击任意卡片切换协作流程示意，或点击图例 ',
+      m4DescHighlight: '放大查看',
+      m4DescPost: '。五种拓扑共用同一套 Runtime，零引擎修改。',
+      m4Link: '对比全部五种拓扑 →',
       footerQuickstart: '快速上手',
       footerBuild: '构建 Harness',
       footerApi: 'API 参考',
@@ -67,16 +73,22 @@ const copy = isZh
       scrollCue: 'SCROLL',
       m2Eyebrow: '02 · MENTAL MODEL',
       m2Title: 'How a swarm runs on murm',
-      m2DescPre: 'You write a ',
+      m2DescPre: 'Write a ',
       m2DescHighlight: 'Harness',
-      m2DescPost: ' (Agent Profiles, shared Services, and the control loop). The Runtime drives isolated Agents, routes Services through the Host Gateway, streams live traces to Trace Viewer, and collects artifacts before cleanup.',
+      m2DescPost: ' for roles, shared Services, and control rules — Runtime handles isolated containers, host-gated calls, and trace archiving.',
       m2Link: 'Read core concepts →',
-      m3Eyebrow: '03 · ONE RUNTIME, FIVE HARNESSES',
-      m3Title: 'Five coordination topologies on one core',
-      m3DescPre: 'Select any card to switch the illustrated execution flow, or click the diagram to ',
-      m3DescHighlight: 'zoom in',
-      m3DescPost: '. Zero Runtime edits across all five.',
-      m3Link: 'Compare all five →',
+      m3Eyebrow: '03 · OBSERVE & DEBUG (TRACE VIEWER)',
+      m3Title: 'Scrub every multi-agent run like a timeline editor',
+      m3DescPre: 'Zero extra dependencies: launch ',
+      m3DescHighlight: 'murm trace',
+      m3DescPost: ' to zoom multi-agent swimlanes, inspect model contexts and cross-agent handoffs, and verify exported artifacts.',
+      m3Link: 'Try live interactive viewer →',
+      m4Eyebrow: '04 · ONE RUNTIME, FIVE HARNESSES',
+      m4Title: 'Five coordination topologies on one core',
+      m4DescPre: 'Select any card to switch the illustrated execution flow, or click the diagram to ',
+      m4DescHighlight: 'zoom in',
+      m4DescPost: '. Zero Runtime edits across all five.',
+      m4Link: 'Compare all five →',
       footerQuickstart: 'Quickstart',
       footerBuild: 'Build a Harness',
       footerApi: 'API Reference',
@@ -168,7 +180,7 @@ const copy = isZh
     </div>
 
     <!-- Chapter 2: 02 · MENTAL MODEL (Tactical Sandtable) -->
-    <section class="chapter landing-section">
+    <section class="chapter landing-section" id="mental-model">
       <div class="chapter-rule" data-reveal-line aria-hidden="true"></div>
       <div class="section-header" data-reveal style="--reveal-delay: 40ms">
         <div>
@@ -184,14 +196,10 @@ const copy = isZh
       <div data-reveal style="--reveal-delay: 140ms">
         <CoreModelBlueprint lang={lang} />
       </div>
-
-      <div data-reveal style="--reveal-delay: 200ms">
-        <TracePreviewStrip lang={lang} />
-      </div>
     </section>
 
-    <!-- Chapter 3: 03 · ONE RUNTIME, FIVE HARNESSES -->
-    <section class="chapter landing-section">
+    <!-- Chapter 3: 03 · TRACE VIEWER -->
+    <section class="chapter landing-section" id="trace-viewer">
       <div class="chapter-rule" data-reveal-line aria-hidden="true"></div>
       <div class="section-header" data-reveal style="--reveal-delay: 40ms">
         <div>
@@ -201,7 +209,26 @@ const copy = isZh
             {copy.m3DescPre}<span class="marker-highlight">{copy.m3DescHighlight}</span>{copy.m3DescPost}
           </p>
         </div>
-        <a class="section-link" href={docHref(lang, 'harnesses')}>{copy.m3Link}</a>
+        <a class="section-link" href={`${docHref(lang, 'trace-viewer')}#live-demo`}>{copy.m3Link}</a>
+      </div>
+
+      <div data-reveal style="--reveal-delay: 140ms">
+        <TracePreviewStrip lang={lang} />
+      </div>
+    </section>
+
+    <!-- Chapter 4: 04 · ONE RUNTIME, FIVE HARNESSES -->
+    <section class="chapter landing-section" id="harnesses">
+      <div class="chapter-rule" data-reveal-line aria-hidden="true"></div>
+      <div class="section-header" data-reveal style="--reveal-delay: 40ms">
+        <div>
+          <p class="section-eyebrow">{copy.m4Eyebrow}</p>
+          <h2 class="section-title">{copy.m4Title}</h2>
+          <p class="section-desc">
+            {copy.m4DescPre}<span class="marker-highlight">{copy.m4DescHighlight}</span>{copy.m4DescPost}
+          </p>
+        </div>
+        <a class="section-link" href={docHref(lang, 'harnesses')}>{copy.m4Link}</a>
       </div>
 
       <div data-reveal style="--reveal-delay: 140ms">
@@ -209,7 +236,7 @@ const copy = isZh
       </div>
     </section>
 
-    <!-- Chapter 4: 04 · ONE UNIFORM PLATFORM -->
+    <!-- Chapter 5: 05 · ONE UNIFORM PLATFORM -->
     <DomainStrip lang={lang} />
 
     <footer class="landing-footer" data-reveal>

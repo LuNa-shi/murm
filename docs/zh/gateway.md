@@ -13,7 +13,7 @@ order: 6
 
 1. **绑定真实调用者身份**：每个 Agent 启动时都会分配独立的临时 Bearer Token，Bridge 据此解析出真实的 `caller.agentId`、`caller.profile` 和可选的 `caller.binding`——Agent 绝无法在参数里伪造队友身份。
 2. **校验角色权限白名单**：检查该 Agent 当前是否获准调用这个操作（结合 `Profile.services` 与运行期动态授权）。
-3. **严格 JSON Schema 校验**：用 Ajv（draft-07，不做隐式类型转换）双向校验入参与返回值，格式不对的调用在触碰业务状态前即被拦截。
+3. **先校入参、后校输出（JSON Schema）**：用 Ajv（draft-07，不做隐式类型转换）在调用前严格校验入参——格式不合法的请求在触碰业务状态前即被拦截；Adapter 执行返回后再校验 `output_schema`（注意：若写操作在返回阶段触发 `SERVICE_OUTPUT_INVALID`，业务副作用可能已生效，重试前应先核查 Service 状态）。
 4. **全程自动记账**：每次调用的入参、耗时、返回值与错误自动写入 `service-calls.jsonl`，并在 [Trace Viewer](trace-viewer.md) 中还原成跨 Agent 协作交接记录。
 
 ## 2. Model Gateway：让模型密钥永不进入容器

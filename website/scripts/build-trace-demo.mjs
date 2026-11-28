@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 /**
  * Builds the static interactive Trace Viewer demo bundle under website/public/trace-demo/
- * directly from src/trace-viewer/public/ and test/fixtures/trace-viewer/runs/.
+ * directly from src/trace-viewer/public/ and a Run root directory.
  *
- * Supports both full standalone mode (/trace-demo/index.html?run=release-notes) and
- * clean zero-chrome docs embed mode (?run=release-notes&embed=1) controlled by outer tabs.
+ * Usage:
+ *   node website/scripts/build-trace-demo.mjs
+ *   node website/scripts/build-trace-demo.mjs --root /path/to/substrate-or-peermesh-runs --sanitize
+ *
+ * Supports both full standalone mode (/trace-demo/index.html?run=<id>) and
+ * clean zero-chrome docs embed mode (?run=<id>&embed=1) controlled by outer tabs.
  */
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -14,8 +18,52 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const websiteDir = resolve(scriptDir, '..');
 const repoDir = resolve(websiteDir, '..');
 const viewerPublicDir = resolve(repoDir, 'src/trace-viewer/public');
-const fixtureRoot = resolve(repoDir, 'test/fixtures/trace-viewer/runs');
 const outDir = resolve(websiteDir, 'public/trace-demo');
+
+function parseCliArgs(argv) {
+  let root = process.env.TRACE_DEMO_ROOT || resolve(repoDir, 'test/fixtures/trace-viewer/runs');
+  let sanitize = Boolean(process.env.TRACE_DEMO_ROOT);
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--root' && argv[i + 1]) {
+      root = resolve(argv[++i]);
+      sanitize = true;
+    } else if (arg === '--sanitize') {
+      sanitize = true;
+    } else if (arg === '--no-sanitize') {
+      sanitize = false;
+    }
+  }
+  return { root, sanitize };
+}
+
+const SENSITIVE_KEYS = /^(authorization|api[_-]?key|x-api-key|token|secret|password|cookie)$/i;
+
+function sanitizeText(text) {
+  return text
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer [REDACTED]')
+    .replace(/\b(sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{20,})\b/g, '[REDACTED_KEY]')
+    .replace(/\/(Users|home)\/[^/\s"'`]+/g, '/$1/demo')
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, 'demo@example.com');
+}
+
+function sanitizeValue(value) {
+  if (typeof value === 'string') return sanitizeText(value);
+  if (!value || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(sanitizeValue);
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (SENSITIVE_KEYS.test(k) && typeof v === 'string') {
+      out[k] = '[REDACTED]';
+    } else {
+      out[k] = sanitizeValue(v);
+    }
+  }
+  return out;
+}
+
+const cli = parseCliArgs(process.argv.slice(2));
+const fixtureRoot = cli.root;
 
 async function loadTraceReader() {
   const readerPath = resolve(repoDir, 'src/trace-viewer/reader.mjs');
@@ -141,13 +189,14 @@ async function exportDemoData() {
     filesByRun[runId] = files;
   }
 
-  return stripVolatileFsFields({
+  const payload = stripVolatileFsFields({
     runs,
     summaries,
     events: eventsByRun,
     records: recordsByRun,
     files: filesByRun,
   });
+  return cli.sanitize ? sanitizeValue(payload) : payload;
 }
 
 const DEMO_SHIM_JS = `(() => {

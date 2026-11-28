@@ -13,7 +13,7 @@ Whenever an Agent runs `swarm <service> <operation>` inside its container, the r
 
 1. **Verified caller identity**: each Agent receives a unique per-Agent bearer token at spawn time. The Bridge resolves the real `caller.agentId`, `caller.profile`, and optional `caller.binding` — an Agent can never spoof another member in JSON input.
 2. **Permission enforcement**: verifies that the Agent is currently allowed to call that operation (combining `Profile.services` and any live `runtime.access` updates).
-3. **Strict JSON Schema validation**: validates both inputs and outputs with Ajv (draft-07, no coercion or default injection), blocking malformed calls before they touch shared state.
+3. **Pre-call input and post-call output JSON Schema checks**: Ajv (draft-07, no coercion or default injection) validates inputs **before** dispatching — malformed requests are blocked before touching business state. Outputs are validated **after** the adapter returns (for writes, a `SERVICE_OUTPUT_INVALID` error means the side effect may already have occurred — inspect Service state before retrying).
 4. **Automatic audit ledger**: logs every input, timing, result, and error to `service-calls.jsonl`, powering cross-Agent handoffs in [Trace Viewer](trace-viewer.md).
 
 ## 2. Model Gateway: keeping API keys off containers

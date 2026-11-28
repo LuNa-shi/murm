@@ -9,14 +9,14 @@ const { lang = 'en' } = Astro.props;
 const isZh = lang === 'zh';
 const items = isZh
   ? [
-      { kicker: '01 / SANDBOX', title: '运行 Agent', desc: '容器级隔离执行' },
-      { kicker: '02 / BRIDGE', title: '组合 Services', desc: '可定制协作方式' },
-      { kicker: '03 / TRACE', title: '全程可观测', desc: '完整日志与会话归档' },
+      { kicker: '01 / MINIMAL', title: '极简内核', desc: '像 Pi 一样克制，只保留最正交的运行原语' },
+      { kicker: '02 / EXTENSIBLE', title: '灵活可扩展', desc: '随时切换或自定义协作结构，不改底层引擎' },
+      { kicker: '03 / TRANSPARENT', title: '全链路透明', desc: '内置轨迹回放，跨 Agent 问题一眼定位' },
     ]
   : [
-      { kicker: '01 / SANDBOX', title: 'Run agents', desc: 'Isolated execution' },
-      { kicker: '02 / BRIDGE', title: 'Compose services', desc: 'Flexible coordination' },
-      { kicker: '03 / TRACE', title: 'Observe runs', desc: 'Transparent execution' },
+      { kicker: '01 / MINIMAL', title: 'Minimal core', desc: 'Small, orthogonal runtime primitives — like Pi' },
+      { kicker: '02 / EXTENSIBLE', title: 'Easy to extend', desc: 'Change collaboration structure without rewrites' },
+      { kicker: '03 / TRANSPARENT', title: 'Full transparency', desc: 'Built-in trace replay to pinpoint every issue' },
     ];
 ---
 
