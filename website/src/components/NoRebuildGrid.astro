@@ -32,32 +32,50 @@ const copy = isZh
           desc: '模型请求、工具执行、跨 Agent 交接与导出文件自动归档，一条 murm trace 命令即可缩放回放。',
         },
       ],
-      compareTitle: '与其他多智能体方案的架构对比',
-      compareCols: ['对比维度', '工作流 / 图框架（如 LangGraph / CrewAI）', '单拓扑开源 Agent / 自研脚本（如 Agensh）', 'murm'],
+      compareTitle: '与其他多智能体方案对比',
+      legend: { yes: '原生支持', partial: '需自建 / 受限', no: '不支持' },
+      compareCols: [
+        { title: '核心能力', sub: '' },
+        { title: '工作流 / 图框架', sub: 'LangGraph · CrewAI' },
+        { title: '单拓扑 Agent / 脚本', sub: 'Agensh · 自研胶水' },
+        { title: 'murm', sub: '极简多智能体底座' },
+      ],
       compareRows: [
         {
-          dim: '架构清晰度',
-          workflow: '偏无状态提示词节点编排；容器隔离、文件快照与长会话控制需自行补齐',
-          bespoke: '围绕单一固定协作模式实现，切换拓扑往往需要重写调度器与鉴权层',
-          murm: '极简 Runtime 与协作层彻底解耦，只改 Harness 和 Services 即可换拓扑',
+          dim: '协作拓扑自由度',
+          workflow: { status: 'partial', note: '偏图 / 流水线' },
+          bespoke: { status: 'no', note: '绑定单一模式' },
+          murm: { status: 'yes', note: '任意拓扑可切换' },
         },
         {
-          dim: '部署体验',
-          workflow: '沙箱、密钥隔离与日志采集需按项目各自拼装',
-          bespoke: '常绑定特定环境或重型外部基础设施',
-          murm: '单一安装包 + murm setup --mode local 一键就绪，也支持接入远程 OpenSandbox',
+          dim: 'Agent 运行隔离',
+          workflow: { status: 'no', note: '共享宿主进程' },
+          bespoke: { status: 'partial', note: '依赖宿主环境' },
+          murm: { status: 'yes', note: '每 Agent 独立容器' },
         },
         {
-          dim: '并发与扩展',
-          workflow: '进程内共享内存/目录，多 Agent 并发写代码易互相踩踏',
-          bespoke: '难以在不同团队规模、角色镜像与领域验证器之间复用',
-          murm: '每 Agent 独立容器、显式并发槽位与角色镜像，从 2 人平滑扩展到大规模集群',
+          dim: '密钥与权限边界',
+          workflow: { status: 'no', note: '凭据在进程内' },
+          bespoke: { status: 'partial', note: '手工拼装鉴权' },
+          murm: { status: 'yes', note: '宿主机统一拦截' },
         },
         {
-          dim: '调试透明度',
-          workflow: '日志分散在外部平台，难以关联文件变更与跨 Agent 调用',
-          bespoke: '多依赖文本日志，跨 Agent 因果交接难以追溯',
-          murm: '内置零依赖 murm trace 泳道视图，一键贯通模型上下文、协作交接与产物',
+          dim: '长会话编码 Agent',
+          workflow: { status: 'partial', note: '偏无状态节点' },
+          bespoke: { status: 'yes', note: '支持持久会话' },
+          murm: { status: 'yes', note: 'Pi · Codex · 自定义' },
+        },
+        {
+          dim: '共享状态与验证器',
+          workflow: { status: 'partial', note: '偏进程内状态' },
+          bespoke: { status: 'partial', note: '与调度紧耦合' },
+          murm: { status: 'yes', note: '可插拔 Services' },
+        },
+        {
+          dim: '跨 Agent 可观测性',
+          workflow: { status: 'partial', note: '依赖外接平台' },
+          bespoke: { status: 'no', note: '仅文本日志' },
+          murm: { status: 'yes', note: '内置零依赖回放' },
         },
       ],
     }
@@ -84,35 +102,57 @@ const copy = isZh
           desc: 'Model calls, tool runs, cross-agent handoffs, and exported files are archived automatically for instant murm trace replay.',
         },
       ],
-      compareTitle: 'How murm compares across architectures',
-      compareCols: ['Dimension', 'Workflow / graph frameworks (LangGraph, CrewAI)', 'Single-topology agents / custom scripts (e.g. Agensh)', 'murm'],
+      compareTitle: 'How murm compares',
+      legend: { yes: 'Built-in', partial: 'Partial / DIY', no: 'Not built-in' },
+      compareCols: [
+        { title: 'Capability', sub: '' },
+        { title: 'Workflow / Graph', sub: 'LangGraph · CrewAI' },
+        { title: 'Single-Topology', sub: 'Agensh · Custom scripts' },
+        { title: 'murm', sub: 'Minimal MAS runtime' },
+      ],
       compareRows: [
         {
-          dim: 'Architectural clarity',
-          workflow: 'Built for stateless prompt graphs; sandboxing, file snapshots, and persistent sessions are DIY glue',
-          bespoke: 'Wired around one fixed pattern; changing team topology means rewriting runner and auth logic',
-          murm: 'Minimal core separates execution from collaboration — swap only the Harness and Services',
+          dim: 'Topology flexibility',
+          workflow: { status: 'partial', note: 'Graph / DAG bias' },
+          bespoke: { status: 'no', note: 'Single pattern' },
+          murm: { status: 'yes', note: 'Any topology' },
         },
         {
-          dim: 'Deployment',
-          workflow: 'Container lifecycle, secret brokering, and trace storage assembled per project',
-          bespoke: 'Often coupled to custom local setups or fixed external stacks',
-          murm: 'One package + murm setup --mode local (or connect to a shared OpenSandbox service)',
+          dim: 'Agent isolation',
+          workflow: { status: 'no', note: 'Shared process' },
+          bespoke: { status: 'partial', note: 'Host-coupled' },
+          murm: { status: 'yes', note: 'Per-agent sandbox' },
         },
         {
-          dim: 'Scaling',
-          workflow: 'Shared process state and host directories collide as parallel coding agents grow',
-          bespoke: 'Hard to reuse cleanly across team sizes, role images, and external verifiers',
-          murm: 'Per-agent containers, explicit capacity slots, and per-role images scale cleanly',
+          dim: 'Secret & tool boundaries',
+          workflow: { status: 'no', note: 'In-process keys' },
+          bespoke: { status: 'partial', note: 'Custom glue' },
+          murm: { status: 'yes', note: 'Host-gated' },
         },
         {
-          dim: 'Observability',
-          workflow: 'External dashboards disconnected from sandbox files and agent-to-agent handoffs',
-          bespoke: 'Mostly plain text logs with limited cross-agent causality',
-          murm: 'Built-in zero-dependency murm trace UI linking model contexts, handoffs, and artifacts',
+          dim: 'Coding agent runtime',
+          workflow: { status: 'partial', note: 'Prompt nodes' },
+          bespoke: { status: 'yes', note: 'Real CLI agents' },
+          murm: { status: 'yes', note: 'Pi · Codex · custom' },
+        },
+        {
+          dim: 'Shared state & verifiers',
+          workflow: { status: 'partial', note: 'In-memory state' },
+          bespoke: { status: 'partial', note: 'Hard-coded' },
+          murm: { status: 'yes', note: 'Pluggable Services' },
+        },
+        {
+          dim: 'Multi-agent observability',
+          workflow: { status: 'partial', note: 'External SaaS' },
+          bespoke: { status: 'no', note: 'Text logs only' },
+          murm: { status: 'yes', note: 'Built-in trace UI' },
         },
       ],
     };
+
+type CompareStatus = 'yes' | 'partial' | 'no';
+const statusLabel = (status: CompareStatus) =>
+  status === 'yes' ? copy.legend.yes : status === 'partial' ? copy.legend.partial : copy.legend.no;
 ---
 
 <section class="chapter landing-section why-section">
@@ -177,26 +217,76 @@ const copy = isZh
 
   <div class="why-compare-wrap" data-reveal style="--reveal-delay: 240ms">
     <div class="why-compare-head">
-      <span class="pixel-badge">{isZh ? '架构对比' : 'COMPARISON'}</span>
-      <h3>{copy.compareTitle}</h3>
+      <div class="why-compare-title-group">
+        <span class="pixel-badge">{isZh ? '架构对比' : 'COMPARISON'}</span>
+        <h3>{copy.compareTitle}</h3>
+      </div>
+      <div class="why-compare-legend" aria-label={isZh ? '图例' : 'Legend'}>
+        <span class="why-legend-item">
+          <span class="cmp-badge cmp-badge-sm cmp-yes" aria-hidden="true">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.2 6.3 4.8 8.9 9.8 3.3" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          </span>
+          {copy.legend.yes}
+        </span>
+        <span class="why-legend-item">
+          <span class="cmp-badge cmp-badge-sm cmp-partial" aria-hidden="true">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4.1" stroke="currentColor" stroke-width="1.5" /><path d="M6 1.9A4.1 4.1 0 0 1 6 10.1Z" fill="currentColor" /></svg>
+          </span>
+          {copy.legend.partial}
+        </span>
+        <span class="why-legend-item">
+          <span class="cmp-badge cmp-badge-sm cmp-no" aria-hidden="true">
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M3 3 9 9M9 3 3 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+          </span>
+          {copy.legend.no}
+        </span>
+      </div>
     </div>
     <div class="why-compare-scroll">
       <table class="why-compare-table">
         <thead>
           <tr>
-            <th>{copy.compareCols[0]}</th>
-            <th>{copy.compareCols[1]}</th>
-            <th>{copy.compareCols[2]}</th>
-            <th class="why-col-murm">{copy.compareCols[3]}</th>
+            {copy.compareCols.map((col, i) => (
+              <th class={i === 3 ? 'why-col-murm' : undefined}>
+                <span>{col.title}</span>
+                {col.sub && <span class="why-col-sub">{col.sub}</span>}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {copy.compareRows.map((row) => (
             <tr>
               <td class="why-dim">{row.dim}</td>
-              <td>{row.workflow}</td>
-              <td>{row.bespoke}</td>
-              <td class="why-col-murm">{row.murm}</td>
+              {[row.workflow, row.bespoke, row.murm].map((cell, idx) => (
+                <td class={idx === 2 ? 'why-col-murm' : undefined}>
+                  <div class="why-cell">
+                    <span
+                      class={`cmp-badge cmp-${cell.status}`}
+                      role="img"
+                      aria-label={statusLabel(cell.status as CompareStatus)}
+                    >
+                      {cell.status === 'yes' && (
+                        <svg width="13" height="13" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                          <path d="M2.2 6.3 4.8 8.9 9.8 3.3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                      )}
+                      {cell.status === 'partial' && (
+                        <svg width="13" height="13" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                          <circle cx="6" cy="6" r="4.1" stroke="currentColor" stroke-width="1.5" />
+                          <path d="M6 1.9A4.1 4.1 0 0 1 6 10.1Z" fill="currentColor" />
+                        </svg>
+                      )}
+                      {cell.status === 'no' && (
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                          <path d="M3 3 9 9M9 3 3 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                        </svg>
+                      )}
+                    </span>
+                    <span class="why-cell-note">{cell.note}</span>
+                  </div>
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>
