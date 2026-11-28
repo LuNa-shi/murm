@@ -12,7 +12,7 @@ order: 16
 - Runtime 支持镜像内安装的外部执行器及经过验证的 Pi 版本。Pi 增加 Chat Completions，宿主机可接入自定义模型 transport。项目文件分阶段配置预算，通过磁盘暂存和分块支持更大的目录输入。
 - Linux setup 可以接入已鉴权的 OpenSandbox 服务，也可以先部署本地服务，再准备 Worker。默认使用 API 路径。严格本地模式保留显式工作区配额与网络规则。
 - SDK 可通过 `createSandbox` 接入外部 Sandbox Provider。setup、doctor 与内置配置共用连接解析。基础设施探针支持 Pi 和 Codex。
-- npm 全局目录不可写时，CLI 安装器改用用户目录。setup 会指出拉取失败的 OpenSandbox 镜像，并给出 Worker 构建重试命令，可使用镜像站的 Node 基础镜像。
+- npm 全局目录不可写时，CLI 安装器改用用户目录。本机 setup 在内置 Worker 缺失时直接用安装包构建。setup 会指出拉取失败的 OpenSandbox 镜像，并给出使用镜像站 Node 基础镜像的构建方法。
 
 ## v0.2.0 — 2026-11-27
 

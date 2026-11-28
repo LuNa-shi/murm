@@ -278,3 +278,43 @@ esac
     return true;
   });
 });
+
+test('local setup builds a missing built-in Worker without trying a registry pull', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-setup-worker-build-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const commands = join(directory, 'docker-commands');
+  await writeFile(join(directory, 'docker'), `#!/bin/sh
+printf '%s\\n' "$1" >> "$TEST_DOCKER_COMMANDS"
+case "$1" in
+  context) printf '[{"Endpoints":{"docker":{"Host":"unix:///dev/null"}}}]';;
+  info) printf '{"OSType":"linux","SecurityOptions":[]}';;
+  network) printf '[]';;
+  inspect) printf '[{"Id":"provider","Image":"server","State":{"Running":true},"Config":{"Labels":{"org.murm.setup.profile":"murm-local-linux-api-v2"}}}]';;
+  image)
+    if [ "$3" != -- ]; then printf 'execd'; exit 0; fi
+    echo 'No such image' >&2; exit 1;;
+  *) exit 1;;
+esac
+`, { mode: 0o700 });
+  const server = createServer((request, response) => {
+    response.writeHead(request.headers['open-sandbox-api-key'] === 'local-test-key' ? 200 : 403,
+      { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ items: [] }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => server.close());
+  const { port } = server.address() as { port: number };
+  await assert.rejects(promisify(execFile)(process.execPath, [cli, 'setup', '--mode', 'local'], {
+    env: { PATH: `${directory}:${process.env.PATH}`, HOME: directory, DOCKER_CONTEXT: 'test',
+      TEST_DOCKER_COMMANDS: commands, MURM_LIFECYCLE_URL: `http://127.0.0.1:${port}/v1`, MURM_LIFECYCLE_TOKEN: 'local-test-key' },
+  }), error => {
+    const { stdout, code } = error as { stdout: string; code: number };
+    assert.equal(code, 1);
+    assert.equal(JSON.parse(stdout).checks.find(check => !check.ok).id, 'worker-build');
+    return true;
+  });
+  const dockerCommands = (await readFile(commands, 'utf8')).trim().split('\n');
+  assert.equal(dockerCommands.filter(command => command === 'build').length, 1);
+  assert.ok(!dockerCommands.includes('pull'));
+});

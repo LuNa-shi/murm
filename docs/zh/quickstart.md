@@ -56,7 +56,7 @@ export PATH="$HOME/.local/bin:$PATH"
 murm setup
 ```
 
-按当前源码默认配置，这个命令会在 `127.0.0.1:8080` 启动托管 OpenSandbox，准备所选 Worker，创建一个真实的临时沙箱，验证 Bridge、模型网关、文件导出和沙箱删除。等到报告出现 `"infrastructure": "ready"` 和 `"ok": true` 再继续。这个探针使用本地测试响应，无需模型 API key。首次下载镜像可能需要几分钟。如果失败，处理报告里的问题后重试同一个命令。
+按当前源码默认配置，这个命令会在 `127.0.0.1:8080` 启动托管 OpenSandbox，准备所选 Worker，创建一个真实的临时沙箱，验证 Bridge、模型网关、文件导出和沙箱删除。等到报告出现 `"infrastructure": "ready"` 和 `"ok": true` 再继续。这个探针使用本地测试响应，无需模型 API key。在新机器上，setup 会获取固定版本的 OpenSandbox 镜像，并在本机直接构建所选 Worker。这可能需要几分钟。如果失败，处理报告里的问题后重试同一个命令。
 
 <details>
 <summary>接入已有的 OpenSandbox 服务</summary>
@@ -77,15 +77,17 @@ murm setup --mode existing
 <summary>镜像拉取失败怎么办</summary>
 
 - **OpenSandbox server 或 Execd。** 当前源码的本机 setup 会报告失败的镜像及完整 digest。在同一个 Docker context 中重试报告给出的 `docker pull`。网络受限时，可以配置 [Docker daemon 代理](https://docs.docker.com/engine/daemon/proxy/)，或请管理员提供相同的固定镜像引用。也可以接入已有的 OpenSandbox 服务。murm Worker 的 Dockerfile 只构建 Worker。
-- **murm Worker。** 本机 setup 先复用兼容缓存，再尝试拉取所选版本。默认镜像拉取失败时，会用安装包自带的 `deploy/worker/Dockerfile` 构建所选执行器。构建仍需要 Node 基础镜像、Debian 软件包和 npm 依赖。检查这些来源后重试 setup，或进入安装包目录或同版本的源码仓库运行报告给出的构建命令。如果有可信镜像站提供同一个 Node 基础镜像，可以传入 `--build-arg NODE_IMAGE=<可信镜像引用>`。
+- **murm Worker。** 本机 setup 先复用兼容缓存，缺失时直接从安装包自带的 `deploy/worker/Dockerfile` 构建所选执行器。构建需要 Node 基础镜像、Debian 软件包和 npm 依赖。检查这些来源后重试 setup，或运行报告里的构建命令排查错误。显式配置的 registry 镜像在缓存缺失时仍可拉取。
 - **从另一台机器导入 Worker。** 在网络可用的机器上拉取或构建兼容且与目标 Docker Engine CPU 架构一致的 Worker，用 `docker save -o worker.tar IMAGE` 导出。将文件传到目标机器，在目标 Docker context 中执行 `docker load -i worker.tar`。如果导入的标签和默认标签不同，先设置 `MURM_WORKER_IMAGE=IMAGE`，并在运行示例时保留该环境变量。接入已有服务时，Worker 镜像需在服务端的引擎上可用。
 
-如果安装的是当前源码构建的包，可以跳过 GHCR 拉取，直接构建默认的 Pi Worker：
+如果可信镜像站提供同一个 Node 基础镜像，可以在安装候选版后用它构建默认的 Pi Worker。将示例中的 registry 换成你的镜像站：
 
 ```bash
 (
   cd "$(dirname "$(readlink -f "$(command -v murm)")")/../.." &&
-    docker build -f deploy/worker/Dockerfile -t murm-worker:local --build-arg WORKER_EXECUTOR=pi .
+    docker build -f deploy/worker/Dockerfile -t murm-worker:local \
+      --build-arg WORKER_EXECUTOR=pi \
+      --build-arg NODE_IMAGE=registry.example.net/library/node:22.19.0-bookworm-slim .
 ) &&
   export MURM_WORKER_IMAGE=murm-worker:local &&
   murm setup

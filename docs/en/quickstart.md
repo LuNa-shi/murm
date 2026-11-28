@@ -56,7 +56,7 @@ export PATH="$HOME/.local/bin:$PATH"
 murm setup
 ```
 
-With the current source's defaults, this starts a managed OpenSandbox on `127.0.0.1:8080`, prepares the selected Worker, then starts a real temporary sandbox, checks the Bridge, Model Gateway, and file export, and confirms deletion. Wait for `"infrastructure": "ready"` and `"ok": true` in the setup report. This probe uses a local test response and needs no model API key. Initial setup downloads images and can take several minutes. Repeat the same command after correcting a failure.
+With the current source's defaults, this starts a managed OpenSandbox on `127.0.0.1:8080`, prepares the selected Worker, then starts a real temporary sandbox, checks the Bridge, Model Gateway, and file export, and confirms deletion. Wait for `"infrastructure": "ready"` and `"ok": true` in the setup report. This probe uses a local test response and needs no model API key. On a fresh host, setup fetches the pinned OpenSandbox images and builds the selected Worker locally. This can take several minutes. Repeat the same command after correcting a failure.
 
 <details>
 <summary>Connect to an existing OpenSandbox service</summary>
@@ -77,15 +77,17 @@ See [Sandboxes](sandbox.md) and [Host Gateway](gateway.md) for proxy routing and
 <summary>Recover from an image pull failure</summary>
 
 - **OpenSandbox server or Execd.** The local setup in the current source reports the failing image and its exact digest. Retry the displayed `docker pull` command in the same Docker context. If access is restricted, configure the [Docker daemon proxy](https://docs.docker.com/engine/daemon/proxy/) or ask your administrator to make those pinned references available. You can also use an existing OpenSandbox service. The murm Worker Dockerfile does not supply the OpenSandbox server or Execd.
-- **murm Worker.** Local setup uses a compatible cached image first, then tries the selected release tag. If the default pull fails, it builds the selected executor from the installed package's `deploy/worker/Dockerfile`. The build still needs a Node base image, Debian packages and npm dependencies. Check those sources and retry setup, or run the build command printed in the failure report from the installed package directory or matching checkout. The Dockerfile accepts `--build-arg NODE_IMAGE=<trusted-mirror-reference>` for the same Node base image in a mirror.
+- **murm Worker.** Local setup reuses a compatible cached image or builds the selected executor directly from the installed package's `deploy/worker/Dockerfile`. The build needs a Node base image, Debian packages and npm dependencies. Check those sources and retry setup. The report includes a manual build command for diagnosing failures. An explicitly configured registry image can still be pulled if it is absent from the cache.
 - **Transfer a Worker from another machine.** On a machine with access to the registries, pull or build a compatible Worker for the target Docker Engine's CPU architecture and run `docker save -o worker.tar IMAGE`. Copy the archive and run `docker load -i worker.tar` in the target Docker context. If the imported tag differs from the selected default, export `MURM_WORKER_IMAGE=IMAGE` before setup and keep it set for the example. With an existing service, the Worker must be available on that service's engine.
 
-To skip the GHCR pull and build the default Pi Worker yourself from a package built from the current source:
+If the Node base image is reachable through a trusted mirror, you can use it to build the default Pi Worker from the installed candidate. Replace the example registry with your mirror of the same base image:
 
 ```bash
 (
   cd "$(dirname "$(readlink -f "$(command -v murm)")")/../.." &&
-    docker build -f deploy/worker/Dockerfile -t murm-worker:local --build-arg WORKER_EXECUTOR=pi .
+    docker build -f deploy/worker/Dockerfile -t murm-worker:local \
+      --build-arg WORKER_EXECUTOR=pi \
+      --build-arg NODE_IMAGE=registry.example.net/library/node:22.19.0-bookworm-slim .
 ) &&
   export MURM_WORKER_IMAGE=murm-worker:local &&
   murm setup
