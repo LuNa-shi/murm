@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { runInstalledHarnessRpc } from './fixtures/installed-harness-rpc.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { createSubstrateUpstream } from './fixtures/substrate-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
@@ -94,15 +95,12 @@ test('installed Notes and Messages use the supplied prompt and project in both W
 config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;
 `, { mode: 0o600 });
-      const { stdout } = await execute(process.execPath, ['node_modules/.bin/murm', '--harness', id, '--cwd', project,
-        '--prompt', prompt, '--config', configPath, '--output-dir', join(evidenceDir, id)], {
-        cwd: installation.directory, env: installation.env, timeout: 115_000,
-      }).catch(error => {
-        assert.ifError(failure);
-        throw error;
-      });
+      const { result, status, observation } = await runInstalledHarnessRpc(installation, {
+        harness: id, cwd: project, prompt, configPath, outputDir: join(evidenceDir, id), timeoutMs: 115_000,
+      }).catch(error => { assert.ifError(failure); throw error; });
       assert.ifError(failure);
-      const { result } = JSON.parse(stdout);
+      assert.equal(status, 0);
+      assert.equal(observation.businessObserved, true);
       assert.equal(result.outcome, 'completed');
       assert.equal(result.cleanup.status, 'complete');
       assert.equal(result.acceptance.status, 'not-run');
@@ -117,7 +115,7 @@ export default config;
       assert.equal(await readFile(join(project, 'slot.txt'), 'utf8'), value + '\n');
       assert.deepEqual(await ownedContainers(result.result.runtimeId), []);
       evidence.push({ id, runId: result.runId, runtimeId: result.result.runtimeId, digest: result.initial.digest,
-        artifactVerified: true, resourcesClean: true });
+        artifactVerified: true, resourcesClean: true, observation });
     });
   }
   await writeFile(join(evidenceDir, 'verification.json'), JSON.stringify({
@@ -125,7 +123,7 @@ export default config;
   }, null, 2), { mode: 0o600 });
 });
 
-test('installed TaskPool starts read-only discovery and publishes a taken Task to seeded main', {
+test('installed TaskPool routes fenced feedback to an installed native execution and publishes to seeded main', {
   skip: process.env.MURM_PROJECT_NATIVE_TEST !== '1' && 'Requires the local OpenSandbox Worker',
   timeout: 200_000,
 }, async t => {
@@ -144,7 +142,10 @@ test('installed TaskPool starts read-only discovery and publishes a taken Task t
   await writeFile(join(project, '.swarm-staging'), 'ordinary file\n');
   const evidence = await createNativeEvidenceDirectory('project-taskpool');
   const prompt = 'Use the project slot to prepare an evidence file and publish it in the Mission Workspace.';
-  const script = `python3 - <<'MURM_PROJECT_TEST'
+  const feedback = 'TASKPOOL_CURRENT_EXECUTION_FEEDBACK';
+  const binding = Promise.withResolvers<string>();
+  const release = Promise.withResolvers<void>();
+  const claim = `python3 - <<'MURM_PROJECT_TEST'
 import os,json,subprocess,stat
 def cli(*args):
  p = subprocess.run(['swarm',*args],capture_output=True,text=True,timeout=30)
@@ -171,6 +172,14 @@ task=cli('task','create','--gap','Collect project evidence','--priority','medium
 take=cli('task','take',task,'--request-id','project-take')
 assert take['execution']['state']=='RUNNING'
 verify_tree()
+print('TAKEN_TASK:' + task)
+MURM_PROJECT_TEST`;
+  const deliver = `python3 - <<'MURM_PROJECT_TEST'
+import json,subprocess
+def cli(*args):
+ p = subprocess.run(['swarm',*args],capture_output=True,text=True,timeout=30)
+ assert p.returncode==0, p.stderr
+ return json.loads(p.stdout)
 with open('delivery.txt','w') as out:
  out.write(open('.slot').read())
 saved=cli('workspace','save','--request-id','project-save')
@@ -180,20 +189,36 @@ cli('task','finish','--outcome','done','--request-id','project-finish')
 print('PROJECT_TASKPOOL_OK')
 MURM_PROJECT_TEST`;
   let calls = 0;
+  let feedbackObserved = false;
   let failure: unknown;
   const server = createServer(async (req, res) => {
     try {
-      assert.ok(++calls <= 5);
+      assert.ok(++calls <= 8);
       const { input } = await new Response(req).json();
       const users = input.filter(row => row.role === 'user').flatMap(row => row.content)
         .map(part => typeof part === 'string' ? part : part.text).join('\n');
       assert.ok(users.includes(prompt));
-      const output = input.find(row => row.type === 'function_call_output' && row.call_id === 'project_taskpool');
-      if (output) assert.match(String(output.output), /PROJECT_TASKPOOL_OK/);
-      const item = output ? { type: 'message', id: 'taskpool_done', role: 'assistant', status: 'completed',
-        content: [{ type: 'output_text', text: 'Completed Task', annotations: [] }] }
-        : { type: 'function_call', id: 'taskpool_work', call_id: 'project_taskpool', name: 'bash',
-          arguments: JSON.stringify({ command: script, timeout: 90 }) };
+      const output = id => input.find(row => row.type === 'function_call_output' && row.call_id === id)?.output;
+      const tool = (id, command) => ({ type: 'function_call', id: id + '_work', call_id: id, name: 'bash',
+        arguments: JSON.stringify({ command, timeout: 90 }) });
+      const reply = (id, text) => ({ type: 'message', id, role: 'assistant', status: 'completed',
+        content: [{ type: 'output_text', text, annotations: [] }] });
+      let item;
+      if (output('project_taskpool_deliver')) {
+        assert.match(String(output('project_taskpool_deliver')), /PROJECT_TASKPOOL_OK/);
+        item = reply('taskpool_done', 'Completed Task');
+      } else if (users.includes(feedback)) {
+        feedbackObserved = true;
+        item = tool('project_taskpool_deliver', deliver);
+      } else if (output('project_taskpool_claim')) {
+        const taskId = /TAKEN_TASK:([^\s]+)/.exec(String(output('project_taskpool_claim')))?.[1];
+        assert.ok(taskId);
+        binding.resolve(taskId);
+        await release.promise;
+        item = reply('taskpool_claimed', 'Claimed the Task');
+      } else {
+        item = tool('project_taskpool_claim', claim);
+      }
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       res.end(streamResponse('k3', calls, item));
     } catch (error) {
@@ -203,7 +228,7 @@ MURM_PROJECT_TEST`;
     }
   }).listen(0, '127.0.0.1');
   await once(server, 'listening');
-  t.after(() => { server.closeAllConnections(); server.close(); });
+  t.after(() => { release.resolve(); server.closeAllConnections(); server.close(); });
   const configuration = {
     image, capacity: 1, workTimeoutMs: 100_000, closeTimeoutMs: 35_000,
     sandbox: {
@@ -221,17 +246,41 @@ MURM_PROJECT_TEST`;
 config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;
 `, { mode: 0o600 });
-  const args = ['node_modules/.bin/murm', '--harness', 'taskpool', '--cwd', project, '--prompt', prompt,
-    '--config', configPath, '--output-dir', join(evidence, 'output')];
-  const stdout = await execute(process.execPath, args, {
-    cwd: installation.directory, env: installation.env, timeout: 150_000, maxBuffer: 4 * 1024 ** 2,
-  }).then(value => value.stdout, error => {
-    assert.ifError(failure);
-    assert.fail(`TaskPool command failed: ${JSON.stringify(JSON.parse(error.stdout).result.result)}`);
+  const { result, observation } = await runInstalledHarnessRpc(installation, {
+    harness: 'taskpool', cwd: project, prompt, configPath, outputDir: join(evidence, 'output'), timeoutMs: 155_000,
+    async interact(session) {
+      const taskId = await binding.promise;
+      const receipts: any[] = [];
+      const unsubscribe = session.onEvent(event => {
+        if (event.type === 'operation' && event.operation === 'input') receipts.push(event);
+      });
+      const getReceipt = async (id: string) => {
+        for (let attempts = 0; attempts < 200; attempts++) {
+          const found = receipts.find(event => event.requestId === id);
+          if (found) return found.result.result;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        assert.fail('No operation receipt for ' + id);
+      };
+      try {
+        const parameters = { taskId, input: feedback, mode: 'steer' };
+        assert.equal((await session.input(parameters, { requestId: 'directed-feedback' })).status, 'accepted');
+        const sent = await getReceipt('directed-feedback');
+        assert.ok(sent.executionId && Number.isSafeInteger(sent.fence));
+        assert.equal(sent.status, 'accepted');
+        await session.input({ ...parameters, taskId: 'missing-task' }, { requestId: 'missing-feedback' });
+        const missing = await getReceipt('missing-feedback');
+        assert.equal(missing.status, 'not_submitted');
+        assert.equal(missing.reason, 'task-not-found');
+        assert.equal((await session.input(parameters, { requestId: 'directed-feedback' })).status, 'accepted');
+      } finally {
+        unsubscribe();
+        release.resolve();
+      }
+    },
   });
   assert.ifError(failure);
-  assert.ok(calls >= 1);
-  const { result } = JSON.parse(stdout);
+  assert.equal(feedbackObserved, true);
   assert.equal(result.outcome, 'completed');
   assert.equal(result.cleanup.status, 'complete');
   assert.equal(result.acceptance.status, 'not-run');
@@ -249,7 +298,7 @@ export default config;
   assert.deepEqual(await ownedContainers(result.result.runtimeId), []);
   await writeFile(join(evidence, 'verification.json'), JSON.stringify({
     package: installation.metadata, image, controlledProvider: true, runtimeId: result.result.runtimeId, projectDigest: result.initial.digest,
-    main: workspace.revision, commit: workspace.commit, cleanup: 'complete',
+    main: workspace.revision, commit: workspace.commit, cleanup: 'complete', observation,
   }, null, 2), { mode: 0o600 });
 });
 
@@ -284,14 +333,12 @@ test('installed Substrate peers publish and cite bytes from the supplied project
 config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;
 `, { mode: 0o600 });
-  const { stdout } = await execute(process.execPath, ['node_modules/.bin/murm', '--harness', 'substrate', '--cwd', project,
-    '--prompt', projectSource.prompt, '--config', configPath, '--output-dir', join(evidence, 'output')], {
-    cwd: installation.directory, env: installation.env, timeout: 145_000, maxBuffer: 4 * 1024 ** 2,
-  }).catch(error => {
-    assert.ifError(upstream.receipt().failure);
-    throw error;
-  });
-  const { result } = JSON.parse(stdout);
+  const { result, status, observation } = await runInstalledHarnessRpc(installation, {
+    harness: 'substrate', cwd: project, prompt: projectSource.prompt, configPath, outputDir: join(evidence, 'output'), timeoutMs: 145_000,
+  }).catch(error => { assert.ifError(upstream.receipt().failure); throw error; });
+  assert.ifError(upstream.receipt().failure);
+  assert.equal(status, 0);
+  assert.equal(observation.businessObserved, true);
   assert.equal(result.outcome, 'completed');
   assert.equal(result.cleanup.status, 'complete');
   assert.equal(result.acceptance.status, 'not-run');
@@ -308,6 +355,6 @@ export default config;
   assert.deepEqual(await ownedContainers(result.result.runtimeId), []);
   await writeFile(join(evidence, 'verification.json'), JSON.stringify({
     package: installation.metadata, image, controlledProvider: true, projectDigest: result.initial.digest,
-    runtimeId: result.result.runtimeId, adoption: true, cleanup: 'complete',
+    runtimeId: result.result.runtimeId, adoption: true, cleanup: 'complete', observation,
   }, null, 2), { mode: 0o600 });
 });

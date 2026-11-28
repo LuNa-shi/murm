@@ -152,3 +152,9 @@ For host `murm` commands, container `swarm` commands, and environment variables,
 | `OPERATION_UNKNOWN` / `status: 'unknown'` from Runtime input | Host wait expired or transport dropped after dispatch | Reconcile by repeating the **exact same `requestId` and arguments** |
 | `SERVICE_TIMEOUT` / unknown Service write | The adapter may already have performed its side effect | Retain `operation_id` and reconcile through that Service's own idempotency contract; Registry does not auto-retry writes |
 | `cleanup: 'pending'` | Execution stop, session archive, required `collect`, or Sandbox delete incomplete | Inspect `pending[].action` and `errors`, resolve the blocker, and retry `stop()` / `close()` on the same Runtime |
+
+## HarnessSession
+
+Create a `HarnessSession` with `createHarnessSession(projectHarness, options)` from the package root. Choose `lifetime`, a resolved `configuration` or `configPath`, `outputRoot` and optional `clientCapabilities.questions`. Use `describe()` to discover the input format, supported lifetimes and Agent controls. Start once with `start({ cwd, prompt }, { requestId })`. Follow `onEvent(handler, { initialSnapshot: true })` or get the current view with `getState()`. Submit supported work with `input(payload, { requestId })` and answer a pending question with `respond(questionId, answer, { requestId })`. Call `stop({ requestId, reason })` and await `completion` to check cleanup and export.
+
+`HarnessRpcClient` takes an existing piped child process, exposes a `ready` promise and implements the same operations over JSONL. The caller manages the process. The [standalone example](../../../examples/harness-session/README.md) shows direct SDK, RPC and terminal clients. See the [Harness lifecycle manual](../../architecture/23-project-harness.md).

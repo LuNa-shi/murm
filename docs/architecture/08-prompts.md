@@ -243,3 +243,9 @@ Implement an independent color-output formatting or conversion component. Publis
 ```text
 Read both earlier peers’ Board FACTs and use their components from the current main. Implement the CLI and offline build (compile.sh). Prioritize a runnable subset and verify it with the reference. Commit and push the full candidate and open a PR. Return plain JSON {"adopted_files":["relative file path"],"checks":["reference command and observed result"]}.
 ```
+
+## Guest session configuration and Harness questions
+
+Core renders the ordinary startup prompt from the profile and selected tool descriptions. The Worker starts the Pi SDK Session using the configured tool loadout, settings and explicit resource paths. Pi composes its prompt using the loaded skills, extensions and context files. Those resource texts are delivery inputs and their identities and load result are projected by the Guest. The default resource set is empty. Structured context preserves its custom type, text, display and details. Append and nextTurn join native context at their corresponding safe boundaries. Steering and follow-up pass through the native delivery path.
+
+When Subagents is opened with a question-capable client, its Service registry also includes `user-interaction`. Its purpose text is “Ask an explicit question needed for the current work.” The `ask` command description is “Wait for the user to answer a specific question.” The help text is “Ask for a fact or decision that is needed to continue the work.” The Agent discovers this Service through the existing Bash command surface. The text supplied by the authenticated invocation becomes the question body. The accepted response arrives as the Service's JSON `answer`. The Host does not add a prompt turn solely to display or answer a question.

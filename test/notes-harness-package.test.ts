@@ -146,7 +146,7 @@ console.log(JSON.stringify({resolved:true,closed:true,cancelled:true}));
   }));
   const consumer = `
 import { DEFAULT_WORKER_IMAGE, createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter,
-  type Runtime, type RuntimeEvent, type RuntimeFiles, type SandboxConfig, type FileTree } from '@luna-shi/murm';
+  type Runtime, type RuntimeEvent, type RuntimeFiles, type SandboxConfig, type FileTree, type SendOptions } from '@luna-shi/murm';
 type Assert<T extends true> = T;
 type Same<A, B> = [A, B] extends [B, A] ? true : false;
 type CoreExports = Assert<Same<keyof typeof import('@luna-shi/murm'), ${rootExports.map(name => JSON.stringify(name)).join(' | ')}>>;
@@ -183,6 +183,8 @@ await runtime.spawn({ requestId: 'fork', profile: 'reader', forkFrom: agent.id, 
 unsubscribe();
 // @ts-expect-error Core accepts only documented input modes.
 await runtime.send(agent.id, 'Read a note', { requestId: 'invalid', mode: 'later' });
+// @ts-expect-error The options type only allows a documented input mode.
+const invalidOptions: SendOptions = { requestId: 'invalid', mode: 'later' };
 // @ts-expect-error Services require their complete manifest.
 registry.registerService({ manifest: {}, adapter });
 // @ts-expect-error OpenSandbox rejects removed local-docker configuration.

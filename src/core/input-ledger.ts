@@ -23,6 +23,7 @@ export function createInputLedger<Request>(runtimeId: string) {
   }
   return {
     get,
+    peek(caller: string, target: string, requestId: string) { return entries.get(key(caller, target, requestId))?.request; },
     reserve(caller: string, target: string, requestId: string, parameters: InputParameters, create: () => Request) {
       const existing = get(caller, target, requestId, parameters);
       if (existing) return existing;

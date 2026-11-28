@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { createInterface } from 'node:readline';
+import { PassThrough } from 'node:stream';
+import { HarnessRpcClient } from '@luna-shi/murm';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -441,4 +443,115 @@ test('startup error from a loaded module preserves unconfirmed cleanup', async t
     assert.deepEqual(result.cleanup.pending, ['harness-cleanup-unconfirmed']);
     return true;
   });
+});
+
+test('the typed RPC client uses a fresh snapshot cut and preserves Unicode input', { timeout: 10_000 }, async t => {
+  const { HarnessRpcClient } = await import('@luna-shi/murm');
+  const directory = await mkdtemp(join(tmpdir(), 'murm-rpc-client-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, 'harness.mjs'), `
+    export default { id: 'client-probe', apiVersion: 1, input: true, async run(context) {
+      context.registerInput(text => {
+        context.updateStatus({ business: { text } });
+        return { status: 'accepted', input: text };
+      });
+      context.markRunning();
+      await new Promise(resolve => context.signal.addEventListener('abort', resolve, { once: true }));
+      return { outcome: 'cancelled', reason: 'stopped', artifacts: [], cleanup: { status: 'complete' } };
+    } };
+  `);
+  const child = spawn(process.execPath, [
+    cli, '--harness', './harness.mjs', '--mode', 'rpc', '--output-dir', './results',
+  ], { cwd: directory, stdio: 'pipe' });
+  const exit = once(child, 'close');
+  t.after(() => { if (child.exitCode === null) child.kill('SIGKILL'); });
+  const client = new HarnessRpcClient(child);
+  assert.equal((await client.ready).harness.id, 'client-probe');
+  const running = Promise.withResolvers<void>();
+  const detach = client.onEvent(event => {
+    if (event.type === 'state' && event.state.phase === 'running') running.resolve();
+  });
+  await client.start({ cwd: '.', prompt: 'Start' }, { requestId: 'start' });
+  await running.promise;
+  const text = '检查\u2028任务\u2029结果'.repeat(1024);
+  const receipt = await client.input(text, { requestId: 'first' });
+  assert.equal(receipt.result.input, text);
+  const events = [];
+  const receivedSnapshot = Promise.withResolvers<void>();
+  const unsubscribe = client.onEvent(event => {
+    events.push(event);
+    if (event.type === 'snapshot') receivedSnapshot.resolve();
+  }, { initialSnapshot: true });
+  await receivedSnapshot.promise;
+  const changed = await client.input('updated', { requestId: 'second' });
+  assert.equal(changed.result.input, 'updated');
+  assert.equal(events[0].state.business.text, text);
+  assert.ok(events.some(event => event.type === 'state' && event.state.business?.text === 'updated'));
+  unsubscribe();
+  detach();
+  assert.equal((await client.getState()).phase, 'running');
+  await client.stop({ requestId: 'stop' });
+  assert.equal((await client.completion).cleanup.status, 'complete');
+  assert.deepEqual(await exit, [1, null]);
+});
+
+
+test('the typed RPC client restores pending questions and partial output before a later event in the same chunk', async () => {
+  const transport = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough() });
+  const client = new HarnessRpcClient(transport);
+  const captured = { phase: 'running', questions: [{ questionId: 'question', status: 'pending' }],
+    output: [{ messageId: 'message', text: 'partial', complete: false }] };
+  const later = { ...captured, business: { task: 'updated' } };
+  const frame = (...rows: unknown[]) => transport.stdout.write(rows.map(row => JSON.stringify(row)).join('\n') + '\n');
+  transport.stdin.on('data', bytes => {
+    const request = JSON.parse(bytes.toString());
+    assert.equal(request.operation, 'status');
+    frame(
+      { type: 'event', event: {}, sessionEvent: { type: 'state', state: { phase: 'starting' } } },
+      { type: 'reply', id: request.id, result: captured },
+      { type: 'event', event: {}, sessionEvent: { type: 'state', state: later } },
+    );
+  });
+  frame({ type: 'ready', version: 'v1', harness: { id: 'test', apiVersion: 1 }, descriptor: {}, status: {} });
+  const events: unknown[] = [];
+  const latest = Promise.withResolvers<void>();
+  const unsubscribe = client.onEvent(event => {
+    events.push(event);
+    if (event.type === 'state') latest.resolve();
+  }, { initialSnapshot: true });
+  try {
+    await latest.promise;
+    assert.deepEqual(events, [{ type: 'snapshot', state: captured }, { type: 'state', state: later }]);
+  } finally {
+    unsubscribe();
+    transport.emit('close');
+  }
+});
+
+test('the typed RPC client reserves capacity for answers and overall stop', async () => {
+  const transport = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough() });
+  const client = new HarnessRpcClient(transport);
+  const received: string[] = [];
+  const input = createInterface({ input: transport.stdin });
+  input.on('line', line => {
+    const request = JSON.parse(line);
+    received.push(request.operation);
+    if (request.operation !== 'status') transport.stdout.write(JSON.stringify({
+      type: 'reply', id: request.id, result: { status: request.operation === 'stop' ? 'accepted' : 'answered' },
+    }) + '\n');
+  });
+  transport.stdout.write(JSON.stringify({
+    type: 'ready', version: 'v1', harness: { id: 'test', apiVersion: 1 }, descriptor: {}, status: {},
+  }) + '\n');
+  const pending = Array.from({ length: 256 }, () => client.getState().catch(() => undefined));
+  try {
+    await assert.rejects(client.getState(), { code: 'REQUEST_LIMIT' });
+    assert.equal((await client.respond('question', true, { requestId: 'answer' })).status, 'answered');
+    assert.equal((await client.stop({ requestId: 'stop' })).status, 'accepted');
+    assert.deepEqual(received.slice(-2), ['answer', 'stop']);
+  } finally {
+    input.close();
+    transport.emit('close');
+    await Promise.all(pending);
+  }
 });

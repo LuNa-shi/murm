@@ -639,3 +639,38 @@ test('Core startup accepts explicitly classified nonsecret application environme
     env: { TOKENIZER: 'nonsecret-test-value' } });
   assert.equal(launch.env.TOKENIZER, 'nonsecret-test-value');
 });
+
+for (const worker of ['legacy', 'current']) {
+  test(`Pi Session startup follows the ${worker} Worker capability before dispatch`, async () => {
+    const starts = [];
+    const manager = createOpenSandboxManager({
+      lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test', requireManagementAuth: false,
+      fetchImpl: async (url, options) => {
+        if (url.endsWith('/sandboxes')) return response({ id: 'core-session' });
+        if (url.includes('/endpoints/')) return response({ url: 'http://worker.test' });
+        if (url.endsWith('/health')) return response({ ok: true });
+        if (url.endsWith('/core/contract')) return response({ result: { worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol,
+          ...(worker === 'current' ? { pi_session_protocol: 'pi-session-v1' } : {}) } });
+        if (url.endsWith('/start')) {
+          starts.push(JSON.parse(options.body));
+          return response({ result: { contract: { version: WORKER_PROTOCOL, file_protocol: fileProtocol, resources: [] },
+            project_files: { version: 0, writable: false } } });
+        }
+        throw new Error('Unexpected provider route');
+      },
+    });
+    await manager.ensureExecution({ executionId: 'core-session', agentId: 'core-session' });
+    const session = { configuration: { tools: ['read'] } };
+    const startup = { executionId: 'core-session', command: 'pi', resources: [], requireCoreFileProtocol: true };
+    if (worker === 'current') {
+      await manager.startAgent({ ...startup, piSession: session, requirePiSessionProtocol: true });
+      assert.deepEqual(starts.map(body => body.piSession), [session]);
+    } else {
+      await assert.rejects(manager.startAgent({ ...startup, piSession: session, requirePiSessionProtocol: true }),
+        { code: 'OPERATION_UNSUPPORTED' });
+      assert.deepEqual(starts, []);
+      await manager.startAgent({ ...startup, piSession: { configuration: {} } });
+      assert.deepEqual(starts.map(body => body.piSession), [undefined]);
+    }
+  });
+}

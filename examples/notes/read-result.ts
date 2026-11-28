@@ -1,1 +1,1 @@
-export * from '../../src/harness/read-result.js';
+export { readHarnessResult } from '@luna-shi/murm';

@@ -99,3 +99,36 @@ const result = await runtime.interrupt(researcher.id, {
 ---
 
 **Next:** see how Agents talk safely to models and shared Services across the **[Host Gateway](gateway.md)**.
+
+## Agent Session settings and context
+
+Add `session` to a Profile or an individual `spawn` request to select thinking level, compaction and retry settings, queue modes, tools and explicit Guest resources. Spawn overrides merge nested fields with the captured Profile configuration. Each Agent owns its effective settings. Read the actual executor values through `runtime.session.getState(agent.id)`.
+
+```ts
+const agent = await runtime.spawn({
+  profile: 'researcher', requestId: 'researcher-session',
+  session: { thinkingLevel: 'low', tools: ['read', 'bash'], retry: { enabled: true } },
+});
+await runtime.session.configure(agent.id, {
+  thinkingLevel: 'medium', compaction: { enabled: true },
+}, { requestId: 'configure-researcher' });
+await runtime.send(agent.id, {
+  type: 'context', customType: 'project-reference', content: 'Use the reviewed revision.',
+  display: false, details: { revision: 'reviewed' },
+}, { requestId: 'reference', delivery: 'append' });
+const state = await runtime.session.getState(agent.id);
+const stats = await runtime.session.getStats(agent.id);
+const messages = await runtime.session.getMessages(agent.id, { limit: 50, maxBytes: 65536 });
+```
+
+Context delivery must be explicit. Append adds context at the native safe boundary without starting the model. NextTurn waits for the next new run. Steer and followUp use their corresponding native input timing and accept `wakeIfIdle`. Pending next-turn context is discarded by interruption, queue clearing and stopping. Context that has already entered history remains available. Receipts and events identify each context input and its actual disposition.
+
+`runtime.session.compact(agent.id, { requestId })` requires idle status with no starting input. It returns busy while work is active. Coordinate your own Harness scheduler before compacting. `abortRetry` cancels the current executor retry and can affect the turn outcome. `clearQueue` reports the executor's discarded text hashes and context identities. A Harness must also reconcile its own pending inbox or batches.
+
+Mutation request IDs retain their original operation and arguments. Retrying an unknown receipt queries that operation. Use the same ID and payload, including after a lost response. Changed parameters conflict. Executor capability declarations and Guest handshake determine availability. An unsupported query reports unsupported or unavailable.
+
+A Host policy can stop an Agent before its fourth successful automatic compaction opportunity. Configure `hooks.beforeCompact` when creating the Runtime and return `stop` when `request.reason !== 'manual' && request.successfulAutoCompactions >= 3`. Return `allow` otherwise. The finite policy wait is awaited before the native summary request. Stop uses the Agent's ordinary archival, required export and cleanup path. The policy receives an AbortSignal and must treat cancellation as terminal for that decision.
+
+Subscribe to Runtime events before sending work. Session events use `{ type: 'session', agentId, event }`. `messageStart`, `textDelta` and `messageEnd` share a message ID. Accumulate deltas by message and content block, then replace their content with the complete final message. Tool, compaction, retry, settings and context events retain their native operation identities. Read `toolActivity` for calls currently executing. Session usage and current context usage are separate measurements, and fork history can contribute to Session totals. With pricing unconfigured, cost is null.
+
+The bundled `examples/agent-session.ts` program consumes a configuration module exported by your application and imports the SDK only from the package root. After building, run `node dist/examples/agent-session.js /absolute/config.mjs worker 'Your prompt'`. The module's default export is a complete `CreateRuntimeOptions` value containing the selected Profile. The program installs its three-success automatic-compaction policy, adds append and next-turn context, reads actual Session state/statistics/messages and prints the stop and final cleanup receipts. Its work period is bounded at 120 seconds and cleanup at 30 seconds. Your supplied model and Sandbox configuration determine the execution environment and resource limits.

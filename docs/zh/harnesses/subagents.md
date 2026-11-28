@@ -7,6 +7,10 @@ order: 11
 
 **Subagents** 模拟常见的层级研发团队：由主 Agent（`/root`）拆解目标、按需创建子 Agent（最多 `maxDepth` 层）、通过邮箱收发消息并在必要时中途纠偏，最后由 `/root` 整合交付结果。源码：[examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents)。
 
+## 项目 Session
+
+用 `--lifetime interactive` 保留 Root 以接收后续输入。公共 Session 接受 Root 文本或 `{ text, mode }`。Root 控制还支持结构化 context，`describe()` 列出当前允许的配置和操作。中断封锁旧执行，children 可以继续。中断后收到的结果保留在 inbox，等用户明确提交下一次输入。开启 `--interaction questions` 后，Agent 可通过 `swarm service invoke user-interaction ask` 发起授权问题。
+
 ## 快速运行（CLI）
 
 配置好 `MURM_MODEL_URL` 与 `MURM_MODEL_TOKEN`（见 [快速上手](../quickstart.md)）后，在任意项目目录直接启动：

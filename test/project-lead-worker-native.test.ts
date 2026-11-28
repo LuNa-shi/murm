@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { runInstalledHarnessRpc } from './fixtures/installed-harness-rpc.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { createNativeEvidenceDirectory, execute, installNativeNotesExample } from './fixtures/notes-installed-package.js';
@@ -169,15 +170,9 @@ config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;
 `, { mode: 0o600 });
       allowStackClose = false;
-      let status = 0;
-      const stdout = await execute(process.execPath, ['node_modules/.bin/murm', '--harness', 'lead-worker', '--cwd', project,
-        '--prompt', prompt, '--config', path, '--output-dir', join(directory, team)], {
-        cwd: installation.directory, env: installation.env, timeout: 148_000, maxBuffer: 4 * 1024 ** 2,
-      }).then(value => value.stdout, error => {
-        status = error.code ?? 1;
-        return error.stdout;
+      const { result, status, observation } = await runInstalledHarnessRpc(installation, {
+        harness: 'lead-worker', cwd: project, prompt, configPath: path, outputDir: join(directory, team), timeoutMs: 148_000,
       });
-      const { result } = JSON.parse(stdout);
       const runtimeId = result.result?.runtimeId;
       if (result.cleanup.status === 'complete' && (!runtimeId || !(await ownedContainers(runtimeId)).length)) allowStackClose = true;
       assert.ifError(failure);
@@ -200,7 +195,7 @@ export default config;
       const main = await git('GET', root + '/branches/main');
       assert.equal(main.commit.id, harness.initialCommit);
       await assert.rejects(readFile(join(project, 'integrated.txt')), { code: 'ENOENT' });
-      outcomes.push({ team, runtimeId, digest: result.initial.digest, commit: submitted.delivery.commit, cleanup: 'complete' });
+      outcomes.push({ team, runtimeId, digest: result.initial.digest, commit: submitted.delivery.commit, cleanup: 'complete', observation });
     });
     if (!allowStackClose) break;
   }

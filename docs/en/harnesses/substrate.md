@@ -7,6 +7,10 @@ order: 13
 
 **Substrate** (`examples/substrate/harness/`) shows how minimal a multi-agent Harness can be: no task queue, no manager, and no private messages. Three to eight equal peers explore concurrently around one **immutable SQLite substrate** — searching and reading each other's publications, then publishing self-contained follow-ups with explicit citations. It also ships a separate Lean 4 **FATE** theorem-proving runner.
 
+## Project Session
+
+Use the public Session to observe rounds, members, findings and cleanup. The task lifecycle follows the existing rounds or deadline. Additional client input and per-member mutation are unavailable for this Harness.
+
 ## Quick run (CLI)
 
 Configure `MURM_SUBSTRATE_*` environment variables (see [examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md)), then launch against any project directory:

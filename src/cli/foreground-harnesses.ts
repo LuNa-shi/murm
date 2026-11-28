@@ -63,8 +63,8 @@ export async function runForegroundHarness({ mode, options, timeoutMs = 120_000,
       try { return await drive({ status,
         async kickoff({ recipient: key, input }: any) { recipient(key); return team.redact(receipt(team.kickoff(key, input))); },
         async input({ recipient: key, input, requestId }: any) {
-          const peer = recipient(key);
-          return team.redact(receipt(team.ingest(key, { source: 'user', kind: 'user', eventId: requestId, targetWorker: peer.router.mapping.workerId, text: input })));
+          recipient(key);
+          return team.redact(receipt(team.input({ recipient: key, input, requestId })));
         },
         async wait({ recipient: key, batchId, timeoutMs: waitMs = 30_000 }: any) {
           recipient(key);

@@ -8,10 +8,11 @@ export const setupUsage = [
 export const initUsage = 'Usage: murm init --template subagents --dir <directory>';
 export const doctorUsage = 'Usage: murm doctor [--config <module>] [--smoke]';
 const projectUsage = [
-  'Usage: murm --harness <module> --prompt <text> [--cwd <directory>] [--config <module>] [--output-dir <directory>]',
-  '       murm --harness <module> --mode rpc [--config <module>] [--output-dir <directory>]',
+  'Usage: murm --harness <module> --prompt <text> [--cwd <directory>] [--config <module>] [--output-dir <directory>] [--lifetime task|interactive] [--interaction none|questions]',
+  '       murm --harness <module> --mode rpc [--config <module>] [--output-dir <directory>] [--lifetime task|interactive] [--interaction none|questions]',
   'Built-in Harnesses: subagents, taskpool, peermesh, substrate, lead-worker, notes, messages',
   'Use a built-in name, an explicit .mjs or ESM .js file, or a package installed from the invocation directory.',
+  'An explicit interactive lifetime or questions in foreground mode uses JSONL for subsequent commands.',
   'The project directory defaults to the invocation directory. In RPC mode send cwd and prompt in the run request.',
 ].join('\n');
 export const murmUsage = [
@@ -30,6 +31,8 @@ export type ProjectCommand = {
   harness: string;
   configPath?: string;
   outputRoot?: string;
+  lifetime?: 'task' | 'interactive';
+  interaction?: 'none' | 'questions';
 } & ({ mode: 'foreground'; cwd?: string; prompt: string } | { mode: 'rpc' });
 
 type MurmCommand = LocalCommand | { command: 'init'; directory: string } | { command: 'interactive' } | ProjectCommand;
@@ -46,9 +49,15 @@ export function parseMurmCommand(args: string[]): MurmCommand | { help: string }
       const { values } = parseArgs({ args, options: {
         harness: { type: 'string' }, prompt: { type: 'string' }, cwd: { type: 'string' },
         mode: { type: 'string' }, config: { type: 'string' }, 'output-dir': { type: 'string' },
+        lifetime: { type: 'string' }, interaction: { type: 'string' },
       } });
       if (!values.harness || values.config === '' || values['output-dir'] === '') throw new Error();
-      const project = { command: 'harness' as const, harness: values.harness, configPath: values.config, outputRoot: values['output-dir'] };
+      const { lifetime, interaction } = values;
+      if ((lifetime !== undefined && lifetime !== 'task' && lifetime !== 'interactive') ||
+          (interaction !== undefined && interaction !== 'none' && interaction !== 'questions')) throw new Error();
+      const project = { command: 'harness' as const, harness: values.harness, configPath: values.config,
+        outputRoot: values['output-dir'],
+        lifetime: lifetime as ProjectCommand['lifetime'], interaction: interaction as ProjectCommand['interaction'] };
       if (values.mode === 'rpc' && values.prompt === undefined && values.cwd === undefined) return { ...project, mode: 'rpc' };
       if (values.mode === undefined && values.prompt?.trim() && values.cwd !== '') {
         return { ...project, mode: 'foreground', cwd: values.cwd, prompt: values.prompt };

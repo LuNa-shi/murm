@@ -207,6 +207,18 @@ test('unknown feedback remains under its original ID and prevents automatic cont
   f.settle();await f.controller.flush();
   assert.equal(transport.submissions.size,count);
   assert.deepEqual(await f.controller.feedback({taskId:f.task.task_id,input:'Uncertain feedback',requestId:'unknown'}),result);
+  const query = async (agentId, requestId) => {
+    assert.equal(agentId, result.agentId); assert.equal(requestId, 'unknown');
+    transport.confirm(result.receipt.inputId, 'queued');
+    return f.runtime.send(agentId, 'Uncertain feedback', { requestId, mode: 'steer' });
+  };
+  const confirmed = await f.controller.reconcileFeedback('unknown', query);
+  assert.equal(confirmed.status, 'accepted');
+  assert.equal(confirmed.executionId, result.executionId);
+  assert.equal(confirmed.fence, result.fence);
+  assert.equal(confirmed.receipt.inputId, result.receipt.inputId);
+  assert.equal(transport.submissions.size, count);
+  assert.deepEqual(await f.controller.feedback({taskId:f.task.task_id,input:'Uncertain feedback',requestId:'unknown'}), confirmed);
 });
 
 test('accepted finish is finalized after public stop and replacement starts a fresh readonly Agent',async t=>{

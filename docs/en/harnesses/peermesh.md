@@ -7,6 +7,10 @@ order: 12
 
 **PeerMesh** (`examples/peermesh/harness/`) models a flat team of 2–8 peer engineers with no central dispatcher and no exclusive task locks. Each peer has its own Gitea account, Mattermost account, persistent Pi session, and Git checkout. Peers choose work on personal branches, post advisory `CLAIM` notes and updates on a shared Board, discuss in team chat and DMs, and land PRs into protected `main` through host verification.
 
+## Project Session
+
+`session.input({ recipient, input }, { requestId })` queues a directed user batch. The Router reads current shared context when the batch starts. The member stop operation closes that peer’s Router and source subscription before stopping its Agent. Other peers can continue until the Run closes and exports main.
+
 ## Quick run (CLI)
 
 Configure your Gitea, Mattermost, Board, and model host variables (see [examples/peermesh/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/README.md)), then launch against any project directory:

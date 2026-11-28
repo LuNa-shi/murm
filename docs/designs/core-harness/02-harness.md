@@ -134,6 +134,12 @@ Core 最低合同不提供逐 inputId 的完成关联。Harness 的多来源结�
 
 宿主报告至少包含业务结果、失败原因、各 Agent 的执行/清理状态、未送达或未知输入、共享结果位置和私有产物位置。附录示例将 `businessFailure`、`cleanup`、`cleanupFailure` 分开，并保存 Service 状态与读取证据。若连报告目录都无法写入，宿主明确返回保存错误，不宣称已留下完整记录。
 
+### #271 前台运行合同
+
+[#271](https://github.com/LuNa-shi/murm/issues/271) 第 12–15 节确认以 `HarnessSession` 对外管理一次 Run，仍由 `ProjectHarness.run(context)` 实现协作流程。SDK 和 RPC 共用受理、请求核对、快照、问答和结束回执。各 Harness 登记后续输入、成员控制和清理边界。定向派发、调度排他和领域变更由该 Harness 实现。Agent 会话配置和输入语义沿用 Core `runtime.session` 和 `send`。
+
+默认 task 继续按原业务退出。Subagents 另外支持有界 interactive，打断 Root 后暂存已在途的协作结果，等待明确工作以继续。TaskPool 追加输入指向受 fence 保护的当前 Execution，PeerMesh 进入指定 peer 的下一 batch，停止该 peer 先撤下 router 和事件源。其余机制可只提供观察、查询与整体停止。真实业务状态、产物保存和清理回执属于同一个 Run 结果。
+
 ## 5. Subagents
 
 本章至第 9 章是五种 Harness 的待实施方案。它们复用同一套 Core；精确接口、资源政策和示例细节属于设计建议。runInput 在内部显式使用 followUp，不提供 mode 参数。代码只展示关键接线；`routes`、`runInput`、各 controller 和领域 helper 都由 Harness 编写，不是额外的 Core API。宿主先 `spawn`，再显式 `send`；所有直接 send 示例均填写 mode。

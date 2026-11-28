@@ -5,6 +5,7 @@
     "../../scripts/opensandbox-agent-worker.ts",
     "../../scripts/project-processes.ts",
     "../../scripts/pi-rpc-submissions.ts",
+    "../../scripts/pi-session-bridge.ts",
     "../../scripts/swarm.ts",
     "../../scripts/git-credential-peermesh.ts"
   ]

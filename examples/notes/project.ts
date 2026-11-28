@@ -1,12 +1,8 @@
-import { createRuntime, createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@luna-shi/murm';
+import { createRuntime, createSandbox, MurmError, ProjectPreflightError, observeProjectRuntime, projectConfiguration, projectResult,
+  runInput, runWithReport, type CreateRuntimeOptions, type ProjectHarness, type SandboxConfig } from '@luna-shi/murm';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ProjectHarness } from '../../src/harness/project-harness.js';
-import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harness/project-runtime.js';
-import { projectError, ProjectPreflightError } from '../../src/harness/project-input.js';
 import { createNotes } from './main.js';
-import { runInput } from './run-input.js';
-import { runWithReport } from './run-report.js';
 
 interface Config extends Pick<CreateRuntimeOptions, 'executor' | 'connection' | 'models' | 'filePolicy'> {
   sandbox: SandboxConfig;
@@ -34,7 +30,7 @@ const notesHarness = {
     const notes = createNotes();
     const common = { image, model, writable: true };
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
-    const state = { stage: 'writer' };
+    const state: { stage: string; writerId?: string; readerId?: string; handoffObserved?: boolean; artifact?: string } = { stage: 'writer' };
     try {
       const report = await runWithReport({ outputDir: context.outputDir, closeTimeoutMs,
         async createRuntime() {
@@ -53,25 +49,34 @@ const notesHarness = {
           signal.throwIfAborted();
           const writer = await runtime.spawn({ requestId: 'notes-writer', profile: 'writer', files: initial.files });
           signal.throwIfAborted();
+          state.writerId = writer.id;
           context.markRunning();
           await runInput(runtime, writer.id, input.prompt, { requestId: 'notes-write', timeoutMs: turnTimeoutMs, signal });
           const published = notes.records.get(key);
-          if (published?.author !== writer.id) throw projectError('NOTES_PUBLICATION_UNCONFIRMED', 'The writer did not publish its project observation');
+          if (published?.author !== writer.id) throw new MurmError('NOTES_PUBLICATION_UNCONFIRMED', 'The writer did not publish its project observation');
           signal.throwIfAborted();
           state.stage = 'reader';
+          state.handoffObserved = true;
+          void observation?.refresh();
           const reader = await runtime.spawn({ requestId: 'notes-reader', profile: 'reader', files: initial.files });
           signal.throwIfAborted();
+          state.readerId = reader.id;
           await runInput(runtime, reader.id, JSON.stringify({ task: input.prompt, artifact }),
             { requestId: 'notes-read', timeoutMs: turnTimeoutMs, signal });
           if (!notes.reads.some((read: { agentId: string; key: string; found: boolean }) => read.agentId === reader.id && read.key === key && read.found)) {
-            throw projectError('NOTES_HANDOFF_UNCONFIRMED', 'The reader did not retrieve the writer’s note');
+            throw new MurmError('NOTES_HANDOFF_UNCONFIRMED', 'The reader did not retrieve the writer’s note');
           }
           signal.throwIfAborted();
+          state.stage = 'verification';
+          void observation?.refresh();
           const stopped = await runtime.stop(reader.id, { timeoutMs: closeTimeoutMs });
           const files = stopped.artifacts.find(path => path.endsWith('/artifacts/files'));
-          if (!files || stopped.cleanup !== 'complete') throw projectError('NOTES_EXPORT_PENDING', 'The result export is incomplete');
+          if (!files || stopped.cleanup !== 'complete') throw new MurmError('NOTES_EXPORT_PENDING', 'The result export is incomplete');
           const result = await readFile(join(files, artifact), 'utf8');
-          if (!result.includes(published.text)) throw projectError('NOTES_HANDOFF_UNVERIFIED', 'The reader’s result omits the published note');
+          if (!result.includes(published.text)) throw new MurmError('NOTES_HANDOFF_UNVERIFIED', 'The reader’s result omits the published note');
+          state.stage = 'verified';
+          state.artifact = join(files, artifact);
+          void observation?.refresh();
           return { writerId: writer.id, readerId: reader.id, artifact: join(files, artifact), handoffVerified: true };
         },
       });
