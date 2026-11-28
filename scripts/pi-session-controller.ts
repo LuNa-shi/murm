@@ -9,6 +9,8 @@ export function createPiSessionController(session: any, options: {
 }) {
   const pending = new Map<string, ContextEntry>();
   const messagesSeen = new Set<unknown>((session.sessionManager?.getEntries?.() ?? session.messages ?? []).map((entry: any) => entry.id ?? entry));
+  const nativeMessageIds = new WeakMap<object, string>();
+  const entryMessageIds = new Map<string, string>();
   const decisions = new Map<string, { epoch: number; finish(decision: string, reason?: string): void }>();
   const counts = { successfulAutoCompactions: 0, manual: 0, failed: 0, cancelled: 0 };
   let epoch = 0;
@@ -20,6 +22,21 @@ export function createPiSessionController(session: any, options: {
     entry.status = status;
     emit({ type: 'core_context_disposition', inputId: entry.inputId, delivery: entry.delivery, status, executionEpoch: epoch });
     if (status === 'appended' || status === 'discarded') pending.delete(entry.inputId);
+  }
+  function messageIdentity(message: any) {
+    let identity = nativeMessageIds.get(message);
+    const entries = session.sessionManager?.buildSessionProjection?.().entries ?? [];
+    for (const projected of entries) {
+      const part = projected.messages.findIndex((item: any) => item === message || JSON.stringify(item) === JSON.stringify(message));
+      if (part < 0) continue;
+      const key = `${projected.sourceEntry.id}:${part}`;
+      identity ??= entryMessageIds.get(key) ?? key;
+      entryMessageIds.set(key, identity);
+      break;
+    }
+    identity ??= randomUUID();
+    nativeMessageIds.set(message, identity);
+    return identity;
   }
   function observeContexts() {
     for (const record of session.sessionManager?.getEntries?.() ?? session.messages ?? []) {
@@ -99,6 +116,10 @@ export function createPiSessionController(session: any, options: {
     },
     observe(event: any) {
       observeContexts();
+      if (['message_start', 'message_update', 'message_end'].includes(event.type) && event.message) {
+        return { ...event, messageId: messageIdentity(event.message) };
+      }
+      if (event.type.startsWith('summarization_retry_') && compacting) return { ...event, compactionId: compacting.id, reason: compacting.reason };
       if (event.type === 'compaction_start') {
         compacting = { id: randomUUID(), reason: event.reason };
         return { ...event, compactionId: compacting.id };
@@ -169,12 +190,9 @@ export function createPiSessionController(session: any, options: {
         if (!Number.isInteger(limit) || limit < 1 || limit > 1000 || !Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 1048576) throw error('Invalid message bounds');
         const messages: any[] = [];
         let bytes = 0;
-        const entries = session.sessionManager?.getBranch?.() ?? [];
-        const identities = new Map(entries.filter((entry: any) => entry.type === 'message' || entry.type === 'custom_message')
-          .map((entry: any) => [entry.message ?? entry, entry.id]));
         for (let index = session.messages.length - 1; index >= 0 && messages.length < limit; index--) {
           const message = session.messages[index];
-          const item = { ...message, id: identities.get(message) ?? `${session.sessionId}:${index}` };
+          const item = { ...message, id: messageIdentity(message) };
           const size = Buffer.byteLength(JSON.stringify(item));
           if (bytes + size > maxBytes) break;
           bytes += size;
