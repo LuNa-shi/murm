@@ -63,57 +63,38 @@ export PATH="$HOME/.local/bin:$PATH"
 
 如果要在[独立示例项目](../../examples/README.md)中使用同一份 SDK，请保留生成的候选版 tarball。
 
-## 2. 初始化 OpenSandbox 并构建 Worker
+## 2. 准备 OpenSandbox 与 Worker
 
 ```bash
 murm setup
 ```
 
-`murm setup` 会按顺序完成以下三步（新机器首次运行需要拉取镜像并构建 Worker，耗时约数分钟）：
+已有保存或显式连接时，setup 验证并复用该连接；否则在 `127.0.0.1:8080` 准备本地服务。本地 setup 拉取固定的 Server、Execd、Egress 1.2.1 镜像，准备兼容 Worker，并用受控模型响应完成 Service、模型、文件、导出与删除的有界自检。本地探测成功后会显示 `"ok": true` 和 `"infrastructure": "ready"`。
 
-1. **启动本机 OpenSandbox**：拉取固定版本的 OpenSandbox Server 与 Execd 镜像，并在 `127.0.0.1:8080` 启动托管服务。
-2. **准备 Worker 镜像**：优先复用本机缓存中的兼容镜像；缺失时自动从安装包自带的 `deploy/worker/Dockerfile` 构建所选执行器镜像（默认 Pi，依赖 Node 基础镜像、Debian 源与 npm）。
-3. **运行端到端自检**：创建临时沙箱，用本地测试响应验证 Service Bridge、Model Gateway、文件导出与沙箱删除（无需配置模型 API Key）。
+默认优先使用已发布 Worker。开发候选的 Worker 协议变化时，运行 `MURM_BUILD_WORKER=1 murm setup --mode local`，从安装包配方构建。本树使用 `murm-core-v2`，旧镜像会收到版本不匹配诊断。本地构建需要访问 Node 基础镜像、Debian 源与 npm。显式 `MURM_WORKER_IMAGE` 必须是兼容镜像。
 
-等待输出出现 `"infrastructure": "ready"` 且 `"ok": true` 即表示环境就绪；若失败，按报告提示处理后重跑 `murm setup` 即可。日常检查可运行 `murm doctor`，重跑完整自检用 `murm doctor --smoke`。
-
-<details>
-<summary>接入已有的 OpenSandbox 服务</summary>
-
-在 shell 中设置服务端地址、回调主机与管理员提供的 `MURM_LIFECYCLE_TOKEN`（要求控制端能访问 Lifecycle 与 Worker，Worker 也能回调控制端的 Bridge 与模型网关）：
+### 连接已有 OpenSandbox
 
 ```bash
-export MURM_LIFECYCLE_URL='https://sandbox.example.net/v1'
-export MURM_LIFECYCLE_TOKEN='<your-lifecycle-token>'
-export MURM_ADVERTISE_HOST='controller.internal.example.net'
-murm setup --mode existing
+export OPEN_SANDBOX_API_KEY='<管理员提供的密钥>'
+murm setup --mode existing --endpoint https://sandbox.example.net \
+  --public-url https://runtime.example.net/murm
+murm doctor --smoke
 ```
 
-如服务端引擎无法自动拉取 Worker 镜像，请管理员提前在服务端准备兼容镜像。代理路由与 HTTPS 回调见 [Sandbox 隔离沙箱](sandbox.md) 和 [宿主网关](gateway.md)。
+existing setup 验证鉴权，将 endpoint、密钥和回调地址保存在仅当前用户可读写的配置中。远端 Controller 需要 Node 与网络访问，服务管理员准备匹配的 Worker 镜像。`doctor` 只读检查配置与 Lifecycle；`doctor --smoke` 创建临时 Sandbox，验证控制端访问 Worker 和 Sandbox 回连 Runtime，最后确认导出与删除。已保存远端连接不可达时，会报告该连接的具体错误。
 
-</details>
+`connection.publicUrl` 是 Bridge 与模型请求共用的一个回调地址。反向代理应将此前缀转发至 Runtime 的 `bindHost` 与固定 `bindPort`。本地 setup 自动发现可达宿主地址与可用端口。详细说明与旧配置迁移见 [Sandbox](sandbox.md) 和 [宿主网关](gateway.md)。
 
-<details>
-<summary>镜像拉取或 Worker 构建失败排查</summary>
+### 诊断镜像可用性
 
-- **OpenSandbox Server / Execd 拉取失败**：setup 会输出失败镜像的完整 digest 与 `docker pull` 命令，在同一 Docker context 中重试即可。网络受限时可配置 [Docker daemon 代理](https://docs.docker.com/engine/daemon/proxy/)、由管理员预置相同固定引用，或改用已有 OpenSandbox 服务。
-- **Worker 本地构建失败**：检查 Docker 对 Node 基础镜像、Debian 软件源与 npm 的访问，或直接执行报错里给出的 `docker build` 命令定位具体步骤。若你配置了显式 registry 镜像，缓存缺失时仍会自动拉取。
-- **使用可信镜像站构建默认 Pi Worker**（将 `registry.example.net` 替换为你的镜像站）：
+setup 报告失败镜像引用与重试命令。检查所选 Docker 引擎的 registry 网络，或由管理员预置固定镜像。离线时通过 `docker save` 与 `docker load` 转移镜像，再将 `MURM_WORKER_IMAGE` 设为兼容引用。开发时可使用安装包 Dockerfile。
 
 ```bash
-(
-  cd "$(dirname "$(readlink -f "$(command -v murm)")")/../.." &&
-    docker build -f deploy/worker/Dockerfile -t murm-worker:local \
-      --build-arg WORKER_EXECUTOR=pi \
-      --build-arg NODE_IMAGE=registry.example.net/library/node:22.19.0-bookworm-slim .
-) &&
-  export MURM_WORKER_IMAGE=murm-worker:local &&
-  murm setup
+docker build -f deploy/worker/Dockerfile -t murm-worker:local .
+export MURM_WORKER_IMAGE=murm-worker:local
+murm setup --mode local
 ```
-
-- **跨机器离线导入 Worker**：在有网且同 CPU 架构的机器上导出 `docker save -o worker.tar IMAGE`，传到目标机后在对应 Docker context 执行 `docker load -i worker.tar`。若标签不同于默认值，在 `murm setup` 和运行时均保留 `export MURM_WORKER_IMAGE=IMAGE`。
-
-</details>
 
 ## 3. 运行第一个示例
 

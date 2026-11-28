@@ -8,7 +8,7 @@ function required(...names: string[]) {
   throw new Error(`Set ${names.join(' or ')} before running the TaskPool Harness`);
 }
 
-const { image, advertiseHost, endpointSource: _endpointSource, ...sandbox } = resolveSandboxConnection({}, 'TASKPOOL');
+const { image, advertiseHost, publicUrl, endpointSource: _endpointSource, ...sandbox } = resolveSandboxConnection({}, 'TASKPOOL');
 const upstream = required('MURM_MODEL_URL', 'MURM_TASKPOOL_MODEL_URL');
 const token = process.env.MURM_MODEL_TOKEN ?? process.env.MURM_TASKPOOL_MODEL_TOKEN;
 const executor = process.env.MURM_EXECUTOR ?? process.env.MURM_TASKPOOL_EXECUTOR ?? 'pi';
@@ -27,7 +27,7 @@ export default {
     resourceLimits: { cpu: '1', memory: '1Gi' },
     commandTimeoutMs: 20_000,
   },
-  connection: { advertiseHost,
+  connection: { publicUrl, advertiseHost,
     modelGateway: { requestTimeoutMs: 25_000, maxOutputTokens: executor === 'codex' ? null : 2048 },
   },
   models: { default: { provider, model, upstream: {

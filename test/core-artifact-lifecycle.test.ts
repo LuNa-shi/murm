@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { Server } from 'node:net';
+import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -19,7 +20,7 @@ const records = [
   { type: 'end', totalBytes: 4, fileCount: 1, directoryCount: 1 },
 ];
 
-async function runtimeFixture(t, hooks, { collection = collect, maxAgents = 1 } = {}) {
+async function runtimeFixture(t, hooks, { collection = collect, maxAgents = 1, network } = {}) {
   const provider = await createLifecycleProvider(t, hooks);
   const { createRuntime } = await import('@luna-shi/murm');
   const { ServiceRegistry } = await import('@luna-shi/murm');
@@ -27,11 +28,11 @@ async function runtimeFixture(t, hooks, { collection = collect, maxAgents = 1 } 
   const outputDir = await mkdtemp(join(tmpdir(), 'core-artifacts-fixture-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const runtime = await createRuntime({ ...runtimeSettings({
-    sandbox: { lifecycleBaseUrl: provider.url }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
+    sandbox: { lifecycleBaseUrl: provider.url, apiKey: provider.apiKey, egressMode: 'dns+nft' }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
     modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
-  }), profiles: { worker: { image: 'fixture', model: 'default', prompt: 'fixture', writable: true, services: {}, collect: collection } },
+    isolation: { network: 'api' },
+  }), profiles: { worker: { image: 'fixture', model: 'default', prompt: 'fixture', writable: true, services: {}, collect: collection, ...(network ? { network } : {}) } },
   services: new ServiceRegistry(), maxAgents, outputDir });
   return { provider, runtime, outputDir: join(outputDir, runtime.id) };
 }
@@ -175,7 +176,7 @@ test('late creation remains registered across the host spawn deadline and a conc
     assert.equal(closed.cleanup, 'complete');
     assert.equal(closed.agents[0].agentId, failure.agentId);
     assert.equal(closed.agents[0].execution, 'stopped');
-    assert.equal((await fetch(`${provider.url}/sandboxes/${sandboxId}`)).status, 404);
+    assert.equal((await fetch(`${provider.url}/sandboxes/${sandboxId}`, { headers: { 'open-sandbox-api-key': provider.apiKey } })).status, 404);
     assert.equal(provider.allocations(), 1);
   } finally {
     clock.mock.restore();
@@ -184,10 +185,10 @@ test('late creation remains registered across the host spawn deadline and a conc
   }
 });
 
-test('close reports blocked Bridge and model entry failures and retries both owners', { timeout: 8000 }, async t => {
+test('close reports a blocked shared callback and model ledger, then retries both owners', { timeout: 8000 }, async t => {
   const { runtime } = await runtimeFixture(t, {});
   const original = Server.prototype.close;
-  let remaining = 2;
+  let remaining = 1;
   const fault = t.mock.method(Server.prototype, 'close', function (callback) {
     if (remaining-- > 0) {
       queueMicrotask(() => callback(Object.assign(new Error('Controlled listener closure failure'), { code: 'EIO' })));
@@ -195,15 +196,73 @@ test('close reports blocked Bridge and model entry failures and retries both own
     }
     return Reflect.apply(original, this, [callback]);
   });
+  const closeDatabase = DatabaseSync.prototype.close;
+  let failDatabase = true;
+  const modelFault = t.mock.method(DatabaseSync.prototype, 'close', function () {
+    if (failDatabase) {
+      failDatabase = false;
+      throw Object.assign(new Error('Controlled model ledger closure failure'), { code: 'EIO' });
+    }
+    return Reflect.apply(closeDatabase, this, []);
+  });
   try {
     const pending = await runtime.close();
     assert.equal(pending.cleanup, 'pending');
-    assert.equal(pending.pending.find(item => item.kind === 'bridge').id, runtime.id);
+    assert.equal(pending.pending.find(item => item.kind === 'bridge').id, `${runtime.id}:callback`);
     const model = pending.pending.find(item => item.kind === 'model');
     assert.equal(model.id, `${runtime.id}:default`);
     assert.equal(model.error.code, 'MODEL_CLOSE_FAILED');
     const saved = JSON.parse(await readFile(pending.reportPath, 'utf8'));
     assert.deepEqual(saved.pending, pending.pending);
     assert.equal((await runtime.close()).cleanup, 'complete');
-  } finally { fault.mock.restore(); await runtime.close(); }
+  } finally { fault.mock.restore(); modelFault.mock.restore(); await runtime.close(); }
 });
+
+test('a DNS-only sidecar with valid policy intent fails startup without starting the Worker agent', { timeout: 8000 }, async t => {
+  let started = false;
+  const { provider, runtime } = await runtimeFixture(t, {
+    onStart() { started = true; },
+    onEgress(policy) {
+      assert.equal(policy.defaultAction, 'deny');
+      assert.ok(policy.egress.some(rule => rule.target === '192.0.2.1' && rule.ports.length === 1));
+      return { status: 'ok', enforcementMode: 'dns', policy };
+    },
+  }, { network: { allow: [] } });
+  provider.allowDeletion();
+  try {
+    await assert.rejects(runtime.spawn({ requestId: 'dns-only', profile: 'worker' }), { code: 'START_FAILED' });
+    assert.equal(started, false);
+    assert.equal(provider.allocations(), 1);
+  } finally {
+    assert.equal((await runtime.close()).cleanup, 'complete');
+  }
+});
+
+for (const renewed of [true, false]) {
+  test(`close ${renewed ? 'confirms a retention floor' : 'reports retention at risk on renewal failure'} for a required export failure`, { timeout: 8000 }, async t => {
+    const initial = new Date(Date.now() + 30_000).toISOString();
+    let canExport = false;
+    let renewalRequests = 0;
+    const { provider, runtime } = await runtimeFixture(t, {
+      createExpiresAt: () => initial,
+      onRenew() { renewalRequests++; return renewed; },
+      onCollect() { return canExport ? { records } : { error: true, message: 'controlled export failure' }; },
+    });
+    provider.allowDeletion();
+    try {
+      await runtime.spawn({ requestId: 'retained', profile: 'worker' });
+      const closed = await runtime.close();
+      assert.equal(closed.cleanup, 'pending');
+      const pending = closed.agents[0].pending;
+      assert.equal(pending.sandboxId, 'fixture-1');
+      assert.equal(pending.retention.status, renewed ? 'retained' : 'retain-at-risk');
+      assert.equal(pending.retention.autoRenewing, false);
+      assert.ok(renewalRequests >= 1);
+      if (renewed) assert.ok(Date.parse(pending.expiresAt) >= Date.now() + 290_000);
+      else assert.equal(pending.expiresAt, initial);
+    } finally {
+      canExport = true;
+      assert.equal((await runtime.close()).cleanup, 'complete');
+    }
+  });
+}

@@ -10,7 +10,7 @@ function required(name: string) {
 }
 
 export function peerMeshConfig(durationMs = Number(setting('DURATION_MS') ?? 120_000)) {
-  const { lifecycleBaseUrl, endpointHost, apiKey, advertiseHost, image } = resolveSandboxConnection({}, 'PEERMESH');
+  const { advertiseHost, publicUrl, image, endpointSource: _source, ...sandbox } = resolveSandboxConnection({}, 'PEERMESH');
   // A scoped endpoint alone historically selected Kimi K3. Keep that route's
   // model identity unless the caller explicitly selects labels or a common URL.
   const legacyModelDefaults = !process.env.MURM_MODEL_URL;
@@ -37,15 +37,13 @@ export function peerMeshConfig(durationMs = Number(setting('DURATION_MS') ?? 120
   return {
     image: image ?? workerImageFor(executor), executor,
     sandbox: {
-      lifecycleBaseUrl, endpointHost, apiKey,
+      ...sandbox,
       timeoutSeconds: Math.ceil((timeoutMs + closeTimeoutMs) / 1_000),
       resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000,
-      // Native Git access requires an enforced endpoint allowlist, which the
-      // default API Provider does not advertise. Keep strict local isolation.
-      isolation: { network: 'local-docker' as const, disk: { bytes: 128 * 1024 ** 2, inodes: 8192 } },
     },
     gitea, mattermost, startBoard, durationMs, timeoutMs,
     connection: {
+      publicUrl,
       advertiseHost: process.env.MURM_ADVERTISE_HOST ?? setting('HOST') ?? advertiseHost ?? '172.17.0.1',
       modelGateway: { maxOutputTokens: executor === 'codex' ? null : 2048, requestTimeoutMs: 25_000 },
     },

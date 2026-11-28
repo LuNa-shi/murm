@@ -17,7 +17,6 @@ import { sessionEvidence } from './fixtures/core-session-evidence.js';
 import { openSandboxAgentKey } from '../src/core/sandbox/opensandbox-metadata.js';
 
 const execute = promisify(execFile);
-const disk = { bytes: 64 * 1024 ** 2, inodes: 4096 };
 
 async function endpoint(t, host) {
   let requests = 0;
@@ -28,8 +27,8 @@ async function endpoint(t, host) {
   return { url: `http://${host}:${server.address().port}`, count: () => requests };
 }
 
-function guestCommand({ role, writable, repeat = false, allowedUrl, deniedUrl, agentId, quota = false }) {
-  const script = `import os,json,errno,shutil,urllib.request,urllib.error
+function guestCommand({ role, writable, repeat = false, allowedUrl, deniedUrl, agentId }) {
+  const script = `import os,json,socket,urllib.request,urllib.error,urllib.parse
 checks={}
 role=${JSON.stringify(role)}
 expected=${JSON.stringify(role === 'A' ? 'A_PRIVATE_FILE' : 'B_PRIVATE_FILE')}
@@ -59,24 +58,10 @@ def probe(url,headers={}):
 health=probe(os.environ['MURM_BRIDGE_URL']+'/health',{'Authorization':'Bearer '+os.environ['MURM_BRIDGE_TOKEN']})
 checks['bridge_auto']=health is not None and json.loads(health).get('agentId')==${JSON.stringify(agentId)}
 checks['allowed_network']=(probe(${JSON.stringify(allowedUrl)})=='T03_ENDPOINT_OK')==${role === 'A' ? 'True' : 'False'}
-checks['denied_network']=probe(${JSON.stringify(deniedUrl)}) is None
-v=os.statvfs('.')
-checks['quota_bytes']=v.f_blocks*v.f_frsize==${disk.bytes}
-checks['quota_inodes']=v.f_files==${disk.inodes}
-if ${quota ? 'True' : 'False'}:
- try:
-  with open('quota-fill','wb') as f:
-   for _ in range(70): f.write(b'x'*(1024*1024))
-  checks['byte_limit_enforced']=False
- except OSError as e: checks['byte_limit_enforced']=e.errno==errno.ENOSPC
- finally:
-  if os.path.exists('quota-fill'): os.unlink('quota-fill')
- os.mkdir('quota-inodes')
- try:
-  for n in range(4200): open('quota-inodes/'+str(n),'w').close()
-  checks['inode_limit_enforced']=False
- except OSError as e: checks['inode_limit_enforced']=e.errno==errno.ENOSPC
- finally: shutil.rmtree('quota-inodes')
+denied=urllib.parse.urlsplit(${JSON.stringify(deniedUrl)})
+try:
+ with socket.create_connection((denied.hostname,denied.port),timeout=2): checks['denied_network']=False
+except OSError: checks['denied_network']=True
 print(json.dumps(checks))
 `;
   return `python3 - <<'CORE_ISOLATION_PY'\n${script}CORE_ISOLATION_PY`;
@@ -131,20 +116,20 @@ test('Core isolates concurrent Agents, frozen roles and independent Runtimes on 
   function configuration() {
     return runtimeSettings({
       sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-        endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
+        egressMode: 'dns+nft', apiKey: process.env.MURM_CORE_TEST_API_KEY,
         resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
       bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
       modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 15_000, maxOutputTokens: 256 },
       models: {
         alpha: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: { 'x-core-test-credential': 'host-only-test-credential' } } },
         beta: { provider: 'gpt_proxy', model: 'gpt-6.1-sol', upstream: { url: upstream.url, headers: {} } },
-      }, isolation: { network: 'local-docker', disk },
+      }, isolation: { network: 'api' },
     });
   }
   const profiles = {
     writer: { prompt: 'FROZEN_PROFILE_A', model: 'alpha', image: imageA, writable: true, services: {},
       env: { CORE_ROLE: 'A' }, network: { allow: [allowed.url] } },
-    peer: { prompt: 'FROZEN_PROFILE_B', model: 'beta', image: imageB, writable: true, services: {}, env: { CORE_ROLE: 'B' } },
+    peer: { prompt: 'FROZEN_PROFILE_B', model: 'beta', image: imageB, writable: true, services: {}, env: { CORE_ROLE: 'B' }, network: { allow: [] } },
   };
   const runtime = await createRuntime({ ...configuration(), profiles, services: new ServiceRegistry(), maxAgents: 2, outputDir });
   runtimes.push(runtime);
@@ -174,7 +159,7 @@ test('Core isolates concurrent Agents, frozen roles and independent Runtimes on 
     reports.agents.push({ runtimeId: runtime.id, agentId: agent.id, profile: agent.profile, initialStatus: agent.status, ...observed });
   }
   const other = await createRuntime({ ...configuration(), profiles: {
-    observer: { prompt: 'FROZEN_PROFILE_C', model: 'alpha', image: imageB, writable: false, services: {}, env: { CORE_ROLE: 'B' } },
+    observer: { prompt: 'FROZEN_PROFILE_C', model: 'alpha', image: imageB, writable: false, services: {}, env: { CORE_ROLE: 'B' }, network: { allow: [] } },
   }, services: new ServiceRegistry(), maxAgents: 1, outputDir });
   runtimes.push(other);
   reports.resources[other.id] = { maxAgents: 1, beforeSpawnCount: (await ownedContainers(other.id)).length };
@@ -189,11 +174,11 @@ test('Core isolates concurrent Agents, frozen roles and independent Runtimes on 
   Object.assign(reports.resources[other.id], { afterSpawnCount: 1 });
   await assert.rejects(other.get(a.id), { code: 'NOT_FOUND' });
   await assert.rejects(runtime.send(c.id, 'foreign', { requestId: 'foreign' }), { code: 'NOT_FOUND' });
-  async function turn(owner, agent, id, role, writable, repeat, quota) {
+  async function turn(owner, agent, id, role, writable, repeat) {
     assert.equal(deadlineExpired, false);
     plan.set(id, { model: role === 'A' || id.startsWith('T03_C') ? 'k3' : 'gpt-6.1-sol',
       prompt: id.startsWith('T03_C') ? 'FROZEN_PROFILE_C' : `FROZEN_PROFILE_${role}`,
-      command: guestCommand({ role, writable, repeat, quota, allowedUrl: allowed.url, deniedUrl: denied.url, agentId: agent.id }) });
+      command: guestCommand({ role, writable, repeat, allowedUrl: allowed.url, deniedUrl: denied.url, agentId: agent.id }) });
     let resolve;
     const completed = new Promise(done => { resolve = done; });
     const unsubscribe = owner.onEvent(event => { if (event.agentId === agent.id && event.type === 'settled') resolve(event); });
@@ -210,21 +195,21 @@ test('Core isolates concurrent Agents, frozen roles and independent Runtimes on 
   }
   const agentEvidence = agent => reports.agents.find(row => row.agentId === agent.id);
   const observeSession = agent => sessionEvidence(agentEvidence(agent).containerId, execute);
-  await turn(runtime, a, 'T03_A1', 'A', true, false, true);
+  await turn(runtime, a, 'T03_A1', 'A', true, false);
   const aSession = await observeSession(a);
   Object.assign(agentEvidence(a), aSession);
-  await turn(runtime, b, 'T03_B1', 'B', true, false, false);
+  await turn(runtime, b, 'T03_B1', 'B', true, false);
   const bSession = await observeSession(b);
   Object.assign(agentEvidence(b), bSession);
   assert.notEqual(aSession.sessionId, bSession.sessionId);
-  await turn(runtime, a, 'T03_A2', 'A', true, true, false);
+  await turn(runtime, a, 'T03_A2', 'A', true, true);
   assert.deepEqual(await observeSession(a), aSession);
   agentEvidence(a).sessionRetained = true;
   assert.deepEqual(await ownedContainers(runtime.id), containers);
   assert.deepEqual(await Promise.all(containers.map(containerEvidence)), initial);
   reports.resources[runtime.id].idleRetained = true;
   await assert.rejects(runtime.spawn({ requestId: 'still-no-slot', profile: 'writer' }), { code: 'CONFLICT' });
-  await turn(other, c, 'T03_C1', 'B', false, false, false);
+  await turn(other, c, 'T03_C1', 'B', false, false);
   const cSession = await observeSession(c);
   Object.assign(agentEvidence(c), cSession);
   assert.ok([aSession.sessionId, bSession.sessionId].every(id => id !== cSession.sessionId));
@@ -235,7 +220,7 @@ test('Core isolates concurrent Agents, frozen roles and independent Runtimes on 
   assert.equal((await ownedContainers(other.id)).length, 1);
   reports.resources[runtime.id].emptyAfterExplicitClose = true;
   reports.resources[other.id].retainedAfterSiblingClose = true;
-  await turn(other, c, 'T03_C2', 'B', false, true, false);
+  await turn(other, c, 'T03_C2', 'B', false, true);
   assert.deepEqual(await ownedContainers(other.id), otherContainers);
   assert.deepEqual(await observeSession(c), cSession);
   agentEvidence(c).sessionRetained = true;

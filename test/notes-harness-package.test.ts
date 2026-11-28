@@ -125,7 +125,7 @@ assert.ok(loaded.has(import.meta.resolve(root).slice(packageRoot.length)));
 for (const old of ['/services','/backends/opensandbox','/backends/pi-opensandbox','/package.json']) {
  await assert.rejects(import(root+old), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
 }
-const sandbox={lifecycleBaseUrl:'http://127.0.0.1:1/v1',isolation:{disk:{bytes:67108864,inodes:4096}}};
+const sandbox={lifecycleBaseUrl:'http://127.0.0.1:1/v1',isolation: { network: 'api' }};
 const settings={sandbox,connection:{advertiseHost:'172.17.0.1'},models:{default:{provider:'kimi_proxy',model:'k3',upstream:{url:${JSON.stringify(upstream.url)},headers:{}}}}};
 assert.equal(getExecutorCapabilities('codex').contextFork,false);
 const runtime=await createRuntime({...settings,sandbox:createSandbox(sandbox),services:new ServiceRegistry(),profiles:{reader:{prompt:'fixed',model:'default',image:'unused',writable:false,services:{}}},maxAgents:2,outputDir:'./preflight'});
@@ -153,7 +153,7 @@ type CoreExports = Assert<Same<keyof typeof import('@luna-shi/murm'), ${rootExpo
 const defaultWorkerImage: string = DEFAULT_WORKER_IMAGE;
 const config: SandboxConfig = {
   lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
-  isolation: { network: 'local-docker', disk: { bytes: 67108864, inodes: 4096 } },
+  isolation: { network: 'api' },
 };
 const registry = new ServiceRegistry();
 const adapter = createInProcessAdapter({

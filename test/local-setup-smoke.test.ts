@@ -19,7 +19,6 @@ test('the setup probe verifies real local infrastructure and confirms exported b
 }, async () => {
   const receipt = await runLocalSmoke({ image: process.env.MURM_CORE_TEST_IMAGE!,
     lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-    endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
     apiKey: process.env.MURM_CORE_TEST_API_KEY,
     advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1' });
   assert.equal(receipt.ok, true, JSON.stringify(receipt));
@@ -37,8 +36,7 @@ test('interrupting an active local probe closes its owned resources', {
   try {
     const receipt = await runLocalSmoke({ image: process.env.MURM_CORE_TEST_IMAGE!,
       lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
-      apiKey: process.env.MURM_CORE_TEST_API_KEY,
+        apiKey: process.env.MURM_CORE_TEST_API_KEY,
       advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', signal: controller.signal });
     assert.equal(receipt.ok, false);
     assert.equal(receipt.interrupted, true);

@@ -25,10 +25,7 @@ function options(outputDir, model = 'k3', sandbox = {}) {
           upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} },
         },
       },
-      isolation: {
-        network: 'local-docker',
-        disk: { bytes: 32 * 1024 ** 2, inodes: 2048 },
-      },
+      isolation: { network: 'api' },
     }),
     profiles: {
       writer: {

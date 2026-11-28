@@ -4,8 +4,9 @@ import { selectExecutorDriver } from '../../src/core/sandbox/executor-driver.js'
 
 export const configuration = {
   sandbox: {},
+  callback: { host: '127.0.0.1', port: 0, publicUrl: 'http://127.0.0.1:{port}' },
   filePolicy: DEFAULT_FILE_POLICY,
-  isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
+  isolation: { network: 'api' },
   bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
   modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
   models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
@@ -36,6 +37,6 @@ export async function openOpenSandboxBackend() {
     },
     async stopExecution() { return { collectable: false }; },
     resource() { return { creation: 'absent' }; },
-    async destroy() {}, async close() {},
+    async destroy() {}, async close() {}, async finishRetention() {}, retain() {},
   };
 }

@@ -12,7 +12,7 @@ export function agentControlBackend(upstream, sandbox, { host = '172.17.0.1', li
     bridge: { host: listen, publicUrl: `http://${host}:{port}` },
     modelGateway: { host: listen, advertiseHost: host, requestTimeoutMs: 80_000, maxOutputTokens: 128 },
     models: { default: model(upstream.parentUrl), child: model(upstream.childUrl) },
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+    isolation: { network: 'api' },
   });
 }
 

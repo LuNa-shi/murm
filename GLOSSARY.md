@@ -22,7 +22,7 @@ These terms describe the current implementation. Read [How murm works](docs/en/c
 | **Working directory** | An Agent's project files, private by default. A Harness can explicitly select a shared workspace or publish files through its Services. |
 | **Service** | A named capability with a manifest, operations and an adapter. It may hold collaboration state or connect an existing application. |
 | **Bridge** | The trusted host boundary that authenticates Agent calls, discovers permitted operations, validates requests and invokes Service adapters. |
-| **Model gateway** | The host path for configured model requests, credentials, access checks and traces. It is separate from Service routing. |
+| **Model gateway** | The host handler for configured model requests, credentials, access checks and traces. It shares the Runtime callback listener with the authenticated Service Bridge and checks its own scoped credentials and budgets. |
 
 ## Inputs, observations and results
 

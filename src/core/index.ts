@@ -6,6 +6,7 @@ import type {
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { openRuntimeCallback } from './runtime-callback.js';
 import { createCoreBridge } from './bridge.js';
 import { snapshotProfiles, snapshotSpawn, validId } from './config.js';
 import { createCoreModelAccess } from './model/model-access.js';
@@ -165,9 +166,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   // Transport retention bounds apply independently of provider disk quotas.
   const artifactBounds = (phase: 'export' | 'session') => {
     const budget = config.filePolicy[phase];
-    const disk = config.isolation.network === 'local-docker' ? config.isolation.disk : undefined;
-    return { bytes: Math.min(budget.maxBytes, disk?.bytes ?? budget.maxBytes),
-      inodes: Math.min(budget.maxEntries, disk?.inodes ?? budget.maxEntries),
+    return { bytes: budget.maxBytes, inodes: budget.maxEntries,
       maxFileBytes: budget.maxFileBytes, maxFiles: budget.maxFiles, timeoutMs: budget.timeoutMs };
   };
   const assemblyDeadline = performance.now() + defaultTimeoutMs;
@@ -195,6 +194,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       ...management.bridgeAccess(agentId), parentId: agent.info.parentId, spawnProfiles: agent.profile.spawnProfiles, allowContextFork: agent.profile.allowContextFork,
     };
   };
+  let callbackOwner: { close(): Promise<void> } | undefined;
   let bridge: any, modelAccess: any, backend: any;
   let closing = false;
   const management = createRuntimeManagement({
@@ -226,7 +226,8 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const assertAssembling = () => {
     if (closing) throw Object.assign(new Error('Runtime initialization was closed'), { code: 'OPERATION_UNKNOWN' });
   };
-  const endpointCleanup: Record<'bridge' | 'model' | 'backend', { kind: string; id: string; action: string; done: boolean; error?: ErrorInfo }> = {
+  const endpointCleanup: Record<'callback' | 'bridge' | 'model' | 'backend', { kind: string; id: string; action: string; done: boolean; error?: ErrorInfo }> = {
+    callback: { kind: 'bridge', id: `${runtimeId}:callback`, action: 'close', done: false },
     bridge: { kind: 'bridge', id: runtimeId, action: 'close', done: false },
     model: { kind: 'model', id: runtimeId, action: 'close', done: false },
     backend: { kind: 'backend', id: runtimeId, action: 'close', done: false },
@@ -260,10 +261,12 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     await saveSummary('starting');
     reportSaved = true;
     assertAssembling();
-    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getAgent, modelTrace,
+    const callback = await openRuntimeCallback(config.callback!, owner => { callbackOwner = owner; });
+    assertAssembling();
+    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getAgent, modelTrace, callback,
       onOwned: owner => { modelAccess = owner; } });
     assertAssembling();
-    bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getAgent, registrations,
+    bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getAgent, registrations, callback,
       traceService: entry => serviceTrace.record(entry),
       recordService: entry => records.record('service', { ...entry,
         serviceId: redactor.text(entry.serviceId), operation: redactor.text(entry.operation),
@@ -276,7 +279,9 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       registerPrivateValues: redactor.add });
     await saveSummary('open');
   })();
-  const closeEndpoints = () => Promise.all([closeEndpoint('bridge', bridge), closeEndpoint('model', modelAccess)]);
+  const closeEndpoints = () => Promise.all([
+    closeEndpoint('bridge', bridge), closeEndpoint('model', modelAccess), closeEndpoint('callback', callbackOwner),
+  ]);
   const rollbackAssembly = async () => {
     const failure = await assembly.then(() => undefined, (error: any) => errorInfo(error));
     await Promise.all([closeEndpoints(), closeEndpoint('backend', backend)]);
@@ -519,6 +524,9 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         info.status = 'closed';
       } catch (error: any) {
         agent.cleanupError = errorInfo(error);
+        if (agent.cleanupAction === 'archive-session' || agent.cleanupAction === 'collect-artifacts') {
+          backend.retain(info.id, agent.cleanupAction);
+        }
       }
       info.lastStop = stopReceipt(agent);
       records.record('stop', { agentId: info.id, state: 'observed', receipt: info.lastStop });
@@ -810,7 +818,13 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           await management.retireAll(timeoutMs);
           serviceStates ??= await exportServiceStates(registrations, outputDir, redactor.value);
         }
-        const agentReceipts = await stopping;
+        await stopping;
+        await backend.finishRetention();
+        const agentReceipts = [...agents.values()].map(agent => {
+          const receipt = stopReceipt(agent);
+          agent.info.lastStop = receipt;
+          return receipt;
+        });
         if (agentReceipts.every((agent: any) => agent.cleanup === 'complete')) {
           await closeEndpoint('backend', backend);
         }

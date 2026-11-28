@@ -1,9 +1,16 @@
+import { sdkFixtureFetch } from '../test-support/opensandbox-sdk-fixture.js';
 import { openSandboxAgentKey } from '../src/core/sandbox/opensandbox-metadata.js';
-import { createOpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
+import { createOpenSandboxManager as createSdkManager } from '../src/core/sandbox/opensandbox-manager.js';
+
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { TaskService } from '../examples/taskpool/services/task/task-service.js';
 import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
+
+
+function createOpenSandboxManager(options) {
+  return createSdkManager({ ...options, fetchImpl: sdkFixtureFetch(options.fetchImpl), waitForExecdReady: options.waitForExecdReady ?? false });
+}
 
 function fixture(t) {
   const service = new TaskService();

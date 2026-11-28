@@ -5,50 +5,68 @@ section: 核心构件与实战
 order: 3
 ---
 
-在多智能体系统里，每个 Agent 都需要运行代码、修改文件、执行 Shell 命令。**Sandbox**（隔离沙箱）确保每个 Agent 都在自己的隔离容器与私有工作区里运行，既不会误改宿主机文件，也不会在未经授权的情况下互相覆盖工作区。
+每个 Agent 在 OpenSandbox 环境中拥有独立的 `/workspace/project`。root Worker 监督 Pi、Codex 或镜像内安装的执行器，验证文件传输，并在确认停止后导出会话与成果。
 
-`murm` 默认依托开源容器沙箱运行时 **OpenSandbox** 来创建和回收容器（运行 `murm setup --mode local` 即可在本机一键部署，也可连接已有远程 OpenSandbox 服务），同时支持通过 `SandboxProvider` 接入自建沙箱后端。
+## 本地运行
 
-## 每个沙箱里有什么？
+```sh
+murm setup --mode local
+murm doctor --smoke
+```
 
-调用 `runtime.spawn()` 时，`murm` 会通过 **OpenSandbox API** 或自定义 **Sandbox Provider** 为该 Agent 分配独立容器：
+setup 准备固定的 OpenSandbox 1.2.1 组件与兼容 Worker 镜像，随后保存连接。默认优先使用已发布镜像。开发时可设置 `MURM_BUILD_WORKER=1` 从源码构建。Worker 握手版本为 `murm-core-v2`，旧镜像会收到明确的版本不匹配错误。
 
-- **独立私有工作区**：每个 Agent 拥有自己的 `/workspace/project` 目录，按配置的 CPU、内存上限与生命周期超时运行。
-- **Worker 监督进程**：容器内由轻量监督进程托管选定的执行器（Pi、Codex 或镜像内安装的外部执行器），负责准备启动提示词、在文件快照/替换前暂停写入，以及在关闭前流式导出会话和产物。
-- **默认 OpenSandbox API 策略**：通过 OpenSandbox 鉴权 API 管理容器并校验 CPU/内存上限，兼顾本机一键部署与远程服务接入。
+## 连接已有服务
 
-## 用 `createSandbox()` 配置沙箱
+```sh
+export OPEN_SANDBOX_API_KEY='<管理员提供的密钥>'
+murm setup --mode existing --endpoint https://sandbox.example.net \
+  --public-url https://runtime.example.net/murm
+murm doctor --smoke
+```
+
+existing 模式验证管理鉴权后保存连接。显式 smoke 创建并清理一个临时资源，检查控制端访问 Worker、Sandbox 回连、文件导出和删除。远端管理员准备 Worker 镜像，Controller 需要 Node 与网络访问。跨不可信网络传输凭据时使用 TLS。
+
+## SDK 配置
 
 ```ts
 import { createSandbox } from '@luna-shi/murm';
 
-// 创建不可变、可复用的沙箱配置（默认使用 OpenSandbox API 策略）
-const sandbox = createSandbox({
-  // OpenSandbox Lifecycle API 地址（`murm setup --mode local` 默认监听本机 8080 端口）
-  lifecycleBaseUrl: process.env.MURM_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-
-  // 连接开启鉴权的 OpenSandbox 服务时传入（`murm setup --mode local` 也会自动生成本机密钥）
-  apiKey: process.env.MURM_LIFECYCLE_TOKEN,
-
-  // 可选：单容器 CPU、内存上限与最大存活时间（默认 3600 秒）
+const sandbox = createSandbox(); // 使用 setup 保存的连接
+const remote = createSandbox({
+  endpoint: 'https://sandbox.example.net',
+  apiKey: process.env.OPEN_SANDBOX_API_KEY,
   resourceLimits: { cpu: '2', memory: '2Gi' },
   timeoutSeconds: 3600,
 });
 ```
 
-### 常见进阶用法
+优先级为显式 SDK/CLI 配置、进程环境、保存的连接、本地默认值。连接保存在仅当前用户可读写的配置中。工厂捕获配置，`runtime.spawn()` 才分配资源。
 
-- **复用 CLI 的默认连接解析**：在可信宿主脚本中可直接调用 `resolveSandboxConnection()`，按与 `murm` CLI 相同的优先级读取 `MURM_LIFECYCLE_URL`、本机自动生成的 `MURM_LIFECYCLE_TOKEN` 与默认镜像。
-- **连接远程或代理后的 OpenSandbox**：可在 `createSandbox()` 中设置 `endpointHost`（覆盖返回的 Worker 主机地址）或 `useServerProxy: true`（走 OpenSandbox 服务端代理，二者选其一）。
-- **接入自定义 Sandbox Provider**：如果你有自建沙箱平台，可直接传 `createSandbox({ provider, timeoutSeconds })` 替换默认 OpenSandbox 后端，无需修改 Runtime 或 Harness 逻辑。
-- **可选严格本机隔离**：若需要**计量工作区 `tmpfs` 配额、实时共享挂载或本机 UID 网络白名单**，可显式传入 `isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } }`（需同机 rootful Docker 与 Landlock ABI 5+）。
+Runtime 使用 `connection: { publicUrl: 'https://runtime.example.net/murm' }` 声明一个 Sandbox 可达的回调地址。高级监听参数为 `bindHost` 与 `bindPort`。反向代理路径前缀会保留。OpenSandbox 应发布控制端可达的 endpoint 及所需 headers。
 
-### Worker 镜像
+## 资源与旧配置迁移
 
-- **`workerImageFor(executor)`**：获取与所选执行器匹配的精简单执行器镜像。
-- **`DEFAULT_WORKER_IMAGE`**：内置 Pi 与 Codex 的通用双执行器镜像。
-- 如果某个角色需要额外工具链（例如 Lean 或特定编译器），可基于官方镜像构建自定义 Dockerfile 并在对应 [Agent Profile](agents.md) 中单独指定 `image`。
+| 配置或能力 | 当前处理 |
+| --- | --- |
+| CPU、memory | 经官方 SDK 设置，并检查实际 guest cgroup。 |
+| `timeoutSeconds` | 初始生命周期默认 3600 秒。活跃 Runtime 自动续租运行、idle 与保留资源。 |
+| 必需导出失败 | 保留 Sandbox 与 Slot，报告实际 `expiresAt`。关闭前尝试确认至少五分钟窗口，未确认则报告 `retain-at-risk`。再次 stop 可重试导出与清理。 |
+| `lifecycleBaseUrl` | `endpoint` 的迁移别名，冲突即拒绝。计划在下一次 breaking release 移除。 |
+| `isolation.network: 'api'` | 过渡期冗余选择，计划在下一次 breaking release 移除。 |
+| `local-docker`、精确 Workspace bytes/inodes | 分配前拒绝并给迁移说明。可选择具有所需已验证存储合同的受信 Provider。 |
+| 文件 `maxBytes` / `maxEntries` | 由 `filePolicy` 独立配置的传输与内存预算。 |
+| live shared workspace | 内置 Provider 在创建前拒绝。使用文件或 Service 显式交接，或实现已验证共享权限的自定义 Provider。 |
+| `endpointHost` | 拒绝。请在 OpenSandbox 修正 endpoint 发布配置。 |
+| `useServerProxy` | 为已有部署保留的显式兼容，沿用上游维护状态。新部署应发布可达 endpoint。 |
+| 两个回调 URL 与 `{port}` 模板 | 迁移到一个 `connection.publicUrl`，需要时设置固定 `bindPort`。相同旧 URL 暂时兼容，计划下一次 breaking release 移除。 |
 
----
+可选 `egressMode: 'dns+nft'` 声明管理员已准备包级网络策略。Profile 的 IPv4 HTTP(S) origins 编译为精确 IP/TCP 端口规则，并加入 Runtime 回调目标。部署未声明能力时拒绝分配。Agent 启动前，Runtime 检查 sidecar 实际报告的 dns+nft 模式与请求的允许列表。实际包级拒绝需要部署测试，平台 deny 仍可能阻止业务目标。
 
-**下一步**：把沙箱句柄交给 **[Runtime 运行控制面](runtime.md)**，学会如何配置模型、监控事件、同步文件与安全收尾。
+## Worker 镜像
+
+`workerImageFor(executor)` 返回对应执行器镜像，`DEFAULT_WORKER_IMAGE` 选择组合镜像。需要额外工具链时扩展镜像并设置 `Profile.image`。包版本、Worker 协议与执行器版本必须兼容。
+
+自定义集成使用 `createSandbox({ provider, timeoutSeconds })`，遵循公开 `SandboxProvider` 合同。管理员配方与版本 pin 见部署指南。
+
+[Runtime](runtime.md) · [宿主网关](gateway.md) · [部署](../../deploy/README.md)

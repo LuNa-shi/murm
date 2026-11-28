@@ -9,7 +9,7 @@ function required(...names: string[]) {
 }
 
 export function leadWorkerConfig() {
-  const { lifecycleBaseUrl, endpointHost, apiKey, advertiseHost, image } = resolveSandboxConnection({}, 'LEAD_WORKER');
+  const { advertiseHost, publicUrl, image, endpointSource: _source, ...sandbox } = resolveSandboxConnection({}, 'LEAD_WORKER');
   // A scoped endpoint alone historically selected Kimi K3. Keep that route's
   // model identity unless the caller explicitly selects labels or a common URL.
   const legacyModelDefaults = !process.env.MURM_MODEL_URL;
@@ -28,13 +28,11 @@ export function leadWorkerConfig() {
       adminToken: required('MURM_LEAD_WORKER_GITEA_ADMIN_TOKEN'),
     },
     sandbox: {
-      lifecycleBaseUrl, endpointHost, apiKey,
+      ...sandbox,
       resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000,
-      // Git Profiles require an enforced endpoint allowlist. The default API
-      // Provider does not advertise that capability; keep strict local isolation.
-      isolation: { network: 'local-docker' as const, disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
     },
     connection: {
+      publicUrl,
       advertiseHost: process.env.MURM_ADVERTISE_HOST ?? process.env.MURM_LEAD_WORKER_HOST ?? advertiseHost ?? '172.17.0.1',
       modelGateway: { requestTimeoutMs: 25_000, maxOutputTokens: executor === 'codex' ? null : 2048 },
     },

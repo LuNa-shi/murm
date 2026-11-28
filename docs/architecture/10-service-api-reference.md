@@ -40,15 +40,15 @@ This section is generated from executable exports and checked against the source
 | [test-support/taskpool-legacy/services-bridge.ts](../../test-support/taskpool-legacy/services-bridge.ts) | `bddb5744b172e34d5939b958f5e92946f736d6816b31c9b54938976ded8e1ca6` |
 | [examples/services/mathlib-search/service.json](../../examples/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5b436c6d7062a7b9fb0fd434af1375b9c050999cfa76bd6d97dac88558dca8b3` |
-| [src/core/index.ts](../../src/core/index.ts) | `e6279b847e0afb9c46beae5fc5f77621cabd188baa0d352d3a466ef61a1e9b15` |
-| [src/core/types.ts](../../src/core/types.ts) | `1161fe11a40d1da8d229fc7f469bec00c7a139c709010daf7713e7708325619b` |
+| [src/core/index.ts](../../src/core/index.ts) | `9d2521d586cac412f3629b277d2d5ab0f1b77fe9f4420fb7928175c76b969f0f` |
+| [src/core/types.ts](../../src/core/types.ts) | `dc50ab5f34328c1cec598a9cad6b0db4b11c46f0263d608f01cd22254acca287` |
 | [src/core/services.ts](../../src/core/services.ts) | `823b7c83efd0fc61314c5511177b32b8863f469454cad5c5288bd04e5e82cf96` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
-| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `8346d93de03fc4a8ed1203a23dd5c7aeec3061dfc7f135ba0c77a76c5d959851` |
+| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `119644d2b3a11d942d5ba1f7472a69f500a1438f13cbc2e15e5119f061de133a` |
 | [src/core/sandbox/executor-driver.ts](../../src/core/sandbox/executor-driver.ts) | `56849cecb5e525d3752caca2feeb7571692c6e33afa7961619f40ad41272e6e7` |
-| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `8138466de523d6734f78202ce5a7412636a07d269d6410eb99aa1ecf6b6da2c3` |
-| [src/core/sandbox/opensandbox-provider.ts](../../src/core/sandbox/opensandbox-provider.ts) | `b9c953413bde9906cd7e5166f9442fcbe01d6980c23da6bb062d2e6d18d42256` |
-| [src/core/sandbox/sandbox-connection.ts](../../src/core/sandbox/sandbox-connection.ts) | `27c35937b58ae31efb2192ddb0bc11100239b4932d25ea7292bb7df5e7eb80c4` |
+| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `e74c4fe8890e76e45c9e7795891c834bed666bf744693e8ff2663ddff07bd538` |
+| [src/core/sandbox/opensandbox-provider.ts](../../src/core/sandbox/opensandbox-provider.ts) | `eb98901a846c1ce294621d7a173cec46787ba4bf18b4edc65afc5c867e968c37` |
+| [src/core/sandbox/sandbox-connection.ts](../../src/core/sandbox/sandbox-connection.ts) | `d5fc3164e0fc5b8fc352896a9462b52469ea0a9a5a8efc0fd4d78663f47a6837` |
 
 ### Exact built-in command operation surface
 
@@ -3350,6 +3350,12 @@ export interface PendingCleanup {
     sandboxId?: string;
     creation?: 'created' | 'pending' | 'absent';
     executionStopped?: boolean;
+    expiresAt?: string | null;
+    retention?: {
+        reason: 'archive-session' | 'collect-artifacts';
+        status: 'retained' | 'retain-at-risk';
+        autoRenewing: boolean;
+    };
 }
 export interface StopReceipt {
     agentId: string;
@@ -3642,7 +3648,7 @@ export interface ServiceAdapter {
 #### dist/src/core/sandbox/opensandbox-backend.d.ts
 
 ```ts
-import type { AgentEvent, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from '../types.js';
+import type { AgentEvent, ErrorInfo, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from '../types.js';
 import type { SessionFork } from '../../../scripts/core-session-fork.js';
 import type { createCoreBridge } from '../bridge.js';
 import { type createCoreModelAccess } from '../model/model-access.js';
@@ -3662,8 +3668,53 @@ export type BackendInputReceipt = {
     status: 'accepted';
     disposition: 'started' | 'queued' | 'handled';
 };
+interface InputSubmission {
+    input: string;
+    mode: InputMode;
+    wakeIfIdle: boolean;
+    first: boolean;
+    receipt?: Exclude<BackendInputReceipt, {
+        status: 'unknown';
+    }>;
+    work?: Promise<BackendInputReceipt>;
+}
+type SharedWorkspace = Extract<NonNullable<SpawnOptions['workspace']>, {
+    id: string;
+}>;
 import type { WorkerFileReplace, WorkerFileSnapshot } from '../file-controls.js';
 import type { FileReplaceOptions, FileSnapshotOptions } from '../types.js';
+interface BackendAgent {
+    workspace?: SharedWorkspace;
+    id: string;
+    provider: OpenSandboxProvider;
+    manager: SandboxManager;
+    onEvent(event: BackendEvent): void;
+    onExecutionStart?: () => void;
+    onTrace?: (record: Readonly<Record<string, unknown>>) => void;
+    cursor: number;
+    output: string;
+    error: ErrorInfo | null;
+    outcome?: 'completed' | 'failed' | 'aborted';
+    stopping: boolean;
+    exited: boolean;
+    eventPoll: ReturnType<typeof createWorkerEventPoll>;
+    nativeExecuting: boolean;
+    pendingInputs: number;
+    historyLost?: boolean;
+    started?: boolean;
+    workerStartDispatched?: boolean;
+    polling?: Promise<void>;
+    submissions?: Map<string, InputSubmission>;
+    executionStopped?: boolean;
+    lease?: {
+        expiresAt: string | null;
+        dueAt: number;
+        work?: Promise<void>;
+    };
+    retaining?: 'archive-session' | 'collect-artifacts';
+    retainAtRisk?: boolean;
+    deleting?: boolean;
+}
 type WorkerRecord = {
     worker_sequence: number;
     worker_at?: string;
@@ -3770,9 +3821,15 @@ export interface SandboxManager {
         sandboxId?: string;
         creation: 'created' | 'pending' | 'absent';
         executionStopped: boolean;
+        expiresAt?: string | null;
     } | undefined;
     /** Resolve after confirmed deletion or absence. Throw while the deletion outcome is uncertain. */
     stopExecution(agentId: string): Promise<unknown>;
+    renewExecution?(resourceKey: string, minimumExpiresAtMs: number): Promise<{
+        sandboxId: string;
+        expiresAt: string;
+    }>;
+    close?(): Promise<void>;
 }
 interface BackendOptions {
     runtimeId: string;
@@ -3804,12 +3861,13 @@ interface BackendSpawnOptions {
 import type { CreateRuntimeOptions } from '../types.js';
 import type { ExecutorCapabilities, OpenSandboxBackendConfig, Sandbox, SandboxConfig, SandboxProviderConfig } from '../backend-config.js';
 import { type ExecutorDriver } from './executor-driver.js';
+import { createWorkerEventPoll } from '../worker-event-poll.js';
 import { type OpenSandboxProvider } from './opensandbox-provider.js';
 export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'> & {
     readonly driver: Readonly<ExecutorDriver>;
     readonly filePolicy: ResolvedFilePolicy;
 };
-export declare function createSandbox(config: SandboxConfig | SandboxProviderConfig): Sandbox;
+export declare function createSandbox(config?: SandboxConfig | SandboxProviderConfig): Sandbox;
 export declare function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRuntimeOptions, 'models' | 'executor' | 'connection' | 'filePolicy'>): ResolvedOpenSandboxBackendConfig;
 export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, { runtimeId, outputDir, bridge, modelAccess, registerPrivateValues, providers, }: BackendOptions): Promise<{
     spawn({ agentId, profile, options, signal, onEvent, onExecutionStart, onTrace, recordAllocation }: BackendSpawnOptions): Promise<{
@@ -3822,14 +3880,9 @@ export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBacken
         };
         providerVersion: string | undefined;
         effective: {
-            cpu?: number | undefined;
-            memoryBytes?: number | undefined;
-            managementAuthentication?: boolean | undefined;
-            disk?: {
-                scope: 'workspace';
-                bytes: number;
-                inodes: number;
-            } | undefined;
+            cpu: number;
+            memoryBytes: number;
+            managementAuthentication: boolean;
         } | undefined;
         backend?: ExecutorStartup | undefined;
     }>;
@@ -3856,8 +3909,16 @@ export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBacken
         sandboxId?: string;
         creation: 'created' | 'pending' | 'absent';
         executionStopped: boolean;
+        expiresAt?: string | null;
         providerId: string;
+        retention?: {
+            reason: "archive-session" | "collect-artifacts";
+            status: string;
+            autoRenewing: boolean;
+        } | undefined;
     } | undefined;
+    retain(agentId: string, reason: NonNullable<BackendAgent['retaining']>): void;
+    finishRetention(): Promise<void>;
     destroy(agentId: string): Promise<void>;
     close(): Promise<void>;
 }>;
@@ -3934,11 +3995,15 @@ export interface SandboxProviderConfig {
 }
 export interface SandboxConfig {
     kind?: 'opensandbox';
-    lifecycleBaseUrl: string;
+    endpoint?: string;
+    /** Migration alias for endpoint. */
+    lifecycleBaseUrl?: string;
     apiKey?: string;
     execdToken?: string;
     endpointHost?: string;
     useServerProxy?: boolean;
+    /** Assertion by the deployment administrator. Smoke verifies the actual policy. */
+    egressMode?: 'dns+nft';
     resourceLimits?: {
         cpu: string;
         memory: string;
@@ -3980,6 +4045,9 @@ export interface ModelConfig {
     };
 }
 export interface RuntimeConnectionOptions {
+    publicUrl?: string;
+    bindHost?: string;
+    bindPort?: number;
     advertiseHost?: string;
     bridge?: {
         host?: string;
@@ -4004,6 +4072,9 @@ export interface OpenSandboxBackendConfig {
         execdToken?: string;
         endpointHost?: string;
         useServerProxy?: boolean;
+        egressMode?: 'dns+nft';
+        publicUrl?: string;
+        advertiseHost?: string;
         resourceLimits?: {
             cpu: string;
             memory: string;
@@ -4011,6 +4082,11 @@ export interface OpenSandboxBackendConfig {
         commandTimeoutMs?: number;
         /** Sandbox creation lifetime in seconds; safe integer >= 60, default 3600. Provider limits also apply. */
         timeoutSeconds?: number;
+    };
+    callback?: {
+        host: string;
+        port: number;
+        publicUrl: string;
     };
     bridge: {
         host: string;
@@ -4029,17 +4105,8 @@ export interface OpenSandboxBackendConfig {
     models: Readonly<Record<string, ModelConfig>>;
     provider?: SandboxProvider & OpenSandboxProvider;
     isolation: {
-        network: 'local-docker';
-        disk: {
-            bytes: number;
-            inodes: number;
-        };
-    } | {
         network: 'api' | 'provider';
-        disk?: {
-            bytes: number;
-            inodes?: never;
-        };
+        disk?: never;
     };
 }
 export {};
@@ -4050,10 +4117,6 @@ export {};
 ```ts
 import type { OpenSandboxBackendConfig } from '../backend-config.js';
 import type { SandboxManager } from './opensandbox-backend.js';
-type WorkspaceQuota = {
-    bytes: number;
-    inodes: number;
-};
 export interface SandboxPreparation {
     sandboxId: string;
     agent: {
@@ -4087,18 +4150,15 @@ export interface OpenSandboxProvider {
     readonly id: string;
     readonly version?: string;
     readonly capabilities?: SandboxProvider['capabilities'];
-    readonly projectQuotaRequired?: boolean;
     preflight?(): Promise<void>;
+    beforeAllocation?(): Promise<void>;
     openManager(image: string): SandboxManager;
-    prepareSandbox(input: SandboxPreparation): Promise<void | WorkspaceQuota>;
+    prepareSandbox(input: SandboxPreparation): Promise<void>;
     createSharedWorkspace(runtimeId: string, workspaceId: string): Promise<void>;
     deleteSharedWorkspace(runtimeId: string, workspaceId: string): Promise<void>;
 }
-export declare function checkLocalWorkspaceQuota(quota: WorkspaceQuota): void;
-export declare function createLocalOpenSandboxProvider({ sandbox, isolation }: OpenSandboxBackendConfig): OpenSandboxProvider;
 export declare function createApiOpenSandboxProvider({ sandbox }: OpenSandboxBackendConfig): OpenSandboxProvider;
 export declare function adaptSandboxProvider(provider: SandboxProvider): SandboxProvider & OpenSandboxProvider;
-export {};
 ```
 
 #### dist/src/core/sandbox/sandbox-connection.d.ts
@@ -4107,21 +4167,36 @@ export {};
 export declare const defaultLifecycleUrl = "http://127.0.0.1:8080/v1";
 export declare function loopbackLifecycle(url: string): URL | undefined;
 export declare function localApiKeyPath(url: URL): string;
-export declare function resolveSandboxConnection(input?: {
+interface ConnectionInput {
+    endpoint?: string;
     lifecycleBaseUrl?: string;
     apiKey?: string;
     endpointHost?: string;
     advertiseHost?: string;
+    publicUrl?: string;
     image?: string;
-}, scope?: string): {
+    useServerProxy?: boolean;
+    egressMode?: 'dns+nft';
+}
+export declare function normalizeRuntimePublicUrl(value: string): string;
+export declare function resolveSandboxConnection(input?: ConnectionInput, scope?: string, { useSaved }?: {
+    useSaved?: boolean | undefined;
+}): {
     lifecycleBaseUrl: string;
     apiKey: string | undefined;
-    endpointHost: string | undefined;
     advertiseHost: string | undefined;
+    publicUrl: string | undefined;
     image: string | undefined;
+    useServerProxy: boolean | undefined;
+    egressMode: "dns+nft" | undefined;
+    endpointHost: undefined;
     endpointSource: string;
 };
+export declare function saveSandboxConnection(input: ConnectionInput & {
+    lifecycleBaseUrl: string;
+}): Promise<void>;
 export declare function loadMurmConfig(filename: string): Promise<unknown>;
+export {};
 ```
 
 <!-- END GENERATED REFERENCE -->

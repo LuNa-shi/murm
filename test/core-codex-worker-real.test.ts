@@ -112,7 +112,7 @@ async function nativeCodexWorkerProbe() {
   try {
     worker = spawn(process.execPath, ['/opt/murm/agent-worker.mjs', '--token', 'local-codex-control-probe'], { stdio: 'ignore' });
     await until(() => fetch(origin + '/health').then(response => response.ok, () => false));
-    const started = await post('/start', { contract_version: 'murm-core-v1', resources: [], command: 'codex', args: [], writable: true,
+    const started = await post('/start', { contract_version: 'murm-core-v2', resources: [], command: 'codex', args: [], writable: true,
       system_prompt: 'Execute only the explicit input and use local files for evidence.', system_prompt_path: '/workspace/runtime/profile-prompt.txt',
       codex: { model: 'murm-control-probe', baseUrl: `http://127.0.0.1:${upstreamAddress.port}/v1` }, secret_env: { OPENAI_API_KEY: 'local-gateway-token' } });
     assert.equal(started.status, 200, JSON.stringify(started.body));

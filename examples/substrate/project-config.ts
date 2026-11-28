@@ -9,7 +9,7 @@ function required(...names: string[]) {
 }
 
 export function substrateConfiguration() {
-  const { image, advertiseHost, endpointSource: _endpointSource, ...sandbox } = resolveSandboxConnection({}, 'SUBSTRATE');
+  const { image, advertiseHost, publicUrl, endpointSource: _endpointSource, ...sandbox } = resolveSandboxConnection({}, 'SUBSTRATE');
   // A scoped endpoint alone historically selected Kimi K3. Keep that route's
   // model identity unless the caller explicitly selects labels or a common URL.
   const legacyModelDefaults = !process.env.MURM_MODEL_URL;
@@ -26,6 +26,7 @@ export function substrateConfiguration() {
       resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000,
     },
     connection: {
+      publicUrl,
       advertiseHost: process.env.MURM_ADVERTISE_HOST ?? process.env.MURM_SUBSTRATE_HOST ?? advertiseHost,
       modelGateway: { requestTimeoutMs: 25_000, maxOutputTokens: executor === 'codex' ? null : 2048 },
     },

@@ -2,7 +2,7 @@ import './environment.js';
 import { fileURLToPath } from 'node:url';
 import { workerImageFor, resolveSandboxConnection } from '@luna-shi/murm';
 
-const { image, advertiseHost, endpointSource: _endpointSource, ...sandbox } = resolveSandboxConnection({}, 'SUBAGENTS');
+const { image, advertiseHost, publicUrl, endpointSource: _endpointSource, ...sandbox } = resolveSandboxConnection({}, 'SUBAGENTS');
 const token = process.env.MURM_MODEL_TOKEN ?? process.env.MURM_SUBAGENTS_MODEL_TOKEN;
 const executor = process.env.MURM_EXECUTOR ?? process.env.MURM_SUBAGENTS_EXECUTOR ?? 'pi';
 const provider = process.env.MURM_MODEL_PROVIDER ?? process.env.MURM_SUBAGENTS_MODEL_PROVIDER ?? 'openai';
@@ -22,7 +22,7 @@ export default {
     resourceLimits: { cpu: '1', memory: '1Gi' },
     commandTimeoutMs: 20_000,
   },
-  connection: { advertiseHost,
+  connection: { publicUrl, advertiseHost,
     modelGateway: { requestTimeoutMs: 25_000, maxOutputTokens: executor === 'codex' ? null : 2048 },
   },
   models: { default: { provider, model, upstream: {

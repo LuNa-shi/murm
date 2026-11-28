@@ -55,9 +55,9 @@ test('two real Kimi K3 peers negotiate and adopt an A-only Board seed in one Cor
       prepare: async options => { facilities = await preparePeerMeshFacilities(options); ingress = createLiveIngress(facilities.peers); return facilities; },
       router: { subscribe: options => createPeerMeshEventSubscription({ ...options, ingest: event => ingress.ingest(options.facilities.peer.key, event, options.ingest) }),
         readContext: async () => 'Read the current Board through your authenticated board_read/board_grep Service. Seed values are not supplied in injected context.', workTimeoutMs: work.remaining(), turnTimeoutMs: 80_000, maxBatches: 3, maxNudges: 0, events: { pollIntervalMs: 1000, maxPolls: 180 } },
-      ...runtimeSettings({ sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
+      ...runtimeSettings({ sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 768, requestTimeoutMs: 85_000 },
-        models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 128 * 1024 ** 2, inodes: 8192 } } }) }));
+        models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } }, isolation: { network: 'api' } }) }));
     report.runtimeId = harness.id; report.initial = harness.snapshot();
     stage = 'identity';
     const owned = await containers(); assert.equal(owned.length, 2); report.containers = owned;

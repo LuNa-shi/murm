@@ -97,11 +97,10 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
   report.image = image;
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   runtime = await createRuntime({ ...runtimeSettings({ sandbox: {
-    lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
-    apiKey: process.env.MURM_CORE_TEST_API_KEY, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
+    lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', apiKey: process.env.MURM_CORE_TEST_API_KEY, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
     bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 60_000, maxOutputTokens: report.maxOutputTokens },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: proxy.url, headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } }), profiles: {
+    isolation: { network: 'api' } }), profiles: {
     readonly: { prompt: 'Reply with exactly TASKPOOL_SELECTION_OK. Do not call tools.', image, model: 'default', writable: false, services: {} } },
     services: new ServiceRegistry(), maxAgents: 1, outputDir });
   report.runtimeId = runtime.id;

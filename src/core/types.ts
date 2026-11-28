@@ -202,6 +202,12 @@ export interface PendingCleanup {
   sandboxId?: string;
   creation?: 'created' | 'pending' | 'absent';
   executionStopped?: boolean;
+  expiresAt?: string | null;
+  retention?: {
+    reason: 'archive-session' | 'collect-artifacts';
+    status: 'retained' | 'retain-at-risk';
+    autoRenewing: boolean;
+  };
 }
 
 export interface StopReceipt {

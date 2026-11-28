@@ -116,7 +116,6 @@ export default {
     ...runtimeSettings({
       sandbox: {
         lifecycleBaseUrl: input.lifecycle,
-        endpointHost: input.endpointHost,
         apiKey: input.apiKey,
         commandTimeoutMs: 20000,
 
@@ -150,14 +149,7 @@ export default {
         }
       },
 
-      isolation: {
-        network: 'local-docker',
-
-        disk: {
-          bytes: 134217728,
-          inodes: 8192
-        }
-      }
+      isolation: { network: 'api' }
     })
   }
 };

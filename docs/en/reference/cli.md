@@ -14,7 +14,7 @@ order: 16
 | Command | Purpose |
 | --- | --- |
 | `murm` | Starts an interactive session in the current murm project directory |
-| `murm setup [--mode existing\|local] [--config <module>]` | Starts a managed local OpenSandbox with auto-generated credentials (`--mode local`), or validates an existing service (`--mode existing`), then prepares the selected Worker image |
+| `murm setup [--mode existing\|local] [--endpoint <url>] [--public-url <url>] [--config <module>]` | Starts a managed local OpenSandbox with auto-generated credentials (`--mode local`), or validates an existing service (`--mode existing`), local mode prepares the selected Worker and probes it, existing mode saves the connection |
 | `murm doctor [--config <module>] [--smoke]` | Read-only configuration and Lifecycle auth diagnostics; pass `--smoke` for a live Pi/Codex Worker end-to-end probe |
 | `murm init --template subagents --dir <directory>` | Scaffolds an editable standalone Subagents project directory |
 | `murm --harness <module> --prompt <text> [options]` | Runs a built-in, local ESM, or package Harness in foreground against a project directory |
@@ -47,7 +47,7 @@ murm --harness subagents --mode rpc --output-dir ./runs
 
 ## Unified environment variables
 
-Built-in CLI Harnesses (`subagents`, `taskpool`, `notes`, `messages`) share one consistent set of host environment variables (per-Harness overrides such as `MURM_SUBAGENTS_*` continue to take precedence when set):
+Built-in CLI Harnesses (`subagents`, `taskpool`, `notes`, `messages`) share one consistent set of host environment variables (explicit configuration takes precedence over process environment and the saved connection):
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -57,10 +57,10 @@ Built-in CLI Harnesses (`subagents`, `taskpool`, `notes`, `messages`) share one 
 | `MURM_MODEL_ID` | `gpt-5.4` *(Pi)* | Model ID sent to the upstream endpoint (required when `MURM_EXECUTOR=codex`) |
 | `MURM_EXECUTOR` | `pi` | Executor backend: `pi` or `codex` |
 | `MURM_WORKER_IMAGE` | `DEFAULT_WORKER_IMAGE` | Custom Docker Worker image reference (`ghcr.io/luna-shi/murm-worker:0.2.0` by default) |
-| `MURM_LIFECYCLE_URL` | `http://127.0.0.1:8080/v1` | Local OpenSandbox Lifecycle API URL |
-| `MURM_LIFECYCLE_TOKEN` | *(optional)* | Optional OpenSandbox API key |
-| `MURM_ADVERTISE_HOST` | `172.17.0.1` | Container-reachable non-loopback host IPv4 address |
-| `MURM_ENDPOINT_HOST` | `127.0.0.1` | Host loopback address used to reach published Sandbox ports |
+| `OPEN_SANDBOX_ENDPOINT` | `http://127.0.0.1:8080/v1` | OpenSandbox endpoint, overriding the saved connection |
+| `OPEN_SANDBOX_API_KEY` | *(saved connection)* | OpenSandbox management credential |
+| `MURM_RUNTIME_PUBLIC_URL` | *(saved/local discovery)* | Common Sandbox-reachable Runtime callback |
+| `MURM_ADVERTISE_HOST` | *(local discovery)* | Advanced callback host override |
 
 > `PeerMesh`, `Substrate`, and `Lead-Worker` require additional facility variables (such as Gitea, Mattermost, Board MySQL DSN, or Lean paths). See their individual pages under [Harnesses](../harnesses/index.md).
 

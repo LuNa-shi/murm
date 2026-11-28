@@ -24,14 +24,17 @@ Agent 发起推理时，容器内的执行器只向宿主机本地的 **Model Ga
 - **支持随时断流**：一旦 Agent 被 `stop()`、意外退出或发生致命错误，宿主机立刻吊销该 Agent 的令牌并中止在途请求。
 - **可选租约门控（`modelAccessPolicy`）**：高级场景（如 [TaskPool](harnesses/taskpool.md)）可以在每次模型请求前执行同步检查，一旦任务租约过期立刻中止推理，防止过期成员继续消耗算力。
 - **原始请求自动归档**：经网关转发的 Responses 或 Chat Completions 请求与流式响应（以及自定义可信 `ModelTransport`）都会写入 `model-trace/`，方便事后审计 token 消耗和排查模型决策依据。
-- **远程与反向代理回调**：若使用远程 OpenSandbox 且 Worker 需经域名或 HTTPS 反向代理回连宿主机，可通过 `connection.bridge.publicUrl` 与 `connection.modelGateway.publicUrl` 声明含 `{port}` 的地址模板。
+- **一个回调地址**。`connection.publicUrl` 指定 Sandbox 可达的 HTTP(S) 地址，可以包含反向代理路径前缀。Runtime 在同一 listener 路由 `/bridge` 和 `/model/<alias hash>`。Bridge 与模型 token、权限和预算分别校验，模型响应继续流式转发。
 
-## 3. 精细控制容器出站网络（严格本地策略）
+## 3. 网络策略
 
-启用严格本地隔离策略（`isolation.network: 'local-docker'`）时，宿主机防火墙默认仅放行 Service Bridge 与 Model Gateway。如果你的场景需要 Agent 在容器内直接使用原生工具访问本地 Git 服务器（例如 [PeerMesh](harnesses/peermesh.md) 中的本地 Gitea），可以在该角色的 Profile 中显式配置两项：
+管理员可准备 OpenSandbox `dns+nft` egress，并在连接中声明 `egressMode: 'dns+nft'`。Profile 随后可请求精确的非回环 IPv4 HTTP(S) origins。Runtime 创建 Sandbox 前将共同回调加入许可目标。
 
-- `network: { allow: ['172.17.0.1:3000'] }`：由宿主防火墙仅为该容器放行指定非 loopback IPv4 地址。
-- `spawn({ secretEnv: { GITEA_TOKEN: '...' } })`：只把该成员专属的最小权限凭证注入容器，管理员密钥仍严格留在宿主机 Service 中。
+```ts
+network: { allow: ['http://172.17.0.1:3000'] }
+```
+
+同 IP 的其他 TCP 端口仍在规则范围外。域名与端口组合的限制在分配前拒绝。DNS-only 部署无法满足该能力。管理接口鉴权与未授权网络目标分别验证。成员级应用凭据可经 `runtime.spawn({ secretEnv })` 传入。
 
 ---
 

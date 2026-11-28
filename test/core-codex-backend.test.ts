@@ -13,7 +13,7 @@ const configuration = {
   bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
   modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1', maxOutputTokens: null },
   models: { default: { provider: 'openai', model: 'configured-codex-model', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
-  isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
+  isolation: { network: 'api' },
 };
 
 test('Codex Runtime accepts an explicitly configured model and rejects Context Fork before Slot allocation', async t => {

@@ -5,5 +5,5 @@ export function substrateBackendConfiguration({ upstreamUrl, host = '172.17.0.1'
   return { sandbox: { lifecycleBaseUrl: lifecycleUrl, endpointHost, apiKey, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
     bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 30_000, maxOutputTokens: 128 },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: url.href, headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } };
+    isolation: { network: 'api' } };
 }

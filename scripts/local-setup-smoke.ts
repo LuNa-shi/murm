@@ -16,7 +16,9 @@ export interface LocalSmokeOptions {
   modelConfig?: ModelConfig;
   filePolicy?: FilePolicy;
   lifecycleBaseUrl: string;
-  endpointHost?: string;
+  publicUrl?: string;
+  useServerProxy?: boolean;
+  egressMode?: 'dns+nft';
   apiKey?: string;
   advertiseHost?: string;
   signal?: AbortSignal;
@@ -95,11 +97,12 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
       sandbox: createSandbox({
         commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' },
         ...options.sandbox,
-        lifecycleBaseUrl: options.lifecycleBaseUrl, endpointHost: options.endpointHost, apiKey: options.apiKey,
+        lifecycleBaseUrl: options.lifecycleBaseUrl, apiKey: options.apiKey,
+        useServerProxy: options.useServerProxy, egressMode: options.egressMode,
       }),
       executor: options.executor,
       connection: {
-        advertiseHost: options.advertiseHost, ...options.connection,
+        advertiseHost: options.advertiseHost, publicUrl: options.publicUrl, ...options.connection,
         modelGateway: { requestTimeoutMs: 20_000, maxOutputTokens: 128, ...options.connection?.modelGateway },
       },
       models: { default: model }, filePolicy: options.filePolicy,

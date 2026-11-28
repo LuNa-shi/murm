@@ -356,6 +356,8 @@ export interface RuntimeFiles {
 
 ## Sandbox and Runtime connection
 
+`endpointHost` and `isolation` remain in this migration type so existing callers receive an explicit validation error. The built-in Provider rejects endpoint rewriting and legacy exact Workspace quotas before allocation. Use the [Sandbox migration table](../sandbox.md#resource-and-migration-boundaries) when updating old configurations.
+
 ```ts
 declare const sandboxBrand: unique symbol;
 
@@ -365,11 +367,15 @@ export interface Sandbox {
 
 export interface SandboxConfig {
   kind?: 'opensandbox';
-  lifecycleBaseUrl: string;
+  endpoint?: string;
+  /** Migration alias for endpoint. */
+  lifecycleBaseUrl?: string;
   apiKey?: string;
   execdToken?: string;
   endpointHost?: string;
   useServerProxy?: boolean;
+  /** Assertion by the deployment administrator. Smoke verifies the actual policy. */
+  egressMode?: 'dns+nft';
   resourceLimits?: { cpu: string; memory: string };
   commandTimeoutMs?: number;
   timeoutSeconds?: number;
@@ -397,6 +403,9 @@ export interface ModelConfig {
 }
 
 export interface RuntimeConnectionOptions {
+  publicUrl?: string;
+  bindHost?: string;
+  bindPort?: number;
   advertiseHost?: string;
   bridge?: { host?: string; publicUrl?: string };
   modelGateway?: {
@@ -405,6 +414,7 @@ export interface RuntimeConnectionOptions {
     publicUrl?: string;
     requestTimeoutMs?: number;
     maxOutputTokens?: number | null;
+    /** Maximum new upstream attempts per Runtime and model alias, including unknown outcomes. */
     maxRequests?: number;
   };
 }

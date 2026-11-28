@@ -1,6 +1,10 @@
 import { parseArgs } from 'node:util';
 
-export const setupUsage = 'Usage: murm setup [--mode existing|local] [--config <module>]';
+export const setupUsage = [
+  'Usage: murm setup [--mode existing|local] [--endpoint <url>] [--public-url <url>] [--config <module>]',
+  'Without --mode, reuse a configured or saved connection, or prepare local OpenSandbox when no connection is configured.',
+  'Existing mode saves the authenticated connection. Run murm doctor --smoke to verify Worker and Runtime callbacks.',
+].join('\n');
 export const initUsage = 'Usage: murm init --template subagents --dir <directory>';
 export const doctorUsage = 'Usage: murm doctor [--config <module>] [--smoke]';
 const projectUsage = [
@@ -17,7 +21,7 @@ export const murmUsage = [
 ].join('\n');
 
 export type LocalCommand =
-  | { command: 'setup'; mode?: 'existing' | 'local'; configPath?: string }
+  | { command: 'setup'; mode?: 'existing' | 'local'; endpoint?: string; publicUrl?: string; configPath?: string }
   | { command: 'doctor'; configPath?: string; smoke: boolean };
 
 export type ProjectCommand = {
@@ -50,9 +54,9 @@ export function parseMurmCommand(args: string[]): MurmCommand | { help: string }
       }
     }
     if (command === 'setup') {
-      const { values } = parseArgs({ args: options, options: { mode: { type: 'string' }, config: { type: 'string' } } });
-      if (values.config !== '' && (values.mode === undefined || values.mode === 'existing' || values.mode === 'local')) {
-        return { command, mode: values.mode, configPath: values.config };
+      const { values } = parseArgs({ args: options, options: { mode: { type: 'string' }, endpoint: { type: 'string' }, 'public-url': { type: 'string' }, config: { type: 'string' } } });
+      if (values.config !== '' && values.endpoint !== '' && values['public-url'] !== '' && (values.mode === undefined || values.mode === 'existing' || values.mode === 'local')) {
+        return { command, mode: values.mode, endpoint: values.endpoint, publicUrl: values['public-url'], configPath: values.config };
       }
     }
     if (command === 'init') {

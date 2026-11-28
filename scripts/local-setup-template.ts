@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { createSubagentsHarness } from '../examples/subagents/main.js';
-import { resolveLocalDocker, resolveSubagentsEnvironment } from './local-environment.js';
+import { resolveSubagentsEnvironment } from './local-environment.js';
 import { loadMurmConfig } from '../src/core/sandbox/sandbox-connection.js';
 import { workerImageFor } from '../src/core/worker-image.js';
 
@@ -17,7 +17,7 @@ export interface SubagentsProjectOptions {
   directory: string;
   image: string;
   lifecycleBaseUrl: string;
-  endpointHost?: string;
+  publicUrl?: string;
   advertiseHost?: string;
   packageArchive?: string;
   signal?: AbortSignal;
@@ -36,13 +36,9 @@ async function exists(filename: string) {
 
 function environment(options: SubagentsProjectOptions) {
   const fields = {
-    MURM_SUBAGENTS_IMAGE: options.image,
-    MURM_SUBAGENTS_LIFECYCLE_URL: options.lifecycleBaseUrl,
-    MURM_SUBAGENTS_ENDPOINT_HOST: options.endpointHost,
-    MURM_SUBAGENTS_ADVERTISE_HOST: options.advertiseHost,
+
     MURM_SUBAGENTS_MODEL_URL: '',
     MURM_SUBAGENTS_MODEL_TOKEN: '',
-    MURM_SUBAGENTS_LIFECYCLE_TOKEN: '',
   };
   return '# Set your Responses endpoint and credentials, then run murm in this directory.\n' +
     Object.entries(fields).filter(([, value]) => value !== undefined).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join('\n') + '\n';
@@ -158,12 +154,10 @@ export async function initializeSubagentsProject(directory: string, signal: Abor
   const start = performance.now();
   try {
     const config = await resolveSubagentsEnvironment();
-    const advertiseHost = config.advertiseHost ?? (config.mode === 'local'
-      ? (await resolveLocalDocker().catch(() => undefined))?.advertiseHost : undefined);
     const project = await prepareSubagentsProject({
       directory, image: config.image ?? workerImageFor(process.env.MURM_EXECUTOR ?? process.env.MURM_SUBAGENTS_EXECUTOR),
-      lifecycleBaseUrl: config.lifecycleBaseUrl, endpointHost: config.endpointHost,
-      advertiseHost, signal,
+      lifecycleBaseUrl: config.lifecycleBaseUrl, publicUrl: config.publicUrl,
+      signal,
     });
     return { command: 'init', ok: true, project, elapsedMs: Math.round(performance.now() - start) };
   } catch (error) {

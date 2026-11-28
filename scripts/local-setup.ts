@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import {
-  checkLinuxHost, checkLocalDocker, checkLocalProvider, checkStrictLocalHost, ensureLocalProvider, localExecdImage, localProviderImage, resolveLocalEnvironment,
+  checkLinuxHost, checkLocalDocker, checkLocalProvider, ensureLocalProvider, localExecdImage, localEgressImage, localProviderImage, resolveLocalEnvironment,
   type DiagnosticCheck,
 } from './local-environment.js';
 import { runLocalSmoke } from './local-setup-smoke.js';
@@ -14,6 +14,7 @@ import { claimOpenSandboxBackend, createSandbox } from '../src/core/sandbox/open
 import { snapshotModel } from '../src/core/model/model-access.js';
 import { modelClientProtocol } from '../src/core/model/model-transport.js';
 import type { SandboxConfig } from '../src/core/backend-config.js';
+import { saveSandboxConnection } from '../src/core/sandbox/sandbox-connection.js';
 import type { LocalCommand } from './murm-arguments.js';
 
 const packageRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -56,10 +57,9 @@ function checkProjectRuntime(config: ProjectConfig, sandbox: SandboxConfig): Dia
     });
     return { id: 'config.runtime', ok: true, detail: 'The editable Sandbox and Runtime configuration satisfies the Core startup contract.' };
   } catch {
-    if (sandbox.isolation?.disk && sandbox.isolation.network !== 'local-docker' &&
-        sandbox.isolation.disk.inodes === undefined) {
+    if (sandbox.isolation?.disk) {
       return { id: 'config.runtime', ok: false, detail: 'The OpenSandbox API policy cannot enforce a workspace disk limit.',
-        remedy: 'Use a compatible Provider, or on the same Docker host configure strict local isolation with byte and inode limits.' };
+        remedy: 'Remove the legacy exact Workspace quota, or provide a trusted Provider that enforces it. File transfer budgets do not enforce disk capacity.' };
     }
     return { id: 'config.runtime', ok: false, detail: 'The editable Sandbox and Runtime configuration violates the Core startup contract.',
       remedy: 'Check endpoint URLs, Bridge and Gateway addresses, resource quantities and the selected isolation policy.' };
@@ -136,12 +136,17 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     });
     if (checks.some(check => !check.ok)) return report;
     const environment = await resolveLocalEnvironment({
-      ...config?.sandbox, image: config?.image,
+      ...config?.sandbox,
+      ...(command.command === 'setup' && command.endpoint ? { endpoint: command.endpoint, lifecycleBaseUrl: undefined } : {}),
+      publicUrl: command.command === 'setup' ? command.publicUrl ?? config?.connection?.publicUrl : config?.connection?.publicUrl,
+      image: config?.image,
       advertiseHost: config?.connection?.advertiseHost ?? config?.connection?.modelGateway?.advertiseHost,
     });
     if (config) {
       const { lifecycleBaseUrl, apiKey, endpointHost } = environment;
-      checks.push(checkProjectRuntime(config, { ...config.sandbox, lifecycleBaseUrl, apiKey, endpointHost }));
+      checks.push(checkProjectRuntime({
+        ...config, connection: { ...config.connection, publicUrl: environment.publicUrl },
+      }, { ...config.sandbox, endpoint: undefined, lifecycleBaseUrl, apiKey, endpointHost }));
     }
     if (checks.some(check => !check.ok)) return report;
     report.configuration = {
@@ -152,12 +157,11 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     const mode = (command.command === 'setup' ? command.mode : undefined) ?? environment.mode;
     report.mode = mode;
     report.lifecycleSource = environment.endpointSource;
-    const strict = config?.sandbox?.isolation?.network === 'local-docker' || config?.sandbox?.isolation?.disk?.inodes !== undefined;
     stage = 'host';
     checks.push(...checkLinuxHost());
     if (checks.some(check => !check.ok)) return report;
     const install = command.command === 'setup';
-    const smoke = install || command.smoke;
+    const smoke = install ? mode === 'local' : command.smoke;
     let advertiseHost = environment.advertiseHost;
     if (mode === 'local' && smoke) {
       const docker = await timed('host', checkLocalDocker);
@@ -166,22 +170,13 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       rootlessDocker = docker.docker.rootless;
       advertiseHost ??= docker.docker.advertiseHost;
     }
-    if (strict) {
-      if (!/^(http:\/\/(127\.0\.0\.1|localhost))([:/]|$)/.test(environment.lifecycleBaseUrl)) {
-        checks.push({ id: 'provider.strict', ok: false, detail: 'The selected strict policy requires the Controller and Docker on the same host.',
-          remedy: 'Use local setup for this policy, or select compatible Provider capabilities for the existing service.' });
-        return report;
-      }
-      checks.push(...await timed('strict-host', () => checkStrictLocalHost({ ...environment, advertiseHost })));
-      if (checks.some(check => !check.ok)) return report;
-    }
     stage = 'provider';
     if (install && mode === 'local') {
       provider = await timed('provider-start', () => ensureLocalProvider(environment, { signal }));
       report.provider = { id: provider.id, created: provider.created, images: provider.images };
     }
     const active = provider?.config ?? environment;
-    checks.push(...await timed('provider', () => checkLocalProvider(active, { requireAuth: !strict || mode === 'local' })));
+    checks.push(...await timed('provider', () => checkLocalProvider(active)));
     if (checks.some(check => !check.ok)) return report;
 
     let image = report.configuration.image;
@@ -199,7 +194,9 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     if (smoke) {
       stage = 'smoke';
       report.smoke = await timed('smoke', () => runLocalSmoke({
-        ...active, image, sandbox: config?.sandbox, connection: config?.connection,
+        ...active, image, sandbox: config?.sandbox, connection: {
+          ...config?.connection, publicUrl: environment.publicUrl,
+        },
         advertiseHost, executor, signal, filePolicy: config?.filePolicy,
         modelConfig: config?.models?.[config.rootModel ?? config.model ?? 'default'],
         modelProtocol: modelClientProtocol(config?.models?.[config.rootModel ?? config.model ?? 'default']?.protocol),
@@ -211,6 +208,12 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       report.infrastructure = 'ready';
     }
     signal.throwIfAborted();
+    if (install) {
+      await saveSandboxConnection({ ...active, publicUrl: environment.publicUrl,
+        advertiseHost, image: environment.image,
+        egressMode: mode === 'local' ? 'dns+nft' : environment.egressMode });
+      checks.push({ id: 'connection.saved', ok: true, detail: 'OpenSandbox connection saved in the owner-only user configuration.' });
+    }
     report.ok = true;
   } catch (error) {
     // Configuration imports and provider/npm errors can contain credentials.
@@ -223,10 +226,11 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     };
     let [detail, remedy] = failure[stage];
     const code = (error as { code?: string })?.code;
-    if (stage === 'provider' && (code === 'PROVIDER_EXECD_PULL_FAILED' || code === 'PROVIDER_SERVER_PULL_FAILED')) {
+    if (stage === 'provider' && ['PROVIDER_EXECD_PULL_FAILED', 'PROVIDER_SERVER_PULL_FAILED', 'PROVIDER_EGRESS_PULL_FAILED'].includes(code ?? '')) {
       const execd = code === 'PROVIDER_EXECD_PULL_FAILED';
-      detail = `Docker could not pull the pinned OpenSandbox ${execd ? 'Execd' : 'server'} image.`;
-      remedy = `Check registry access from the selected Docker daemon, then retry:\n  docker pull ${execd ? localExecdImage : localProviderImage}\n` +
+      const egress = code === 'PROVIDER_EGRESS_PULL_FAILED';
+      detail = `Docker could not pull the pinned OpenSandbox ${execd ? 'Execd' : egress ? 'egress' : 'server'} image.`;
+      remedy = `Check registry access from the selected Docker daemon, then retry:\n  docker pull ${execd ? localExecdImage : egress ? localEgressImage : localProviderImage}\n` +
         'Rerun the same murm setup command after the image is available, or configure a reachable OpenSandbox service.';
     } else if (stage === 'provider' && code === 'PROVIDER_PORT_IN_USE') {
       detail = 'The local Lifecycle port is already occupied.';

@@ -13,7 +13,7 @@ import { createNotesService, notesManifest } from './fixtures/core-notes-service
 // Controlled OpenSandbox and Docker boundary, with the actual Core adapter.
 const hooks = registerHooks({ resolve(specifier, context, next) {
   if (context.parentURL?.endsWith('/src/core/sandbox/opensandbox-provider.js') &&
-      /^\.\/(opensandbox-manager|docker-agent-network|docker-agent-disk)\.js$/.test(specifier)) {
+      /^\.\/opensandbox-manager\.js$/.test(specifier)) {
     return { url: new URL('./fixtures/core-pi-transport.js', import.meta.url).href, shortCircuit: true };
   }
   return next(specifier, context);
@@ -30,10 +30,10 @@ async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', servi
   const runtime = await createRuntime({
     ...runtimeSettings({
       sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
-      bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
+      bindHost: '127.0.0.1', advertiseHost: '172.17.0.1',
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstreamUrl, headers: upstreamHeaders } } },
-      isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
+      isolation: { network: 'api' },
     }),
     profiles: { worker: { prompt: 'fixed', model: 'default', image: 'test', writable, services: permissions } },
     services, maxAgents, outputDir,

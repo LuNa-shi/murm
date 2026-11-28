@@ -80,8 +80,7 @@ test('installed Notes and Messages use the supplied prompt and project in both W
       const config = {
         sandbox: {
           lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-          endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
-          isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+          isolation: { network: 'api' },
         },
         connection: { advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1',
           modelGateway: { requestTimeoutMs: 20_000, maxOutputTokens: 2048 } },
@@ -209,8 +208,7 @@ MURM_PROJECT_TEST`;
     image, capacity: 1, workTimeoutMs: 100_000, closeTimeoutMs: 35_000,
     sandbox: {
       lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
-      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+      isolation: { network: 'api' },
     },
     connection: { advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1',
       modelGateway: { requestTimeoutMs: 20_000, maxOutputTokens: 2048 } },
@@ -275,8 +273,7 @@ test('installed Substrate peers publish and cite bytes from the supplied project
     image, poolSize: 3, maxRounds: 2, workTimeoutMs: 95_000, turnTimeoutMs: 35_000, closeTimeoutMs: 30_000,
     sandbox: {
       lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
-      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+      isolation: { network: 'api' },
     },
     connection: { advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1',
       modelGateway: { requestTimeoutMs: 20_000, maxOutputTokens: 128 } },

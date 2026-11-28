@@ -78,7 +78,9 @@ test('the host bin and checkout entry advertise the same setup command', async (
   assert.equal(manifest.bin.murm, 'dist/scripts/murm.js');
   assert.equal(manifest.bin.swarm, 'dist/scripts/swarm.js');
   const result = execFileSync(process.execPath, [cli, 'setup', '--help'], { encoding: 'utf8' });
-  assert.equal(result.trim(), 'Usage: murm setup [--mode existing|local] [--config <module>]');
+  assert.equal(result.trim().split('\n')[0], 'Usage: murm setup [--mode existing|local] [--endpoint <url>] [--public-url <url>] [--config <module>]');
+  assert.match(result, /reuse a configured or saved connection/);
+  assert.match(result, /doctor --smoke/);
   assert.equal(execFileSync(setup, ['--help'], { encoding: 'utf8' }), result);
 });
 
@@ -166,7 +168,7 @@ test('doctor uses the shared lifecycle environment and requires an authenticated
   const server = createServer((request, response) => {
     requests.push(request.headers['open-sandbox-api-key'] as string | undefined);
     response.writeHead(requests.at(-1) === 'doctor-test-key' ? 200 : 401, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ items: [] }));
+    response.end(JSON.stringify({ items: [], pagination: { page: 1, pageSize: 1, totalItems: 0, totalPages: 1, hasNextPage: false } }));
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -188,7 +190,7 @@ test('configured doctor preserves shell values while loading an adjacent environ
   const server = createServer((request, response) => {
     const ready = request.headers['open-sandbox-api-key'] === 'shell-test-key';
     response.writeHead(ready ? 200 : 403, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ items: [] }));
+    response.end(JSON.stringify({ items: [], pagination: { page: 1, pageSize: 1, totalItems: 0, totalPages: 1, hasNextPage: false } }));
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -199,7 +201,7 @@ test('configured doctor preserves shell values while loading an adjacent environ
   const filename = join(directory, 'config.mjs');
   await writeFile(filename, `export default {
     image: 'unused', sandbox: { lifecycleBaseUrl: process.env.TEST_CONFIG_URL },
-    connection: { advertiseHost: 'localhost' },
+    connection: { advertiseHost: '172.17.0.1' },
   };`);
   const { stdout } = await promisify(execFile)(process.execPath, [cli, 'doctor', '--config', filename], {
     env: { PATH: '/does-not-exist', MURM_LIFECYCLE_URL: 'http://127.0.0.1:1/v1', MURM_LIFECYCLE_TOKEN: 'shell-test-key' },
@@ -272,14 +274,14 @@ esac
     const report = JSON.parse(stdout);
     const failed = report.checks.find(check => !check.ok);
     assert.match(failed.detail, /OpenSandbox Execd image/);
-    assert.match(failed.remedy, /docker pull opensandbox\/execd:v1\.1\.0@sha256:[a-f0-9]{64}/);
+    assert.match(failed.remedy, /docker pull opensandbox\/execd:release-1\.2\.1@sha256:[a-f0-9]{64}/);
     assert.equal(report.providerCleanup.status, 'complete');
     assert.doesNotMatch(stdout + stderr, /private token|local-test-credential/);
     return true;
   });
 });
 
-test('local setup builds a missing built-in Worker without trying a registry pull', async t => {
+test('local setup prefers the published built-in Worker before an opt-in source build', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'murm-setup-worker-build-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const commands = join(directory, 'docker-commands');
@@ -289,7 +291,7 @@ case "$1" in
   context) printf '[{"Endpoints":{"docker":{"Host":"unix:///dev/null"}}}]';;
   info) printf '{"OSType":"linux","SecurityOptions":[]}';;
   network) printf '[]';;
-  inspect) printf '[{"Id":"provider","Image":"server","State":{"Running":true},"Config":{"Labels":{"org.murm.setup.profile":"murm-local-linux-api-v2"}}}]';;
+  inspect) printf '[{"Id":"provider","Image":"server","State":{"Running":true},"Config":{"Labels":{"org.murm.setup.profile":"murm-local-linux-sdk-v3"}}}]';;
   image)
     if [ "$3" != -- ]; then printf 'execd'; exit 0; fi
     echo 'No such image' >&2; exit 1;;
@@ -299,7 +301,7 @@ esac
   const server = createServer((request, response) => {
     response.writeHead(request.headers['open-sandbox-api-key'] === 'local-test-key' ? 200 : 403,
       { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ items: [] }));
+    response.end(JSON.stringify({ items: [], pagination: { page: 1, pageSize: 1, totalItems: 0, totalPages: 1, hasNextPage: false } }));
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -311,10 +313,47 @@ esac
   }), error => {
     const { stdout, code } = error as { stdout: string; code: number };
     assert.equal(code, 1);
-    assert.equal(JSON.parse(stdout).checks.find(check => !check.ok).id, 'worker-build');
+    assert.equal(JSON.parse(stdout).checks.find(check => !check.ok).id, 'worker-pull');
     return true;
   });
   const dockerCommands = (await readFile(commands, 'utf8')).trim().split('\n');
-  assert.equal(dockerCommands.filter(command => command === 'build').length, 1);
-  assert.ok(!dockerCommands.includes('pull'));
+  assert.equal(dockerCommands.filter(command => command === 'build').length, 0);
+  assert.equal(dockerCommands.filter(command => command === 'pull').length, 1);
+});
+
+test('existing setup saves a reusable private connection without Docker or allocating a Sandbox', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-existing-connection-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const methods: string[] = [];
+  const server = createServer((request, response) => {
+    methods.push(request.method!);
+    response.writeHead(request.headers['open-sandbox-api-key'] === 'saved-test-key' ? 200 : 401,
+      { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ items: [], pagination: { page: 1, pageSize: 1, totalItems: 0, totalPages: 1, hasNextPage: false } }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => server.close());
+  const { port } = server.address() as { port: number };
+  const environment = { PATH: '/unavailable', HOME: directory, OPEN_SANDBOX_API_KEY: 'saved-test-key' };
+  const { stdout } = await promisify(execFile)(process.execPath, [
+    cli, 'setup', '--mode', 'existing', '--endpoint', `http://127.0.0.1:${port}`,
+    '--public-url', 'https://runtime.example.test/team',
+  ], { env: environment });
+  const report = JSON.parse(stdout);
+  assert.equal(report.ok, true);
+  assert.equal(report.smoke, undefined);
+  assert.ok(methods.every(method => method === 'GET'));
+  assert.doesNotMatch(stdout, /saved-test-key/);
+  const filename = join(directory, '.config/murm/opensandbox.json');
+  const saved = JSON.parse(await readFile(filename, 'utf8'));
+  assert.equal(saved.endpoint, `http://127.0.0.1:${port}/v1`);
+  assert.equal(saved.publicUrl, 'https://runtime.example.test/team');
+  const { stat } = await import('node:fs/promises');
+  assert.equal((await stat(filename)).mode & 0o777, 0o600);
+  const doctor = await promisify(execFile)(process.execPath, [cli, 'doctor'], {
+    env: { PATH: '/unavailable', HOME: directory },
+  });
+  assert.equal(JSON.parse(doctor.stdout).lifecycleSource, 'saved');
+  assert.equal(JSON.parse(doctor.stdout).ok, true);
 });

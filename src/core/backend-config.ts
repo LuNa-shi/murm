@@ -15,11 +15,15 @@ export interface SandboxProviderConfig {
 
 export interface SandboxConfig {
   kind?: 'opensandbox';
-  lifecycleBaseUrl: string;
+  endpoint?: string;
+  /** Migration alias for endpoint. */
+  lifecycleBaseUrl?: string;
   apiKey?: string;
   execdToken?: string;
   endpointHost?: string;
   useServerProxy?: boolean;
+  /** Assertion by the deployment administrator. Smoke verifies the actual policy. */
+  egressMode?: 'dns+nft';
   resourceLimits?: { cpu: string; memory: string };
   commandTimeoutMs?: number;
   timeoutSeconds?: number;
@@ -49,6 +53,9 @@ export interface ModelConfig {
 }
 
 export interface RuntimeConnectionOptions {
+  publicUrl?: string;
+  bindHost?: string;
+  bindPort?: number;
   advertiseHost?: string;
   bridge?: { host?: string; publicUrl?: string };
   modelGateway?: {
@@ -71,11 +78,15 @@ export interface OpenSandboxBackendConfig {
     execdToken?: string;
     endpointHost?: string;
     useServerProxy?: boolean;
+    egressMode?: 'dns+nft';
+    publicUrl?: string;
+    advertiseHost?: string;
     resourceLimits?: { cpu: string; memory: string };
     commandTimeoutMs?: number;
     /** Sandbox creation lifetime in seconds; safe integer >= 60, default 3600. Provider limits also apply. */
     timeoutSeconds?: number;
   };
+  callback?: { host: string; port: number; publicUrl: string };
   bridge: { host: string; publicUrl: string };
   modelGateway: {
     host: string;
@@ -89,7 +100,5 @@ export interface OpenSandboxBackendConfig {
   };
   models: Readonly<Record<string, ModelConfig>>;
   provider?: SandboxProvider & OpenSandboxProvider;
-  isolation:
-    | { network: 'local-docker'; disk: { bytes: number; inodes: number } }
-    | { network: 'api' | 'provider'; disk?: { bytes: number; inodes?: never } };
+  isolation: { network: 'api' | 'provider'; disk?: never };
 }

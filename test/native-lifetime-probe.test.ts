@@ -39,7 +39,7 @@ test('native lifetime gateway limits start production Core without allocating or
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1', ...lifetimeProbePlan.modelGatewayLimits },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
-      isolation: { network: 'local-docker', disk: { bytes: 67108864, inodes: 4096 } },
+      isolation: { network: 'api' },
     }),
   });
   const close = await runtime.close({ timeoutMs: 1000 });

@@ -26,7 +26,7 @@ test('real parent Bash controls one child through two native Pi rounds and physi
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const runtime = await createRuntime({ ...agentControlBackend(upstream, {
     lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-    endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
+    apiKey: process.env.MURM_CORE_TEST_API_KEY,
   }, { host }), profiles: {
     parent: { prompt: 'Execute the fixed parent control script with Bash.', image, model: 'default', writable: false, services: { agent: ['spawn','get','send','stop'] }, spawnProfiles: ['child'] },
     child: { prompt: 'Execute the fixed child steps with Bash.', image, model: 'child', writable: true, services: {} },

@@ -114,8 +114,8 @@ if swarm collaboration spawn_agent --task-name extra --message extra --fork-turn
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const config = { image, outputDir, maxAgents: 4, maxDepth: 2, workTimeoutMs: 90_000, closeTimeoutMs: 25_000, goal: 'ROOT_TASK',
     sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
-      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } },
+      apiKey: process.env.MURM_CORE_TEST_API_KEY,
+      isolation: { network: 'api' } },
     connection: {
       bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
       modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 512, requestTimeoutMs: 60_000 },
@@ -252,9 +252,8 @@ for (const workspaceMode of ['private', 'shared']) {
       ...(workspaceMode === 'shared' ? { workspace: { root: { id: 'team', mode: 'read-write' }, child: { id: 'team', mode: 'read-write' } } } : {}),
       sandbox: {
         lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-        endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
         apiKey: process.env.MURM_CORE_TEST_API_KEY,
-        isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+        isolation: { network: 'api' },
       },
       connection: {
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },

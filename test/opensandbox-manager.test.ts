@@ -1,9 +1,17 @@
+import { WORKER_PROTOCOL } from '../src/core/worker-image.js';
 import { fileProtocol } from '../src/core/files/core-file-seed.js';
 import { openSandboxAgentKey, openSandboxMissionKey, openSandboxRuntimeKey } from '../src/core/sandbox/opensandbox-metadata.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createOpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
+import { createOpenSandboxManager as createManager } from '../src/core/sandbox/opensandbox-manager.js';
 import { ERROR_CODES } from '../examples/taskpool/errors.js';
+
+import { sdkFixtureFetch } from '../test-support/opensandbox-sdk-fixture.js';
+
+
+function createOpenSandboxManager(options) {
+  return createManager({ ...options, fetchImpl: sdkFixtureFetch(options.fetchImpl), waitForExecdReady: options.waitForExecdReady ?? false });
+}
 
 function response(body, { status = 200, contentType = 'application/json' } = {}) {
   const text = typeof body === 'string' ? body : JSON.stringify(body ?? {});
@@ -18,7 +26,7 @@ test('OpenSandbox creates an independent sandbox and executes through its Execd 
       calls.push({ url, options });
       if (url.endsWith('/sandboxes')) return response({ id: 'sbx-1', status: { state: 'Running' } }, { status: 202 });
       if (url.includes('/endpoints/44772')) return response({ url: 'http://execd.test/sbx-1' });
-      if (url === 'http://execd.test/sbx-1/command') return response('event: stdout\ndata: {"text":"hello\\n"}\n\nevent: execution_complete\ndata: {"exit_code":0}\n\n', { contentType: 'text/event-stream' });
+      if (url === 'http://execd.test/sbx-1/command') return response('event: stdout\ndata: {"type":"stdout","text":"hello\\n"}\n\nevent: execution_complete\ndata: {"type":"execution_complete","exit_code":0}\n\n', { contentType: 'text/event-stream' });
       if (url.includes('/sandboxes/sbx-1')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
@@ -27,7 +35,7 @@ test('OpenSandbox creates an independent sandbox and executes through its Execd 
   assert.equal(started.sandbox_id, 'sbx-1');
   assert.equal(started.workspace, '/workspace/project');
   assert.equal(started.host_workspace_ref, null);
-  assert.equal(calls[0].options.headers['OPEN-SANDBOX-API-KEY'], 'test-key');
+  assert.equal(calls[0].options.headers['open-sandbox-api-key'], 'test-key');
   const createBody = JSON.parse(calls[0].options.body);
   assert.equal(createBody.image.uri, 'murm/agent:2026-11-11');
   assert.equal(createBody.metadata.agent_key, openSandboxAgentKey('execution-1'));
@@ -39,13 +47,13 @@ test('OpenSandbox creates an independent sandbox and executes through its Execd 
   assert.equal(result.stdout, 'hello\n');
   assert.equal(result.stderr, '');
   const execdCall = calls.find((call) => call.url === 'http://execd.test/sbx-1/command');
-  assert.equal(execdCall.options.headers['X-EXECD-ACCESS-TOKEN'], 'execd-key');
-  assert.equal(execdCall.options.headers['OPEN-SANDBOX-API-KEY'], undefined);
+  assert.equal(execdCall.options.headers['x-execd-access-token'], 'execd-key');
+  assert.equal(execdCall.options.headers['open-sandbox-api-key'], undefined);
   await manager.stopExecution('execution-1');
   assert.deepEqual(calls.slice(-2).map(call => call.options.method), ['DELETE', 'GET']);
 });
 
-test('OpenSandbox accepts Execd JSON-lines output and falls back from legacy argv validation', async () => {
+test('OpenSandbox SDK executes literal argv with Execd JSON-lines output', async () => {
   const calls = [];
   const manager = createOpenSandboxManager({
     lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test',
@@ -66,8 +74,8 @@ test('OpenSandbox accepts Execd JSON-lines output and falls back from legacy arg
   assert.equal(result.exit_code, 0);
   assert.equal(result.stdout, 'legacy-ok');
   const commandBodies = calls.filter((call) => call.url.endsWith('/command')).map((call) => JSON.parse(call.options.body));
-  assert.deepEqual(commandBodies.map((body) => Object.keys(body).includes('argv')), [true, false]);
-  assert.equal(commandBodies[1].command, "'printf' 'legacy-ok'");
+  assert.deepEqual(commandBodies.map((body) => Object.keys(body).includes('argv')), [false]);
+  assert.equal(commandBodies[0].command, "'printf' 'legacy-ok'");
   await manager.stopExecution('e-json-lines');
 });
 
@@ -139,8 +147,8 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
       if (url.includes('/endpoints/44100')) return response({ url: 'http://worker.test/sbx-worker' });
       if (url === 'http://worker.test/sbx-worker/stop') return response({ result: { stopped: true } });
       if (url === 'http://worker.test/sbx-worker/health') return response({ ok: true });
-      if (url === 'http://worker.test/sbx-worker/core/contract') return response({ result: { file_protocol: fileProtocol } });
-      if (url === 'http://worker.test/sbx-worker/start') return response({ result: { contract: { version: 'murm-core-v1', file_protocol: fileProtocol, resources: [] }, project_files: { version: 0, writable: false } } });
+      if (url === 'http://worker.test/sbx-worker/core/contract') return response({ result: { worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol } });
+      if (url === 'http://worker.test/sbx-worker/start') return response({ result: { contract: { version: WORKER_PROTOCOL, worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol, resources: [] }, project_files: { version: 0, writable: false } } });
       if (url === 'http://worker.test/sbx-worker/rpc') {
         const wrapper = JSON.parse(options.body);
         assert.equal(wrapper.since, 17);
@@ -182,8 +190,8 @@ test('OpenSandbox keeps explicit Agent secrets in the authenticated worker start
       if (url === 'http://execd.test/sbx-secret/command') return response({ command_id: 'worker-job', running: true });
       if (url.includes('/endpoints/44100')) return response({ url: 'http://worker.test/sbx-secret' });
       if (url === 'http://worker.test/sbx-secret/health') return response({ ok: true });
-      if (url === 'http://worker.test/sbx-secret/core/contract') return response({ result: { file_protocol: fileProtocol } });
-      if (url === 'http://worker.test/sbx-secret/start') return response({ result: { contract: { version: 'murm-core-v1', file_protocol: fileProtocol, resources: [] }, project_files: { version: 0, writable: false } } });
+      if (url === 'http://worker.test/sbx-secret/core/contract') return response({ result: { worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol } });
+      if (url === 'http://worker.test/sbx-secret/start') return response({ result: { contract: { version: WORKER_PROTOCOL, worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol, resources: [] }, project_files: { version: 0, writable: false } } });
       if (url.includes('/sandboxes/sbx-secret')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
@@ -227,7 +235,7 @@ test('OpenSandbox attests the guest Codex executor before admitting an Agent', a
         if (url.includes('/endpoints/44100')) return response({ url: 'http://worker.test/sbx-codex' });
         if (url.endsWith('/health')) return response({ ok: true });
         if (url.endsWith('/stop')) return response({ result: { stopped: true } });
-        if (url.endsWith('/core/contract')) return response({ result: { file_protocol: fileProtocol } });
+        if (url.endsWith('/core/contract')) return response({ result: { worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol } });
         if (url.endsWith('/start')) {
           const start = JSON.parse(options.body);
           assert.equal(start.command, 'codex');
@@ -235,7 +243,7 @@ test('OpenSandbox attests the guest Codex executor before admitting an Agent', a
           assert.deepEqual(start.codex, { model: codex.model, baseUrl: codex.baseUrl });
           assert.equal(start.secret_env.OPENAI_API_KEY, 'scoped-gateway-key');
           return response({ result: { backend: attested,
-            contract: { version: 'murm-core-v1', file_protocol: fileProtocol, resources: [] },
+            contract: { version: WORKER_PROTOCOL, worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol, resources: [] },
             project_files: { version: 0, writable: false } } });
         }
         if (options.method === 'DELETE') return response({}, { status: 204 });
@@ -261,11 +269,11 @@ test('OpenSandbox attests the guest Codex executor before admitting an Agent', a
 
 test('OpenSandbox normalizes the Docker provider bare Execd endpoint shape', async () => {
   const manager = createOpenSandboxManager({
-    lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test', endpointHost: '127.0.0.1',
+    lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test',
     fetchImpl: async (url, options) => {
       if (url.endsWith('/sandboxes')) return response({ id: 'sbx-bare-endpoint' }, { status: 202 });
-      if (url.includes('/endpoints/44772')) return response({ endpoint: '172.30.0.4:40554/proxy/44772' });
-      if (url === 'http://127.0.0.1:40554/proxy/44772/command') return response({ exit_code: 0, stdout: 'ok' });
+      if (url.includes('/endpoints/44772')) return response({ endpoint: '127.0.0.1:40554/proxy/44772' });
+      if (url === 'http://127.0.0.1:40554/proxy/44772/command') return response('event: stdout\ndata: {"type":"stdout","text":"ok"}\n\nevent: execution_complete\ndata: {"type":"execution_complete","exit_code":0}\n\n', { contentType: 'text/event-stream' });
       if (url.includes('/sandboxes/sbx-bare-endpoint')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
@@ -277,7 +285,7 @@ test('OpenSandbox normalizes the Docker provider bare Execd endpoint shape', asy
   await manager.stopExecution('e-bare-endpoint');
 });
 
-test('OpenSandbox readiness falls back to Execd v1.1 ping when ready is absent', async () => {
+test('OpenSandbox readiness uses official SDK Execd ping', async () => {
   const calls = [];
   const manager = createOpenSandboxManager({
     lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test', waitForExecdReady: true,
@@ -292,7 +300,7 @@ test('OpenSandbox readiness falls back to Execd v1.1 ping when ready is absent',
     },
   });
   await manager.ensureExecution({ executionId: 'e-ping-ready', agentId: 'e-ping-ready' });
-  assert.equal(calls.some((url) => url.endsWith('/ready')), true);
+  assert.equal(calls.some((url) => url.endsWith('/ready')), false);
   assert.equal(calls.some((url) => url.endsWith('/ping')), true);
   await manager.stopExecution('e-ping-ready');
 });
@@ -306,17 +314,17 @@ test('OpenSandbox foreground session mode uses an interruptible Execd session', 
       if (url.endsWith('/sandboxes')) return response({ id: 'sbx-session' }, { status: 202 });
       if (url.includes('/endpoints/44772')) return response({ url: 'http://execd.test/sbx-session' });
       if (url === 'http://execd.test/sbx-session/session') return response({ session_id: 'session-1' });
-      if (url.endsWith('/session/session-1/run')) return response('event: stdout\ndata: {"text":"ok"}\n\nevent: execution_complete\ndata: {"exit_code":0}\n\n', { contentType: 'text/event-stream' });
+      if (url.endsWith('/session/session-1/run')) return response('event: stdout\ndata: {"type":"stdout","text":"ok"}\n\nevent: execution_complete\ndata: {"type":"execution_complete","exit_code":0}\n\n', { contentType: 'text/event-stream' });
       if (url.includes('/session/session-1')) return response({});
       if (url.includes('/sandboxes/sbx-session')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
   });
   await manager.ensureExecution({ executionId: 'e-session', agentId: 'e-session' });
-  const result = await manager.exec({ executionId: 'e-session', command: 'echo ok', env: { CONTEXT_URL: 'http://context' }, internalEnvironment: { CONTEXT_TOKEN: 'secret-token' } });
+  const result = await manager.exec({ executionId: 'e-session', command: 'echo ok' });
   assert.equal(result.stdout, 'ok');
   const runCall = calls.find((call) => call.url.endsWith('/session/session-1/run'));
-  assert.deepEqual(JSON.parse(runCall.options.body).envs, { CONTEXT_URL: 'http://context', CONTEXT_TOKEN: 'secret-token' });
+  assert.equal(JSON.parse(runCall.options.body).command, 'echo ok');
   assert.equal(calls.some((call) => call.url.endsWith('/session/session-1/run')), true);
   await manager.stopExecution('e-session');
 });
@@ -355,7 +363,7 @@ test('Agent Sandbox is recorded before endpoint preparation and reused for its s
   assert.equal(calls.filter(({ options }) => options.method === 'POST').length, 1);
 });
 
-for (const receipt of [null, { version: 'swarm-agent-v1-draft.3', resources: [] }, { version: 'murm-core-v1', file_protocol: fileProtocol, resources: [{ path: '/legacy/system.txt', sha256: '0'.repeat(64) }] }]) {
+for (const receipt of [null, { version: 'swarm-agent-v1-draft.3', resources: [] }, { version: WORKER_PROTOCOL, worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol, resources: [{ path: '/legacy/system.txt', sha256: '0'.repeat(64) }] }]) {
   test(`Agent startup refuses missing or mismatched worker contract attestation: ${receipt === null ? 'missing' : receipt.resources.length}`, async () => {
     const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'fixture', waitForExecdReady: false,
       fetchImpl: async (url, options) => {
@@ -365,7 +373,7 @@ for (const receipt of [null, { version: 'swarm-agent-v1-draft.3', resources: [] 
         if (url.includes('/endpoints/')) return response({ url: 'http://worker.test' });
         if (url.endsWith('/stop')) return response({ result: { stopped: true } });
         if (url.endsWith('/health')) return response({ ok: true });
-        if (url.endsWith('/core/contract')) return response({ result: { file_protocol: fileProtocol } });
+        if (url.endsWith('/core/contract')) return response({ result: { worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol } });
         if (url.endsWith('/start')) return response({ result: { pid: 123, contract: receipt } });
         throw new Error(`unexpected: ${url}`);
       },
@@ -401,7 +409,7 @@ test('restart quarantines only durable Mission resources across provider pages w
       const id = path.split('/').at(-1);
       assert.ok(['registered', 'legacy', 'known-not-listed'].includes(id), `unexpected lifecycle target: ${id}`);
       if (method === 'DELETE') return response({}, { status: id === 'registered' ? 502 : 204 });
-      return response({}, { status: id !== 'registered' || cleanupComplete ? 404 : 200 });
+      return response({ id, metadata: { mission_key: openSandboxMissionKey('M'), agent_key: openSandboxAgentKey('B-unbound'), resource_key: openSandboxAgentKey('agent:unbound') } }, { status: id !== 'registered' || cleanupComplete ? 404 : 200 });
     },
   });
   const agents = [
@@ -444,7 +452,7 @@ test('unknown create blocks new starts and local cleanup until the real resource
       ] : [] });
       assert.equal(path, '/sandboxes/late');
       if (options.method === 'DELETE') return response({}, { status: 202 });
-      return response({}, { status: deleted ? 404 : 200 });
+      return response({ id: 'late', metadata: { mission_key: openSandboxMissionKey('M'), agent_key: openSandboxAgentKey('B'), resource_key: openSandboxAgentKey('agent:B') } }, { status: deleted ? 404 : 200 });
     },
   });
   const input = { executionId: 'agent:B', agentId: 'B', metadata: { mission_id: 'M' } };
@@ -470,7 +478,7 @@ test('restart records a newly found provider ID before deletion and never delete
   const rows = [
     { id: 's-found', metadata: { mission_key: openSandboxMissionKey('M'), agent_key: openSandboxAgentKey('B-found'), resource_key: openSandboxAgentKey('agent:found') } },
     { id: 's-duplicate-1', metadata: { mission_key: openSandboxMissionKey('M'), agent_key: openSandboxAgentKey('B-duplicate'), resource_key: openSandboxAgentKey('agent:duplicate') } },
-    { id: 's-duplicate-2', metadata: { mission_key: openSandboxMissionKey('M'), agent_key: openSandboxAgentKey('B-duplicate'), resource_key: openSandboxAgentKey('agent:duplicate') } },
+    { id: 's-duplicate-2', metadata: { mission_key: openSandboxMissionKey('other'), agent_key: openSandboxAgentKey('B-duplicate'), resource_key: openSandboxAgentKey('agent:duplicate') } },
   ];
   const agents = [
     { mission_id: 'M', agent_id: 'B-found', resource_key: 'agent:found' },
@@ -493,7 +501,7 @@ test('restart records a newly found provider ID before deletion and never delete
   });
   const error = await manager.reconcileExecutions({ missionId: 'M', agents, onSandboxDiscovered: () => { throw new Error('SQLite unavailable'); } });
   assert.deepEqual(error.pending.map(({ reason }) => reason), [
-    'resource_record_unconfirmed', 'provider_identity_mismatch', 'provider_identity_mismatch',
+    'resource_record_unconfirmed', 'provider_identity_mismatch',
   ]);
   assert.deepEqual(deleted, []);
   const result = await manager.reconcileExecutions({ missionId: 'M', agents, onSandboxDiscovered: (agent, id) => {
@@ -518,40 +526,44 @@ test('restart does not delete an otherwise eligible first page if listing cannot
   assert.deepEqual(methods, ['GET', 'GET']);
 });
 
-test('worker quota and exact catalog attestations are required when configured', async () => {
-  const quota = { bytes: 16 * 1024 ** 2, inodes: 1024 };
+test('exact catalog attestation is required when configured', async () => {
   const modelCatalogResource = { path: '/opt/murm/pi-agent/models.json', sha256: 'c'.repeat(64) };
-  for (const variant of ['quota missing', 'catalog mismatch', 'accepted']) {
+  for (const variant of ['catalog mismatch', 'accepted']) {
     const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'fixture', waitForExecdReady: false,
       fetchImpl: async (url, options) => {
         if (options.method === 'DELETE') return response({}, { status: 204 });
         if (url.endsWith('/sandboxes/sandbox-quota')) return response({}, { status: 404 });
         if (url.endsWith('/sandboxes')) {
-          assert.ok(JSON.parse(options.body).entrypoint.includes('--require-project-quota'));
+          assert.equal(JSON.parse(options.body).entrypoint.includes('--require-project-quota'), false);
           return response({ id: 'sandbox-quota' }, { status: 202 });
         }
         if (url.includes('/endpoints/')) return response({ url: 'http://worker.test' });
         if (url.endsWith('/stop')) return response({ result: { stopped: true } });
         if (url.endsWith('/health')) return response({ ok: true });
-        if (url.endsWith('/core/contract')) return response({ result: { file_protocol: fileProtocol } });
+        if (url.endsWith('/core/contract')) return response({ result: { worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol } });
         if (url.endsWith('/start')) {
-          assert.deepEqual(JSON.parse(options.body).project_quota, quota);
+          assert.equal(JSON.parse(options.body).project_quota, undefined);
           assert.deepEqual(JSON.parse(options.body).model_catalog_resource, modelCatalogResource);
-          return response({ result: { contract: { version: 'murm-core-v1', file_protocol: fileProtocol, resources: [] },
-            ...(variant === 'quota missing' ? {} : { project_quota: quota }),
+          return response({ result: { contract: { version: WORKER_PROTOCOL, worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol, resources: [] },
             project_files: { version: 0, writable: false },
             model_catalog_resource: variant === 'catalog mismatch' ? { ...modelCatalogResource, sha256: '0'.repeat(64) } : modelCatalogResource } });
         }
         throw new Error(`unexpected: ${url}`);
       },
     });
-    await manager.ensureExecution({ executionId: 'B-quota', agentId: 'B-quota', projectQuotaRequired: true });
-    await assert.rejects(manager.startAgent({ executionId: 'B-quota', command: 'pi', resources: [] }), { code: ERROR_CODES.AGENT_STARTUP_CONTRACT });
-    const started = manager.startAgent({ executionId: 'B-quota', command: 'pi', resources: [], projectQuota: quota, modelCatalogResource });
+    await manager.ensureExecution({ executionId: 'B-quota', agentId: 'B-quota' });
+    const started = manager.startAgent({ executionId: 'B-quota', command: 'pi', resources: [], modelCatalogResource });
     if (variant === 'accepted') await started;
     else await assert.rejects(started, { code: ERROR_CODES.AGENT_STARTUP_CONTRACT });
     await manager.stopExecution('B-quota');
   }
+});
+
+test('legacy exact quota request is rejected before creating an OpenSandbox resource', async () => {
+  const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'fixture',
+    fetchImpl: async () => assert.fail('quota rejection must precede dispatch') });
+  await assert.rejects(manager.ensureExecution({ executionId: 'quota', agentId: 'quota', projectQuotaRequired: true }), { code: ERROR_CODES.INVALID_CONTRACT });
+  assert.equal(manager.ownsAgentResource('quota'), false);
 });
 
 test('OpenSandbox refuses resource creation without a Agent before provider dispatch', async () => {
@@ -615,10 +627,10 @@ test('Core startup accepts explicitly classified nonsecret application environme
       if (url.includes('/endpoints/')) return response({ url: 'http://worker.test' });
       if (url.endsWith('/stop')) return response({ result: { stopped: true } });
         if (url.endsWith('/health')) return response({ ok: true });
-      if (url.endsWith('/core/contract')) return response({ result: { file_protocol: fileProtocol } });
+      if (url.endsWith('/core/contract')) return response({ result: { worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol } });
       if (url.endsWith('/start')) {
         launch = JSON.parse(options.body);
-        return response({ result: { contract: { version: 'murm-core-v1', file_protocol: fileProtocol, resources: [] }, project_files: { writable: false, version: 0 } } });
+        return response({ result: { contract: { version: WORKER_PROTOCOL, worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol, resources: [] }, project_files: { writable: false, version: 0 } } });
       }
       throw new Error('Unexpected provider route');
     } });

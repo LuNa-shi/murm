@@ -356,6 +356,8 @@ export interface RuntimeFiles {
 
 ## Sandbox and Runtime connection
 
+`endpointHost` 与 `isolation` 保留在迁移类型中，使旧调用收到明确的校验错误。内置 Provider 在分配前拒绝 endpoint 改写与旧的精确 Workspace 配额。更新配置请参见 [Sandbox 迁移表](../sandbox.md#资源与旧配置迁移)。
+
 ```ts
 declare const sandboxBrand: unique symbol;
 
@@ -365,11 +367,15 @@ export interface Sandbox {
 
 export interface SandboxConfig {
   kind?: 'opensandbox';
-  lifecycleBaseUrl: string;
+  endpoint?: string;
+  /** Migration alias for endpoint. */
+  lifecycleBaseUrl?: string;
   apiKey?: string;
   execdToken?: string;
   endpointHost?: string;
   useServerProxy?: boolean;
+  /** Assertion by the deployment administrator. Smoke verifies the actual policy. */
+  egressMode?: 'dns+nft';
   resourceLimits?: { cpu: string; memory: string };
   commandTimeoutMs?: number;
   timeoutSeconds?: number;
@@ -397,6 +403,9 @@ export interface ModelConfig {
 }
 
 export interface RuntimeConnectionOptions {
+  publicUrl?: string;
+  bindHost?: string;
+  bindPort?: number;
   advertiseHost?: string;
   bridge?: { host?: string; publicUrl?: string };
   modelGateway?: {
@@ -405,6 +414,7 @@ export interface RuntimeConnectionOptions {
     publicUrl?: string;
     requestTimeoutMs?: number;
     maxOutputTokens?: number | null;
+    /** Maximum new upstream attempts per Runtime and model alias, including unknown outcomes. */
     maxRequests?: number;
   };
 }

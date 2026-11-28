@@ -116,12 +116,12 @@ for (const executor of ['pi', 'codex'] as const) test(`${executor}: required art
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const runtime = await createRuntime({ ...runtimeSettings({ executor,
     sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
+      apiKey: process.env.MURM_CORE_TEST_API_KEY,
       resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
     bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
     modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 30_000, maxOutputTokens: 128 },
     models: { default: { provider: executor === 'codex' ? 'openai' : 'kimi_proxy', model: executor === 'codex' ? 'gpt-5.4' : 'k3', upstream: { url: upstream.url, headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+    isolation: { network: 'api' },
   }), profiles: { worker: { prompt: 'Execute the fixed local artifact command without any network publication.', model: 'default', image, writable: true, services: {} } },
     services: new ServiceRegistry(), maxAgents: 1, outputDir });
   runtimes.push(runtime); report.runtimeId = runtime.id;

@@ -71,10 +71,11 @@ export async function prepareWorkerImage({ packageRoot, requestedImage, executor
   const driver = selectExecutorDriver(executor);
   const reference = requestedImage ?? workerImageFor(executor);
   const cached = await inspectWorker(reference, driver, signal);
-  if (!install || cached.image || !cached.absent) return { ...cached, reference, source: 'cache' };
+  const sourceBuild = process.env.MURM_BUILD_WORKER === '1' && !requestedImage && !driver.adapter;
+  if (!install || cached.image || (!cached.absent && !sourceBuild)) return { ...cached, reference, source: 'cache' };
 
   if (requestedImage && imageIdPattern.test(requestedImage)) return { ...cached, reference, source: 'cache' };
-  if (requestedImage || driver.adapter) {
+  if (!sourceBuild) {
     console.error('murm setup: pulling the configured Worker image');
     try {
       await exec('docker', ['pull', '--', reference], { signal, timeout: 15 * 60_000, maxBuffer: 12 * 1024 * 1024 });
@@ -82,7 +83,7 @@ export async function prepareWorkerImage({ packageRoot, requestedImage, executor
       signal.throwIfAborted();
       return { ...cached, reference, source: 'pull', checks: [{ id: 'worker-pull', ok: false,
         detail: 'Docker could not pull the configured Worker image.',
-        remedy: 'Check the requested image and Docker daemon registry access, or use docker load to import the compatible Worker image into the selected Docker context.' }] };
+        remedy: 'Check the requested image and Docker daemon registry access, or use docker load to import the matching Worker. For source development, set MURM_BUILD_WORKER=1 to build the bundled image.' }] };
     }
     return { ...(await inspectWorker(reference, driver, signal)), reference, source: 'pull' };
   }

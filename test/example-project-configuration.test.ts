@@ -57,9 +57,8 @@ test('project examples honor common model/executor/image settings before scoped 
     assert.equal(scoped.models.default.model, 'k3', name);
     assert.equal(scoped.image, 'scoped-worker:tested', name);
     assert.equal(scoped.executor, 'pi', name);
-    // Git examples must retain enforced allowlists until the API Provider can
-    // supply that capability. Substrate does not need host Docker controls.
-    assert.equal(scoped.sandbox.isolation?.network, name === 'substrate' ? undefined : 'local-docker', name);
+    assert.equal(scoped.sandbox.isolation, undefined, name);
+    assert.equal(scoped.sandbox.lifecycleBaseUrl, 'https://sandbox.example.test/v1', name);
   }
 });
 

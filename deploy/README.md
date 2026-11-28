@@ -9,13 +9,13 @@ the SDK does not require a global Task/Context/Judge/Catalog deployment.
 | Component | Ownership | Normal user action |
 | --- | --- | --- |
 | OpenSandbox Lifecycle service | Your deployment, or the local service created by `murm setup --mode local`. | Connect to an existing authenticated service, or let local setup prepare it. |
-| murm Worker image | Versioned image built by the release workflow. | Local setup reuses a compatible cached Worker or builds the default executor variant from the packaged Dockerfile. An explicitly configured registry image can be pulled. With an existing provider, its engine prepares the selected reference. |
+| murm Worker image | Versioned image built by the release workflow. | Local setup reuses a compatible cached Worker or pulls the published executor variant. `MURM_BUILD_WORKER=1` enables a development recipe build. An existing service operator prepares the selected reference. |
 | Runtime Bridge, model gateway and built-in `agent` Service | Created by each Runtime. | Configure the Runtime; these have no separate service container to deploy. |
 | TaskPool, Subagents, Lead-Worker and Substrate Services | Their respective example. | The example creates its owned in-process Services/stores. Follow that example's README for extra facilities. |
 | PeerMesh facilities and optional integrations | The application/operator. | Supply the endpoints and credentials listed by the selected example. Setup does not provision them. |
 
-`murm doctor` checks the selected setup/configuration. `murm setup` additionally
-prepares infrastructure and runs its bounded smoke check. Neither command
+`murm doctor` checks the selected setup/configuration. `murm setup --mode local` additionally
+prepares infrastructure and runs its bounded smoke check. Existing mode verifies authentication and saves connection settings. `murm doctor --smoke` verifies bidirectional connectivity with a temporary Sandbox. Neither command
 establishes that a real model completed an application task. See
 [Quickstart](../docs/en/quickstart.md) for the commands and editable configuration.
 
@@ -50,7 +50,21 @@ is a separately configured optional Service for Lean workloads. Neither is part
 of default SDK setup. PeerMesh's MySQL database is a different dependency used
 by the upstream Board.
 
-Strict local Docker isolation remains an explicit configuration that needs
-additional host capabilities. PeerMesh and Lead-Worker currently select it to
-enforce their Git network allowlist. A successful default setup does not by
-itself satisfy those example-specific requirements.
+## Administrator connection and policy
+
+The local recipe pins stable OpenSandbox 1.2.1 Server, Execd and Egress digests. Its reviewed source revision is `db708c218771a8d311356f0e96552c15df6e097a`. The official SDK dependency is exactly `@alibaba-group/opensandbox@1.2.1` in the shrinkwrap. Local setup configures `dns+nft`, an authenticated loopback Lifecycle server, published data-plane endpoints and a compatible `murm-core-v2` Worker. Inspect `murm doctor --smoke` for the actual selected executor and verified export/delete result.
+
+```sh
+export OPEN_SANDBOX_API_KEY='<operator-provided-key>'
+murm setup --mode existing --endpoint https://sandbox.example.net \
+  --public-url https://runtime.example.net/murm
+murm doctor --smoke
+```
+
+The operator must publish SDK endpoints reachable by the Controller and permit Sandbox callbacks to the single Runtime listener. Retain endpoint headers through proxies. Configure TLS or a trusted private network. The explicit deprecated server-proxy option exists for compatible deployments, with upstream maintenance limitations. Endpoint host rewriting receives a migration error.
+
+Profile IP/port restrictions require actual packet-policy enforcement. `dns+nft` adds exact TCP ports for IPv4 targets and the Runtime callback. Platform deny policy remains authoritative. Verify allowed IP/port, the same IP at another port, unauthorized destinations and management access independently. DNS-only egress cannot establish that guarantee. Setup's deployment mode and authentication smoke supply narrower observations than a full policy matrix.
+
+Built-in Runtime rejects legacy exact Workspace byte/inode requests and live shared mounts before creating resources. File transfer budgets remain configured through `filePolicy`. A trusted custom Provider can offer additional measured storage capabilities. Volume capacity, writable-layer quota and file-transfer limits have distinct scopes.
+
+To uninstall a setup-managed service, first close all Runtimes using it and independently confirm their Sandbox deletions or retained ownership. Use Docker to inspect and remove the exact `murm-opensandbox-<port>` service created by setup. Its owner-labelled state directory and saved user connection should be removed only when no retained resources depend on them. Never delete shared or externally operated volumes as part of individual Agent cleanup. A saved connection can be replaced through `murm setup --mode existing`.

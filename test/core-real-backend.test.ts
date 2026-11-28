@@ -32,7 +32,6 @@ test('real Pi receives the permitted Service directory and Bash can call its adv
   const backend = runtimeSettings({
     sandbox: {
       lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
       apiKey: process.env.MURM_CORE_TEST_API_KEY,
       commandTimeoutMs: 30_000,
     },
@@ -40,7 +39,7 @@ test('real Pi receives the permitted Service directory and Bash can call its adv
     modelGateway: { host: '0.0.0.0', advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1',
       requestTimeoutMs: 20_000, maxOutputTokens: 128 },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 * 1024, inodes: 4096 } },
+    isolation: { network: 'api' },
   });
   const services = new ServiceRegistry();
   services.registerService({ manifest: notesManifest(), adapter: createNotesService().adapter });

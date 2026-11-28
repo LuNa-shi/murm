@@ -8,7 +8,7 @@ import { provider } from './fixtures/core-pi-transport.js';
 
 const hooks = registerHooks({ resolve(specifier, context, next) {
   if (context.parentURL?.endsWith('/src/core/sandbox/opensandbox-provider.js') &&
-      /^\.\/(opensandbox-manager|docker-agent-network|docker-agent-disk)\.js$/.test(specifier)) {
+      /^\.\/opensandbox-manager\.js$/.test(specifier)) {
     return { url: new URL('./fixtures/core-pi-transport.js', import.meta.url).href, shortCircuit: true };
   }
   return next(specifier, context);
@@ -26,10 +26,10 @@ test('Codex uses an Agent gateway token and retains one executor across inputs w
     ...runtimeSettings({
       executor: 'codex',
       sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
-      bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
+      bindHost: '127.0.0.1', advertiseHost: '172.17.0.1',
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1', maxOutputTokens: null },
       models: { default: { provider: 'openai', model: 'explicit-codex-model', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: { authorization: 'Bearer host-only-secret' } } } },
-      isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
+      isolation: { network: 'api' },
     }),
     profiles: { worker: { model: 'default', image: 'codex-test', writable: true, services: {} } },
     services: new ServiceRegistry(), maxAgents: 1, outputDir,

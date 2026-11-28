@@ -14,7 +14,7 @@ order: 16
 | 命令 | 用途 |
 | --- | --- |
 | `murm` | 在当前 murm 项目目录（如由 `murm init` 生成的目录）启动交互式会话 |
-| `murm setup [--mode existing\|local] [--config <module>]` | 本地启动托管 OpenSandbox 并自动生成密钥（`--mode local`），或验证连接已有 OpenSandbox 服务（`--mode existing`），随后准备所选 Worker 镜像 |
+| `murm setup [--mode existing\|local] [--endpoint <url>] [--public-url <url>] [--config <module>]` | 本地启动托管 OpenSandbox 并自动生成密钥（`--mode local`），或验证连接已有 OpenSandbox 服务（`--mode existing`），随后准备所选 Worker 镜像 |
 | `murm doctor [--config <module>] [--smoke]` | 只读诊断配置与 Lifecycle 鉴权；加 `--smoke` 拉起真实 Pi/Codex Worker 运行端到端冒烟验证 |
 | `murm init --template subagents --dir <directory>` | 在指定目录生成可编辑的独立 Subagents 项目脚手架 |
 | `murm --harness <module> --prompt <text> [options]` | 在前台对项目目录运行内置、本地 ESM 或 npm 包 Harness |
@@ -47,7 +47,7 @@ murm --harness subagents --mode rpc --output-dir ./runs
 
 ## 统一环境变量清单
 
-内置 CLI Harness（`subagents`、`taskpool`、`notes`、`messages`）共享同一套宿主机环境变量（若同时设置了各 Harness 专属前缀如 `MURM_SUBAGENTS_*`，专属变量优先）：
+内置 CLI Harness（`subagents`、`taskpool`、`notes`、`messages`）共享同一套宿主机环境变量。OpenSandbox 连接由公共 resolver 解析，普通变量优先于旧的 Harness 专属别名：
 
 | 变量名 | 默认值 | 用途 |
 | --- | --- | --- |
@@ -57,10 +57,10 @@ murm --harness subagents --mode rpc --output-dir ./runs
 | `MURM_MODEL_ID` | `gpt-5.4` *（Pi）* | 传给上游端点的模型 ID（当 `MURM_EXECUTOR=codex` 时必填） |
 | `MURM_EXECUTOR` | `pi` | 执行器后端：`pi` 或 `codex` |
 | `MURM_WORKER_IMAGE` | `DEFAULT_WORKER_IMAGE` | 自定义 Docker Worker 镜像（默认 `ghcr.io/luna-shi/murm-worker:0.2.0`） |
-| `MURM_LIFECYCLE_URL` | `http://127.0.0.1:8080/v1` | 本地 OpenSandbox Lifecycle API 地址 |
-| `MURM_LIFECYCLE_TOKEN` | *（可选）* | 可选 OpenSandbox API Key |
-| `MURM_ADVERTISE_HOST` | `172.17.0.1` | 容器内可访问的宿主机非 loopback IPv4 地址 |
-| `MURM_ENDPOINT_HOST` | `127.0.0.1` | 宿主机访问容器映射端口的本地地址 |
+| `OPEN_SANDBOX_ENDPOINT` | `http://127.0.0.1:8080/v1` | OpenSandbox endpoint，优先于保存的连接 |
+| `OPEN_SANDBOX_API_KEY` | *保存的连接* | OpenSandbox 管理凭据 |
+| `MURM_RUNTIME_PUBLIC_URL` | *保存值或本地发现* | Sandbox 可达的共同 Runtime 回调地址 |
+| `MURM_ADVERTISE_HOST` | *本地发现* | 高级回调宿主覆盖 |
 
 > `PeerMesh`、`Substrate` 与 `Lead-Worker` 还需要额外的外部设施配置（如 Gitea、Mattermost、Board MySQL DSN 或 Lean 工具链路径），请参见 [内置 Harness](../harnesses/index.md) 下对应页面。
 

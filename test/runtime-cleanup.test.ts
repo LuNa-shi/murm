@@ -1,3 +1,4 @@
+import { sdkFixtureFetch } from '../test-support/opensandbox-sdk-fixture.js';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
@@ -9,10 +10,16 @@ import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 import { Runtime } from '../test-support/taskpool-legacy/runtime.js';
 import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
 import { WorkspaceManager } from '../examples/taskpool/services/workspace/workspace-manager.js';
-import { createOpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
+import { createOpenSandboxManager as createSdkManager } from '../src/core/sandbox/opensandbox-manager.js';
+
 import { ServicesBridge } from '../test-support/taskpool-legacy/services-bridge.js';
 import { ContextService } from '../examples/taskpool/services/material/context-service.js';
 import { createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
+
+
+function createOpenSandboxManager(options) {
+  return createSdkManager({ ...options, fetchImpl: sdkFixtureFetch(options.fetchImpl), waitForExecdReady: options.waitForExecdReady ?? false });
+}
 
 function deferred() {
   let resolve;
@@ -36,12 +43,12 @@ async function fixture(t, { removeSandbox = async () => new Response('{}'), runt
       if (url.endsWith('/sandboxes')) return new Response(JSON.stringify({ id: 'sandbox-test' }), { status: 202 });
       if (url.includes('/endpoints/')) return new Response(JSON.stringify({ url: 'http://execd.test' }));
       if (url.endsWith('/stop')) return new Response(JSON.stringify({ result: { stopped: true } }));
-      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: 'murm-core-v1', resources: [] }, project_files: { version: 0, writable: false } } }));
+      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: 'murm-core-v2', resources: [] }, project_files: { version: 0, writable: false } } }));
       if (url.includes('/project/')) {
         const input = JSON.parse(options.body);
         return new Response(JSON.stringify({ result: { state: url.endsWith('/prepare') ? 'PREPARED' : 'ACTIVE', execution_id: input.execution_id, binding_version: input.binding_version } }));
       }
-      if (url.endsWith('/command')) return new Response('event: execution_complete\ndata: {"exit_code":0}\n\n');
+      if (url.endsWith('/command')) return new Response('event: execution_complete\ndata: {"type":"execution_complete","exit_code":0}\n\n');
       return new Response('{}');
     },
   });
