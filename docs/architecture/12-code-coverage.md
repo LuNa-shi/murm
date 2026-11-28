@@ -4,7 +4,7 @@
 
 Runtime baseline: `76aa64dee48052dcf2b861f1fa876eebcbb3b5d6`; review date: 2026-11-28. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **391 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **392 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -287,13 +287,14 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 | [test-support/taskpool-legacy/runtime.ts](../../test-support/taskpool-legacy/runtime.ts) | Registered Agent binding, physical resource ownership, process failure cleanup and fencing | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `9d47cb19c7a223c2a9786ae99439c738d898dadf20bfb7a68d96d629fa425852` |
 | [test-support/taskpool-legacy/services-bridge.ts](../../test-support/taskpool-legacy/services-bridge.ts) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `bddb5744b172e34d5939b958f5e92946f736d6816b31c9b54938976ded8e1ca6` |
 
-### deployment (9)
+### deployment (10)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [benchmarks/kubernetes/capacity.ts](../../benchmarks/kubernetes/capacity.ts) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `8799137efe419873c17dc929752f7ccd9dfeab9d7bbe2594b02cfedf2ec3010d` |
+| [benchmarks/kubernetes/capacity.ts](../../benchmarks/kubernetes/capacity.ts) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `9e41ff42dd1961f53f4179595835803bad3c39a76a70a53bd8cd4c7651f20fba` |
+| [benchmarks/kubernetes/check-ledger.ts](../../benchmarks/kubernetes/check-ledger.ts) | Read-only independent check of terminal Run, allocation and resource evidence. | [24-runtime-recovery](24-runtime-recovery.md) | `3e5ac545934bc16c7680d11d35164721c53eac96c4dbd4df6a144f109aea57e7` |
 | [benchmarks/kubernetes/manifest.example.json](../../benchmarks/kubernetes/manifest.example.json) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `276b93de8c4ef795e7ca4d93ec5b0c78804146341f5129860145988d3bcd729d` |
-| [benchmarks/kubernetes/offline-check.mjs](../../benchmarks/kubernetes/offline-check.mjs) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `a3802113513f05ae424fbde21743ab44b2eab2adf3b6fe45bc49d307b362a51c` |
+| [benchmarks/kubernetes/offline-check.mjs](../../benchmarks/kubernetes/offline-check.mjs) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `214f695e909ede770de6688af8d5e21e3173b3f94308fe81e9550447def2c85c` |
 | [deploy/opensandbox-kubernetes/bom.json](../../deploy/opensandbox-kubernetes/bom.json) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `d88d5eb7b1779195bee321dae8c1b25bf2f1385c54a087ab12aaaa3c5915e996` |
 | [deploy/opensandbox-kubernetes/chart.sh](../../deploy/opensandbox-kubernetes/chart.sh) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `cb19353bd4414c03dd3d86403108e442315e1d71fbed30666f52c9bb4e007459` |
 | [deploy/opensandbox-kubernetes/inspect.mjs](../../deploy/opensandbox-kubernetes/inspect.mjs) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `1d2a550cb652373ee0a4d48d988c91b7389c83f0025c7b3e0211646ee61ed8ae` |
@@ -470,7 +471,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [benchmarks/kubernetes/README.md](../../benchmarks/kubernetes/README.md) | Operator procedure, acceptance boundaries and approval gates for Kubernetes deployment and workload verification. | [24-runtime-recovery](24-runtime-recovery.md) | `a1bb8c8dbf4c8c38b51c6d22e990fd7f3d690a4a1a9d174a74b73560bb2ed204` |
+| [benchmarks/kubernetes/README.md](../../benchmarks/kubernetes/README.md) | Operator procedure, acceptance boundaries and approval gates for Kubernetes deployment and workload verification. | [24-runtime-recovery](24-runtime-recovery.md) | `46e6a44a638cd5093b7fc66dc6edc379fd8d255e408be16d46c4dd2c895e0f60` |
 | [deploy/opensandbox-kubernetes/README.md](../../deploy/opensandbox-kubernetes/README.md) | Operator procedure, acceptance boundaries and approval gates for Kubernetes deployment and workload verification. | [24-runtime-recovery](24-runtime-recovery.md) | `e43c4109a8b80711a07efd4cc80ec6a7aa24b1d0a37e9b3f577ea6d9c908f0a2` |
 | [deploy/opensandbox/config.toml](../../deploy/opensandbox/config.toml) | Pinned local OpenSandbox Docker deployment recipe | [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `0d13477b80ac0c3125acc702fee32d1343a97ede01ab6c9c3cb580e4cecb3ee4` |
 | [examples/services/mathlib-search/Dockerfile](../../examples/services/mathlib-search/Dockerfile) | Mathlib provider image recipe | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `bd089373e4a9aecc9304d080aa8a358edf4d5fcbafb7c8e35d1953d7c5b2f06d` |

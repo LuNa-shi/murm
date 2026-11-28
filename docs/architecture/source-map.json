@@ -3390,6 +3390,14 @@
       "role": "Reproducible Kubernetes deployment and capacity verification inputs."
     },
     {
+      "path": "benchmarks/kubernetes/check-ledger.ts",
+      "category": "deployment",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Read-only independent check of terminal Run, allocation and resource evidence."
+    },
+    {
       "path": "benchmarks/kubernetes/capacity.ts",
       "category": "deployment",
       "chapters": [

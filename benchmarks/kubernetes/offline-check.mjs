@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
-// Only plan generation and the rejection path are exercised. No kubectl/API call is permitted.
+// Plan generation, approval rejection, and private ledger verification require no cluster access.
 const runner = resolve(process.argv[2] ?? 'dist/benchmarks/kubernetes/capacity.js');
 const directory = await mkdtemp(join(tmpdir(), 'murm-capacity-offline-'));
 try {
@@ -35,5 +35,29 @@ try {
     assert.equal(stale.status, 2); assert.equal(stale.stdout, '');
     assert.ok(!stale.stderr.includes('kubectl'), 'Execution must fail before any cluster command');
   }
-  console.log('PASS: all five tier plans and approval rejection paths; no cluster execution');
+  const { checkLedger } = await import(join(dirname(runner), 'check-ledger.js'));
+  const { AllocationLedger } = await import(resolve(dirname(runner), '../../src/core/allocation-ledger.js'));
+  const ledgerDirectory = join(directory, 'run');
+  const options = { directory: ledgerDirectory, runtimeId: 'run', configFingerprint: 'offline', maxAgents: 1, hostIdentity: 'same-host' };
+  let ledger = AllocationLedger.open(options);
+  ledger.reserveIntent({ agentId: 'agent', resourceKey: 'resource', requestId: 'spawn', parameterFingerprint: 'test',
+    providerId: 'opensandbox', connectionFingerprint: 'deployment', executionGeneration: 1, profile: 'probe',
+    executor: 'pi', image: example.workerImage, timeoutSeconds: 60 });
+  ledger.dispatched('resource');
+  ledger.observeResource('resource', { sandboxId: 'original-sandbox' });
+  ledger.beginClose();
+  ledger.recordDeletion('resource', 'original-sandbox', 'offline management absence');
+  ledger.close();
+  const incomplete = checkLedger(ledgerDirectory, 'run', 1);
+  assert.equal(incomplete.complete, false);
+  assert.equal(incomplete.unconfirmedResources, 1);
+  assert.deepEqual(incomplete.sandboxIds, ['original-sandbox']);
+  ledger = AllocationLedger.open(options);
+  ledger.recordStop('resource', 'original-sandbox', 'offline execution stop');
+  ledger.completeClose();
+  ledger.close();
+  assert.equal(checkLedger(ledgerDirectory, 'run', 1).complete, true);
+  assert.equal(checkLedger(ledgerDirectory, 'run', 2).complete, false);
+  assert.throws(() => checkLedger(ledgerDirectory, 'foreign-run', 1), /identify the original Run/);
+  console.log('PASS: all five tier plans, approval rejection paths, and terminal ledger reconciliation; no cluster execution');
 } finally { await rm(directory, { recursive: true, force: true }); }

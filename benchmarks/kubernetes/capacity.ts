@@ -8,9 +8,10 @@ import { resolve, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { performance, monitorEventLoopDelay } from 'node:perf_hooks';
-import { ConnectionConfig, SandboxManager } from '@alibaba-group/opensandbox';
+import { ConnectionConfig, SandboxApiException, SandboxManager } from '@alibaba-group/opensandbox';
 import { createRuntime, createSandbox, ServiceRegistry, createInProcessAdapter } from '@luna-shi/murm';
 import { streamResponse } from '../../scripts/local-setup-upstream.js';
+import { checkLedger } from './check-ledger.js';
 
 const tiers = new Map([[2, 0], [8, 900_000], [32, 900_000], [128, 1_800_000], [1024, 3_600_000]]);
 const sha256 = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
@@ -195,7 +196,7 @@ async function execute(manifest: any, planned: ReturnType<typeof plan>) {
   })().catch(error => { samplingFailure = error; shutdown.abort(error); });
   const administrativeConnection = new ConnectionConfig({ domain: manifest.lifecycleUrl.replace(/\/+$/, '').replace(/\/v1$/, '') + '/v1', apiKey: process.env.OPEN_SANDBOX_API_KEY, disableMetrics: true, requestTimeoutSeconds: 15, wakeRetryEnabled: false }).withTransportIfMissing();
   const lifecycle = SandboxManager.create({ connectionConfig: administrativeConnection });
-  const runtimeIds: string[] = [];
+  const runs: { id: string; directory: string }[] = [];
   let activeDatabase: DatabaseSync | undefined;
   let upstreamServer: ReturnType<typeof createServer> | undefined;
   try {
@@ -287,7 +288,7 @@ const proof = {slot:${slot}, round:${round}, digest, peerDigest, executorObserve
         profiles: { probe: { image: manifest.workerImage, writable: true, model: 'default', services: { capacity: ['publish', 'read'] }, prompt: 'Execute the fixed approved capacity work and report its checked result.', network: { allow: [] },
           collect: { paths: ['probe.txt', 'proof.json'], maxBytes: 16 * 1024, includeGit: false, required: true } } },
       });
-      runtimeIds.push(runtime.id);
+      runs.push({ id: runtime.id, directory: join(waveOutput, runtime.id) });
       const activeRuntime = runtime;
       const agents: any[] = new Array(manifest.tier);
       await boundedMap(Array.from({ length: manifest.tier }), manifest.createConcurrency, async (_unused, slot) => {
@@ -434,7 +435,7 @@ const proof = {slot:${slot}, round:${round}, digest, peerDigest, executorObserve
     }
     upstreamServer?.closeAllConnections(); upstreamServer?.close(); activeDatabase?.close();
     try {
-      for (const runtimeId of runtimeIds) {
+      for (const { id: runtimeId, directory } of runs) {
         const runtimeKey = `r-${sha256(runtimeId).slice(0, 48)}`;
         const resources: any[] = [];
         for (let page = 1; ; page++) {
@@ -446,9 +447,20 @@ const proof = {slot:${slot}, round:${round}, digest, peerDigest, executorObserve
         const pods = await kube(['get', 'pods', '-n', 'opensandbox', '-l', `runtime_key=${runtimeKey}`], cleanupSignal);
         const batch = await kube(['get', 'batchsandboxes', '-n', 'opensandbox', '-l', `runtime_key=${runtimeKey}`], cleanupSignal);
         await writeFile(join(output, `final-${sha256(runtimeId).slice(0, 12)}.json`), JSON.stringify({ runtimeId, resources, pods, batch }), { mode: 0o600, flag: 'wx' });
-        const row = { runtimeId, sandboxes: resources.length, pods: pods.items.length, batchSandboxes: batch.items.length };
+        const { sandboxIds, ...ledger } = checkLedger(directory, runtimeId, manifest.tier);
+        let knownSandboxesStillPresent = 0;
+        await boundedMap(sandboxIds, manifest.createConcurrency, async sandboxId => {
+          try {
+            await lifecycle.getSandboxInfo(sandboxId);
+            knownSandboxesStillPresent++;
+          } catch (error) {
+            if (!(error instanceof SandboxApiException && error.statusCode === 404)) throw error;
+          }
+        }, cleanupSignal);
+        const row = { runtimeId, sandboxes: resources.length, pods: pods.items.length, batchSandboxes: batch.items.length,
+          knownSandboxesChecked: sandboxIds.length, knownSandboxesStillPresent, ledger };
         report.lifecycleReconciliation.push(row);
-        if (row.sandboxes || row.pods || row.batchSandboxes) report.status = 'failed';
+        if (!ledger.complete || row.sandboxes || row.pods || row.batchSandboxes || knownSandboxesStillPresent) report.status = 'failed';
       }
     } catch { report.status = 'failed'; report.reconciliation = 'unconfirmed'; }
     await lifecycle.close();
