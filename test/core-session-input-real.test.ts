@@ -3,13 +3,15 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { readFile, writeFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
-import { createRuntime, createSandbox, createPiExecutor, ServiceRegistry } from '@luna-shi/murm';
+import * as sourceSdk from '@luna-shi/murm';
+import { preparePackageArchive } from './fixtures/notes-installed-package.js';
 import { streamResponse } from '../scripts/local-setup-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 
@@ -34,6 +36,8 @@ test('native Session inputs, isolated configuration, resources, retry and queue 
   const events = [];
   const receipts = [];
   let runtime;
+  let installationDirectory;
+  let installedPackage;
   let cleanup;
   let deleted = false;
   const seed = 'NATIVE_SESSION_SEEDED_MARKER_271';
@@ -99,11 +103,25 @@ test('native Session inputs, isolated configuration, resources, retry and queue 
       deleted = runtime ? (await ownedContainers(runtime.id)).length === 0 : true;
     } finally {
       await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
-      await writeFile(join(outputDir, 'acceptance.json'), JSON.stringify({ failure: failure ?? (completed ? undefined : 'WORKLOAD_INCOMPLETE'), image, piVersion, source: (await execute('git', ['rev-parse', 'HEAD'])).stdout.trim(), runtimeId: runtime?.id,
+      await writeFile(join(outputDir, 'acceptance.json'), JSON.stringify({ failure: failure ?? (completed ? undefined : 'WORKLOAD_INCOMPLETE'), image, piVersion, installedPackage, source: (await execute('git', ['rev-parse', 'HEAD'])).stdout.trim(), runtimeId: runtime?.id,
         requestCount: requests.length, requestPhases: requests.map(({ phase, summary }) => ({ phase, summary })), events: events.map(event => ({ type: event.type, child: event.event?.type, agentId: event.agentId })), receipts, cleanup, deleted }, null, 2), { mode: 0o600 });
     }
+    if (installationDirectory) await rm(installationDirectory, { recursive: true, force: true });
     assert.equal(cleanup?.cleanup, 'complete'); assert.equal(deleted, true); assert.equal(failure, undefined);
   });
+  let sdk = sourceSdk;
+  if (process.env.MURM_TEST_PACKAGE_ARCHIVE) {
+    installationDirectory = await mkdtemp(join(tmpdir(), 'murm-session-installed-'));
+    const { archive } = await preparePackageArchive(installationDirectory);
+    await writeFile(join(installationDirectory, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
+    const env = { ...process.env }; delete env.NODE_PATH; delete env.NODE_OPTIONS;
+    await execute('npm', ['install', '--offline', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', archive],
+      { cwd: installationDirectory, env, timeout: 120000, maxBuffer: 4 * 1024 ** 2 });
+    const require = createRequire(join(installationDirectory, 'consumer.cjs'));
+    sdk = require('@luna-shi/murm') as typeof sourceSdk;
+    installedPackage = { sha256: createHash('sha256').update(await readFile(archive)).digest('hex'), rootOnly: true };
+  }
+  const { createRuntime, createSandbox, createPiExecutor, ServiceRegistry } = sdk;
   const host = settings.advertiseHost;
   runtime = await createRuntime({
     executor: createPiExecutor({ version: piVersion }),
