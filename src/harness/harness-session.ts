@@ -272,12 +272,13 @@ export function createHarnessSession(definition: Harness, options: HarnessSessio
     });
   } };
   const host = createProjectHost(wrapped, { launchDirectory: options.launchDirectory ?? process.cwd(), ...options,
-    finalizeResult(business) {
+    finalizeResult(business, failure) {
       finalizing = true;
       closeQuestions('run-finished');
       for (const { unsubscribe } of registrations.values()) unsubscribe();
       return { ...redactor.value(business) as typeof business,
         ...(fenceFailed ? { cleanup: { ...business.cleanup, status: 'pending' as const, pending: ['runtime-dispatch-fence-unconfirmed'] } } : {}),
+        failure: failure && { code: failure.code, message: redactor.text(failure.message) },
         questions: [...questions.values()].map(record => structuredClone(record.value)), operations: operationSummaries(),
       };
     },

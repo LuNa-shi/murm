@@ -32,6 +32,7 @@ test('an exceptional Run fences new work before cancelling questions and saving 
   });
   const afterCancellation = Promise.withResolvers<readonly [boolean, unknown, unknown]>();
   const observedQuestions: string[] = [];
+  const credential = 'configured-terminal-test-token';
   let finalEvent: unknown;
   const session = createHarnessSession({ apiVersion: 1, id: 'exception', input: true, questions: true, async run(context) {
     context.registerInput(() => null);
@@ -44,8 +45,8 @@ test('an exceptional Run fences new work before cancelling questions and saving 
       const input = session.input('more work', { requestId: 'late-input' }).catch(errorCode);
       afterCancellation.resolve([saved, await question, await input]);
     });
-    throw new Error('Business failed');
-  } }, { outputRoot, clientCapabilities: { questions: true } });
+    throw Object.assign(new Error(`Business failed with ${credential}`), { code: 'PROJECT_GIT_FAILED' });
+  } }, { outputRoot, clientCapabilities: { questions: true }, configuration: { sandbox: { apiKey: credential } } });
   session.onEvent(event => {
     if (event.type === 'question') observedQuestions.push(event.question.status);
     if (event.type === 'result') finalEvent = event.result;
@@ -57,6 +58,11 @@ test('an exceptional Run fences new work before cancelling questions and saving 
 
   assert.deepEqual(await afterCancellation.promise, [false, 'RUN_STOPPING', 'RUN_STOPPING']);
   assert.equal(completed.outcome, 'failed');
+  assert.equal(completed.failure?.code, 'PROJECT_GIT_FAILED');
+  assert.ok(completed.failure.message.includes('Business failed'));
+  assert.ok(!completed.failure.message.includes(credential));
+  assert.deepEqual(persisted.failure, completed.failure);
+  assert.deepEqual((await session.getState()).result?.failure, completed.failure);
   assert.deepEqual(observedQuestions, ['pending', 'cancelled']);
   assert.deepEqual(persisted.questions, completed.questions);
   assert.deepEqual(persisted.operations, completed.operations);

@@ -31,6 +31,9 @@ export async function runSubstrate({ sandbox, executor, models, connection, file
       [onRuntime, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle].some((hook: any) => hook !== undefined && typeof hook !== 'function')) throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Substrate requires a question, image, output directory, two to 32 rounds, finite waits and an optional trusted host lifecycle functions');
   const substrate = createSubstrateService({ databasePath: join(outputDir, 'substrate.sqlite'), runId, poolSize });
   const peers: any[] = [], events: any[] = [];
+  const evidence = () => ({ peers, events, substrate: substrate.snapshot(), databasePath: join(outputDir, 'substrate.sqlite'),
+    policy: { poolSize, maxRounds, workTimeoutMs, turnTimeoutMs, closeTimeoutMs, replacement: false,
+      ranking: 'token occurrences descending, incoming references descending, stable address ascending', maxSearchResults: 8 } });
   const controller: any = new AbortController();
   const workSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
   const admission = maxConcurrentInputs === undefined ? undefined : createInputAdmission({ maxConcurrent: maxConcurrentInputs, maxPending: poolSize, signal: workSignal });
@@ -47,10 +50,12 @@ export async function runSubstrate({ sandbox, executor, models, connection, file
   const abort = () => { if (runtime) void runtime.close({ timeoutMs: 1 }).catch(() => {}); };
   workSignal.addEventListener('abort', abort, { once: true });
   try {
-    const report = await run({ outputDir, closeTimeoutMs, detail: () => substrate.snapshot(),
-      redact: (report: any) => ({ ...report, peers, events, substrate: substrate.snapshot(), databasePath: join(outputDir, 'substrate.sqlite'),
-        policy: { poolSize, maxRounds, workTimeoutMs, turnTimeoutMs, closeTimeoutMs, replacement: false,
-          ranking: 'token occurrences descending, incoming references descending, stable address ascending', maxSearchResults: 8 } }),
+    const report = await run({ outputDir, closeTimeoutMs,
+      detail: () => {
+        const { substrate: publications, ...receipts } = evidence();
+        return { ...publications, ...receipts };
+      },
+      redact: (report: any) => ({ ...report, ...evidence() }),
       createRuntime: async () => {
         remaining();
         runtime = await createRuntime({ sandbox, executor, models, connection, filePolicy, outputDir, services: substrate.services, maxAgents: poolSize, profiles: {

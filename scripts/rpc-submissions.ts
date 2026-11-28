@@ -22,6 +22,7 @@ export function createRpcSubmissions({ write }: any) {
   const submissions = new Map<any, any>();
   const reads = new Map<string, ReadFlight>();
   const nativeReads = new Map<string, ReadFlight>();
+  let readsClosed = false;
   const snapshot = (entry: any) => entry.response
     ? { state: 'complete', response: structuredClone(entry.response) } : { state: 'pending' };
   return {
@@ -45,6 +46,7 @@ export function createRpcSubmissions({ write }: any) {
       return submissions.get(id)?.done;
     },
     closeReads() {
+      readsClosed = true;
       for (const read of reads.values()) read.finish({ state: 'pending' });
     },
     async submit(message: any, timeoutMs: number) {
@@ -63,6 +65,7 @@ export function createRpcSubmissions({ write }: any) {
           throw Object.assign(new Error('Worker RPC identity has different parameters'), { code: 'CONFLICT' });
         }
         if (previous) return previous.result;
+        if (readsClosed) return { state: 'pending' };
         if (reads.size >= 64) throw Object.assign(new Error('Worker Session read capacity reached'), { code: 'CAPACITY_EXCEEDED' });
         const nativeId = randomUUID();
         const result = Promise.withResolvers<ReadResult>();

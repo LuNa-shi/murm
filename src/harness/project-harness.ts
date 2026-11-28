@@ -126,7 +126,7 @@ type StartupOptions = {
   configuration?: unknown;
   outputRoot?: string;
   stopTimeoutMs?: number;
-  finalizeResult: (result: ProjectHarnessResult) => ProjectHarnessResult & Pick<HarnessResult, 'operations' | 'questions'>;
+  finalizeResult: (result: ProjectHarnessResult, failure: Failure | null) => ProjectHarnessResult & Pick<HarnessResult, 'operations' | 'questions' | 'failure'>;
 };
 type RunResult = ProjectHarnessResult & Pick<HarnessResult, 'operations' | 'questions'> & {
   runId: string;
@@ -331,10 +331,10 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
     let saved: RunResult;
     try {
       const result: RunResult = {
-        ...options.finalizeResult(business), runId: id, harness, cwd, initial, prompt: {
+        ...options.finalizeResult(business, failure), runId: id, harness, cwd, initial, prompt: {
           path: promptPath, sha256: createHash('sha256').update(raw.prompt).digest('hex'),
         },
-        stopReason: reason, failure, reportSaveFailure: null,
+        stopReason: reason, reportSaveFailure: null,
       };
       saved = outputRoot
         ? await saveReport(outputRoot, 'project-run.json', result)

@@ -51,7 +51,7 @@
     },
     {
       "path": "src/core/sandbox/opensandbox-backend.ts",
-      "sha256": "30487cee3b2e68fda5dd5b2e5f2470178745c22171ad08c935486cb8ab93494a"
+      "sha256": "333fe51e4350d857449c62e76a4cc5f544ac05749858d4316e4a471e273fa09f"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
@@ -99,7 +99,7 @@
     },
     {
       "path": "examples/substrate/harness/index.ts",
-      "sha256": "c64568160697465c6fed8cba38653375f1eb8102eb7861c56b1183b435ac390c"
+      "sha256": "e62432def542b66d9f2a3722a63e04253f581b25e5afad799e5d0a4a62809b5b"
     },
     {
       "path": "examples/substrate/services/substrate.ts",
@@ -175,7 +175,7 @@
     },
     {
       "path": "examples/peermesh/harness/team.ts",
-      "sha256": "dfeea7b3647cfb0e650fde4d72a5e9a8cd7c615f93b19b65104b909a86657c05"
+      "sha256": "b29e287cbd27a23e7d822728c099fb2fccc5e208d903cd1b6bbc6d67c91d78ea"
     },
     {
       "path": "test/fixtures/peermesh-team-kimi.ts",
@@ -410,7 +410,7 @@
     {
       "path": "examples/substrate/harness/index.ts",
       "anchor": "                  const text = ",
-      "line": 98,
+      "line": 103,
       "sha256": "b3e9b0b92a6fbc3eec0a9e5903b3944b28a194009884d169e9fcc163a769f877"
     },
     {

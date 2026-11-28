@@ -695,6 +695,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
           result = await agent!.manager.agentRpc(agentId, query ? { type: 'get_rpc_result', id, since: agent!.cursor } : { type: command, ...payload }, { timeoutMs: 30_000, since: agent!.cursor });
         } catch { return { status: 'unknown' }; }
         consume(agent!, result.records ?? []);
+        if (agent!.historyLost) return { status: 'unknown' };
         const response = result.response;
         if (response?.id !== id || response.command !== command || response.success === undefined) return { status: 'unknown' };
         if (!response.success) throw Object.assign(new Error(response.error ?? 'Executor rejected session operation'), { code: response.code ?? 'INVALID_CONTRACT' });

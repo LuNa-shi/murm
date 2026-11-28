@@ -61,4 +61,11 @@ test('large Session reads release their replies and a late reply cannot answer a
     assert.equal((await reading).response.data.length, 65_000);
     assert.deepEqual(rpc.query(id), { state: 'not_found' });
   }
+  const pending = Array.from({ length: 64 }, (_, index) => rpc.submit({ ...query, id: `held-${index}` }, 1000));
+  await assert.rejects(rpc.submit({ ...query, id: 'over-capacity' }, 1000), { code: 'CAPACITY_EXCEEDED' });
+  const writesBeforeClose = sends.length;
+  rpc.closeReads();
+  assert.ok((await Promise.all(pending)).every(result => result.state === 'pending'));
+  assert.deepEqual(await rpc.submit({ ...query, id: 'after-close' }, 1000), { state: 'pending' });
+  assert.equal(sends.length, writesBeforeClose);
 });

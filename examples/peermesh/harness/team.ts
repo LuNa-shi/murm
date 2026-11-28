@@ -214,5 +214,6 @@ export function runPeerMeshTeam(options: any, business: any, run = runWithReport
   let owned: any;
   return run({ outputDir: options.outputDir, closeTimeoutMs: options.closeTimeoutMs ?? 60_000,
     createRuntime: async () => { owned = await createPeerMeshTeam(options); return owned; }, run: (harness: any) => business(harness),
+    detail: () => owned?.snapshot(),
     redact: (report: any) => owned ? owned.redact({ ...report, harness: owned.snapshot() }) : report });
 }
