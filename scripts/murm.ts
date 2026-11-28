@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseMurmCommand } from './murm-arguments.js';
@@ -34,23 +34,19 @@ if (args.length === 1 && args[0] === '--version') {
     process.exitCode = 2;
   }
   if (command && 'help' in command) console.log(command.help);
-  if (command && 'command' in command && command.command === 'interactive') {
-    const entry = resolve('main.js');
-    const config = resolve('config.js');
-    const files = await Promise.all([entry, config, resolve('.murm/installed.json')]
-      .map(path => stat(path).then(info => info.isFile(), () => false)));
-    if (!files.every(Boolean)) {
-      console.error('Open a murm project directory or create one with murm init --template subagents --dir <directory>.');
-      process.exitCode = 1;
+  if (command && 'command' in command && command.command === 'tui') {
+    if (!process.stdin.isTTY || !process.stdout.isTTY || process.env.TERM === 'dumb') {
+      console.error('The TUI needs an interactive terminal on stdin and stdout. Use murm --harness H --prompt "..." for foreground or murm --harness H --mode rpc for JSONL.');
+      process.exitCode = 2;
     } else {
+      let code = 2;
       try {
-        const main = await realpath(entry);
-        process.argv = [process.execPath, main, config, '--interactive'];
-        await import(pathToFileURL(main).href);
+        const { runMurmTui } = await import('./murm-tui.js');
+        code = await runMurmTui(command, process.cwd());
       } catch {
-        console.error('Could not start the interactive Subagents project. Check config.js and the project environment.');
-        process.exitCode = 1;
+        console.error('Could not load the TUI. Reinstall murm or use explicit foreground or RPC mode.');
       }
+      process.exit(code);
     }
   }
   if (command && 'command' in command && command.command === 'harness') {
@@ -77,7 +73,7 @@ if (args.length === 1 && args[0] === '--version') {
     // Pending cleanup can still own open sockets and renewable resources. The
     // one-shot command hands those back to the durable record on process exit.
     process.stdout.write(JSON.stringify(report, null, 2) + '\n', () => process.exit(exitCode));
-  } else if (command && 'command' in command && command.command !== 'interactive') {
+  } else if (command && 'command' in command && (command.command === 'init' || command.command === 'setup' || command.command === 'doctor')) {
     const controller = new AbortController();
     let signalCode: number | undefined;
     const interrupt = (signal: NodeJS.Signals) => {

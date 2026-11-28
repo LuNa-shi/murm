@@ -1,6 +1,6 @@
 # Harness entry and lifecycle
 
-The installed `murm --harness` command runs one project. Its task input is a host directory and one nonblank prompt. Run configuration can choose resources, services, and limits. [Launch and configuration](07-run-configuration.md) covers host preparation and the editable SDK template.
+The installed `murm --harness` command runs one project. Its task input is a host directory and one nonblank prompt. Run configuration can choose resources, services, and limits. [Launch and configuration](07-run-configuration.md) covers host preparation and the editable SDK template. The [foreground terminal interface](25-foreground-tui.md) controls the same Session as the machine entry points.
 
 ## Authoring an example
 

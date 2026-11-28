@@ -9,12 +9,16 @@ import type { substrateConfiguration } from './project-config.js';
 type Configuration = Omit<ReturnType<typeof substrateConfiguration>, 'models' | 'sandbox'> &
   Pick<CreateRuntimeOptions, 'executor' | 'models' | 'filePolicy'> & { sandbox: SandboxConfig };
 
+export async function defaultConfiguration() {
+  return (await import('./project-config.js')).substrateConfiguration();
+}
+
 const substrate = {
   id: 'substrate',
   apiVersion: 1,
   async run(context) {
     const configuration = await projectConfiguration<Configuration>(context,
-      async () => ({ default: (await import('./project-config.js')).substrateConfiguration() }));
+      async () => ({ default: await defaultConfiguration() }));
     if (Buffer.byteLength(context.input.prompt) > 8192) {
       throw new ProjectPreflightError('INVALID_HARNESS_INPUT', 'Substrate supports up to 8 KiB of prompt text');
     }

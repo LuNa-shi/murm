@@ -103,20 +103,28 @@ test('setup rejects project options at both entry points', () => {
   }
 });
 
-test('bare murm executes the current project entry in interactive mode', async t => {
+test('TUI entry with pipes fails before loading a local main or explicit configuration', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'murm-interactive-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(join(directory, 'package.json'), '{"type":"module"}');
-  await writeFile(join(directory, 'config.js'), 'export default {};');
-  await writeFile(join(directory, 'main.js'), 'console.log(JSON.stringify(process.argv.slice(2)));');
-  const absent = spawnSync(process.execPath, [cli], { cwd: directory, encoding: 'utf8' });
-  assert.equal(absent.status, 1);
-  assert.match(absent.stderr, /murm init/);
+  const poison = 'throw new Error("project code was loaded");';
+  await writeFile(join(directory, 'config.js'), poison);
+  await writeFile(join(directory, 'main.js'), poison);
   await mkdir(join(directory, '.murm'));
   await writeFile(join(directory, '.murm/installed.json'), '{}');
-  const active = spawnSync(process.execPath, [cli], { cwd: directory, encoding: 'utf8' });
-  assert.equal(active.status, 0, active.stderr);
-  assert.deepEqual(JSON.parse(active.stdout), [join(directory, 'config.js'), '--interactive']);
+  for (const args of [[], ['--harness', 'notes'], ['--cwd', '.', '--config', './config.js'],
+    ['--mode', 'tui', '--prompt', 'A draft'], ['--mode', 'tui', '--harness', './main.js']]) {
+    const result = spawnSync(process.execPath, [cli, ...args], { cwd: directory, encoding: 'utf8', timeout: 5_000 });
+    assert.equal(result.status, 2, result.stderr);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, /interactive terminal/);
+    assert.match(result.stderr, /--harness.*--prompt/);
+    assert.match(result.stderr, /--mode rpc/);
+    assert.doesNotMatch(result.stderr, /project code was loaded|\u001b/);
+  }
+  const missingHarness = spawnSync(process.execPath, [cli, '--prompt', 'A task'], { cwd: directory, encoding: 'utf8' });
+  assert.equal(missingHarness.status, 2);
+  assert.match(missingHarness.stderr, /^Usage:/);
 });
 
 test('murm rejects an invalid argument before loading developer configuration', () => {

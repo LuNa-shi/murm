@@ -83,11 +83,11 @@
     },
     {
       "path": "examples/notes/project.ts",
-      "sha256": "2369fb0c907c6d23ccf278d7c486a49a915692718883500c2f1a976a764dc69e"
+      "sha256": "ce59040ee6a7e331ed0adbed916ce0b4285699d3e676d335ef1584cc7b711399"
     },
     {
       "path": "examples/taskpool/project.ts",
-      "sha256": "e59c63d8fda979fc8eae2005c2db08a2f61a75a6356b17614ca5be93ba75b3e8"
+      "sha256": "2b685d01e6ffffb786c293a4bc38f092047b327d36b1b87583ee276d95dd6600"
     },
     {
       "path": "src/harness/project-git.ts",
@@ -135,7 +135,7 @@
     },
     {
       "path": "examples/subagents/business.ts",
-      "sha256": "a0c79e82a7343757aaf4fc1ee38e7c9f2e0d9707196c4c15412300bfe375c666"
+      "sha256": "e6b2a8030b6beeac2a3747e1b8ccc44891be1c5cc802821a3422ea9a288b80a2"
     },
     {
       "path": "examples/subagents/harness/controller.ts",
@@ -143,7 +143,7 @@
     },
     {
       "path": "examples/subagents/prompts/prompts.ts",
-      "sha256": "76fdca19d7bf342d53a0bd57f98c939e39913d3df3316c9aab6c6bcf5f7d4bb4"
+      "sha256": "d456babbe03ea916c61c26f66b6acf67181acad6359a692f15e2e4535e8ed982"
     },
     {
       "path": "examples/subagents/services/collaboration-service.ts",
@@ -175,7 +175,7 @@
     },
     {
       "path": "examples/peermesh/harness/team.ts",
-      "sha256": "b29e287cbd27a23e7d822728c099fb2fccc5e208d903cd1b6bbc6d67c91d78ea"
+      "sha256": "8938e089c3442153352ba1a6230e5cd7c5cfcb3802683980d2cf73ba5f7191f4"
     },
     {
       "path": "test/fixtures/peermesh-team-kimi.ts",
@@ -626,7 +626,7 @@
     {
       "path": "examples/taskpool/project.ts",
       "anchor": "discoveryWorkflow: '",
-      "line": 90,
+      "line": 95,
       "sha256": "73ab49e2d714b512d60b202d907d936aeef6878330a345eaf517063aaf7849ae"
     },
     {
@@ -851,7 +851,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-subagents-harness.md",
-      "sha256": "7df49d25a9ffafc10abcb3952a4883622dae4e12c155e4bf5a8ac8386b865962"
+      "sha256": "c1beaf3e8dbf3b2fc5e631a91245332766f7af9f818445deef0523fe22ef6ea9"
     },
     {
       "path": "docs/architecture/prompts/01-core-startup.md",

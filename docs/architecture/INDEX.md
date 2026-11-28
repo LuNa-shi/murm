@@ -15,6 +15,7 @@ Start with [00 System overview](00-overview.md). For an SDK application, continu
 | [04 Services](04-services.md) | How do manifests, adapters, Bridge authorization, local and external Services work? How do the domain Services apply their own state rules? |
 | [17 Runtime evidence and Harness reports](17-harness-reporting.md) | How do SDK finalization, Messages, Notes, Subagents and foreground hosts record inputs, outputs, errors and cleanup? |
 | [23 Project Harness entry](23-project-harness.md) | How does the installed CLI load a Harness, capture a project, run or stop it, and report results? |
+| [25 Foreground terminal interface](25-foreground-tui.md) | How does the installed TUI configure, operate and stop a Run through the public Session? |
 | [07 Launch and configuration](07-run-configuration.md) | How are the package, Worker, host, model endpoints, CLI, local setup and optional Services configured? |
 | [06 Trace Viewer and evidence](06-observability-experiments.md) | How are saved and active Runs inspected, and what do those records establish? |
 | [09 Known boundaries](09-known-boundaries.md) | Which current limitations would otherwise make the SDK or architecture misleading? |

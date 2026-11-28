@@ -49,7 +49,7 @@ export async function createPeerMeshTeam(options: any) {
     ...(unavailablePeers.has(agent.id) ? { unavailable: unavailablePeers.get(agent.id) } : {}),
     router: routers.get(key)?.snapshot(), subscription: subscriptions.get(key)?.snapshot?.() }));
   const snapshot = () => redact({ runId, runtimeId: runtime?.id, closing, identities: services?.identities(), ...(delivery ? { project: { repository: facilities.repository, issue: facilities.issueNumber,
-    startedAt, durationMs, initialCommit: facilities.initialCommit, initialDigest: options.initialDigest, delivery: deliveryReceipt, merges: delivery.snapshot() } } : {}), resources: resources.snapshot(), peers: peerStates() });
+    startedAt, durationMs, deadlineAt: startedAt ? Date.parse(startedAt) + durationMs : null, initialCommit: facilities.initialCommit, initialDigest: options.initialDigest, delivery: deliveryReceipt, merges: delivery.snapshot() } } : {}), resources: resources.snapshot(), peers: peerStates() });
   function stop(reason?: unknown) { clearTimeout(deadlineTimer); delivery?.stop(); inputAdmission?.close(); closing = true; for (const router of routers.values()) router.stop(); lifetime.abort(reason); }
   function fence(reason: any) {
     if (closing || signal.aborted) return;

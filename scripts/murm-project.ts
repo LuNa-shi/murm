@@ -3,15 +3,7 @@ import { resolveHarnessInput } from '../src/harness/project-input.js';
 import { runProjectRpc } from '../src/harness/project-rpc.js';
 import type { ProjectCommand } from './murm-arguments.js';
 
-const builtins = {
-  'lead-worker': new URL('../examples/lead-worker/project.js', import.meta.url).href,
-  peermesh: new URL('../examples/peermesh/project.js', import.meta.url).href,
-  notes: new URL('../examples/notes/project.js', import.meta.url).href,
-  messages: new URL('../examples/messages/project.js', import.meta.url).href,
-  taskpool: new URL('../examples/taskpool/project.js', import.meta.url).href,
-  substrate: new URL('../examples/substrate/project.js', import.meta.url).href,
-  subagents: new URL('../examples/subagents/project.js', import.meta.url).href,
-};
+import { builtins } from './murm-harnesses.js';
 
 const MAX_QUEUED_OUTPUT_BYTES = 1_048_576;
 const MAX_OUTPUT_RECORD_BYTES = 8 * 1024 * 1024;

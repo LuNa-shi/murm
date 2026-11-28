@@ -9,6 +9,10 @@ import { peerMeshConfig } from './project-config.js';
 type Config = Omit<ReturnType<typeof peerMeshConfig>, 'models' | 'sandbox'> &
   Pick<CreateRuntimeOptions, 'executor' | 'models' | 'filePolicy'> & { sandbox: SandboxConfig };
 
+export async function defaultConfiguration() {
+  return peerMeshConfig();
+}
+
 const userBatchDescription = {
   description: 'Queue a user batch for one peer. The peer reads current shared context before the batch starts.',
   schema: { type: 'object', required: ['recipient', 'input'], additionalProperties: false, properties: {
@@ -28,7 +32,7 @@ function batchInput(payload: HarnessJson) {
 const peerMesh = {
   id: 'peermesh', apiVersion: 1, input: true, inputDescriptor: userBatchDescription,
   async run(context) {
-    const config = await projectConfiguration<Config>(context, async () => ({ default: peerMeshConfig() }));
+    const config = await projectConfiguration<Config>(context, async () => ({ default: await defaultConfiguration() }));
     const { durationMs = 120_000 } = config;
     if (!Number.isSafeInteger(durationMs) || durationMs < 1 || durationMs > 86_400_000) {
       throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid PeerMesh work window');

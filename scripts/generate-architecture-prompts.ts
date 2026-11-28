@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { SETUP_PROFILE_PROMPT, SETUP_FOLLOW_UP } from './local-setup-smoke.js';
 import { SETUP_BASH, SETUP_READ, SETUP_RESULT } from './local-setup-upstream.js';
-import { rootPrompt, childPrompt } from '../examples/subagents/prompts/prompts.js';
+import { rootPrompt, childPrompt, profileQuestionGuide } from '../examples/subagents/prompts/prompts.js';
 import { parentPromptFor, initialGoalFor } from '../test-support/subagents/communication-fixture-prompts.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../test-support/taskpool-legacy/capability-profile.js';
 import { AGENT_CONTINUATION_MESSAGE, AGENT_SOFT_CLOSEOUT_MESSAGE, AGENT_MATERIAL_CONTINUATION_MESSAGE, AGENT_MATERIAL_SOFT_CLOSEOUT_MESSAGE, buildAgentSoftCloseoutNotice, buildAgentNotification, agentServiceDirectory } from '../examples/taskpool/prompts/agent-contract.js';
@@ -197,9 +197,11 @@ output('14-sdk-handoff.md', header('Installed public SDK handoff prompts',
     'This instruction accompanies task in the Reader input JSON. The filename is set to the actual Run-specific reader output.'));
 const subagentsPath = 'test-support/subagents/communication-fixture-prompts.ts';
 output('08-subagents-harness.md', header('Subagents Harness prompts',
-  'The ordinary Harness stages the Root and Child Profile prompts verbatim and sends user or model-authored task text through the collaboration controller. The separate communication fixture stages its own Profile prompts. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in communication-fixture-controller.ts with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Agent Service requests.')
+  'The ordinary Harness appends the question guide to the two Profile prompts when the client supports questions and sends user or model-authored task text through the collaboration controller. The separate communication fixture stages its own Profile prompts. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in communication-fixture-controller.ts with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Agent Service requests.')
   + block('Root Profile prompt', rootPrompt)
   + block('Recursive Child Profile prompt', childPrompt)
+  + block('Question-capable Root Profile prompt', rootPrompt + '\n\n' + profileQuestionGuide)
+  + block('Question-capable Child Profile prompt', childPrompt + '\n\n' + profileQuestionGuide)
   + block('Pastel example initial task', evaluate(between('benchmarks/programbench-pastel/subagents-example.ts', 'const initial = ', ';\nconst supplement')))
   + block('Pastel example HSL supplement', evaluate(between('benchmarks/programbench-pastel/subagents-example.ts', 'const supplement = ', ';\nconst probes')))
   + block('Fixture Parent Profile prompt', evaluate(between(subagentsPath, 'export const parentPrompt = ', ';\n')))

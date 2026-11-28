@@ -114,6 +114,8 @@ murm --harness subagents --prompt 'Read README.md and report its heading.' --out
 
 See the [CLI Reference](reference/cli.md) for other model providers and executor options (such as Codex).
 
+When running the current source build from Option B, you can also run `murm --output-dir ./runs` from the project in a terminal. Press F5, enter the task, and submit it. F3 shows the result after the Run ends. The command above also works with the published release. [Terminal controls](reference/cli.md#foreground-terminal-interface)
+
 ## 4. Inspect the run in Trace Viewer
 
 ```bash

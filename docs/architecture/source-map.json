@@ -2037,6 +2037,46 @@
       "role": "Retained Bridge binding of host-owned Mission submission storage, Workspace identity and stop state"
     },
     {
+      "path": "scripts/murm-harnesses.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/25-foreground-tui.md"
+      ],
+      "role": "Built-in Harness resolution and Runtime configuration factories shared by machine and terminal commands"
+    },
+    {
+      "path": "scripts/murm-tui.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/25-foreground-tui.md"
+      ],
+      "role": "Foreground terminal views, forms, public Session commands and shutdown"
+    },
+    {
+      "path": "scripts/murm-tui-config.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/25-foreground-tui.md"
+      ],
+      "role": "Trusted launcher configuration, saved preference, validation and diagnostics"
+    },
+    {
+      "path": "scripts/murm-tui-session.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/25-foreground-tui.md"
+      ],
+      "role": "Harness Session event reducer, bounded reads and unknown operation reconciliation"
+    },
+    {
+      "path": "scripts/murm-tui-terminal.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/25-foreground-tui.md"
+      ],
+      "role": "Single input and output owner, bracketed paste bounds and terminal restoration"
+    },
+    {
       "path": "scripts/murm-project.ts",
       "category": "launch and composition",
       "chapters": [

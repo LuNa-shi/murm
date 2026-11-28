@@ -73,6 +73,8 @@ murm trace --root ./runs --port 8787
 
 The built-in project Harnesses default to the versioned Worker image for the selected executor. Override it with `MURM_WORKER_IMAGE` when using a custom image. Use `--harness` to select any built-in (`subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes`, `messages`), a local ESM module, or an installed package. In `--mode rpc`, tasks arrive over JSONL with live `status` and `stop` control.
 
+On a build from the current source, run `murm` in a terminal to open the Subagents launcher. Use F5 to enter the initial prompt and F6 to select configuration or run Doctor. On a completed Run, F3 shows artifacts, cleanup and the saved report. `--harness H --prompt '…'` remains the scriptable foreground entry. [CLI reference](docs/en/reference/cli.md)
+
 ## Build with the TypeScript SDK
 
 Install the archive from this checkout in your project:

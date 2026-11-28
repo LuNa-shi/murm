@@ -40,7 +40,7 @@ function environment(options: SubagentsProjectOptions) {
     MURM_SUBAGENTS_MODEL_URL: '',
     MURM_SUBAGENTS_MODEL_TOKEN: '',
   };
-  return '# Set your Responses endpoint and credentials, then run murm in this directory.\n' +
+  return '# Set your Responses endpoint and credentials, then run npm start in this directory.\n' +
     Object.entries(fields).filter(([, value]) => value !== undefined).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join('\n') + '\n';
 }
 
@@ -109,7 +109,8 @@ export async function prepareSubagentsProject(options: SubagentsProjectOptions) 
       }
     }
     await create('package.json', JSON.stringify({ name: 'my-murm', version: '1.0.0', private: true, type: 'module',
-      scripts: { start: 'murm', doctor: 'murm doctor --config config.js' },
+      scripts: { start: 'node ./main.js ./config.js --interactive',
+        tui: 'murm --harness subagents --config ./config.js', doctor: 'murm doctor --config ./config.js' },
       dependencies: { '@luna-shi/murm': `file:.murm/${archiveName}` },
     }, null, 2) + '\n');
     const projectPackage = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));

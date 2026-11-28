@@ -191,12 +191,30 @@ export function createHarnessSession(definition: Harness, options: HarnessSessio
     const event = runtimeObject.event;
     if (!event || typeof event !== 'object' || Array.isArray(event) || !('messageId' in event) || typeof event.messageId !== 'string') return;
     const eventObject = event as { readonly [key: string]: HarnessJson };
-    const key = String(runtimeObject.agentId ?? '') + ':' + eventObject.messageId;
-    const previous = output.get(key) as { text?: string } | undefined;
-    if (eventObject.type === 'textDelta' && typeof eventObject.delta === 'string') {
-      output.set(key, { agentId: runtimeObject.agentId ?? null, messageId: eventObject.messageId, text: ((previous?.text ?? '') + eventObject.delta).slice(-16_384), truncated: (previous?.text?.length ?? 0) + eventObject.delta.length > 16_384, complete: false });
+    const agentId = runtimeObject.agentId ?? null;
+    const messageId = eventObject.messageId;
+    const key = JSON.stringify([agentId, messageId]);
+    const previous = output.get(key) as { blocks?: readonly (readonly [number, string])[]; complete?: boolean; truncated?: boolean } | undefined;
+    if (eventObject.type === 'textDelta' && typeof eventObject.delta === 'string' && !previous?.complete) {
+      const index = Number.isSafeInteger(eventObject.blockIndex) ? Number(eventObject.blockIndex) : 0;
+      const blocks = new Map(previous?.blocks);
+      blocks.set(index, (blocks.get(index) ?? '') + eventObject.delta);
+      let truncated = previous?.truncated ?? false;
+      if (blocks.size > 64) { blocks.delete(blocks.keys().next().value!); truncated = true; }
+      const ordered = [...blocks].sort(([left], [right]) => left - right);
+      let available = 16_384;
+      for (let position = ordered.length - 1; position >= 0; position--) {
+        const block = ordered[position];
+        if (block[1].length > available) {
+          block[1] = available ? block[1].slice(-available) : '';
+          truncated = true;
+        }
+        available -= block[1].length;
+      }
+      output.set(key, { agentId, messageId, text: ordered.map(([, text]) => text).join(''),
+        blocks: ordered, truncated, complete: false });
     } else if (eventObject.type === 'messageEnd') {
-      output.set(key, { agentId: runtimeObject.agentId ?? null, messageId: eventObject.messageId, message: boundedView(eventObject.message ?? null, 16_384), complete: true });
+      output.set(key, { agentId, messageId, message: boundedView(eventObject.message ?? null, 16_384), complete: true });
     }
     while (output.size > 8 || Buffer.byteLength(JSON.stringify([...output.values()])) > Math.floor(limits.snapshotBytes / 4)) output.delete(output.keys().next().value!);
   }
