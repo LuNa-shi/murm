@@ -20,7 +20,7 @@ badge: v0.2.0
 
 ## 安装或升级到 v0.2.0
 
-通过托管在 GitHub Pages 的一行脚本全局安装最新 CLI：
+按下面的宿主机要求准备环境，再通过 GitHub Pages 上的脚本全局安装最新 CLI。如果安装器打印了 PATH 命令，请先执行它，再运行 `murm setup`。
 
 ```bash
 curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
@@ -31,8 +31,9 @@ murm setup
 
 ```bash
 # 全局 CLI（指向最新 Release）
-npm install -g --ignore-scripts --allow-remote=root \
+npm install -g --prefix "$HOME/.local" --ignore-scripts --allow-remote=root \
   https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz
+export PATH="$HOME/.local/bin:$PATH"
 
 # 项目 SDK 依赖（锁定 v0.2.0）
 npm install --ignore-scripts --allow-remote=root \

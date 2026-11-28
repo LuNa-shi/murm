@@ -20,7 +20,7 @@ This page describes the published v0.2.0 artifact. The [current-source Quickstar
 
 ## Install or upgrade
 
-Install the global CLI from the latest GitHub Release:
+Prepare the [v0.2.0 host requirements](#host-requirements), then install the global CLI from the latest GitHub Release. If the installer prints a PATH command, run it before `murm setup`.
 
 ```bash
 curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
@@ -31,8 +31,9 @@ Or install directly with npm:
 
 ```bash
 # Global CLI (tracks latest release)
-npm install -g --ignore-scripts --allow-remote=root \
+npm install -g --prefix "$HOME/.local" --ignore-scripts --allow-remote=root \
   https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz
+export PATH="$HOME/.local/bin:$PATH"
 
 # Project SDK dependency (pinned to v0.2.0)
 npm install --ignore-scripts --allow-remote=root \

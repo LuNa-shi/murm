@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import {
-  checkLinuxHost, checkLocalDocker, checkLocalProvider, checkStrictLocalHost, ensureLocalProvider, resolveLocalEnvironment,
+  checkLinuxHost, checkLocalDocker, checkLocalProvider, checkStrictLocalHost, ensureLocalProvider, localExecdImage, localProviderImage, resolveLocalEnvironment,
   type DiagnosticCheck,
 } from './local-environment.js';
 import { runLocalSmoke } from './local-setup-smoke.js';
@@ -222,7 +222,13 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       smoke: ['Could not complete the infrastructure probe.', 'Check the local OpenSandbox service, Worker image and host network.'],
     };
     let [detail, remedy] = failure[stage];
-    if (stage === 'provider' && (error as { code?: string })?.code === 'PROVIDER_PORT_IN_USE') {
+    const code = (error as { code?: string })?.code;
+    if (stage === 'provider' && (code === 'PROVIDER_EXECD_PULL_FAILED' || code === 'PROVIDER_SERVER_PULL_FAILED')) {
+      const execd = code === 'PROVIDER_EXECD_PULL_FAILED';
+      detail = `Docker could not pull the pinned OpenSandbox ${execd ? 'Execd' : 'server'} image.`;
+      remedy = `Check registry access from the selected Docker daemon, then retry:\n  docker pull ${execd ? localExecdImage : localProviderImage}\n` +
+        'Rerun the same murm setup command after the image is available, or configure a reachable OpenSandbox service.';
+    } else if (stage === 'provider' && code === 'PROVIDER_PORT_IN_USE') {
       detail = 'The local Lifecycle port is already occupied.';
       remedy = 'Set MURM_LIFECYCLE_URL to a free loopback port and rerun local setup, or use existing mode for a service you operate.';
     } else if (stage === 'provider' && rootlessDocker) {

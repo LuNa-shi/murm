@@ -9,7 +9,7 @@ the SDK does not require a global Task/Context/Judge/Catalog deployment.
 | Component | Ownership | Normal user action |
 | --- | --- | --- |
 | OpenSandbox Lifecycle service | Your deployment, or the local service created by `murm setup --mode local`. | Connect to an existing authenticated service, or let local setup prepare it. |
-| murm Worker image | Versioned image built by the release workflow. | Setup checks the local cache, pulls a compatible official image, and falls back to a source build when preparing the default image. |
+| murm Worker image | Versioned image built by the release workflow. | Local setup reuses a compatible cached Worker or builds the default executor variant from the packaged Dockerfile. An explicitly configured registry image can be pulled. With an existing provider, its engine prepares the selected reference. |
 | Runtime Bridge, model gateway and built-in `agent` Service | Created by each Runtime. | Configure the Runtime; these have no separate service container to deploy. |
 | TaskPool, Subagents, Lead-Worker and Substrate Services | Their respective example. | The example creates its owned in-process Services/stores. Follow that example's README for extra facilities. |
 | PeerMesh facilities and optional integrations | The application/operator. | Supply the endpoints and credentials listed by the selected example. Setup does not provision them. |

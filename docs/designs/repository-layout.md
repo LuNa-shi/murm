@@ -193,7 +193,7 @@ honest until such artifacts exist.
 
 Separate the minimal SDK/CLI package payload from developer-only tests, benchmark
 fixtures and Worker build contexts. Before removing source from the tarball,
-replace or package the exact build context required by setup's Worker fallback.
+replace or package the exact build context required by setup's local Worker build.
 `npm pack --dry-run` alone cannot prove an installed runtime still works.
 
 Acceptance must use the actual candidate archive in a temporary directory outside

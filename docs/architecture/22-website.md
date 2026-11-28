@@ -15,11 +15,16 @@ The browser handles the landing page diagrams, Harness selector, theme, and site
 ## Publish and recover
 
 Astro copies [the CLI installer](../../website/public/install.sh) verbatim into
-the Pages artifact at `/murm/install.sh`. It checks that npm is available and
-invokes a global install of the latest GitHub Release tarball with lifecycle
-scripts disabled and remote URLs allowed for the top-level package. npm uses
-the user's configured prefix, reports download and permission errors, and
-returns its exit status. Host setup is a separate `murm setup` command.
+the Pages artifact at `/murm/install.sh`. It checks for npm and Node.js 22.19 or
+later before querying npm for its global prefix and module root. It checks the
+nearest existing parent of the bin directory and package scope for write and
+traverse access. If either check fails, it selects `$HOME/.local`. npm installs
+the latest GitHub Release tarball into the selected prefix with lifecycle
+scripts disabled and remote URLs allowed for the top-level package. Install
+errors keep npm's exit status. After a successful install the script checks
+which `murm` resolves on PATH and prints instructions if the selected binary
+is outside the active PATH or shadowed by an older installation. Host setup is
+a separate `murm setup` command.
 Website CI verifies that the built file matches the source and parses as POSIX sh.
 
 The [Pages workflow](../../.github/workflows/deploy-website.yml) starts after a push to `main` that changes `website/`, `docs/en/`, `docs/zh/` or its workflow, or from manual dispatch for a selected ref. GitHub Pages uses the GitHub Actions source. The `github-pages` environment applies its configured branch policy to each deployment. The workflow reads the site origin and base path from Pages, runs a locked Node 24 build, then uploads `website/dist/` as a Pages artifact. The deploy job runs only after the build succeeds and publishes that artifact using the repository Pages permission and an OIDC token. Each successful deployment replaces the entire published site at the same URL. A deployed artifact must include both locale trees to serve both locales. Deployments share a concurrency group. No npm package publish or sandbox setup runs in this workflow.

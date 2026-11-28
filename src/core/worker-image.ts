@@ -23,9 +23,8 @@ function readPackageVersion(): string {
 export const PACKAGE_VERSION = readPackageVersion();
 
 /**
- * Default OpenSandbox Worker image tag matching this @luna-shi/murm release.
- * `murm setup` pulls this image from GHCR when available, or builds it locally
- * from `deploy/worker/Dockerfile` and tags it with this exact reference.
+ * OpenSandbox Worker image tag for the combined release image.
+ * Local setup prepares the selected executor's variant from `workerImageFor`.
  */
 export const DEFAULT_WORKER_IMAGE = `${WORKER_IMAGE_REPOSITORY}:${PACKAGE_VERSION}`;
 
