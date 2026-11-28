@@ -10,7 +10,7 @@ const isZh = lang === 'zh';
 
 const COMMANDS = {
   curl: 'curl -fsSL https://luna-shi.github.io/murm/install.sh | sh',
-  npm: 'npm install -g --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz',
+  npm: 'npm install -g --prefix "$HOME/.local" --ignore-scripts --allow-remote=root https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz && export PATH="$HOME/.local/bin:$PATH"',
 };
 
 const copy = isZh
@@ -19,9 +19,9 @@ const copy = isZh
       copyLabel: '[ 复制 ]',
       copiedLabel: '[ 已复制 ✓ ]',
       errorLabel: '[ 复制失败 ]',
-      notePrefix: '支持 Linux + Node.js 22.19+ · 安装后运行 ',
-      noteCmd: 'murm setup --mode local',
-      noteSuffix: ' 一键初始化本地 OpenSandbox · ',
+      notePrefix: '按快速上手准备 Linux 环境，安装后运行 ',
+      noteCmd: 'murm setup',
+      noteSuffix: ' 验证 OpenSandbox · ',
       noteLink: '快速上手 →',
     }
   : {
@@ -29,9 +29,9 @@ const copy = isZh
       copyLabel: '[ COPY ]',
       copiedLabel: '[ COPIED ✓ ]',
       errorLabel: '[ FAILED ]',
-      notePrefix: 'Linux + Node.js 22.19+ · Run ',
-      noteCmd: 'murm setup --mode local',
-      noteSuffix: ' to start local OpenSandbox · ',
+      notePrefix: 'Prepare your Linux host using the Quickstart, then run ',
+      noteCmd: 'murm setup',
+      noteSuffix: ' to verify OpenSandbox · ',
       noteLink: 'Quickstart →',
     };
 ---
