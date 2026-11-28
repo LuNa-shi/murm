@@ -51,7 +51,8 @@ export function parseMurmCommand(args: string[]): MurmCommand | { help: string }
       if ((lifetime !== undefined && lifetime !== 'task' && lifetime !== 'interactive') ||
           (interaction !== undefined && interaction !== 'none' && interaction !== 'questions')) throw new Error();
       const project = { command: 'harness' as const, harness: values.harness, configPath: values.config,
-        outputRoot: values['output-dir'], lifetime, interaction };
+        outputRoot: values['output-dir'],
+        lifetime: lifetime as ProjectCommand['lifetime'], interaction: interaction as ProjectCommand['interaction'] };
       if (values.mode === 'rpc' && values.prompt === undefined && values.cwd === undefined) return { ...project, mode: 'rpc' };
       if (values.mode === undefined && values.prompt?.trim() && values.cwd !== '') {
         return { ...project, mode: 'foreground', cwd: values.cwd, prompt: values.prompt };

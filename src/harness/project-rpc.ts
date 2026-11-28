@@ -1,3 +1,5 @@
+import type { AgentSessionPatch, ContextInput, ContextSendOptions } from '../core/session-types.js';
+import type { SendOptions } from '../core/types.js';
 import type { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import { stableStringify } from '../protocol/stable-json.js';
@@ -62,7 +64,7 @@ function dispatch(session: HarnessSession, request: RpcRequest, launchDirectory:
         if (receipt.status === 'not_submitted' && receipt.reason === 'RUN_STOPPING') {
           throw projectError('RUN_STOPPING', 'Input admission is closed');
         }
-        return receipt.status === 'accepted' ? receipt.result : receipt;
+        return receipt.result ?? receipt;
       });
     case 'stop': {
       const { reason } = optional(input, ['reason']);
@@ -91,13 +93,26 @@ function dispatch(session: HarnessSession, request: RpcRequest, launchDirectory:
     }
     case 'agent.configure': {
       const { agentId, patch } = named(input, ['agentId', 'patch']);
-      return session.agents.configure(requiredString(agentId), patch, identity);
+      return session.agents.configure(requiredString(agentId),
+        named(patch, ['thinkingLevel', 'compaction', 'retry', 'steeringMode', 'followUpMode']) as AgentSessionPatch, identity);
     }
     case 'agent.send': {
       const { agentId, input: payload, options } = named(input, ['agentId', 'input', 'options']);
-      return session.agents.send(requiredString(agentId), payload, {
-        ...optional(options, ['mode', 'delivery', 'wakeIfIdle', 'source']), ...identity,
-      });
+      const target = requiredString(agentId);
+      if (typeof payload === 'string') {
+        return session.agents.send(target, payload, {
+          ...optional(options, ['mode', 'wakeIfIdle', 'source', 'steeringMode', 'timeoutMs']), ...identity,
+        } as SendOptions);
+      }
+      const context = named(payload, ['type', 'customType', 'content', 'details', 'display']);
+      if (context.type !== 'context' || typeof context.customType !== 'string' || typeof context.content !== 'string') {
+        throw projectError('INVALID_REQUEST', 'Expected text or a structured context input');
+      }
+      const contextOptions = optional(options, ['delivery', 'wakeIfIdle', 'source']);
+      if (!['append', 'nextTurn', 'steer', 'followUp'].some(delivery => delivery === contextOptions.delivery)) {
+        throw projectError('INVALID_REQUEST', 'Expected a supported context delivery');
+      }
+      return session.agents.send(target, context as unknown as ContextInput, { ...contextOptions, ...identity } as ContextSendOptions);
     }
     case 'agent.compact': {
       const { agentId, options } = named(input, ['agentId', 'options']);
@@ -163,7 +178,7 @@ export async function runProjectRpc(
     void completion.then(async result => {
       closed = true;
       await write({ type: 'result', runId: result.runId, result });
-      done.resolve(getHarnessExitCode(session));
+      done.resolve(getHarnessExitCode(session) ?? 1);
     }).catch(done.reject);
   }
 
