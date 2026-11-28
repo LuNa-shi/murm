@@ -1,6 +1,7 @@
 import type { ExecutorCapabilities, ExecutorKind } from './backend-config.js';
 
 export const EXECUTOR_ADAPTER_PROTOCOL = 'murm-executor-v1';
+export const PI_SESSION_PROTOCOL = 'pi-session-v1';
 
 export interface BuiltinExecutorSelection {
   readonly kind: ExecutorKind;

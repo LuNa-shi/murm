@@ -7,6 +7,7 @@ import { openSandboxAgentKey, openSandboxMissionKey, openSandboxRuntimeKey } fro
 import { decodeFileSeed, fileProtocol, fileTransferProtocol, snapshotFileSeed } from '../files/core-file-seed.js';
 import { fileTreeFrames, receiveFileTree } from '../files/file-tree-stream.js';
 import { DEFAULT_FILE_POLICY } from '../file-policy.js';
+import { PI_SESSION_PROTOCOL } from '../executor-adapter.js';
 import type { FileTree } from '../types.js';
 import { snapshotCollectionSpec, MAX_COLLECTION_LINE_BYTES } from '../files/core-collection.js';
 
@@ -638,7 +639,7 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ writable = false, files, forkSession, workspace, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, modelCatalogContent = null, codex, piSession, executorVersion, externalExecutor, filePolicy = DEFAULT_FILE_POLICY, controllerSpoolDirectory, signal, requireCoreFileProtocol = false, beforeAgentStart = null }: any = {}) {
+  async startAgent({ writable = false, files, forkSession, workspace, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, modelCatalogContent = null, codex, piSession, requirePiSessionProtocol = false, executorVersion, externalExecutor, filePolicy = DEFAULT_FILE_POLICY, controllerSpoolDirectory, signal, requireCoreFileProtocol = false, beforeAgentStart = null }: any = {}) {
     const contract = { protocolVersion: 'murm-core-v1', resources: [] };
     const record: any = this.#record(executionId);
     const signature = (values: any) => Array.isArray(values) && values.every((item: any) => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
@@ -678,16 +679,21 @@ export class OpenSandboxManager {
       }
     }
     let transfer = false;
+    let piSessionSupported = false;
     if (requireCoreFileProtocol) {
       const probe = await this.#request(`${endpoint}/core/contract`, {
         absolute: true, method: 'GET', extraHeaders: workerHeaders, timeoutMs: 15_000, allowStatuses: [400, 404],
       });
       const supported = probe.body?.result?.file_protocol;
       transfer = probe.body?.result?.file_transfer === fileTransferProtocol;
+      piSessionSupported = probe.body?.result?.pi_session_protocol === PI_SESSION_PROTOCOL;
       if (supported !== fileProtocol) {
         throw new MurmError(ERROR_CODES.INVALID_CONTRACT,
           `Core requires Worker file protocol ${fileProtocol}; detected ${supported ?? 'none'}`);
       }
+    }
+    if (requirePiSessionProtocol && !piSessionSupported) {
+      throw new MurmError('OPERATION_UNSUPPORTED', 'Worker does not support the Pi Session protocol');
     }
     if (!transfer) {
       if (JSON.stringify(filePolicy) !== JSON.stringify(DEFAULT_FILE_POLICY)) {
@@ -714,7 +720,7 @@ export class OpenSandboxManager {
         command: codex ? 'codex' : required(agentCommand, 'agent_command'),
         ...(codex ? { codex: { model: codex.model, baseUrl: codex.baseUrl } } : {}),
         ...(executorVersion ? { executor_version: executorVersion } : {}),
-        ...(piSession ? { piSession } : {}),
+        ...(piSessionSupported && piSession ? { piSession } : {}),
         ...(externalExecutor ? { executor_adapter: {
           kind: externalExecutor.kind, protocol: externalExecutor.protocol, capabilities: externalExecutor.capabilities,
         } } : {}),

@@ -18,6 +18,7 @@ import { DEFAULT_FILE_POLICY, resolveFilePolicy } from '../src/core/file-policy.
 import { fileTreeFrames, receiveFileTree } from '../src/core/files/file-tree-stream.js';
 import { fileTransferProtocol } from '../src/core/files/core-file-seed.js';
 import { snapshotSessionFork, sessionForkText } from './core-session-fork.js';
+import { PI_SESSION_PROTOCOL } from '../src/core/executor-adapter.js';
 
 const argv = process.argv.slice(2);
 function option(name: string, fallback: string | number | null = null) {
@@ -616,7 +617,8 @@ const server = createServer(async (request: any, response: any) => {
     if (request.method === 'GET' && url.pathname === '/health') { send(response, 200, { ok: true, pid: child?.pid ?? null }); return; }
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
     if (request.method === 'GET' && url.pathname === '/core/contract') {
-      send(response, 200, { ok: true, result: { file_protocol: fileProtocol, file_transfer: fileTransferProtocol } });
+      send(response, 200, { ok: true, result: { file_protocol: fileProtocol, file_transfer: fileTransferProtocol,
+        pi_session_protocol: PI_SESSION_PROTOCOL } });
       return;
     }
     if (request.method === 'POST' && url.pathname === '/start') {

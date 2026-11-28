@@ -528,8 +528,11 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         controllerSpoolDirectory: outputDir,
         signal,
         executorVersion: driver.version,
-        ...(driver.capabilities.session ? { piSession: { configuration: options.session ?? profile.session ?? {},
-          ...(beforeCompact ? { beforeCompact: { timeoutMs: beforeCompact.timeoutMs } } : {}) } } : {}),
+        ...(driver.kind === 'pi' ? {
+          piSession: { configuration: options.session ?? profile.session ?? {},
+            ...(beforeCompact ? { beforeCompact: { timeoutMs: beforeCompact.timeoutMs } } : {}) },
+          requirePiSessionProtocol: options.session !== undefined || beforeCompact !== undefined,
+        } : {}),
         systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt, driver.kind, model.capabilities?.tools === false ? [] : (options.session ?? profile.session)?.tools),
         systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
         writable: options.writable ?? profile.writable,
