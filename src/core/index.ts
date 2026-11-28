@@ -444,7 +444,7 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
   const sessionControls = createSessionControls({ capabilities: config.driver.capabilities, backend, findAgent, problem,
     available: (agent: any) => !closing && !admissionsFenced && !recovering && isLive(agent),
     canSend: (agent: any) => fileControls.canSend(agent), record: records.record, sanitize: redactor.value,
-    activity: (agent: any) => refreshActivity(agent) });
+    activity: (agent: any) => refreshActivity(agent), durable: action => finalClose ? undefined : durable(action) });
   const hookRequests = new Map<string, { controller: AbortController; work: Promise<BeforeCompactDecision> }>();
   const handlerErrors: any[] = [];
   let handlerErrorCount = 0;
@@ -1192,7 +1192,7 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
   function hostSend(id: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
   function hostSend(id: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
   function hostSend(id: string, input: ContextInput, options: ContextSendOptions): Promise<ContextInputReceipt>;
-  function hostSend(id: string, input: string | ContextInput, options: SendOptions | ContextSendOptions): Promise<any> {
+  async function hostSend(id: string, input: string | ContextInput, options: SendOptions | ContextSendOptions): Promise<any> {
     const requestId = options?.requestId;
     if (validId(requestId) && (typeof input === 'string' ? sessionControls.hasContext(id, requestId) : inputRequests.peek('host', id, requestId))) {
       return Promise.reject(problem('CONFLICT', 'send requestId already identifies another input type', 'send', id, requestId));

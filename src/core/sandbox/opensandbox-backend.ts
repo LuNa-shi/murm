@@ -990,7 +990,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       const id = payload.id as string;
       const previous = agent.sessionCommands.get(id);
       const fingerprint = JSON.stringify(payload);
-      if (previous && (previous.command !== command || previous.fingerprint !== fingerprint)) throw Object.assign(new Error('Session operation identity conflict'), { code: 'CONFLICT' });
+      if (previous && (previous.command !== command || (!query && previous.fingerprint !== fingerprint))) throw Object.assign(new Error('Session operation identity conflict'), { code: 'CONFLICT' });
       if (!previous && !query) agent.sessionCommands.set(id, { fingerprint, command });
       agent.eventPoll.wake();
       let result;

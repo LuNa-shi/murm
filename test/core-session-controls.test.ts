@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { test } from 'node:test';
 import { ServiceRegistry } from '../src/core/services.js';
+import { AllocationLedger } from '../src/core/allocation-ledger.js';
+import { createSessionControls } from '../src/core/session-controls.js';
 import { transport } from './fixtures/core-input-backend.js';
 const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) {
@@ -177,4 +179,56 @@ test('Harness stop bypasses a full input queue and fences a late handler at its 
   assert.equal(dispatches, 1);
   assert.equal(transport.spawned.length, 1);
   assert.equal(transport.submissions.size, 0);
+});
+
+test('durable Session mutation replay preserves the original Worker ID and accepts only matching inputs', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-durable-session-'));
+  const options = { directory, runtimeId: 'run', configFingerprint: 'config', maxAgents: 1 };
+  let ledger = AllocationLedger.open(options);
+  t.after(async () => { ledger.close(); await rm(directory, { recursive: true, force: true }); });
+  const agentId = 'agent';
+  ledger.reserveIntent({ agentId, resourceKey: agentId, requestId: 'spawn', parameterFingerprint: 'spawn-fingerprint',
+    providerId: 'opensandbox', connectionFingerprint: 'provider', executionGeneration: 1, profile: 'worker',
+    executor: 'pi', image: 'fixture', timeoutSeconds: 60 });
+  ledger.dispatched(agentId);
+  ledger.observeResource(agentId, { sandboxId: 'sandbox', expiresAt: new Date(Date.now() + 60000).toISOString() });
+  ledger.starting(agentId);
+  const identity = { workerInstanceId: 'original-worker', streamEpoch: 'stream' };
+  ledger.ready(agentId, identity);
+
+  const calls: { command: string; id: unknown; query: boolean }[] = [];
+  const agent = { info: { id: agentId, status: 'idle' }, executionEpoch: 0, activityClaims: new Set(), nativeExecuting: false };
+  const controls = () => createSessionControls({
+    capabilities: { session: { configure: true, context: true } } as import('../src/core/backend-config.js').ExecutorCapabilities,
+    findAgent: () => agent, available: () => true, canSend: () => true,
+    problem: (code, message) => Object.assign(new Error(message), { code }),
+    backend: { async sessionCommand(_id, command, payload, query) {
+      calls.push({ command, id: payload.id, query });
+      if (command === 'core_session_configure') return { status: 'applied' };
+      return query ? { status: 'accepted', disposition: 'appended' } : { status: 'unknown' };
+    } },
+    record() {}, sanitize: value => value, activity() {}, durable: execute => execute(ledger),
+  });
+  const context = { type: 'context', customType: 'reference', content: 'private context' } as const;
+  const request = { requestId: 'context', delivery: 'append' } as const;
+  const initial = controls();
+  const first = await initial.context(agentId, context, request);
+  assert.equal(first.status, 'unknown');
+  const configured = await initial.api.configure(agentId, { thinkingLevel: 'low' }, { requestId: 'settings' });
+  ledger.close();
+  ledger = AllocationLedger.open(options);
+  ledger.ready(agentId, identity);
+  const recovered = controls();
+  assert.equal(recovered.hasContext(agentId, request.requestId), true);
+  const result = await recovered.reconcile(agentId, 'send', request.requestId);
+  assert.deepEqual(result, { inputId: first.inputId, status: 'accepted', disposition: 'appended' });
+  assert.deepEqual(await recovered.context(agentId, context, request), result);
+  await assert.rejects(recovered.context(agentId, { ...context, content: 'changed' }, request), { code: 'CONFLICT' });
+  assert.deepEqual(await recovered.api.configure(agentId, { thinkingLevel: 'low' }, { requestId: 'settings' }), configured);
+  assert.deepEqual(calls, [
+    { command: 'core_context', id: first.inputId, query: false },
+    { command: 'core_session_configure', id: configured.operationId, query: false },
+    { command: 'core_context', id: first.inputId, query: true },
+  ]);
+  assert.doesNotMatch(JSON.stringify(ledger.input(agentId, 'host', request.requestId)), /private context/);
 });
