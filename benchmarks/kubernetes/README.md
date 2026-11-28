@@ -19,7 +19,7 @@ The bounded local runner accepts at most 32 concurrent operations, three waves, 
 
 The 2/8 path uses real Pi 1.3.0 through the Worker and controlled Responses service. Its cluster verification remains pending. The scope below applies to these real tiers.
 
-Build normally, copy `manifest.example.json` to a private location, and replace every placeholder. Run from the pinned checkout, inside the Runtime's private network and writable persistent directory. The runner itself occupies the stable Runtime Service listener; stop any other application using that port through the approved ownership procedure. The callback Service must keep its ClusterIP, resolve consistently from the Controller, and route to this process. The SDK resolves the trusted callback to one non-loopback IPv4 for exact-port policy; guests keep the original URL. Apply the [deployment profile](../../deploy/opensandbox-kubernetes/README.md) and record its inventory first.
+Build normally, copy `manifest.example.json` to a private location, and replace every placeholder. Set `runtimePublicUrl` to `MURM_RUNTIME_PUBLIC_URL` from the Runtime Pod, which contains the `murm-runtime` Service's IPv4 address and port. Run from the pinned checkout, inside the Runtime's private network and writable persistent directory. The runner occupies the stable Runtime Service listener. The Service must keep its ClusterIP and route to this process, and the Sandbox policy permits that address on the exact callback port. Apply the [deployment profile](../../deploy/opensandbox-kubernetes/README.md) and record its inventory first.
 
 ```sh
 npm run build

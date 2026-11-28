@@ -95,6 +95,7 @@ type WorkerRecord = { worker_sequence: number; worker_at?: string; [key: string]
 
 interface WorkerReply {
   records?: WorkerRecord[];
+  state?: string;
   response?: {
     id?: string;
     command?: string;
@@ -753,7 +754,12 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (effective) trace(agent, { type: 'sandbox-isolation', providerId: provider.id,
         sandboxId: sandbox.sandbox_id, effective });
       agent.started = true;
-      const ready = await manager.agentRpc(agentId, { type: 'get_state', id: `ready-${randomUUID()}` }, { timeoutMs: 10_000, since: 0 });
+      const readiness = { type: 'get_state', id: `ready-${randomUUID()}` };
+      let ready = await manager.agentRpc(agentId, readiness, { timeoutMs: 10_000, since: 0, signal });
+      if (ready.state === 'pending') {
+        assertOpen();
+        ready = await manager.agentRpc(agentId, readiness, { timeoutMs: 40_000, since: 0, signal });
+      }
       if (ready.response?.success !== true || ready.response.command !== 'get_state') throw invalid('Executor readiness response was not confirmed');
       const worker = (manager as OpenSandboxManager).workerControl?.(agentId);
       if (worker?.eventProtocol === 'murm-events-v1' && worker.workerInstanceId && worker.streamEpoch) {

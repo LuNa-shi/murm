@@ -78,16 +78,16 @@ const resources = { apiVersion: 'v1', kind: 'List', items: [
   namespace(systemNamespace), namespace(workloadNamespace), namespace(runtimeNamespace),
   pvc('opensandbox-server-state', systemNamespace, '10Gi'), pvc('murm-run-directory', runtimeNamespace, '20Gi'),
   { apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'murm-sandbox-template', namespace: systemNamespace }, data: { 'template.yaml': JSON.stringify(workloadTemplate) } },
-  { apiVersion: 'v1', kind: 'Service', metadata: { name: 'murm-runtime', namespace: runtimeNamespace }, spec: { selector: { app: 'murm-runtime' }, ports: [{ name: 'callback', port: 3100, targetPort: 3100 }] } },
+  { apiVersion: 'v1', kind: 'Service', metadata: { name: 'murm-runtime', namespace: runtimeNamespace }, spec: { ipFamilyPolicy: 'SingleStack', ipFamilies: ['IPv4'], selector: { app: 'murm-runtime' }, ports: [{ name: 'callback', port: 3100, targetPort: 3100 }] } },
   { apiVersion: 'apps/v1', kind: 'Deployment', metadata: { name: 'murm-runtime', namespace: runtimeNamespace }, spec: {
     replicas: 1, strategy: { type: 'Recreate' }, selector: { matchLabels: { app: 'murm-runtime' } }, template: { metadata: { labels: { app: 'murm-runtime' } }, spec: {
-      nodeSelector: site.runtimeNodeSelector, automountServiceAccountToken: false, terminationGracePeriodSeconds: 120,
+      nodeSelector: site.runtimeNodeSelector, automountServiceAccountToken: false, enableServiceLinks: true, terminationGracePeriodSeconds: 120,
       containers: [{ name: 'runtime', image: site.runtimeImage, command: site.runtimeCommand,
         env: [
           secretEnv('OPEN_SANDBOX_API_KEY', site.apiKeySecret, 'api-key'),
           { name: 'OPEN_SANDBOX_ENDPOINT', value: `http://opensandbox-server.${systemNamespace}.svc.cluster.local` },
           { name: 'MURM_RUNTIME_NODE_NAME', valueFrom: { fieldRef: { fieldPath: 'spec.nodeName' } } },
-          { name: 'MURM_RUNTIME_PUBLIC_URL', value: `http://murm-runtime.${runtimeNamespace}.svc.cluster.local:3100` },
+          { name: 'MURM_RUNTIME_PUBLIC_URL', value: 'http://$(MURM_RUNTIME_SERVICE_HOST):3100' },
           { name: 'MURM_WORKER_IMAGE', value: site.workerImage },
         ],
         ports: [{ name: 'callback', containerPort: 3100 }],

@@ -164,7 +164,7 @@ const options = {
   // 提供原始 sandbox、models、profiles、services 和 outputDir。
   ...applicationOptions,
   connection: {
-    publicUrl: 'http://murm-runtime.murm.svc.cluster.local:3100',
+    publicUrl: process.env.MURM_RUNTIME_PUBLIC_URL,
     bindHost: '0.0.0.0',
     bindPort: 3100,
   },
@@ -173,7 +173,7 @@ const options = {
 };
 ```
 
-回调地址必须固定并能从所有 Worker 到达，Run 目录必须使用私有持久化存储，恢复配置必须与原合同匹配。Profile 开启网络限制时，受信回调主机名必须在 Controller 上解析为唯一的非 loopback IPv4；Core 将该 IP 与精确端口写入策略，Worker 保留原 URL。准备、停止和传输各有独立的有界队列。持久化模式的保留期默认 15 分钟，具有有限截止时间。
+回调地址必须固定并能从所有 Worker 到达，Run 目录必须使用私有持久化存储，恢复配置必须与原合同匹配。Kubernetes 部署把 Runtime Service 的 ClusterIP 写入回调 URL，Sandbox 可按精确的 IPv4 和端口规则连接，无需查询 DNS。准备、停止和传输各有独立的有界队列。持久化模式的保留期默认 15 分钟。
 
 旧 Controller 退出后，SDK 可以重新连接同一批仍存活的 Worker：
 

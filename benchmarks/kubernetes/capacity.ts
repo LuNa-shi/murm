@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { isIPv4 } from 'node:net';
 import { mkdir, readFile, writeFile, appendFile, readdir, readlink } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -37,6 +38,7 @@ function plan(manifest: any) {
     assert.ok(['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash);
     assert.ok(!['localhost', '127.0.0.1', '0.0.0.0', '[::1]'].includes(url.hostname), 'Cluster addresses must be reachable across nodes');
   }
+  assert.ok(isIPv4(new URL(manifest.runtimePublicUrl).hostname), 'The dns+nft fixture requires the Runtime callback Service IPv4 address');
   assert.ok(['cold', 'warm', 'mixed'].includes(manifest.imageCache));
   for (const key of ['runtimeBindPort', 'maxDurationMs', 'cleanupDeadlineMs', 'maxModelRequests', 'maxRssBytes', 'agentCpuMilli', 'agentMemoryMiB', 'egressCpuMilli', 'egressMemoryMiB', 'createConcurrency', 'workConcurrency', 'exportConcurrency', 'controlTimeoutMs', 'retentionMs']) {
     assert.ok(Number.isSafeInteger(manifest[key]) && manifest[key] > 0, `${key} must be a positive integer`);

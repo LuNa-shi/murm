@@ -161,7 +161,7 @@ const options = {
   // Supply your original sandbox, models, profiles, services and outputDir.
   ...applicationOptions,
   connection: {
-    publicUrl: 'http://murm-runtime.murm.svc.cluster.local:3100',
+    publicUrl: process.env.MURM_RUNTIME_PUBLIC_URL,
     bindHost: '0.0.0.0',
     bindPort: 3100,
   },
@@ -170,7 +170,7 @@ const options = {
 };
 ```
 
-Use a stable callback address reachable from every Worker, private durable Run storage, and matching original configuration. With Profile network restrictions, the trusted callback hostname must resolve on the Controller to exactly one non-loopback IPv4. Core pins that address and the exact callback port in policy; the Worker continues using the original URL. Prepare, stop and transfer have independent bounded queues. Retention is finite and defaults to 15 minutes in durable mode.
+Use a stable callback address reachable from every Worker, private durable Run storage, and matching original configuration. The Kubernetes deployment sets the callback URL to the Runtime Service's ClusterIP so the Sandbox can use the exact IPv4 and port rule without a DNS query. Prepare, stop and transfer have independent bounded queues. Retention is finite and defaults to 15 minutes in durable mode.
 
 After the old Controller has exited, the SDK can restore the same live Workers:
 

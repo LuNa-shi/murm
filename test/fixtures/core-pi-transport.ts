@@ -1,7 +1,7 @@
 export const provider = {
   attest: false,
-  records: [], messages: [], responses: new Map(), starts: new Map(), wait: undefined,
-  reset() { this.attest = false; this.records = []; this.messages = []; this.responses.clear(); this.starts.clear(); this.wait = undefined; this.queryError = undefined; this.pollError = undefined; this.wrapperReplay = false; },
+  records: [], messages: [], responses: new Map(), starts: new Map(), wait: undefined, readiness: undefined,
+  reset() { this.attest = false; this.records = []; this.messages = []; this.responses.clear(); this.starts.clear(); this.wait = undefined; this.readiness = undefined; this.queryError = undefined; this.pollError = undefined; this.wrapperReplay = false; },
   publish(record) { this.records.push({ ...record, worker_sequence: this.records.length + 1 }); },
 };
 export class OpenSandboxManager {
@@ -20,6 +20,7 @@ export class OpenSandboxManager {
     if (message.type === 'get_state') {
       if ('since' in message && provider.pollError) throw provider.pollError;
       if ('since' in message) return { records: provider.records.filter(record => record.worker_sequence > message.since) };
+      if (provider.readiness) return provider.readiness(message);
       return { response: { success: true, command: 'get_state' }, records: provider.records.filter(record => record.worker_sequence > (options.since ?? 0)) };
     }
     if (message.type === 'prompt' || message.type.startsWith('core_session_') || message.type === 'core_context' || message.type === 'core_before_compact_decision') {

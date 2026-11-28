@@ -24,9 +24,10 @@ const { runtimeSettings } = await import('./fixtures/core-runtime-settings.js');
 const { ServiceRegistry } = await import('@luna-shi/murm');
 hooks.deregister();
 
-async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', services = new ServiceRegistry(), permissions = {}, writable = true, maxAgents = 1, upstreamHeaders = {}, runtimeHooks = undefined } = {}) {
+async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', services = new ServiceRegistry(), permissions = {}, writable = true, maxAgents = 1, upstreamHeaders = {}, runtimeHooks = undefined, readiness = undefined } = {}) {
   provider.reset();
   provider.attest = !!runtimeHooks;
+  provider.readiness = readiness;
   const outputDir = await mkdtemp(join(tmpdir(), 'core-pi-input-'));
   const runtime = await createRuntime({
     ...runtimeSettings({
@@ -42,6 +43,21 @@ async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', servi
   t.after(async () => { await runtime.close(); await rm(outputDir, { recursive: true, force: true }); });
   return { runtime, outputDir, agent: await runtime.spawn({ requestId: 'spawn', profile: 'worker' }) };
 }
+
+test('spawn waits for a slow executor to confirm readiness on the original request', async t => {
+  let requestId: string | undefined;
+  const { runtime, agent } = await setup(t, { readiness(message) {
+    if (requestId === undefined) {
+      assert.equal(typeof message.id, 'string');
+      requestId = message.id;
+      return { state: 'pending', records: [] };
+    }
+    assert.equal(message.id, requestId);
+    return { state: 'complete', response: { success: true, command: 'get_state' }, records: [] };
+  } });
+  assert.equal(agent.status, 'idle');
+  assert.equal((await runtime.close()).cleanup, 'complete');
+});
 
 function bridgeCall(agentId, operation = 'list_services', payload = {}) {
   const startup = provider.starts.get(agentId);

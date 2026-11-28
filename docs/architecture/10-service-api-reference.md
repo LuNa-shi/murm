@@ -44,7 +44,7 @@ This section is generated from executable exports and checked against the source
 | [src/core/types.ts](../../src/core/types.ts) | `40541748e91eb4890f32954c0627d6e3ce2d69fc2dc4f5bbafedbb52d7d5c30b` |
 | [src/core/services.ts](../../src/core/services.ts) | `794352ccfa8e02f63c4db087f1c165308198c6766c0d8c3cf8872e1b9c0617ab` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
-| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `106a1b94f1a7b6620cc2c398ef1ba24a72da6c8657daf17cacd086e0d7b4b8bc` |
+| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `6c2538a3b833a1e35f202e75acacef872b0d6d1863209c81671db72f3a70f19d` |
 | [src/core/sandbox/executor-driver.ts](../../src/core/sandbox/executor-driver.ts) | `182e80680d8ea6e1729d524a6927d800a91caffd3657ed796706ebaad9d28131` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `be1c5c7db4876f5632f6f855af3e16e8f59c46a5a76b3f27a934508e15cbdf47` |
 | [src/core/sandbox/opensandbox-provider.ts](../../src/core/sandbox/opensandbox-provider.ts) | `eb98901a846c1ce294621d7a173cec46787ba4bf18b4edc65afc5c867e968c37` |
@@ -3829,6 +3829,7 @@ type WorkerRecord = {
 });
 interface WorkerReply {
     records?: WorkerRecord[];
+    state?: string;
     response?: {
         id?: string;
         command?: string;
