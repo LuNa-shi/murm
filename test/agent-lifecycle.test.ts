@@ -1,9 +1,9 @@
-import { openSandboxAgentKey } from '../src/runtime/opensandbox-metadata.js';
-import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
+import { openSandboxAgentKey } from '../src/core/sandbox/opensandbox-metadata.js';
+import { createOpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { TaskService } from '../src/task/task-service.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 
 function fixture(t) {
   const service = new TaskService();

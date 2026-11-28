@@ -1,4 +1,4 @@
-import type { createBoard } from './board.js';
+import type { createBoard } from '../services/board.js';
 
 type Notice = {
   kind: 'task' | 'member-ready' | 'feedback' | 'delivery' | 'incomplete';

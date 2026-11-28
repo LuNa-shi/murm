@@ -22,12 +22,12 @@ test('actual candidate archive carries pinned third-party sources, licenses and 
     return (await execute('tar', ['-xOf', archive, `package/${path}`], { encoding: 'buffer' })).stdout;
   };
   // Check the exact bytes from the pinned upstream LICENSE.
-  const license = await readEntry('src/judge/lean-module-verify.LICENSE.txt');
+  const license = await readEntry('examples/taskpool/services/judge/lean-module-verify.LICENSE.txt');
   assert.equal(sha256(license), '8b28515ffffc5c0fe2807d8ae3735b00b324d9b7ce807dd63ff6ac8922fbce7e');
-  const leanNotice = (await readEntry('src/judge/lean-module-verify.NOTICE.md')).toString();
+  const leanNotice = (await readEntry('examples/taskpool/services/judge/lean-module-verify.NOTICE.md')).toString();
   assert.ok(leanNotice.includes('leanprover/lean4/blob/v4.33.1/src/LeanChecker.lean'));
   assert.ok(leanNotice.includes('Modified in murm'));
-  const driver = (await readEntry('src/judge/lean-module-verify.lean')).toString();
+  const driver = (await readEntry('examples/taskpool/services/judge/lean-module-verify.lean')).toString();
   assert.ok(driver.includes('Copyright (c) 2023 Kim Morrison. All rights reserved.'));
   assert.ok(driver.includes('Authors: Kim Morrison, Sebastian Ullrich'));
   assert.ok(driver.includes('Modified in murm'));

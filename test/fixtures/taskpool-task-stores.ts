@@ -1,9 +1,9 @@
 import { join } from 'node:path';
-import { TaskService } from '../../src/task/task-service.js';
-import { ContextService } from '../../src/context/context-service.js';
-import { MissionWorkspace } from '../../src/runtime/mission-workspace.js';
-import { WorkspaceManager } from '../../src/runtime/workspace-manager.js';
-import { makeEnvelope } from '../../src/protocol/envelope.js';
+import { TaskService } from '../../examples/taskpool/services/task/task-service.js';
+import { ContextService } from '../../examples/taskpool/services/material/context-service.js';
+import { MissionWorkspace } from '../../examples/taskpool/services/workspace/mission-workspace.js';
+import { WorkspaceManager } from '../../examples/taskpool/services/workspace/workspace-manager.js';
+import { makeEnvelope } from '../../examples/taskpool/persistence/envelope.js';
 
 export async function createTaskPoolStores(root, { mergeRequiredCheck, persistent = false } = {}) {
   const tasks = new TaskService(persistent ? join(root, 'state.sqlite') : undefined);

@@ -20,7 +20,7 @@ murm --harness substrate --prompt "根据解析测试修复当前项目"
 
 ## 1. 通用成果库 Service（`substrate`）
 
-[examples/substrate/harness/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/substrate.ts) 注册了唯一的进程内 SQLite Service（`substrate`），仅包含三个操作：
+[examples/substrate/services/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/substrate.ts) 注册了唯一的进程内 SQLite Service（`substrate`），仅包含三个操作：
 
 | 操作 | 入参 | 存储与排序保障 |
 | --- | --- | --- |
@@ -122,13 +122,13 @@ export MURM_FATE_BENCHMARK=FATE-X
 export MURM_FATE_PROJECT=/path/to/fate-x
 export MURM_FATE_LEAN=/path/to/lean-4.28.0
 
-node dist/examples/substrate/main.js --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-X
-node dist/examples/substrate/main.js --fate-run dist/examples/substrate/fate-config.js
+node dist/benchmarks/fate/main.js --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-X
+node dist/benchmarks/fate/main.js --fate-run dist/benchmarks/fate/fate-config.js
 ```
 
 ## 源码索引
 
 - 并行轮次驱动：[examples/substrate/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/index.ts)
-- SQLite `substrate` Service：[examples/substrate/harness/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/substrate.ts)
+- SQLite `substrate` Service：[examples/substrate/services/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/substrate.ts)
 - 跨成员复用证据审计：[examples/substrate/harness/collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/collaboration-evidence.ts)
 - CLI 与 FATE Lean 指南：[examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) · [FATE-X #31 运行报告](https://github.com/LuNa-shi/murm/blob/207be6356c16e5fb60c4b3c5b236d7a98383f991/docs/experiments/EXP-20261125-20-scalemas-fatex-verified.md)

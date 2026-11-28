@@ -3,10 +3,10 @@ import test from 'node:test';
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { TaskService } from '../src/task/task-service.js';
-import { ServiceCommitGate } from '../src/sdk/service-commit-gate.js';
-import { startIndependentServices } from '../src/sdk/independent-services.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { ServiceCommitGate } from '../examples/taskpool/deploy/service-hosts/service-commit-gate.js';
+import { startIndependentServices } from '../examples/taskpool/deploy/service-hosts/independent-services.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 
 test('independent Judge rejects an overflowing composed HTTP deadline before peer startup', async t => {
   const root = await mkdtemp(join(tmpdir(), 'judge-http-deadline-'));

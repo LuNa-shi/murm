@@ -65,7 +65,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Automatic service history
 
-Source: [src/replay/service-history.ts](../../src/replay/service-history.ts); source SHA-256: `17fe42059e4a7d46915f24f6291f8749f507ed80fe64014ccb871928300f5063`.
+Source: [examples/taskpool/persistence/service-history.ts](../../examples/taskpool/persistence/service-history.ts); source SHA-256: `17fe42059e4a7d46915f24f6291f8749f507ed80fe64014ccb871928300f5063`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS replay_tables (
@@ -103,7 +103,7 @@ CREATE INDEX IF NOT EXISTS replay_events_transaction ON replay_events(transactio
 
 ### Task-owned independent service commit gates
 
-Source: [src/storage/service-peer-schema.ts](../../src/storage/service-peer-schema.ts); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
+Source: [examples/taskpool/persistence/service-peer-schema.ts](../../examples/taskpool/persistence/service-peer-schema.ts); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS service_commit_gate (
@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS service_commit_events (
 
 ### Context peer receipts
 
-Source: [src/storage/service-peer-schema.ts](../../src/storage/service-peer-schema.ts); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
+Source: [examples/taskpool/persistence/service-peer-schema.ts](../../examples/taskpool/persistence/service-peer-schema.ts); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS context_peer_receipts (
@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS context_peer_receipts (
 
 ### Judge peer launch phases
 
-Source: [src/storage/service-peer-schema.ts](../../src/storage/service-peer-schema.ts); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
+Source: [examples/taskpool/persistence/service-peer-schema.ts](../../examples/taskpool/persistence/service-peer-schema.ts); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS judge_peer_phases (
@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 
 ### Core Runtime model attempts
 
-Source: [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts); source SHA-256: `7613591323296d3db2cbb753beabcb12ca9d2b95cdf7e03e3692bb89280a01e8`.
+Source: [src/core/model/responses-budget-gateway.ts](../../src/core/model/responses-budget-gateway.ts); source SHA-256: `3824a3665d5d89edd832364e02f3e0455788c3fbd590910a4330c8ba0d9f3711`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS runtime_model_policies (
@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS runtime_model_policies (
 
 ### Mission submission coordinator
 
-Source: [src/runtime/mission-submission.ts](../../src/runtime/mission-submission.ts); source SHA-256: `989093177d6454dad76bf46f036b587ee9c553cc7020f01eb16d159fcdb981a4`.
+Source: [examples/taskpool/services/mission/mission-submission.ts](../../examples/taskpool/services/mission/mission-submission.ts); source SHA-256: `73779b0f16a4a44216c082305cff57860480529118326481a0d6579e66b50c49`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_final_check_policies (
@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS mission_final_check_policies (
 
 ### Owner-local manual Mission review
 
-Source: [src/runtime/manual-mission-review.ts](../../src/runtime/manual-mission-review.ts); source SHA-256: `006ac7eea3be8aaff08245790b29c37572b7ef7b39be4f2af04a866eef152b4d`.
+Source: [examples/taskpool/services/mission/manual-mission-review.ts](../../examples/taskpool/services/mission/manual-mission-review.ts); source SHA-256: `01d33d37b0ce56bb3eaf2349300fd0bf90dedd9e9aa9f4fe4ba4207c35ee6ef7`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_manual_reviews (
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS mission_manual_reviews (
 
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `30f200bfd669d15dcf20bde5dba7917adaf698697fa3af4a320aead3748b14d3`.
+Source: [examples/taskpool/services/workspace/execution-workspace.ts](../../examples/taskpool/services/workspace/execution-workspace.ts); source SHA-256: `2e21ea1b125185c4f4fbcf02eba983d6c6b20eafa10f722be297395500a192f7`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (
@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS execution_workspace_state (
 
 ### Task and Execution database
 
-Source: [src/storage/schema.ts](../../src/storage/schema.ts); source SHA-256: `2d631073a05f87667edad5fdbefbb2ce0c3bebd71d1ce385498b0513b26d1a72`.
+Source: [examples/taskpool/services/task/schema.ts](../../examples/taskpool/services/task/schema.ts); source SHA-256: `2d631073a05f87667edad5fdbefbb2ce0c3bebd71d1ce385498b0513b26d1a72`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -513,7 +513,7 @@ CREATE TABLE IF NOT EXISTS take_keys (
 
 ### Context database
 
-Source: [src/storage/context-schema.ts](../../src/storage/context-schema.ts); source SHA-256: `60aad44fff8720a90b9188a79fb27b0d6280ee8006c382d657d79f52bde1ecfa`.
+Source: [examples/taskpool/services/material/context-schema.ts](../../examples/taskpool/services/material/context-schema.ts); source SHA-256: `60aad44fff8720a90b9188a79fb27b0d6280ee8006c382d657d79f52bde1ecfa`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -621,7 +621,7 @@ CREATE INDEX IF NOT EXISTS material_consumptions_material_scan
 
 ### Judge database
 
-Source: [src/storage/judge-schema.ts](../../src/storage/judge-schema.ts); source SHA-256: `b2f060d3f4854661833921fdc3889a20e9890d1dbbeca35995487227dca70373`.
+Source: [examples/taskpool/services/judge/judge-schema.ts](../../examples/taskpool/services/judge/judge-schema.ts); source SHA-256: `b2f060d3f4854661833921fdc3889a20e9890d1dbbeca35995487227dca70373`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -710,7 +710,7 @@ CREATE TABLE IF NOT EXISTS checker_preflights (
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `f39c9796f501298e1d6a060286c96e0e884e69205fcd6e7e2d612f42456d122e`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [examples/taskpool/services/task/task-service.ts](../../examples/taskpool/services/task/task-service.ts); SHA-256: `c4317aca8d20cead89313e713760f935f519ddf2342cfd97fe3b884b4bc2daa7`.
 
 #### mission_final_check_active
 

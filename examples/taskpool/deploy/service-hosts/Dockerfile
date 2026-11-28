@@ -5,6 +5,8 @@ RUN npm ci --include=dev --ignore-scripts --no-audit --no-fund
 COPY src ./src
 COPY scripts ./scripts
 COPY examples ./examples
+COPY benchmarks/fate ./benchmarks/fate
+COPY benchmarks/lead-worker-orders ./benchmarks/lead-worker-orders
 COPY test-support/subagents/communication-fixture-prompts.ts ./test-support/subagents/
 COPY deploy ./deploy
 RUN npm run build
@@ -18,7 +20,7 @@ RUN apt-get update \
 COPY package.json npm-shrinkwrap.json ./
 RUN npm ci --omit=dev --ignore-scripts
 COPY --from=typescript-build /build/dist ./dist
-COPY scripts/service-host-entrypoint.sh ./scripts/service-host-entrypoint.sh
+COPY examples/taskpool/deploy/service-hosts/service-host-entrypoint.sh ./scripts/service-host-entrypoint.sh
 COPY examples/taskpool/deploy/service-hosts/judge-peer-entrypoint.sh ./scripts/judge-peer-entrypoint.sh
 RUN chmod 0555 ./scripts/service-host-entrypoint.sh ./scripts/judge-peer-entrypoint.sh
 

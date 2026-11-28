@@ -1,4 +1,4 @@
-import { createMissionSubmissionAccess } from '../src/runtime/mission-submission-access.js';
+import { createMissionSubmissionAccess } from '../examples/taskpool/services/mission/mission-submission-access.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { request as httpRequest } from 'node:http';
@@ -6,14 +6,14 @@ import { execFile } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
+import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
 import { promisify } from 'node:util';
-import { TaskService } from '../src/task/task-service.js';
-import { ContextService } from '../src/context/context-service.js';
-import { ServicesBridge } from '../src/agent/services-bridge.js';
-import { ServiceRegistry } from '../src/sdk/service-registry.js';
-import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { ContextService } from '../examples/taskpool/services/material/context-service.js';
+import { ServicesBridge } from '../examples/taskpool/compatibility/services-bridge.js';
+import { ServiceRegistry } from '../examples/taskpool/deploy/service-hosts/service-registry.js';
+import { createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 
 async function fixture(t, options = {}) {
   const service = new TaskService();

@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
-import { JudgeService, normalizeJudgeMissionBudget } from '../src/judge/judge-service.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { JudgeService, normalizeJudgeMissionBudget } from '../examples/taskpool/services/judge/judge-service.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 
 const fixtureManifest = { fixture_id: 'budget', putnambench_commit: 'a'.repeat(40), problem_file: 'input.lean',
   problem_file_hash: 'b'.repeat(64), lean_toolchain: 'leanprover/lean4:v4.33.1', mathlib_version: 'fixture',

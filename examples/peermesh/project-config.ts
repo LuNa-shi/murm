@@ -1,6 +1,6 @@
 import { resolveSandboxConnection, workerImageFor } from '@luna-shi/murm';
 import { resolve } from 'node:path';
-import { createBoardLauncher } from './harness/board-process.js';
+import { createBoardLauncher } from './services/board-process.js';
 
 const setting = (name: string) => process.env[`MURM_PEERMESH_${name}`];
 function required(name: string) {

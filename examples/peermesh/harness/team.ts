@@ -1,16 +1,11 @@
 import { resolve } from 'node:path';
-import { createRuntime } from '@luna-shi/murm';
+import { createRuntime, createOwnedResources, httpClient, runInput, createInputAdmission, runWithReport } from '@luna-shi/murm';
 import { createPeerProfile } from './index.js';
 import { preparePeerMeshFacilities } from './provision.js';
 import { createPeerMeshDelivery } from './delivery.js';
-import { createPeerMeshServices } from './services.js';
-import { createOwnedResources } from '../../../src/harness/owned-resources.js';
+import { createPeerMeshServices } from '../services/services.js';
 import { createPeerMeshRouter } from './router.js';
-import { createPeerMeshEventSubscription } from './event-source.js';
-import { httpClient } from '../../../src/harness/http.js';
-import { runInput } from '../../../src/harness/run-input.js';
-import { createInputAdmission } from '../../../src/harness/input-admission.js';
-import { runWithReport } from '../../../src/harness/run-report.js';
+import { createPeerMeshEventSubscription } from '../services/event-source.js';
 
 const fail = (code: any) => Object.assign(new Error(code), { code });
 const finite = (value: any) => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;

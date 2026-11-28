@@ -86,10 +86,10 @@ test('real Pi receives the permitted Service directory and Bash can call its adv
   const directory = prompt.match(/<services>\n([\s\S]*?)\n<\/services>/)?.[1];
   assert.ok(directory, 'Pi must send a Service directory in its first model request');
   assert.match(directory, /Fixed notes exchange/);
-  assert.match(directory, /swarm notes get.*Read a note/);
-  assert.match(directory, /swarm task list.*List permitted entries/);
-  assert.match(directory, /swarm material list.*List permitted entries/);
-  assert.doesNotMatch(directory, /swarm notes put|other-notes|swarm agent|swarm task task_list|swarm context/);
+  assert.match(directory, /swarm service invoke notes get.*Read a note/);
+  assert.match(directory, /swarm service invoke task task_list.*List permitted entries/);
+  assert.match(directory, /swarm service invoke context read_materials.*List permitted entries/);
+  assert.doesNotMatch(directory, /swarm service invoke notes put|other-notes|swarm service invoke agent/);
   assert.doesNotMatch(prompt, /<docs>/);
   assert.match(prompt, /<added_system_prompt>\nPerform the requested local file operation/);
   assert.deepEqual(firstRequest.tools.map(tool => tool.name).sort(), ['bash', 'edit', 'read', 'write']);

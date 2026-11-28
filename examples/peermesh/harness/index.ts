@@ -1,10 +1,6 @@
-import { createRuntime } from '@luna-shi/murm';
-import { seededCheckoutInstruction } from '../../../src/harness/project-git.js';
-import { runInput } from '../../../src/harness/run-input.js';
-import { runWithReport } from '../../../src/harness/run-report.js';
+import { createRuntime, seededCheckoutInstruction, runInput, runWithReport, createOwnedResources } from '@luna-shi/murm';
 import { preparePeerMeshFacilities } from './provision.js';
-import { createPeerMeshServices } from './services.js';
-import { createOwnedResources } from '../../../src/harness/owned-resources.js';
+import { createPeerMeshServices } from '../services/services.js';
 
 export const peerPrompt = `You are one PeerMesh peer in a persistent private project directory. Work only on your unique WORK_BRANCH. Clone RUN_REPOSITORY into the current project root (git clone "$RUN_REPOSITORY" .), then preserve this checkout across turns. Use your native Git credential helper; never print or persist credentials. Read the run issue, publish useful facts and detailed evidence to the shared board, and notify the run channel. Board CLAIM is a soft coordination note, not an exclusive Task lease. Follow-ups and configured idle-work batches arrive only after your current turn settles. There are no mid-turn notices or native automatic continuation. Do not merge or change main. Follow the fixed acceptance input and report actual results.`;
 

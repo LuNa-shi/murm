@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 import { test } from 'node:test';
 import { createCoreBridge } from '../src/core/bridge.js';
 import { snapshotServiceRegistry } from '../src/core/services.js';
-import { createPeerMeshServices } from '../examples/peermesh/harness/services.js';
+import { createPeerMeshServices } from '../examples/peermesh/services/services.js';
 import { liveCommon } from './fixtures/peermesh-team-kimi.js';
 
 const execute = promisify(execFile);

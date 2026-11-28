@@ -2,7 +2,7 @@ import type {
   CompleteFileSnapshot, CompleteFileSnapshotOptions, FileReplaceOptions, FileReplaceReceipt, FileSnapshot,
   FileSnapshotOptions, Runtime,
 } from './types.js';
-import { completeDigest, fileSnapshotSelection, partialDigest, snapshotFileSeed } from '../../scripts/core-file-seed.js';
+import { completeDigest, fileSnapshotSelection, partialDigest, snapshotFileSeed } from './files/core-file-seed.js';
 import { validId } from './config.js';
 import { DEFAULT_FILE_POLICY, type ResolvedFilePolicy } from './file-policy.js';
 

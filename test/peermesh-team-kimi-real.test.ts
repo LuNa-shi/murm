@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 import { createPeerMeshTeam } from '../examples/peermesh/harness/team.js';
 import { preparePeerMeshFacilities } from '../examples/peermesh/harness/provision.js';
 import { createPeerMeshDelivery } from '../examples/peermesh/harness/delivery.js';
-import { createPeerMeshEventSubscription } from '../examples/peermesh/harness/event-source.js';
+import { createPeerMeshEventSubscription } from '../examples/peermesh/services/event-source.js';
 import { httpClient } from '../src/harness/http.js';
 import { createLocalPeerMeshStack } from './fixtures/peermesh-local-stack.js';
 import { createCappedUpstream } from './fixtures/core-capped-upstream.js';

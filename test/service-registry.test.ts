@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
-import { ContextService } from '../src/context/context-service.js';
-import { ERROR_CODES, MurmError } from '../src/errors.js';
-import { JudgeService } from '../src/judge/judge-service.js';
-import { ServiceRegistry } from '../src/sdk/service-registry.js';
-import { TaskService } from '../src/task/task-service.js';
-import { builtInServiceManifest, createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
-import { createHttpJsonAdapter } from '../src/sdk/service-adapter.js';
-import { createServiceHost } from '../src/sdk/service-host.js';
-import { createServiceManifest } from '../src/sdk/service-manifest.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { ContextService } from '../examples/taskpool/services/material/context-service.js';
+import { ERROR_CODES, MurmError } from '../examples/taskpool/errors.js';
+import { JudgeService } from '../examples/taskpool/services/judge/judge-service.js';
+import { ServiceRegistry } from '../examples/taskpool/deploy/service-hosts/service-registry.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { builtInServiceManifest, createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
+import { createHttpJsonAdapter } from '../examples/taskpool/deploy/service-hosts/service-adapter.js';
+import { createServiceHost } from '../examples/taskpool/deploy/service-hosts/service-host.js';
+import { createServiceManifest } from '../examples/taskpool/deploy/service-hosts/service-manifest.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 
 function schema(properties = {}) {
   return { type: 'object', properties, additionalProperties: false };

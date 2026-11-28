@@ -33,8 +33,13 @@ All public values and TypeScript types are imported from the single root entry `
 | `ServiceRegistry` | Class | Holds Service registrations passed into `createRuntime()`. |
 | `createInProcessAdapter(impl)` | Function | Wraps a host-process `invoke` handler (and optional `exportState`) as a `ServiceAdapter`. |
 | `createHttpJsonAdapter(options)` | Function | Wraps an external HTTP JSON Service endpoint with `Idempotency-Key` and optional bearer auth. |
+| `ProjectHarness`, `ProjectHarnessContext`, `ProjectHarnessResult`, `HarnessInput`, `HarnessJson` | Types | Describe an ESM project entry, captured input, host callbacks and final result. |
+| `ProjectPreflightError`, `projectConfiguration`, `observeProjectRuntime`, `projectResult` | Class / Functions | Normalize trusted configuration, represent rejection before allocation, observe Runtime state and project the saved result. |
+| `runInput`, `createInputAdmission`, `runWithReport`, `readHarnessResult`, `createOwnedResources` | Functions | Track an exclusive turn, fence input, save or inspect a report, and reconcile owned resources. |
+| `checkGitProject`, `seedTeamRepository`, `seededCheckoutInstruction`, `initializeGitRepository`, `importGitTree`, `commitGitTree`, `isGitTreePath` | Functions | Validate and seed a Git project from a captured FileTree, and describe its initial checkout. |
+| `decodeFileTree`, `snapshotFileTree`, `completeFileTreeDigest`, `stableStringify`, `MurmError`, `requestHttp`, `httpClient` | Functions / Class | Work with bounded file bytes and stable digests, retain error codes, or connect to a trusted Service. |
 
-The five reference Harness implementations live under their own `examples/` directories. Built-in CLI names load those modules; they are not extra Core SDK exports. `src/harness/` contains private common host/RPC, project-input and reporting support. The examples still depend on some repository internals; [independent example packaging](../../designs/repository-layout.md#make-each-example-an-independent-sdk-consumer) remains planned work.
+The five [reference Harness applications](../../../examples/README.md) build against this root entry. The [author contract](../../architecture/23-project-harness.md#authoring-an-example) describes lifecycle and file handling. Built-in aliases load the bundled entries.
 
 Runtime assembles its own Bridge, model gateway and built-in `agent` Service. Example-owned in-process Services need no separate container. External collaboration facilities and optional [Mathlib Search](../../../examples/services/mathlib-search/README.md) have explicit example deployment and ownership; SDK registration alone does not start or destroy them. [Deployment guide](../../../deploy/README.md)
 

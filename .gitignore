@@ -18,3 +18,8 @@ __pycache__/
 
 # TypeScript build outputs
 /dist/
+
+# Editable collaboration example build and run outputs
+/examples/*/dist/
+/examples/*/.murm/
+/examples/taskpool/taskpool-runs/

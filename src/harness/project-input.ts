@@ -4,9 +4,9 @@ import { constants, type BigIntStats } from 'node:fs';
 import { lstat, mkdtemp, open, opendir, realpath, rm, type FileHandle } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify, TextDecoder } from 'node:util';
-import { assertFileManifest, completeDigest, fileSpool, isFileTreePath, isGitPath, stagedFiles, type SpoolFile } from '../../scripts/core-file-seed.js';
-import { checkFileSpace } from '../../scripts/file-tree-stream.js';
-import { MAX_COLLECTION_CHUNK_BYTES } from '../../scripts/core-collection.js';
+import { assertFileManifest, completeDigest, fileSpool, isFileTreePath, isGitPath, stagedFiles, type SpoolFile } from '../core/files/core-file-seed.js';
+import { checkFileSpace } from '../core/files/file-tree-stream.js';
+import { MAX_COLLECTION_CHUNK_BYTES } from '../core/files/core-collection.js';
 import { DEFAULT_FILE_POLICY, type ResolvedFilePolicy } from '../core/file-policy.js';
 
 const git = promisify(execFile);

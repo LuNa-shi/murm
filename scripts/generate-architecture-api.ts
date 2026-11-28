@@ -1,23 +1,23 @@
 #!/usr/bin/env node
-import { SERVICE_COMMIT_SCHEMA_SQL, CONTEXT_PEER_SCHEMA_SQL, JUDGE_PEER_SCHEMA_SQL } from '../src/storage/service-peer-schema.js';
+import { SERVICE_COMMIT_SCHEMA_SQL, CONTEXT_PEER_SCHEMA_SQL, JUDGE_PEER_SCHEMA_SQL } from '../examples/taskpool/persistence/service-peer-schema.js';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { builtInServiceManifest, createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
-import { listTools } from '../src/sdk/service-catalog.js';
-import { buildCapabilityProfile } from '../src/agent/capability-profile.js';
-import { SCHEMA_SQL } from '../src/storage/schema.js';
-import { CONTEXT_SCHEMA_SQL } from '../src/storage/context-schema.js';
-import { JUDGE_SCHEMA_SQL } from '../src/storage/judge-schema.js';
-import { ERROR_CODES } from '../src/errors.js';
+import { builtInServiceManifest, createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
+import { listTools } from '../examples/taskpool/services/service-catalog.js';
+import { buildCapabilityProfile } from '../examples/taskpool/compatibility/capability-profile.js';
+import { SCHEMA_SQL } from '../examples/taskpool/services/task/schema.js';
+import { CONTEXT_SCHEMA_SQL } from '../examples/taskpool/services/material/context-schema.js';
+import { JUDGE_SCHEMA_SQL } from '../examples/taskpool/services/judge/judge-schema.js';
+import { ERROR_CODES } from '../examples/taskpool/errors.js';
 import { DatabaseSync } from 'node:sqlite';
-import { EXECUTION_WORKSPACE_SCHEMA_SQL } from '../src/runtime/execution-workspace.js';
-import { TaskService } from '../src/task/task-service.js';
-import { CORE_MODEL_SCHEMA_SQL } from '../src/agent/responses-budget-gateway.js';
-import { MANUAL_MISSION_REVIEW_SCHEMA_SQL } from '../src/runtime/manual-mission-review.js';
-import { MISSION_SUBMISSION_SCHEMA_SQL } from '../src/runtime/mission-submission.js';
-import { SERVICE_HISTORY_SCHEMA_SQL } from '../src/replay/service-history.js';
+import { EXECUTION_WORKSPACE_SCHEMA_SQL } from '../examples/taskpool/services/workspace/execution-workspace.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { CORE_MODEL_SCHEMA_SQL } from '../src/core/model/responses-budget-gateway.js';
+import { MANUAL_MISSION_REVIEW_SCHEMA_SQL } from '../examples/taskpool/services/mission/manual-mission-review.js';
+import { MISSION_SUBMISSION_SCHEMA_SQL } from '../examples/taskpool/services/mission/mission-submission.js';
+import { SERVICE_HISTORY_SCHEMA_SQL } from '../examples/taskpool/persistence/service-history.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const check = process.argv.includes('--check');
@@ -27,12 +27,12 @@ const fence = (language: any, value: any) => `\n\`\`\`${language}\n${value.trimE
 const json = (value: any) => fence('json', JSON.stringify(value, null, 2));
 const registry = createBuiltinServiceRegistry({});
 const sourcePaths = [
-  'src/sdk/service-catalog.ts', 'src/sdk/builtin-registry.ts', 'src/sdk/service-manifest.ts',
-  'src/sdk/service-registry.ts', 'src/agent/capability-profile.ts', 'src/agent/services-bridge.ts',
+  'examples/taskpool/services/service-catalog.ts', 'examples/taskpool/services/builtin-registry.ts', 'examples/taskpool/deploy/service-hosts/service-manifest.ts',
+  'examples/taskpool/deploy/service-hosts/service-registry.ts', 'examples/taskpool/compatibility/capability-profile.ts', 'examples/taskpool/compatibility/services-bridge.ts',
   'examples/services/mathlib-search/service.json', 'src/errors.ts',
   'src/core/index.ts', 'src/core/types.ts', 'src/core/services.ts', 'src/core/service-types.ts',
-  'src/core/opensandbox-backend.ts', 'src/core/executor-driver.ts', 'src/core/backend-config.ts',
-  'src/core/opensandbox-provider.ts', 'src/core/sandbox-connection.ts',
+  'src/core/sandbox/opensandbox-backend.ts', 'src/core/sandbox/executor-driver.ts', 'src/core/backend-config.ts',
+  'src/core/sandbox/opensandbox-provider.ts', 'src/core/sandbox/sandbox-connection.ts',
 ];
 const sourceRows = await Promise.all(sourcePaths.map(async (path: any) => `| [${path}](../../${path}) | \`${hash(await readFile(resolve(root, path)))}\` |`));
 let api = '## Generated API inventory\n\nThis section is generated from executable exports and checked against the source hashes below. It contains declarations; call-time behavior and known differences are explained in [Services](04-services.md), [Mission and Task](03-mission-task.md), and [Workspace](05-workspace-continuity.md).\n\n| Source | SHA-256 |\n|---|---|\n' + sourceRows.join('\n') + '\n';
@@ -61,17 +61,17 @@ for (const source of sourcePaths.filter((path: any) => path.startsWith('src/core
 }
 
 const schemas = [
-  ['Automatic service history', 'src/replay/service-history.ts', SERVICE_HISTORY_SCHEMA_SQL],
-  ['Task-owned independent service commit gates', 'src/storage/service-peer-schema.ts', SERVICE_COMMIT_SCHEMA_SQL],
-  ['Context peer receipts', 'src/storage/service-peer-schema.ts', CONTEXT_PEER_SCHEMA_SQL],
-  ['Judge peer launch phases', 'src/storage/service-peer-schema.ts', JUDGE_PEER_SCHEMA_SQL],
-  ['Core Runtime model attempts', 'src/agent/responses-budget-gateway.ts', CORE_MODEL_SCHEMA_SQL],
-  ['Mission submission coordinator', 'src/runtime/mission-submission.ts', MISSION_SUBMISSION_SCHEMA_SQL],
-  ['Owner-local manual Mission review', 'src/runtime/manual-mission-review.ts', MANUAL_MISSION_REVIEW_SCHEMA_SQL],
-  ['Execution Workspace coordinator', 'src/runtime/execution-workspace.ts', EXECUTION_WORKSPACE_SCHEMA_SQL],
-  ['Task and Execution database', 'src/storage/schema.ts', SCHEMA_SQL],
-  ['Context database', 'src/storage/context-schema.ts', CONTEXT_SCHEMA_SQL],
-  ['Judge database', 'src/storage/judge-schema.ts', JUDGE_SCHEMA_SQL],
+  ['Automatic service history', 'examples/taskpool/persistence/service-history.ts', SERVICE_HISTORY_SCHEMA_SQL],
+  ['Task-owned independent service commit gates', 'examples/taskpool/persistence/service-peer-schema.ts', SERVICE_COMMIT_SCHEMA_SQL],
+  ['Context peer receipts', 'examples/taskpool/persistence/service-peer-schema.ts', CONTEXT_PEER_SCHEMA_SQL],
+  ['Judge peer launch phases', 'examples/taskpool/persistence/service-peer-schema.ts', JUDGE_PEER_SCHEMA_SQL],
+  ['Core Runtime model attempts', 'src/core/model/responses-budget-gateway.ts', CORE_MODEL_SCHEMA_SQL],
+  ['Mission submission coordinator', 'examples/taskpool/services/mission/mission-submission.ts', MISSION_SUBMISSION_SCHEMA_SQL],
+  ['Owner-local manual Mission review', 'examples/taskpool/services/mission/manual-mission-review.ts', MANUAL_MISSION_REVIEW_SCHEMA_SQL],
+  ['Execution Workspace coordinator', 'examples/taskpool/services/workspace/execution-workspace.ts', EXECUTION_WORKSPACE_SCHEMA_SQL],
+  ['Task and Execution database', 'examples/taskpool/services/task/schema.ts', SCHEMA_SQL],
+  ['Context database', 'examples/taskpool/services/material/context-schema.ts', CONTEXT_SCHEMA_SQL],
+  ['Judge database', 'examples/taskpool/services/judge/judge-schema.ts', JUDGE_SCHEMA_SQL],
 ];
 let storage = '## Generated SQL schema reference\n\nThe SQL below is the complete exported create-schema text, including checks, keys and indexes. It is schema text, not an export of a user database. The `tasks` interpolation is expanded. Constructors initialize the current schema on new databases. Shared `operations` declarations intentionally appear in several owners because the services can share a SQLite connection.\n';
 for (const [label, path, sql] of schemas) {
@@ -85,7 +85,7 @@ schemaOnly.exec(JUDGE_SCHEMA_SQL);
 const priorObjects = new Set(schemaOnly.prepare('SELECT name FROM sqlite_master').all().map((row: any) => row.name));
 const initialized = new TaskService(schemaOnly);
 const supplemental = schemaOnly.prepare("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name").all().filter((row: any) => !priorObjects.has(row.name));
-storage += '\n### Constructor-added schema objects\n\nFresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `' + hash(await readFile(resolve(root, 'src/task/task-service.ts'))) + '`.\n';
+storage += '\n### Constructor-added schema objects\n\nFresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [examples/taskpool/services/task/task-service.ts](../../examples/taskpool/services/task/task-service.ts); SHA-256: `' + hash(await readFile(resolve(root, 'examples/taskpool/services/task/task-service.ts'))) + '`.\n';
 for (const row of supplemental) storage += '\n#### ' + row.name + '\n' + fence('sql', row.sql + ';');
 initialized.close();
 

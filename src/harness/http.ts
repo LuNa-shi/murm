@@ -7,10 +7,14 @@ export function httpClient(origin: string, authorization?: string) {
     allow404?: boolean; signal?: AbortSignal;
     recognizedRejection?: { status: number; message: string; code: string };
   } = {}): Promise<any> {
+    const destination = new URL(path, base);
+    if (destination.origin !== base.origin || destination.username || destination.password) {
+      throw new TypeError('Harness HTTP requests must target the configured origin');
+    }
     let status: number | undefined;
     let code = 'FACILITY_REQUEST_UNKNOWN';
     try {
-      const response = await fetch(new URL(path, base), { method, redirect: 'error', signal: AbortSignal.any([AbortSignal.timeout(10_000), ...(signal ? [signal] : [])]),
+      const response = await fetch(destination, { method, redirect: 'error', signal: AbortSignal.any([AbortSignal.timeout(10_000), ...(signal ? [signal] : [])]),
         headers: { accept: 'application/json', 'content-type': 'application/json', ...(authorization ? { authorization } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
       status = response.status;
       if (allow404 && response.status === 404) { await response.body?.cancel(); return null; }

@@ -2,9 +2,11 @@
 
 This implementation plan accompanies the repository-cleanup PR. Its audit baseline is
 [`main@207be635`](https://github.com/LuNa-shi/murm/tree/207be6356c16e5fb60c4b3c5b236d7a98383f991).
-The first section describes changes implemented in that PR. The later sections are
-the remaining migration work, with concrete completion criteria. They are not claims
-that the examples are already independent packages.
+This document records the original audit and the migration implemented in
+[#268](https://github.com/LuNa-shi/murm/pull/268). The layout and acceptance
+criteria below are preserved with the audit. Read the [current layout and launch
+commands](../../examples/README.md) and [implementation manual](../architecture/INDEX.md)
+for actual behavior. The PR tracks checks and remaining compatibility work.
 
 The public contract stays one package, `@luna-shi/murm`, with a root SDK import.
 Ordinary Harness input remains a project directory and an initial prompt. Resource
@@ -70,17 +72,19 @@ under `docs/experiments`. It now reads an explicitly selected private registry.
 Registration, model matching, a clean pinned implementation and immutable Worker
 image checks remain mandatory. This change does not authorize a research run.
 
-### What this PR does not establish
+### Domain extraction and standalone packages
 
-The examples still use private `src/harness` support, and TaskPool still imports
-its domain implementation from `src`. Moving the three implementations makes
-ownership visible; it does not yet make copying one example into another repository
-sufficient. The following work closes that remaining boundary.
+The follow-up commits in this PR relocate the TaskPool implementation and
+group Core's model, sandbox and file code by responsibility. All five project
+directories build against the SDK archive and reach preflight outside the
+checkout. The root SDK exposes the [author contract](../architecture/23-project-harness.md#authoring-an-example).
+The archive preserves explicitly shipped benchmark launch assets and the
+optional Mathlib Search host still uses its documented v1 compatibility modules.
+See the PR for full-run and cleanup evidence.
 
 ## Extract the domain system and simplify Core internals
 
-Make this one implementation Issue/PR, including source changes, runtime migration,
-tests, package inputs and architecture updates. No separate design PR is required.
+The domain migration includes source, tests, package inputs and architecture updates.
 
 ### TaskPool owns its domain
 
@@ -140,9 +144,7 @@ Completion criteria:
 
 ## Make each example an independent SDK consumer
 
-Deliver this as one implementation Issue/PR after the dependency extraction. The
-five mechanism examples and future additions should all use the same package
-shape and acceptance procedure.
+The five mechanism examples use the same package shape and acceptance procedure.
 
 | File/directory in an example | Purpose |
 | --- | --- |

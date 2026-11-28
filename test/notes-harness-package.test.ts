@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFile, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { fork } from 'node:child_process';
 import { once } from 'node:events';
 import { join } from 'node:path';
@@ -10,13 +10,14 @@ import { test } from 'node:test';
 import { installNotesExample, execute } from './fixtures/notes-installed-package.js';
 import { createNotesHarnessUpstream, notesHarnessCommand } from './fixtures/notes-harness-upstream.js';
 
+const rootExports = ['DEFAULT_WORKER_IMAGE', 'EXECUTOR_ADAPTER_PROTOCOL', 'MurmError', 'ProjectPreflightError', 'ServiceRegistry', 'checkGitProject', 'commitGitTree', 'completeFileTreeDigest', 'createCodexExecutor', 'createExecutorAdapter', 'createHttpJsonAdapter', 'createInProcessAdapter', 'createInputAdmission', 'createOwnedResources', 'createPiExecutor', 'createRuntime', 'createSandbox', 'decodeFileTree', 'getExecutorCapabilities', 'httpClient', 'importGitTree', 'initializeGitRepository', 'isGitTreePath', 'observeProjectRuntime', 'projectConfiguration', 'projectResult', 'readHarnessResult', 'requestHttp', 'resolveSandboxConnection', 'runInput', 'runWithReport', 'seedTeamRepository', 'seededCheckoutInstruction', 'snapshotFileTree', 'stableStringify', 'workerImageFor'];
+
 test('installed Notes and subagents CLIs preserve cancellation received during configuration import', { timeout: 210_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());
   for (const mode of ['notes', 'subagents']) {
     if (mode === 'subagents') {
-      for (const name of ['main', 'controller', 'collaboration-service', 'prompts']) {
-        await copyFile(join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/subagents', `${name}.js`), join(installed.directory, `${name}.js`));
-      }
+      await cp(join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/subagents'),
+        join(installed.directory, 'subagents'), { recursive: true });
     }
     const outputDir = join(installed.directory, `${mode}-cancelled`);
     await writeFile(join(installed.directory, 'delayed-config.mjs'), `
@@ -24,7 +25,7 @@ process.send('config-ready');
 await new Promise(resolve => setTimeout(resolve, 150));
 export default {sandbox:{},image:'unused',outputDir:${JSON.stringify(outputDir)}};
 `);
-    const child = fork(join(installed.directory, mode === 'notes' ? 'main.mjs' : 'main.js'), [join(installed.directory, 'delayed-config.mjs')], {
+    const child = fork(join(installed.directory, mode === 'notes' ? 'main.mjs' : 'subagents/main.js'), [join(installed.directory, 'delayed-config.mjs')], {
       cwd: installed.directory, env: installed.env, silent: true, timeout: 15_000, killSignal: 'SIGKILL',
     });
     t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
@@ -75,7 +76,7 @@ try {
  ({createRuntime,ServiceRegistry,createSandbox,getExecutorCapabilities}=await import('@luna-shi/murm'));
 } finally {hooks.deregister()}
 const domainRoots=['dist/src/task/','dist/src/context/','dist/src/judge/','dist/examples/taskpool/'];
-assert.deepEqual([...loaded].filter(path=>path==='dist/src/agent/agent-contract.js'||domainRoots.some(root=>path.startsWith(root))),[],
+assert.deepEqual([...loaded].filter(path=>path==='dist/examples/taskpool/prompts/agent-contract.js'||domainRoots.some(root=>path.startsWith(root))),[],
  'Public Core imports must load independently of flat Task, Mission and role contracts');
 const {runNotesHarness,createNotes,fixedFact}=await import('./main.mjs');
 const {createCoreBridge}=await import('./node_modules/@luna-shi/murm/dist/src/core/bridge.js');
@@ -118,7 +119,7 @@ try {
 } finally {await bridge.close()}
 
 const root='@luna-shi/murm';
-assert.deepEqual(Object.keys(await import(root)).sort(), ['DEFAULT_WORKER_IMAGE','EXECUTOR_ADAPTER_PROTOCOL','ServiceRegistry','createCodexExecutor','createExecutorAdapter','createHttpJsonAdapter','createInProcessAdapter','createPiExecutor','createRuntime','createSandbox','getExecutorCapabilities','resolveSandboxConnection','workerImageFor']);
+assert.deepEqual(Object.keys(await import(root)).sort(), ${JSON.stringify(rootExports)});
 assert.ok(import.meta.resolve(root).startsWith(new URL('./node_modules/',import.meta.url).href));
 assert.ok(loaded.has(import.meta.resolve(root).slice(packageRoot.length)));
 for (const old of ['/services','/backends/opensandbox','/backends/pi-opensandbox','/package.json']) {
@@ -148,9 +149,7 @@ import { DEFAULT_WORKER_IMAGE, createRuntime, createSandbox, getExecutorCapabili
   type Runtime, type RuntimeEvent, type RuntimeFiles, type SandboxConfig, type FileTree } from '@luna-shi/murm';
 type Assert<T extends true> = T;
 type Same<A, B> = [A, B] extends [B, A] ? true : false;
-type CoreExports = Assert<Same<keyof typeof import('@luna-shi/murm'), 'DEFAULT_WORKER_IMAGE' | 'createRuntime' | 'createSandbox' | 'getExecutorCapabilities' |
-  'ServiceRegistry' | 'createInProcessAdapter' | 'createHttpJsonAdapter' | 'resolveSandboxConnection' | 'EXECUTOR_ADAPTER_PROTOCOL' |
-  'createCodexExecutor' | 'createExecutorAdapter' | 'createPiExecutor' | 'workerImageFor'>>;
+type CoreExports = Assert<Same<keyof typeof import('@luna-shi/murm'), ${rootExports.map(name => JSON.stringify(name)).join(' | ')}>>;
 const defaultWorkerImage: string = DEFAULT_WORKER_IMAGE;
 const config: SandboxConfig = {
   lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',

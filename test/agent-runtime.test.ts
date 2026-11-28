@@ -1,4 +1,4 @@
-import { createWorkspaceMergeService } from '../examples/taskpool/workspace-merge.js';
+import { createWorkspaceMergeService } from '../examples/taskpool/services/workspace/workspace-merge.js';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
@@ -6,25 +6,25 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
-import { TaskService } from '../src/task/task-service.js';
-import { ACTIVE_EXECUTION_STATES } from '../src/task/task-types.js';
-import { Runtime } from '../src/runtime/runtime.js';
-import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
-import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
-import { createMissionCoordination } from '../examples/taskpool/mission-coordination.js';
-import { createMissionSubmissionAccess } from '../src/runtime/mission-submission-access.js';
-import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
-import { stableStringify } from '../src/protocol/envelope.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { ACTIVE_EXECUTION_STATES } from '../examples/taskpool/services/task/task-types.js';
+import { Runtime } from '../examples/taskpool/compatibility/runtime.js';
+import { WorkspaceManager } from '../examples/taskpool/services/workspace/workspace-manager.js';
+import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
+import { createMissionCoordination } from '../examples/taskpool/services/mission/mission-coordination.js';
+import { createMissionSubmissionAccess } from '../examples/taskpool/services/mission/mission-submission-access.js';
+import { createOpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
+import { stableStringify } from '../examples/taskpool/persistence/envelope.js';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { listTools } from '../src/sdk/service-catalog.js';
-import { ServicesBridge } from '../src/agent/services-bridge.js';
-import { ContextService } from '../src/context/context-service.js';
-import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
-import { startIndependentServices } from '../src/sdk/independent-services.js';
-import { MurmError, ERROR_CODES } from '../src/errors.js';
+import { listTools } from '../examples/taskpool/services/service-catalog.js';
+import { ServicesBridge } from '../examples/taskpool/compatibility/services-bridge.js';
+import { ContextService } from '../examples/taskpool/services/material/context-service.js';
+import { createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
+import { startIndependentServices } from '../examples/taskpool/deploy/service-hosts/independent-services.js';
+import { MurmError, ERROR_CODES } from '../examples/taskpool/errors.js';
 
 async function assertExecutionReleased(runtime, service, executionId, timeoutMs) {
   const deadline = performance.now() + timeoutMs;
@@ -1004,7 +1004,7 @@ test('save still resolves inherited persisted conflict metadata without an apply
 });
 
 test('registered Judge CLI checks only a fixed public file and scopes durable results to its Mission', async t => {
-  const { JudgeService } = await import('../src/judge/judge-service.js');
+  const { JudgeService } = await import('../examples/taskpool/services/judge/judge-service.js');
   const checked = [];
   let judge;
   const createJudgeService = service => (judge = new JudgeService(service.db, { taskService: service, fixtureManifest: { fixture_id: 'public-source', putnambench_commit: 'a'.repeat(40), problem_file: 'input.txt', problem_file_hash: 'b'.repeat(64), lean_toolchain: 'leanprover/lean4:v4.33.1', mathlib_version: 'test', checker_ref: 'lean', checker_version: 'test', environment_ref: 'test' }, checker: {
@@ -1077,8 +1077,8 @@ test('registered Judge CLI checks only a fixed public file and scopes durable re
 });
 
 test('registered Judge CLI forwards module mode and fences a late response while preserving its domain receipt', async t => {
-  const { JudgeService } = await import('../src/judge/judge-service.js');
-  const { LeanChecker } = await import('../src/judge/lean-adapter.js');
+  const { JudgeService } = await import('../examples/taskpool/services/judge/judge-service.js');
+  const { LeanChecker } = await import('../examples/taskpool/services/judge/lean-adapter.js');
   const checkerIdentity = { checker_ref: 'lean', checker_version: 'test', environment_ref: 'test-project' };
   let holdBuild;
   let judge;

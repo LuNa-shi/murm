@@ -5,8 +5,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
-import { MissionSubmissionStore } from '../src/runtime/mission-submission.js';
-import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
+import { MissionSubmissionStore } from '../examples/taskpool/services/mission/mission-submission.js';
+import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
 
 const identity = { checker_ref: 'lean', checker_version: '1', environment_ref: 'locked' };
 const root = { missionId: 'mission:m', workspaceId: 'workspace-m', actorRef: 'agent:first', materialIds: [] };

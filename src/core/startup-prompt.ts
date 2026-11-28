@@ -1,9 +1,8 @@
 import type { ServiceManifest } from './service-types.js';
-import { serviceCommand } from '../cli/service-command.js';
 
 const preamble = [
   'You are a murm agent running in an isolated sandbox.',
-  'Use the swarm CLI through bash to access your task and collaboration services.',
+  'Use the swarm CLI through bash to access the services granted to this Agent.',
 ].join('\n');
 
 const piTools = [
@@ -30,8 +29,8 @@ function oneLine(description: string) {
 
 export function renderStartupPrompt(services: readonly ServiceManifest[], addedSystemPrompt?: string, executor: string = 'pi'): string {
   const directory = services.map(({ id, purpose, capabilities }) => [
-    `${id === 'context' ? 'context (CLI: material)' : id} — ${oneLine(purpose)}`,
-    ...capabilities.map(({ operation, description }) => `- \`${serviceCommand(id, operation)}\` ${oneLine(description)}`),
+    `${id} — ${oneLine(purpose)}`,
+    ...capabilities.map(({ operation, description }) => `- \`swarm service invoke ${id} ${operation}\` ${oneLine(description)}`),
   ].join('\n')).join('\n\n');
   const tools = executor === 'codex' ? codexTools : executor === 'pi' ? piTools : null;
   const sections = [

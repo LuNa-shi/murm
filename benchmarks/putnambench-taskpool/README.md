@@ -10,7 +10,7 @@ Use the official [PutnamBench tree](https://github.com/trishullab/PutnamBench/tr
 
 ```sh
 npm run build
-node dist/scripts/lock-final-tree-checker.js checker-config.json checker-sources.json artifact-lock.json
+node dist/examples/taskpool/services/judge/lock-final-tree-checker.js checker-config.json checker-sources.json artifact-lock.json
 node benchmarks/putnambench-taskpool/main.ts preflight trusted-checker-config.json /path/to/PutnamBench
 ```
 

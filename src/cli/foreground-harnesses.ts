@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { runPeerMeshTeam } from '../../examples/peermesh/harness/team.js';
-import { runTaskPoolHarness } from '../../examples/taskpool/harness.js';
+import { runTaskPoolHarness } from '../../examples/taskpool/harness/harness.js';
 
 const fail = (code: any) => Object.assign(new Error(code), { code });
 const finite = (value: any) => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;

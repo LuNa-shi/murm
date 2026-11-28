@@ -8,12 +8,12 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { DatabaseSync } from 'node:sqlite';
-import { TaskService } from '../src/task/task-service.js';
-import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
-import { MissionSubmissionStore } from '../src/runtime/mission-submission.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
+import { MissionSubmissionStore } from '../examples/taskpool/services/mission/mission-submission.js';
 
 const exec = promisify(execFile);
-const cli = fileURLToPath(new URL('../scripts/review-mission.js', import.meta.url));
+const cli = fileURLToPath(new URL('../examples/taskpool/services/mission/review-mission.js', import.meta.url));
 const identity = { checker_ref: 'manual-operator', checker_version: 'review-1', environment_ref: 'owner-review' };
 const input = { missionId: 'mission', workspaceId: 'workspace', actorRef: 'agent:author', materialIds: [], requestId: 'submission' };
 

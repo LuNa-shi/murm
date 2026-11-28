@@ -13,10 +13,9 @@ COPY package.json npm-shrinkwrap.json tsconfig.json ./
 RUN npm ci --include=dev --ignore-scripts --no-audit --no-fund
 COPY src ./src
 COPY scripts ./scripts
-COPY examples ./examples
-COPY test-support/subagents/communication-fixture-prompts.ts ./test-support/subagents/
-COPY deploy ./deploy
-RUN npm run build
+COPY examples/taskpool/cli.ts ./examples/taskpool/cli.ts
+COPY deploy/worker/tsconfig.json ./deploy/worker/tsconfig.json
+RUN node node_modules/typescript/bin/tsc --project deploy/worker/tsconfig.json
 
 FROM node:22.19.0-bookworm-slim
 
@@ -52,10 +51,10 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
 # Archive build contexts can carry the host checkout's UID and GID.
 COPY --from=filesystem-policy-build --chown=0:0 /agent-filesystem-policy /opt/murm/agent-filesystem-policy
 COPY --from=typescript-build --chown=0:0 /build/dist/src /opt/murm/dist/src
+COPY --from=typescript-build --chown=0:0 /build/dist/examples/taskpool/cli.js /opt/murm/dist/examples/taskpool/cli.js
 COPY --from=typescript-build --chown=0:0 \
   /build/dist/scripts/opensandbox-agent-worker.js /build/dist/scripts/sandbox-project.js \
-  /build/dist/scripts/core-file-seed.js /build/dist/scripts/core-work-dir.js /build/dist/scripts/core-collection.js \
-  /build/dist/scripts/file-tree-stream.js \
+  /build/dist/scripts/core-work-dir.js \
   /build/dist/scripts/rpc-submissions.js /build/dist/scripts/pi-rpc-submissions.js /build/dist/scripts/core-session-fork.js \
   /build/dist/scripts/codex-app-server-driver.js /build/dist/scripts/worker-executor-adapter.js \
   /build/dist/scripts/project-install.js /build/dist/scripts/project-processes.js \

@@ -3,7 +3,7 @@ import { open, realpath, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { openSandboxAgentKey, openSandboxRuntimeKey } from '../../src/runtime/opensandbox-metadata.js';
+import { openSandboxAgentKey, openSandboxRuntimeKey } from '../../src/core/sandbox/opensandbox-metadata.js';
 
 const fail = code => Object.assign(new Error(code), { code });
 const duration = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;

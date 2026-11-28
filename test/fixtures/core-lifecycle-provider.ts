@@ -1,4 +1,4 @@
-import { fileProtocol } from '../../scripts/core-file-seed.js';
+import { fileProtocol } from '../../src/core/files/core-file-seed.js';
 import assert from 'node:assert/strict';
 import childProcess from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -7,7 +7,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { once } from 'node:events';
 import { promisify } from 'node:util';
 import { AGENT_UID } from '../../scripts/sandbox-project.js';
-import { decodeFileSeed } from '../../scripts/core-file-seed.js';
+import { decodeFileSeed } from '../../src/core/files/core-file-seed.js';
 
 let runCommand;
 let hostGit;

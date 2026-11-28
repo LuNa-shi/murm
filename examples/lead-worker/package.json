@@ -1,0 +1,21 @@
+{
+  "name": "@luna-shi/murm-example-lead-worker",
+  "private": true,
+  "type": "module",
+  "main": "./dist/project.js",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "start": "murm --harness ./dist/project.js"
+  },
+  "dependencies": {
+    "@luna-shi/murm": "^0.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2"
+  }
+}

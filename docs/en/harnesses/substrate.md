@@ -20,7 +20,7 @@ Each peer receives the captured project files and explores your prompt across co
 
 ## 1. Generic publication Service (`substrate`)
 
-[examples/substrate/harness/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/substrate.ts) registers a single in-process SQLite Service (`substrate`) with three operations:
+[examples/substrate/services/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/substrate.ts) registers a single in-process SQLite Service (`substrate`) with three operations:
 
 | Operation | Input | Guarantees |
 | --- | --- | --- |
@@ -122,13 +122,13 @@ export MURM_FATE_BENCHMARK=FATE-X
 export MURM_FATE_PROJECT=/path/to/fate-x
 export MURM_FATE_LEAN=/path/to/lean-4.28.0
 
-node dist/examples/substrate/main.js --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-X
-node dist/examples/substrate/main.js --fate-run dist/examples/substrate/fate-config.js
+node dist/benchmarks/fate/main.js --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-X
+node dist/benchmarks/fate/main.js --fate-run dist/benchmarks/fate/fate-config.js
 ```
 
 ## Source files
 
 - Concurrent round driver: [examples/substrate/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/index.ts)
-- SQLite `substrate` Service: [examples/substrate/harness/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/substrate.ts)
+- SQLite `substrate` Service: [examples/substrate/services/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/substrate.ts)
 - Cross-peer reuse auditor: [examples/substrate/harness/collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/collaboration-evidence.ts)
 - CLI & FATE Lean configs: [examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) · [FATE-X #31 run report](https://github.com/LuNa-shi/murm/blob/207be6356c16e5fb60c4b3c5b236d7a98383f991/docs/experiments/EXP-20261125-20-scalemas-fatex-verified.md)

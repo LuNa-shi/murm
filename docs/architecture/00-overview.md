@@ -38,7 +38,7 @@ The `murm --harness` names are CLI aliases for those ordinary example modules. T
 
 Shared deployment under `deploy/` prepares OpenSandbox and the Worker image. Each Runtime starts its own Bridge, Model Gateway and built-in `agent` Service without another container. Examples assemble their own in-process Services and explicitly configured external facilities. Mathlib Search belongs to `examples/services/mathlib-search` and is optional for Lean workloads; it is unrelated to PeerMesh's MySQL Board database. [Deployment ownership](../../deploy/README.md) and the [example index](../../examples/README.md) list the actual prerequisites.
 
-This layout change does not yet make every example a standalone SDK consumer. TaskPool still uses domain modules under `src`, and the examples still use private host helpers. The [repository implementation plan](../designs/repository-layout.md) separates the completed moves from the remaining domain extraction, public Harness contract and outside-checkout package verification.
+The five collaboration examples compile against the package root and run through their own `project.js` or a bundled CLI alias. TaskPool owns its domain stores and compatibility modules. The common host handles entry loading and project capture, and each example composes its Runtime and Services. See the [author contract](23-project-harness.md#authoring-an-example) and [deployment ownership](../../deploy/README.md).
 
 ## One complete Run
 

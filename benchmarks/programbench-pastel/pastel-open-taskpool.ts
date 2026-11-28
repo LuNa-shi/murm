@@ -1,11 +1,11 @@
 import { join } from 'node:path';
 import { setInterval } from 'node:timers/promises';
-import { ContextService } from '../../dist/src/context/context-service.js';
-import { runTaskPoolHarness } from '../../dist/examples/taskpool/harness.js';
-import { makeEnvelope } from '../../dist/src/protocol/envelope.js';
-import { MissionWorkspace } from '../../dist/src/runtime/mission-workspace.js';
-import { WorkspaceManager } from '../../dist/src/runtime/workspace-manager.js';
-import { TaskService } from '../../dist/src/task/task-service.js';
+import { ContextService } from '../../dist/examples/taskpool/services/material/context-service.js';
+import { runTaskPoolHarness } from '../../dist/examples/taskpool/harness/harness.js';
+import { makeEnvelope } from '../../dist/examples/taskpool/persistence/envelope.js';
+import { MissionWorkspace } from '../../dist/examples/taskpool/services/workspace/mission-workspace.js';
+import { WorkspaceManager } from '../../dist/examples/taskpool/services/workspace/workspace-manager.js';
+import { TaskService } from '../../dist/examples/taskpool/services/task/task-service.js';
 import { checkpointSource } from './source-checkpoint.ts';
 import { sha256 } from './case.ts';
 

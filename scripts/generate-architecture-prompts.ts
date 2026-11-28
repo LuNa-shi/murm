@@ -9,18 +9,21 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { SETUP_PROFILE_PROMPT, SETUP_FOLLOW_UP } from './local-setup-smoke.js';
 import { SETUP_BASH, SETUP_READ, SETUP_RESULT } from './local-setup-upstream.js';
-import { rootPrompt, childPrompt } from '../examples/subagents/prompts.js';
+import { rootPrompt, childPrompt } from '../examples/subagents/prompts/prompts.js';
 import { parentPromptFor, initialGoalFor } from '../test-support/subagents/communication-fixture-prompts.js';
-import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
-import { AGENT_CONTINUATION_MESSAGE, AGENT_SOFT_CLOSEOUT_MESSAGE, AGENT_MATERIAL_CONTINUATION_MESSAGE, AGENT_MATERIAL_SOFT_CLOSEOUT_MESSAGE, buildAgentSoftCloseoutNotice, buildAgentNotification, agentServiceDirectory } from '../src/agent/agent-contract.js';
-import { runSwarmCli } from '../src/cli/swarm-cli.js';
-import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
-import { loadServiceBundle } from '../src/sdk/service-bundle.js';
-import { buildTaskPoolAutonomousDiscoveryMessage } from '../examples/taskpool/controller.js';
+import { AGENT_ROLES, buildCapabilityProfile } from '../examples/taskpool/compatibility/capability-profile.js';
+import { AGENT_CONTINUATION_MESSAGE, AGENT_SOFT_CLOSEOUT_MESSAGE, AGENT_MATERIAL_CONTINUATION_MESSAGE, AGENT_MATERIAL_SOFT_CLOSEOUT_MESSAGE, buildAgentSoftCloseoutNotice, buildAgentNotification, agentServiceDirectory } from '../examples/taskpool/prompts/agent-contract.js';
+import { createSwarmCli } from '../src/cli/swarm-cli.js';
+import { taskPoolCommands } from '../examples/taskpool/cli.js';
+import { createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
+import { loadServiceBundle } from '../examples/taskpool/deploy/service-hosts/service-bundle.js';
+import { buildTaskPoolAutonomousDiscoveryMessage } from '../examples/taskpool/harness/controller.js';
 import { renderStartupPrompt } from '../src/core/startup-prompt.js';
-import { fateServiceManifest } from '../examples/substrate/fate-service.js';
-import { fateVerificationContinuation, fateVerifiedInput } from '../examples/substrate/fate-run.js';
-import { paperSubstrateManifest } from '../examples/substrate/harness/paper-substrate.js';
+import { fateServiceManifest } from '../benchmarks/fate/fate-service.js';
+import { fateVerificationContinuation, fateVerifiedInput } from '../benchmarks/fate/fate-run.js';
+import { paperSubstrateManifest } from '../benchmarks/fate/paper-substrate.js';
+
+const { runSwarmCli } = createSwarmCli(taskPoolCommands);
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const outputDir = 'docs/architecture/prompts';
@@ -29,30 +32,30 @@ assert.ok(args.length === 0 || (args.length === 1 && args[0] === '--check'), 'Us
 const check = args[0] === '--check';
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 const sourcePaths = [
-  'src/agent/agent-contract.ts',
-  'src/agent/capability-profile.ts',
-  'src/agent/services-bridge.ts',
-  'src/cli/swarm-cli.ts', 'src/cli/service-command.ts',
-  'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts', 'scripts/codex-app-server-driver.ts',
+  'examples/taskpool/prompts/agent-contract.ts',
+  'examples/taskpool/compatibility/capability-profile.ts',
+  'examples/taskpool/compatibility/services-bridge.ts',
+  'src/cli/swarm-cli.ts', 'examples/taskpool/cli.ts',
+  'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/sandbox/opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts', 'scripts/codex-app-server-driver.ts',
   'scripts/local-setup-smoke.ts', 'scripts/local-setup-upstream.ts',
   'examples/messages/handoff.ts',
-  'examples/notes/main.ts', 'examples/notes/project.ts', 'examples/taskpool/project.ts', 'src/harness/project-git.ts', 'src/harness/run-input.ts', 'examples/substrate/harness/index.ts', 'examples/substrate/harness/substrate.ts',
-  'examples/taskpool/controller.ts', 'examples/taskpool/harness.ts',
-  'examples/substrate/fate-run.ts', 'examples/substrate/fate-service.ts', 'examples/substrate/harness/paper-substrate.ts',
+  'examples/notes/main.ts', 'examples/notes/project.ts', 'examples/taskpool/project.ts', 'src/harness/project-git.ts', 'src/harness/run-input.ts', 'examples/substrate/harness/index.ts', 'examples/substrate/services/substrate.ts',
+  'examples/taskpool/harness/controller.ts', 'examples/taskpool/harness/harness.ts',
+  'benchmarks/fate/fate-run.ts', 'benchmarks/fate/fate-service.ts', 'benchmarks/fate/paper-substrate.ts',
   'benchmarks/putnambench-taskpool/run.ts',
   'benchmarks/programbench-pastel/subagents-example.ts',
-  'examples/subagents/main.ts', 'examples/subagents/controller.ts',
-  'examples/subagents/prompts.ts', 'examples/subagents/collaboration-service.ts',
+  'examples/subagents/main.ts', 'examples/subagents/harness/controller.ts',
+  'examples/subagents/prompts/prompts.ts', 'examples/subagents/services/collaboration-service.ts',
   'test-support/subagents/communication-fixture.ts', 'test-support/subagents/communication-fixture-controller.ts', 'test-support/subagents/communication-fixture-prompts.ts',
   'examples/peermesh/harness/index.ts', 'examples/peermesh/harness/router.ts', 'examples/peermesh/harness/routed.ts', 'examples/peermesh/harness/team.ts',
   'test/fixtures/peermesh-team-kimi.ts', 'test/peermesh-team-kimi-real.test.ts',
   'examples/lead-worker/harness/prompts.ts', 'examples/lead-worker/harness/index.ts',
-  'examples/lead-worker/harness/dynamic-scheduler.ts', 'examples/lead-worker/harness/dynamic.ts', 'examples/lead-worker/dynamic-orders.ts',
-  'src/runtime/runtime.ts',
-  'src/runtime/workspace-contract.ts', 'src/runtime/mission-workspace.ts',
-  'src/sdk/service-catalog.ts', 'src/sdk/builtin-registry.ts', 'src/sdk/service-bundle.ts',
-  'src/sdk/service-registry.ts', 'src/sdk/service-manifest.ts', 'src/protocol/envelope.ts',
-  'src/task/task-service.ts', 'src/task/task-types.ts',
+  'examples/lead-worker/harness/dynamic-scheduler.ts', 'examples/lead-worker/harness/dynamic.ts', 'benchmarks/lead-worker-orders/dynamic-orders.ts',
+  'examples/taskpool/compatibility/runtime.ts',
+  'examples/taskpool/services/workspace/workspace-contract.ts', 'examples/taskpool/services/workspace/mission-workspace.ts',
+  'examples/taskpool/services/service-catalog.ts', 'examples/taskpool/services/builtin-registry.ts', 'examples/taskpool/deploy/service-hosts/service-bundle.ts',
+  'examples/taskpool/deploy/service-hosts/service-registry.ts', 'examples/taskpool/deploy/service-hosts/service-manifest.ts', 'examples/taskpool/persistence/envelope.ts',
+  'examples/taskpool/services/task/task-service.ts', 'examples/taskpool/services/task/task-types.ts',
   'examples/services/mathlib-search/service.json', 'examples/services/mathlib-search/SKILL.md',
   'examples/services/mathlib-search/references/loogle.md',
 ];
@@ -111,7 +114,9 @@ async function listSourceFiles(directory: string): Promise<string[]> {
   const files = [];
   for (const entry of await readdir(resolve(root, directory), { withFileTypes: true })) {
     const path = `${directory}/${entry.name}`;
-    if (entry.isDirectory()) files.push(...await listSourceFiles(path));
+    if (entry.isDirectory()) {
+      if (!['node_modules', 'dist', '.murm'].includes(entry.name)) files.push(...await listSourceFiles(path));
+    }
     else if (/\.(?:js|mjs|ts)$/.test(path)) files.push(path);
   }
   return files.sort();
@@ -127,7 +132,7 @@ const instructionActions = new Set([
 ]);
 let guidanceDoc = header('Complete fixed guidance in tool results and notification data', 'This appendix records complete literal hint, remediation and guidance fields in executable sources, plus instructional action values. These are individual response fields, not fabricated full error responses or actual run transcripts. Dynamic IDs, versions, paths, provider diagnostics and complete error envelopes follow the contracts in [Services](../04-services.md) and [the API reference](../10-service-api-reference.md).');
 guidanceDoc += '\n## Delivery conditions\n\n| Source | When the fixed field can be visible |\n|---|---|\n| services-bridge.ts | Capability-admission errors, invalid capability blocking, unavailable operation or malformed payload; the protected CLI prints the structured response into the native Bash result |\n| workspace-contract.ts remediation | Path normalization, forbidden/undeclared output, locked-input writes, missing required input or input-hash mismatch; setup-time failures are not guaranteed to reach an Agent tool call |\n| task-service.ts action | Material-available notification payload, or invalid typed dependency error. The payload action is visible when notification data is read/composed; the retained Runtime no longer renders or sends a notification user message. |\n\nThe action values integration and task are consumption/contract enums, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. The actions execute and queue_status are private Judge authorization protocol enums, never Agent instructions. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.\n';
-for (const path of await listSourceFiles('src')) {
+for (const path of (await Promise.all(['src', 'examples/taskpool'].map(listSourceFiles))).flat()) {
   const original = await readFile(resolve(root, path), 'utf8');
   // Strip type-only fields while preserving line and column positions.
   const source = path.endsWith('.ts') ? stripTypeScriptTypes(original) : original;
@@ -144,7 +149,7 @@ for (const path of await listSourceFiles('src')) {
     assert.equal(typeof value, 'string', `non-static instruction field requires explicit documentation: ${path}`);
     if (key === 'action' && nonInstructionActions.has(value)) continue;
     if (key === 'action' && path === 'src/core/runtime-management.ts' && value === 'retire-service') continue;
-    if (key === 'action' && ['src/core/index.ts', 'src/core/model-access.ts', 'examples/lead-worker/harness/index.ts'].includes(path) && cleanupActions.has(value)) continue;
+    if (key === 'action' && ['src/core/index.ts', 'src/core/model/model-access.ts', 'examples/lead-worker/harness/index.ts'].includes(path) && cleanupActions.has(value)) continue;
     if (key === 'action') assert.ok(instructionActions.has(value), `review new literal action field for prompt delivery: ${path}: ${value}`);
     assert.ok(sourcePaths.includes(path), `new instruction-field source requires documented ownership: ${path}`);
     const line = source.slice(0, match.index).split('\n').length;
@@ -197,14 +202,14 @@ output('08-subagents-harness.md', header('Subagents Harness prompts',
   + block('Default initial goal', evaluate(between(subagentsPath, 'export const initialGoal = ', ';\n')))
   + [3, 4, 5, 6, 7].map((childCount: any) => block(`Parent Profile prompt: ${childCount + 1} Agents`, parentPromptFor(childCount))
     + block(`Default initial goal: ${childCount + 1} Agents`, initialGoalFor(childCount))).join(''));
-for (const path of ['examples/subagents/controller.ts', 'test-support/subagents/communication-fixture-controller.ts']) {
+for (const path of ['examples/subagents/harness/controller.ts', 'test-support/subagents/communication-fixture-controller.ts']) {
   for (const [index, line] of sources.get(path)!.split('\n').entries()) {
     if (line.includes('await runtime.send(')) sendSites.push({ path, line: index + 1, expression: line.trim() });
   }
 }
 const substrateIndexPath = 'examples/substrate/harness/index.ts';
-const substratePath = 'examples/substrate/harness/substrate.ts';
-const fatePath = 'examples/substrate/fate-run.ts';
+const substratePath = 'examples/substrate/services/substrate.ts';
+const fatePath = 'benchmarks/fate/fate-run.ts';
 output('01-core-startup.md', header('Core startup system prompt',
   'The backend stages this file. Pi receives it through --system-prompt and can append its working directory. Codex receives it as thread/start baseInstructions and can add its own context. Services are rendered from the registered manifest purpose and operation descriptions after Bridge permission filtering. An optional nonblank Profile.prompt is included verbatim inside added_system_prompt.')
   + block('Profile with no allowed Service operations and no Added System Prompt', renderStartupPrompt([]))
@@ -267,8 +272,8 @@ leadWorkerDoc += block('Staged corrective input composition and send', between('
 leadWorkerDoc += block('Dynamic goal and dispatch', between('examples/lead-worker/harness/dynamic-scheduler.ts', "    send(lead, { type: 'dynamic-goal'", '\n  } finally'), 'The ordinary project path sends the original user prompt in goal. The Orders fixture uses its frozen task specification and selected public JSONL data. Later inputs contain committed Board sequence numbers, member and task identities, and the current revision. Each ready recipient receives an exclusive followUp in its original Session.');
 leadWorkerDoc += block('Dynamic checker Profile composition', between('examples/lead-worker/harness/dynamic.ts', '                model, image, writable: true, prompt:', '\n                network:'), 'The shared Worker instructions precede the Lead-authored Profile instructions. The composed string becomes the startup Profile prompt for the new Agent.');
 output('08-lead-worker-harness.md', leadWorkerDoc);
-const flatControllerPath = 'examples/taskpool/controller.ts';
-const taskPoolHarnessPath = 'examples/taskpool/harness.ts';
+const flatControllerPath = 'examples/taskpool/harness/controller.ts';
+const taskPoolHarnessPath = 'examples/taskpool/harness/harness.ts';
 const putnamPath = 'benchmarks/putnambench-taskpool/run.ts';
 const discoveryFields = {
   mission: { mission_id: '<MISSION_ID>', goal: '<MISSION_GOAL>', acceptance_conditions: '<MISSION_ACCEPTANCE>' },

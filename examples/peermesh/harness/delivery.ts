@@ -4,7 +4,7 @@ import { rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { httpClient } from '../../../src/harness/http.js';
+import { httpClient } from '@luna-shi/murm';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const e = encodeURIComponent;

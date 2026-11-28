@@ -9,21 +9,21 @@ import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { controls } from './fixtures/taskpool-controller-backend.js';
-import { createTaskPoolTaskService } from '../examples/taskpool/task-service.js';
-import { createTaskPoolPublicationServices } from '../examples/taskpool/publication-services.js';
+import { createTaskPoolTaskService } from '../examples/taskpool/services/task/agent-service.js';
+import { createTaskPoolPublicationServices } from '../examples/taskpool/services/workspace/publication-services.js';
 import { ServiceRegistry } from '../src/core/services.js';
-import { stableStringify } from '../src/protocol/envelope.js';
+import { stableStringify } from '../examples/taskpool/persistence/envelope.js';
 import { installNotesExample } from './fixtures/notes-installed-package.js';
 
 const hooks=registerHooks({resolve(specifier,context,next) {
-  if(specifier==='./opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
+  if(specifier==='./sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
 const {createRuntime}=await import('@luna-shi/murm');hooks.deregister();
 const execute=promisify(execFile);
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const closeFromAnotherProcess=(root,agentId)=>execute(process.execPath,['--input-type=module','-e',`
-  import { TaskService } from ${JSON.stringify(new URL('../src/task/task-service.js', import.meta.url).href)};
+  import { TaskService } from ${JSON.stringify(new URL('../examples/taskpool/services/task/task-service.js', import.meta.url).href)};
   const tasks=new TaskService(process.argv[1]);
   tasks.requestAgentStop(process.argv[2],'external-close',{terminalState:'FAILED'});
   tasks.close();

@@ -7,8 +7,8 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
-import { createCoreModelAccess } from '../src/core/model-access.js';
-import { selectExecutorDriver } from '../src/core/executor-driver.js';
+import { createCoreModelAccess } from '../src/core/model/model-access.js';
+import { selectExecutorDriver } from '../src/core/sandbox/executor-driver.js';
 
 function completion(model = 'k3') {
   return `event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed',

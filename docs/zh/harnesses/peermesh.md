@@ -20,7 +20,7 @@ PeerMesh 会根据当前目录和提示词自动建立团队仓库与 Issue，�
 
 ## 1. 注册的 Services
 
-[examples/peermesh/harness/services.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/services.ts) 为每次运行注册三个 Service，将容器身份精准绑定到该成员专属的外部账号，同时把管理员令牌严格留在宿主机：
+[examples/peermesh/services/services.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/services.ts) 为每次运行注册三个 Service，将容器身份精准绑定到该成员专属的外部账号，同时把管理员令牌严格留在宿主机：
 
 | Service | 支持的操作 | 用途 |
 | --- | --- | --- |
@@ -130,6 +130,6 @@ node dist/scripts/read-harness-result.js \
 
 - 团队装配与生命周期：[examples/peermesh/harness/team.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/team.ts)
 - 每成员串行 Router、途中 steer 与提醒：[examples/peermesh/harness/router.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/router.ts)
-- Service 封装（`peermesh-context`、`message`、`gitea`）：[examples/peermesh/harness/services.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/services.ts)
+- Service 封装（`peermesh-context`、`message`、`gitea`）：[examples/peermesh/services/services.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/services.ts)
 - 宿主 PR 合并校验与主干导出：[examples/peermesh/harness/delivery.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/delivery.ts)
 - 示例配置与指南：[examples/peermesh/config.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/config.ts) · [examples/peermesh/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/README.md)

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createSandbox, getExecutorCapabilities } from '@luna-shi/murm';
-import { claimOpenSandboxBackend } from '../src/core/opensandbox-backend.js';
+import { claimOpenSandboxBackend } from '../src/core/sandbox/opensandbox-backend.js';
 
 const sandboxConfig = {
   lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',

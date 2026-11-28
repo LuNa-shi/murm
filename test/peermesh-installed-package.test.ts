@@ -5,7 +5,7 @@ import { access, readFile, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { installNotesExample, execute } from './fixtures/notes-installed-package.js';
 
-test('offline archive ships the native PeerMesh host configuration and declared foreground entries', {
+test('offline archive ships the declared PeerMesh foreground entries and omits developer tests', {
   timeout: 180_000
 }, async t => {
   const installed = await installNotesExample();
@@ -15,8 +15,6 @@ test('offline archive ships the native PeerMesh host configuration and declared 
   assert.deepEqual(Object.keys(metadata.exports), ['.']);
 
   for (const path of [
-    'dist/test/fixtures/peermesh-installed-host.js',
-    'dist/test/fixtures/peermesh-team-upstream.js',
     'dist/scripts/run-harness.js',
     'dist/scripts/read-harness-result.js'
   ]) {
@@ -26,6 +24,8 @@ test('offline archive ships the native PeerMesh host configuration and declared 
       timeout: 10_000
     });
   }
+
+  await assert.rejects(access(join(root, 'dist/test')), { code: 'ENOENT' });
 
   const help = await execute(process.execPath, [join(root, 'dist/scripts/run-harness.js'), '--help'], {
     cwd: installed.directory,

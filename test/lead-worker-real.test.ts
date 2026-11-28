@@ -46,7 +46,7 @@ test('installed native lead plus two helpers claim exclusively, push verified Gi
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
     };
     const configPath = join(directory, 'lead-worker-config.mjs'); await writeFile(configPath, `const config=${JSON.stringify(configuration)};config.sandbox.apiKey=process.env.MURM_CORE_TEST_API_KEY;export default config;\n`, { mode: 0o600 });
-    const main = join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/lead-worker/main.js');
+    const main = join(installed.directory, 'node_modules/@luna-shi/murm/dist/benchmarks/lead-worker-orders/main.js');
     const outcome = await new Promise((resolve, reject) => {
       child = spawn(process.execPath, [main, configPath], { cwd: installed.directory, env: installed.env, stdio: ['ignore', 'pipe', 'pipe'] });
       const workTimer = setTimeout(() => { expired = true; cleanup.start(); child.kill('SIGTERM'); }, 120_000);

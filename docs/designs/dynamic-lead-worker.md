@@ -52,7 +52,7 @@ Harness 从调用者自己的工作目录捕获受限路径与大小的源码/ma
 
 ## 任务与关闭条件
 
-[订单任务规格](../../examples/lead-worker/fixtures/spec.md)定义 JSONL 程序的接口和边界。[独立 oracle](../../examples/lead-worker/fixtures/oracle.mjs)固定验收输入、期望和比较规则；宿主在隔离环境从最终 commit 执行候选，只向 oracle 提供真实退出码及 stdout/stderr。规格、oracle 和两套公开输入随候选冻结，Agent 无权修改宿主评判。Lead 自行生成检查 Service 源码；宿主另核对该 Service 对合法及重复/非法输入的实际返回。
+[订单任务规格](../../benchmarks/lead-worker-orders/fixtures/spec.md)定义 JSONL 程序的接口和边界。[独立 oracle](../../benchmarks/lead-worker-orders/fixtures/oracle.mjs)固定验收输入、期望和比较规则；宿主在隔离环境从最终 commit 执行候选，只向 oracle 提供真实退出码及 stdout/stderr。规格、oracle 和两套公开输入随候选冻结，Agent 无权修改宿主评判。Lead 自行生成检查 Service 源码；宿主另核对该 Service 对合法及重复/非法输入的实际返回。
 
 两名原 Worker 均先开始工作并各有实质成果。Lead 经真实 CLI 部署 Service、登记新 Profile、加入 checker。checker 领取任务并检查本轮固定 Git 候选，提交带具体依据的反馈。原 Worker 经 CLI 先探测不可用，grant 后在原身份、Session、目录及 Git 身份下实际调用，revoke 后再次不可用，checker 仍可用。Lead 读取反馈，安排原 Worker 在原 Session 继续，最终代码或测试出现可追踪的变化。Lead 整合固定 commit，宿主独立验收。宿主负责设施、真实通知和判题，Lead 决定分工、管理调用、修订与整合。
 

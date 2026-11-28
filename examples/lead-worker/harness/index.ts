@@ -1,12 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { createRuntime } from '@luna-shi/murm';
-import { ServiceRegistry } from '@luna-shi/murm';
-import { createOwnedResources } from '../../../src/harness/owned-resources.js';
-import { seededCheckoutInstruction } from '../../../src/harness/project-git.js';
-import { runInput } from '../../../src/harness/run-input.js';
-import { runWithReport } from '../../../src/harness/run-report.js';
-import { createBoard, boardPermissions, projectBoardPermissions } from './board.js';
+import { createRuntime, ServiceRegistry, createOwnedResources, seededCheckoutInstruction, runInput, runWithReport } from '@luna-shi/murm';
+import { createBoard, boardPermissions, projectBoardPermissions } from '../services/board.js';
 import { leadWorkerRoles } from './team.js';
 import { createDynamicLeadWorker, dynamicServices, type DynamicLeadWorkerOptions } from './dynamic.js';
 import { runDynamicSchedule } from './dynamic-scheduler.js';

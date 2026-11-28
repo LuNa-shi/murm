@@ -161,6 +161,6 @@ The low-level factory does not apply the CLI work deadline to every custom host 
 ## Source files
 
 - Entry point & interactive CLI: [examples/subagents/main.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/main.ts)
-- Controller, mailbox & interrupt recovery: [examples/subagents/controller.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/controller.ts)
-- `collaboration` Service manifest: [examples/subagents/collaboration-service.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/collaboration-service.ts)
+- Controller, mailbox & interrupt recovery: [examples/subagents/harness/controller.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/controller.ts)
+- `collaboration` Service manifest: [examples/subagents/services/collaboration-service.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/collaboration-service.ts)
 - Setup & verification notes: [examples/subagents/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md) · [ProgramBench `fd` run record](https://github.com/LuNa-shi/murm/blob/207be6356c16e5fb60c4b3c5b236d7a98383f991/docs/experiments/EXP-20261125-10-issue199-fd.md)

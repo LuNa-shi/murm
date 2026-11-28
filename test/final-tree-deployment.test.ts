@@ -4,8 +4,8 @@ import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { createFinalTreeArtifactLock, createLockedFinalTreeVerifier, fingerprintFinalTreeArtifact, FINAL_TREE_SOURCE_PINS } from '../src/judge/final-tree-deployment.js';
-import { stableStringify } from '../src/protocol/envelope.js';
+import { createFinalTreeArtifactLock, createLockedFinalTreeVerifier, fingerprintFinalTreeArtifact, FINAL_TREE_SOURCE_PINS } from '../examples/taskpool/services/judge/final-tree-deployment.js';
+import { stableStringify } from '../examples/taskpool/persistence/envelope.js';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const identity = { checker_ref: 'lean-final-tree', checker_version: '1', environment_ref: 'test' };

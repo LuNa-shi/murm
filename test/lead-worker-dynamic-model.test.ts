@@ -116,11 +116,11 @@ test('two clean installed-package Lead-Worker Runs against the approved real pro
   assert.match(serviceImage ?? '', imageId);
   const installed = await installNativeNotesExample();
   t.after(installed.close);
-  const packageDir = join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/lead-worker');
+  const packageDir = join(installed.directory, 'node_modules/@luna-shi/murm/dist/benchmarks/lead-worker-orders');
   const packagedFiles = join(installed.directory, 'node_modules/@luna-shi/murm');
   const [oracle, specification, rolePrompts] = await Promise.all([
-    readFile(join(packagedFiles, 'examples/lead-worker/fixtures/oracle.mjs')),
-    readFile(join(packagedFiles, 'examples/lead-worker/fixtures/spec.md')),
+    readFile(join(packagedFiles, 'benchmarks/lead-worker-orders/fixtures/oracle.mjs')),
+    readFile(join(packagedFiles, 'benchmarks/lead-worker-orders/fixtures/spec.md')),
     readFile(join(packagedFiles, 'dist/examples/lead-worker/harness/prompts.js')),
   ]);
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';

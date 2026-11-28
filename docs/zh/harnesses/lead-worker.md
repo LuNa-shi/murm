@@ -23,7 +23,7 @@ Lead-Worker 会根据项目目录初始化团队 Git 仓库与成员沙箱，并
 
 ## 1. 注册的 Services 与非对称权限
 
-[examples/lead-worker/harness/board.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/board.ts) 在 Service Bridge（`Profile.services`）与适配器内部双重执行非对称角色权限：
+[examples/lead-worker/services/board.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/board.ts) 在 Service Bridge（`Profile.services`）与适配器内部双重执行非对称角色权限：
 
 ```ts
 export const boardPermissions = Object.freeze({
@@ -43,7 +43,7 @@ export const boardPermissions = Object.freeze({
 3. **字节级实时 Git 核验**：提交 `landed` 或 `complete` 前，适配器调用 `git.verifyDelivery()` 实时请求 Gitea 核对提交分支、commit SHA、文件路径、字节长度与精确 SHA-256（并在后续轮次校验产物中是否真正包含更新后的方向文本）。
 
 ```ts
-// 节选自 examples/lead-worker/harness/board.ts
+// 节选自 examples/lead-worker/services/board.ts
 if (['landed', 'complete'].includes(operation)) {
   const subtask = deliveryGuard(state, caller, input, role);
   delivery = await verifyDelivery({
@@ -109,7 +109,7 @@ await Promise.all(
 
 ```bash
 # 配置 run ID、不可变 Worker 镜像、OpenSandbox 地址、Gitea 管理员凭证与模型端点
-node dist/examples/lead-worker/main.js dist/examples/lead-worker/config.js
+node dist/benchmarks/lead-worker-orders/main.js dist/benchmarks/lead-worker-orders/config.js
 ```
 
 关闭时，宿主先停止接纳 Board 写入，再调用 `runtime.close()`。只有 Core 确认执行已停止且清理完成后，才关闭 Board 连接并撤销自己创建的 Gitea 凭证。执行状态未知、必需导出失败或 Board 证据写入失败时，相关依赖保持 pending，等待后续协调。共享仓库、Board 数据库、提交与 PR 保留供检查。`harness-report.json` 分别记录业务失败、已交付和未完成工作、不确定输入、清理和报告保存结果。
@@ -117,6 +117,6 @@ node dist/examples/lead-worker/main.js dist/examples/lead-worker/config.js
 ## 源码索引
 
 - 编排器（`runWorkflow`、`prepareStages`、`runStage`）：[examples/lead-worker/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/index.ts)
-- SQLite `board` Service 与因果门控：[examples/lead-worker/harness/board.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/board.ts)
+- SQLite `board` Service 与因果门控：[examples/lead-worker/services/board.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/board.ts)
 - Gitea 资源准备与 SHA-256 交付核验：[examples/lead-worker/harness/git.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/git.ts)
 - 示例配置与说明：[examples/lead-worker/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/README.md)

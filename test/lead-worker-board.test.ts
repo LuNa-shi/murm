@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createBoard } from '../examples/lead-worker/harness/board.js';
+import { createBoard } from '../examples/lead-worker/services/board.js';
 import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/core/services.js';
 
 async function setup(t, options = {}) {

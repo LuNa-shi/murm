@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { execute } from './fixtures/notes-installed-package.js';
 
 for (const [file, missing] of [
-  ['package-third-party-notices.test.js', 'src/judge/lean-module-verify.LICENSE.txt'],
+  ['package-third-party-notices.test.js', 'examples/taskpool/services/judge/lean-module-verify.LICENSE.txt'],
   ['shipped-image-build-inputs.test.js', 'examples/taskpool/deploy/service-hosts/compose.yaml'],
 ]) {
   test(`archive audit ${file} consumes the selected frozen bytes instead of repacking the checkout`, { timeout: 30_000 }, async t => {

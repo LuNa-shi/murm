@@ -1,15 +1,15 @@
-import { ServicesBridge } from '../src/agent/services-bridge.js';
+import { ServicesBridge } from '../examples/taskpool/compatibility/services-bridge.js';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { ContextService } from '../src/context/context-service.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
-import { createMissionCoordination } from '../examples/taskpool/mission-coordination.js';
-import { createMissionSubmissionAccess } from '../src/runtime/mission-submission-access.js';
-import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
-import { TaskService } from '../src/task/task-service.js';
+import { ContextService } from '../examples/taskpool/services/material/context-service.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
+import { createMissionCoordination } from '../examples/taskpool/services/mission/mission-coordination.js';
+import { createMissionSubmissionAccess } from '../examples/taskpool/services/mission/mission-submission-access.js';
+import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
 
 const missionId = 'mission:coordination';
 const workspaceId = 'workspace-coordination';

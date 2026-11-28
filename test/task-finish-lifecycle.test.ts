@@ -3,9 +3,9 @@ import test from 'node:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ContextService } from '../src/context/context-service.js';
-import { TaskService } from '../src/task/task-service.js';
-import { makeEnvelope, operationPayload } from '../src/protocol/envelope.js';
+import { ContextService } from '../examples/taskpool/services/material/context-service.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { makeEnvelope, operationPayload } from '../examples/taskpool/persistence/envelope.js';
 
 function fixture(t, database, taskContract = {}) {
   const service = new TaskService(database);

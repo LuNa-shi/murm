@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
-import { TaskService } from '../src/task/task-service.js';
-import { ContextService } from '../src/context/context-service.js';
-import { JudgeService } from '../src/judge/judge-service.js';
-import { installServiceHistory } from '../src/replay/service-history.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { ContextService } from '../examples/taskpool/services/material/context-service.js';
+import { JudgeService } from '../examples/taskpool/services/judge/judge-service.js';
+import { installServiceHistory } from '../examples/taskpool/persistence/service-history.js';
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'swarm-history-'));

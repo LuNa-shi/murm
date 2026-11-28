@@ -1,12 +1,12 @@
 import type { Profile, ErrorInfo } from './types.js';
-import type { ResolvedOpenSandboxBackendConfig } from './opensandbox-backend.js';
+import type { ResolvedOpenSandboxBackendConfig } from './sandbox/opensandbox-backend.js';
 import type { ServiceRegistration } from './services.js';
 
 import { createHash } from 'node:crypto';
 import { appendFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
-import { defaultTimedResponsesLimits } from '../agent/responses-budget-gateway.js';
+import { defaultTimedResponsesLimits } from './model/responses-budget-gateway.js';
 import { permittedServiceManifests } from './bridge.js';
 import { renderStartupPrompt } from './startup-prompt.js';
 import { getAdapterMetadata } from './services.js';

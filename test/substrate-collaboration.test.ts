@@ -22,7 +22,7 @@ test('host checkpoints verify durable search, visit, citation and reads after co
   const starts = [];
   const provider = await createLifecycleProvider(t, { onStart: body => starts.push(body) }); provider.allowDeletion();
   const { createRuntime } = await import('@luna-shi/murm');
-  const { createSubstrateService } = await import('../examples/substrate/harness/substrate.js');
+  const { createSubstrateService } = await import('../examples/substrate/services/substrate.js');
   substrate = createSubstrateService({ databasePath: join(directory, 'substrate.sqlite'), runId: 'evidence' });
 
   const backend = runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url },

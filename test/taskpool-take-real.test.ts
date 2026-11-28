@@ -6,9 +6,9 @@ import { join } from 'node:path';
 import { createRuntime } from '@luna-shi/murm';
 
 import { ServiceRegistry } from '@luna-shi/murm';
-import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../examples/taskpool/task-service.js';
-import { createTaskPoolAgentCoordinator } from '../examples/taskpool/agent-coordinator.js';
-import { executionEnvelope } from '../examples/taskpool/prepare-inputs.js';
+import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../examples/taskpool/services/task/agent-service.js';
+import { createTaskPoolAgentCoordinator } from '../examples/taskpool/harness/agent-coordinator.js';
+import { executionEnvelope } from '../examples/taskpool/harness/prepare-inputs.js';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { createTaskPoolTakeUpstream } from './fixtures/taskpool-task-upstream.js';
 import { createAcceptanceDeadline } from './fixtures/taskpool-model-acceptance.js';

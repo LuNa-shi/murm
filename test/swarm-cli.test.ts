@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { runSwarmCli } from '../src/cli/swarm-cli.js';
+import { createSwarmCli } from '../src/cli/swarm-cli.js';
+import { taskPoolCommands } from '../examples/taskpool/cli.js';
+const { runSwarmCli } = createSwarmCli(taskPoolCommands);
+
 
 for (const contractVersion of [undefined, '2']) for (const timeoutMs of [undefined, 2_430_000]) test(`swarm take preserves its request ID after transport loss (Bridge: ${contractVersion ?? 'legacy'}, timeout: ${timeoutMs ?? 'default'})`, async t => {
   let invocation; let calls = 0; let metadataCalls = 0;

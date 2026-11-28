@@ -1,11 +1,11 @@
-import { request as httpRequest, type OutgoingHttpHeaders } from 'node:http';
+import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 
 // Internal service endpoints are direct HTTP(S) URLs. Keep the caller's abort
 // deadline across headers and body without fetch's separate five-minute limit.
 export interface HttpRequestOptions {
   method?: string;
-  headers?: OutgoingHttpHeaders;
+  headers?: Record<string, string | number | string[] | undefined>;
   body?: string | Uint8Array;
   signal?: AbortSignal;
 }

@@ -33,9 +33,9 @@ murm --harness subagents --prompt "修复解析器并补充测试"
 
 ## 实现放在哪里
 
-五种机制及其协作代码分别归属 `examples/subagents`、`examples/taskpool`、`examples/peermesh`、`examples/substrate`、`examples/lead-worker`。后三者将控制器和 Service 放在各自的 `harness/` 子目录。共用的项目输入、宿主/RPC 和报告工具放在私有的 `src/harness/`。内置名称只是 CLI 的便捷加载别名，不表示该机制归 Core 所有，也不增加 SDK 导出。
+五种机制的协作策略和服务分别归属各自的 `examples/` 目录。通用宿主负责加载入口、采集项目和处理 RPC。内置名称加载包内的同一个项目入口。
 
-当前示例仍与仓库一起构建，并依赖部分私有工具；TaskPool 还使用留在 `src` 中的领域模块。因此，仅将一个目录复制到其他项目还不能完成独立安装。[仓库调整实施方案](../../designs/repository-layout.md)列出了后续提取范围和独立 SDK 使用方的验收条件。
+五个例子都能单独复制到其他目录，安装候选 SDK 后在各自目录构建和启动。请按[示例索引](../../../examples/README.md#run-an-example-from-its-directory)准备候选包和外部设施。
 
 ## 五种协作模式一眼看懂
 

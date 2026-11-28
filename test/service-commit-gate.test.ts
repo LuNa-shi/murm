@@ -3,9 +3,9 @@ import test from 'node:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TaskService } from '../src/task/task-service.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
-import { ServiceCommitGate } from '../src/sdk/service-commit-gate.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
+import { ServiceCommitGate } from '../examples/taskpool/deploy/service-hosts/service-commit-gate.js';
 
 test('an unresolved service commit fences lifecycle writes across coordinator restart until its exact durable receipt', t => {
   const root = mkdtempSync(join(tmpdir(), 'service-commit-'));

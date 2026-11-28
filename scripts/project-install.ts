@@ -5,7 +5,7 @@ import { constants } from 'node:fs';
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkFileSpace } from './file-tree-stream.js';
+import { checkFileSpace } from '../src/core/files/file-tree-stream.js';
 const hash = (value: any) => createHash('sha256').update(value).digest('hex');
 export const canonical = (value: any): string => value === null || typeof value !== 'object' ? JSON.stringify(value)
   : Array.isArray(value) ? `[${value.map(canonical).join(',')}]`

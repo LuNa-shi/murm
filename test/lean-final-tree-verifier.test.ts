@@ -4,9 +4,9 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { LeanChecker } from '../src/judge/lean-adapter.js';
-import { agentCheckResult, normalizeCheckerResult } from '../src/judge/check-result.js';
-import { LeanFinalTreeVerifier } from '../src/judge/lean-final-tree-verifier.js';
+import { LeanChecker } from '../examples/taskpool/services/judge/lean-adapter.js';
+import { agentCheckResult, normalizeCheckerResult } from '../examples/taskpool/services/judge/check-result.js';
+import { LeanFinalTreeVerifier } from '../examples/taskpool/services/judge/lean-final-tree-verifier.js';
 
 const comparatorRoot = process.env.MURM_TEST_COMPARATOR_ROOT;
 const leanRoot = process.env.MURM_TEST_LEAN_ROOT;

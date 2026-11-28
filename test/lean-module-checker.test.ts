@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { LeanFinalTreeVerifier } from '../src/judge/lean-final-tree-verifier.js';
-import { LeanChecker } from '../src/judge/lean-adapter.js';
-import { agentCheckResult, normalizeCheckerResult } from '../src/judge/check-result.js';
+import { LeanFinalTreeVerifier } from '../examples/taskpool/services/judge/lean-final-tree-verifier.js';
+import { LeanChecker } from '../examples/taskpool/services/judge/lean-adapter.js';
+import { agentCheckResult, normalizeCheckerResult } from '../examples/taskpool/services/judge/check-result.js';
 
 const leanRoot = process.env.MURM_TEST_LEAN_ROOT;
 const real = { skip: !leanRoot };

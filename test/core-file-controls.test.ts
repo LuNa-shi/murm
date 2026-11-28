@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
-import { completeDigest, decodeFileSeed, partialDigest } from '../scripts/core-file-seed.js';
+import { completeDigest, decodeFileSeed, partialDigest } from '../src/core/files/core-file-seed.js';
 
 const payload = { 'bin/sample': { encoding: 'base64', data: 'AP+A', mode: 0o755 } };
 

@@ -1,10 +1,6 @@
-import { createRuntime } from '@luna-shi/murm';
+import { createRuntime, runInput, createInputAdmission, ProjectPreflightError, runWithReport } from '@luna-shi/murm';
 import { join } from 'node:path';
-import { createSubstrateService } from './substrate.js';
-import { runInput } from '../../../src/harness/run-input.js';
-import { createInputAdmission } from '../../../src/harness/input-admission.js';
-import { ProjectPreflightError } from '../../../src/harness/project-input.js';
-import { runWithReport } from '../../../src/harness/run-report.js';
+import { createSubstrateService } from '../services/substrate.js';
 
 export const peerPrompt = 'Work as one peer in a fixed pool. Preserve private work between turns. Read and verify any shared contribution before citing it in a new publication.';
 export const cyclePrompt = 'Search relevant shared content, visit the originals, perform useful work, and publish a self-contained contribution with references to the content actually adopted. Keep evidence in your private work directory.';

@@ -3,18 +3,18 @@ import test from 'node:test';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
-import { TaskService } from '../src/task/task-service.js';
-import { RemoteJudgeService } from '../src/sdk/remote-judge-service.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { RemoteJudgeService } from '../examples/taskpool/deploy/service-hosts/remote-judge-service.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { JudgeService } from '../src/judge/judge-service.js';
-import { LeanChecker } from '../src/judge/lean-adapter.js';
-import { LeanFinalTreeVerifier } from '../src/judge/lean-final-tree-verifier.js';
+import { JudgeService } from '../examples/taskpool/services/judge/judge-service.js';
+import { LeanChecker } from '../examples/taskpool/services/judge/lean-adapter.js';
+import { LeanFinalTreeVerifier } from '../examples/taskpool/services/judge/lean-final-tree-verifier.js';
 import { MurmError } from '../src/errors.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 
 const manifest = { fixture_id: 'module-admission', putnambench_commit: 'a'.repeat(40), problem_file: 'Target.lean',
   problem_file_hash: 'b'.repeat(64), lean_toolchain: 'leanprover/lean4:v4.33.1', mathlib_version: 'fixture',

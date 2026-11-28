@@ -10,7 +10,7 @@ import { transport } from './fixtures/core-input-backend.js';
 // Replace the external backend boundary, leaving the public Runtime and its
 // state/receipt/event implementation intact. No production injection API.
 const hooks = registerHooks({ resolve(specifier, context, next) {
-  if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) {
+  if (specifier === './sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) {
     return { url: new URL('./fixtures/core-input-backend.js', import.meta.url).href, shortCircuit: true };
   }
   return next(specifier, context);

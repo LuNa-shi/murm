@@ -58,7 +58,7 @@ Current behavior is maintained here and in the user guides. Human-approved Issue
 
 Superseded phase plans and migration requirements are retained in Git history, rather than beside this manual as competing current contracts. Documentation cleanup does not change an ongoing Issue's approved acceptance or resource budget.
 
-The [repository implementation plan](../designs/repository-layout.md) records completed ownership moves and remaining extraction. Concrete collaboration modules are under `examples/`; `src/harness/` contains common host support. TaskPool domain extraction and independently installable examples remain unfinished. Use [deployment ownership](../../deploy/README.md) and the [example index](../../examples/README.md) for common versus per-example facilities.
+The [repository migration](../designs/repository-layout.md) records the ownership changes and acceptance scope. The five applications use the [public Harness author contract](23-project-harness.md#authoring-an-example) and own their concrete coordination and Services under `examples/`. See the [example index](../../examples/README.md) and [deployment guide](../../deploy/README.md) for their required facilities.
 
 ## Updating and checking the manual
 

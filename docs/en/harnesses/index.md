@@ -35,7 +35,7 @@ Default setup prepares the common runtime deployment. PeerMesh and Lead-Worker c
 
 The five mechanisms and their coordination code belong to `examples/subagents`, `examples/taskpool`, `examples/peermesh`, `examples/substrate` and `examples/lead-worker`. The latter three keep their controllers and Services under a local `harness/` directory. Common project input, host/RPC and report helpers live in private `src/harness/` support. A built-in alias is a convenience loader, not a Core-owned mechanism or an additional SDK export.
 
-The examples currently build with the repository and still use private helpers; TaskPool also uses domain modules remaining under `src`. Copying one directory into an unrelated project is not yet a complete installation path. The [repository implementation plan](../../designs/repository-layout.md) defines the remaining extraction and the acceptance check for independent SDK consumers.
+Each of the five examples can be copied to another directory, installed against the candidate SDK and built there. Only the SDK package root and declared dependencies are used. See the [example index](../../../examples/README.md#run-an-example-from-its-directory) for the commands and external facilities.
 
 ## Five collaboration patterns at a glance
 

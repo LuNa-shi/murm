@@ -25,39 +25,38 @@ configuration selects another supported policy.
 
 ## Run an example from its directory
 
-Install dependencies and build once in the checkout root:
+Prepare a matching Worker, OpenSandbox connection and model route using
+[Quickstart](../docs/en/quickstart.md). The source candidate provides the
+Harness author API used by these examples. Pack it once from the checkout root:
 
 ```sh
 npm ci --ignore-scripts
-npm run build
+npm pack
+export MURM_ARCHIVE="$PWD/luna-shi-murm-0.2.0.tgz"
 ```
 
-Follow [Quickstart](../docs/en/quickstart.md) to prepare OpenSandbox and the Worker,
-then provide a model route. For the default Pi executor:
+Each example directory can be copied on its own. Install the exact archive and
+build the example from its own directory:
 
 ```sh
-export MURM_MODEL_URL='https://api.openai.com/v1/responses'
-export MURM_MODEL_TOKEN='your-token'
-export MURM_MODEL_PROVIDER='openai'
-export MURM_MODEL_ID='gpt-5.4'
 cd examples/subagents
-node ../../dist/scripts/murm.js --harness subagents \
-  --cwd /absolute/path/to/project --prompt 'Implement the requested change and verify it'
+npm install --no-save "$MURM_ARCHIVE"
+npm run check
+npm run build
+npm run start -- --cwd /absolute/path/to/project --prompt 'Implement and verify the requested change'
 ```
 
-Change the example directory and Harness name together. A consumer with the CLI
-installed can run `murm --harness <name> --prompt '...'` directly in its project.
-The CLI captures the initial directory and stores run output outside it by
-default. A separate workload file is not required. `--config` selects trusted
-JavaScript run configuration; it does not replace the project input.
+Use the example's README for its configuration and external facilities.
+Run `murm --harness /absolute/path/to/example/dist/project.js --prompt '…'` from
+the input project to use the same editable example from elsewhere. The candidate
+CLI also includes each example's built-in name as a convenience. The host
+captures the initial directory and writes outputs outside it by default.
+Use `--config` for trusted JavaScript run configuration.
 
-Common model, executor and Sandbox environment variables are described in
-[Quickstart](../docs/en/quickstart.md). The examples retain their scoped variables
-as fallbacks. Existing benchmark/fixed-task entrypoints have their own explicit
-configuration and should not be confused with `murm --harness`.
-The three older scoped model endpoint variables keep their historical Kimi K3
-defaults when no common model URL is selected; explicit provider/model settings
-override those defaults.
+The model, executor and Sandbox environment variables are documented in
+[Quickstart](../docs/en/quickstart.md). Existing scoped variables remain
+fallbacks. Separate benchmarks take explicit configuration and fixtures.
+See [FATE](../benchmarks/fate/README.md) and [Lead–Worker Orders](../benchmarks/lead-worker-orders/README.md).
 
 ## Smaller SDK tutorials
 
@@ -72,10 +71,7 @@ override those defaults.
 
 ## Repository boundaries
 
-Concrete collaboration policy and its Services belong beside the example.
-The CLI's built-in names are convenience loaders for these modules; they do not
-make a mechanism part of the Core SDK. The current checkout builds examples
-with the main package. Some project-host and TaskPool domain dependencies are
-still repository-internal, so copying just one directory is not yet a supported
-standalone package installation. See the [repository cleanup plan](../docs/designs/repository-layout.md) for the
-remaining extraction and package verification work.
+Each project owns its collaboration and Services. Its TypeScript imports the
+package root and uses a local ESM project entry. The CLI built-in aliases load
+the bundled copies of those same entries. See the [Harness author contract](../docs/architecture/23-project-harness.md#authoring-an-example)
+and the [repository migration](../docs/designs/repository-layout.md).

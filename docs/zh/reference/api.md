@@ -33,8 +33,13 @@ npm install --ignore-scripts /absolute/path/to/luna-shi-murm-0.2.0.tgz
 | `ServiceRegistry` | 类 | 存放传入 `createRuntime()` 的 Service 注册项。 |
 | `createInProcessAdapter(impl)` | 函数 | 将宿主进程内的 `invoke` 处理器（及可选 `exportState`）包装为 `ServiceAdapter`。 |
 | `createHttpJsonAdapter(options)` | 函数 | 将外部 HTTP JSON Service 包装为 `ServiceAdapter`（携带 `Idempotency-Key` 与可选 Bearer 认证）。 |
+| `ProjectHarness`、`ProjectHarnessContext`、`ProjectHarnessResult`、`HarnessInput`、`HarnessJson` | 类型 | 定义项目模块入口、采集的项目、宿主回调和最终结果。 |
+| `ProjectPreflightError`、`projectConfiguration`、`observeProjectRuntime`、`projectResult` | 类和函数 | 处理资源分配前的拒绝、配置、Runtime 状态和结果。 |
+| `runInput`、`createInputAdmission`、`runWithReport`、`readHarnessResult`、`createOwnedResources` | 函数 | 管理独占回合、停止接收输入、读写报告并清理本次运行拥有的资源。 |
+| `checkGitProject`、`seedTeamRepository`、`seededCheckoutInstruction`、`initializeGitRepository`、`importGitTree`、`commitGitTree`、`isGitTreePath` | 函数 | 检查 Git 项目，导入并提交采集的 FileTree，生成初始检出指令。 |
+| `decodeFileTree`、`snapshotFileTree`、`completeFileTreeDigest`、`stableStringify`、`MurmError`、`requestHttp`、`httpClient` | 函数和类 | 读取受限文件内容、计算稳定摘要、保留错误码并连接可信服务。 |
 
-五种参考 Harness 的实现位于各自的 `examples/` 目录。内置 CLI 名称负责加载这些模块，不增加 Core SDK 导出。`src/harness/` 存放私有的通用宿主/RPC、项目输入和报告工具。示例仍依赖部分仓库内部模块；[独立示例打包](../../designs/repository-layout.md#make-each-example-an-independent-sdk-consumer)属于后续工作。
+五种[参考应用](../../../examples/README.md)都通过此包根入口编译。[Harness 作者契约](../../architecture/23-project-harness.md#authoring-an-example)说明了生命周期和文件处理。内置别名加载 SDK 中打包好的项目入口。
 
 Runtime 创建自己的 Bridge、模型网关与内置 `agent` Service。示例创建的进程内 Service 无须独立容器；外部协作设施和可选 [Mathlib Search](../../../examples/services/mathlib-search/README.md)按示例声明部署与资源归属，向 SDK 注册 Service 本身不会启动或销毁这些设施。详见 [部署说明](../../../deploy/README.md)。
 

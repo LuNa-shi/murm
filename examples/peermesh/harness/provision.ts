@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { seedTeamRepository } from '../../../src/harness/project-git.js';
-import { httpClient } from '../../../src/harness/http.js';
+import { seedTeamRepository, httpClient } from '@luna-shi/murm';
 
 export const initialFile = 'INITIAL\n';
 export const initialIssue = 'Apply the fixed acceptance change on your private branch; preserve the second-turn private checkpoint.';

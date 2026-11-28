@@ -4,8 +4,8 @@ import type { ServiceRegistration } from './services.js';
 import { DEFAULT_FILE_POLICY, type FileBudget } from './file-policy.js';
 
 import { isIPv4 } from 'node:net';
-import { snapshotFileSeed } from '../../scripts/core-file-seed.js';
-import { snapshotCollectionSpec } from '../../scripts/core-collection.js';
+import { snapshotFileSeed } from './files/core-file-seed.js';
+import { snapshotCollectionSpec } from './files/core-collection.js';
 
 export function validId(value: unknown): value is string {
   return typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(value);

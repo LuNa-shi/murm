@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { ContextService } from '../src/context/context-service.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
-import { TaskService } from '../src/task/task-service.js';
+import { ContextService } from '../examples/taskpool/services/material/context-service.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
 
 function fixture(t) {
   const taskService = new TaskService();

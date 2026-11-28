@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createPeerMeshServices } from '../examples/peermesh/harness/services.js';
+import { createPeerMeshServices } from '../examples/peermesh/services/services.js';
 import { snapshotServiceRegistry, invokeService } from '../src/core/services.js';
 
 test('all three Services resolve only their own trusted account and fix board identity', async t => {

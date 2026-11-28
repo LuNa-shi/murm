@@ -15,27 +15,54 @@ These are repository-owned texts and deterministic examples, not transcripts of 
 | task-service.ts action | Material-available notification payload, or invalid typed dependency error. The payload action is visible when notification data is read/composed; the retained Runtime no longer renders or sends a notification user message. |
 
 The action values integration and task are consumption/contract enums, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. The actions execute and queue_status are private Judge authorization protocol enums, never Agent instructions. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.
-## action — src/agent/services-bridge.ts:532
+## action — examples/taskpool/compatibility/services-bridge.ts:532
 
-Source: [src/agent/services-bridge.ts](../../../src/agent/services-bridge.ts). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
+Source: [examples/taskpool/compatibility/services-bridge.ts](../../../examples/taskpool/compatibility/services-bridge.ts). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
 Body SHA-256: `a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd`
 
 ````text
 call_list_tools_or_get_service_metadata
 ````
-## action — src/agent/services-bridge.ts:540
+## action — examples/taskpool/compatibility/services-bridge.ts:540
 
-Source: [src/agent/services-bridge.ts](../../../src/agent/services-bridge.ts). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
+Source: [examples/taskpool/compatibility/services-bridge.ts](../../../examples/taskpool/compatibility/services-bridge.ts). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
 Body SHA-256: `7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e`
 
 ````text
 retry_with_the_registered_input_schema
 ````
-## guidance — src/runtime/mission-workspace.ts:10
+## guidance — examples/taskpool/services/task/task-service.ts:1501
 
-Source: [src/runtime/mission-workspace.ts](../../../src/runtime/mission-workspace.ts). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
+Source: [examples/taskpool/services/task/task-service.ts](../../../examples/taskpool/services/task/task-service.ts). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
+
+Body SHA-256: `7e00a9a0673a67a15ea3cc67a3ce0331614bdf9a024122bbf2821ad7cb98844f`
+
+````text
+Read relevant continuation pages and Task detail before taking. New Tasks after this scan began require a fresh query.
+````
+## action — examples/taskpool/services/task/task-service.ts:1619
+
+Source: [examples/taskpool/services/task/task-service.ts](../../../examples/taskpool/services/task/task-service.ts). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
+
+Body SHA-256: `70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f`
+
+````text
+inspect_material_and_record_task_feedback
+````
+## guidance — examples/taskpool/services/task/task-service.ts:1769
+
+Source: [examples/taskpool/services/task/task-service.ts](../../../examples/taskpool/services/task/task-service.ts). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
+
+Body SHA-256: `0c29e58c66dcf4acc44d132fc797f70b6ecbf208337c14f45e8bfe0b5717385b`
+
+````text
+Use task list for continued discovery. Status summarizes the first bounded window.
+````
+## guidance — examples/taskpool/services/workspace/mission-workspace.ts:10
+
+Source: [examples/taskpool/services/workspace/mission-workspace.ts](../../../examples/taskpool/services/workspace/mission-workspace.ts). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
 
 Body SHA-256: `18cebaa7bc8bb2d860f6fbfb457f2ff28866d9c9935ea78da8ef4c317c3e32db`
 
@@ -46,93 +73,66 @@ Resolve the intended ordinary project paths, remove this alternatives directory,
 Resolution records your decision; it does not establish correctness or replace a required check.
 
 ````
-## remediation — src/runtime/workspace-contract.ts:36
+## remediation — examples/taskpool/services/workspace/workspace-contract.ts:36
 
-Source: [src/runtime/workspace-contract.ts](../../../src/runtime/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
+Source: [examples/taskpool/services/workspace/workspace-contract.ts](../../../examples/taskpool/services/workspace/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
 
 Body SHA-256: `24bc9dbf3b8d5cd7bd18049833a304b79a170672842e9a2883a885e95d31aa6f`
 
 ````text
 Use a Workspace-relative path declared by the Task contract.
 ````
-## remediation — src/runtime/workspace-contract.ts:44
+## remediation — examples/taskpool/services/workspace/workspace-contract.ts:44
 
-Source: [src/runtime/workspace-contract.ts](../../../src/runtime/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
+Source: [examples/taskpool/services/workspace/workspace-contract.ts](../../../examples/taskpool/services/workspace/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
 
 Body SHA-256: `c84511b74f73e8f7c67f20a2e7bc0b05ea5faf82d1ece7929c9868e6780ea2f1`
 
 ````text
 Use a relative path below the current Task Workspace.
 ````
-## remediation — src/runtime/workspace-contract.ts:52
+## remediation — examples/taskpool/services/workspace/workspace-contract.ts:52
 
-Source: [src/runtime/workspace-contract.ts](../../../src/runtime/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
+Source: [examples/taskpool/services/workspace/workspace-contract.ts](../../../examples/taskpool/services/workspace/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
 
 Body SHA-256: `5f9f97c1ee95ef8dcfc2a716dde395f69419e44fad0b056099e9eb1853ac50c2`
 
 ````text
 Use a project input or declared output path; .swarm is Runtime-owned.
 ````
-## remediation — src/runtime/workspace-contract.ts:147
+## remediation — examples/taskpool/services/workspace/workspace-contract.ts:147
 
-Source: [src/runtime/workspace-contract.ts](../../../src/runtime/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
+Source: [examples/taskpool/services/workspace/workspace-contract.ts](../../../examples/taskpool/services/workspace/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
 
 Body SHA-256: `a8e576ad724ea7364d2e597ce43a8cba8de5bde747fe3f82553feb360a11235e`
 
 ````text
 Read a required input or a file listed by workspace_list_files.
 ````
-## remediation — src/runtime/workspace-contract.ts:155
+## remediation — examples/taskpool/services/workspace/workspace-contract.ts:155
 
-Source: [src/runtime/workspace-contract.ts](../../../src/runtime/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
+Source: [examples/taskpool/services/workspace/workspace-contract.ts](../../../examples/taskpool/services/workspace/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
 
 Body SHA-256: `7549e00a45aaaa09ee3b7bde2a9fa7595021c7f545f54c4cc9767e31c2b109ed`
 
 ````text
 Fix the Task fixture or Workspace manifest before reading this required input.
 ````
-## remediation — src/runtime/workspace-contract.ts:169
+## remediation — examples/taskpool/services/workspace/workspace-contract.ts:169
 
-Source: [src/runtime/workspace-contract.ts](../../../src/runtime/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
+Source: [examples/taskpool/services/workspace/workspace-contract.ts](../../../examples/taskpool/services/workspace/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
 
 Body SHA-256: `60e282eebd16082cc7e18cef63bb5f8671a6c643ff02ee47789a9e8170c76c16`
 
 ````text
 Fix the Task fixture or Workspace manifest before starting the Execution.
 ````
-## remediation — src/runtime/workspace-contract.ts:177
+## remediation — examples/taskpool/services/workspace/workspace-contract.ts:177
 
-Source: [src/runtime/workspace-contract.ts](../../../src/runtime/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
+Source: [examples/taskpool/services/workspace/workspace-contract.ts](../../../examples/taskpool/services/workspace/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
 
 Body SHA-256: `f54f33ecfd41745a310aa5c249667ade5e1fb31f77528b4b0bb1843188745631`
 
 ````text
 Refresh the locked input or update the Task contract to the intended fixture hash.
-````
-## guidance — src/task/task-service.ts:1501
-
-Source: [src/task/task-service.ts](../../../src/task/task-service.ts). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
-
-Body SHA-256: `7e00a9a0673a67a15ea3cc67a3ce0331614bdf9a024122bbf2821ad7cb98844f`
-
-````text
-Read relevant continuation pages and Task detail before taking. New Tasks after this scan began require a fresh query.
-````
-## action — src/task/task-service.ts:1619
-
-Source: [src/task/task-service.ts](../../../src/task/task-service.ts). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
-
-Body SHA-256: `70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f`
-
-````text
-inspect_material_and_record_task_feedback
-````
-## guidance — src/task/task-service.ts:1769
-
-Source: [src/task/task-service.ts](../../../src/task/task-service.ts). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
-
-Body SHA-256: `0c29e58c66dcf4acc44d132fc797f70b6ecbf208337c14f45e8bfe0b5717385b`
-
-````text
-Use task list for continued discovery. Status summarizes the first bounded window.
 ````

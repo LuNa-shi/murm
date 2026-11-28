@@ -6,13 +6,13 @@ import {
 import { runLocalSmoke } from './local-setup-smoke.js';
 import { loadLocalProjectConfig } from './local-setup-template.js';
 import { prepareWorkerImage } from './local-setup-worker.js';
-import { selectExecutorDriver } from '../src/core/executor-driver.js';
+import { selectExecutorDriver } from '../src/core/sandbox/executor-driver.js';
 import { workerImageFor } from '../src/core/worker-image.js';
 import type { ExecutorSelection } from '../src/core/executor-adapter.js';
 import { resolveFilePolicy, type ResolvedFilePolicy } from '../src/core/file-policy.js';
-import { claimOpenSandboxBackend, createSandbox } from '../src/core/opensandbox-backend.js';
-import { snapshotModel } from '../src/core/model-access.js';
-import { modelClientProtocol } from '../src/core/model-transport.js';
+import { claimOpenSandboxBackend, createSandbox } from '../src/core/sandbox/opensandbox-backend.js';
+import { snapshotModel } from '../src/core/model/model-access.js';
+import { modelClientProtocol } from '../src/core/model/model-transport.js';
 import type { SandboxConfig } from '../src/core/backend-config.js';
 import type { LocalCommand } from './murm-arguments.js';
 

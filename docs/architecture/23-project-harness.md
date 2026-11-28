@@ -2,6 +2,30 @@
 
 The installed `murm --harness` command runs one project. Its task input is a host directory and one nonblank prompt. Run configuration can choose resources, services, and limits. [Launch and configuration](07-run-configuration.md) covers host preparation and the editable SDK template.
 
+## Authoring an example
+
+Each of the five mechanism directories contains a `package.json`, `tsconfig.json`
+and `project.ts`. `npm run build` emits `dist/project.js` in that directory.
+`npm run start -- --cwd <project> --prompt <text>` passes it to the installed
+CLI. An absolute `--harness` path selects the editable module from any working
+directory. Built-in aliases use the copies compiled into the installed package.
+The examples' Services and scheduling code import the package root or local
+modules. TaskPool chooses its Workspace revision after the initial capture.
+PeerMesh and Lead–Worker initialize their team repositories from a shared SDK
+Git/FileTree helper, then own branch coordination and delivery.
+
+A project module declares the `ProjectHarness` contract from the package root.
+Use `projectConfiguration` to combine host-provided configuration and defaults
+and `ProjectPreflightError` for an invalid configuration detected before any
+allocation. Runtime observations flow through `observeProjectRuntime` and the
+host's status/event callbacks. `runInput` tracks a turn through matching send
+and settlement receipts. `createInputAdmission` fences local admissions when
+closing. `runWithReport` records business outcome, cleanup and save failure,
+while `projectResult` supplies the common result projection. The project module
+owns opening its Runtime and joining or reconciling any facilities it creates.
+The public host helpers do not give its callers Agent or Service authority.
+See the [package exports](../en/reference/api.md#public-package-exports).
+
 ## Startup and captured source
 
 1. The CLI records the invocation directory. It loads a built-in module, resolves a local `.mjs` or ESM `.js` against the invocation directory, or resolves an installed package at that directory using Node's import conditions. Modules export one default object with a stable `id`, `apiVersion: 1`, `run(context)`, and optional `input: true`. Loading validates this shape before any Run is admitted. Modules manage only their own Runtime and facilities.

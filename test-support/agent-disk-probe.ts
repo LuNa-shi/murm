@@ -5,8 +5,8 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
-import { DockerAgentDisk } from '../src/runtime/docker-agent-disk.js';
-import { openSandboxMissionKey, openSandboxAgentKey } from '../src/runtime/opensandbox-metadata.js';
+import { DockerAgentDisk } from '../src/core/sandbox/docker-agent-disk.js';
+import { openSandboxMissionKey, openSandboxAgentKey } from '../src/core/sandbox/opensandbox-metadata.js';
 
 const exec = promisify(execFile);
 const docker = (...args: any) => exec('docker', args, { timeout: 20_000 });
@@ -14,7 +14,7 @@ const sandboxId = `disk-probe-${randomUUID()}`;
 const name = `sandbox-${sandboxId}`;
 const agent: any = { mission_id: 'mission:disk', agent_id: 'agent:disk', resource_key: 'agent:disk-resource' };
 const catalog = JSON.parse((await readFile(new URL('../deploy/worker/pi-models.json', import.meta.url))) as unknown as string);
-const { assertShippedModelPair } = await import('../src/agent/model-catalog.js');
+const { assertShippedModelPair } = await import('../src/core/model/model-catalog.js');
 const modelCatalogResource = await assertShippedModelPair({ provider: 'gpt_proxy', model: catalog.providers.gpt_proxy.models[0].id });
 const request = async (route: any, payload?: unknown) => JSON.parse((await docker('exec', name, 'node', '-e', `
   const [path, data] = process.argv.slice(1);

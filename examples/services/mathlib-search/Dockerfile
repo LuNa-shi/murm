@@ -5,6 +5,8 @@ RUN npm ci --include=dev --ignore-scripts --no-audit --no-fund
 COPY src ./src
 COPY scripts ./scripts
 COPY examples ./examples
+COPY benchmarks/fate ./benchmarks/fate
+COPY benchmarks/lead-worker-orders ./benchmarks/lead-worker-orders
 COPY test-support/subagents/communication-fixture-prompts.ts ./test-support/subagents/
 COPY deploy ./deploy
 RUN npm run build

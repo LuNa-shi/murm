@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { TaskService } from '../src/task/task-service.js';
-import { JudgeService } from '../src/judge/judge-service.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { JudgeService } from '../examples/taskpool/services/judge/judge-service.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 
 function fixture(t, { preflight = async () => {}, database = ':memory:', judgeDb = null } = {}) {
   const tasks = new TaskService(database); t.after(() => tasks.close());
@@ -78,7 +78,7 @@ test('late lifecycle rejection does not accuse an unexamined source of cheating'
 });
 
 for (const phase of ['preflight', 'source-preparation']) test(`production Lean adapter cannot launch after ${phase} crosses soft closeout`, async t => {
-  const { LeanChecker } = await import('../src/judge/lean-adapter.js');
+  const { LeanChecker } = await import('../examples/taskpool/services/judge/lean-adapter.js');
   const { mkdtemp, rm, writeFile } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
@@ -100,7 +100,7 @@ for (const phase of ['preflight', 'source-preparation']) test(`production Lean a
 });
 
 test('real second connection cannot accept finish during synchronous Lean spawn and can afterward', async t => {
-  const { LeanChecker } = await import('../src/judge/lean-adapter.js');
+  const { LeanChecker } = await import('../examples/taskpool/services/judge/lean-adapter.js');
   const { mkdtemp, rm, writeFile } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');

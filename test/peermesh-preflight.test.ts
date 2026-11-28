@@ -7,8 +7,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRuntime } from '../src/core/index.js';
 import { createPeerProfile } from '../examples/peermesh/harness/index.js';
-import { createPeerMeshServices } from '../examples/peermesh/harness/services.js';
-import { createBoardLauncher } from '../examples/peermesh/harness/board-process.js';
+import { createPeerMeshServices } from '../examples/peermesh/services/services.js';
+import { createBoardLauncher } from '../examples/peermesh/services/board-process.js';
 import { execute } from './fixtures/notes-installed-package.js';
 
 test('foreground PeerMesh example validates host configuration without starting facilities', async t => {
@@ -16,7 +16,7 @@ test('foreground PeerMesh example validates host configuration without starting 
   t.after(() => rm(directory, { recursive: true, force: true }));
   const config = new URL('../examples/peermesh/config.js', import.meta.url);
   const cli = new URL('../scripts/run-harness.js', import.meta.url);
-  const backendModule = new URL('../src/core/opensandbox-backend.js', import.meta.url);
+  const backendModule = new URL('../src/core/sandbox/opensandbox-backend.js', import.meta.url);
   // Configuration validation does not depend on host network-interface discovery.
   const env = { PATH: process.env.PATH, MURM_ADVERTISE_HOST: '192.0.2.1' };
   const options = { cwd: directory, env, timeout: 5_000 };

@@ -51,7 +51,7 @@ if (operation === 'preflight') {
 } else {
   const { runPutnamTaskPool } = await import('./run.ts');
   const { createSandbox } = await import('@luna-shi/murm');
-  const { assertShippedModelPair } = await import('../../dist/src/agent/model-catalog.js');
+  const { assertShippedModelPair } = await import('../../dist/src/core/model/model-catalog.js');
   await assertShippedModelPair({ provider: problem.provider, model: problem.model });
   const environmentPrefix = 'PI_' + problem.provider.toUpperCase();
   let base = process.env[environmentPrefix + '_BASE_URL'];

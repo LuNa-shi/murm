@@ -3,16 +3,16 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
-import { ServicesBridge } from '../src/agent/services-bridge.js';
-import { ServiceRegistry } from '../src/sdk/service-registry.js';
-import { createHttpJsonAdapter } from '../src/sdk/service-adapter.js';
+import { AGENT_ROLES, buildCapabilityProfile } from '../examples/taskpool/compatibility/capability-profile.js';
+import { ServicesBridge } from '../examples/taskpool/compatibility/services-bridge.js';
+import { ServiceRegistry } from '../examples/taskpool/deploy/service-hosts/service-registry.js';
+import { createHttpJsonAdapter } from '../examples/taskpool/deploy/service-hosts/service-adapter.js';
 import { createMathlibSearchManifest, createMathlibSearchService } from '../examples/services/mathlib-search/service.js';
-import { createServiceManifest } from '../src/sdk/service-manifest.js';
-import { createServiceHost } from '../src/sdk/service-host.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
-import { registerUserService, createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
-import { agentServiceDirectory } from '../src/agent/agent-contract.js';
+import { createServiceManifest } from '../examples/taskpool/deploy/service-hosts/service-manifest.js';
+import { createServiceHost } from '../examples/taskpool/deploy/service-hosts/service-host.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
+import { registerUserService, createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
+import { agentServiceDirectory } from '../examples/taskpool/prompts/agent-contract.js';
 
 async function sourceFixture() {
   const root = await mkdtemp(join(tmpdir(), 'murm-mathlib-'));

@@ -8,11 +8,11 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { controls } from './fixtures/taskpool-controller-backend.js';
-import { createTaskPoolTaskService } from '../examples/taskpool/task-service.js';
+import { createTaskPoolTaskService } from '../examples/taskpool/services/task/agent-service.js';
 import { ServiceRegistry } from '../src/core/services.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next) {
-  if(specifier==='./opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
+  if(specifier==='./sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
 const {createRuntime}=await import('@luna-shi/murm');hooks.deregister();

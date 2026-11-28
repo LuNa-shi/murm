@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { fetchOrdersCandidate, withOrdersCandidate } from '../../examples/lead-worker/dynamic-orders.js';
+import { fetchOrdersCandidate, withOrdersCandidate } from '../../benchmarks/lead-worker-orders/dynamic-orders.js';
 import { httpClient } from '../../src/harness/http.js';
 
 const sha1 = /^[a-f0-9]{40}$/;

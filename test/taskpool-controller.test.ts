@@ -5,14 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { request } from 'node:http';
-import { createTaskPoolPublicationServices } from '../examples/taskpool/publication-services.js';
+import { createTaskPoolPublicationServices } from '../examples/taskpool/services/workspace/publication-services.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { transport, controls } from './fixtures/taskpool-controller-backend.js';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
-import { createTaskPoolController } from '../examples/taskpool/controller.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { createTaskPoolController } from '../examples/taskpool/harness/controller.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next){
-  if(specifier==='./opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
+  if(specifier==='./sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
 const {createRuntime}=await import('../src/core/index.js'); hooks.deregister();

@@ -192,17 +192,17 @@ test('candidate package admits only declared distribution roots and retains exec
   await writeFile(join(root, '.gitignore'), await readFile(new URL('../../.gitignore', import.meta.url)));
   const resources = [
     'dist/src/core/index.js', 'dist/src/core/index.d.ts', 'dist/src/core/services.js', 'dist/src/core/services.d.ts',
-    'dist/src/core/opensandbox-backend.js', 'dist/src/core/backend-config.d.ts',
+    'dist/src/core/sandbox/opensandbox-backend.js', 'dist/src/core/backend-config.d.ts',
     'dist/scripts/swarm.js', 'dist/scripts/opensandbox-agent-worker.js',
     'deploy/worker/pi-models.json', 'dist/src/harness/run-report.js',
     'dist/examples/substrate/main.js', 'dist/examples/substrate/config.js',
     'dist/examples/notes/main.js', 'dist/test-support/subagents/communication-fixture-controller.js',
     'dist/examples/peermesh/config.js', 'examples/peermesh/README.md',
-    'docs/architecture/source-map.json', 'dist/test/fixtures/foreground-host-configuration.js',
+    'docs/architecture/source-map.json',
   ];
   const exampleRuns = { notes: 'notes-runs', subagents: 'subagents-runs', 'lead-worker': 'lead-worker-runs',
     substrate: 'substrate-runs', peermesh: 'peermesh-runs' };
-  const privatePaths = ['.env.production', 'local-credentials.json', 'runtime.json', 'notes-runs/run/secret.txt',
+  const privatePaths = ['dist/test/fixtures/foreground-host-configuration.js', 'test/foreground-host.test.ts', '.env.production', 'local-credentials.json', 'runtime.json', 'notes-runs/run/secret.txt',
     'local-artifacts/run/private.bin', 'experiments/run/private.bin', 'reports/run/private.bin', '.worktree/other/private.txt',
     ...Object.entries(exampleRuns).map(([example, runs]) => `examples/${example}/${runs}/run/runtime.json`)];
   for (const path of [...resources, ...privatePaths]) {

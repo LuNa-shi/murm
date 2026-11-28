@@ -4,8 +4,8 @@ export interface Sandbox {
   readonly [sandboxBrand]: true;
 }
 
-import type { OpenSandboxProvider, SandboxProvider } from './opensandbox-provider.js';
-import type { ModelCapabilities, ModelProtocol, ModelTransport } from './model-transport.js';
+import type { OpenSandboxProvider, SandboxProvider } from './sandbox/opensandbox-provider.js';
+import type { ModelCapabilities, ModelProtocol, ModelTransport } from './model/model-transport.js';
 import type { ExecutorSelection } from './executor-adapter.js';
 
 export interface SandboxProviderConfig {

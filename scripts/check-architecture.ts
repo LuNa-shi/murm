@@ -16,6 +16,7 @@ for (const script of ['generate-architecture-prompts.js', 'generate-architecture
 async function markdownFiles(directory: string): Promise<string[]>  {
   const files: any[] = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isDirectory() && ['node_modules', 'dist', '.murm'].includes(entry.name)) continue;
     const path = resolve(directory, entry.name);
     if (entry.isDirectory()) files.push(...await markdownFiles(path));
     else if (entry.isFile() && entry.name.endsWith('.md')) files.push(path);

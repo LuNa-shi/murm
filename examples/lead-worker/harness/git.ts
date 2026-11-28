@@ -1,6 +1,5 @@
 import { randomBytes, createHash } from 'node:crypto';
-import { seedTeamRepository } from '../../../src/harness/project-git.js';
-import { httpClient } from '../../../src/harness/http.js';
+import { seedTeamRepository, httpClient } from '@luna-shi/murm';
 import { leadWorkerRoles, matchesRoles, matchesTeam } from './team.js';
 
 const e = encodeURIComponent;

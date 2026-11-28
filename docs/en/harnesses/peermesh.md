@@ -20,7 +20,7 @@ PeerMesh creates a shared project repository and issue from the directory and pr
 
 ## 1. Registered Services
 
-[examples/peermesh/harness/services.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/services.ts) registers three Services per run, binding every peer's container identity to its own provisioned accounts while keeping facility administrator and Service-adapter tokens on the host. Native Git uses a separate per-peer token supplied through `secretEnv`, as described below:
+[examples/peermesh/services/services.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/services.ts) registers three Services per run, binding every peer's container identity to its own provisioned accounts while keeping facility administrator and Service-adapter tokens on the host. Native Git uses a separate per-peer token supplied through `secretEnv`, as described below:
 
 | Service | Operations | Purpose |
 | --- | --- | --- |
@@ -130,6 +130,6 @@ node dist/scripts/read-harness-result.js \
 
 - Team assembly & lifecycle: [examples/peermesh/harness/team.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/team.ts)
 - Per-peer router, steering & nudges: [examples/peermesh/harness/router.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/router.ts)
-- Service wrappers (`peermesh-context`, `message`, `gitea`): [examples/peermesh/harness/services.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/services.ts)
+- Service wrappers (`peermesh-context`, `message`, `gitea`): [examples/peermesh/services/services.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/services.ts)
 - Host PR merge verification & archive export: [examples/peermesh/harness/delivery.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/delivery.ts)
 - Example config & guide: [examples/peermesh/config.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/config.ts) · [examples/peermesh/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/README.md)

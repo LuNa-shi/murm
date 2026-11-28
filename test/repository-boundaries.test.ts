@@ -12,11 +12,12 @@ const sourceFiles = new Set<string>();
 async function discover(directory: string) {
   for (const item of await readdir(resolve(root, directory), { withFileTypes: true })) {
     const path = `${directory}/${item.name}`;
+    if (item.isDirectory() && ['node_modules', 'dist', '.murm'].includes(item.name)) continue;
     if (item.isDirectory()) await discover(path);
     else if (/\.(?:ts|[cm]?js)$/.test(path)) sourceFiles.add(path);
   }
 }
-await Promise.all(['src', 'scripts', 'examples'].map(discover));
+await Promise.all(['src', 'scripts', 'examples', 'benchmarks/fate', 'benchmarks/lead-worker-orders'].map(discover));
 
 const execute = promisify(execFile);
 const compiler = fileURLToPath(new URL('./bin/tsc', import.meta.resolve('typescript/package.json')));

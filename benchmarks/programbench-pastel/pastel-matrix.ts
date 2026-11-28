@@ -129,7 +129,7 @@ export async function inspectFrozenInputs(worker) {
   // Load distribution modules only after a clean build. dist is ignored by Git.
   await exec(process.execPath, ['scripts/build.ts'], { cwd: repository, timeout: 120_000, maxBuffer: 4 * 1024 ** 2 });
   const [{ assertShippedModelPair }, { resolvePeerMeshImages }] = await Promise.all([
-    import('../../dist/src/agent/model-catalog.js'), import('./pastel-open-peermesh.ts'),
+    import('../../dist/src/core/model/model-catalog.js'), import('./pastel-open-peermesh.ts'),
   ]);
   const [localWorker, runnerFiles, catalog, evaluatorPins, peerMeshImages, hostDistributionSha256] = await Promise.all([
     exec('docker', ['image', 'inspect', worker, '--format', '{{json .}}'], { timeout: 10_000 }),

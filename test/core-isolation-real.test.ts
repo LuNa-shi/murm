@@ -14,7 +14,7 @@ import { createIsolationUpstream } from './fixtures/core-isolation-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';
-import { openSandboxAgentKey } from '../src/runtime/opensandbox-metadata.js';
+import { openSandboxAgentKey } from '../src/core/sandbox/opensandbox-metadata.js';
 
 const execute = promisify(execFile);
 const disk = { bytes: 64 * 1024 ** 2, inodes: 4096 };

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
-import { stableStringify } from '../protocol/envelope.js';
+import { stableStringify } from '../protocol/stable-json.js';
 import { boundedLines, MAX_COMMAND_BYTES } from './foreground-commands.js';
 import { failureCode, type HarnessJson, type ProjectHost } from './project-harness.js';
 import { projectError, resolveHarnessInput } from './project-input.js';

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
+import { createOpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
 
 const spec = { paths: ['.'], includeGit: false, maxBytes: 1024, required: true };
 async function fixture() {

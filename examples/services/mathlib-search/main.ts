@@ -1,5 +1,5 @@
 import { createMathlibSearchService } from './service.js';
-import { createServiceHost } from '../../../src/sdk/service-host.js';
+import { createServiceHost } from '../../taskpool/deploy/service-hosts/service-host.js';
 
 const host = process.env.MATHLIB_SEARCH_HOST ?? '0.0.0.0';
 const port = Number(process.env.MATHLIB_SEARCH_PORT ?? 8787);

@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { FileTree } from '@luna-shi/murm';
-import { decodeFileSeed } from '../../scripts/core-file-seed.js';
-import { isWorkspaceGitPath, WorkspaceRepository } from '../runtime/workspace-repository.js';
+import { decodeFileSeed } from '../core/files/core-file-seed.js';
+import { importGitTree, initializeGitRepository, isGitTreePath } from './git-tree.js';
 import { projectError, ProjectPreflightError } from './project-input.js';
 
 const git = promisify(execFile);
@@ -13,7 +13,7 @@ const git = promisify(execFile);
 /** Validate before the provisioner makes externally visible changes. */
 export function checkGitProject(files: FileTree) {
   for (const path of Object.keys(files)) {
-    if (!isWorkspaceGitPath(path)) throw new ProjectPreflightError('PROJECT_PATH_INVALID', `Team Git does not admit ${JSON.stringify(path)}`);
+    if (!isGitTreePath(path)) throw new ProjectPreflightError('PROJECT_PATH_INVALID', `Team Git does not admit ${JSON.stringify(path)}`);
   }
 }
 
@@ -24,10 +24,9 @@ export async function seedTeamRepository({ files, url, owner, token, signal }: {
   checkGitProject(files);
   const work = await mkdtemp(join(tmpdir(), 'murm-team-git-'));
   try {
-    const repository = new WorkspaceRepository();
     const { entries } = decodeFileSeed(files);
-    await repository.initialize(work);
-    const { commit } = await repository.importTree(work,
+    await initializeGitRepository(work);
+    const { commit } = await importGitTree(work,
       Object.fromEntries(entries.map(({ path, bytes }) => [path, bytes])), [], 'Initial project input',
       Object.fromEntries(entries.map(({ path, mode }) => [path, mode === 0o755 ? 0o755 as const : 0o644 as const])));
     signal?.throwIfAborted();

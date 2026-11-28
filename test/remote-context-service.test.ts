@@ -3,18 +3,18 @@ import test from 'node:test';
 import { spawn, execFile } from 'node:child_process';
 import { once } from 'node:events';
 import { promisify } from 'node:util';
-import { ServicesBridge } from '../src/agent/services-bridge.js';
-import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
+import { ServicesBridge } from '../examples/taskpool/compatibility/services-bridge.js';
+import { createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { TaskService } from '../src/task/task-service.js';
-import { RemoteContextService } from '../src/sdk/remote-context-service.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { RemoteContextService } from '../examples/taskpool/deploy/service-hosts/remote-context-service.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 
 async function startPeer(database) {
   const token = 'coordinator-test-credential-private';
-  const child = spawn(process.execPath, ['dist/scripts/context-service-peer.js'], {
+  const child = spawn(process.execPath, ['dist/examples/taskpool/deploy/service-hosts/start-context-service-peer.js'], {
     env: { ...process.env, MURM_SERVICE_DATABASE: database, MURM_COORDINATOR_TOKEN: token },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

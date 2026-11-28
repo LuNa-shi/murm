@@ -11,7 +11,7 @@ import { delegationCommand } from './fixtures/subagents-upstream.js';
 const execute = promisify(execFile);
 import { transport } from './fixtures/core-agent-service-backend.js';
 const hooks = registerHooks({ resolve(specifier, context, next) {
-  if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/core-agent-service-backend.js', import.meta.url).href, shortCircuit: true };
+  if (specifier === './sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/core-agent-service-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
 const { runSubagentsHarness, checkDelivery } = await import('../test-support/subagents/communication-fixture.js'); hooks.deregister();

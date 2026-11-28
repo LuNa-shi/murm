@@ -2,7 +2,7 @@
 
 ## Core startup
 
-Before starting the selected executor, Core renders a sandbox preamble, tool guidance for Pi's `read`, `write`, `edit` and `bash` or Codex's `exec_command` and `write_stdin`, and an automatically generated `<services>` directory. It uses purpose and operation descriptions from the frozen registry after the same Profile grant filtering used by `swarm service list` and `swarm service view`. The prompt and CLI share the command aliases. Added System Prompt defaults to empty. A nonblank `Profile.prompt` adds a Harness-specific role or constraint. Keep Service purpose and operation descriptions in the owner’s manifest, and task text in the separate user input. The Worker stages the rendered text at `/workspace/runtime/profile-prompt.txt` and passes it to Pi with `--system-prompt`. For an image-installed adapter, Core omits built-in native tool guidance. The Worker exposes the staged prompt path through `MURM_EXECUTOR_SYSTEM_PROMPT` and the adapter decides how its own executor receives it. Normal startup omits Pi's coding-agent documentation and disables ambient extensions, skills, prompt templates and context files. Pi can still append its working directory. The Codex Worker uses the rendered text as App Server `thread/start.baseInstructions`. Its internal instructions and project discovery can add context to a later model request. [Exact Core template](prompts/01-core-startup.md) · [Core Runtime](15-core-runtime.md) · [OpenSandbox backend](16-pi-opensandbox-backend.md)
+Before starting the selected executor, Core renders a sandbox preamble, tool guidance for Pi's `read`, `write`, `edit` and `bash` or Codex's `exec_command` and `write_stdin`, and an automatically generated `<services>` directory. It uses purpose and operation descriptions from the frozen registry after the same Profile grant filtering used by `swarm service list` and `swarm service view`. Each advertised line is rendered directly from the manifest as `swarm service invoke <id> <operation>`. TaskPool can additionally teach its own shorthand through its Harness prompts. Added System Prompt defaults to empty. A nonblank `Profile.prompt` adds a Harness-specific role or constraint. Keep Service purpose and operation descriptions in the owner’s manifest, and task text in the separate user input. The Worker stages the rendered text at `/workspace/runtime/profile-prompt.txt` and passes it to Pi with `--system-prompt`. For an image-installed adapter, Core omits built-in native tool guidance. The Worker exposes the staged prompt path through `MURM_EXECUTOR_SYSTEM_PROMPT` and the adapter decides how its own executor receives it. Normal startup omits Pi's coding-agent documentation and disables ambient extensions, skills, prompt templates and context files. Pi can still append its working directory. The Codex Worker uses the rendered text as App Server `thread/start.baseInstructions`. Its internal instructions and project discovery can add context to a later model request. [Exact Core template](prompts/01-core-startup.md) · [Core Runtime](15-core-runtime.md) · [OpenSandbox backend](16-pi-opensandbox-backend.md)
 
 Core stages this text at spawn. The host sends task input separately through the selected driver using the requested input mode. Codex sends turn text as a native text input item in `turn/start` or `turn/steer`. A retained follow-up is sent by `turn/start` after the active turn terminates. `runtime.json` records `stagedSystemPromptSha256` for the full staged text and preserves `promptSha256` for the optional Profile text. Check the actual provider request to verify executor additions and user message delivery.
 
@@ -22,7 +22,7 @@ Notes uses role-specific project observations and a reader instruction describin
 
 ## TaskPool messages and Core startup
 
-[agent-contract.js](../../src/agent/agent-contract.ts) composes the current TaskPool continuation, soft-closeout and domain notification messages and projects Service metadata into CLI namespaces. These helpers preserve Task/Execution guidance and authorization discovery; they do not assemble a system prompt or skill resources.
+[agent-contract.js](../../examples/taskpool/prompts/agent-contract.ts) composes the current TaskPool continuation, soft-closeout and domain notification messages and projects Service metadata into CLI namespaces. These helpers preserve Task/Execution guidance and authorization discovery; they do not assemble a system prompt or skill resources.
 
 The manager starts only `murm-core-v1` with an explicit empty resource array. The Worker rejects former resource-based contracts and requires a supported executor, the rendered startup text and the fixed Core prompt path. For Pi, Core constructs native-tool and ambient-discovery flags; the Worker checks string arguments and stages the supplied prompt. Model-catalog hash/ownership checks and filesystem isolation remain separate guards. [Backend](16-pi-opensandbox-backend.md) explains this current path. Pi/provider-owned rendering remains outside the repository templates.
 
@@ -71,7 +71,7 @@ The ordinary Putnam workflow asks the Agent to save a fixed revision and run the
 
 ### TaskPool take preview notice
 
-`examples/taskpool/prepare-inputs.ts` composes one additional tool-result notice only when a host-recorded Task view preview differs from the authoritative public revision selected during take:
+`examples/taskpool/harness/prepare-inputs.ts` composes one additional tool-result notice only when a host-recorded Task view preview differs from the authoritative public revision selected during take:
 
 ```text
 Execution ${execution.execution_id} starts from ${snapshot.revision}, different from preview ${preview.revision}; reread the affected project files.
@@ -83,7 +83,7 @@ The Execution ID comes from TaskService's accepted reservation; selected revisio
 
 The [generated TaskPool reference](prompts/08-taskpool-harness.md) extracts the complete defaults from the Harness/controller sources and records their fingerprints and public send site.
 
-`examples/taskpool/controller.ts` owns its default discovery input, sent only after coordinator domain readiness through public `Runtime.send` with explicit `followUp`:
+`examples/taskpool/harness/controller.ts` owns its default discovery input, sent only after coordinator domain readiness through public `Runtime.send` with explicit `followUp`:
 
 ```text
 Read public Tasks and take suitable work. Continue in this Session after take.
@@ -91,7 +91,7 @@ Read public Tasks and take suitable work. Continue in this Session after take.
 
 When the TaskPool host enables autonomous Tasks, the controller composes the autonomous discovery input in the same generated reference. After the Runtime availability check, it confirms the Agent is still UNBOUND within its persisted selection and hard deadlines and checks that the Mission is open. It then supplies the Mission ID, goal and acceptance conditions from TaskService, that Agent's ID and deadlines, and the effective run deadline from the host clock. This happens for initial discovery and later discovery turns. The input points to public reads and executable Task help, and describes how to choose and claim a bounded deliverable. If the selection window or binding ended, the controller records the skipped input. The PutnamBench driver keeps the Profile text empty. It sets the first-input context from the original theorem at revision `0.1` and includes its collaboration workflow in both the first input and later discovery messages.
 
-The researcher in `examples/taskpool/harness.ts` defaults to an empty Added System Prompt. Core supplies the authorized Service directory at spawn and the TaskPool controller sends discovery guidance in the first user input.
+The researcher in `examples/taskpool/harness/harness.ts` defaults to an empty Added System Prompt. Core supplies the authorized Service directory at spawn and the TaskPool controller sends discovery guidance in the first user input.
 
 Hosts can replace the base Profile text, discovery input or ordinary continuation through the host and controller settings. Without a Core capture binding or a trusted `snapshotProject`, the host includes the [generated Profile guidance](prompts/08-taskpool-harness.md) after any supplied Profile text, omits private Workspace save and observation operations from the Profile, and selects the Material-oriented defaults for ordinary continuation, soft closeout and the handoff warning. The persisted Execution supplies the phase and the warning deadline. A host ordinary-continuation override still applies before soft closeout. The controller rechecks Task state and remaining budget before its public followUp send. Directed user text passes through the same controller with the chosen mode and request ID. For the complete default text in each case, see the generated TaskPool reference.
 

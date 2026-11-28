@@ -15,7 +15,7 @@ Workspace authority remains in the coordinator. Each
 peer owns its own SQLite database and exchanges authenticated private HTTP
 commands with the coordinator; it never opens the Task database.
 
-`startIndependentServices` in `src/sdk/independent-services.ts` starts the peers
+`startIndependentServices` in `examples/taskpool/deploy/service-hosts/independent-services.ts` starts the peers
 under exclusive instance locks, provisions credentials and pinned checker
 configuration, records endpoints/PIDs, and owns shutdown. Judge startup verifies
 the complete artifact lock and resource profile before becoming ready. Context
@@ -25,7 +25,7 @@ The production checker ledger supports cleanup even after Judge process loss.
 See the complete [deployment and recovery contract](../../../../docs/architecture/04-services.md#independent-contextjudge-deployment)
 and [host configuration](../../../../docs/architecture/07-run-configuration.md).
 
-`dist/scripts/context-service-peer.js` and `dist/scripts/judge-service-peer.js` are the peer entrypoints.
+`dist/examples/taskpool/deploy/service-hosts/start-context-service-peer.js` and `dist/examples/taskpool/deploy/service-hosts/start-judge-service-peer.js` are the peer entrypoints.
 The Judge container entrypoint `judge-peer-entrypoint.sh` supplies its mandatory
 instance lock. A separately operated deployment must provide its own process
 supervision, private endpoints, credentials, artifact mounts, and systemd/cgroup

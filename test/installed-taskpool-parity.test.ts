@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline';
 import { DatabaseSync } from 'node:sqlite';
-import { execute, installNotesExample } from './fixtures/notes-installed-package.js';
+import { execute, installNotesExample, stageInstalledTestFixtures } from './fixtures/notes-installed-package.js';
 
 const feedback = taskId => ({ taskId, input: 'PRIVATE_FIXED_DIRECTION', requestId: 'fixed-direction', mode: 'steer' });
 
@@ -15,6 +15,7 @@ test('installed TaskPool CLI and headless host preserve the same directed Task b
   const installed = await installNotesExample();
   t.after(() => installed.close());
   const root = join(installed.directory, 'node_modules/@luna-shi/murm');
+  await stageInstalledTestFixtures(root);
   const config = join(root, 'dist/test/fixtures/foreground-taskpool-configuration.js');
   const cliOutput = join(installed.directory, 'cli-flat');
   const headlessOutput = join(installed.directory, 'headless-flat');

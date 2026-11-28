@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { callCoordinatorPeer } from '../src/sdk/coordinator-peer-client.js';
+import { callCoordinatorPeer } from '../examples/taskpool/deploy/service-hosts/coordinator-peer-client.js';
 
 async function peer(t, handler) {
   const server = createServer(handler);

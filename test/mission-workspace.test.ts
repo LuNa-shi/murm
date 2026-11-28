@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MissionWorkspace, candidateFileRef } from '../src/runtime/mission-workspace.js';
-import { dispatchMissionWorkspaceRead } from '../src/sdk/builtin-registry.js';
+import { MissionWorkspace, candidateFileRef } from '../examples/taskpool/services/workspace/mission-workspace.js';
+import { dispatchMissionWorkspaceRead } from '../examples/taskpool/services/builtin-registry.js';
 
 test('MissionWorkspace keeps public immutable revisions separate from main and merges whole trees', async () => {
   const root = await mkdtemp(join(tmpdir(), 'murm-mission-workspace-'));

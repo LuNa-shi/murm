@@ -1,9 +1,9 @@
-import { fileProtocol } from './core-file-seed.js';
+import { fileProtocol } from '../src/core/files/core-file-seed.js';
 import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { workerImageFor, WORKER_PROTOCOL } from '../src/core/worker-image.js';
-import { selectExecutorDriver } from '../src/core/executor-driver.js';
+import { selectExecutorDriver } from '../src/core/sandbox/executor-driver.js';
 import type { ExecutorSelection } from '../src/core/executor-adapter.js';
 import type { DiagnosticCheck } from './local-environment.js';
 

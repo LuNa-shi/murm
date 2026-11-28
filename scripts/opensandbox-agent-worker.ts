@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { fileProtocol } from './core-file-seed.js';
+import { fileProtocol } from '../src/core/files/core-file-seed.js';
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID, createHash } from 'node:crypto';
@@ -8,14 +8,14 @@ import { readFile, writeFile, mkdir, chown, readdir, statfs } from 'node:fs/prom
 import { dirname, join } from 'node:path';
 import { SandboxProject, AGENT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.js';
 import { CoreWorkDir } from './core-work-dir.js';
-import { collectCoreWorkDir, MAX_COLLECTION_ENTRIES } from './core-collection.js';
+import { collectCoreWorkDir, MAX_COLLECTION_ENTRIES } from '../src/core/files/core-collection.js';
 import { once } from 'node:events';
 import { createRpcSubmissions } from './rpc-submissions.js';
 import { createCodexAppServerDriver } from './codex-app-server-driver.js';
 import { loadWorkerExecutor } from './worker-executor-adapter.js';
 import { DEFAULT_FILE_POLICY, resolveFilePolicy } from '../src/core/file-policy.js';
-import { fileTreeFrames, receiveFileTree } from './file-tree-stream.js';
-import { fileTransferProtocol } from './core-file-seed.js';
+import { fileTreeFrames, receiveFileTree } from '../src/core/files/file-tree-stream.js';
+import { fileTransferProtocol } from '../src/core/files/core-file-seed.js';
 import { snapshotSessionFork, sessionForkText } from './core-session-fork.js';
 
 const argv = process.argv.slice(2);

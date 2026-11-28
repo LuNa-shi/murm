@@ -3,8 +3,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { createLockedFinalTreeVerifier } from '../../dist/src/judge/final-tree-deployment.js';
-import { LeanChecker } from '../../dist/src/judge/lean-adapter.js';
+import { createLockedFinalTreeVerifier } from '../../dist/examples/taskpool/services/judge/final-tree-deployment.js';
+import { LeanChecker } from '../../dist/examples/taskpool/services/judge/lean-adapter.js';
 import { MathlibSearchService } from '../../dist/examples/services/mathlib-search/service.js';
 import type { loadPutnamB1 } from './case.ts';
 

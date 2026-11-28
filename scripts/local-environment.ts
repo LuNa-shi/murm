@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { localApiKeyPath, loopbackLifecycle, resolveSandboxConnection } from '../src/core/sandbox-connection.js';
+import { localApiKeyPath, loopbackLifecycle, resolveSandboxConnection } from '../src/core/sandbox/sandbox-connection.js';
 
 const execute = promisify(execFile);
 export const localProviderImage = 'opensandbox/server:release-1.2.0@sha256:25bebdcf1cf7724eb923faecbdbbf82d4038c6ab35c736151574726d14006f30';

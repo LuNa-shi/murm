@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { createRuntime } from '@luna-shi/murm';
 
 import { substratePeerProfile } from '../examples/substrate/harness/index.js';
-import { createSubstrateService } from '../examples/substrate/harness/substrate.js';
+import { createSubstrateService } from '../examples/substrate/services/substrate.js';
 import { substrateBackendConfiguration } from './fixtures/substrate-configuration.js';
 import { createSubstrateUpstream } from './fixtures/substrate-upstream.js';
 

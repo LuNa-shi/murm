@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline';
 import { test } from 'node:test';
-import { execute, installNotesExample } from './fixtures/notes-installed-package.js';
+import { execute, installNotesExample, stageInstalledTestFixtures } from './fixtures/notes-installed-package.js';
 
 // Run the same fixed scenario through the installed headless host. Keeping this
 // function self-contained lets the outside-checkout process import only shipped
@@ -105,6 +105,7 @@ test('installed headless and CLI share configuration, directed input provenance 
   const outputDir = join(installed.directory, 'controlled-output');
   await mkdir(outputDir);
   const entry = join(root, 'dist/scripts/run-harness.js');
+  await stageInstalledTestFixtures(root);
   const configuration = join(root, 'dist/test/fixtures/foreground-host-configuration.js');
   // This fixture substitutes the backend, while the installed CLI, host, router,
   // Core input ledger, report writer and result reader execute normally.

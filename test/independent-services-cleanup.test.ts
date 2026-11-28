@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { TaskService } from '../src/task/task-service.js';
-import { startIndependentServices } from '../src/sdk/independent-services.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { startIndependentServices } from '../examples/taskpool/deploy/service-hosts/independent-services.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 
 test('owned independent deployment stops checker descendants even after Judge is killed', { timeout: 15000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'peer-crash-cleanup-'));

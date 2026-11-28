@@ -1,4 +1,4 @@
-import { loadMurmConfig } from '../core/sandbox-connection.js';
+import { loadMurmConfig } from '../core/sandbox/sandbox-connection.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { registerHooks } from 'node:module';
@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { captureProject, isInside, projectError, ProjectPreflightError, resolveProjectDirectory } from './project-input.js';
 import { saveReport } from './run-report.js';
 import { resolveFilePolicy, type FilePolicy } from '../core/file-policy.js';
-import { fileSpool } from '../../scripts/core-file-seed.js';
+import { fileSpool } from '../core/files/core-file-seed.js';
 
 export type HarnessInput = Readonly<{ cwd: string; prompt: string }>;
 type InitialProject = Awaited<ReturnType<typeof captureProject>>;

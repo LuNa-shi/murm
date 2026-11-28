@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
-import type { AgentAccessPolicy, FileTree, Profile, Runtime } from '@luna-shi/murm';
-import { ServiceRegistry, type JsonValue, type ServiceManifest, type ServiceRegistration } from '@luna-shi/murm';
-import { seededCheckoutInstruction } from '../../../src/harness/project-git.js';
-import { dynamicBoardPermissions, type createBoard } from './board.js';
+import {
+  type AgentAccessPolicy, type FileTree, type Profile, type Runtime, ServiceRegistry,
+  type JsonValue, type ServiceManifest, type ServiceRegistration, seededCheckoutInstruction,
+  type createOwnedResources,
+} from '@luna-shi/murm';
+import { dynamicBoardPermissions, type createBoard } from '../services/board.js';
 import type { createLeadWorkerGit, prepareLeadWorkerGit } from './git.js';
-import type { createOwnedResources } from '../../../src/harness/owned-resources.js';
 import { dynamicWorkerPrompt, projectDynamicWorkerPrompt } from './prompts.js';
 
 const maxSourceBytes = 128 * 1024;

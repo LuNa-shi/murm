@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtemp, mkdir, readFile, writeFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { collectCoreWorkDir } from '../scripts/core-collection.js';
+import { collectCoreWorkDir } from '../src/core/files/core-collection.js';
 import { saveAgentArtifacts } from '../src/core/artifact-collection.js';
 import { createRedactor } from '../src/core/run-records.js';
 

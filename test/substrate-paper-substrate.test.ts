@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { invokeService, ServiceRegistry, snapshotServiceRegistry } from '../src/core/services.js';
-import { createPaperSubstrate } from '../examples/substrate/harness/paper-substrate.js';
+import { createPaperSubstrate } from '../benchmarks/fate/paper-substrate.js';
 
 async function fixture(t, mode = 'shared') {
   const dir = await mkdtemp(join(tmpdir(), 'paper-substrate-'));

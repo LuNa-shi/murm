@@ -8,8 +8,7 @@ application dependencies, not default murm services.
 
 ## Prepare dependencies
 
-Build the checkout with `npm ci --ignore-scripts && npm run build`, or install a
-release as described in [Quickstart](../../docs/en/quickstart.md). Prepare:
+Prepare the following facilities before starting the project:
 
 - OpenSandbox and a compatible Worker image.
 - A Gitea instance and host token allowed to provision the run repository and
@@ -25,6 +24,15 @@ configuration therefore retains strict local Docker isolation, including a
 128 MiB/8,192-inode project quota. The generic API Provider does not support that
 allowlist. Follow [the strict-host prerequisites](../../docs/architecture/16-pi-opensandbox-backend.md)
 or supply a compatible provider through a trusted configuration.
+
+Check the Gitea `/api/v1/version` and Mattermost `/api/v4/system/ping` endpoints
+at the configured origins. Supply the Board directory from [Agensh commit
+2dae4e14](https://github.com/microsoft/Agensh/tree/2dae4e14a653da48549fd9aa093f834841475d6c)
+with its Python dependencies installed. Apply its schema to the supplied MySQL
+database and verify the configured DSN before launch. Startup checks that the
+per-run Board is readable; the Board stores its state in MySQL. PeerMesh
+connects to existing Gitea, Mattermost and MySQL installations. It closes the
+Board process it creates, while the shared services and persisted data remain.
 
 ## Configure and run
 
@@ -52,12 +60,19 @@ Optional `MURM_PEERMESH_BOARD_ORIGIN` defaults to `http://127.0.0.1:8660` and
 The host has a separate 30-second close wait. Supply a trusted JavaScript module
 with `--config` for further changes to limits, providers and model configuration.
 
-From this directory after the root build:
+Use Node.js 22.19 or newer on Linux. Set `MURM_ARCHIVE` to the absolute path of
+the SDK tarball built from this revision. The published v0.2.0 archive predates
+the project author API used here. See [SDK preparation](../README.md#run-an-example-from-its-directory)
+for the pack command, Sandbox setup and model configuration.
+
+From this example directory:
 
 ```sh
-node ../../dist/scripts/murm.js --harness peermesh \
-  --cwd /absolute/path/to/project \
-  --prompt 'Implement the project requirements, coordinate through the Board and verify the result'
+npm install --no-save "$MURM_ARCHIVE"
+npm run check
+npm run build
+npm run start -- --cwd /absolute/path/to/project \
+  --prompt 'Coordinate through the Board, implement the change and verify it in Git'
 ```
 
 With the CLI installed, run the equivalent command in your project:

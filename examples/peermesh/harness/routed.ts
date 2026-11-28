@@ -1,9 +1,8 @@
 import { createPeerMeshHarness } from './index.js';
 import { preparePeerMeshFacilities } from './provision.js';
-import { httpClient } from '../../../src/harness/http.js';
+import { httpClient, runWithReport } from '@luna-shi/murm';
 import { createPeerMeshRouter } from './router.js';
-import { createPeerMeshEventSubscription } from './event-source.js';
-import { runWithReport } from '../../../src/harness/run-report.js';
+import { createPeerMeshEventSubscription } from '../services/event-source.js';
 
 const failure = (code: any) => Object.assign(new Error(code), { code });
 async function bounded(operation: any, timeoutMs: any, code: any) {

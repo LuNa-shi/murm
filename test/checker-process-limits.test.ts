@@ -3,7 +3,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { CHECKER_RESOURCE_PROFILE, createCheckerProcessLimits, verifyCheckerProcessLimits } from '../src/judge/checker-process-limits.js';
+import { CHECKER_RESOURCE_PROFILE, createCheckerProcessLimits, verifyCheckerProcessLimits } from '../examples/taskpool/services/judge/checker-process-limits.js';
 
 test('checker limits use a fixed bounded and isolated transient service profile', () => {
   const limits = createCheckerProcessLimits({ runtimeMs: 100 });
@@ -93,7 +93,7 @@ test('durable checker ownership reaps the unit and descendants after its client 
   const { mkdtemp, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
-  const { cleanupOwnedCheckers } = await import('../src/judge/checker-owner.js');
+  const { cleanupOwnedCheckers } = await import('../examples/taskpool/services/judge/checker-owner.js');
   const root = await mkdtemp(join(tmpdir(), 'checker-owner-'));
   const ownerFile = join(root, 'owned.ndjson');
   const limits = createCheckerProcessLimits({ runtimeMs: 10000, ownerFile });
@@ -122,7 +122,7 @@ test('recovery fences a delayed dispatch before claiming its absent unit settled
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   const { setTimeout: delay } = await import('node:timers/promises');
-  const { cleanupOwnedCheckers } = await import('../src/judge/checker-owner.js');
+  const { cleanupOwnedCheckers } = await import('../examples/taskpool/services/judge/checker-owner.js');
   const root = await mkdtemp(join(tmpdir(), 'checker-late-dispatch-'));
   const ownerFile = join(root, 'owned.ndjson');
   const limits = createCheckerProcessLimits({ runtimeMs: 2000, ownerFile });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { agentServiceDirectory } from '../src/agent/agent-contract.js';
+import { agentServiceDirectory } from '../examples/taskpool/prompts/agent-contract.js';
 
 test('startup service directory names real CLI namespaces and excludes internal Runtime metadata', () => {
   const directory = agentServiceDirectory({ services: ['task', 'context', 'catalog', 'runtime', 'judge', 'mathlib-search'].map(service_id => ({ service_id, provider_version: '1' })) });
