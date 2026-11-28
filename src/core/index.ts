@@ -1089,6 +1089,16 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
     return send(id, input, options);
   }
 
+  function recordUnavailableExports(agent: RuntimeAgent & { sessionArchive?: unknown; artifacts?: unknown; cleanupError?: ErrorInfo }, row: AllocationRecord) {
+    if (row.publicState?.exportSourceAbsent !== true ||
+        (agent.sessionArchive && (!agent.collect?.required || agent.artifacts))) return;
+    agent.cleanupError = {
+      code: 'ARTIFACT_EXPORT_LOST', message: 'The original Sandbox is absent and required export has no verified checkpoint', retryable: false,
+    };
+    agent.info.lastError = agent.cleanupError;
+    records.record('stop', { agentId: agent.info.id, state: 'export-unavailable', error: agent.cleanupError });
+  }
+
   async function restoreAgents() {
     const allocations = ledger!.list();
     if (recovery?.cleanupOnly) durable(owner => owner.beginClose());
@@ -1120,6 +1130,7 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
       const request = { fingerprint: row.parameterFingerprint, agent, result: Promise.resolve(info) };
       spawnRequests.set(JSON.stringify([row.caller ?? 'host', row.requestId]), request);
       if (terminal) {
+        recordUnavailableExports(agent, row);
         info.lastStop = stopReceipt(agent);
       } else {
         pending.push({ agent, row });
@@ -1144,6 +1155,7 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
       }
       if (status.terminal) {
         info.status = 'closed';
+        recordUnavailableExports(agent, ledger!.get(row.resourceKey));
         info.lastStop = stopReceipt(agent);
       } else if (!closing && !blockedServices.length && status.available && publicState.interruptPending !== true) {
         resumed.push({ agent, row });

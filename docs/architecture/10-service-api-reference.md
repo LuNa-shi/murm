@@ -44,7 +44,7 @@ This section is generated from executable exports and checked against the source
 | [src/core/types.ts](../../src/core/types.ts) | `62028f29e2c7dff3848058776b3949d3f71c60291f79259d1c4252d09c54dbd5` |
 | [src/core/services.ts](../../src/core/services.ts) | `794352ccfa8e02f63c4db087f1c165308198c6766c0d8c3cf8872e1b9c0617ab` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
-| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `125e240a078e106f226f4da2e011c2ccfc7fe7afb211cace5e7406c1a4197ba5` |
+| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `d2ad9efdb0a72e4cc4a6e16f7b3ba0bfea58b0abb73110695d853950675abc3f` |
 | [src/core/sandbox/executor-driver.ts](../../src/core/sandbox/executor-driver.ts) | `56849cecb5e525d3752caca2feeb7571692c6e33afa7961619f40ad41272e6e7` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `d647cbdf76ea438b8a618e85e2955f0c9b3cd413a1f7989c34403cf5ce450fcf` |
 | [src/core/sandbox/opensandbox-provider.ts](../../src/core/sandbox/opensandbox-provider.ts) | `eb98901a846c1ce294621d7a173cec46787ba4bf18b4edc65afc5c867e968c37` |
@@ -3978,7 +3978,7 @@ export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBacken
         creation: 'created' | 'pending' | 'absent';
         executionStopped: boolean;
         expiresAt?: string | null;
-        providerId: string;
+        providerId: string | undefined;
         retention?: {
             reason: "archive-session" | "collect-artifacts";
             status: "retain-at-risk" | "retained";

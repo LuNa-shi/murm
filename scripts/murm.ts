@@ -67,7 +67,8 @@ if (args.length === 1 && args[0] === '--version') {
       const runtime = await recoverRuntime({ ...config, runDirectory: command.directory, cleanupOnly: true });
       const result = await runtime.close();
       report = result;
-      exitCode = result.cleanup === 'complete' ? 0 : 1;
+      exitCode = result.cleanup === 'complete' &&
+        !result.agents.some(agent => agent.errors.some(error => error.code === 'ARTIFACT_EXPORT_LOST')) ? 0 : 1;
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
         && /^[A-Z][A-Z0-9_]*$/.test(error.code) ? error.code : 'RECOVERY_FAILED';

@@ -178,6 +178,26 @@ const transitions: Record<AllocationState, readonly AllocationState[]> = {
   rejected: [],
 };
 
+export const ALLOCATION_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS allocation_run (id INTEGER PRIMARY KEY CHECK (id = 1), body TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS allocations (
+  resource_key TEXT PRIMARY KEY, agent_id TEXT NOT NULL UNIQUE, request_key TEXT NOT NULL UNIQUE,
+  state TEXT NOT NULL, body TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS allocation_resources (
+  resource_key TEXT NOT NULL REFERENCES allocations(resource_key), sandbox_id TEXT NOT NULL,
+  body TEXT NOT NULL, PRIMARY KEY (resource_key, sandbox_id)
+);
+CREATE TABLE IF NOT EXISTS allocation_inputs (
+  request_key TEXT PRIMARY KEY, resource_key TEXT NOT NULL REFERENCES allocations(resource_key), body TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS allocation_events (
+  resource_key TEXT NOT NULL REFERENCES allocations(resource_key), stream_epoch TEXT NOT NULL,
+  sequence INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY (resource_key, stream_epoch, sequence)
+);
+PRAGMA user_version = 1;
+`;
+
 /** Private transaction journal. Its SQLite connection owns the run's same-host writer lock. */
 export class AllocationLedger {
   readonly path: string;
@@ -220,25 +240,7 @@ export class AllocationLedger {
       this.db.exec('PRAGMA busy_timeout = 0; PRAGMA journal_mode = DELETE; PRAGMA synchronous = FULL; PRAGMA locking_mode = EXCLUSIVE; PRAGMA foreign_keys = ON; BEGIN EXCLUSIVE');
       const version = (this.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
       if (version !== 0 && version !== 1) throw fault('INVALID_CONTRACT', 'Allocation ledger schema is unsupported');
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS allocation_run (id INTEGER PRIMARY KEY CHECK (id = 1), body TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS allocations (
-          resource_key TEXT PRIMARY KEY, agent_id TEXT NOT NULL UNIQUE, request_key TEXT NOT NULL UNIQUE,
-          state TEXT NOT NULL, body TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS allocation_resources (
-          resource_key TEXT NOT NULL REFERENCES allocations(resource_key), sandbox_id TEXT NOT NULL,
-          body TEXT NOT NULL, PRIMARY KEY (resource_key, sandbox_id)
-        );
-        CREATE TABLE IF NOT EXISTS allocation_inputs (
-          request_key TEXT PRIMARY KEY, resource_key TEXT NOT NULL REFERENCES allocations(resource_key), body TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS allocation_events (
-          resource_key TEXT NOT NULL REFERENCES allocations(resource_key), stream_epoch TEXT NOT NULL,
-          sequence INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY (resource_key, stream_epoch, sequence)
-        );
-        PRAGMA user_version = 1;
-      `);
+      this.db.exec(ALLOCATION_SCHEMA_SQL);
       let run = this.readRun();
       recovered = Boolean(run);
       const now = new Date().toISOString();

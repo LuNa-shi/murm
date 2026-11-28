@@ -719,6 +719,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         } catch (error) {
           const details = (error as { details?: { status?: number; stage?: string } }).details;
           if (details?.stage !== 'verify recovered Sandbox' || details.status !== 404) throw error;
+          if (row.workerInstanceId) ledger.checkpoint(row.resourceKey, { publicState: { exportSourceAbsent: true } });
           ledger.recordDeletion(row.resourceKey, sandboxId, 'Original authenticated Lifecycle GET returned 404');
           if (!row.stopConfirmed && workerIdentity) throw error;
           if (!row.stopConfirmed) ledger.recordStop(row.resourceKey, sandboxId, 'Worker start was never dispatched');
@@ -943,12 +944,17 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
     },
     resource(agentId: string) {
       const agent = agents.get(agentId);
-      if (!agent) return;
-      const resource = agent.manager.coreResource(agentId);
+      const durableResource = ledger?.healthy ? ledger.get(agentId) : undefined;
+      if (!agent && !durableResource) return;
+      const resource = agent?.manager.coreResource(agentId) ?? (durableResource && {
+        resourceKey: durableResource.resourceKey, sandboxId: durableResource.sandboxId,
+        creation: durableResource.managementAbsent ? 'absent' as const : durableResource.sandboxId ? 'created' as const : 'pending' as const,
+        executionStopped: durableResource.stopConfirmed, expiresAt: durableResource.expiresAt ?? null,
+      });
       return resource && {
-        ...resource, providerId: agent.provider.id,
-        ...(agent.lease ? { expiresAt: agent.lease.expiresAt } : {}),
-        ...(agent.retaining ? { retention: {
+        ...resource, providerId: agent?.provider.id ?? durableResource?.providerId,
+        ...(agent?.lease ? { expiresAt: agent.lease.expiresAt } : {}),
+        ...(agent?.retaining ? { retention: {
           reason: agent.retaining,
           status: agent.retainAtRisk || !agent.lease?.expiresAt || Date.parse(agent.lease.expiresAt) <= Date.now()
             ? 'retain-at-risk' as const : 'retained' as const,
