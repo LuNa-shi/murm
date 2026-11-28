@@ -4,6 +4,7 @@ import argparse
 import os
 from pathlib import Path
 import time
+import urllib.parse
 import urllib.request
 
 from murm_terminal import ENTER, F1, F2, F5, F6, F7, INTERRUPT, Terminal, install_interrupt_handler
@@ -79,9 +80,21 @@ def run():
             peer_flow(term, options.peer_control)
             return
         if options.task_feedback:
-            term.wait('"state": "RUNNING"', timeout=45)
-            term.key(F5)
-            term.wait("Task feedback for the active Execution")
+            deadline = time.monotonic() + 40
+            task = ''
+            while not task:
+                assert time.monotonic() < deadline, 'Native Task was not claimed'
+                with urllib.request.urlopen(urllib.parse.urljoin(options.release, '/claimed-task'), timeout=5) as response:
+                    task = response.read().decode()
+                term.pump()
+            while True:
+                term.key(F1 + F5)
+                try:
+                    term.wait(task + ' · RUNNING', timeout=0.5)
+                    break
+                except AssertionError:
+                    if time.monotonic() >= deadline:
+                        raise
             term.menu(0)
             term.wait("Task feedback for the active Execution")
             term.paste(options.task_feedback)

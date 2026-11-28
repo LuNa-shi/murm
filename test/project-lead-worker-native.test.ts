@@ -157,6 +157,7 @@ test('installed Lead–Worker integrates the project through static and dynamic 
       const config = {
         team, gitea, image, workTimeoutMs: 95_000, turnTimeoutMs: 45_000, closeTimeoutMs: 30_000,
         sandbox: {
+          egressMode: process.env.MURM_CORE_TEST_EGRESS_MODE,
           lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
           isolation: { network: 'api' },
         },

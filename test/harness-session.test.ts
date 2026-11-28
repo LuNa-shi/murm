@@ -5,6 +5,29 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createHarnessSession, type ProjectHarness, type ProjectHarnessContext } from '../src/harness/project-harness.js';
+import { observeProjectRuntime } from '../src/harness/project-runtime.js';
+
+test('Run stop cancels business observation before another asynchronous read starts', async () => {
+  const abort = new AbortController();
+  let reads = 0;
+  const published = [];
+  const observation = observeProjectRuntime({ id: 'runtime', state: 'running' }, {
+    signal: abort.signal,
+    registerAgentControls: () => () => {},
+    updateStatus: state => published.push(state),
+    emit: event => published.push(event),
+  }, async () => {
+    reads++;
+    abort.signal.throwIfAborted();
+    return { deadlineAt: 123 };
+  });
+  await observation.refresh();
+  abort.abort(new Error('Run stop'));
+  await observation.refresh();
+  observation.close();
+  assert.equal(reads, 1);
+  assert.equal(published.length, 1);
+});
 
 test('a repeated start retains its admitted Run and a changed operation conflicts', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'murm-session-project-'));

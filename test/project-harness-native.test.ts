@@ -102,6 +102,7 @@ test('installed Notes and Messages use the supplied prompt and project in both W
       t.after(() => { server.closeAllConnections(); server.close(); });
       const config = {
         sandbox: {
+          egressMode: process.env.MURM_CORE_TEST_EGRESS_MODE,
           lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
           isolation: { network: 'api' },
         },
@@ -226,8 +227,13 @@ print('PROJECT_TASKPOOL_OK')
 MURM_PROJECT_TEST`;
   let calls = 0;
   let feedbackObserved = false;
+  let claimedTaskId: string | undefined;
   let failure: unknown;
   const server = createServer(async (req, res) => {
+    if (useNativeTerminal && req.method === 'GET' && req.url === '/claimed-task') {
+      res.end(claimedTaskId ?? '');
+      return;
+    }
     if (useNativeTerminal && req.method === 'GET' && req.url === '/release-feedback') {
       release.resolve();
       res.writeHead(200);
@@ -255,6 +261,7 @@ MURM_PROJECT_TEST`;
       } else if (output('project_taskpool_claim')) {
         const taskId = /TAKEN_TASK:([^\s]+)/.exec(String(output('project_taskpool_claim')))?.[1];
         assert.ok(taskId);
+        claimedTaskId = taskId;
         binding.resolve(taskId);
         await release.promise;
         item = reply('taskpool_claimed', 'Claimed the Task');
@@ -274,6 +281,7 @@ MURM_PROJECT_TEST`;
   const configuration = {
     image, capacity: 1, workTimeoutMs: 100_000, closeTimeoutMs: 35_000,
     sandbox: {
+      egressMode: process.env.MURM_CORE_TEST_EGRESS_MODE,
       lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       isolation: { network: 'api' },
     },
@@ -368,6 +376,7 @@ test('installed Substrate peers publish and cite bytes from the supplied project
   const configuration = {
     image, poolSize: 3, maxRounds: 2, workTimeoutMs: 95_000, turnTimeoutMs: 35_000, closeTimeoutMs: 30_000,
     sandbox: {
+      egressMode: process.env.MURM_CORE_TEST_EGRESS_MODE,
       lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       isolation: { network: 'api' },
     },

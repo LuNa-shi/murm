@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -101,6 +101,7 @@ test('PeerMesh HarnessSession directs native next-batch input and stops one memb
     const configuration = {
       ...config, image, executor, peerKeys: ['a', 'b'], durationMs: 120_000, closeTimeoutMs: 70_000,
       sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
+        egressMode: process.env.MURM_CORE_TEST_EGRESS_MODE,
         resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000, isolation: { network: 'api' } },
       connection: { advertiseHost: host, modelGateway: { maxOutputTokens: 128, requestTimeoutMs: 60_000 } },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: base + '/v1/responses', headers: {} } } },
@@ -173,6 +174,15 @@ export default config;
   } finally {
     release(); deadline = Date.now() + 100_000;
     if (session && !result) { await session.stop({ requestId: 'h6-finally-stop', reason: 'fixture-cleanup' }); result = await session.completion; }
+    if (terminalFailed && !result) {
+      const [runId] = await readdir(join(directory, 'runs')).catch(() => []);
+      if (runId) {
+        result = await readFile(join(directory, 'runs', runId, 'project-run.json'), 'utf8').then(JSON.parse).catch(() => undefined);
+        if (result?.cleanup.status === 'complete' && result.result.runtimeId) {
+          terminalFailed = (await ownedContainers(result.result.runtimeId)).length > 0;
+        }
+      }
+    }
     if (!terminalFailed && (!session || result?.cleanup.status === 'complete')) facilityCleanup = await stack.close();
     else facilityCleanup = { cleanup: 'pending', dependenciesRetained: true };
     for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => upstream.close(() => resolve()));

@@ -49,14 +49,14 @@ test('real Runtime and OpenSandbox commit three automatic compactions, fence the
   };
   runtime = await createRuntime({ ...runtimeSettings({
     sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
+      apiKey: process.env.MURM_CORE_TEST_API_KEY,
       commandTimeoutMs: 30000 },
     bridge: { host: '0.0.0.0', publicUrl: process.env.MURM_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
     modelGateway: { host: '0.0.0.0', advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', requestTimeoutMs: 10000, maxOutputTokens: 1000 },
     models: { default: { provider: 'controlled', model: 'k3', capabilities: { tools: true, reasoning: false, contextWindow: 8000, maxOutputTokens: 1000 },
       upstream: { url: upstream.url + '/responses', headers: {} } } },
     executor: createPiExecutor({ version: process.env.MURM_CORE_TEST_PI_VERSION ?? '1.3.0' }),
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+    isolation: { network: 'api' },
   }), profiles: {
     controlled: { prompt: 'Act on controlled input.', image, model: 'default', services: {}, writable: true,
       session: { tools: [], compaction: { enabled: true, reserveTokens: 3000, keepRecentTokens: 500 }, retry: { enabled: false } } },
@@ -141,13 +141,13 @@ for (const fault of ['timeout', 'throw']) test(`real Runtime and Guest ${fault} 
   });
   runtime = await createRuntime({ ...runtimeSettings({
     sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 30000 },
+      apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 30000 },
     bridge: { host: '0.0.0.0', publicUrl: process.env.MURM_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
     modelGateway: { host: '0.0.0.0', advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', requestTimeoutMs: 10000, maxOutputTokens: 1000 },
     models: { default: { provider: 'controlled', model: 'k3', capabilities: { tools: true, reasoning: false, contextWindow: 8000, maxOutputTokens: 1000 },
       upstream: { url: upstream.url + '/responses', headers: {} } } },
     executor: createPiExecutor({ version: process.env.MURM_CORE_TEST_PI_VERSION ?? '1.3.0' }),
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+    isolation: { network: 'api' },
   }), profiles: { worker: { prompt: 'Act on controlled input.', image, model: 'default', services: {}, writable: true,
     session: { tools: [], compaction: { enabled: true, reserveTokens: 3000, keepRecentTokens: 500 }, retry: { enabled: false } } } },
     maxAgents: 2, services: new ServiceRegistry(), outputDir,

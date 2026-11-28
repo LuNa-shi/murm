@@ -148,7 +148,7 @@ def run():
         send(term, "SESSION_INTERRUPT delegate and wait")
         term.key(F2)
         wait_stage("root-wait")
-        term.wait("tool_execution_start bash", timeout=25)
+        term.wait_any(('tool_execution_start bash', 'tool_execution_update bash'), timeout=20)
         agent_action(term, 8)
         term.wait("Interrupt Agent")
         term.menu(1)

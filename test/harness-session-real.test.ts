@@ -205,10 +205,12 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task', 'editable']) 
     assert.deepEqual(manifest, [{ path: 'seed.txt', mode: 420, bytes: Buffer.byteLength(seed),
       sha256: createHash('sha256').update(seed).digest('hex') }]);
 
-    assert.equal(agentReceipt(await session.agents.configure(root, { steeringMode: 'all' }, { requestId: 'settings' })).status, 'applied');
+    await wait('Root configure receipt', async () =>
+      agentReceipt(await session.agents.configure(root, { steeringMode: 'all' }, { requestId: 'settings' })).status === 'applied');
     assert.equal((await session.agents.getState(root)).configuration.steeringMode, 'all');
     const requestCount = upstream.requests.length;
-    assert.equal(agentReceipt(await session.agents.send(root, context('APPENDED_CONTEXT_VALUE'), { requestId: 'append', delivery: 'append' })).disposition, 'appended');
+    await wait('Root append receipt', async () =>
+      agentReceipt(await session.agents.send(root, context('APPENDED_CONTEXT_VALUE'), { requestId: 'append', delivery: 'append' })).disposition === 'appended');
     assert.equal(upstream.requests.length, requestCount);
     assert.ok((await session.agents.getMessages(root)).messages.some(message => JSON.stringify(message).includes('APPENDED_CONTEXT_VALUE')));
     await send('SESSION_SECOND', 'second');
