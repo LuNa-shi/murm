@@ -43,7 +43,7 @@ async function fixture(t,{permissions=['mission_submit'],registered=permissions,
   t.after(async()=>{mission.close();await discovery.close();for(const call of calls)call.resolve({verdict:'FAIL'});await store.shutdown();await runtime.close({timeoutMs:1000});stores.close();await rm(root,{recursive:true,force:true});});
   const cli=async(...args)=>{
     const credentials=controls.credentials.get(agent.id),env={...process.env,...credentials.environment,...credentials.secretEnvironment};
-    const url=new URL(env.MURM_BRIDGE_URL);url.hostname='127.0.0.1';env.MURM_BRIDGE_URL=url.origin;
+    const url=new URL(env.MURM_BRIDGE_URL);url.hostname='127.0.0.1';env.MURM_BRIDGE_URL=url.href.replace(/\/$/, '');
     return JSON.parse((await execute(process.execPath,[new URL('../scripts/swarm.js',import.meta.url).pathname,...args],{env,timeout:10000})).stdout);
   };
   return {...stores,root,store,mission,runtime,agent,policy,calls,cli};
@@ -135,7 +135,7 @@ test('normal TaskPool host keeps the explicit Mission checker caller-owned after
         const agentId=controller.snapshot().agents[0].agentId;
         assert.deepEqual(stores.tasks.getAgent(agentId).coordination_permissions,coordinationPermissions);
         const credentials=controls.credentials.get(agentId),env={...process.env,...credentials.environment,...credentials.secretEnvironment};
-        const url=new URL(env.MURM_BRIDGE_URL);url.hostname='127.0.0.1';env.MURM_BRIDGE_URL=url.origin;
+        const url=new URL(env.MURM_BRIDGE_URL);url.hostname='127.0.0.1';env.MURM_BRIDGE_URL=url.href.replace(/\/$/, '');
         const cli=async(...args)=>JSON.parse((await execute(process.execPath,[new URL('../scripts/swarm.js',import.meta.url).pathname,...args],{env,timeout:10000})).stdout);
         if(enabled) assert.equal((await cli('mission','view')).mission_id,stores.missionId);
         else await assert.rejects(cli('mission','view'),error=>/NOT_ALLOWED/.test(error.stderr));
@@ -171,7 +171,7 @@ test('normal math TaskPool reports a trusted accepted Mission as business succes
     async drive(controller) {
       const agentId = controller.snapshot().agents[0].agentId;
       const credentials = controls.credentials.get(agentId), env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
-      const url = new URL(env.MURM_BRIDGE_URL); url.hostname = '127.0.0.1'; env.MURM_BRIDGE_URL = url.origin;
+      const url = new URL(env.MURM_BRIDGE_URL); url.hostname = '127.0.0.1'; env.MURM_BRIDGE_URL = url.href.replace(/\/$/, '');
       const cli = async (...args) => JSON.parse((await execute(process.execPath, [new URL('../scripts/swarm.js', import.meta.url).pathname, ...args], { env, timeout: 10000 })).stdout);
       await cli('task', 'take', stores.task.task_id, '--request-id', 'take');
       await cli('mission', 'submit', '--material-ids', '[]', '--request-id', 'accept');
