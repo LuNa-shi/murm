@@ -64,15 +64,15 @@ def export_fault(base, cwd, env):
         term.key(F2)
         term.wait('NATIVE_STREAM_START', timeout=25)
         try:
-            runtime = owner(term, 'inject', 'owner-injected')
+            runtime = json.loads(owner(term, 'inject', 'owner-injected'))
             control('stream')
             term.wait('SEED_READ_OK')
             term.key(INTERRUPT)
             term.wait('Cleanup     pending', timeout=32)
             term.wait('Report path')
-            term.wait('Export      {')
-            term.wait('Retained')
-            label = 'runtime_key=r-' + hashlib.sha256(runtime.encode()).hexdigest()[:48]
+            term.wait('Export      pending')
+            term.wait('Retained    retained · ' + runtime['agentId'] + ' · collect-artifacts')
+            label = 'runtime_key=r-' + hashlib.sha256(runtime['runtimeId'].encode()).hexdigest()[:48]
             workers = subprocess.check_output(['docker', 'ps', '--all', '--quiet', '--filter', 'label=' + label], timeout=6)
             assert len(workers.splitlines()) == 1
         finally:

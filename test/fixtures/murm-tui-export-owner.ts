@@ -28,7 +28,7 @@ export function retainOriginalOwner(harness, exchange) {
               const artifactPath = join(directory, 'artifacts');
               await writeFile(artifactPath, 'required export fault', { flag: 'wx', mode: 0o600 });
               blocker = artifactPath;
-              await writeFile(join(exchange, 'owner-injected'), runtime.id, { mode: 0o600 });
+              await writeFile(join(exchange, 'owner-injected'), JSON.stringify({ runtimeId: runtime.id, agentId: agents[0].id }), { mode: 0o600 });
             } else if (command === 'repair') {
               if (blocker) await rm(blocker, { force: true });
               const receipt = await runtime.close({ timeoutMs: 30_000 });

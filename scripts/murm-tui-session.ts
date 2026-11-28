@@ -11,6 +11,7 @@ const maxPending = 64;
 const readTimeoutMs = 8_000;
 
 type Message = {
+  order: number;
   agentId: string;
   id: string;
   role: string;
@@ -20,7 +21,7 @@ type Message = {
   truncated: boolean;
 };
 
-type Activity = { agentId: string; event: string; detail?: unknown };
+type Activity = { order: number; agentId: string; event: string; detail?: unknown };
 type Mutation = {
   payload: unknown;
   request: HarnessRequest;
@@ -165,7 +166,7 @@ export class TerminalSession {
     let current = this.messages.get(key);
     if (!current) {
       if (this.messages.size >= messageLimit) this.truncated = true;
-      current = { agentId, id, role: 'assistant', blocks: new Map(), hidden: false, complete: false, truncated: false };
+      current = { order: this.revision, agentId, id, role: 'assistant', blocks: new Map(), hidden: false, complete: false, truncated: false };
       boundedMap(this.messages, key, current, messageLimit);
     }
     return current;
@@ -220,7 +221,7 @@ export class TerminalSession {
       const data = JSON.stringify(detail);
       summary = data.length > 4096 ? data.slice(0, 4096) + ' […]' : detail;
     } catch { summary = 'unavailable'; }
-    boundedMap(this.activity, toolKey ?? String(this.anonymousActivity++), { agentId, event, detail: summary }, activityLimit);
+    boundedMap(this.activity, toolKey ?? String(this.anonymousActivity++), { order: this.revision, agentId, event, detail: summary }, activityLimit);
   }
 
   async mutate(key: string, payload: unknown, send: (request: HarnessRequest) => Promise<unknown>) {

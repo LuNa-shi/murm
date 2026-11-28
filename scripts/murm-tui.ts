@@ -80,6 +80,7 @@ class Foreground {
   private readonly scrollers = new Map(pages.map(page => [
     page, new ScrollView({ invalidate() {}, render: () => [] }, { follow: page === 'Agents' ? 'end' : 'none' }),
   ]));
+  private readonly queryScroller = new ScrollView({ invalidate() {}, render: () => [] }, { follow: 'none' });
   private readonly activityCounts = new Map<Page, number>();
   private readonly launchDirectory: string;
   private specifier: string;
@@ -100,6 +101,7 @@ class Foreground {
   private modal?: Modal;
   private page: Page = 'Run';
   private agentId?: string;
+  private agentObservation?: string;
   private questionId?: string;
   private expandedActivity = false;
   private deadlineRefresh?: ReturnType<typeof setInterval>;
@@ -525,7 +527,7 @@ class Foreground {
 
   private chooseAgent() {
     this.menu('Select Agent', [...this.agentList()].map(([id, detail]) => ({
-      title: id, detail, perform: () => { this.agentId = id; this.switchPage('Agents'); },
+      title: id, detail, perform: () => { this.agentId = id; this.agentObservation = undefined; this.switchPage('Agents'); },
     })));
   }
 
@@ -546,10 +548,15 @@ class Foreground {
         const result = await model.mutate(key, payload, send);
         this.notice(result ? this.formatReceipt(result) : 'Operation already pending.');
       };
+      const read = (query: () => Promise<unknown>) => {
+        this.agentObservation = key;
+        this.queryScroller.scrollToStart();
+        return model.read(key, query);
+      };
       switch (operation) {
-        case 'getState': return model.read(key, () => agents.getState(agentId));
-        case 'getStats': return model.read(key, () => agents.getStats(agentId));
-        case 'getMessages': return model.read(key, () => agents.getMessages(agentId, { limit: 32, maxBytes: 64 * 1024 }));
+        case 'getState': return read(() => agents.getState(agentId));
+        case 'getStats': return read(() => agents.getStats(agentId));
+        case 'getMessages': return read(() => agents.getMessages(agentId, { limit: 32, maxBytes: 64 * 1024 }));
         case 'send': {
           const choices: Action[] = [];
           for (const value of capability.text ? capability.modes ?? [] : []) {
@@ -669,12 +676,16 @@ class Foreground {
     if (key('f10')) { this.showLog = !this.showLog; this.redraw(); return; }
     if (key('escape')) {
       if (this.modal) this.closeModal();
+      else if (this.page === 'Agents' && this.agentObservation) {
+        this.agentObservation = undefined;
+        this.scrollers.get('Agents')!.scrollToEnd();
+      }
       else this.showLog = false;
       this.redraw();
       return;
     }
     if (key('pageUp') || key('pageDown')) {
-      const scroll = this.scrollers.get(this.page)!;
+      const scroll = this.pageScroller();
       scroll.scrollBy((key('pageUp') ? -1 : 1) * Math.max(1, scroll.viewportHeight - 2));
       return;
     }
@@ -707,7 +718,7 @@ class Foreground {
       if (!this.model || this.model.result) this.requestExit(this.exitCode ?? 0, 'terminal-exit');
       else this.confirm('Stop the whole Run and exit?', () => this.requestExit(1, 'terminal-exit'));
     } else if (key('end')) {
-      this.scrollers.get(this.page)!.scrollToEnd();
+      this.pageScroller().scrollToEnd();
     } else if (key('enter')) {
       if (this.page === 'Run') this.inputMenu();
       if (this.page === 'Agents') this.chooseAgent();
@@ -760,18 +771,23 @@ class Foreground {
     if (!model) return ['No Run yet.'];
     const agents = this.agentList();
     const id = this.agentId;
+    if (this.agentObservation) {
+      const value = model.observations.get(this.agentObservation);
+      return [this.agentObservation.split(':').at(-1) + ' · ' + id + ' · Esc returns to activity',
+        value?.pending ? 'Reading…' : value?.error ?? this.format(value?.result)];
+    }
+    const activity = [...model.activity.values()].filter(event => event.agentId === id || !event.agentId)
+      .sort((left, right) => left.order - right.order).slice(-25).map(event => ({ order: event.order,
+        lines: [event.event + ' ' + String(terminalObject(event.detail).toolName ?? '') +
+          (this.expandedActivity ? '\n' + this.format(event.detail) : '')] }));
+    const messages = [...model.messages.values()].filter(message => message.agentId === id && !message.hidden && message.blocks.size > 0)
+      .map(message => ({ order: message.order, lines: [message.role + ' · ' + message.id + (message.complete ? '' : ' · streaming'),
+        [...message.blocks].sort(([a], [b]) => a - b).map(([, text]) => text).join('') + (message.truncated ? ' […]' : '')] }));
     return [
       'Selected Agent  ' + (id ?? 'none') + ' · F6 select · F7 controls · t expand tools',
       ...[...agents].slice(0, 65).map(([agent, state]) => (agent === id ? '› ' : '  ') + agent + ' ' + state),
       this.format(model.state?.business),
-      ...[...model.observations].filter(([key]) => id && key.startsWith('agent:' + id + ':')).flatMap(([key, value]) =>
-        [key.slice(key.lastIndexOf(':') + 1), value.pending ? 'Reading…' : value.error ?? this.format(value.result)]),
-      ...[...model.activity.values()].filter(event => event.agentId === id || !event.agentId).slice(-25).flatMap(event =>
-        [event.event + ' ' + String(terminalObject(event.detail).toolName ?? '') +
-          (this.expandedActivity ? '\n' + this.format(event.detail) : '')]),
-      ...[...model.messages.values()].filter(message => message.agentId === id && !message.hidden && message.blocks.size > 0)
-        .flatMap(message => [message.role + ' · ' + message.id + (message.complete ? '' : ' · streaming'),
-          [...message.blocks].sort(([a], [b]) => a - b).map(([, text]) => text).join('') + (message.truncated ? ' […]' : '')]),
+      ...[...messages, ...activity].sort((left, right) => left.order - right.order).flatMap(entry => entry.lines),
     ];
   }
 
@@ -788,21 +804,33 @@ class Foreground {
     const result = this.model?.result;
     if (!result) return ['No final result yet.'];
     const report = this.model!.observations.get('report');
+    const pending = result.cleanup.pending ?? terminalObject(result.cleanup.receipt).pending;
+    const retained = Array.isArray(pending) ? pending.map(terminalObject).flatMap(resource => {
+      const status = terminalObject(resource.retention).status;
+      return status === 'retained' || status === 'retain-at-risk' ?
+        [status + ' · ' + String(resource.id) + ' · ' + String(resource.action)] : [];
+    }) : [];
     return [
       'Outcome     ' + result.outcome + ' · ' + result.reason,
       'Cleanup     ' + result.cleanup.status,
       'Report save ' + (result.reportSaveFailure ? this.format(result.reportSaveFailure) : result.reportPath ? 'saved' : 'unknown'),
       ...(result.reportPath ? ['Report path ' + result.reportPath + ' · F7 reads preview'] : []),
       'Acceptance  ' + this.format(result.acceptance ?? 'unknown'),
-      'Export      ' + this.format(result.export ?? 'unknown'),
-      'Pending     ' + this.format(result.cleanup.pending ?? terminalObject(result.cleanup.receipt).pending ?? 'unknown'),
-      'Retained    ' + this.format(result.cleanup.retained ?? 'unknown'),
+      'Export      ' + this.format(terminalObject(result.export).status ?? 'unknown'),
+      'Retained    ' + (retained.length ? retained.join(', ') :
+        this.format(result.cleanup.retained ?? 'unknown')),
       ...(result.failure ? ['Failure     ' + this.format(result.failure)] : []),
       ...(result.cleanup.status === 'pending' ? ['Cleanup is unconfirmed. Use the report to locate resources and their original owner.'] : []),
+      'Pending     ' + this.format(pending ?? 'unknown'),
+      'Export details ' + this.format(result.export ?? 'unknown'),
       'Unconfirmed operations  ' + this.format(result.operations?.filter(entry => entry.status === 'pending' || entry.status === 'unknown') ?? []),
       'Artifacts   ' + this.format(result.artifacts),
       ...(report ? ['Report preview', report.pending ? 'Reading…' : report.error ?? this.format(report.result)] : []),
     ];
+  }
+
+  private pageScroller() {
+    return this.page === 'Agents' && this.agentObservation ? this.queryScroller : this.scrollers.get(this.page)!;
   }
 
   private render(width: number) {
@@ -834,11 +862,11 @@ class Foreground {
     const bounded = text.length <= 100_000 ? text : this.page === 'Agents'
       ? text.slice(0, 2000) + '\n[Earlier history truncated]\n' + text.slice(-98_000) : text.slice(0, 100_000);
     const wrapped = wrapTextWithAnsi(this.clean(bounded), Math.max(1, width - 1));
-    const scroller = this.scrollers.get(this.page)!;
+    const scroller = this.pageScroller();
     scroller.updateLayout(wrapped.length, bodyRows, () => this.redraw());
     if (this.page === 'Agents' && scroller.isFollowingEnd) {
       this.activityCounts.set(this.page, model?.revision ?? 0);
-    } else if (this.page === 'Agents' && (this.activityCounts.get(this.page) ?? 0) < (model?.revision ?? 0)) {
+    } else if (this.page === 'Agents' && !this.agentObservation && (this.activityCounts.get(this.page) ?? 0) < (model?.revision ?? 0)) {
       statusLines[0] = 'New Agent activity · End follows latest';
     }
     const start = scroller.scrollTop;
