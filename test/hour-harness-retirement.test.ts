@@ -20,10 +20,12 @@ for(const path of ['src/harnesses/endurance','src/harnesses/taskpool','src/harne
  await assert.rejects(access(join(root,path)),{code:'ENOENT'});
  await assert.rejects(access(join(root,'dist',path)),{code:'ENOENT'});
 }
-await assert.rejects(access(join(root,'dist/test')),{code:'ENOENT'});
+for(const path of ['dist/test','dist/benchmarks','dist/test-support/taskpool-legacy']) {
+ await assert.rejects(access(join(root,path)),{code:'ENOENT'});
+}
 for(const path of ['examples/taskpool/harness/harness.js','examples/peermesh/harness/index.js','examples/substrate/harness/index.js','examples/lead-worker/harness/index.js',
  'test-support/subagents/stages.js',
- 'examples/substrate/main.js','benchmarks/lead-worker-orders/main.js']) await import(pathToFileURL(join(root,'dist',path)));
+ 'examples/substrate/main.js']) await import(pathToFileURL(join(root,'dist',path)));
 for(const name of ['agent-disk-probe','drop-peer-response','judge-peer-fixture','project-install-rollback-probe','sandbox-project-probe']) await access(join(root,'dist/test-support',name+'.js'));
 // Notes and Subagents are editable adjacent-module examples; assemble their documented layout.
 await import('./main.mjs');

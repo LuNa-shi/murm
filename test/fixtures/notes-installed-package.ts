@@ -115,6 +115,15 @@ export async function stageInstalledTestFixtures(packageRoot: string) {
   await cp(import.meta.dirname, join(packageRoot, 'dist/test/fixtures'), { recursive: true });
 }
 
+// Explicit developer workloads use the candidate SDK installation and the
+// checkout's compiled runner and fixtures. They are not part of the archive.
+export async function stageInstalledBenchmark(directory: string, name: 'fate' | 'lead-worker-orders') {
+  const root = join(directory, 'node_modules/@luna-shi/murm');
+  const target = join(root, 'dist/benchmarks', name);
+  await cp(join(repository, 'dist/benchmarks', name), target, { recursive: true, force: false, errorOnExist: true });
+  return target;
+}
+
 export function installNativeNotesExample({ parentDirectory } = {}) {
   return installNotesExample(undefined, { requireCleanCheckout: true, parentDirectory });
 }

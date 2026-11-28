@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { stableStringify } from '../persistence/envelope.js';
+import { stableStringify } from '../../examples/taskpool/persistence/envelope.js';
 
 export const AGENT_ROLES = Object.freeze({
   BOUND: 'bound',

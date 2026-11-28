@@ -9,6 +9,9 @@ order: 16
 
 ## 尚未发布
 
+- SDK 包根公开 Harness 作者契约。Subagents、TaskPool、PeerMesh、Lead–Worker 和 Substrate 可从同一份候选包安装，在各自目录构建和启动。
+- 启动提示使用 `swarm service invoke <service> <operation>` 调用已授权的操作。TaskPool 保留快捷命令，并拥有 Task、Material、Workspace、Mission 和 Judge 实现。
+- 固定 Lead–Worker 验证与 FATE 使用源码 checkout 构建后的 `dist/benchmarks/` 入口。常规项目示例接收目录和初始 prompt。
 - Runtime 支持镜像内安装的外部执行器及经过验证的 Pi 版本。Pi 增加 Chat Completions，宿主机可接入自定义模型 transport。项目文件分阶段配置预算，通过磁盘暂存和分块支持更大的目录输入。
 - Linux setup 可以接入已鉴权的 OpenSandbox 服务，也可以先部署本地服务，再准备 Worker。默认使用 API 路径。严格本地模式保留显式工作区配额与网络规则。
 - SDK 可通过 `createSandbox` 接入外部 Sandbox Provider。setup、doctor 与内置配置共用连接解析。基础设施探针支持 Pi 和 Codex。

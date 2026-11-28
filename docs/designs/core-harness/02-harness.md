@@ -728,7 +728,7 @@ export async function run(config: Config, signal?: AbortSignal) {
   // handoff through a custom Service, not the quality of a new code review.
   const evidence = {
     baseline: "fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e",
-    source: "examples/taskpool/compatibility/services-bridge.js",
+    source: "test-support/taskpool-legacy/services-bridge.js",
     finding: "Bridge 的通用调用身份应与 flat 的 Task/Execution 领域校验分离。",
   };
   const files = { "review-input.json": {

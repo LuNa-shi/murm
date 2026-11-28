@@ -3,7 +3,8 @@
 ## Fixed-team verification fixture
 
 `main.ts` and `config.ts` retain a deterministic two-stage text-report exercise
-for verification. It is separate from the [project example](../../examples/lead-worker/README.md) and requires
+for verification. Build its pinned checkout with `npm ci --ignore-scripts` and
+`npm run build`. It is separate from the [project example](../../examples/lead-worker/README.md) and requires
 `MURM_LEAD_WORKER_RUN`:
 
 ```sh
@@ -28,7 +29,7 @@ Any failed, aborted, unknown or timed-out input fences new Board work and aborts
 
 ## Verification
 
-Deterministic verification uses real Core, CLI subprocesses and Bridge authorization, temporary native Git commits/pushes, and a bounded local Git API fixture. The deterministic team-size cases use 3, 4 and 8 Agents. Only native Pi transport and private export are simulated. The opt-in `test/lead-worker-real.test.ts` is prepared for a clean installed package, three native Agents and a single local Gitea facility. Its fixed workload has six inputs, twelve expected Responses (hard all-arrival cap sixteen), a 120-second child limit and one 80-second cleanup budget. A separate exclusive-claim probe remains intentionally unfinished under the winning owner and is reported explicitly. No native acceptance run or upstream-scale/performance result is implied; this fixture requires two independent exact-pin approvals before launch.
+Deterministic verification uses real Core, CLI subprocesses and Bridge authorization, temporary native Git commits/pushes, and a bounded local Git API fixture. The deterministic team-size cases use 3, 4 and 8 Agents. Only native Pi transport and private export are simulated. The opt-in `test/lead-worker-real.test.ts` pairs the checkout benchmark with a clean installed SDK, three native Agents and a single local Gitea facility. Its fixed workload has six inputs, twelve expected Responses (hard all-arrival cap sixteen), a 120-second child limit and one 80-second cleanup budget. A separate exclusive-claim probe remains intentionally unfinished under the winning owner and is reported explicitly. No native acceptance run or upstream-scale/performance result is implied; this fixture requires two independent exact-pin approvals before launch.
 
 ## Drive several stages from a host
 
@@ -53,7 +54,7 @@ For a single shared 30-minute work deadline, set `workTimeoutMs: 1_800_000` and 
 
 Dynamic mode uses one Lead, two original Workers and a runtime-created checker in the same Board and Git project. The Lead can deploy its own checking program, register the checker Profile, admit the member, and grant or revoke the checking operation on an existing Worker. Assigned Workers can read `spec.md` and `sample.jsonl` from the initial Git project. The final program is evaluated from the Lead's pinned Git commit in fresh containers. The compiled benchmark includes the dynamic entry point, task, starter and independent oracle.
 
-After a successful Run, execute the offline verifier from that package using its saved report and candidate bundle.
+After a successful Run, execute the offline verifier from the checkout using its saved report and candidate bundle.
 
 ```bash
 node dist/benchmarks/lead-worker-orders/verify-orders.js <harness-report.json> <orders-candidate.json>

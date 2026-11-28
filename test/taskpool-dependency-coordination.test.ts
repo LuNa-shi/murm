@@ -6,16 +6,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { controls, transport } from './fixtures/taskpool-controller-backend.js';
-import { createTaskPoolAgentCoordinator } from '../examples/taskpool/harness/agent-coordinator.js';
-import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../examples/taskpool/services/task/agent-service.js';
 import { ServiceRegistry } from '../src/core/services.js';
-import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
+const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
+const { createTaskPoolAgentCoordinator } = await import('../examples/taskpool/harness/agent-coordinator.js');
+const { createTaskPoolTaskService, taskPoolResearcherProfile } = await import('../examples/taskpool/services/task/agent-service.js');
+const { makeEnvelope } = await import('../examples/taskpool/persistence/envelope.js');
 const {createRuntime}=await import('@luna-shi/murm');hooks.deregister();
 const execute=promisify(execFile);
 async function fixture(t, { coordinationPermissions = ['task_dependency_replace'], registeredPermissions = coordinationPermissions, profileAllows = true } = {}) {

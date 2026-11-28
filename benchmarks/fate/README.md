@@ -21,10 +21,10 @@ elan toolchain install leanprover/lean4:v4.28.0
 (cd fate-m && lake exe cache get)
 ```
 
-From a consumer directory containing the installed murm tarball, set `MURM_FATE_PROJECT` to that workspace and `MURM_FATE_LEAN` to the installed Lean toolchain directory. Set `MURM_SUBSTRATE_RUN` to a fresh ID, `MURM_SUBSTRATE_IMAGE` to the reviewed worker image, and `MURM_SUBSTRATE_MODEL_URL` and `MURM_SUBSTRATE_MODEL_TOKEN` to the approved K3 endpoint and credential. The model URL includes its Responses route. Optional lifecycle settings are listed in the ordinary project example. `MURM_SUBSTRATE_OUTPUT` defaults to `./experiments/substrate-fate`.
+Build the pinned checkout with `npm ci --ignore-scripts` and `npm run build`. From the checkout root, set `MURM_FATE_PROJECT` to that workspace and `MURM_FATE_LEAN` to the installed Lean toolchain directory. Set `MURM_SUBSTRATE_RUN` to a fresh ID, `MURM_SUBSTRATE_IMAGE` to the reviewed worker image, and `MURM_SUBSTRATE_MODEL_URL` and `MURM_SUBSTRATE_MODEL_TOKEN` to the approved K3 endpoint and credential. The model URL includes its Responses route. Optional lifecycle settings are listed in the ordinary project example. `MURM_SUBSTRATE_OUTPUT` defaults to `./experiments/substrate-fate`.
 
 ```sh
-example=node_modules/@luna-shi/murm/dist/benchmarks/fate
+example=dist/benchmarks/fate
 node "$example/main.js" --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN"
 node "$example/main.js" --fate-matrix "$example/fate-config.js"
 node "$example/main.js" --fate-rescore "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" \

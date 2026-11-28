@@ -7,18 +7,18 @@ import { join } from 'node:path';
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
-import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { controls } from './fixtures/taskpool-controller-backend.js';
-import { createTaskPoolTaskService } from '../examples/taskpool/services/task/agent-service.js';
-import { createTaskPoolPublicationServices } from '../examples/taskpool/services/workspace/publication-services.js';
 import { ServiceRegistry } from '../src/core/services.js';
-import { stableStringify } from '../examples/taskpool/persistence/envelope.js';
 import { installNotesExample } from './fixtures/notes-installed-package.js';
 
 const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
+const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
+const { createTaskPoolTaskService } = await import('../examples/taskpool/services/task/agent-service.js');
+const { createTaskPoolPublicationServices } = await import('../examples/taskpool/services/workspace/publication-services.js');
+const { stableStringify } = await import('../examples/taskpool/persistence/envelope.js');
 const {createRuntime}=await import('@luna-shi/murm');hooks.deregister();
 const execute=promisify(execFile);
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');

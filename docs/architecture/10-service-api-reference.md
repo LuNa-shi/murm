@@ -36,8 +36,8 @@ This section is generated from executable exports and checked against the source
 | [examples/taskpool/services/builtin-registry.ts](../../examples/taskpool/services/builtin-registry.ts) | `095a61e9242fcc37d88bf18758881b280317b8040a8c38a0fc8cac41aa894306` |
 | [examples/taskpool/deploy/service-hosts/service-manifest.ts](../../examples/taskpool/deploy/service-hosts/service-manifest.ts) | `78fcddbe31f5e2a01aa8702e88d5d15fd0e99d8e6da9809a4755f8530214d02c` |
 | [examples/taskpool/deploy/service-hosts/service-registry.ts](../../examples/taskpool/deploy/service-hosts/service-registry.ts) | `3c74387987c657134699ad39b160f415d7537a21f8e3dffd0b2b298bcd8f27aa` |
-| [examples/taskpool/compatibility/capability-profile.ts](../../examples/taskpool/compatibility/capability-profile.ts) | `90ff0971e3cdc7458f577cd9207701a63861becc34ca34c2c94edfdcc3728a0f` |
-| [examples/taskpool/compatibility/services-bridge.ts](../../examples/taskpool/compatibility/services-bridge.ts) | `ea30e9cb522e6694061ae32d6ee10c9f34a3537bdbfc9135a76acce6cec3ad9f` |
+| [test-support/taskpool-legacy/capability-profile.ts](../../test-support/taskpool-legacy/capability-profile.ts) | `8ff9b1fdcdb4a31421dbb59939a09d381db4de84c13a1b417593b46a533b65c5` |
+| [test-support/taskpool-legacy/services-bridge.ts](../../test-support/taskpool-legacy/services-bridge.ts) | `bddb5744b172e34d5939b958f5e92946f736d6816b31c9b54938976ded8e1ca6` |
 | [examples/services/mathlib-search/service.json](../../examples/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5b436c6d7062a7b9fb0fd434af1375b9c050999cfa76bd6d97dac88558dca8b3` |
 | [src/core/index.ts](../../src/core/index.ts) | `e6279b847e0afb9c46beae5fc5f77621cabd188baa0d352d3a466ef61a1e9b15` |

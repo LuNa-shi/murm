@@ -12,8 +12,8 @@ import { createNotesService, notesManifest } from './fixtures/core-notes-service
 
 // Controlled OpenSandbox and Docker boundary, with the actual Core adapter.
 const hooks = registerHooks({ resolve(specifier, context, next) {
-  if (context.parentURL?.endsWith('/src/core/opensandbox-provider.js') &&
-      /\/runtime\/(opensandbox-manager|docker-agent-network|docker-agent-disk)\.js$/.test(specifier)) {
+  if (context.parentURL?.endsWith('/src/core/sandbox/opensandbox-provider.js') &&
+      /^\.\/(opensandbox-manager|docker-agent-network|docker-agent-disk)\.js$/.test(specifier)) {
     return { url: new URL('./fixtures/core-pi-transport.js', import.meta.url).href, shortCircuit: true };
   }
   return next(specifier, context);

@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { TaskService } from '../examples/taskpool/services/task/task-service.js';
 import { ContextService } from '../examples/taskpool/services/material/context-service.js';
-import { ServicesBridge } from '../examples/taskpool/compatibility/services-bridge.js';
+import { ServicesBridge } from '../test-support/taskpool-legacy/services-bridge.js';
 import { createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
 
 const exec = promisify(execFile);

@@ -4,13 +4,13 @@
 
 Runtime baseline: `207be6356c16e5fb60c4b3c5b236d7a98383f991`; review date: 2026-11-27. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **370 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **372 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `website/`, `examples/services/`, `examples/taskpool/deploy/`, `examples/taskpool/services/judge/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes/.npmignore`, `examples/subagents/.npmignore`, `examples/lead-worker/.npmignore`, `examples/substrate/.npmignore`, `examples/peermesh/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`, `benchmarks/fate/FateProofGuard.lean`, `benchmarks/fate/VerifyFateProof.lean`, `.github/workflows/ci.yml`, `.github/workflows/deploy-website.yml`, `.github/workflows/release.yml`, `examples/taskpool/.npmignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `website/`, `examples/services/`, `examples/taskpool/deploy/`, `examples/taskpool/services/judge/`, `test-support/taskpool-legacy/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes/.npmignore`, `examples/subagents/.npmignore`, `examples/lead-worker/.npmignore`, `examples/substrate/.npmignore`, `examples/peermesh/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`, `benchmarks/fate/FateProofGuard.lean`, `benchmarks/fate/VerifyFateProof.lean`, `.github/workflows/ci.yml`, `.github/workflows/deploy-website.yml`, `.github/workflows/release.yml`, `examples/taskpool/.npmignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -24,12 +24,10 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 
 ## File-by-file ownership
 
-### Agent and prompts (3)
+### Agent and prompts (1)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [examples/taskpool/compatibility/capability-profile.ts](../../examples/taskpool/compatibility/capability-profile.ts) | Role-specific capability profile, binding requirements and tool directory | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `90ff0971e3cdc7458f577cd9207701a63861becc34ca34c2c94edfdcc3728a0f` |
-| [examples/taskpool/compatibility/services-bridge.ts](../../examples/taskpool/compatibility/services-bridge.ts) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `ea30e9cb522e6694061ae32d6ee10c9f34a3537bdbfc9135a76acce6cec3ad9f` |
 | [examples/taskpool/prompts/agent-contract.ts](../../examples/taskpool/prompts/agent-contract.ts) | TaskPool continuation and notification messages with Service directory projection | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `726c9242d9662c63c0c66d64327744326f04051dc4259540dd8944393d036304` |
 
 ### Configuration and build (9)
@@ -114,7 +112,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 | [examples/notes/run-report.ts](../../examples/notes/run-report.ts) | In-place compiled example import of the shared run-report implementation | [17-harness-reporting](17-harness-reporting.md) | `581e09f402feefb83db027f969c89570e78414fbd905125eb6c314df16d43ca5` |
 | [examples/subagents/run-report.ts](../../examples/subagents/run-report.ts) | In-place compiled example import of the shared run-report implementation | [17-harness-reporting](17-harness-reporting.md) | `f3af8afe961524b6d95f1e7eba390412eee48f828c6300194e3037ffd43a83cb` |
 
-### Execution and control (30)
+### Execution and control (29)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -131,7 +129,6 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 | [examples/subagents/main.ts](../../examples/subagents/main.ts) | Subagents host Profiles, live user input, one-shot or interactive execution and whole-tree reporting | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `18810c1d18f6a29122b08157a77c60790f1cdaeb4e6009ed886b7c7d568ce428` |
 | [examples/subagents/prompts/prompts.ts](../../examples/subagents/prompts/prompts.ts) | Production Root and Child instructions for the discovered collaboration Service | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `76fdca19d7bf342d53a0bd57f98c939e39913d3df3316c9aab6c6bcf5f7d4bb4` |
 | [examples/subagents/services/collaboration-service.ts](../../examples/subagents/services/collaboration-service.ts) | Six authorized Bash operations and Service state export | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `53976ff472477a0a9903bb4314de1f77e6df1d3ee7a3dd860ae91502c1d8d3c0` |
-| [examples/taskpool/compatibility/runtime.ts](../../examples/taskpool/compatibility/runtime.ts) | Registered Agent binding, physical resource ownership, process failure cleanup and fencing | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `5592925e45c17fd0b6ce6eccacf1b8d6f5904f250abea10d83eef9fd369b102b` |
 | [examples/taskpool/harness/agent-coordinator.ts](../../examples/taskpool/harness/agent-coordinator.ts) | Trusted Core-returned flat Agent identity registration and readiness | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `c6592ff76c837dd596d97e9a5754edc71ea7f1c28716f62567ce2c2c236ff646` |
 | [examples/taskpool/harness/controller.ts](../../examples/taskpool/harness/controller.ts) | TaskPool serial discovery, continuation, directed feedback and stop-confirmed replacement policy | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `fb3f15d2650f019f01914eeba2433f39a56073bfa8bf1b09e4d7cb2e27a43803` |
 | [examples/taskpool/harness/harness.ts](../../examples/taskpool/harness/harness.ts) | TaskPool host composition, optional trusted Workspace capture binding, and independent business/resource reporting | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md), [17-harness-reporting](17-harness-reporting.md) | `955cc0f19180b78ca6bc1349eb283bb9081934459228e2699037df7041c7f0a9` |
@@ -273,6 +270,14 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 |---|---|---|---|
 | [src/cli/foreground-harnesses.ts](../../src/cli/foreground-harnesses.ts) | Shared foreground Harness driver using existing mode controllers and lifecycle reports | [17-harness-reporting](17-harness-reporting.md) | `d1a590535b4916b9220bf854c634fa2ec58a5968e3d7c6e4a1d5dfe36a78cff3` |
 
+### controlled verification fixture (3)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [test-support/taskpool-legacy/capability-profile.ts](../../test-support/taskpool-legacy/capability-profile.ts) | Role-specific capability profile, binding requirements and tool directory | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `8ff9b1fdcdb4a31421dbb59939a09d381db4de84c13a1b417593b46a533b65c5` |
+| [test-support/taskpool-legacy/runtime.ts](../../test-support/taskpool-legacy/runtime.ts) | Registered Agent binding, physical resource ownership, process failure cleanup and fencing | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `9d47cb19c7a223c2a9786ae99439c738d898dadf20bfb7a68d96d629fa425852` |
+| [test-support/taskpool-legacy/services-bridge.ts](../../test-support/taskpool-legacy/services-bridge.ts) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `bddb5744b172e34d5939b958f5e92946f736d6816b31c9b54938976ded8e1ca6` |
+
 ### deployment (1)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
@@ -305,21 +310,23 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 | [benchmarks/shared/run-window.test.ts](../../benchmarks/shared/run-window.test.ts) | Deterministic Core gateway and run-window admission, cancellation, and persistence regressions | [17-harness-reporting](17-harness-reporting.md) | `3149c086f42696bdd17485f3287f03ec43a9df5032f58b4b23229624ee46738e` |
 | [benchmarks/shared/run-window.ts](../../benchmarks/shared/run-window.ts) | Monotonic Responses admission, active stream cancellation, and deadline-bound checkpoint persistence | [17-harness-reporting](17-harness-reporting.md) | `ec77e3a49cc7f53e286ea6773b147224dac28fcd181f13c4da1f37a48bec5d45` |
 
-### distribution and build (2)
+### distribution and build (4)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [deploy/worker/tsconfig.json](../../deploy/worker/tsconfig.json) | Compiles Worker-only entry points and their dependency graph for the image | [07-run-configuration](07-run-configuration.md) | `239ad6d41e2493b2e3c1c5fce0c453beeed41d902784a8170b360dfea032f56f` |
+| [examples/services/mathlib-search/tsconfig.json](../../examples/services/mathlib-search/tsconfig.json) | Compiles only the source-built HTTP server, peers and their dependencies | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `bb0a50fa2dc04c1961206d53ffb603f861094e72f5ff38e58e76316610ca0d6a` |
 | [examples/taskpool/.npmignore](../../examples/taskpool/.npmignore) | Excludes private Run output and local build state when packaging the editable example | [07-run-configuration](07-run-configuration.md) | `4fdf18068a60e569d17e9383aa7fb178db61b4513c5bf1b726c5c9dfa5157608` |
+| [examples/taskpool/deploy/service-hosts/tsconfig.json](../../examples/taskpool/deploy/service-hosts/tsconfig.json) | Compiles only the source-built HTTP server, peers and their dependencies | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `59a5be7034e9ec4dcb10900b9fe170e4a0e1498c332a0c68d78043f092b43b43` |
 
 ### documentation tooling (4)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/check-architecture.ts](../../scripts/check-architecture.ts) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `6949b86f2252d2081ad282880e7a942818375093470526f104b282bde5aece76` |
-| [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `6b446606be6eb04e484aa9227d2c7d455271e76bb31c83c28f20bffdadc75b86` |
+| [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `4c19c0e8dc4c7d0d84b3bc953c5f5eed08aeb87c63b9c4ee5b7ae56830c40444` |
 | [scripts/generate-architecture-coverage.ts](../../scripts/generate-architecture-coverage.ts) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `7aeba931e4ee93557e032b6daffc0823f0fd29fbd4d6154dc74d338f2ebb4e51` |
-| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `2a0741bf9b00260ce500ad88b179f6cf879937062953877f4839b191e3cc41ab` |
+| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `c7d643d2a0dd01f1e1ba03d4ccad72fb0745c3a7f6a83e2946658e72de4b5cd7` |
 
 ### durable storage (3)
 
@@ -379,7 +386,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 | [examples/taskpool/deploy/service-hosts/start-service-host.ts](../../examples/taskpool/deploy/service-hosts/start-service-host.ts) | Built-in HTTP service process composition and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `119dbe1b7a3e5aa1509a341459ca879f94c3a0ce16ff10bd6915ca9393639423` |
 | [examples/taskpool/project.ts](../../examples/taskpool/project.ts) | TaskPool Mission and Workspace instantiation, fixed discovery files and reports | [23-project-harness](23-project-harness.md) | `4899d45200733657d7560df41eedcaec7b8da1ac7de1e0b2e67e6c650dd596a4` |
 | [npm-shrinkwrap.json](../../npm-shrinkwrap.json) | Shipped exact dependency resolution for public package and image builds | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `7a0cefb16b3d7d016118985b24750a69d525a9145a1890a39d462424d549299a` |
-| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `2961fd50e82d762180d6c1953b66336833e7cadf368bce27ca27b7d04026f124` |
+| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `aea68230908426d78514c1a3a24ae41ebf51080bfa459123e584218d36b06b75` |
 | [scripts/local-setup-template.ts](../../scripts/local-setup-template.ts) | Independent Subagents project initialization, archive installation and preservation of existing files | [07-run-configuration](07-run-configuration.md) | `931e987a5156f1a4718ee465ea974093bf9213efee425e22bdaaffdd35e6b4b6` |
 | [scripts/local-setup.ts](../../scripts/local-setup.ts) | Shared setup and doctor orchestration, staged timing and cleanup receipts | [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `7554270405dd354757572e76d825633dbd736946b71827430b8c51b9c4d62fcc` |
 | [scripts/local-setup/templates/config.js](../../scripts/local-setup/templates/config.js) | Editable generated Subagents configuration | [07-run-configuration](07-run-configuration.md) | `a929b8de5121e977d6857b0ee209c5e8bd4c68425de471a326916a04b1fb670c` |
@@ -439,7 +446,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 | [examples/taskpool/package.json](../../examples/taskpool/package.json) | Declares the independently installed SDK, compiler and local project commands | [23-project-harness](23-project-harness.md) | `8a9a26ac5372209882f77166978341a7ef3f4b6a7ba8ff518268d62eb1e76414` |
 | [examples/taskpool/services/mathlib/search-contract.ts](../../examples/taskpool/services/mathlib/search-contract.ts) | Defines the search operation schema consumed by the optional TaskPool adapter | [04-services](04-services.md) | `ccfe2a55e72023335df8b5bd9783b0d581fba5d97ad77a1dbe6050f1ec5296af` |
 | [examples/taskpool/tsconfig.json](../../examples/taskpool/tsconfig.json) | Compiles the project entry and local modules against the installed SDK | [23-project-harness](23-project-harness.md) | `5e614043cb61d57e67631083bac6a8a77907418ef12326145ae8bb7a39d71792` |
-| [src/harness/git-tree.ts](../../src/harness/git-tree.ts) | Writes and commits an initial project tree for Git-backed Harnesses | [23-project-harness](23-project-harness.md), [05-workspace-continuity](05-workspace-continuity.md) | `cb098b36e32cb50f7720c04b7e8bdc7d71017ef55178ee84659bc386ed56acdf` |
+| [src/harness/git-tree.ts](../../src/harness/git-tree.ts) | Writes and commits an initial project tree for Git-backed Harnesses | [23-project-harness](23-project-harness.md), [05-workspace-continuity](05-workspace-continuity.md) | `8f86d5eac1ca0c085c285158b3bbae05dce3829ddef6292025341ebd7e49d8ad` |
 | [src/protocol/stable-json.ts](../../src/protocol/stable-json.ts) | Produces deterministic JSON for operation replay and evidence digests | [04-services](04-services.md) | `1941f5b1b9c1a54db7936fa0023272d2985c0034f4d53ca86f617ac94aa6079b` |
 
 ### provider deployment and instructions (13)
@@ -447,13 +454,13 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [deploy/opensandbox/config.toml](../../deploy/opensandbox/config.toml) | Pinned local OpenSandbox Docker deployment recipe | [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `cffd5b3dd2e9200c47826d627a39ce394766179d799491a13caab4ca4ac93845` |
-| [examples/services/mathlib-search/Dockerfile](../../examples/services/mathlib-search/Dockerfile) | Mathlib provider image recipe | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `d85338d2e297f5a7cd3a8f1c1618d69647441908c2e9b3d38dbd06bb822d9229` |
+| [examples/services/mathlib-search/Dockerfile](../../examples/services/mathlib-search/Dockerfile) | Mathlib provider image recipe | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `bd089373e4a9aecc9304d080aa8a358edf4d5fcbafb7c8e35d1953d7c5b2f06d` |
 | [examples/services/mathlib-search/README.md](../../examples/services/mathlib-search/README.md) | Mathlib provider configuration and operation notes | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `ce58b2b8da12b5f587141c99e74e5d0cab8ee72adf453e6cef82e60016e01b22` |
 | [examples/services/mathlib-search/references/loogle.md](../../examples/services/mathlib-search/references/loogle.md) | Repository-owned query guidance loaded by bundle | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `3aff1ebba86327de5465c0b44b37cb5ec57f5bac6b07c90ed211a0b2f02376bd` |
 | [examples/services/mathlib-search/service.json](../../examples/services/mathlib-search/service.json) | Optional provider manifest, schemas, help and documentation declarations | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [examples/services/mathlib-search/SKILL.md](../../examples/services/mathlib-search/SKILL.md) | Repository-owned full Mathlib tool usage instructions loaded by bundle | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `e7f79c40eed183b5a5bb0568923ec5575d450016dba41ff5a7cef94414e6f27c` |
 | [examples/taskpool/deploy/service-hosts/compose.yaml](../../examples/taskpool/deploy/service-hosts/compose.yaml) | Four-process isolated service deployment with independent persistent volumes | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `bc1183db2ace0e507abca5a3e25dc56a277d4ee07ecbcf6684a4a6b67f6b81a2` |
-| [examples/taskpool/deploy/service-hosts/Dockerfile](../../examples/taskpool/deploy/service-hosts/Dockerfile) | Built-in service image recipe and persisted database mount | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `2dfaa0e7f05eeef2e1d2503daf707742c22e791ef78331cf7d4238c36d41a1b1` |
+| [examples/taskpool/deploy/service-hosts/Dockerfile](../../examples/taskpool/deploy/service-hosts/Dockerfile) | Built-in service image recipe and persisted database mount | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `3f16c8f7eacd11466dccbbc2713fe40abfed580e9ad657f861e5521c42ca5737` |
 | [examples/taskpool/deploy/service-hosts/README.md](../../examples/taskpool/deploy/service-hosts/README.md) | Built-in provider deployment configuration | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `d97d98a9d788faa6cd83c7f6496a83e8e99b3627412c8e54e037fdd971b91b20` |
 | [scripts/local-environment.ts](../../scripts/local-environment.ts) | Shared host configuration, same-host diagnostic checks and ownership of the pinned OpenSandbox deployment | [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `1401e116216eb52652f6f4587cac0ede456d51bba7f6f848630e217d3a1f58e3` |
 | [scripts/local-setup-smoke.ts](../../scripts/local-setup-smoke.ts) | Real temporary Runtime probe, artifact verification and cleanup | [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [08-prompts](08-prompts.md) | `8a95a9ea449b60750c4148a487e9e3c5dddf794a79fd67b0f7f208a7da58966f` |

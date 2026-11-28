@@ -1,3 +1,7 @@
+import { access, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { importGitTree } from '@luna-shi/murm';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { decodeFileSeed } from '../src/core/files/core-file-seed.js';
@@ -47,4 +51,18 @@ test('FileSeed enforces existing per-file and collective byte bounds without tru
   assert.throws(() => decodeFileSeed({ file: { ...fullFile, data: fullFile.data + 'x' } }), { code: 'INVALID_CONTRACT' });
   const large = Object.fromEntries(Array.from({ length: 9 }, (_, index) => [String(index), fullFile]));
   assert.throws(() => decodeFileSeed(large), { code: 'INVALID_CONTRACT' });
+});
+
+test('public Git import rejects invalid FileTree paths and modes before staging any bytes', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'murm-git-import-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const rejected = { code: 'INVALID_CONTRACT' };
+  for (const files of [
+    { '../../../escaped.txt': 'outside the worktree' },
+    { 'nested/.GIT/config': 'reserved metadata' },
+    { parent: 'a file', 'parent/child': 'a conflicting descendant' },
+  ]) await assert.rejects(importGitTree(root, files, [], 'Invalid staging'), rejected);
+  await assert.rejects(importGitTree(root, { file: 'bytes' }, [], 'Invalid mode', { file: 0o777 as 0o755 }), rejected);
+  await assert.rejects(access(join(root, '.swarm-staging')), { code: 'ENOENT' });
+  await assert.rejects(access(join(root, 'escaped.txt')), { code: 'ENOENT' });
 });

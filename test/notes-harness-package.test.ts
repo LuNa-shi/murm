@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import { installNotesExample, execute } from './fixtures/notes-installed-package.js';
 import { createNotesHarnessUpstream, notesHarnessCommand } from './fixtures/notes-harness-upstream.js';
 
-const rootExports = ['DEFAULT_WORKER_IMAGE', 'EXECUTOR_ADAPTER_PROTOCOL', 'MurmError', 'ProjectPreflightError', 'ServiceRegistry', 'checkGitProject', 'commitGitTree', 'completeFileTreeDigest', 'createCodexExecutor', 'createExecutorAdapter', 'createHttpJsonAdapter', 'createInProcessAdapter', 'createInputAdmission', 'createOwnedResources', 'createPiExecutor', 'createRuntime', 'createSandbox', 'decodeFileTree', 'getExecutorCapabilities', 'httpClient', 'importGitTree', 'initializeGitRepository', 'isGitTreePath', 'observeProjectRuntime', 'projectConfiguration', 'projectResult', 'readHarnessResult', 'requestHttp', 'resolveSandboxConnection', 'runInput', 'runWithReport', 'seedTeamRepository', 'seededCheckoutInstruction', 'snapshotFileTree', 'stableStringify', 'workerImageFor'];
+import { rootExports } from './fixtures/public-entry.js';
 
 test('installed Notes and subagents CLIs preserve cancellation received during configuration import', { timeout: 210_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());

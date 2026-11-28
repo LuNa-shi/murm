@@ -5,6 +5,9 @@ For a feature walkthrough of the current release, see [What's New (v0.2.0)](docs
 
 ## Unreleased
 
+- The SDK root exports the Harness author contract. Subagents, TaskPool, PeerMesh, Lead–Worker and Substrate build and start in their own directories from the same candidate archive.
+- Service commands advertised at startup use `swarm service invoke <service> <operation>`. TaskPool retains its shorthand commands and owns its Task, Material, Workspace, Mission and Judge implementation.
+- Fixed Lead–Worker verification and FATE have dedicated checkout launch paths under `dist/benchmarks/`. The ordinary project examples take a directory and prompt.
 - Runtime accepts image-installed executor adapters and verified Pi version selections. Worker images install the selected executable. Pi also supports Chat Completions and the Host accepts trusted transports. Separate project file budgets and disk-backed transfer support larger directory inputs.
 - Linux setup can connect to an authenticated OpenSandbox service or prepare a local service before the Worker. The API policy is the default. The strict local policy retains explicitly configured workspace quotas and network rules.
 - The SDK accepts an external Sandbox Provider through `createSandbox`. Setup, doctor and built-in configurations share connection defaults. The infrastructure probe supports Pi and Codex.

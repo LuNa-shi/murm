@@ -6,7 +6,7 @@ import { mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { createNativeEvidenceDirectory, installNativeNotesExample } from './fixtures/notes-installed-package.js';
+import { createNativeEvidenceDirectory, installNativeNotesExample, stageInstalledBenchmark } from './fixtures/notes-installed-package.js';
 import { createLocalPeerMeshStack } from './fixtures/peermesh-local-stack.js';
 import { createCleanupBudget } from './fixtures/peermesh-deadline.js';
 import { createLeadWorkerUpstream, adjustedDirection } from './fixtures/lead-worker-upstream.js';
@@ -46,7 +46,7 @@ test('installed native lead plus two helpers claim exclusively, push verified Gi
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
     };
     const configPath = join(directory, 'lead-worker-config.mjs'); await writeFile(configPath, `const config=${JSON.stringify(configuration)};config.sandbox.apiKey=process.env.MURM_CORE_TEST_API_KEY;export default config;\n`, { mode: 0o600 });
-    const main = join(installed.directory, 'node_modules/@luna-shi/murm/dist/benchmarks/lead-worker-orders/main.js');
+    const main = join(await stageInstalledBenchmark(installed.directory, 'lead-worker-orders'), 'main.js');
     const outcome = await new Promise((resolve, reject) => {
       child = spawn(process.execPath, [main, configPath], { cwd: installed.directory, env: installed.env, stdio: ['ignore', 'pipe', 'pipe'] });
       const workTimer = setTimeout(() => { expired = true; cleanup.start(); child.kill('SIGTERM'); }, 120_000);

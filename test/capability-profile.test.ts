@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
-import { AGENT_ROLES, buildCapabilityProfile } from '../examples/taskpool/compatibility/capability-profile.js';
+import { AGENT_ROLES, buildCapabilityProfile } from '../test-support/taskpool-legacy/capability-profile.js';
 
 const capabilities = [
   {

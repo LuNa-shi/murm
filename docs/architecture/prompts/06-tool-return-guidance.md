@@ -15,24 +15,6 @@ These are repository-owned texts and deterministic examples, not transcripts of 
 | task-service.ts action | Material-available notification payload, or invalid typed dependency error. The payload action is visible when notification data is read/composed; the retained Runtime no longer renders or sends a notification user message. |
 
 The action values integration and task are consumption/contract enums, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. The actions execute and queue_status are private Judge authorization protocol enums, never Agent instructions. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.
-## action — examples/taskpool/compatibility/services-bridge.ts:532
-
-Source: [examples/taskpool/compatibility/services-bridge.ts](../../../examples/taskpool/compatibility/services-bridge.ts). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
-
-Body SHA-256: `a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd`
-
-````text
-call_list_tools_or_get_service_metadata
-````
-## action — examples/taskpool/compatibility/services-bridge.ts:540
-
-Source: [examples/taskpool/compatibility/services-bridge.ts](../../../examples/taskpool/compatibility/services-bridge.ts). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
-
-Body SHA-256: `7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e`
-
-````text
-retry_with_the_registered_input_schema
-````
 ## guidance — examples/taskpool/services/task/task-service.ts:1501
 
 Source: [examples/taskpool/services/task/task-service.ts](../../../examples/taskpool/services/task/task-service.ts). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
@@ -135,4 +117,22 @@ Body SHA-256: `f54f33ecfd41745a310aa5c249667ade5e1fb31f77528b4b0bb1843188745631`
 
 ````text
 Refresh the locked input or update the Task contract to the intended fixture hash.
+````
+## action — test-support/taskpool-legacy/services-bridge.ts:532
+
+Source: [test-support/taskpool-legacy/services-bridge.ts](../../../test-support/taskpool-legacy/services-bridge.ts). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
+
+Body SHA-256: `a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd`
+
+````text
+call_list_tools_or_get_service_metadata
+````
+## action — test-support/taskpool-legacy/services-bridge.ts:540
+
+Source: [test-support/taskpool-legacy/services-bridge.ts](../../../test-support/taskpool-legacy/services-bridge.ts). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
+
+Body SHA-256: `7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e`
+
+````text
+retry_with_the_registered_input_schema
 ````

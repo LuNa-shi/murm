@@ -78,8 +78,9 @@ The follow-up commits in this PR relocate the TaskPool implementation and
 group Core's model, sandbox and file code by responsibility. All five project
 directories build against the SDK archive and reach preflight outside the
 checkout. The root SDK exposes the [author contract](../architecture/23-project-harness.md#authoring-an-example).
-The archive preserves explicitly shipped benchmark launch assets and the
-optional Mathlib Search host still uses its documented v1 compatibility modules.
+The archive excludes developer tests, the historical verification Runtime and
+the FATE and Orders benchmark workloads. The optional Mathlib Search host
+uses its documented v1 compatibility modules.
 See the PR for full-run and cleanup evidence.
 
 ## Extract the domain system and simplify Core internals

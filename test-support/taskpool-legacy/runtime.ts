@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { ERROR_CODES, MurmError } from '../errors.js';
-import { makeEnvelope } from '../persistence/envelope.js';
-import { ExecutionWorkspace } from '../services/workspace/execution-workspace.js';
+import { ERROR_CODES, MurmError } from '../../examples/taskpool/errors.js';
+import { makeEnvelope } from '../../examples/taskpool/persistence/envelope.js';
+import { ExecutionWorkspace } from '../../examples/taskpool/services/workspace/execution-workspace.js';
 
 function requireString(value: any, field: any) {
   if (typeof value !== 'string' || value.length === 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);

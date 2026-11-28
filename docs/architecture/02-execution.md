@@ -181,9 +181,9 @@ Registered cleanup distinguishes acceptance from completion: finish first persis
 | Source | Covered behavior | Existing tests |
 |---|---|---|
 | [flat/controller.js](../../examples/taskpool/harness/controller.ts) | Dependency repair, discovery, continuation, directed feedback and domain cleanup | [taskpool-controller.test.js](../../test/taskpool-controller.test.ts) |
-| [runtime.js](../../examples/taskpool/compatibility/runtime.ts) | Binding, events, deadlines, recovery and cleanup | [Workspace contract](../../test/workspace-contract.test.ts), [cleanup integration](../../test/runtime-cleanup.test.ts) |
+| [runtime.js](../../test-support/taskpool-legacy/runtime.ts) | Binding, events, deadlines, recovery and cleanup | [Workspace contract](../../test/workspace-contract.test.ts), [cleanup integration](../../test/runtime-cleanup.test.ts) |
 | [task-service.js](../../examples/taskpool/services/task/task-service.ts), [task-types.js](../../examples/taskpool/services/task/task-types.ts), [schema.js](../../examples/taskpool/services/task/schema.ts) | Durable state/version/Core/lease transitions and replay | [Task behavior](../../test/task-contract.test.ts), [finish lifecycle](../../test/task-finish-lifecycle.test.ts) |
-| [services-bridge.js](../../examples/taskpool/compatibility/services-bridge.ts) | Identity, original Agent binding and compensation | [Agent Bridge](../../test/agent-bridge.test.ts), [Agent Runtime](../../test/agent-runtime.test.ts) |
+| [services-bridge.js](../../test-support/taskpool-legacy/services-bridge.ts) | Identity, original Agent binding and compensation | [Agent Bridge](../../test/agent-bridge.test.ts), [Agent Runtime](../../test/agent-runtime.test.ts) |
 
 Test links identify existing regression scenarios, not a claim that they ran in this documentation session. Mock adapter tests do not establish live-provider, Docker or long-duration scientific behavior.
 

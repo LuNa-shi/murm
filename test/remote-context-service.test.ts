@@ -3,7 +3,7 @@ import test from 'node:test';
 import { spawn, execFile } from 'node:child_process';
 import { once } from 'node:events';
 import { promisify } from 'node:util';
-import { ServicesBridge } from '../examples/taskpool/compatibility/services-bridge.js';
+import { ServicesBridge } from '../test-support/taskpool-legacy/services-bridge.js';
 import { createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';

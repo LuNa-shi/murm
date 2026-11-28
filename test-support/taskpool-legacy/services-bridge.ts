@@ -1,14 +1,14 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { ERROR_CODES, MurmError } from '../errors.js';
-import { createBuiltinServiceRegistry, MISSION_WORKSPACE_READS } from '../services/builtin-registry.js';
-import { makeEnvelope, stableStringify } from '../persistence/envelope.js';
+import { ERROR_CODES, MurmError } from '../../examples/taskpool/errors.js';
+import { createBuiltinServiceRegistry, MISSION_WORKSPACE_READS } from '../../examples/taskpool/services/builtin-registry.js';
+import { makeEnvelope, stableStringify } from '../../examples/taskpool/persistence/envelope.js';
 import { AGENT_ROLES, buildCapabilityProfile } from './capability-profile.js';
-import { prepareWorkspaceCheckSource } from '../services/judge/workspace-check-source.js';
-import { createMissionSubmissionAccess } from '../services/mission/mission-submission-access.js';
-import { agentCheckResult } from '../services/judge/check-result.js';
-import { isSoftCloseout } from '../services/task/execution-budget.js';
+import { prepareWorkspaceCheckSource } from '../../examples/taskpool/services/judge/workspace-check-source.js';
+import { createMissionSubmissionAccess } from '../../examples/taskpool/services/mission/mission-submission-access.js';
+import { agentCheckResult } from '../../examples/taskpool/services/judge/check-result.js';
+import { isSoftCloseout } from '../../examples/taskpool/services/task/execution-budget.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 // Mission-scoped discovery remains available before taking an Execution.

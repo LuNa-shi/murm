@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { builtInServiceManifest, createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
 import { listTools } from '../examples/taskpool/services/service-catalog.js';
-import { buildCapabilityProfile } from '../examples/taskpool/compatibility/capability-profile.js';
+import { buildCapabilityProfile } from '../test-support/taskpool-legacy/capability-profile.js';
 import { SCHEMA_SQL } from '../examples/taskpool/services/task/schema.js';
 import { CONTEXT_SCHEMA_SQL } from '../examples/taskpool/services/material/context-schema.js';
 import { JUDGE_SCHEMA_SQL } from '../examples/taskpool/services/judge/judge-schema.js';
@@ -28,7 +28,7 @@ const json = (value: any) => fence('json', JSON.stringify(value, null, 2));
 const registry = createBuiltinServiceRegistry({});
 const sourcePaths = [
   'examples/taskpool/services/service-catalog.ts', 'examples/taskpool/services/builtin-registry.ts', 'examples/taskpool/deploy/service-hosts/service-manifest.ts',
-  'examples/taskpool/deploy/service-hosts/service-registry.ts', 'examples/taskpool/compatibility/capability-profile.ts', 'examples/taskpool/compatibility/services-bridge.ts',
+  'examples/taskpool/deploy/service-hosts/service-registry.ts', 'test-support/taskpool-legacy/capability-profile.ts', 'test-support/taskpool-legacy/services-bridge.ts',
   'examples/services/mathlib-search/service.json', 'src/errors.ts',
   'src/core/index.ts', 'src/core/types.ts', 'src/core/services.ts', 'src/core/service-types.ts',
   'src/core/sandbox/opensandbox-backend.ts', 'src/core/sandbox/executor-driver.ts', 'src/core/backend-config.ts',

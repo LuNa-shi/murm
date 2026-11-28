@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { join } from 'node:path';
-import { installNotesExample, execute } from './fixtures/notes-installed-package.js';
+import { installNotesExample, execute, stageInstalledBenchmark } from './fixtures/notes-installed-package.js';
 
 test('installed Substrate host resolves the public backend and saves an aborted run without allocating resources', { timeout: 180_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());
   const main = join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/substrate/main.js');
+  await stageInstalledBenchmark(installed.directory, 'fate');
   const script = `import assert from 'node:assert/strict';
     import {readFile} from 'node:fs/promises';import {pathToFileURL} from 'node:url';
     const {runSubstrateExample}=await import(pathToFileURL(${JSON.stringify(main)}));

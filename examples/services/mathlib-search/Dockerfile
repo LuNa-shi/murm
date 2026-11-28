@@ -4,12 +4,10 @@ COPY package.json npm-shrinkwrap.json tsconfig.json ./
 RUN npm ci --include=dev --ignore-scripts --no-audit --no-fund
 COPY src ./src
 COPY scripts ./scripts
-COPY examples ./examples
-COPY benchmarks/fate ./benchmarks/fate
-COPY benchmarks/lead-worker-orders ./benchmarks/lead-worker-orders
-COPY test-support/subagents/communication-fixture-prompts.ts ./test-support/subagents/
-COPY deploy ./deploy
-RUN npm run build
+COPY examples/taskpool ./examples/taskpool
+COPY examples/services/mathlib-search ./examples/services/mathlib-search
+RUN node node_modules/typescript/bin/tsc --project examples/services/mathlib-search/tsconfig.json \
+  && rm -f dist/examples/taskpool/package.json
 
 FROM node:22-bookworm-slim
 

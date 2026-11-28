@@ -7,8 +7,6 @@ import { dirname, join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
-import { makeEnvelope, stableStringify } from '../examples/taskpool/persistence/envelope.js';
-import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { transport, controls } from './fixtures/taskpool-controller-backend.js';
 
 const hooks = registerHooks({ resolve(specifier, context, next) {
@@ -17,6 +15,8 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
+const { makeEnvelope, stableStringify } = await import('../examples/taskpool/persistence/envelope.js');
+const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
 const { runTaskPoolHarness } = await import('../examples/taskpool/harness/harness.js');
 hooks.deregister();
 const execute = promisify(execFile);

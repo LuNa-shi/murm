@@ -17,7 +17,7 @@ The complete prompt bodies, composition branches and delivery evidence are in [0
 | Execution | Durable authority for an attempt: Task ID, owner, Core, lease, fencing version and Workspace | Ends at a lifecycle boundary; Runtime never replaces the Session under the same Execution |
 | Capability profile | Normalized Registry/Runtime description for `bound` or `recovery` | Built from Registry revision and the deployment capability list; it is not a Task take |
 
-An unbound registered Agent still uses role `bound`. There is no separate `idle` role in `AGENT_ROLES`; the exported idle/generic/recovery prompt aliases contain the same stable instructions. Role `bound` therefore does not prove that an Execution exists. The Bridge checks the binding separately. [Sources: capability-profile](../../examples/taskpool/compatibility/capability-profile.ts), [Bridge](../../examples/taskpool/compatibility/services-bridge.ts).
+An unbound registered Agent still uses role `bound`. There is no separate `idle` role in `AGENT_ROLES`; the exported idle/generic/recovery prompt aliases contain the same stable instructions. Role `bound` therefore does not prove that an Execution exists. The Bridge checks the binding separately. [Sources: capability-profile](../../test-support/taskpool-legacy/capability-profile.ts), [Bridge](../../test-support/taskpool-legacy/services-bridge.ts).
 
 ## 2. How the model process starts
 

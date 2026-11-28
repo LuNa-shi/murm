@@ -22,28 +22,45 @@ async function git(root: string, args: string[], options: any = {}) {
   catch (error: any) { throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Git tree operation failed', { operation: args[0] }, { cause: error }); }
 }
 
-export async function initializeGitRepository(root: string) { await git(root, ['init', '--initial-branch=main', '--template=', root]); }
+export async function initializeGitRepository(root: string) { await git(root, ['init', '--initial-branch=main', '--template=', '--', root]); }
 
 export async function importGitTree(root: string, files: Readonly<Record<string, string | Uint8Array>>, parentCommits: readonly string[], message: string, modes?: Readonly<Record<string, 0o644 | 0o755>>, stageRoot = join(root, '.swarm-staging')) {
+  const entries = Object.entries(files);
+  const paths = new Set(entries.map(([path]) => path));
+  for (const [path, content] of entries) {
+    if (!isGitTreePath(path) || (typeof content !== 'string' && !(content instanceof Uint8Array))) {
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Git tree requires normalized relative paths and file bytes');
+    }
+    for (let separator = path.indexOf('/'); separator !== -1; separator = path.indexOf('/', separator + 1)) {
+      if (paths.has(path.slice(0, separator))) {
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Git tree paths collide with a parent file');
+      }
+    }
+  }
+  for (const [path, mode] of Object.entries(modes ?? {})) {
+    if (!paths.has(path) || (mode !== 0o644 && mode !== 0o755)) {
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Git tree modes must describe ordinary or executable files in the same tree');
+    }
+  }
   await mkdir(stageRoot, { recursive: true });
   const stage = await mkdtemp(join(stageRoot, 'tree-'));
   const worktree = join(stage, 'files');
-  await mkdir(worktree);
   try {
-    const entries: string[] = [];
-    for (const [path, content] of Object.entries(files)) {
+    await mkdir(worktree);
+    const index: string[] = [];
+    for (const [path, content] of entries) {
       const target = join(worktree, path);
       await mkdir(dirname(target), { recursive: true });
       await writeFile(target, content);
       const blob = String(await git(root, ['hash-object', '--no-filters', '-w', '--', target])).trim();
-      entries.push(`${modes?.[path] === 0o755 ? '100755' : '100644'} ${blob}\t${path}\0`);
+      index.push(`${modes?.[path] === 0o755 ? '100755' : '100644'} ${blob}\t${path}\0`);
     }
     const env = gitEnvironment({ GIT_INDEX_FILE: join(stage, 'index') });
     await git(root, ['read-tree', '--empty'], { env });
     await new Promise<void>((resolve, reject) => {
       const child = nodeExecFile('git', ['-C', root, 'update-index', '-z', '--index-info'], { env, timeout: 30_000 }, error => error ? reject(error) : resolve());
       child.stdin!.on('error', reject);
-      child.stdin!.end(entries.join(''));
+      child.stdin!.end(index.join(''));
     });
     const tree = String(await git(root, ['write-tree'], { env })).trim();
     return { tree, commit: await commitGitTree(root, tree, parentCommits, message) };

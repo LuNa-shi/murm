@@ -11,7 +11,7 @@ import { SETUP_PROFILE_PROMPT, SETUP_FOLLOW_UP } from './local-setup-smoke.js';
 import { SETUP_BASH, SETUP_READ, SETUP_RESULT } from './local-setup-upstream.js';
 import { rootPrompt, childPrompt } from '../examples/subagents/prompts/prompts.js';
 import { parentPromptFor, initialGoalFor } from '../test-support/subagents/communication-fixture-prompts.js';
-import { AGENT_ROLES, buildCapabilityProfile } from '../examples/taskpool/compatibility/capability-profile.js';
+import { AGENT_ROLES, buildCapabilityProfile } from '../test-support/taskpool-legacy/capability-profile.js';
 import { AGENT_CONTINUATION_MESSAGE, AGENT_SOFT_CLOSEOUT_MESSAGE, AGENT_MATERIAL_CONTINUATION_MESSAGE, AGENT_MATERIAL_SOFT_CLOSEOUT_MESSAGE, buildAgentSoftCloseoutNotice, buildAgentNotification, agentServiceDirectory } from '../examples/taskpool/prompts/agent-contract.js';
 import { createSwarmCli } from '../src/cli/swarm-cli.js';
 import { taskPoolCommands } from '../examples/taskpool/cli.js';
@@ -33,8 +33,8 @@ const check = args[0] === '--check';
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 const sourcePaths = [
   'examples/taskpool/prompts/agent-contract.ts',
-  'examples/taskpool/compatibility/capability-profile.ts',
-  'examples/taskpool/compatibility/services-bridge.ts',
+  'test-support/taskpool-legacy/capability-profile.ts',
+  'test-support/taskpool-legacy/services-bridge.ts',
   'src/cli/swarm-cli.ts', 'examples/taskpool/cli.ts',
   'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/sandbox/opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts', 'scripts/codex-app-server-driver.ts',
   'scripts/local-setup-smoke.ts', 'scripts/local-setup-upstream.ts',
@@ -51,7 +51,7 @@ const sourcePaths = [
   'test/fixtures/peermesh-team-kimi.ts', 'test/peermesh-team-kimi-real.test.ts',
   'examples/lead-worker/harness/prompts.ts', 'examples/lead-worker/harness/index.ts',
   'examples/lead-worker/harness/dynamic-scheduler.ts', 'examples/lead-worker/harness/dynamic.ts', 'benchmarks/lead-worker-orders/dynamic-orders.ts',
-  'examples/taskpool/compatibility/runtime.ts',
+  'test-support/taskpool-legacy/runtime.ts',
   'examples/taskpool/services/workspace/workspace-contract.ts', 'examples/taskpool/services/workspace/mission-workspace.ts',
   'examples/taskpool/services/service-catalog.ts', 'examples/taskpool/services/builtin-registry.ts', 'examples/taskpool/deploy/service-hosts/service-bundle.ts',
   'examples/taskpool/deploy/service-hosts/service-registry.ts', 'examples/taskpool/deploy/service-hosts/service-manifest.ts', 'examples/taskpool/persistence/envelope.ts',
@@ -132,7 +132,7 @@ const instructionActions = new Set([
 ]);
 let guidanceDoc = header('Complete fixed guidance in tool results and notification data', 'This appendix records complete literal hint, remediation and guidance fields in executable sources, plus instructional action values. These are individual response fields, not fabricated full error responses or actual run transcripts. Dynamic IDs, versions, paths, provider diagnostics and complete error envelopes follow the contracts in [Services](../04-services.md) and [the API reference](../10-service-api-reference.md).');
 guidanceDoc += '\n## Delivery conditions\n\n| Source | When the fixed field can be visible |\n|---|---|\n| services-bridge.ts | Capability-admission errors, invalid capability blocking, unavailable operation or malformed payload; the protected CLI prints the structured response into the native Bash result |\n| workspace-contract.ts remediation | Path normalization, forbidden/undeclared output, locked-input writes, missing required input or input-hash mismatch; setup-time failures are not guaranteed to reach an Agent tool call |\n| task-service.ts action | Material-available notification payload, or invalid typed dependency error. The payload action is visible when notification data is read/composed; the retained Runtime no longer renders or sends a notification user message. |\n\nThe action values integration and task are consumption/contract enums, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. The actions execute and queue_status are private Judge authorization protocol enums, never Agent instructions. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.\n';
-for (const path of (await Promise.all(['src', 'examples/taskpool'].map(listSourceFiles))).flat()) {
+for (const path of (await Promise.all(['src', 'examples/taskpool', 'test-support/taskpool-legacy'].map(listSourceFiles))).flat()) {
   const original = await readFile(resolve(root, path), 'utf8');
   // Strip type-only fields while preserving line and column positions.
   const source = path.endsWith('.ts') ? stripTypeScriptTypes(original) : original;

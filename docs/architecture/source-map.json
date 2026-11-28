@@ -10,7 +10,8 @@
     "website",
     "examples/services",
     "examples/taskpool/deploy",
-    "examples/taskpool/services/judge"
+    "examples/taskpool/services/judge",
+    "test-support/taskpool-legacy"
   ],
   "scope_root_files": [
     "package.json",
@@ -591,8 +592,8 @@
       "role": "TaskPool continuation and notification messages with Service directory projection"
     },
     {
-      "path": "examples/taskpool/compatibility/capability-profile.ts",
-      "category": "Agent and prompts",
+      "path": "test-support/taskpool-legacy/capability-profile.ts",
+      "category": "controlled verification fixture",
       "chapters": [
         "docs/architecture/01-agent-core.md",
         "docs/architecture/08-prompts.md",
@@ -612,8 +613,8 @@
       "role": "Runtime-owned time-bounded Responses forwarding, request receipts, and observed usage"
     },
     {
-      "path": "examples/taskpool/compatibility/services-bridge.ts",
-      "category": "Agent and prompts",
+      "path": "test-support/taskpool-legacy/services-bridge.ts",
+      "category": "controlled verification fixture",
       "chapters": [
         "docs/architecture/01-agent-core.md",
         "docs/architecture/08-prompts.md",
@@ -921,8 +922,8 @@
       "role": "Provider-compatible Mission, Agent and Execution identity labels"
     },
     {
-      "path": "examples/taskpool/compatibility/runtime.ts",
-      "category": "Execution and control",
+      "path": "test-support/taskpool-legacy/runtime.ts",
+      "category": "controlled verification fixture",
       "chapters": [
         "docs/architecture/02-execution.md",
         "docs/architecture/05-workspace-continuity.md",
@@ -3282,6 +3283,24 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Compiles Worker-only entry points and their dependency graph for the image"
+    },
+    {
+      "path": "examples/taskpool/deploy/service-hosts/tsconfig.json",
+      "category": "distribution and build",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Compiles only the source-built HTTP server, peers and their dependencies"
+    },
+    {
+      "path": "examples/services/mathlib-search/tsconfig.json",
+      "category": "distribution and build",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Compiles only the source-built HTTP server, peers and their dependencies"
     }
   ]
 }

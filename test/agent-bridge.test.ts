@@ -10,7 +10,7 @@ import { MissionWorkspace } from '../examples/taskpool/services/workspace/missio
 import { promisify } from 'node:util';
 import { TaskService } from '../examples/taskpool/services/task/task-service.js';
 import { ContextService } from '../examples/taskpool/services/material/context-service.js';
-import { ServicesBridge } from '../examples/taskpool/compatibility/services-bridge.js';
+import { ServicesBridge } from '../test-support/taskpool-legacy/services-bridge.js';
 import { ServiceRegistry } from '../examples/taskpool/deploy/service-hosts/service-registry.js';
 import { createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
 import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';

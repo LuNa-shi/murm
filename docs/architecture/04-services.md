@@ -2,7 +2,7 @@
 
 This chapter describes what happens after an Agent calls a murm tool. Read [10 Complete API reference](10-service-api-reference.md) for every advertised input/output schema and help text, and [11 Storage reference](11-storage-reference.md) for every durable field. Task state transitions are explained in [03 Mission and Task](03-mission-task.md); physical Session/Core/Workspace transitions are in [02 Execution](02-execution.md) and [05 Workspace](05-workspace-continuity.md).
 
-Core's normal project startup uses the [v2 manifest and Bridge](15-core-runtime.md#service-v2-registration-discovery-and-invocation). This chapter describes the TaskPool domain contracts and retained v1 service hosts. Their code, schemas and stores live under `examples/taskpool`. The legacy Runtime, Bridge and profiles under `compatibility/` exercise historical Session binding, cleanup and persisted domain contracts in verification. The ordinary TaskPool project entry uses Core v2. The separate deployed Context/Judge peer processes retain their private coordinator protocol.
+Core's normal project startup uses the [v2 manifest and Bridge](15-core-runtime.md#service-v2-registration-discovery-and-invocation). This chapter describes the TaskPool domain contracts and retained v1 service hosts. Their code, schemas and stores live under `examples/taskpool`. The legacy Runtime, Bridge and profiles under `test-support/taskpool-legacy/` exercise historical Session binding, cleanup and persisted domain contracts in source-checkout tests. The SDK archive excludes these implementations. The ordinary TaskPool project entry uses Core v2. The separate deployed Context/Judge peer processes retain their private coordinator protocol.
 
 ## 1. Ownership and actual exposure
 
@@ -23,7 +23,7 @@ The normal Task surface does not advertise child creation. Registered Agents exp
 
 Mixed-version HTTP deployments verify the full built-in Service manifest hash at readiness. The Catalog description still says “murm” in its versioned manifest so a host and an independently deployed Catalog can verify the same bytes across the rename.
 
-Sources: [service catalog](../../examples/taskpool/services/service-catalog.ts), [built-in Registry](../../examples/taskpool/services/builtin-registry.ts), [capability profile](../../examples/taskpool/compatibility/capability-profile.ts).
+Sources: [service catalog](../../examples/taskpool/services/service-catalog.ts), [built-in Registry](../../examples/taskpool/services/builtin-registry.ts), [capability profile](../../test-support/taskpool-legacy/capability-profile.ts).
 
 ## 2. One tool call, from Pi to durable state
 
@@ -41,7 +41,7 @@ The Bridge serves `GET /health` without its bearer token, and requires the token
 
 **Declared schemas versus enforced checks.** Manifest construction validates schema shape and passes schemas to the model/tool interface. Registry and ServiceHost do not run a general JSON Schema input/output validator for each call. The Bridge checks that the payload is an object and applies operation-specific gates; each domain handler checks its own fields. Consequently, the documentation records both advertised schemas and handler behavior, including places where they differ. A closed advertised schema does not establish that every direct provider invocation is rejected for every extra field.
 
-Sources: [Bridge](../../examples/taskpool/compatibility/services-bridge.ts), [Registry invocation](../../examples/taskpool/deploy/service-hosts/service-registry.ts), [ServiceHost](../../examples/taskpool/deploy/service-hosts/service-host.ts). Regression seams: [profile/Bridge tests](../../test/capability-profile-bridge.test.ts), [Registry tests](../../test/service-registry.test.ts), [hosted service](../../test/service-host-isolated.test.ts).
+Sources: [Bridge](../../test-support/taskpool-legacy/services-bridge.ts), [Registry invocation](../../examples/taskpool/deploy/service-hosts/service-registry.ts), [ServiceHost](../../examples/taskpool/deploy/service-hosts/service-host.ts). Regression seams: [profile/Bridge tests](../../test/capability-profile-bridge.test.ts), [Registry tests](../../test/service-registry.test.ts), [hosted service](../../test/service-host-isolated.test.ts).
 
 ### HTTP waiting and cancellation
 
@@ -307,7 +307,7 @@ Direct Judge submission returns diagnostics without applying the result to Task 
 
 The Mission submission checker evaluates the pinned statement and axiom policy on the submitted main tree. A diagnostic CheckResult is recorded against its original Execution. The persisted accepted submission is the trusted Mission acceptance result.
 
-Sources: [Judge](../../examples/taskpool/services/judge/judge-service.ts), [Lean adapter](../../examples/taskpool/services/judge/lean-adapter.ts), [fixture](../../examples/taskpool/services/judge/fixture.ts), [result normalization/projection](../../examples/taskpool/services/judge/check-result.ts), [direct Bridge submission](../../examples/taskpool/compatibility/services-bridge.ts), [Task result application](../../examples/taskpool/services/task/task-service.ts). Tests: [Judge tests](../../test/judge.test.ts), [direct submission](../../test/agent-runtime.test.ts).
+Sources: [Judge](../../examples/taskpool/services/judge/judge-service.ts), [Lean adapter](../../examples/taskpool/services/judge/lean-adapter.ts), [fixture](../../examples/taskpool/services/judge/fixture.ts), [result normalization/projection](../../examples/taskpool/services/judge/check-result.ts), [direct Bridge submission](../../test-support/taskpool-legacy/services-bridge.ts), [Task result application](../../examples/taskpool/services/task/task-service.ts). Tests: [Judge tests](../../test/judge.test.ts), [direct submission](../../test/agent-runtime.test.ts).
 
 ## 6. Optional Mathlib Search
 

@@ -6,11 +6,11 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { TaskService } from '../examples/taskpool/services/task/task-service.js';
 import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
-import { Runtime } from '../examples/taskpool/compatibility/runtime.js';
+import { Runtime } from '../test-support/taskpool-legacy/runtime.js';
 import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
 import { WorkspaceManager } from '../examples/taskpool/services/workspace/workspace-manager.js';
 import { createOpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
-import { ServicesBridge } from '../examples/taskpool/compatibility/services-bridge.js';
+import { ServicesBridge } from '../test-support/taskpool-legacy/services-bridge.js';
 import { ContextService } from '../examples/taskpool/services/material/context-service.js';
 import { createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
 

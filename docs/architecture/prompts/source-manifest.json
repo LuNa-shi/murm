@@ -6,12 +6,12 @@
       "sha256": "726c9242d9662c63c0c66d64327744326f04051dc4259540dd8944393d036304"
     },
     {
-      "path": "examples/taskpool/compatibility/capability-profile.ts",
-      "sha256": "90ff0971e3cdc7458f577cd9207701a63861becc34ca34c2c94edfdcc3728a0f"
+      "path": "test-support/taskpool-legacy/capability-profile.ts",
+      "sha256": "8ff9b1fdcdb4a31421dbb59939a09d381db4de84c13a1b417593b46a533b65c5"
     },
     {
-      "path": "examples/taskpool/compatibility/services-bridge.ts",
-      "sha256": "ea30e9cb522e6694061ae32d6ee10c9f34a3537bdbfc9135a76acce6cec3ad9f"
+      "path": "test-support/taskpool-legacy/services-bridge.ts",
+      "sha256": "bddb5744b172e34d5939b958f5e92946f736d6816b31c9b54938976ded8e1ca6"
     },
     {
       "path": "src/cli/swarm-cli.ts",
@@ -186,8 +186,8 @@
       "sha256": "5c60045add5b85676033db233d08213250eefc2cff52ccd923436e4227262004"
     },
     {
-      "path": "examples/taskpool/compatibility/runtime.ts",
-      "sha256": "5592925e45c17fd0b6ce6eccacf1b8d6f5904f250abea10d83eef9fd369b102b"
+      "path": "test-support/taskpool-legacy/runtime.ts",
+      "sha256": "9d47cb19c7a223c2a9786ae99439c738d898dadf20bfb7a68d96d629fa425852"
     },
     {
       "path": "examples/taskpool/services/workspace/workspace-contract.ts",
@@ -640,18 +640,6 @@
   ],
   "fixed_instruction_fields": [
     {
-      "path": "examples/taskpool/compatibility/services-bridge.ts",
-      "line": 532,
-      "field": "action",
-      "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
-    },
-    {
-      "path": "examples/taskpool/compatibility/services-bridge.ts",
-      "line": 540,
-      "field": "action",
-      "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
-    },
-    {
       "path": "examples/taskpool/services/task/task-service.ts",
       "line": 1501,
       "field": "guidance",
@@ -716,6 +704,18 @@
       "line": 177,
       "field": "remediation",
       "sha256": "f54f33ecfd41745a310aa5c249667ade5e1fb31f77528b4b0bb1843188745631"
+    },
+    {
+      "path": "test-support/taskpool-legacy/services-bridge.ts",
+      "line": 532,
+      "field": "action",
+      "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
+    },
+    {
+      "path": "test-support/taskpool-legacy/services-bridge.ts",
+      "line": 540,
+      "field": "action",
+      "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     }
   ],
   "generated_bodies": [
@@ -733,7 +733,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "6448e18a0505a8f0dfcfc9f129822f40dc3bbfc5dacf0d63460d6fb987f57dc3"
+      "sha256": "842bf2583a01856ddd46505e332b5ee921d0e3177cb8afb9cef61bfcc39ad3e4"
     },
     {
       "path": "docs/architecture/prompts/10-local-setup-probe.md",

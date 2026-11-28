@@ -5,16 +5,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { request } from 'node:http';
-import { createTaskPoolPublicationServices } from '../examples/taskpool/services/workspace/publication-services.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { transport, controls } from './fixtures/taskpool-controller-backend.js';
-import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
-import { createTaskPoolController } from '../examples/taskpool/harness/controller.js';
-import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next){
   if(specifier==='./sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
+const { createTaskPoolPublicationServices } = await import('../examples/taskpool/services/workspace/publication-services.js');
+const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
+const { createTaskPoolController } = await import('../examples/taskpool/harness/controller.js');
+const { makeEnvelope } = await import('../examples/taskpool/persistence/envelope.js');
 const {createRuntime}=await import('../src/core/index.js'); hooks.deregister();
 async function fixture(t,options={}) {
   const root=await mkdtemp(join(tmpdir(),'taskpool-controller-'));
