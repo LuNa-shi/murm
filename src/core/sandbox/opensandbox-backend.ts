@@ -5,6 +5,7 @@ import type { createCoreBridge } from '../bridge.js';
 import { renderStartupPrompt } from '../startup-prompt.js';
 import { snapshotModel, type createCoreModelAccess } from '../model/model-access.js';
 import { resolveFilePolicy, type ResolvedFilePolicy } from '../file-policy.js';
+import { isSessionQuery } from '../../protocol/session-queries.js';
 
 export type BackendEvent = {
   [Kind in AgentEvent['type']]: Omit<Extract<AgentEvent, { type: Kind }>, 'agentId'>
@@ -60,6 +61,7 @@ interface BackendAgent {
   loadedResources?: readonly unknown[];
   activeMessageId?: string;
   sessionCommands?: Map<string, { fingerprint: string; command: string }>;
+  sessionReads?: Map<string, { fingerprint: string; command: string; result: Promise<unknown> }>;
   decisions?: Set<string>;
   workerStartDispatched?: boolean;
   polling?: Promise<void>;
@@ -439,14 +441,14 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (record.type === 'message_update') {
         const update = record.assistantMessageEvent;
         if (update?.type === 'text_delta' && typeof update.delta === 'string') {
-          agent.activeMessageId ??= record.messageId ?? randomUUID();
-          agent.onEvent({ type: 'session', event: { type: 'textDelta', messageId: agent.activeMessageId,
+          agent.activeMessageId ??= randomUUID();
+          agent.onEvent({ type: 'session', event: { type: 'textDelta', messageId: record.messageId ?? agent.activeMessageId,
             blockIndex: update.contentIndex ?? 0, delta: update.delta } });
         }
       }
       if (record.type === 'message_end') {
-        agent.activeMessageId ??= record.messageId ?? randomUUID();
-        agent.onEvent({ type: 'session', event: { type: 'messageEnd', messageId: agent.activeMessageId, message: record.message } });
+        agent.activeMessageId ??= randomUUID();
+        agent.onEvent({ type: 'session', event: { type: 'messageEnd', messageId: record.messageId ?? agent.activeMessageId, message: record.message } });
         agent.activeMessageId = undefined;
       }
       if (['tool_execution_start', 'tool_execution_update', 'tool_execution_end', 'compaction_start', 'compaction_end',
@@ -742,27 +744,43 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         throw Object.assign(new Error('Session is unavailable'), { code: 'SESSION_UNAVAILABLE' });
       }
       if (!agent.sessionReady) throw Object.assign(new Error('Worker does not support session controls'), { code: 'OPERATION_UNSUPPORTED' });
-      agent.sessionCommands ??= new Map();
       const id = payload.id as string;
-      const previous = agent.sessionCommands.get(id);
       const fingerprint = JSON.stringify(payload);
-      if (previous && (previous.command !== command || previous.fingerprint !== fingerprint)) throw Object.assign(new Error('Session operation identity conflict'), { code: 'CONFLICT' });
-      if (!previous && !query) agent.sessionCommands.set(id, { fingerprint, command });
-      agent.eventPoll.wake();
-      let result;
-      try {
-        result = await agent.manager.agentRpc(agentId, query ? { type: 'get_rpc_result', id, since: agent.cursor } : { type: command, ...payload }, { timeoutMs: 30000, since: agent.cursor });
-      } catch { return { status: 'unknown' }; }
-      consume(agent, result.records ?? []);
-      const response = result.response;
-      if (response?.id !== id || response.command !== command || response.success === undefined) return { status: 'unknown' };
-      if (!response.success) throw Object.assign(new Error(response.error ?? 'Executor rejected session operation'), { code: response.code ?? 'INVALID_CONTRACT' });
-      const data = response.data;
-      if (!data || typeof data !== 'object') return { status: 'unknown' };
-      if (command === 'core_context' && ['appended', 'pending-append', 'pending-next-turn', 'started', 'queued'].includes(data.status)) {
-        return { ...data, status: 'accepted', disposition: data.status };
+      const mutation = agent.sessionCommands?.get(id);
+      const read = agent.sessionReads?.get(id);
+      const previous = read ?? mutation;
+      if (previous && (previous.command !== command || previous.fingerprint !== fingerprint)) {
+        throw Object.assign(new Error('Session operation identity conflict'), { code: 'CONFLICT' });
       }
-      return command === 'core_session_get_state' ? { ...data, loadedResources: agent.loadedResources ?? [] } : data;
+      if (isSessionQuery(command)) {
+        if (read) return read.result;
+        const reads = agent.sessionReads ??= new Map();
+        if (reads.size >= 64) throw Object.assign(new Error('Session read capacity reached'), { code: 'CAPACITY_EXCEEDED' });
+        const result = execute().finally(() => reads.delete(id));
+        reads.set(id, { fingerprint, command, result });
+        return result;
+      }
+      if (!mutation && !query) (agent.sessionCommands ??= new Map()).set(id, { fingerprint, command });
+      return execute();
+
+      async function execute() {
+        agent!.eventPoll.wake();
+        let result;
+        try {
+          result = await agent!.manager.agentRpc(agentId, query ? { type: 'get_rpc_result', id, since: agent!.cursor } : { type: command, ...payload }, { timeoutMs: 30_000, since: agent!.cursor });
+        } catch { return { status: 'unknown' }; }
+        consume(agent!, result.records ?? []);
+        if (agent!.historyLost) return { status: 'unknown' };
+        const response = result.response;
+        if (response?.id !== id || response.command !== command || response.success === undefined) return { status: 'unknown' };
+        if (!response.success) throw Object.assign(new Error(response.error ?? 'Executor rejected session operation'), { code: response.code ?? 'INVALID_CONTRACT' });
+        const data = response.data;
+        if (!data || typeof data !== 'object') return { status: 'unknown' };
+        if (command === 'core_context' && ['appended', 'pending-append', 'pending-next-turn', 'started', 'queued'].includes(data.status)) {
+          return { ...data, status: 'accepted', disposition: data.status };
+        }
+        return command === 'core_session_get_state' ? { ...data, loadedResources: agent!.loadedResources ?? [] } : data;
+      }
     },
     async interrupt(agentId: string, { interruptId, executionEpoch }: { interruptId: string; executionEpoch: number }): Promise<Omit<InterruptReceipt, 'interruptId'>> {
       const agent = agents.get(agentId);

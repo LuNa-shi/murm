@@ -169,6 +169,7 @@ export async function createPeerMeshTeam(options: any) {
     const team = Object.freeze({ id: runtime.id, snapshot, redact, close, signal, getAgent: runtime.get,
       halt: () => stop(fail('HARNESS_STOP_REQUESTED')),
       currentPeers: () => ({ closing, peers: peerStates() }),
+      hasPeer: (key: string) => peers.has(key),
       async stopPeer(key: any, { timeoutMs = 60_000 }: any = {}) {
         if (closing || !peers.has(key)) throw fail('UNKNOWN_RECIPIENT');
         if (!finite(timeoutMs)) throw new TypeError('Peer stop requires a finite wait');
@@ -204,9 +205,15 @@ export async function createPeerMeshTeam(options: any) {
   } finally { signal.removeEventListener('abort', abortStartup); }
 }
 
-export function runPeerMeshTeam(options: any, business: any) {
+export function peerBatchReceipt(row: Record<string, unknown>) {
+  const { batchId, requestId, inputId, state, status, code, reason } = row;
+  return { batchId, requestId, inputId, state, status, code, reason };
+}
+
+export function runPeerMeshTeam(options: any, business: any, run = runWithReport) {
   let owned: any;
-  return runWithReport({ outputDir: options.outputDir, closeTimeoutMs: options.closeTimeoutMs ?? 60_000,
+  return run({ outputDir: options.outputDir, closeTimeoutMs: options.closeTimeoutMs ?? 60_000,
     createRuntime: async () => { owned = await createPeerMeshTeam(options); return owned; }, run: (harness: any) => business(harness),
+    detail: () => owned?.snapshot(),
     redact: (report: any) => owned ? owned.redact({ ...report, harness: owned.snapshot() }) : report });
 }

@@ -43,4 +43,4 @@ const connection: RuntimeConnectionOptions = {
 };
 const image = resolved.image ?? (legacy ? sdk.DEFAULT_WORKER_IMAGE : `${sdk.DEFAULT_WORKER_IMAGE}-pi`);
 
-export default { sandbox, connection, executor: 'pi' as const, image, model: 'default', models: { default: model } };
+export default { sandbox, connection, executor: 'pi' as const, image, channel: env.MURM_FIRST_CHANNEL, model: 'default', models: { default: model } };

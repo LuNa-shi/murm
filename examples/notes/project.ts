@@ -1,8 +1,8 @@
-import { createRuntime, createSandbox, MurmError, ProjectPreflightError, observeProjectRuntime, projectConfiguration, projectResult,
-  runInput, runWithReport, type CreateRuntimeOptions, type ProjectHarness, type SandboxConfig } from '@luna-shi/murm';
+import { createRuntime, createSandbox, MurmError, ProjectPreflightError, observeProjectRuntime, projectConfiguration,
+  runInput, type CreateRuntimeOptions, type Harness, type SandboxConfig } from '@luna-shi/murm';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createNotes } from './main.js';
+import { createNotes } from './notes.js';
 
 interface Config extends Pick<CreateRuntimeOptions, 'executor' | 'connection' | 'models' | 'filePolicy'> {
   sandbox: SandboxConfig;
@@ -14,12 +14,14 @@ interface Config extends Pick<CreateRuntimeOptions, 'executor' | 'connection' | 
 
 const key = 'project-observation';
 export const projectNotesWriterPrompt = 'Read your local project and publish one concrete, task-relevant observation in Notes. Include a relative source path and explain what you found. Publish it with swarm notes put under key project-observation, then finish.';
+export const projectNotesFollowupPrompt = 'In this same reader session, read the file you wrote in the preceding turn and copy its exact bytes to the followup filename. Finish when the copy is ready.';
 export const projectNotesReaderPrompt = 'Retrieve project-observation with swarm notes get. Compare the observation with the project files, use it to address the task, and write your evidence and results to the specified result file. Include the exact note text so the handoff can be checked.';
 
 const notesHarness = {
   id: 'notes', apiVersion: 1,
   async run(context) {
     const artifact = `murm-notes-${context.runId}.md`;
+    const followup = `murm-notes-followup-${context.runId}.md`;
     const config = await projectConfiguration<Config>(context, () => import('./config.js'));
     const { image, model = 'default', turnTimeoutMs = 30_000, closeTimeoutMs = 30_000 } = config;
     if (![turnTimeoutMs, closeTimeoutMs].every(ms => Number.isSafeInteger(ms) && ms > 0 && ms <= 2_147_483_647) ||
@@ -32,14 +34,14 @@ const notesHarness = {
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
     const state: { stage: string; writerId?: string; readerId?: string; handoffObserved?: boolean; artifact?: string } = { stage: 'writer' };
     try {
-      const report = await runWithReport({ outputDir: context.outputDir, closeTimeoutMs,
+      const result = await context.runWithRuntime({ closeTimeoutMs,
         async createRuntime() {
           const runtime = await createRuntime({ sandbox, executor: config.executor, models: config.models,
             connection: config.connection, filePolicy: config.filePolicy, services: notes.services, outputDir: context.outputDir, maxAgents: 2,
             profiles: {
               writer: { ...common, prompt: projectNotesWriterPrompt, services: { notes: ['put'] } },
               reader: { ...common, prompt: projectNotesReaderPrompt, services: { notes: ['get'] },
-                collect: { paths: [artifact], includeGit: false, maxBytes: 64 * 1024, required: true } },
+                collect: { paths: [artifact, followup], includeGit: false, maxBytes: 64 * 1024, required: true } },
             } });
           observation = observeProjectRuntime(runtime, context, () => state);
           return runtime;
@@ -67,24 +69,30 @@ const notesHarness = {
             throw new MurmError('NOTES_HANDOFF_UNCONFIRMED', 'The reader did not retrieve the writer’s note');
           }
           signal.throwIfAborted();
+          state.stage = 'followup';
+          void observation?.refresh();
+          await runInput(runtime, reader.id, JSON.stringify({ task: input.prompt, instruction: projectNotesFollowupPrompt, artifact, followup }),
+            { requestId: 'notes-followup', timeoutMs: turnTimeoutMs, signal });
+          signal.throwIfAborted();
           state.stage = 'verification';
           void observation?.refresh();
           const stopped = await runtime.stop(reader.id, { timeoutMs: closeTimeoutMs });
           const files = stopped.artifacts.find(path => path.endsWith('/artifacts/files'));
           if (!files || stopped.cleanup !== 'complete') throw new MurmError('NOTES_EXPORT_PENDING', 'The result export is incomplete');
-          const result = await readFile(join(files, artifact), 'utf8');
-          if (!result.includes(published.text)) throw new MurmError('NOTES_HANDOFF_UNVERIFIED', 'The reader’s result omits the published note');
+          const result = await readFile(join(files, artifact));
+          const followupResult = await readFile(join(files, followup));
+          if (!result.toString('utf8').includes(published.text) || !followupResult.equals(result)) throw new MurmError('NOTES_HANDOFF_UNVERIFIED', 'The exported files do not preserve the note and the reader’s follow-up');
           state.stage = 'verified';
           state.artifact = join(files, artifact);
           void observation?.refresh();
-          return { writerId: writer.id, readerId: reader.id, artifact: join(files, artifact), handoffVerified: true };
+          return { writerId: writer.id, readerId: reader.id, artifact: join(files, artifact), followup: join(files, followup), handoffVerified: true };
         },
       });
-      return { ...projectResult(report, context), acceptance: { status: 'not-run' } };
+      return { ...result, acceptance: { status: 'not-run' } };
     } finally {
       observation?.close();
     }
   },
-} satisfies ProjectHarness;
+} satisfies Harness;
 
 export default notesHarness;

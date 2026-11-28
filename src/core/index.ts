@@ -27,22 +27,22 @@ import { registerServicePrivateValues, snapshotServiceRegistry, type ServiceRegi
 export type * from './session-types.js';
 export { createHarnessSession } from '../harness/project-harness.js';
 export type {
-  HarnessInput, HarnessInputHandler, HarnessInputPreparation, HarnessJson, HarnessStatusInfo,
+  Harness, HarnessContext, HarnessInput, HarnessInputHandler, HarnessInputPreparation, HarnessJson, HarnessStatusInfo,
   ProjectHarness, ProjectHarnessContext, ProjectHarnessResult,
 } from '../harness/project-harness.js';
 export type {
   HarnessAgentHandler, HarnessAgentReceipt, HarnessAgentRegistration, HarnessAgents, HarnessAnswer,
   HarnessAnswerReceipt, HarnessCapability, HarnessDescriptor, HarnessEvent, HarnessInputDescriptor,
   HarnessInputReceipt, HarnessLifetime, HarnessOperation, HarnessPhase, HarnessQuestion, HarnessQuestionKind,
-  HarnessQuestionRequest, HarnessQuestionSource, HarnessRequest, HarnessResult, HarnessSession,
-  HarnessSessionOptions, HarnessStartReceipt, HarnessState, HarnessStopReceipt,
+  HarnessQuestionRequest, HarnessQuestionSource, HarnessRequest, HarnessDispatchRequest, HarnessResult, HarnessSession,
+  HarnessSessionOptions, HarnessStartReceipt, HarnessState, HarnessStopReceipt, HarnessSubscriptionOptions,
 } from '../harness/harness-session-types.js';
 export { ProjectPreflightError } from '../harness/project-input.js';
 export { HarnessRpcClient } from '../harness/project-rpc-client.js';
 export type { HarnessRpcClientOptions, HarnessRpcReady, HarnessRpcTransport } from '../harness/project-rpc-client.js';
 export { observeProjectRuntime, projectConfiguration, projectResult } from '../harness/project-runtime.js';
 export { runInput, type RunInputResult } from '../harness/run-input.js';
-export { runWithReport } from '../harness/run-report.js';
+export { runWithReport, type HarnessRuntimeRunOptions } from '../harness/run-report.js';
 export { readHarnessResult } from '../harness/read-result.js';
 export { createInputAdmission } from '../harness/input-admission.js';
 export { createOwnedResources } from '../harness/owned-resources.js';

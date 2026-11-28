@@ -7,7 +7,9 @@ order: 12
 
 **PeerMesh** (`examples/peermesh/harness/`) models a flat team of 2–8 peer engineers with no central dispatcher and no exclusive task locks. Each peer has its own Gitea account, Mattermost account, persistent Pi session, and Git checkout. Peers choose work on personal branches, post advisory `CLAIM` notes and updates on a shared Board, discuss in team chat and DMs, and land PRs into protected `main` through host verification.
 
-## Project Session
+## Harness Session
+
+The module default-exports a `Harness`. The SDK Session, explicit foreground and RPC all use that definition. The Harness owns the domain workflow and resource cleanup. [Harness authoring guide](../first-harness.md)
 
 `session.input({ recipient, input }, { requestId })` queues a directed user batch. The Router reads current shared context when the batch starts. The member stop operation closes that peer’s Router and source subscription before stopping its Agent. Other peers can continue until the Run closes and exports main.
 
@@ -53,7 +55,7 @@ When a peer calls `pull_request_merge`, [delivery.ts](https://github.com/LuNa-sh
 
 ## 2. Per-peer router & mid-turn steering
 
-In [team.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/team.ts) and [router.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/router.ts), each peer gets an independent serial router. Event subscriptions poll Mattermost and Gitea; successful Board writes also enqueue notices. The router delivers these events into the peer's persistent Pi session (`runInput` is the repository's shared single-turn helper from `src/harness/run-input.ts`). This excerpt shows the project-run configuration; the complete factory also installs failure fencing and shutdown handlers:
+In [team.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/team.ts) and [router.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/router.ts), each peer gets an independent serial router. Event subscriptions poll Mattermost and Gitea; successful Board writes also enqueue notices. The router delivers these events into the peer's persistent Pi session (`runInput` is the SDK helper for an exclusive Agent turn). This excerpt shows the project-run configuration; the complete factory also installs failure fencing and shutdown handlers:
 
 ```ts
 const router = createPeerMeshRouter({

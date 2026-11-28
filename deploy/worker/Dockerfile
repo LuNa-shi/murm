@@ -47,7 +47,7 @@ COPY --from=typescript-build --chown=0:0 /build/dist/examples/taskpool/cli.js /o
 COPY --from=typescript-build --chown=0:0 \
   /build/dist/scripts/opensandbox-agent-worker.js /build/dist/scripts/sandbox-project.js \
   /build/dist/scripts/core-work-dir.js \
-  /build/dist/scripts/pi-session-bridge.js /build/dist/scripts/pi-session-controller.js \
+  /build/dist/scripts/pi-session-bridge.js /build/dist/scripts/pi-session-controller.js /build/dist/scripts/pi-message-identity.js \
   /build/dist/scripts/rpc-submissions.js /build/dist/scripts/pi-rpc-submissions.js /build/dist/scripts/core-session-fork.js \
   /build/dist/scripts/codex-app-server-driver.js /build/dist/scripts/worker-executor-adapter.js \
   /build/dist/scripts/project-install.js /build/dist/scripts/project-processes.js \

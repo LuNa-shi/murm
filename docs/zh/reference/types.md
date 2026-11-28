@@ -490,6 +490,8 @@ export interface HttpJsonAdapterOptions {
 
 ## HarnessSession 类型
 
-`ProjectHarness` 和 `ProjectHarnessContext` 是作者合同。`HarnessSessionOptions` 配置一次协作，`HarnessDescriptor` 与 `HarnessState` 提供能力与当前投影。`HarnessEvent` 区分初始快照、实时状态、问题、操作回执、运行事件和结果。`HarnessAgents` 返回 Runtime 查询和控制回执。协作控制器可以在 `core` 回执旁附 `harnessEffects`。`HarnessResult` 保留业务、产物、清理、命令和问题的处置证据。
+`Harness` 和 `HarnessContext` 是作者合同。`HarnessSessionOptions` 配置一次协作，`HarnessDescriptor` 与 `HarnessState` 提供能力与当前投影。`HarnessEvent` 区分初始快照、实时状态、问题、操作回执、运行事件和结果。`HarnessAgents` 返回 Runtime 查询和控制回执。协作控制器可以在 `core` 回执旁附 `harnessEffects`。`HarnessResult` 保留业务、产物、清理、命令和问题的处置证据。
+
+`HarnessDispatchRequest` 将调用方的 `requestId`、长度有界的 Runtime `operationId` 和 Run `signal` 传给输入、控制与核对回调。查原 Runtime 回执时复用该操作 ID。`HarnessRuntimeRunOptions` 配置 `context.runWithRuntime` 的自有 Runtime 工厂、业务回调、可选的 `afterClose` 验证和清理超时。
 
 `HarnessQuestionRequest` 支持文字、选择、确认。选择项有固定 ID，文字和选择的回答为字符串，确认为布尔值。`HarnessQuestionSource` 提供 Run 内来源、取消信号和可选授权检查。

@@ -13,6 +13,7 @@ import { CoreWorkDir } from './core-work-dir.js';
 import { collectCoreWorkDir } from '../src/core/files/core-collection.js';
 import { once } from 'node:events';
 import { createRpcSubmissions } from './rpc-submissions.js';
+import { isSessionQuery } from '../src/protocol/session-queries.js';
 import { createCodexAppServerDriver } from './codex-app-server-driver.js';
 import { loadWorkerExecutor } from './worker-executor-adapter.js';
 import { DEFAULT_FILE_POLICY, resolveFilePolicy } from '../src/core/file-policy.js';
@@ -105,6 +106,10 @@ async function body(request: IncomingMessage, maxBytes = 2 * 1024 * 1024) {
 }
 
 function publish(record: any) {
+  if (record.type === 'response' && isSessionQuery(record.command)) {
+    rpcSubmissions.observe(record);
+    return record;
+  }
   if (record.type === 'agent_start') nativeExecuting = true;
   if (['agent_settled', 'worker_exit'].includes(record.type)) nativeExecuting = false;
   const value = { ...record, worker_sequence: ++sequence, worker_at: new Date().toISOString() };
@@ -301,8 +306,9 @@ async function startAgent(input: any) {
   child.stdout.on('data', processStdout);
   // Drain the private stderr pipe so a noisy process cannot block on it.
   child.stderr.resume();
-  child.on('error', (error: any) => { codexDriver?.close(error); publish({ type: 'worker_error', message: error.message }); });
+  child.on('error', (error: any) => { rpcSubmissions.closeReads(); codexDriver?.close(error); publish({ type: 'worker_error', message: error.message }); });
   child.on('close', (code: any, signal: any) => {
+    rpcSubmissions.closeReads();
     codexDriver?.close();
     publish({ type: 'worker_exit', code, signal });
     child = null;

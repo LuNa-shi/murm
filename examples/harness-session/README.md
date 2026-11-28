@@ -1,10 +1,10 @@
 # HarnessSession clients
 
-This deterministic example defines one custom `ProjectHarness` and consumes it
+This deterministic example defines one custom `Harness` and consumes it
 through the package-root SDK, typed JSONL RPC client and a text terminal. It
 captures a supplied project, asks two independent business questions, records
 subsequent text input, and saves answers before returning its cleanup result.
-It demonstrates the author and client contracts with local business work.
+It demonstrates the protocol with local work and zero Runtimes. See [first-harness](../../docs/en/first-harness.md) for a publisher and writer exchanging data through a real Service and exporting a verified result.
 
 Copy this directory outside the checkout, install the candidate SDK archive,
 and build it. The archive must include the HarnessSession API from Issue #271.

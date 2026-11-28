@@ -13,7 +13,7 @@ export const TASKPOOL_WITHOUT_WORKSPACE_SAVE_PROMPT = 'The current configuration
 export async function runTaskPoolHarness({sandbox, executor, models, connection, filePolicy,model,image,prompt='',
   outputDir,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,deadlineAt,
   capacity=2,autonomousTasks=false,completionPolicy='tasks',coordinationPermissions=[],missionCoordination=null,snapshotProject,workspaceCapture,mathlibSearch=null,activeDeadline,judgeService=null,workspaceProjectCheck=false,workspaceMergeEnabled=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
-  onRuntime,closeTimeoutMs=30_000,redact=(value: any)=>value,signal}: any) {
+  onRuntime,closeTimeoutMs=30_000,redact=(value: any)=>value,signal}: any, run = runWithReport) {
   if(signal!==undefined && !(signal instanceof AbortSignal)) throw new TypeError('TaskPool host signal must be an AbortSignal');
   if(typeof autonomousTasks!=='boolean' || !['tasks','mission'].includes(completionPolicy)) throw new TypeError('TaskPool requires an explicit supported completion policy and autonomous Task flag');
   if(completionPolicy==='mission' && !missionCoordination) throw new TypeError('Mission completion policy requires trusted Mission coordination');
@@ -22,7 +22,7 @@ export async function runTaskPoolHarness({sandbox, executor, models, connection,
   const deadline=()=>signal?.aborted ? 0 : Math.min(deadlineAt,activeDeadline?.() ?? deadlineAt);
   let runtime: any,controller: any,discovery: any,publication: any,mission: any,closeDeadline: any;
   const result: any={};
-  return runWithReport({outputDir,closeTimeoutMs,redact,
+  return run({outputDir,closeTimeoutMs,redact,
     async createRuntime() {
       signal?.throwIfAborted();
       if(snapshotProject!==undefined && typeof snapshotProject!=='function') throw new MurmError('INVALID_CONTRACT','TaskPool snapshotProject must be a trusted function when supplied');
@@ -100,8 +100,9 @@ export async function runTaskPoolHarness({sandbox, executor, models, connection,
     },
     async run() {
       await controller.start();
-      if(drive) await drive(controller,runtime);
-      await controller.wait();
+      const completion = controller.wait();
+      if(drive) await drive(controller,runtime,completion);
+      await completion;
       Object.assign(result,controller.snapshot());
       if(completionPolicy==='mission') result.missionAcceptance=taskService.getAcceptedSubmission(missionId);
       const completed=completionPolicy==='mission' ? result.completion==='mission-accepted' && result.missionAcceptance?.state==='accepted' : result.completion==='all-tasks-terminal';

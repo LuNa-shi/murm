@@ -1,10 +1,9 @@
 import {
-  createSandbox, type CreateRuntimeOptions, type SandboxConfig, type HarnessJson, type ProjectHarness,
+  createSandbox, type CreateRuntimeOptions, type SandboxConfig, type HarnessJson, type Harness,
   ProjectPreflightError, checkGitProject, observeProjectRuntime, projectConfiguration,
-  projectResult,
 } from '@luna-shi/murm';
 import { addAbortListener } from 'node:events';
-import { runPeerMeshTeam, type createPeerMeshTeam } from './harness/team.js';
+import { peerBatchReceipt, runPeerMeshTeam, type createPeerMeshTeam } from './harness/team.js';
 import { peerMeshConfig } from './project-config.js';
 
 type Config = Omit<ReturnType<typeof peerMeshConfig>, 'models' | 'sandbox'> &
@@ -46,7 +45,7 @@ const peerMesh = {
     let statusRefresh: ReturnType<typeof setInterval> | undefined;
     let cancelStatusRefresh: ReturnType<typeof addAbortListener> | undefined;
     try {
-      const report = await runPeerMeshTeam({
+      const result = await runPeerMeshTeam({
         ...config, sandbox, runId: context.runId.replaceAll('-', '').slice(0, 24),
         outputDir: context.outputDir, signal: context.signal,
         projectFiles: context.initial.files, initialDigest: context.initial.digest,
@@ -93,10 +92,9 @@ const peerMesh = {
           team = ready;
           context.registerInput((payload, { requestId, signal }) => {
             signal.throwIfAborted();
-            const receipt = ready.input({ ...batchInput(payload), requestId });
+            const { batchId, requestId: admittedId, state, inputId } = peerBatchReceipt(ready.input({ ...batchInput(payload), requestId }));
             void observation?.refresh();
-            return ready.redact({ batchId: receipt.batchId, requestId: receipt.requestId,
-              state: receipt.state, ...(receipt.inputId ? { inputId: receipt.inputId } : {}) });
+            return ready.redact({ batchId, requestId: admittedId, state, ...(inputId ? { inputId } : {}) });
           }, userBatchDescription);
           // Router completion, source polling and Board delivery can change
           // after the last Core event. Bound their public snapshot lag without
@@ -117,9 +115,8 @@ const peerMesh = {
         }
         if (team.signal.reason?.code !== 'PEERMESH_PROJECT_DEADLINE') throw team.signal.reason;
         return { reason: 'deadline', harness: team.snapshot() };
-      });
-      const result = projectResult(report, context);
-      const delivery = report.cleanup?.delivery;
+      }, context.runWithRuntime);
+      const delivery = result.cleanup.receipt?.delivery;
       return {
         ...result, reason: result.outcome === 'completed' ? 'deadline' : result.reason,
         acceptance: { status: 'not-run' },
@@ -134,6 +131,6 @@ const peerMesh = {
       observation?.close();
     }
   },
-} satisfies ProjectHarness;
+} satisfies Harness;
 
 export default peerMesh;

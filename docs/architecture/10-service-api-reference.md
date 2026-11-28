@@ -40,11 +40,11 @@ This section is generated from executable exports and checked against the source
 | [test-support/taskpool-legacy/services-bridge.ts](../../test-support/taskpool-legacy/services-bridge.ts) | `bddb5744b172e34d5939b958f5e92946f736d6816b31c9b54938976ded8e1ca6` |
 | [examples/services/mathlib-search/service.json](../../examples/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5b436c6d7062a7b9fb0fd434af1375b9c050999cfa76bd6d97dac88558dca8b3` |
-| [src/core/index.ts](../../src/core/index.ts) | `2a96d0a3808356d9d9efaa0494d93e5aba03a6ad5cafd4dcaebb8883f3a2777e` |
+| [src/core/index.ts](../../src/core/index.ts) | `12fe51bdf08a37242e22645fefcf2a4303aec45ec37c089c7f2bd3a8598b09dc` |
 | [src/core/types.ts](../../src/core/types.ts) | `8605c771b4a6fcfd0d7b13160a856eb33ee685d0e12e8c83ea8f183fc9b6166a` |
 | [src/core/services.ts](../../src/core/services.ts) | `794352ccfa8e02f63c4db087f1c165308198c6766c0d8c3cf8872e1b9c0617ab` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
-| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `f2b6cae82c368e0e1817ae2f3a64a09a1737ab57b6348e7ad86f2582e9180350` |
+| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `5fb4a9e40dbcddbc193e62b44483ed4c14f20923ef5f6d51ecc13b78732de1c1` |
 | [src/core/sandbox/executor-driver.ts](../../src/core/sandbox/executor-driver.ts) | `182e80680d8ea6e1729d524a6927d800a91caffd3657ed796706ebaad9d28131` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `b8e4a7706afd3b0248e0dd4ccac249cbde4fb8d619ca450799b0ec210e728dc5` |
 | [src/core/sandbox/opensandbox-provider.ts](../../src/core/sandbox/opensandbox-provider.ts) | `eb98901a846c1ce294621d7a173cec46787ba4bf18b4edc65afc5c867e968c37` |
@@ -3095,14 +3095,14 @@ These are the package entrypoint declarations and the declarations they referenc
 import type { CreateRuntimeOptions, Runtime } from './types.js';
 export type * from './session-types.js';
 export { createHarnessSession } from '../harness/project-harness.js';
-export type { HarnessInput, HarnessInputHandler, HarnessInputPreparation, HarnessJson, HarnessStatusInfo, ProjectHarness, ProjectHarnessContext, ProjectHarnessResult, } from '../harness/project-harness.js';
-export type { HarnessAgentHandler, HarnessAgentReceipt, HarnessAgentRegistration, HarnessAgents, HarnessAnswer, HarnessAnswerReceipt, HarnessCapability, HarnessDescriptor, HarnessEvent, HarnessInputDescriptor, HarnessInputReceipt, HarnessLifetime, HarnessOperation, HarnessPhase, HarnessQuestion, HarnessQuestionKind, HarnessQuestionRequest, HarnessQuestionSource, HarnessRequest, HarnessResult, HarnessSession, HarnessSessionOptions, HarnessStartReceipt, HarnessState, HarnessStopReceipt, } from '../harness/harness-session-types.js';
+export type { Harness, HarnessContext, HarnessInput, HarnessInputHandler, HarnessInputPreparation, HarnessJson, HarnessStatusInfo, ProjectHarness, ProjectHarnessContext, ProjectHarnessResult, } from '../harness/project-harness.js';
+export type { HarnessAgentHandler, HarnessAgentReceipt, HarnessAgentRegistration, HarnessAgents, HarnessAnswer, HarnessAnswerReceipt, HarnessCapability, HarnessDescriptor, HarnessEvent, HarnessInputDescriptor, HarnessInputReceipt, HarnessLifetime, HarnessOperation, HarnessPhase, HarnessQuestion, HarnessQuestionKind, HarnessQuestionRequest, HarnessQuestionSource, HarnessRequest, HarnessDispatchRequest, HarnessResult, HarnessSession, HarnessSessionOptions, HarnessStartReceipt, HarnessState, HarnessStopReceipt, HarnessSubscriptionOptions, } from '../harness/harness-session-types.js';
 export { ProjectPreflightError } from '../harness/project-input.js';
 export { HarnessRpcClient } from '../harness/project-rpc-client.js';
 export type { HarnessRpcClientOptions, HarnessRpcReady, HarnessRpcTransport } from '../harness/project-rpc-client.js';
 export { observeProjectRuntime, projectConfiguration, projectResult } from '../harness/project-runtime.js';
 export { runInput, type RunInputResult } from '../harness/run-input.js';
-export { runWithReport } from '../harness/run-report.js';
+export { runWithReport, type HarnessRuntimeRunOptions } from '../harness/run-report.js';
 export { readHarnessResult } from '../harness/read-result.js';
 export { createInputAdmission } from '../harness/input-admission.js';
 export { createOwnedResources } from '../harness/owned-resources.js';
@@ -3725,6 +3725,11 @@ interface BackendAgent {
     sessionCommands?: Map<string, {
         fingerprint: string;
         command: string;
+    }>;
+    sessionReads?: Map<string, {
+        fingerprint: string;
+        command: string;
+        result: Promise<unknown>;
     }>;
     decisions?: Set<string>;
     workerStartDispatched?: boolean;

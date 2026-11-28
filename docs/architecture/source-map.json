@@ -119,6 +119,30 @@
       "role": "Shared project Session admission, request replay, question lifecycle, events and stop barriers"
     },
     {
+      "path": "src/harness/harness-session-view.ts",
+      "category": "Project Harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "UTF-8 budgets for terminal results and recoverable live snapshots"
+    },
+    {
+      "path": "src/harness/harness-event-stream.ts",
+      "category": "Project Harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Ordered bounded Session and RPC client subscriptions and invalidation"
+    },
+    {
+      "path": "src/protocol/session-queries.ts",
+      "category": "Backend",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Native query classification used by the Host and Worker correlation paths"
+    },
+    {
       "path": "src/harness/project-rpc-client.ts",
       "category": "Project Harness",
       "chapters": [
@@ -151,6 +175,14 @@
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Guest SDK Session settings, native input queues, retry, compaction, events and export"
+    },
+    {
+      "path": "scripts/pi-message-identity.ts",
+      "category": "Backend",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Pi native context handoff, archive entry identity and stable message projection"
     },
     {
       "path": "examples/agent-session.ts",
@@ -1366,14 +1398,6 @@
       "role": "Runtime assembly, Agent admission, input and bounded lifecycle"
     },
     {
-      "path": "src/harness/run-finalization.ts",
-      "category": "harness-support",
-      "chapters": [
-        "docs/architecture/17-harness-reporting.md"
-      ],
-      "role": "Application-owned run finalization and bounded facility cleanup evidence"
-    },
-    {
       "path": "src/core/config.ts",
       "category": "programmable Core",
       "chapters": [
@@ -1559,7 +1583,7 @@
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
-      "role": "Installed-package Notes Harness Service, role prompts, input order, archive verification and saved-report CLI"
+      "role": "Installed Notes fixed-observation fixture, role inputs, archive verification and saved-report CLI"
     },
     {
       "path": "examples/messages/messages.ts",
@@ -1780,7 +1804,7 @@
         "docs/architecture/17-harness-reporting.md",
         "docs/architecture/08-prompts.md"
       ],
-      "role": "Subagents host Profiles, live user input, one-shot or interactive execution and whole-tree reporting"
+      "role": "Editable Subagents compatibility entry for argv, readline, signals and the standalone report"
     },
     {
       "path": "examples/subagents/harness/controller.ts",
@@ -2215,38 +2239,6 @@
       "category": "Core public runtime",
       "chapters": [
         "docs/architecture/04-services.md"
-      ]
-    },
-    {
-      "path": "examples/notes/read-result.ts",
-      "category": "Example entry points",
-      "role": "In-place compiled example import of the shared read-result implementation",
-      "chapters": [
-        "docs/architecture/17-harness-reporting.md"
-      ]
-    },
-    {
-      "path": "examples/notes/run-input.ts",
-      "category": "Example entry points",
-      "role": "In-place compiled example import of the shared run-input implementation",
-      "chapters": [
-        "docs/architecture/17-harness-reporting.md"
-      ]
-    },
-    {
-      "path": "examples/notes/run-report.ts",
-      "category": "Example entry points",
-      "role": "In-place compiled example import of the shared run-report implementation",
-      "chapters": [
-        "docs/architecture/17-harness-reporting.md"
-      ]
-    },
-    {
-      "path": "examples/subagents/run-report.ts",
-      "category": "Example entry points",
-      "role": "In-place compiled example import of the shared run-report implementation",
-      "chapters": [
-        "docs/architecture/17-harness-reporting.md"
       ]
     },
     {
@@ -3472,7 +3464,7 @@
       "chapters": [
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Runs the first SDK Harness, terminal question, artifact verification and cleanup"
+      "role": "Published v0.2.0 release-handoff launcher with terminal question, verification and cleanup"
     },
     {
       "path": "examples/first-harness/turn.ts",
@@ -3480,7 +3472,7 @@
       "chapters": [
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Implements a bounded Agent turn over the public Runtime event and send interfaces"
+      "role": "Published v0.2.0 release-handoff exclusive turn implementation"
     },
     {
       "path": "examples/first-harness/tsconfig.json",
@@ -3497,6 +3489,53 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Serves the versioned first Harness sources and compiler configuration"
+    },
+    {
+      "path": "examples/first-harness/harness.ts",
+      "category": "SDK example",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Canonical two-Agent release handoff with a trusted Session question and verified file export"
+    },
+    {
+      "path": "examples/first-harness/session.ts",
+      "category": "SDK example",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Shared terminal consumer for an in-process Session or the installed JSONL RPC entry"
+    },
+    {
+      "path": "examples/notes/notes.ts",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "Notes Service schema and authenticated writer and reader evidence"
+    },
+    {
+      "path": "examples/subagents/business.ts",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/17-harness-reporting.md",
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Shared editable Root and Child collaboration, ownership, work and Runtime reconciliation"
+    },
+    {
+      "path": "website/src/pages/downloads/first-harness/v2/[file].ts",
+      "category": "website",
+      "chapters": [
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Versioned download of the candidate author definition and Session terminal client"
     }
   ]
 }

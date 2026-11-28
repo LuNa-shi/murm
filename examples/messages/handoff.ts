@@ -3,7 +3,7 @@ import { addAbortListener } from 'node:events';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry } from '@luna-shi/murm';
+import { createRuntime, createSandbox, getExecutorCapabilities, runInput, ServiceRegistry } from '@luna-shi/murm';
 import type { CloseReceipt, FileTree, Runtime, RuntimeEvent } from '@luna-shi/murm';
 import { handoffConfig, type HandoffConfig } from './handoff-config.js';
 import { createMessageService } from './messages.js';
@@ -59,30 +59,22 @@ export async function runMessageHandoff(
     const submission: (typeof submissions)[number] = { agentId, requestId };
     submissions.push(submission);
     project?.progress?.({ stage: operation, key, agentId, operationId, requestId });
-    const execution = Promise.withResolvers<void>();
-    const unsubscribeRole = runtime.onEvent(event => {
-      if (!('agentId' in event) || event.agentId !== agentId) return;
-      if (event.type === 'settled') {
-        if (event.outcome === 'completed') execution.resolve();
-        else execution.reject(failure('HANDOFF_EXECUTION_FAILED'));
-      } else if (event.type === 'exit' || (event.type === 'error' && event.fatal)) {
-        execution.reject(failure('HANDOFF_EXECUTION_UNCONFIRMED'));
-      }
-    });
     try {
-      const admission = runtime.send(agentId, input, { requestId, mode: 'followUp' }).then(receipt => {
-        signal.throwIfAborted();
-        submission.inputId = receipt.inputId;
-        if (receipt.status !== 'accepted' || receipt.disposition !== 'started') throw failure('HANDOFF_INPUT_UNCONFIRMED');
-      });
-      await Promise.race([Promise.all([admission, execution.promise]), cancelled.promise]);
-      signal.throwIfAborted();
-      const call = calls.get(callKey(agentId, operation, operationId));
-      if (!call || (operation === 'put' ? call.author !== agentId : call.text !== writtenText)) throw failure('HANDOFF_SERVICE_UNCONFIRMED');
-      return call.text;
-    } finally {
-      unsubscribeRole();
+      const turn = await runInput(runtime, agentId, input, { requestId, signal, timeoutMs: config.workTimeoutMs });
+      submission.inputId = turn.inputId;
+    } catch (error) {
+      const turn = error as { code?: string; inputId?: string };
+      submission.inputId = turn.inputId;
+      if (turn.code === 'agent_exited' || turn.code === 'agent_failed') throw failure('HANDOFF_EXECUTION_UNCONFIRMED');
+      if (turn.code === 'input_unknown' || turn.code === 'exclusive_input_was_queued' ||
+          turn.code === 'input_handled_without_model_run') throw failure('HANDOFF_INPUT_UNCONFIRMED');
+      if (turn.code?.startsWith('input_') && !signal.aborted) throw failure('HANDOFF_EXECUTION_FAILED');
+      throw error;
     }
+    signal.throwIfAborted();
+    const call = calls.get(callKey(agentId, operation, operationId));
+    if (!call || (operation === 'put' ? call.author !== agentId : call.text !== writtenText)) throw failure('HANDOFF_SERVICE_UNCONFIRMED');
+    return call.text;
   }
 
   let business:
@@ -142,12 +134,15 @@ export async function runMessageHandoff(
   closeObservation?.();
   const report = { runtimeId: runtime.id, business, coreClose, artifactVerification,
     reportSaveFailure: null as null | { code: string }, reportPath: undefined as string | undefined };
-  try {
-    const reportPath = join(config.outputDir, runtime.id, 'handoff-report.json');
-    await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n', { mode: 0o600 });
-    report.reportPath = reportPath;
-  } catch {
-    report.reportSaveFailure = { code: 'REPORT_SAVE_FAILED' };
+  // The standalone fixture owns its legacy report. A Session persists this evidence in project-run.json.
+  if (!project) {
+    try {
+      const reportPath = join(config.outputDir, runtime.id, 'handoff-report.json');
+      await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n', { mode: 0o600 });
+      report.reportPath = reportPath;
+    } catch {
+      report.reportSaveFailure = { code: 'REPORT_SAVE_FAILED' };
+    }
   }
   return { report, key, submissions, capabilities };
 }

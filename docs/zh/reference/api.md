@@ -33,7 +33,7 @@ npm install --ignore-scripts /absolute/path/to/luna-shi-murm-0.2.0.tgz
 | `ServiceRegistry` | 类 | 存放传入 `createRuntime()` 的 Service 注册项。 |
 | `createInProcessAdapter(impl)` | 函数 | 将宿主进程内的 `invoke` 处理器（及可选 `exportState`）包装为 `ServiceAdapter`。 |
 | `createHttpJsonAdapter(options)` | 函数 | 将外部 HTTP JSON Service 包装为 `ServiceAdapter`（携带 `Idempotency-Key` 与可选 Bearer 认证）。 |
-| `ProjectHarness`、`ProjectHarnessContext`、`ProjectHarnessResult`、`HarnessInput`、`HarnessJson` | 类型 | 定义项目模块入口、采集的项目、宿主回调和最终结果。 |
+| `Harness`、`HarnessContext`、`HarnessInput`、`HarnessJson` | 类型 | 定义项目模块入口、采集的项目、宿主回调和最终结果。 |
 | `ProjectPreflightError`、`projectConfiguration`、`observeProjectRuntime`、`projectResult` | 类和函数 | 处理资源分配前的拒绝、配置、Runtime 状态和结果。 |
 | `runInput`、`createInputAdmission`、`runWithReport`、`readHarnessResult`、`createOwnedResources` | 函数 | 管理独占回合、停止接收输入、读写报告并清理本次运行拥有的资源。 |
 | `checkGitProject`、`seedTeamRepository`、`seededCheckoutInstruction`、`initializeGitRepository`、`importGitTree`、`commitGitTree`、`isGitTreePath` | 函数 | 检查 Git 项目，导入并提交采集的 FileTree，生成初始检出指令。 |
@@ -158,3 +158,12 @@ const receipt = await runtime.files.replace(agentId, {
 从包根调用 `createHarnessSession(projectHarness, options)` 创建一轮协作的句柄。选项包括 `lifetime`、已解析的 `configuration` 或 `configPath`、`outputRoot`、以及可选的 `clientCapabilities.questions`。通过 `describe()` 查询可用输入、生命周期和成员操作。调用 `start({ cwd, prompt }, { requestId })` 接纳一次 Run，再通过 `onEvent(handler, { initialSnapshot: true })` 和 `getState()` 观察。`input` 根据 Harness 规则追加工作，`respond` 按 ID 回答问题。`stop({ requestId, reason })` 接纳结束请求，`completion` 包含实际导出、业务与清理结果。
 
 `HarnessRpcClient` 使用调用方管理的管道子进程，在 `ready` 后提供同一组方法。[包外示例](../../../examples/harness-session/README.md) 包含进程内 SDK、RPC 和文本客户端用法。[运行手册](../../architecture/23-project-harness.md)
+
+### 作者接口与兼容迁移
+
+模块默认导出 `Harness`，其 `run` 接收 `HarnessContext` 并返回业务、产物和清理证据。Session 补足 Run 身份、提问、操作和报告保存记录，形成 `HarnessResult`。外层 `runId` 和 Core 的 `runtime.id` 分别标识其生命周期。
+
+- 新模块使用 `inputDescriptor`、`context.registerAgentControls({ runtime })` 和 `context.runWithRuntime`。需要等待排他 Agent 回合时调用 `runInput`。派发回调收到外部 `requestId` 和有界 `operationId`，后者用于原生派发及原回执查询。
+- `ProjectHarness`、`ProjectHarnessContext`、`ProjectHarnessResult` 和 `inputDescription` 是弃用兼容名，指向同一份合同。移除需等后续公布的兼容性修订。
+- `projectConfiguration` 验证可信作者配置，`ProjectPreflightError` 表示资源分配前的拒绝。`observeProjectRuntime` 将业务状态和回执查询接入一次 Session 观察。`projectResult` 为旧 `runWithReport` 调用方复用现行清理投影。
+- 保存成功后使用 Host 的 `reportPath`，读 `project-run.json` 时核对 `runId`。`readHarnessResult` 继续按 Runtime ID 读取旧的独立运行文件。

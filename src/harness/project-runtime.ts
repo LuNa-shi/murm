@@ -6,10 +6,9 @@ import type { HarnessJson, ProjectHarnessContext, ProjectHarnessResult } from '.
 
 const json = (value: unknown): HarnessJson => JSON.parse(JSON.stringify(value));
 
-/** Subscribe before spawn and serialize reads prompted by state changes. */
+/** Compatibility entry point for Harness-owned business status and native receipt lookup. */
 export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessContext, business?: () => unknown | Promise<unknown>,
   controls: Omit<HarnessAgentRegistration, 'runtime'> = {}) {
-  const unregister = context.registerAgentControls({ runtime, ...controls });
   let pending = false;
   let refreshing = false;
   let closed = false;
@@ -36,10 +35,9 @@ export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessC
       while (pending && !closed) {
         pending = false;
         try {
-          const agents = await read(runtime.list());
           const detail = await read(business?.() ?? null);
-          if (!closed && !context.signal.aborted) context.updateStatus({
-            agents: json(agents), business: json({ runtimeId: runtime.id, runtimeState: runtime.state, detail }),
+          if (!closed && !signal.aborted) context.updateStatus({
+            business: json({ runtimeId: runtime.id, runtimeState: runtime.state, detail }),
           });
         } catch {
           if (!closed) context.emit({ kind: 'observation-error', code: 'RUNTIME_STATE_UNAVAILABLE' });
@@ -50,15 +48,11 @@ export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessC
     }
   }
 
-  const unsubscribe = runtime.onEvent(event => {
-    if (event.type === 'agentChanged' || event.type === 'runtimeChanged' || event.type === 'management') {
-      void refresh();
-    } else if (!closed && !context.agentEventsManaged) {
-      context.emit({ kind: 'agent', event: json(event) });
-    }
-  });
-  void refresh();
-  return { refresh, reconcile: (agentId: string, operation: string, requestId: string) => reconcileRuntimeReceipt(runtime, agentId, operation, requestId), close() { closed = true; observation.abort(); unsubscribe(); unregister(); } };
+  const unregister = context.registerAgentControls({ runtime, ...controls, onChange() {
+    void refresh();
+    controls.onChange?.();
+  } });
+  return { refresh, reconcile: (agentId: string, operation: string, requestId: string) => reconcileRuntimeReceipt(runtime, agentId, operation, requestId), close() { closed = true; observation.abort(); unregister(); } };
 }
 
 export async function projectConfiguration<C>(context: ProjectHarnessContext, defaults: () => Promise<{ default: unknown }>) {
@@ -77,17 +71,21 @@ export async function projectConfiguration<C>(context: ProjectHarnessContext, de
 
 /** Translate established Harness reports while retaining the original close evidence. */
 export function projectResult(report: any, context: ProjectHarnessContext, detail?: unknown): ProjectHarnessResult {
+  return projectRuntimeEvidence(report, context.signal, detail);
+}
+
+export function projectRuntimeEvidence(report: any, signal: AbortSignal, detail?: unknown): ProjectHarnessResult {
   const receipt = report.cleanup ?? (report.businessFailure?.receipt?.agents ? report.businessFailure.receipt : null);
   const pending = receipt?.pending ?? null;
   const cleanupConfirmed = !report.cleanupFailure && (!receipt ||
     (receipt.cleanup === 'complete' && (receipt.agents ?? []).every((agent: any) => agent.execution === 'stopped' && agent.cleanup === 'complete')));
   const exportPending = pending?.some((entry: any) => ['archive-session', 'collect-artifacts'].includes(entry.action));
-  const outcome = context.signal.aborted ? 'cancelled' :
+  const outcome = signal.aborted ? 'cancelled' :
     report.businessFailure || report.reportSaveFailure ? 'failed' : 'completed';
   return {
     outcome,
     reason: report.businessFailure?.code ?? (report.businessFailure ? 'HARNESS_BUSINESS_FAILED' :
-      report.reportSaveFailure ? 'HARNESS_REPORT_SAVE_FAILED' : context.signal.aborted ? 'cancelled' : 'completed'),
+      report.reportSaveFailure ? 'HARNESS_REPORT_SAVE_FAILED' : signal.aborted ? 'cancelled' : 'completed'),
     result: json({
       runtimeId: report.runtimeId ?? null, reportPath: report.reportPath ?? null,
       business: report.result ?? null, businessFailure: report.businessFailure ?? null,

@@ -33,7 +33,7 @@ All public values and TypeScript types are imported from the single root entry `
 | `ServiceRegistry` | Class | Holds Service registrations passed into `createRuntime()`. |
 | `createInProcessAdapter(impl)` | Function | Wraps a host-process `invoke` handler (and optional `exportState`) as a `ServiceAdapter`. |
 | `createHttpJsonAdapter(options)` | Function | Wraps an external HTTP JSON Service endpoint with `Idempotency-Key` and optional bearer auth. |
-| `ProjectHarness`, `ProjectHarnessContext`, `ProjectHarnessResult`, `HarnessInput`, `HarnessJson` | Types | Describe an ESM project entry, captured input, host callbacks and final result. |
+| `Harness`, `HarnessContext`, `HarnessInput`, `HarnessJson` | Types | Describe an ESM project entry, captured input, host callbacks and final result. |
 | `ProjectPreflightError`, `projectConfiguration`, `observeProjectRuntime`, `projectResult` | Class / Functions | Normalize trusted configuration, represent rejection before allocation, observe Runtime state and project the saved result. |
 | `runInput`, `createInputAdmission`, `runWithReport`, `readHarnessResult`, `createOwnedResources` | Functions | Track an exclusive turn, fence input, save or inspect a report, and reconcile owned resources. |
 | `checkGitProject`, `seedTeamRepository`, `seededCheckoutInstruction`, `initializeGitRepository`, `importGitTree`, `commitGitTree`, `isGitTreePath` | Functions | Validate and seed a Git project from a captured FileTree, and describe its initial checkout. |
@@ -158,3 +158,12 @@ For host `murm` commands, container `swarm` commands, and environment variables,
 Create a `HarnessSession` with `createHarnessSession(projectHarness, options)` from the package root. Choose `lifetime`, a resolved `configuration` or `configPath`, `outputRoot` and optional `clientCapabilities.questions`. Use `describe()` to discover the input format, supported lifetimes and Agent controls. Start once with `start({ cwd, prompt }, { requestId })`. Follow `onEvent(handler, { initialSnapshot: true })` or get the current view with `getState()`. Submit supported work with `input(payload, { requestId })` and answer a pending question with `respond(questionId, answer, { requestId })`. Call `stop({ requestId, reason })` and await `completion` to check cleanup and export.
 
 `HarnessRpcClient` takes an existing piped child process, exposes a `ready` promise and implements the same operations over JSONL. The caller manages the process. The [standalone example](../../../examples/harness-session/README.md) shows direct SDK, RPC and terminal clients. See the [Harness lifecycle manual](../../architecture/23-project-harness.md).
+
+### Authoring and compatibility
+
+A default `Harness` receives `HarnessContext`. Return business, artifact and cleanup evidence from `run`. The Session adds Run identity, questions, operations and report-save evidence to `HarnessResult`. The enclosing `runId` and any Core `runtime.id` identify different lifecycles.
+
+- New modules use `inputDescriptor`, `context.registerAgentControls({ runtime })`, `context.runWithRuntime` for owned Runtime work and a single Session, and `runInput` for exclusive Agent turns. Dispatch callbacks receive the original `requestId` and a bounded `operationId` to reuse for native dispatch and receipt lookup.
+- `ProjectHarness`, `ProjectHarnessContext`, `ProjectHarnessResult` and `inputDescription` are deprecated compatibility names. They delegate to the same contract. Remove them only in a future announced compatibility revision.
+- `projectConfiguration` validates trusted author settings and `ProjectPreflightError` signals rejection before allocation. `observeProjectRuntime` adds business status and receipt lookup to a single Session observation. `projectResult` shares the current cleanup projection for older `runWithReport` callers.
+- Use the Host's `reportPath` on a successful save and verify `runId` when reading `project-run.json`. `readHarnessResult` continues to read the older standalone files using a Runtime ID.

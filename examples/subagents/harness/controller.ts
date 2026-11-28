@@ -442,12 +442,13 @@ export function createSubagentsController(
     rootId: () => root.id,
     rootEpoch: () => rootEpoch,
     rootBusy: () => !!rootControl || root.pendingDispatches > 0,
-    submitUser(text: string, requestId: string, options: Omit<SendOptions, 'requestId'> = {}, signal?: AbortSignal, epoch = rootEpoch) {
+    submitUser(text: string, request: string | { operationId: string }, options: Omit<SendOptions, 'requestId'> = {}, signal?: AbortSignal, epoch = rootEpoch) {
       inputText(text);
-      if (!/^[A-Za-z0-9_.:-]{1,120}$/.test(requestId)) fail('INVALID_CONTRACT', 'Invalid user request ID');
-      return operate(`user:${requestId}`, { text, options }, entry => {
+      const operationId = typeof request === 'string' ? `user:${request}` : request.operationId;
+      if (!/^[A-Za-z0-9_.:-]{1,120}$/.test(typeof request === 'string' ? request : operationId)) fail('INVALID_CONTRACT', 'Invalid user request ID');
+      return operate(operationId, { text, options }, entry => {
         entry.rootEpoch ??= epoch;
-        return submit(root, entry, text, 'user', `user:${requestId}`, undefined, options, signal);
+        return submit(root, entry, text, 'user', operationId, undefined, options, signal);
       });
     },
     async reconcileRootInput(requestId: string, query: () => Promise<unknown>) {

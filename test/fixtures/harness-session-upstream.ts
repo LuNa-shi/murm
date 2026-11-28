@@ -14,9 +14,10 @@ function service(id: string, operation: string, input: Record<string, unknown>) 
   return tool(id, 'bash', { command: `printf '%s' '${JSON.stringify(input)}' | swarm ${operation} --stdin --request-id ${id}`, timeout: 45 });
 }
 
-export async function createHarnessSessionUpstream(seed: string) {
+export async function createHarnessSessionUpstream(seed: string, editable?: { prompt: string; controller: string }) {
   const slowChild = Promise.withResolvers<void>();
   const heldQueue = Promise.withResolvers<void>();
+  const heldIdentity = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
   const requests: { stage: string; count: number }[] = [];
   let failure: string | undefined;
   let ordinal = 0;
@@ -37,7 +38,7 @@ export async function createHarnessSessionUpstream(seed: string) {
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       const rows: any[] = body.input;
       const users = rows.filter(row => row.role === 'user').flatMap(row => row.content ?? []).map(block => block.text ?? '');
-      const marker = users.filter(value => /SESSION_(READ|SECOND|INTERRUPT|CHILD|RESUME|QUESTIONS|ASKER|QOLD|QNEW|HOLD_QUEUE|CONTEXT_STEER|CONTEXT_FOLLOW|AFTER_QUEUE|RETRY)/.test(value)).at(-1);
+      const marker = users.filter(value => /SESSION_(READ|SECOND|INTERRUPT|CHILD|RESUME|QUESTIONS|ASKER|QOLD|QNEW|HOLD_QUEUE|IDENTITY_HOLD|IDENTITY_RESUME|CONTEXT_STEER|CONTEXT_FOLLOW|AFTER_QUEUE|RETRY)/.test(value)).at(-1);
       const output = (id: string) => rows.find(row => row.type === 'function_call_output' && row.call_id === id)?.output;
       const all = JSON.stringify(rows);
       let item;
@@ -48,6 +49,10 @@ export async function createHarnessSessionUpstream(seed: string) {
         stage = output('seed-read') ? 'seed-result' : 'seed-read';
         if (stage === 'seed-read') {
           assert.ok(!all.includes(seed), 'capture was not embedded in the initial prompt');
+          if (editable) {
+            assert.ok(all.includes(editable.prompt), 'the actual model request uses the edited Root prompt');
+            assert.ok(marker.includes(editable.controller), 'the actual Root turn passes through the edited controller');
+          }
           item = tool('seed-read', 'read', { path: 'seed.txt' });
         } else {
           assert.ok(String(output('seed-read')).includes(seed), 'actual read result includes captured bytes');
@@ -107,6 +112,19 @@ export async function createHarnessSessionUpstream(seed: string) {
           assert.ok(!all.includes('LATE_OLD_EXECUTION_ANSWER'));
           item = text('new-answer', 'NEW_EXECUTION_ANSWER_OK');
         }
+      } else if (marker?.includes('SESSION_IDENTITY_HOLD')) {
+        const index = marker.includes('SECOND') ? 1 : 0;
+        stage = 'identity-hold-' + index;
+        requests.push({ stage, count: number });
+        await heldIdentity[index].promise;
+        if (!response.destroyed) response.destroy();
+        return;
+      } else if (marker?.includes('SESSION_IDENTITY_RESUME')) {
+        stage = 'identity-resume';
+        assert.ok(!all.includes('DISCARDED_NEXT_TURN_281'));
+        assert.ok(all.includes('SAME_CONTENT_281_FIRST'));
+        if (marker.includes('SECOND')) assert.ok(all.includes('SAME_CONTENT_281_SECOND'));
+        item = text('identity-resume-1', 'IDENTITY_');
       } else if (marker?.includes('SESSION_HOLD_QUEUE')) {
         stage = 'held-queue';
         await heldQueue.promise;
@@ -132,7 +150,19 @@ export async function createHarnessSessionUpstream(seed: string) {
       requests.push({ stage, count: number });
       if (response.destroyed) return;
       response.writeHead(200, { 'content-type': 'text/event-stream' });
-      response.end(streamResponse('k3', number, item));
+      let bodyText = streamResponse('k3', number, item);
+      if (stage === 'identity-resume') {
+        const second = text('identity-resume-2', 'RESUME_OK');
+        const firstFrames = bodyText.trimEnd().split('\n\n').map(frame => JSON.parse(frame.split('\ndata: ')[1]));
+        const secondFrames = streamResponse('k3', number, second).trimEnd().split('\n\n')
+          .map(frame => JSON.parse(frame.split('\ndata: ')[1])).slice(1, -1)
+          .map(frame => ({ ...frame, output_index: 1 }));
+        const terminal = firstFrames.pop();
+        terminal.response.output.push(second);
+        bodyText = [...firstFrames, ...secondFrames, terminal]
+          .map(frame => `event: ${frame.type}\ndata: ${JSON.stringify(frame)}\n\n`).join('');
+      }
+      response.end(bodyText);
     } catch (error) {
       failure ??= `${stage}: ${error instanceof Error ? error.message : 'controlled provider failure'}`;
       if (!response.destroyed) {
@@ -150,9 +180,11 @@ export async function createHarnessSessionUpstream(seed: string) {
   return {
     url: `http://127.0.0.1:${address.port}/v1/responses`, requests, get failure() { return failure; },
     releaseChild: () => slowChild.resolve(), releaseQueue: () => heldQueue.resolve(),
+    releaseIdentity: (index: number) => heldIdentity[index].resolve(),
     close() {
       slowChild.resolve();
       heldQueue.resolve();
+      for (const hold of heldIdentity) hold.resolve();
       return new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });
     },
   };

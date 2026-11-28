@@ -10,6 +10,10 @@
       "sha256": "8aae79c6b44ca5bec5821824e3f94b4974b1e586d4b5aaa0231b398e8f88e889"
     },
     {
+      "path": "examples/first-harness/harness.ts",
+      "sha256": "a53769b4b29e143d5b8a218fd8ed1f440ec19dce92d6b01bf1c7c5e948c7768f"
+    },
+    {
       "path": "examples/first-harness/turn.ts",
       "sha256": "f8c9b951f7f20991c933bac94e756b5a9dffad9a08130f21798dc04bb16b715d"
     },
@@ -35,7 +39,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "2a96d0a3808356d9d9efaa0494d93e5aba03a6ad5cafd4dcaebb8883f3a2777e"
+      "sha256": "12fe51bdf08a37242e22645fefcf2a4303aec45ec37c089c7f2bd3a8598b09dc"
     },
     {
       "path": "src/core/bridge.ts",
@@ -47,11 +51,11 @@
     },
     {
       "path": "src/core/sandbox/opensandbox-backend.ts",
-      "sha256": "f2b6cae82c368e0e1817ae2f3a64a09a1737ab57b6348e7ad86f2582e9180350"
+      "sha256": "5fb4a9e40dbcddbc193e62b44483ed4c14f20923ef5f6d51ecc13b78732de1c1"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "65d59965bab694612b6c6cb43c43b61e938ba5758231425934254800e29c3672"
+      "sha256": "e9dcfecf7c1cdf7b48a10bbbe6a1030e18779469d9f140b90fee1c3dbc30ebbb"
     },
     {
       "path": "scripts/codex-app-server-driver.ts",
@@ -67,19 +71,23 @@
     },
     {
       "path": "examples/messages/handoff.ts",
-      "sha256": "82c2e7da6f09fcc335bbe13c2b030e736ce18a05744175562b972c37f7d2de27"
+      "sha256": "95308038268edf7d2e3b82df7d66f75050396a13875a4e8b8f8e80d476cd768a"
     },
     {
       "path": "examples/notes/main.ts",
-      "sha256": "8949729cb8f7d93c83fa6bb0a589288d0d41fc0461d7e0943d4c5308f0175763"
+      "sha256": "a1f57ba6e66a6e6a02b963024b138d835c9ecb7522feb957f094a432d5048437"
+    },
+    {
+      "path": "examples/notes/notes.ts",
+      "sha256": "e2cb34448b71689814efea4d256704bee807797bbf224a9312b01ff1d605f742"
     },
     {
       "path": "examples/notes/project.ts",
-      "sha256": "cf34aad317ae3104adf9fcadf11bf5dc603caaa7863a761655758f49469f745b"
+      "sha256": "2369fb0c907c6d23ccf278d7c486a49a915692718883500c2f1a976a764dc69e"
     },
     {
       "path": "examples/taskpool/project.ts",
-      "sha256": "2f226e6299a801f561c4dea30bceaafdb520c48391d4079a5be98431c3e5fc0c"
+      "sha256": "e59c63d8fda979fc8eae2005c2db08a2f61a75a6356b17614ca5be93ba75b3e8"
     },
     {
       "path": "src/harness/project-git.ts",
@@ -91,7 +99,7 @@
     },
     {
       "path": "examples/substrate/harness/index.ts",
-      "sha256": "6c89987f6fe71b120a32d89289aa3112b3a549f03b7915ea51f310535c4dbcb3"
+      "sha256": "e62432def542b66d9f2a3722a63e04253f581b25e5afad799e5d0a4a62809b5b"
     },
     {
       "path": "examples/substrate/services/substrate.ts",
@@ -99,11 +107,11 @@
     },
     {
       "path": "examples/taskpool/harness/controller.ts",
-      "sha256": "f7c5d36359f3a77cd4096aac13b06777c71cd3cd550107d88cb579aa0ed359db"
+      "sha256": "bf6563eb5b11c5aefdd6337bb565df7e79acfb63c7f4e044b6d982331a5cde94"
     },
     {
       "path": "examples/taskpool/harness/harness.ts",
-      "sha256": "955cc0f19180b78ca6bc1349eb283bb9081934459228e2699037df7041c7f0a9"
+      "sha256": "ce964c5eb6faf63744d20eb333406d8716db6a66f6be0cc1ad30d190b074644a"
     },
     {
       "path": "benchmarks/fate/fate-run.ts",
@@ -126,12 +134,12 @@
       "sha256": "a307149976a1bab31067975e0c5d79f101cff04177d7a1aed8d89b8889e2e3c0"
     },
     {
-      "path": "examples/subagents/main.ts",
-      "sha256": "a866c4ed479dd187d73e97e8c8caa11238f544809ce7c64fc3f3f11324a83699"
+      "path": "examples/subagents/business.ts",
+      "sha256": "a0c79e82a7343757aaf4fc1ee38e7c9f2e0d9707196c4c15412300bfe375c666"
     },
     {
       "path": "examples/subagents/harness/controller.ts",
-      "sha256": "c4c5dbae4ea7f92946ee123017244653064d23ac050ec819b74b255a9e82a3c5"
+      "sha256": "9fda8a7a3a299888e3f9ba91fca9f464041d4201d2689c96a31aac7332cda7e0"
     },
     {
       "path": "examples/subagents/prompts/prompts.ts",
@@ -155,7 +163,7 @@
     },
     {
       "path": "examples/peermesh/harness/index.ts",
-      "sha256": "c6638a4f9096934ab20487fdb650c8e93d36a96c193e0375c88d6918dd234f8e"
+      "sha256": "de1f8b4909ff10a81ff07837823945f83b904b725f412fb1f1321bf97d44f8c6"
     },
     {
       "path": "examples/peermesh/harness/router.ts",
@@ -163,11 +171,11 @@
     },
     {
       "path": "examples/peermesh/harness/routed.ts",
-      "sha256": "89d1e53d1887c4824e463e8c830aa9dab8c7719921e75b0a063e364666948dd0"
+      "sha256": "15813d0681910ef9049214ada4e13492c47ceaf70be48dba5f9333f8385304ee"
     },
     {
       "path": "examples/peermesh/harness/team.ts",
-      "sha256": "32c38b0a4ea564821c8e862f2a6883adeecad14cb7f2eac953ac141e0ed848a5"
+      "sha256": "b29e287cbd27a23e7d822728c099fb2fccc5e208d903cd1b6bbc6d67c91d78ea"
     },
     {
       "path": "test/fixtures/peermesh-team-kimi.ts",
@@ -183,7 +191,7 @@
     },
     {
       "path": "examples/lead-worker/harness/index.ts",
-      "sha256": "2249683c5281856f4ed7715f3badede00b861023e80c45b4189074631745d21c"
+      "sha256": "f4a7cc7eca0b233ab9f149a57fa0ecdbc292595ce74d00e93e56f94565589848"
     },
     {
       "path": "examples/lead-worker/harness/dynamic-scheduler.ts",
@@ -258,13 +266,13 @@
     {
       "path": "examples/notes/main.ts",
       "anchor": "const key = '",
-      "line": 8,
+      "line": 7,
       "sha256": "1372308bcd0c2a4bf0cce93a81833b1d747d74543ebfb743f7124eecabb21c67"
     },
     {
       "path": "examples/notes/main.ts",
       "anchor": "const inputText = Object.freeze(",
-      "line": 71,
+      "line": 28,
       "sha256": "6773660d227007f580e938b67335d3b93619e2253c501904ab14235c89534687"
     },
     {
@@ -276,8 +284,14 @@
     {
       "path": "examples/notes/project.ts",
       "anchor": "export const projectNotesReaderPrompt = '",
-      "line": 17,
+      "line": 18,
       "sha256": "fc61ef0ba300ba64b83180539f16e5a535fe0d926bdd55bae62b522a78a238c0"
+    },
+    {
+      "path": "examples/notes/project.ts",
+      "anchor": "export const projectNotesFollowupPrompt = '",
+      "line": 17,
+      "sha256": "92e13fcbfd6138a07325b1890f338ecbb22e59659bd701b8abf3fe2520e9affb"
     },
     {
       "path": "examples/messages/handoff.ts",
@@ -294,25 +308,25 @@
     {
       "path": "examples/messages/handoff.ts",
       "anchor": "`Publish",
-      "line": 99,
+      "line": 91,
       "sha256": "8a7fe8d7d3f66f1d87f7433cb71cf6ebf4abc286d73f539b107ae2c908d2ed9c"
     },
     {
       "path": "examples/messages/handoff.ts",
       "anchor": "`Receive",
-      "line": 105,
+      "line": 97,
       "sha256": "cde44c4b0ea9925676271d20960d61c567ddc218c147cdded5ecd9ab24c18291"
     },
     {
       "path": "examples/messages/handoff.ts",
       "anchor": "`Inspect",
-      "line": 98,
+      "line": 90,
       "sha256": "e42a8b191a851a669fba935c512ac3564dfee3c59ff5b24a921b82c8b9280c4d"
     },
     {
       "path": "examples/messages/handoff.ts",
       "anchor": "`Check",
-      "line": 104,
+      "line": 96,
       "sha256": "67f49aa87701b2da1a9fb0cacd2f31841cf82f8ef53471fd6c57cd37ea80ce9e"
     },
     {
@@ -396,7 +410,7 @@
     {
       "path": "examples/substrate/harness/index.ts",
       "anchor": "                  const text = ",
-      "line": 98,
+      "line": 103,
       "sha256": "b3e9b0b92a6fbc3eec0a9e5903b3944b28a194009884d169e9fcc163a769f877"
     },
     {
@@ -426,7 +440,7 @@
     {
       "path": "examples/peermesh/harness/team.ts",
       "anchor": "router.kickoff(",
-      "line": 197,
+      "line": 198,
       "sha256": "44a86c7b2af129d1bc52061deff91cd39283d1e6b62f805dcb688a5e4997e936"
     },
     {
@@ -628,6 +642,30 @@
       "sha256": "6d7ca4f8f3cea518e14e04e880e364dda393b6346b39942805c5939f5958e9a8"
     },
     {
+      "path": "examples/first-harness/harness.ts",
+      "anchor": "prompt: '",
+      "line": 26,
+      "sha256": "13a34f145feb381c6fd3f6f08be0a4fbacdd0c5f91a50f94e9561d88d5c878f6"
+    },
+    {
+      "path": "examples/first-harness/harness.ts",
+      "anchor": "prompt: '",
+      "line": 30,
+      "sha256": "3a0542d4cd34195627be5c8452929e2c379ceaba4be7bb1b689bb7c3d9d508ed"
+    },
+    {
+      "path": "examples/first-harness/harness.ts",
+      "anchor": "runInput(runtime, publisher.id, [",
+      "line": 50,
+      "sha256": "ba61e775a7276c3e3442bfc68cc11f3d4cd785b83c2ebcc0ce7ca36efe778f7a"
+    },
+    {
+      "path": "examples/first-harness/harness.ts",
+      "anchor": "runInput(runtime, writer.id, `",
+      "line": 73,
+      "sha256": "3bdfc8f4fbf64d1e68042f5695ccf3dd7faf20a3c663086b357e9d0d1b042d22"
+    },
+    {
       "path": "examples/first-harness/main.ts",
       "anchor": "prompt: 'Read release-data.txt.",
       "line": 47,
@@ -694,7 +732,7 @@
     {
       "path": "examples/taskpool/harness/controller.ts",
       "line": 194,
-      "expression": "const receipt=await runtime.send(row.agentId,text,{requestId,mode});"
+      "expression": "const receipt=await runtime.send(row.agentId,text,{requestId:operationId,mode});"
     },
     {
       "path": "examples/first-harness/turn.ts",
@@ -805,7 +843,7 @@
     },
     {
       "path": "docs/architecture/prompts/07-notes-harness.md",
-      "sha256": "e50c355a1f9700eef8d415d0f22b5123704c7bcb35acf8ab6c4ffbf55446d7f0"
+      "sha256": "9b83243a2ec43601bae474f89aca263d696464521a089ff35acda0f0221e8dfe"
     },
     {
       "path": "docs/architecture/prompts/14-sdk-handoff.md",
@@ -837,7 +875,7 @@
     },
     {
       "path": "docs/architecture/prompts/11-first-sdk-harness.md",
-      "sha256": "99b412359d6d4c903017272658a2759c876f0b46a39d09bc9dc142e35e4233f4"
+      "sha256": "c0223b6b55c0348bd0097011c7e16dfb598296075619d8c8b0ddf9be492422f4"
     }
   ]
 }

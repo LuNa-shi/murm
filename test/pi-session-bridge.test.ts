@@ -36,6 +36,88 @@ test('idle structured turn promotes deferred context before either delivery star
   }
 });
 
+test('interrupt during deferred-context promotion fences the idle submission before native start', async () => {
+  const appended = Promise.withResolvers<void>();
+  let starts = 0;
+  const native = {
+    isIdle: true,
+    async sendCustomMessage(_input: unknown, options: { triggerTurn: boolean }) {
+      if (options.triggerTurn) starts++;
+      else await appended.promise;
+    },
+    clearQueue() { return { steering: [], followUp: [] }; },
+    async abort() {},
+  };
+  const controller = createPiSessionController(native, { emit() {} });
+  const input = { type: 'context', content: 'distinct', customType: 'test' };
+  await controller.command({ type: 'core_context', id: 'next', input, delivery: 'nextTurn' });
+  const sending = assert.rejects(controller.command({ type: 'core_context', id: 'turn', input, delivery: 'followUp' }),
+    { code: 'NOT_ALLOWED' });
+  await controller.interrupt();
+  appended.resolve();
+  await sending;
+  assert.equal(starts, 0);
+});
+
+test('same-content native entries preserve input dispositions and message identities across projection', async () => {
+  const records: any[] = [];
+  const entries: any[] = [];
+  const initial = { type: 'context', customType: 'test', content: 'IDENTICAL', details: { stable: true }, display: false };
+  const queued: any[] = [];
+  let controller: ReturnType<typeof createPiSessionController>;
+  const native = {
+    isIdle: false,
+    _pendingCustomMessages: [] as any[],
+    messages: [] as any[],
+    sessionManager: {
+      getEntries: () => entries,
+      appendMessage(message: any) { const id = `message-${entries.length}`; entries.push({ id, type: 'message', message }); return id; },
+      appendCustomMessageEntry(customType: string, content: string, display: boolean, details: unknown) {
+        const id = `entry-${entries.length}`;
+        entries.push({ type: 'custom_message', id, timestamp: 1, customType, content, display, details });
+        return id;
+      },
+      buildSessionProjection: () => ({ entries: entries.map(entry => ({ sourceEntry: entry, messages: [entry.message ?? {
+        role: 'custom', customType: entry.customType, content: entry.content, display: entry.display, details: entry.details, timestamp: 1,
+      }] })) }),
+    },
+    agent: { steer(message: unknown) { queued.push(message); }, followUp(message: unknown) { queued.push(message); } },
+    async _startRun() {},
+    _appendCustomMessage(message: any) {
+      this.sessionManager.appendCustomMessageEntry(message.customType, message.content, message.display, message.details);
+      this.messages = this.sessionManager.buildSessionProjection().entries.flatMap(entry => entry.messages);
+      records.push(controller.observe({ type: 'message_start', message }), controller.observe({ type: 'message_end', message }));
+    },
+    async sendCustomMessage(input: any, options: any) {
+      const message = { role: 'custom', ...input, timestamp: 1 };
+      if (options.triggerTurn) this.agent.followUp(message);
+      else if (this.isIdle) this._appendCustomMessage(message);
+      else this._pendingCustomMessages.push(message);
+    },
+    clearQueue() { queued.length = 0; return { steering: [], followUp: [] }; },
+    async abort() {
+      for (const message of this._pendingCustomMessages.splice(0)) this._appendCustomMessage(message);
+      this.isIdle = true;
+    },
+  };
+  controller = createPiSessionController(native, { emit: record => records.push(record) });
+  await controller.command({ type: 'core_context', id: 'follow-up', input: initial, delivery: 'followUp' });
+  await controller.command({ type: 'core_context', id: 'first', input: initial, delivery: 'append' });
+  await controller.interrupt();
+  await controller.command({ type: 'core_context', id: 'second', input: initial, delivery: 'append' });
+  const terminal = records.filter(record => record.type === 'core_context_disposition' && ['appended', 'discarded'].includes(record.status));
+  assert.deepEqual(terminal.map(record => [record.inputId, record.status, record.entryId]), [
+    ['first', 'appended', 'entry-0'], ['follow-up', 'discarded', undefined], ['second', 'appended', 'entry-1'],
+  ]);
+  const snapshot = () => controller.command({ type: 'core_session_get_messages' });
+  const identity = (view: { messages: Array<{ id: string }> }) => view.messages.map(message => message.id);
+  const first = identity(await snapshot());
+  assert.equal(new Set(first).size, 2);
+  assert.deepEqual(first, records.filter(record => record.type === 'message_end').map(record => record.messageId));
+  assert.deepEqual(identity(await snapshot()), first);
+  assert.deepEqual(queued, []);
+});
+
 test('Guest native Pi SDK applies settings and appends structured context without a model request', { timeout: 20000 }, async t => {
   const { mkdtemp, writeFile, mkdir, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');

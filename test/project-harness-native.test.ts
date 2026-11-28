@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { fork } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
@@ -25,9 +27,20 @@ test('installed Notes and Messages use the supplied prompt and project in both W
   const evidenceDir = await createNativeEvidenceDirectory('project-handoffs');
   const prompt = 'Use the current project to identify the value in slot.txt and record the evidence.';
   const evidence = [];
-  for (const id of ['notes', 'messages'] as const) {
-    await t.test(id, async t => {
-      const value = id === 'notes' ? 'notes-observation-from-new-file' : 'messages-observation-from-changed-file';
+  for (const scenario of ['notes', 'messages', 'messages-http'] as const) {
+    await t.test(scenario, async t => {
+      const id = scenario === 'notes' ? 'notes' : 'messages';
+      let external: { url: string; token: string } | undefined;
+      if (scenario === 'messages-http') {
+        const token = randomBytes(24).toString('hex');
+        const service = fork(new URL('./fixtures/issue-236-message-server.js', import.meta.url), [], {
+          env: { MURM_TEST_MESSAGE_TOKEN: token }, stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+        });
+        t.after(() => { service.kill(); });
+        const [port] = await once(service, 'message', { signal: AbortSignal.timeout(5_000) });
+        external = { url: `http://127.0.0.1:${port}`, token };
+      }
+      const value = `${scenario}-observation-from-project-file`;
       await writeFile(join(project, 'slot.txt'), value + '\n');
       let arrivals = 0;
       let failure;
@@ -41,7 +54,8 @@ test('installed Notes and Messages use the supplied prompt and project in both W
           const input = typeof last.content === 'string' ? last.content : last.content.map(part => part.text).join('');
           assert.ok(input.includes(prompt));
           const reader = input.includes('murm-notes-') || input.includes('messages get');
-          const role = reader ? 'reader' : 'writer';
+          const followup = input.includes('murm-notes-followup-');
+          const role = followup ? 'followup' : reader ? 'reader' : 'writer';
           const callId = 'project_' + role;
           const key = id === 'notes' ? 'project-observation' : /handoff-[\da-f-]+/.exec(input)?.[0];
           assert.ok(key);
@@ -50,7 +64,14 @@ test('installed Notes and Messages use the supplied prompt and project in both W
           const getId = id === 'notes' ? 'project-notes-get' : key + '-get';
           const putId = id === 'notes' ? 'project-notes-put' : key + '-put';
           let command: string;
-          if (reader) {
+          if (followup) {
+            const files = JSON.parse(input);
+            assert.match(files.artifact, /^murm-notes-[a-f0-9-]+\.md$/);
+            assert.match(files.followup, /^murm-notes-followup-[a-f0-9-]+\.md$/);
+            assert.ok(body.input.some(row => row.type === 'function_call_output' && row.call_id === 'project_reader'),
+              'followup model request retains the previous reader turn');
+            command = `cp -- ${files.artifact} ${files.followup}; cmp ${files.followup} slot.txt;`;
+          } else if (reader) {
             const artifact = /murm-(?:notes|message)-[a-f0-9-]+\.(?:md|txt)/.exec(input)?.[0];
             assert.ok(artifact);
             command = `swarm ${id} get --key ${key} --request-id ${getId} | jq -er .text > ${artifact}; cmp ${artifact} slot.txt;`;
@@ -90,13 +111,15 @@ test('installed Notes and Messages use the supplied prompt and project in both W
         } } },
         image, workTimeoutMs: 90_000, turnTimeoutMs: 35_000, closeTimeoutMs: 30_000, cleanupTimeoutMs: 30_000,
       };
-      const configPath = join(evidenceDir, id + '.mjs');
+      const configPath = join(evidenceDir, scenario + '.mjs');
       await writeFile(configPath, `const config = ${JSON.stringify(config)};
 config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
+if (process.env.MURM_TEST_MESSAGES_URL) config.externalMessages = { url: process.env.MURM_TEST_MESSAGES_URL, token: process.env.MURM_TEST_MESSAGES_TOKEN };
 export default config;
 `, { mode: 0o600 });
       const { result, status, observation } = await runInstalledHarnessRpc(installation, {
-        harness: id, cwd: project, prompt, configPath, outputDir: join(evidenceDir, id), timeoutMs: 115_000,
+        harness: id, cwd: project, prompt, configPath, outputDir: join(evidenceDir, scenario), timeoutMs: 115_000,
+        ...(external ? { env: { MURM_TEST_MESSAGES_URL: external.url, MURM_TEST_MESSAGES_TOKEN: external.token } } : {}),
       }).catch(error => { assert.ifError(failure); throw error; });
       assert.ifError(failure);
       assert.equal(status, 0);
@@ -106,15 +129,27 @@ export default config;
       assert.equal(result.acceptance.status, 'not-run');
       assert.equal(await readFile(result.prompt.path, 'utf8'), prompt);
       assert.ok(result.cleanup.receipt.agents.every(agent => agent.execution === 'stopped' && agent.cleanup === 'complete'));
-      assert.deepEqual(roles, ['writer', 'reader']);
+      assert.deepEqual(roles, id === 'notes' ? ['writer', 'reader', 'followup'] : ['writer', 'reader']);
       const paths = result.artifacts.map(artifact => artifact.path);
       const files = paths.find(path => path.endsWith('/artifacts/files'));
+      if (id === 'notes') {
+        const business = result.result.business;
+        assert.deepEqual(await readFile(business.followup), await readFile(business.artifact));
+      }
       assert.ok(files);
       const name = id === 'notes' ? `murm-notes-${result.runId}.md` : `murm-message-${result.runId}.txt`;
       assert.equal(await readFile(join(files, name), 'utf8'), value + '\n');
       assert.equal(await readFile(join(project, 'slot.txt'), 'utf8'), value + '\n');
       assert.deepEqual(await ownedContainers(result.result.runtimeId), []);
-      evidence.push({ id, runId: result.runId, runtimeId: result.result.runtimeId, digest: result.initial.digest,
+      if (external) {
+        const response = await fetch(`${external.url}/fixture`, { headers: { authorization: `Bearer ${external.token}` } });
+        assert.equal(response.status, 200);
+        const state = await response.json();
+        assert.equal(state.original.text, 'pre-existing service data');
+        assert.deepEqual(state.calls.map(call => call.operation), ['put', 'get']);
+        assert.notEqual(state.calls[0].caller, state.calls[1].caller);
+      }
+      evidence.push({ id: scenario, runId: result.runId, runtimeId: result.result.runtimeId, digest: result.initial.digest,
         artifactVerified: true, resourcesClean: true, observation });
     });
   }
@@ -343,6 +378,13 @@ export default config;
   assert.equal(result.cleanup.status, 'complete');
   assert.equal(result.acceptance.status, 'not-run');
   const { evidence: calls, failure } = upstream.receipt();
+  const saved = JSON.parse(await readFile(result.reportPath!, 'utf8'));
+  const { peers, events, databasePath, policy } = saved.result.detail;
+  assert.equal(peers.length, 3);
+  assert.ok(peers.every(peer => peer.turns.length === 2 && peer.turns.every(turn => turn.attempts.length > 0)));
+  assert.ok(events.some(event => event.type === 'settled'));
+  assert.ok(databasePath.endsWith('/substrate.sqlite'));
+  assert.equal(policy.maxRounds, 2);
   assert.ifError(failure);
   const producer = calls.find(row => row.peer === 0 && row.cycle === 0).published;
   assert.equal(producer.content, projectSource.content);
