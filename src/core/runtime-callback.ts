@@ -1,9 +1,19 @@
 import { createServer, type RequestListener } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
+// Callback mounting is an internal transport boundary. The public SDK's
+// declaration graph also reaches it through the trusted Provider types.
+export interface RuntimeCallback {
+  close(): Promise<void>;
+  mount(path: string, handler: (request: any, response: any) => void): {
+    url: string;
+    remove(): void;
+  };
+}
+
 export async function openRuntimeCallback({ host, port, publicUrl }: {
   host: string; port: number; publicUrl: string;
-}, own: (owner: { close(): Promise<void> }) => void) {
+}, own: (owner: { close(): Promise<void> }) => void): Promise<RuntimeCallback> {
   const routes = new Map<string, RequestListener>();
   const base = new URL(publicUrl.replaceAll('{port}', '1')).pathname.replace(/\/$/, '');
   const server = createServer((request, response) => {
@@ -49,5 +59,3 @@ export async function openRuntimeCallback({ host, port, publicUrl }: {
     },
   };
 }
-
-export type RuntimeCallback = Awaited<ReturnType<typeof openRuntimeCallback>>;

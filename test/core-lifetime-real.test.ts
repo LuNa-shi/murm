@@ -91,18 +91,18 @@ test('one idle Agent remains usable past the observed initial lease and exports 
   const { resolveSandboxConnection } = await import('../src/core/sandbox/sandbox-connection.js');
   const { OpenSandboxSdk } = await import('../src/core/sandbox/opensandbox-sdk.js');
   const { setTimeout: delay } = await import('node:timers/promises');
-  const { rm } = await import('node:fs/promises');
   const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
   const lifecycle = process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1';
   const apiKey = process.env.MURM_CORE_TEST_API_KEY;
   const connection = resolveSandboxConnection({ lifecycleBaseUrl: lifecycle, apiKey });
-  const sdk = new OpenSandboxSdk({ ...connection, useServerProxy: false, fetchImpl: fetch });
+  // This observer only reads Lifecycle state and does not need to hold a pool.
+  const observerFetch = (...args: Parameters<typeof fetch>) => fetch(...args);
+  const sdk = new OpenSandboxSdk({ ...connection, useServerProxy: false, fetchImpl: observerFetch });
   t.after(() => sdk.close());
   const root = resolve('experiments');
   await mkdir(root, { recursive: true, mode: 0o700 });
   const outputDir = await mkdtemp(join(root, 'core-renewal-'));
-  t.after(() => rm(outputDir, { recursive: true, force: true }));
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const settings = runtimeSettings({
     sandbox: { lifecycleBaseUrl: lifecycle, apiKey, timeoutSeconds: 60, resourceLimits: { cpu: '1', memory: '1Gi' } },
@@ -129,10 +129,11 @@ test('one idle Agent remains usable past the observed initial lease and exports 
     const captured = await runtime.files.snapshot(agent.id, { requestId: 'after-initial-ttl', paths: ['renewal.txt'] });
     assert.deepEqual(Buffer.from(captured.files['renewal.txt'].data, 'base64'), bytes);
     const stopped = await runtime.stop(agent.id);
-    assert.equal(stopped.cleanup, 'complete');
+    assert.equal(stopped.cleanup, 'complete', JSON.stringify(stopped.errors));
     assert.ok(stopped.artifacts.length);
     assert.deepEqual(await ownedContainers(runtime.id), []);
   } finally {
-    assert.equal((await runtime.close()).cleanup, 'complete');
+    const closed = await runtime.close();
+    assert.equal(closed.cleanup, 'complete', JSON.stringify(closed.agents.flatMap(agent => agent.errors)));
   }
 });

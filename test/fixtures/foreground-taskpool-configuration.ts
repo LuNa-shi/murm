@@ -27,7 +27,7 @@ export default { mode: 'taskpool', timeoutMs: 15_000, options: {
     const agentId = agentIds[0];
     const credentials = controls.credentials.get(agentId);
     const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
-    const bridge = new URL(env.MURM_BRIDGE_URL); bridge.hostname = '127.0.0.1'; env.MURM_BRIDGE_URL = bridge.origin;
+    const bridge = new URL(env.MURM_BRIDGE_URL); bridge.hostname = '127.0.0.1'; env.MURM_BRIDGE_URL = bridge.href.replace(/\/$/, '');
     const { stdout } = await promisify(execFile)(process.execPath, [new URL('../../scripts/swarm.js', import.meta.url).pathname,
       'task', 'take', stores.task.task_id, '--request-id', 'fixture-take'], { env, timeout: 5000 });
     const taken = JSON.parse(stdout);
