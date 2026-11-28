@@ -109,3 +109,16 @@ test('public Harness control reconciles the original native receipt after the Ag
   assert.equal(transport.sessionCalls.length, 2);
   await session.stop({ requestId: 'stop' }); await session.completion;
 });
+
+test('text and structured context share one public send request identity in both directions', async t => {
+  const { runtime, agent } = await setup(t);
+  const context = { type: 'context', customType: 'reference', content: 'context' };
+  const first = await runtime.send(agent.id, context, { requestId: 'context-first', delivery: 'append' });
+  await assert.rejects(runtime.send(agent.id, 'changed to text', { requestId: 'context-first' }), { code: 'CONFLICT' });
+  assert.equal(transport.submissions.size, 0);
+  await runtime.send(agent.id, 'text', { requestId: 'text-first' });
+  const before = transport.sessionCalls.length;
+  await assert.rejects(runtime.send(agent.id, context, { requestId: 'text-first', delivery: 'append' }), { code: 'CONFLICT' });
+  assert.equal(transport.sessionCalls.length, before);
+  assert.deepEqual(await runtime.send(agent.id, context, { requestId: 'context-first', delivery: 'append' }), first);
+});

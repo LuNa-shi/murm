@@ -131,6 +131,7 @@ export function createSessionControls(options: {
   };
   return {
     api: Object.freeze(api),
+    hasContext(agentId: string, requestId: string) { return requests.get(JSON.stringify([agentId, requestId]))?.name === 'context'; },
     reconcile(agentId: string, operation: string, requestId: string) {
       const entry = requests.get(JSON.stringify([agentId, requestId]));
       const name = operation === 'send' ? 'context' : operation;

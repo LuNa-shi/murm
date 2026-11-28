@@ -959,6 +959,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   function hostSend(id: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
   function hostSend(id: string, input: ContextInput, options: ContextSendOptions): Promise<ContextInputReceipt>;
   function hostSend(id: string, input: string | ContextInput, options: SendOptions | ContextSendOptions): Promise<any> {
+    const requestId = options?.requestId;
+    if (validId(requestId) && (typeof input === 'string' ? sessionControls.hasContext(id, requestId) : inputRequests.peek('host', id, requestId))) {
+      return Promise.reject(problem('CONFLICT', 'send requestId already identifies another input type', 'send', id, requestId));
+    }
     return typeof input === 'string' ? send(id, input, options as SendOptions) : sessionControls.context(id, input, options as ContextSendOptions);
   }
 

@@ -226,6 +226,8 @@ The Host and Guest each bound the wait. A thrown handler or Host timeout produce
 
 The shared Harness layer reads registered operation receipts using the Agent, operation kind and original request ID. A missing or undispatched operation returns unknown. Configuration and context use the original native command with a query-only flag, text queries the dispatched input, and interrupt checks the original interrupt identity. Previous receipts remain readable after admission closes or the Agent stops.
 
+Text and structured context share the public Runtime send identity. Reusing one Agent and request ID across the two input forms conflicts before dispatch. Exact retries keep the original input and receipt.
+
 ## Example turn runner
 
 The version 1 [public SDK example](../en/first-harness.md) supplies a reusable host-side wait over existing Runtime calls. It claims one waiter per idle Agent, verifies current state, and subscribes before requesting a follow-up. It waits for both accepted admission and successful settlement. Independent Agents can have active waits concurrently. The helper bounds state lookup, admission and settlement with one deadline, and detaches the listener and cancellation handler on every exit. When admission or execution may still be in progress it fences that Agent in the runner. An aborted wait does not interrupt work. The application owns reconciliation through the original request ID and cleanup through `close`. The helper assumes exclusive ownership of input for an Agent, since the public settlement event describes the Agent's execution and does not carry the input request ID.
