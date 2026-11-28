@@ -2,22 +2,24 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
+import { createRequire } from 'node:module';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
-import { fileURLToPath } from 'node:url';
-import { createHarnessSession, HarnessRpcClient, type Runtime } from '@luna-shi/murm';
-import subagents from '../examples/subagents/project.js';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import * as sourceSdk from '@luna-shi/murm';
+import type { Runtime } from '@luna-shi/murm';
+import sourceSubagents from '../examples/subagents/project.js';
+import { installNativeNotesExample } from './fixtures/notes-installed-package.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { createHarnessSessionUpstream } from './fixtures/harness-session-upstream.js';
 
 const cli = fileURLToPath(new URL('../scripts/murm.js', import.meta.url));
-const projectModule = fileURLToPath(new URL('../examples/subagents/project.js', import.meta.url));
 const nativeEnabled = process.env.MURM_HARNESS_SESSION_REAL_TEST === '1';
 
-for (const via of ['sdk', 'rpc', 'export-failure']) {
+for (const via of ['sdk', 'rpc', 'export-failure', 'default-task']) {
   test(`interactive Subagents controls, interruption and Service questions traverse real OpenSandbox via ${via}`, {
     skip: !nativeEnabled && 'Requires candidate Worker and configured local OpenSandbox',
     timeout: 150_000,
@@ -25,6 +27,12 @@ for (const via of ['sdk', 'rpc', 'export-failure']) {
     const image = process.env.MURM_CORE_TEST_IMAGE;
     const configPath = process.env.MURM_HARNESS_SESSION_SANDBOX_CONFIG;
     assert.ok(image && configPath);
+    const installed = process.env.MURM_TEST_PACKAGE_ARCHIVE ? await installNativeNotesExample() : undefined;
+    if (installed) t.after(installed.close);
+    const installedRoot = installed && join(installed.directory, 'node_modules', '@luna-shi', 'murm');
+    const sdk = installed ? createRequire(join(installed.directory, 'native-consumer.mjs'))('@luna-shi/murm') as typeof sourceSdk : sourceSdk;
+    const subagents = installedRoot ? (await import(pathToFileURL(join(installedRoot, 'dist/examples/subagents/project.js')).href)).default as typeof sourceSubagents : sourceSubagents;
+    const runCli = installed ? join(installed.directory, 'node_modules', '.bin', 'murm') : cli;
     const settings = JSON.parse(await readFile(configPath, 'utf8'));
     const endpoint = process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? settings.endpoint ?? settings.lifecycleBaseUrl;
     assert.ok(endpoint && settings.apiKey && settings.advertiseHost);
@@ -38,6 +46,7 @@ for (const via of ['sdk', 'rpc', 'export-failure']) {
     const seededPath = join(cwd, 'seed.txt');
     await writeFile(seededPath, seed);
     const upstream = await createHarnessSessionUpstream(seed.trim());
+    const rpc = via === 'rpc' || via === 'default-task';
     const launchConfig = {
       image,
       executor: { kind: 'pi', version: process.env.MURM_CORE_TEST_PI_VERSION ?? '1.3.0' },
@@ -60,7 +69,7 @@ for (const via of ['sdk', 'rpc', 'export-failure']) {
     let session;
     let cleanupOwner: Runtime | undefined;
     try {
-      if (via !== 'rpc') {
+      if (!rpc) {
         const definition = via === 'export-failure' ? { ...subagents, run: context => subagents.run({
           ...context,
           registerAgentControls(registration) {
@@ -68,21 +77,24 @@ for (const via of ['sdk', 'rpc', 'export-failure']) {
             return context.registerAgentControls(registration);
           },
         }) } : subagents;
-        session = createHarnessSession(definition, {
+        session = sdk.createHarnessSession(definition, {
           configuration: launchConfig, outputRoot, lifetime: 'interactive', clientCapabilities: { questions: true },
         });
       }
       else {
         const modulePath = join(temporary, 'candidate-config.mjs');
         await writeFile(modulePath, 'export default JSON.parse(process.env.HARNESS_NATIVE_TEST_CONFIG);\n', { mode: 0o600 });
-        child = spawn(process.execPath, [cli, '--harness', projectModule, '--mode', 'rpc', '--lifetime', 'interactive',
-          '--interaction', 'questions', '--config', modulePath, '--output-dir', outputRoot], {
-          cwd, stdio: 'pipe', env: { ...process.env, HARNESS_NATIVE_TEST_CONFIG: JSON.stringify(launchConfig) },
+        child = spawn(process.execPath, [runCli, '--harness', 'subagents', '--mode', 'rpc',
+          ...(via === 'default-task' ? [] : ['--lifetime', 'interactive', '--interaction', 'questions']),
+          '--config', modulePath, '--output-dir', outputRoot], {
+          cwd, stdio: 'pipe', env: { ...(installed?.env ?? process.env), HARNESS_NATIVE_TEST_CONFIG: JSON.stringify(launchConfig) },
         });
         child.stderr.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-4096); });
         exited = once(child, 'close');
-        session = new HarnessRpcClient(child);
-        assert.equal((await session.ready).status.clientCapabilities.questions, true);
+        session = new sdk.HarnessRpcClient(child);
+        const ready = await session.ready;
+        assert.equal(ready.status.clientCapabilities.questions, via !== 'default-task');
+        assert.equal(ready.status.lifetime, via === 'default-task' ? 'task' : 'interactive');
       }
     } catch (error) {
       child?.kill('SIGTERM');
@@ -102,7 +114,7 @@ for (const via of ['sdk', 'rpc', 'export-failure']) {
         runtimeId ??= result?.result?.runtimeId;
         const retained = runtimeId ? await ownedContainers(runtimeId) : [];
         await writeFile(join(temporary, 'acceptance.json'), JSON.stringify({
-          via, image, runtimeId, runId: result?.runId, phase: result?.outcome, reason: result?.reason,
+          via, image, package: installed?.metadata ?? null, runtimeId, runId: result?.runId, phase: result?.outcome, reason: result?.reason,
           upstreamRequests: upstream.requests, upstreamFailure: upstream.failure, result,
           activeContainers: retained, diagnostic: stderr,
         }, null, 2), { mode: 0o600 });
@@ -134,6 +146,16 @@ for (const via of ['sdk', 'rpc', 'export-failure']) {
     const start = await session.start({ cwd, prompt: 'SESSION_READ ' + 'Read and verify the seeded project file. '.repeat(128) }, { requestId: 'begin' });
     const first = await completed('SEED_READ_OK');
     const root = first.agentId;
+    if (via === 'default-task') {
+      result = await session.completion;
+      assert.equal(result.outcome, 'completed');
+      assert.equal(result.cleanup.status, 'complete');
+      assert.equal(result.result.business.output, 'SEED_READ_OK');
+      assert.equal(result.result.business.rootId, root);
+      assert.ok(result.artifacts.some(artifact => artifact.kind === 'session-archive'));
+      assert.deepEqual(await exited, [0, null]);
+      return;
+    }
     runtimeId = (await session.getState()).business?.runtimeId;
     assert.ok(runtimeId);
     assert.equal((await session.getState()).phase, 'running');

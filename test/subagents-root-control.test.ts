@@ -94,7 +94,9 @@ test('late Root clear receipt restores its original child without deleting later
     const hashes = [createHash('sha256').update(original.input).digest('hex')];
     let queries = 0;
     const query = async () => { queries++; return { status: 'completed', discardedInputHashes: hashes }; };
-    const receipt = await controller.reconcileRootControl('clearQueue', 'clear', query);
+    const [receipt, concurrent] = await Promise.all([controller.reconcileRootControl('clearQueue', 'clear', query),
+      controller.reconcileRootControl('clearQueue', 'clear', query)]);
+    assert.deepEqual(concurrent, receipt);
     assert.equal(receipt.harnessEffects.restoredInbox.length, 1);
     assert.equal((controller.exportState() as any).rootInputs.some(row => row.requestId === 'user:later'), true);
     assert.deepEqual(await controller.reconcileRootControl('clearQueue', 'clear', query), receipt);
