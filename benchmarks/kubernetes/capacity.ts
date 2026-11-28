@@ -13,6 +13,7 @@ import { ConnectionConfig, SandboxApiException, SandboxManager } from '@alibaba-
 import { createRuntime, createSandbox, ServiceRegistry, createInProcessAdapter } from '@luna-shi/murm';
 import { streamResponse } from '../../scripts/local-setup-upstream.js';
 import { checkLedger } from './check-ledger.js';
+import { finishCleanup } from './cleanup.js';
 import { mockCapacityPlan, runMockCapacity } from './mock-capacity.js';
 
 const tiers = new Map([[2, 0], [8, 900_000]]);
@@ -135,8 +136,11 @@ async function preflight(manifest: any, planned: ReturnType<typeof plan>) {
     capacity += Math.max(0, Math.floor(Math.min(cpu / requiredCpu, memory / requiredMemory)));
   }
   assert.ok(capacity >= manifest.tier, 'Selected nodes have insufficient unreserved CPU/memory for this tier');
-  const [runnerBytes, fixtureBytes] = await Promise.all([readFile(new URL(import.meta.url)), readFile(new URL('../../scripts/local-setup-upstream.js', import.meta.url))]);
-  return { site, vm, nodeSelector, hashes: { bom: sha256(bomBytes), site: sha256(siteBytes), inventory: sha256(inventoryBytes), vmEvidence: sha256(vmBytes), executable: sha256(runnerBytes), responsesFixture: sha256(fixtureBytes), workdirFixture: sha256('murm-kubernetes-capacity-v1') }, capacity };
+  const [runnerBytes, fixtureBytes, cleanupBytes] = await Promise.all([
+    readFile(new URL(import.meta.url)), readFile(new URL('../../scripts/local-setup-upstream.js', import.meta.url)),
+    readFile(new URL('./cleanup.js', import.meta.url)),
+  ]);
+  return { site, vm, nodeSelector, hashes: { bom: sha256(bomBytes), site: sha256(siteBytes), inventory: sha256(inventoryBytes), vmEvidence: sha256(vmBytes), executable: sha256(runnerBytes), responsesFixture: sha256(fixtureBytes), cleanup: sha256(cleanupBytes), workdirFixture: sha256('murm-kubernetes-capacity-v1') }, capacity };
 }
 
 async function boundedMap<T>(items: T[], concurrency: number, action: (item: T, index: number) => Promise<void>, signal?: AbortSignal) {
@@ -151,22 +155,6 @@ async function boundedMap<T>(items: T[], concurrency: number, action: (item: T, 
   const results = await Promise.allSettled(workers);
   const failure = results.find(result => result.status === 'rejected');
   if (failure?.status === 'rejected') throw failure.reason;
-}
-
-async function finishCleanup<T extends { cleanup: 'complete' | 'pending'; errors: readonly { retryable: boolean }[] }>(
-  operation: (timeoutMs: number) => Promise<T>, deadline: number,
-) {
-  let remaining = Math.max(1, Math.ceil(deadline - performance.now()));
-  let receipt = await operation(remaining);
-  while (receipt.cleanup === 'pending' && !receipt.errors.some(error => !error.retryable)) {
-    remaining = Math.ceil(deadline - performance.now());
-    if (remaining <= 0) break;
-    await delay(Math.min(remaining, 500));
-    remaining = Math.ceil(deadline - performance.now());
-    if (remaining <= 0) break;
-    receipt = await operation(remaining);
-  }
-  return receipt;
 }
 
 let executionStarted = false;

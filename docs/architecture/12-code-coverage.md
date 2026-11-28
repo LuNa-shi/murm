@@ -4,7 +4,7 @@
 
 Runtime baseline: `76aa64dee48052dcf2b861f1fa876eebcbb3b5d6`; review date: 2026-11-28. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **414 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **415 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -312,12 +312,13 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 | [test-support/taskpool-legacy/runtime.ts](../../test-support/taskpool-legacy/runtime.ts) | Registered Agent binding, physical resource ownership, process failure cleanup and fencing | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `9d47cb19c7a223c2a9786ae99439c738d898dadf20bfb7a68d96d629fa425852` |
 | [test-support/taskpool-legacy/services-bridge.ts](../../test-support/taskpool-legacy/services-bridge.ts) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `bddb5744b172e34d5939b958f5e92946f736d6816b31c9b54938976ded8e1ca6` |
 
-### deployment (13)
+### deployment (14)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [benchmarks/kubernetes/capacity.ts](../../benchmarks/kubernetes/capacity.ts) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `2d7a2df6eaf5e6058af76cedf027c07253c75dcdea003721057ec4ab4ddc798e` |
+| [benchmarks/kubernetes/capacity.ts](../../benchmarks/kubernetes/capacity.ts) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `4c291bd9760e52c71204ec8eddd012e9a19e57d5510de0d6f11ffea667fd5e55` |
 | [benchmarks/kubernetes/check-ledger.ts](../../benchmarks/kubernetes/check-ledger.ts) | Read-only independent check of terminal Run, allocation and resource evidence. | [24-runtime-recovery](24-runtime-recovery.md) | `3e5ac545934bc16c7680d11d35164721c53eac96c4dbd4df6a144f109aea57e7` |
+| [benchmarks/kubernetes/cleanup.ts](../../benchmarks/kubernetes/cleanup.ts) | Retries pending benchmark cleanup receipts within the shared deadline. | [24-runtime-recovery](24-runtime-recovery.md) | `14c753977e30dfdd00f5f85080f646429de7b10653daa1f39f993c5b5bdeef92` |
 | [benchmarks/kubernetes/manifest.example.json](../../benchmarks/kubernetes/manifest.example.json) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `71d770d6a27ea79577a87d9956ca3f5d10a3dc638db6eb9576e7dfecc0837252` |
 | [benchmarks/kubernetes/mock-capacity.ts](../../benchmarks/kubernetes/mock-capacity.ts) | Bounded high-tier simulation through the production SDK, ledger, events and cleanup paths. | [24-runtime-recovery](24-runtime-recovery.md) | `260119e5dddc02b58a6e12085a8f33f7727c39a9b6e2142b375d4d06e2559529` |
 | [benchmarks/kubernetes/mock-manifest.example.json](../../benchmarks/kubernetes/mock-manifest.example.json) | Explicit local mock API workload limits and approval inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `ec8dce8a956466e5d8688058634b1b0be425ed0817cf008763b2bcd57ddb0f5e` |
