@@ -181,7 +181,8 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     if (!stopping && !result) {
       stopping = true;
       for (const registration of registrations) {
-        try { fenceRuntimeAdmissions(registration.runtime); registration.fence?.(); } catch { fenceFailed = true; }
+        try { fenceRuntimeAdmissions(registration.runtime); } catch { fenceFailed = true; }
+        try { registration.fence?.(); } catch { fenceFailed = true; }
       }
       closeQuestions(reason);
       host.stop(reason);
