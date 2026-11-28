@@ -115,6 +115,7 @@ type StartupOptions = {
   configuration?: unknown;
   outputRoot?: string;
   stopTimeoutMs?: number;
+  finalizeResult?: (result: ProjectHarnessResult) => ProjectHarnessResult;
 };
 type RunResult = Omit<ProjectHarnessResult, 'reason'> & {
   runId: string;
@@ -322,6 +323,7 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
       publishing = false;
       phase = 'finished';
     }
+    business = options.finalizeResult?.(business) ?? business;
     let saved: RunResult;
     try {
       const result: RunResult = {

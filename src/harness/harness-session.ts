@@ -10,6 +10,8 @@ import type { HarnessAgentRegistration, HarnessAgents, HarnessAnswer, HarnessAns
   HarnessRequest, HarnessResult, HarnessSession, HarnessSessionOptions, HarnessStartReceipt, HarnessState, HarnessStopReceipt } from './harness-session-types.js';
 
 interface OperationRecord {
+  operation: string;
+  failed?: boolean;
   fingerprint: string;
   promise: Promise<unknown>;
   result?: unknown;
@@ -67,6 +69,9 @@ function fingerprint(value: unknown) { return createHash('sha256').update(stable
 
 /** One live Run. The Harness retains ownership of collaboration and resource cleanup. */
 export function createHarnessSession(definition: ProjectHarness, options: HarnessSessionOptions = {}): HarnessSession {
+  if (!definition || definition.apiVersion !== 1 || typeof definition.id !== 'string' || !/^[a-z0-9][a-z0-9_.:-]{0,127}$/.test(definition.id) || typeof definition.run !== 'function') {
+    throw projectError('INVALID_HARNESS_MODULE', 'Harness requires apiVersion 1, a stable id and run(context)');
+  }
   if (options.configuration !== undefined && options.configPath !== undefined) {
     throw projectError('INVALID_RUN_CONFIGURATION', 'configuration and configPath are mutually exclusive');
   }
@@ -136,7 +141,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       agents: boundedView(current.agents, Math.floor(limits.snapshotBytes / 8)),
       business: boundedView(current.business, Math.floor(limits.snapshotBytes / 8)), lifetime, capabilities: descriptor(), clientCapabilities,
       questions: [...questions.values()].map(record => record.value), output: [...output.values()], observedAt,
-      ...(result ? { result: { ...result, result: undefined, acceptance: undefined, artifacts: result.artifacts.slice(0, 16) } } : {}) }), limits.snapshotBytes) as HarnessState;
+      ...(result ? { result: { ...result, result: undefined, acceptance: undefined, operations: result.operations?.slice(0, 16), artifacts: result.artifacts.slice(0, 16), snapshotTruncated: true } } : {}) }), limits.snapshotBytes) as HarnessState;
   }
   function publish(event: HarnessEvent) {
     observedAt = new Date().toISOString();
@@ -212,9 +217,16 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       askUser: ask,
     });
     closeQuestions('run-finished');
-    return { ...returned, questions: [...questions.values()].map(record => structuredClone(record.value)) };
+    return { ...returned, questions: [...questions.values()].map(record => structuredClone(record.value)), operations: operationSummaries() };
   } };
-  const host = createProjectHost(wrapped, { launchDirectory: options.launchDirectory ?? process.cwd(), ...options }, raw => {
+  const host = createProjectHost(wrapped, { launchDirectory: options.launchDirectory ?? process.cwd(), ...options,
+    finalizeResult(business) {
+      return { ...business,
+        ...(fenceFailed ? { cleanup: { ...business.cleanup, status: 'pending' as const, pending: ['runtime-dispatch-fence-unconfirmed'] } } : {}),
+        questions: [...questions.values()].map(record => structuredClone(record.value)), operations: operationSummaries(),
+      };
+    },
+  }, raw => {
     const record = raw as { event?: HarnessJson };
     if (record.event && typeof record.event === 'object' && !Array.isArray(record.event) && 'kind' in record.event && record.event.kind === 'status') changed();
     else if (record.event !== undefined) { recordOutput(record.event); publish({ type: 'event', runId: host.status().runId, event: jsonCopy(record.event) }); }
@@ -252,7 +264,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     try { validate?.(); } catch (error) { return Promise.reject(error); }
     if ((!reserved && records.size >= limits.mutations) || records.size >= limits.mutations + limits.questions + 1) return Promise.reject(projectError('REQUEST_LIMIT', 'Session mutation identities are full'));
     const deferred = Promise.withResolvers<T>();
-    const record: OperationRecord = { fingerprint: hash, promise: deferred.promise, settled: false };
+    const record: OperationRecord = { operation, fingerprint: hash, promise: deferred.promise, settled: false };
     records.set(id, record);
     try {
       Promise.resolve(run()).then(value => {
@@ -260,8 +272,8 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
         record.settled = true;
         deferred.resolve(record.result as T);
         publish({ type: 'operation', runId: host.status().runId, requestId: id, operation, result: record.result });
-      }, error => deferred.reject(error)).catch(deferred.reject);
-    } catch (error) { deferred.reject(error); }
+      }, error => { record.failed = true; deferred.reject(error); }).catch(error => { record.failed = true; deferred.reject(error); });
+    } catch (error) { record.failed = true; deferred.reject(error); }
     void deferred.promise.catch(() => {});
     return deferred.promise;
   }
@@ -281,6 +293,10 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       host.signal.removeEventListener('abort', expired);
     }).catch(() => {});
     return deferred.promise;
+  }
+  function operationSummaries(): NonNullable<HarnessResult['operations']> {
+    return [...records].map(([requestId, record]) => ({ requestId, operation: record.operation,
+      status: record.failed ? 'failed' : isUnknown(record.result) ? 'unknown' : record.settled ? 'confirmed' : 'pending' }));
   }
   function isUnknown(value: unknown) {
     return !!value && typeof value === 'object' && ((value as { status?: string }).status === 'unknown' ||
@@ -452,7 +468,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
         completion = started.completion.then(finished => {
           exitCode = finished.code;
           closeQuestions('run-finished');
-          result = { ...finished.result, ...(fenceFailed ? { cleanup: { ...finished.result.cleanup, status: 'pending' as const, pending: ['runtime-dispatch-fence-unconfirmed'] } } : {}), questions: [...questions.values()].map(record => structuredClone(record.value)) };
+          result = { ...finished.result, operations: operationSummaries(), ...(fenceFailed ? { cleanup: { ...finished.result.cleanup, status: 'pending' as const, pending: ['runtime-dispatch-fence-unconfirmed'] } } : {}), questions: [...questions.values()].map(record => structuredClone(record.value)) };
           changed();
           publish({ type: 'result', result });
           return result;
