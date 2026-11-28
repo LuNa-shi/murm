@@ -47,11 +47,11 @@
     },
     {
       "path": "src/core/sandbox/opensandbox-backend.ts",
-      "sha256": "c32c3319e6d7ff133d642b1ad11f9cd44158903d65c1e1ff94e618111513aa41"
+      "sha256": "b7853856aae700455d06a9f399903cfb5c49a8c2d1e61c0b313662c56e197d68"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "217c5c2349998d495ea24aa40808440d7e6c7804fc6fb65db0bdffb424a368c6"
+      "sha256": "f3727bbe4c306a6fe8744fa646711cf71efdb9f8918a45d3c2f6da9a3a0e36ee"
     },
     {
       "path": "scripts/codex-app-server-driver.ts",
@@ -183,7 +183,7 @@
     },
     {
       "path": "examples/lead-worker/harness/index.ts",
-      "sha256": "229af144929b57f6c947b6fa88457f28225225af3612bb598398e8090d1d3da9"
+      "sha256": "27abc7c641265f5457a494ce52c4a2b289f649ba4bbaf69c3fe590f4f0b70c6e"
     },
     {
       "path": "examples/lead-worker/harness/dynamic-scheduler.ts",
