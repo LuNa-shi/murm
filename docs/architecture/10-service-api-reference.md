@@ -40,7 +40,7 @@ This section is generated from executable exports and checked against the source
 | [test-support/taskpool-legacy/services-bridge.ts](../../test-support/taskpool-legacy/services-bridge.ts) | `bddb5744b172e34d5939b958f5e92946f736d6816b31c9b54938976ded8e1ca6` |
 | [examples/services/mathlib-search/service.json](../../examples/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5b436c6d7062a7b9fb0fd434af1375b9c050999cfa76bd6d97dac88558dca8b3` |
-| [src/core/index.ts](../../src/core/index.ts) | `60a23e0fdfe7c7dc86b816506dd90b54bb4ad5d233d90aa0e0f1d4a3560bcb1e` |
+| [src/core/index.ts](../../src/core/index.ts) | `26c030b2a4072380f1b5ab29d96453042fde878c518dd4911853028a3f7a441a` |
 | [src/core/types.ts](../../src/core/types.ts) | `e17977d64d7393e4120c95a76a5be8222a0fb3dc4de8a1ee8b0d224e6ddc57f7` |
 | [src/core/services.ts](../../src/core/services.ts) | `794352ccfa8e02f63c4db087f1c165308198c6766c0d8c3cf8872e1b9c0617ab` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
@@ -3092,7 +3092,6 @@ These are the package entrypoint declarations and the declarations they referenc
 #### dist/src/core/index.d.ts
 
 ```ts
-export { fenceRuntimeAdmissions } from './runtime-admissions.js';
 import type { CreateRuntimeOptions, Runtime } from './types.js';
 export type * from './session-types.js';
 export { createHarnessSession } from '../harness/project-harness.js';

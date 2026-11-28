@@ -35,7 +35,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "60a23e0fdfe7c7dc86b816506dd90b54bb4ad5d233d90aa0e0f1d4a3560bcb1e"
+      "sha256": "26c030b2a4072380f1b5ab29d96453042fde878c518dd4911853028a3f7a441a"
     },
     {
       "path": "src/core/bridge.ts",
@@ -131,7 +131,7 @@
     },
     {
       "path": "examples/subagents/harness/controller.ts",
-      "sha256": "8482301a0d2aa669330ae34c042032e259c95ed107106d431d8efa12232960b3"
+      "sha256": "c4c5dbae4ea7f92946ee123017244653064d23ac050ec819b74b255a9e82a3c5"
     },
     {
       "path": "examples/subagents/prompts/prompts.ts",
@@ -673,17 +673,17 @@
   "prompt_send_sites": [
     {
       "path": "examples/subagents/harness/controller.ts",
-      "line": 181,
+      "line": 182,
       "expression": "receipt = await runtime.send(member.id!, body, {"
     },
     {
       "path": "examples/subagents/harness/controller.ts",
-      "line": 284,
+      "line": 285,
       "expression": "receipt = await runtime.send(member.id!, body, { source: from, wakeIfIdle: true, ...options, requestId });"
     },
     {
       "path": "examples/subagents/harness/controller.ts",
-      "line": 412,
+      "line": 413,
       "expression": "const receipt = await runtime.send(root.id, input, options);"
     },
     {
