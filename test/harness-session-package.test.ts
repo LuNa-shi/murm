@@ -3,12 +3,13 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
+import { tmpdir } from 'node:os';
 import { createInterface } from 'node:readline';
 import test from 'node:test';
 import { execute, preparePackageArchive } from './fixtures/notes-installed-package.js';
 
 test('one external custom Harness uses the exact candidate SDK, RPC and text clients through package-root imports', { timeout: 180_000 }, async t => {
-  const directory = await mkdtemp('/tmp/murm-session-installed-');
+  const directory = await mkdtemp(join(tmpdir(), 'murm-session-installed-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   assert.ok(relative(await realpath(join(import.meta.dirname, '../..')), await realpath(directory)).startsWith('..'));
   const { archive } = await preparePackageArchive(directory);
