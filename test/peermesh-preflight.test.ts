@@ -17,7 +17,8 @@ test('foreground PeerMesh example validates host configuration without starting 
   const config = new URL('../examples/peermesh/config.js', import.meta.url);
   const cli = new URL('../scripts/run-harness.js', import.meta.url);
   const backendModule = new URL('../src/core/opensandbox-backend.js', import.meta.url);
-  const env = { PATH: process.env.PATH };
+  // Configuration validation does not depend on host network-interface discovery.
+  const env = { PATH: process.env.PATH, MURM_ADVERTISE_HOST: '192.0.2.1' };
   const options = { cwd: directory, env, timeout: 5_000 };
   const command = [fileURLToPath(cli), '--config', fileURLToPath(config)];
   await assert.rejects(execute(process.execPath, command, options), error => {
@@ -47,6 +48,7 @@ test('foreground PeerMesh example validates host configuration without starting 
     assert.equal(options.gitea.owner, 'fixture-owner');
     assert.equal(options.mattermost.teamId, 'fixture-team');
     assert.equal(options.outputDir, './peermesh-runs');
+    assert.equal(options.connection.advertiseHost, '192.0.2.1');
     assert.equal(timeoutMs, 3_720_000);
     assert.equal(options.project.durationMs, 3_600_000);
     assert.deepEqual(options.peerKeys, ['a', 'b', 'c', 'd']);
