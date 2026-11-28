@@ -288,7 +288,8 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     await saveSummary('starting');
     reportSaved = true;
     assertAssembling();
-    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getAgent, modelTrace,
+    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, modelTrace,
+      getAgent: id => agents.get(id)?.interruption ? undefined : getAgent(id),
       onOwned: owner => { modelAccess = owner; } });
     assertAssembling();
     bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getAgent, registrations,

@@ -352,13 +352,11 @@ export function createSubagentsController(
     if (rootControl) fail('OPERATION_BUSY', 'Root already has a reserved control');
     rootControl = operation;
     rootEpoch++;
-    if (operation === 'interrupt') {
-      rootPaused = true;
-      root.wait?.({ reason: 'cancelled' });
-    }
+    if (operation === 'interrupt') rootPaused = true;
     try {
       if (operation === 'interrupt') {
         const receipt = await runtime.interrupt(root.id, { requestId });
+        root.wait?.({ reason: 'cancelled' });
         const harnessEffects = receipt.status === 'interrupted'
           ? { status: 'complete', ...restoreRootQueue(receipt.discardedInputHashes ?? []) }
           : { status: 'unknown' };
