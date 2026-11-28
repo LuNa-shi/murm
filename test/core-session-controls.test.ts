@@ -197,6 +197,7 @@ test('durable Session mutation replay preserves the original Worker ID and accep
   ledger.ready(agentId, identity);
 
   const calls: { command: string; id: unknown; query: boolean }[] = [];
+  let ledgerFenced = false;
   const agent = { info: { id: agentId, status: 'idle' }, executionEpoch: 0, activityClaims: new Set(), nativeExecuting: false };
   const controls = () => createSessionControls({
     capabilities: { session: { configure: true, context: true } } as import('../src/core/backend-config.js').ExecutorCapabilities,
@@ -207,7 +208,13 @@ test('durable Session mutation replay preserves the original Worker ID and accep
       if (command === 'core_session_configure') return { status: 'applied' };
       return query ? { status: 'accepted', disposition: 'appended' } : { status: 'unknown' };
     } },
-    record() {}, sanitize: value => value, activity() {}, durable: execute => execute(ledger),
+    record() {}, sanitize: value => value, activity() {}, durable: execute => {
+      try { return execute(ledger); }
+      catch (error) {
+        if ((error as { code?: string }).code === 'SERVICE_UNAVAILABLE') ledgerFenced = true;
+        throw error;
+      }
+    },
   });
   const context = { type: 'context', customType: 'reference', content: 'private context' } as const;
   const request = { requestId: 'context', delivery: 'append' } as const;
@@ -231,4 +238,12 @@ test('durable Session mutation replay preserves the original Worker ID and accep
     { command: 'core_context', id: first.inputId, query: true },
   ]);
   assert.doesNotMatch(JSON.stringify(ledger.input(agentId, 'host', request.requestId)), /private context/);
+  ledger.checkpoint(agentId, { expiresAt: new Date(Date.now() + 1000).toISOString() });
+  const renewalRequest = { requestId: 'after-renewal' };
+  await assert.rejects(recovered.api.configure(agentId, { thinkingLevel: 'low' }, renewalRequest), { code: 'SERVICE_UNAVAILABLE' });
+  assert.equal(ledgerFenced, false);
+  assert.equal(calls.length, 3);
+  ledger.checkpoint(agentId, { expiresAt: new Date(Date.now() + 60000).toISOString() });
+  assert.equal((await recovered.api.configure(agentId, { thinkingLevel: 'low' }, renewalRequest)).status, 'applied');
+  assert.equal(calls.length, 4);
 });

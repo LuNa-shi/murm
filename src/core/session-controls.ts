@@ -107,13 +107,16 @@ export function createSessionControls(options: {
         const queryOnly = operationEntry.dispatched;
         const inputClaim = name === 'context' && ['steer', 'followUp'].includes(payload.delivery as string) && payload.wakeIfIdle !== false;
         try {
-          if (!queryOnly) options.durable?.(owner => {
-            const expiry = Date.parse(owner.get(agentId).expiresAt ?? '');
-            if (!Number.isFinite(expiry) || expiry - Date.now() < 5000) {
-              throw options.problem('SERVICE_UNAVAILABLE', 'Sandbox lease has insufficient confirmed time for Session dispatch', operation, agentId, requestId);
+          if (!queryOnly) {
+            const allocation = options.durable?.(owner => owner.get(agentId));
+            if (allocation) {
+              const expiry = Date.parse(allocation.expiresAt ?? '');
+              if (!Number.isFinite(expiry) || expiry - Date.now() < 5000) {
+                throw options.problem('SERVICE_UNAVAILABLE', 'Sandbox lease has insufficient confirmed time for Session dispatch', operation, agentId, requestId);
+              }
+              options.durable?.(owner => owner.recordInput(agentId, caller(name), requestId, 'dispatched'));
             }
-            owner.recordInput(agentId, caller(name), requestId, 'dispatched');
-          });
+          }
           operationEntry.dispatched = true;
           if (inputClaim && !queryOnly) { agent.activityClaims.add(operationEntry); options.activity(agent); }
           const data = await options.backend.sessionCommand(agentId, command(name), { id: operationEntry.id, executionEpoch: operationEntry.executionEpoch, ...payload }, queryOnly) as Record<string, unknown>;

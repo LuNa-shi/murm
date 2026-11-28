@@ -64,7 +64,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 |---|---|---|---|
 | [src/core/runtime-admissions.ts](../../src/core/runtime-admissions.ts) | Runtime admission barriers coordinating delivery, input cancellation and Agent lifecycle | [15-core-runtime](15-core-runtime.md) | `2012e1dc8ef7097410e4ce104b81031ed069dce120ee86afaf7c1e3298b3bea2` |
 | [src/core/session-config.ts](../../src/core/session-config.ts) | Pi Session policy normalization, resource configuration and public input bounds | [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `7554c013fb1d213ae163264df43d88c6a03a21b6cbc0da3ac33bc110d9e65247` |
-| [src/core/session-controls.ts](../../src/core/session-controls.ts) | Per-Agent Session control dispatch, replay, action receipts and public queries | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `16902e572c8eccb356319efc2fb9c5d242ab1256d2e39d643cee6aa632133e96` |
+| [src/core/session-controls.ts](../../src/core/session-controls.ts) | Per-Agent Session control dispatch, replay, action receipts and public queries | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `c8483a0ac77a42e8d2efe32da647df8c270b7fd13711168130bdec3a60b4c8fb` |
 | [src/core/session-types.ts](../../src/core/session-types.ts) | Public Pi Session controls, configuration, statistics and redacted messages | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `6182ff74a28beb49b2a46d9e084cbc3e00e35d3859524d8bb21c127d43b9a462` |
 
 ### Core public runtime (10)
