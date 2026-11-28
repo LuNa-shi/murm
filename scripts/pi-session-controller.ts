@@ -5,7 +5,7 @@ export const PI_SESSION_CAPABILITIES = Object.freeze({ configure: true, compact:
 
 type ContextEntry = { inputId: string; delivery: string; input: any; status: string };
 export function createPiSessionController(session: any, options: {
-  emit(record: any): void; version?: string; configuration?: any; beforeCompact?: { timeoutMs?: number };
+  emit(record: any): void; isStarting?(): boolean; version?: string; configuration?: any; beforeCompact?: { timeoutMs?: number };
 }) {
   const pending = new Map<string, ContextEntry>();
   const messagesSeen = new Set<unknown>((session.sessionManager?.getEntries?.() ?? session.messages ?? []).map((entry: any) => entry.id ?? entry));
@@ -99,16 +99,21 @@ export function createPiSessionController(session: any, options: {
     },
     observe(event: any) {
       observeContexts();
-      if (event.type === 'compaction_start') compacting = { id: randomUUID(), reason: event.reason };
+      if (event.type === 'compaction_start') {
+        compacting = { id: randomUUID(), reason: event.reason };
+        return { ...event, compactionId: compacting.id };
+      }
       if (event.type === 'compaction_end' && compacting) {
         if (event.result && !event.aborted) {
           if (compacting.reason === 'manual') counts.manual++;
           else counts.successfulAutoCompactions++;
         } else if (event.aborted || event.cancelled) counts.cancelled++;
         else counts.failed++;
-        emit({ type: 'core_session_event', event: { ...event, compactionId: compacting.id, compactions: { ...counts } } });
+        const completed = { ...event, compactionId: compacting.id, compactions: { ...counts } };
         compacting = undefined;
+        return completed;
       }
+      return event;
     },
     async beforeCompact(event: any) {
       if (fenced) return { cancel: true };
@@ -181,7 +186,7 @@ export function createPiSessionController(session: any, options: {
       if (command.executionEpoch !== undefined && command.executionEpoch !== epoch) throw error('Stale session operation', 'NOT_ALLOWED');
       if (type === 'core_session_configure') return configure(command.patch);
       if (type === 'core_session_compact') {
-        if (!session.isIdle || session.isCompacting || session.isRetrying) return { status: 'busy', reason: 'active-execution' };
+        if (options.isStarting?.() || !session.isIdle || session.isCompacting || session.isRetrying) return { status: 'busy', reason: 'active-execution' };
         return { status: 'completed', result: await session.compact(command.customInstructions) };
       }
       if (type === 'core_session_abort_retry') {

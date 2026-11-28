@@ -359,14 +359,14 @@ export function createSubagentsController(
         const harnessEffects = receipt.status === 'interrupted'
           ? { status: 'complete', ...restoreRootQueue(receipt.discardedInputHashes ?? []) }
           : { status: 'unknown' };
-        return { receipt, harnessEffects: { ...harnessEffects, paused: rootPaused } };
+        return { core: receipt, harnessEffects: { ...harnessEffects, paused: rootPaused } };
       }
       const receipt = await runtime.session.clearQueue(root.id, { requestId });
       const hashes = 'discardedInputHashes' in receipt ? receipt.discardedInputHashes : undefined;
       const harnessEffects = receipt.status === 'completed' || receipt.status === 'noop'
         ? { status: 'complete', ...restoreRootQueue(Array.isArray(hashes) ? hashes : []) }
         : { status: 'unknown' };
-      return { receipt, harnessEffects };
+      return { core: receipt, harnessEffects };
     } finally {
       rootControl = undefined;
       releaseWait(root);

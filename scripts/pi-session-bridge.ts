@@ -74,15 +74,15 @@ const emit = (record: any) => {
   }
   process.stdout.write(line);
 };
-controller = createPiSessionController(session, { emit, version, configuration, beforeCompact: options.beforeCompact });
-session.subscribe((event: any) => { controller.observe(event); emit(event); });
+let starting = false;
+controller = createPiSessionController(session, { emit, version, configuration, beforeCompact: options.beforeCompact, isStarting: () => starting });
+session.subscribe((event: any) => emit(controller.observe(event)));
 const unsupportedUI = new Proxy({}, { get: () => () => { throw Object.assign(new Error('Guest extension UI is unavailable'), { code: 'OPERATION_UNSUPPORTED' }); } });
 await session.bindExtensions({ mode: 'rpc', uiContext: unsupportedUI, onError: (failure: any) => emit({ type: 'extension_error', message: failure.message }) });
 emit({ type: 'core_session_ready', version, capabilities: PI_SESSION_CAPABILITIES, resources: resourceHashes });
 function success(command: any, data?: any) { emit({ type: 'response', id: command.id, command: command.type, success: true, ...(data === undefined ? {} : { data }) }); }
 function failure(command: any, error: any) { emit({ type: 'response', id: command.id, command: command.type, success: false, error: error.message, code: error.code ?? 'EXECUTOR_FAILED' }); }
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
-let starting = false;
 async function command(message: any) {
   if (message.type.startsWith('core_')) { success(message, await controller.command(message)); return; }
   switch (message.type) {

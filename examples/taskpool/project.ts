@@ -114,11 +114,11 @@ const taskpool = {
               signal.throwIfAborted();
               const feedback = feedbackInput(payload);
               const receipt = await controller.feedback({ ...feedback, requestId },
-                binding as ReturnType<typeof controller.captureFeedback>);
+                binding as unknown as ReturnType<typeof controller.captureFeedback>);
               return JSON.parse(JSON.stringify(receipt));
             },
             feedbackDescription,
-            payload => controller.captureFeedback(feedbackInput(payload).taskId),
+            payload => JSON.parse(JSON.stringify(controller.captureFeedback(feedbackInput(payload).taskId))),
           );
         },
       });

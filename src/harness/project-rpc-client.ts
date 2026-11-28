@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import type { ContextInput, ContextInputReceipt, ContextSendOptions } from '../core/session-types.js';
+import type { ConditionalInputReceipt, SendOptions } from '../core/types.js';
 import type { EventEmitter } from 'node:events';
 import type { Readable, Writable } from 'node:stream';
 import { projectError } from './project-input.js';
 import { readRpcLines } from './project-rpc-lines.js';
 import { MAX_COMMAND_BYTES } from './foreground-commands.js';
 import type {
-  HarnessDescriptor, HarnessEvent, HarnessResult, HarnessSession, HarnessState,
+  HarnessAgentReceipt, HarnessDescriptor, HarnessEvent, HarnessResult, HarnessSession, HarnessState,
 } from './harness-session-types.js';
 
 export interface HarnessRpcTransport extends Pick<EventEmitter, 'on' | 'off'> {
@@ -89,6 +91,11 @@ export class HarnessRpcClient implements HarnessSession {
     void this.ready.then(() => clearTimeout(timer), () => clearTimeout(timer));
     if (transport.exitCode != null || transport.signalCode != null || stdout.readableEnded || stdin.destroyed) closed();
 
+    function send(this: HarnessRpcClient, agentId: string, input: string, options: SendOptions): Promise<HarnessAgentReceipt<ConditionalInputReceipt>>;
+    function send(this: HarnessRpcClient, agentId: string, input: ContextInput, options: ContextSendOptions): Promise<HarnessAgentReceipt<ContextInputReceipt>>;
+    function send(this: HarnessRpcClient, agentId: string, input: string | ContextInput, { requestId, ...options }: SendOptions | ContextSendOptions) {
+      return this.#call('agent.send', { agentId, input, options }, requestId);
+    }
     this.agents = Object.freeze<HarnessSession['agents']>({
       getState: agentId => this.#call('agent.getState', { agentId }),
       getStats: agentId => this.#call('agent.getStats', { agentId }),
@@ -97,7 +104,7 @@ export class HarnessRpcClient implements HarnessSession {
       compact: (agentId, { requestId, ...options }) => this.#call('agent.compact', { agentId, options }, requestId),
       abortRetry: (agentId, { requestId, ...options }) => this.#call('agent.abortRetry', { agentId, options }, requestId),
       clearQueue: (agentId, { requestId, ...options }) => this.#call('agent.clearQueue', { agentId, options }, requestId),
-      send: (agentId, input, { requestId, ...options }) => this.#call('agent.send', { agentId, input, options }, requestId),
+      send: send.bind(this) as HarnessSession['agents']['send'],
       interrupt: (agentId, { requestId, ...options }) => this.#call('agent.interrupt', { agentId, options }, requestId),
       stop: (agentId, { requestId, ...options }) => this.#call('agent.stop', { agentId, options }, requestId),
     });
