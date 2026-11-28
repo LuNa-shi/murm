@@ -1,1 +1,1 @@
-export * from '../../src/harness/run-input.js';
+export { runInput, type RunInputResult } from '@luna-shi/murm';

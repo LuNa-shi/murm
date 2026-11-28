@@ -1,6 +1,4 @@
-import type { ProjectHarness } from '../../src/harness/project-harness.js';
-import { observeProjectRuntime, projectConfiguration } from '../../src/harness/project-runtime.js';
-import { ProjectPreflightError } from '../../src/harness/project-input.js';
+import { observeProjectRuntime, projectConfiguration, ProjectPreflightError, type ProjectHarness } from '@luna-shi/murm';
 import { runMessageHandoff } from './handoff.js';
 import { handoffConfig, type HandoffConfig } from './handoff-config.js';
 
@@ -13,11 +11,20 @@ const messages = {
         throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Messages requires finite work and cleanup time limits');
       }
     }
+    let business: unknown = { stage: 'put' };
+    let observation: ReturnType<typeof observeProjectRuntime> | undefined;
     const { report, submissions } = await runMessageHandoff({ ...config, outputDir: context.outputDir },
       context.signal, undefined, {
         files: context.initial.files, prompt: context.input.prompt,
         artifact: `murm-message-${context.runId}.txt`, ready: context.markRunning,
-        observe(runtime) { return observeProjectRuntime(runtime, context).close; },
+        observe(runtime) {
+          observation = observeProjectRuntime(runtime, context, () => business);
+          return observation.close;
+        },
+        progress(state) {
+          business = state;
+          void observation?.refresh();
+        },
       });
     const receipt = report.coreClose.status === 'unknown' ? null : report.coreClose.receipt;
     const verified = report.artifactVerification.status === 'passed';

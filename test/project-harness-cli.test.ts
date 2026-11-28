@@ -442,3 +442,53 @@ test('startup error from a loaded module preserves unconfirmed cleanup', async t
     return true;
   });
 });
+
+test('the typed RPC client uses a fresh snapshot cut and preserves Unicode input', { timeout: 10_000 }, async t => {
+  const { HarnessRpcClient } = await import('@luna-shi/murm');
+  const directory = await mkdtemp(join(tmpdir(), 'murm-rpc-client-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, 'harness.mjs'), `
+    export default { id: 'client-probe', apiVersion: 1, input: true, async run(context) {
+      context.registerInput(text => {
+        context.updateStatus({ business: { text } });
+        return { status: 'accepted', input: text };
+      });
+      context.markRunning();
+      await new Promise(resolve => context.signal.addEventListener('abort', resolve, { once: true }));
+      return { outcome: 'cancelled', reason: 'stopped', artifacts: [], cleanup: { status: 'complete' } };
+    } };
+  `);
+  const child = spawn(process.execPath, [
+    cli, '--harness', './harness.mjs', '--mode', 'rpc', '--output-dir', './results',
+  ], { cwd: directory, stdio: 'pipe' });
+  const exit = once(child, 'close');
+  t.after(() => { if (child.exitCode === null) child.kill('SIGKILL'); });
+  const client = new HarnessRpcClient(child);
+  assert.equal((await client.ready).harness.id, 'client-probe');
+  const running = Promise.withResolvers<void>();
+  const detach = client.onEvent(event => {
+    if (event.type === 'state' && event.state.phase === 'running') running.resolve();
+  });
+  await client.start({ cwd: '.', prompt: 'Start' }, { requestId: 'start' });
+  await running.promise;
+  const text = '检查\u2028任务\u2029结果'.repeat(1024);
+  const receipt = await client.input(text, { requestId: 'first' });
+  assert.equal(receipt.result.input, text);
+  const events = [];
+  const receivedSnapshot = Promise.withResolvers<void>();
+  const unsubscribe = client.onEvent(event => {
+    events.push(event);
+    if (event.type === 'snapshot') receivedSnapshot.resolve();
+  }, { initialSnapshot: true });
+  await receivedSnapshot.promise;
+  const changed = await client.input('updated', { requestId: 'second' });
+  assert.equal(changed.result.input, 'updated');
+  assert.equal(events[0].state.business.text, text);
+  assert.ok(events.some(event => event.type === 'state' && event.state.business?.text === 'updated'));
+  unsubscribe();
+  detach();
+  assert.equal((await client.getState()).phase, 'running');
+  await client.stop({ requestId: 'stop' });
+  assert.equal((await client.completion).cleanup.status, 'complete');
+  assert.deepEqual(await exit, [1, null]);
+});

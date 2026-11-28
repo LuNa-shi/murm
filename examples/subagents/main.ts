@@ -3,17 +3,20 @@ import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry, type CollectionSpec,
-  type CreateRuntimeOptions, type FileTree, type Runtime, type SandboxConfig, type SpawnOptions } from '@luna-shi/murm';
+  type AgentSessionConfig, type CreateRuntimeOptions, type FileTree, type Runtime, type SandboxConfig,
+  type SendOptions, type ServiceRegistration, type SpawnOptions } from '@luna-shi/murm';
 import { collaborationOperations, createCollaborationService } from './services/collaboration-service.js';
 import { createSubagentsController } from './harness/controller.js';
 import { childPrompt, rootPrompt } from './prompts/prompts.js';
 import { runWithReport } from './run-report.js';
 
-interface Config extends Pick<CreateRuntimeOptions, 'connection' | 'executor' | 'models' | 'filePolicy'> {
+interface Config extends Pick<CreateRuntimeOptions, 'connection' | 'executor' | 'models' | 'filePolicy' | 'hooks'> {
   sandbox: SandboxConfig;
   model?: string;
   rootModel?: string;
   childModel?: string;
+  rootSession?: AgentSessionConfig;
+  childSession?: AgentSessionConfig;
   image: string;
   outputDir: string;
   goal?: string;
@@ -37,7 +40,8 @@ function deadline(value: number, name: string) {
 type ProjectControls = {
   signal?: AbortSignal;
   childFiles?: FileTree;
-  onRuntime?: (runtime: Runtime) => void;
+  onRuntime?: (runtime: Runtime, team: ReturnType<typeof createSubagentsController>) => void;
+  userQuestions?: ServiceRegistration;
 };
 
 export async function createSubagentsHarness(config: Config, controls: ProjectControls = {}) {
@@ -53,14 +57,17 @@ export async function createSubagentsHarness(config: Config, controls: ProjectCo
   let team: ReturnType<typeof createSubagentsController>;
   const { contextFork: allowContextFork } = getExecutorCapabilities(config.executor ?? 'pi');
   services.registerService(createCollaborationService(request => team.invoke(request), () => team.exportState(), { allowContextFork }));
-  const common = { image, writable: true, services: { collaboration: collaborationOperations },
+  if (controls.userQuestions) services.registerService(controls.userQuestions);
+  const common = { image, writable: true, services: { collaboration: collaborationOperations,
+    ...(controls.userQuestions ? { 'user-interaction': ['ask'] } : {}),
+  },
     spawnProfiles: ['child'], allowContextFork };
   const runtime = await createRuntime({
     sandbox: createSandbox(config.sandbox), executor: config.executor, models: config.models,
-    connection: config.connection, filePolicy: config.filePolicy, outputDir, services, maxAgents,
+    connection: config.connection, filePolicy: config.filePolicy, hooks: config.hooks, outputDir, services, maxAgents,
     profiles: {
-      root: { ...common, model: rootModel, prompt: rootPrompt },
-      child: { ...common, model: childModel, prompt: childPrompt },
+      root: { ...common, model: rootModel, prompt: rootPrompt, session: config.rootSession },
+      child: { ...common, model: childModel, prompt: childPrompt, session: config.childSession },
     },
   });
   team = createSubagentsController(runtime, {
@@ -99,7 +106,7 @@ export async function createSubagentsHarness(config: Config, controls: ProjectCo
   }
   let root;
   try {
-    controls.onRuntime?.(runtime);
+    controls.onRuntime?.(runtime, team);
     controls.signal?.throwIfAborted();
     root = await runtime.spawn({ profile: 'root', requestId: 'root', files, collect, workspace: workspace?.root });
     controls.signal?.throwIfAborted();
@@ -117,7 +124,9 @@ export async function createSubagentsHarness(config: Config, controls: ProjectCo
   return {
     id: runtime.id,
     rootId: root.id,
-    input: (text: string, requestId: string = randomUUID()) => team.submitUser(text, requestId),
+    input: (text: string, requestId: string = randomUUID(), options?: Omit<SendOptions, 'requestId'>,
+      signal?: AbortSignal, epoch?: number) => team.submitUser(text, requestId, options, signal, epoch),
+    inputFence: team.rootEpoch,
     status: team.list,
     onReply: team.onReply,
     lastReply: team.lastReply,

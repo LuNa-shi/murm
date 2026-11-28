@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  type RuntimeEvent, type InputReceipt, type Runtime, type SpawnOptions, type JsonValue,
+  type RuntimeEvent, type ConditionalInputReceipt, type Runtime, type SpawnOptions, type JsonValue,
+  type ContextInput, type ContextSendOptions, type SendOptions,
   type ServiceRequest,
 } from '@luna-shi/murm';
 
@@ -29,6 +30,7 @@ type Member = {
   lastOutcome?: 'completed' | 'failed' | 'interrupted';
   fatalReported?: boolean;
   tail?: Promise<unknown>;
+  pendingDispatches: number;
 };
 type Operation = {
   id: string;
@@ -39,9 +41,10 @@ type Operation = {
   message?: Message;
   inputDispatched?: boolean;
   interruptStatus?: string;
+  rootEpoch?: number;
 };
 function createMember(path: string, parent?: Member): Member {
-  return { path, parent, inbox: [], submitted: new Map(), executionRevision: 0 };
+  return { path, parent, inbox: [], submitted: new Map(), executionRevision: 0, pendingDispatches: 0 };
 }
 
 const namePattern = /^[a-z0-9_]{1,48}$/;
@@ -61,7 +64,8 @@ function inputText(value: unknown) {
 }
 
 function serial<T>(member: Member, work: () => Promise<T>) {
-  const next = (member.tail ?? Promise.resolve()).then(work);
+  member.pendingDispatches++;
+  const next = (member.tail ?? Promise.resolve()).then(work).finally(() => { member.pendingDispatches--; });
   member.tail = next.catch(() => undefined);
   return next;
 }
@@ -82,6 +86,10 @@ export function createSubagentsController(
   let lastReply: Reply | undefined;
   let eventSequence = 0;
   let accepting = true;
+  let rootEpoch = 0;
+  let rootPaused = false;
+  let rootControl: 'compact' | 'interrupt' | 'clearQueue' | undefined;
+  const rootDeliveries = new Map<string, { hash: string; messages: Message[]; inputId?: string; status: string }>();
 
   function open() {
     if (!accepting) fail('NOT_ALLOWED', 'The team is closing');
@@ -144,7 +152,7 @@ export function createSubagentsController(
 
   function releaseWait(member: Member) {
     const messages = pending(member);
-    if (!member.wait || messages.length === 0) return false;
+    if (!member.wait || messages.length === 0 || (member === root && (rootPaused || rootControl))) return false;
     for (const message of messages) message.state = 'returned';
     member.inbox = member.inbox.filter(message => message.state !== 'returned');
     member.wait({ reason: 'message', messages: structuredClone(messages) });
@@ -157,6 +165,7 @@ export function createSubagentsController(
 
   async function offer(member: Member, message: Message) {
     if (message.state === 'returned' || (message.state === 'pending' && releaseWait(member))) return;
+    if (member === root && (rootPaused || rootControl)) return;
     if (member.submitted.size >= operationLimit) fail('NOT_ALLOWED', 'The recipient delivery history limit has been reached');
     const { state: _state, ...payload } = message;
     const body = JSON.stringify(payload);
@@ -225,8 +234,16 @@ export function createSubagentsController(
     }
   }
 
-  function submit(member: Member, entry: Operation, text: string, from: string, requestId: string, authorize?: () => void) {
-    return serial(member, async (): Promise<InputReceipt> => {
+  function submit(member: Member, entry: Operation, text: string, from: string, requestId: string, authorize?: () => void,
+    options: Omit<SendOptions, 'requestId'> = {}, signal?: AbortSignal) {
+    const guard = () => {
+      signal?.throwIfAborted();
+      if (member !== root) return;
+      if (entry.rootEpoch !== rootEpoch) fail('RUN_INPUT_CANCELLED', 'The Root input predates its control barrier');
+      if (rootControl) fail('OPERATION_BUSY', 'Root dispatch is reserved for control');
+    };
+    return serial(member, async (): Promise<ConditionalInputReceipt> => {
+      guard();
       open();
       authorize?.();
       if (!entry.inputDispatched) {
@@ -234,6 +251,7 @@ export function createSubagentsController(
         const status = await runtime.get(member.id!);
         open();
         authorize?.();
+        guard();
         entry.batch = pending(member);
         for (const message of entry.batch) message.state = 'in-input';
         if (status.status === 'idle') member.executionRevision++;
@@ -243,17 +261,34 @@ export function createSubagentsController(
       const body = messages.length || from !== 'user'
         ? JSON.stringify({ kind: from === 'user' ? 'user' : 'new-task', from, text, messages: messages.map(({ state: _state, ...message }) => message) })
         : text;
-      let receipt: InputReceipt;
+      const rootDelivery: { hash: string; messages: Message[]; inputId?: string; status: string } | undefined = member === root ? rootDeliveries.get(requestId) ?? {
+        hash: createHash('sha256').update(body).digest('hex'), messages, status: 'dispatching',
+      } : undefined;
+      if (rootDelivery && !rootDeliveries.has(requestId)) rootDeliveries.set(requestId, rootDelivery);
+      let receipt: ConditionalInputReceipt;
       try {
-        receipt = await runtime.send(member.id!, body, { requestId, source: from, wakeIfIdle: true });
+        guard();
+        receipt = await runtime.send(member.id!, body, { source: from, wakeIfIdle: true, ...options, requestId });
       } catch (error) {
+        rootDeliveries.delete(requestId);
         for (const message of messages) message.state = 'pending';
         releaseWait(member);
         throw error;
       }
+      if (rootDelivery && rootDeliveries.get(requestId) === rootDelivery) {
+        rootDelivery.inputId = receipt.inputId;
+        rootDelivery.status = receipt.status === 'accepted' ? receipt.disposition : receipt.status;
+        if (receipt.status !== 'unknown' && rootDelivery.status !== 'queued') rootDeliveries.delete(requestId);
+      }
+      // A concurrent interrupt or clear already settled this input from the native queue.
+      if (member === root && entry.rootEpoch !== rootEpoch) return receipt;
       if (receipt.status === 'accepted') {
         for (const message of messages) removeMemberMessage(member, message);
+        if (member === root) rootPaused = false;
         member.wait?.({ reason: 'input' });
+      } else if (receipt.status === 'not-accepted') {
+        for (const message of messages) message.state = 'pending';
+        releaseWait(member);
       }
       return receipt;
     });
@@ -261,7 +296,7 @@ export function createSubagentsController(
 
   function waitForMessage(member: Member, duration: number, signal: AbortSignal) {
     if (member.wait) fail('CONFLICT', 'This member is already waiting');
-    if (signal.aborted) return Promise.resolve<WaitResult>({ reason: 'cancelled' });
+    if (signal.aborted || (member === root && rootPaused)) return Promise.resolve<WaitResult>({ reason: 'cancelled' });
     return new Promise<WaitResult>(resolve => {
       const timer = setTimeout(() => finish({ reason: 'timeout' }), duration);
       const cancel = () => finish({ reason: 'cancelled' });
@@ -277,6 +312,97 @@ export function createSubagentsController(
     });
   }
 
+  function restoreRootQueue(hashes: readonly string[]) {
+    const discarded = new Set(hashes);
+    const inputs: { requestId: string; inputId?: string }[] = [];
+    const inbox: string[] = [];
+    const restore = (message: Message) => {
+      message.state = 'pending';
+      if (!root.inbox.some(item => item.id === message.id)) {
+        try { reserveMessage(root, message); }
+        catch {
+          deliveryFailures.push({ id: message.id, reason: 'MAILBOX_FULL_AFTER_CONTROL' });
+          return;
+        }
+      }
+      inbox.push(message.id);
+    };
+    for (const [hash, message] of root.submitted) {
+      if (discarded.has(hash)) restore(message);
+    }
+    root.submitted.clear();
+    for (const [requestId, delivery] of rootDeliveries) {
+      if (discarded.has(delivery.hash)) {
+        inputs.push({ requestId, ...(delivery.inputId ? { inputId: delivery.inputId } : {}) });
+        for (const message of delivery.messages) restore(message);
+      } else {
+        for (const message of delivery.messages) removeMemberMessage(root, message);
+      }
+      rootDeliveries.delete(requestId);
+    }
+    return { discardedUserInputs: inputs, restoredInbox: inbox };
+  }
+
+  async function rootQueueControl(operation: 'interrupt' | 'clearQueue', requestId: string) {
+    open();
+    if (!root.id) fail('RUN_NOT_READY', 'Root is not available yet');
+    if (rootControl) fail('OPERATION_BUSY', 'Root already has a reserved control');
+    rootControl = operation;
+    rootEpoch++;
+    if (operation === 'interrupt') {
+      rootPaused = true;
+      root.wait?.({ reason: 'cancelled' });
+    }
+    try {
+      if (operation === 'interrupt') {
+        const receipt = await runtime.interrupt(root.id, { requestId });
+        const harnessEffects = receipt.status === 'interrupted'
+          ? { status: 'complete', ...restoreRootQueue(receipt.discardedInputHashes ?? []) }
+          : { status: 'unknown' };
+        return { core: receipt, harnessEffects: { ...harnessEffects, paused: rootPaused } };
+      }
+      const receipt = await runtime.session.clearQueue(root.id, { requestId });
+      const hashes = 'discardedInputHashes' in receipt ? receipt.discardedInputHashes : undefined;
+      const harnessEffects = receipt.status === 'completed' || receipt.status === 'noop'
+        ? { status: 'complete', ...restoreRootQueue(Array.isArray(hashes) ? hashes : []) }
+        : { status: 'unknown' };
+      return { core: receipt, harnessEffects };
+    } finally {
+      rootControl = undefined;
+      releaseWait(root);
+    }
+  }
+
+  function sendRootContext(input: ContextInput, options: ContextSendOptions, signal: AbortSignal) {
+    const epoch = rootEpoch;
+    return track(serial(root, async () => {
+      open();
+      signal.throwIfAborted();
+      if (!root.id) fail('RUN_NOT_READY', 'Root is not available yet');
+      if (epoch !== rootEpoch) fail('RUN_INPUT_CANCELLED', 'The Root input predates its control barrier');
+      if (rootControl) fail('OPERATION_BUSY', 'Root dispatch is reserved for control');
+      const receipt = await runtime.send(root.id, input, options);
+      if (epoch === rootEpoch && receipt.status === 'accepted' &&
+          (options.delivery === 'steer' || options.delivery === 'followUp') && options.wakeIfIdle !== false) {
+        rootPaused = false;
+        for (const message of pending(root)) {
+          if (signal.aborted || rootEpoch !== epoch || rootControl) break;
+          await offer(root, message);
+        }
+      }
+      return receipt;
+    }));
+  }
+
+  async function compactRoot(options: Parameters<Runtime['session']['compact']>[1]) {
+    open();
+    if (!root.id) fail('RUN_NOT_READY', 'Root is not available yet');
+    if (rootControl || root.pendingDispatches) fail('OPERATION_BUSY', 'Root dispatch is in progress');
+    rootControl = 'compact';
+    try { return await runtime.session.compact(root.id, options); }
+    finally { rootControl = undefined; }
+  }
+
   function attachRoot(id: string) {
     root.id = id;
     byId.set(id, root);
@@ -284,11 +410,20 @@ export function createSubagentsController(
 
   return {
     attachRoot,
-    submitUser(text: string, requestId: string) {
+    rootId: () => root.id,
+    rootEpoch: () => rootEpoch,
+    rootBusy: () => !!rootControl || root.pendingDispatches > 0,
+    submitUser(text: string, requestId: string, options: Omit<SendOptions, 'requestId'> = {}, signal?: AbortSignal, epoch = rootEpoch) {
       inputText(text);
       if (!/^[A-Za-z0-9_.:-]{1,120}$/.test(requestId)) fail('INVALID_CONTRACT', 'Invalid user request ID');
-      return operate(`user:${requestId}`, text, entry => submit(root, entry, text, 'user', `user:${requestId}`));
+      return operate(`user:${requestId}`, { text, options }, entry => {
+        entry.rootEpoch ??= epoch;
+        return submit(root, entry, text, 'user', `user:${requestId}`, undefined, options, signal);
+      });
     },
+    sendRootContext,
+    compactRoot,
+    rootQueueControl,
     lastReply: () => lastReply,
     onReply(listener: (event: Reply) => void) {
       replyListeners.add(listener);
@@ -406,6 +541,11 @@ export function createSubagentsController(
     exportState(): JsonValue {
       return {
         accepting,
+        rootPaused,
+        rootControl: rootControl ?? null,
+        rootInputs: [...rootDeliveries].slice(-64).map(([requestId, { inputId, status, messages }]) => ({
+          requestId, inputId: inputId ?? null, status, collaborationIds: messages.map(message => message.id),
+        })),
         members: [...byPath.values()].map(member => ({
           path: member.path, agentId: member.id ?? null, parent: member.parent?.path ?? null,
           lastOutcome: member.lastOutcome ?? null, waiting: Boolean(member.wait),
