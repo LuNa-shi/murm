@@ -35,29 +35,47 @@ function readLocalApiKey(url: string): string | undefined {
   }
 }
 
-export function resolveSandboxConnection(input: {
+interface ConnectionInput {
   lifecycleBaseUrl?: string;
   apiKey?: string;
   endpointHost?: string;
   advertiseHost?: string;
   image?: string;
-} = {}, scope?: string) {
+}
+
+export function resolveSandboxConnectionWithSources(input: ConnectionInput = {}, scope?: string) {
   const environment = process.env;
-  const example = (name: string) => scope ? environment[`MURM_${scope}_${name}`] || undefined : undefined;
-  const configuredUrl = input.lifecycleBaseUrl ?? (environment.MURM_LIFECYCLE_URL || undefined) ??
-    example('LIFECYCLE_URL') ?? (environment.OPENSANDBOX_BASE_URL || undefined);
-  const lifecycleBaseUrl = configuredUrl ?? defaultLifecycleUrl;
-  const apiKey = input.apiKey ?? (environment.MURM_LIFECYCLE_TOKEN || undefined) ?? example('LIFECYCLE_TOKEN') ??
+  function setting(value: string | undefined, name: string, suffix: string) {
+    const scopedName = scope ? `MURM_${scope}_${suffix}` : undefined;
+    if (value != null) return { value, source: 'config' };
+    if (environment[name]) return { value: environment[name], source: name };
+    if (scopedName && environment[scopedName]) return { value: environment[scopedName], source: scopedName };
+    return { value: undefined, source: undefined };
+  }
+  const lifecycle = setting(input.lifecycleBaseUrl, 'MURM_LIFECYCLE_URL', 'LIFECYCLE_URL');
+  const lifecycleBaseUrl = lifecycle.value ?? (environment.OPENSANDBOX_BASE_URL || undefined) ?? defaultLifecycleUrl;
+  const endpointSource = lifecycle.source ?? (environment.OPENSANDBOX_BASE_URL ? 'OPENSANDBOX_BASE_URL' : 'default');
+  const apiKey = setting(input.apiKey, 'MURM_LIFECYCLE_TOKEN', 'LIFECYCLE_TOKEN').value ??
     (environment.OPEN_SANDBOX_API_KEY || environment.OPENSANDBOX_API_KEY || undefined) ?? readLocalApiKey(lifecycleBaseUrl);
+  const endpoint = setting(input.endpointHost, 'MURM_ENDPOINT_HOST', 'ENDPOINT_HOST');
+  const callback = setting(input.advertiseHost, 'MURM_ADVERTISE_HOST', 'ADVERTISE_HOST');
+  const worker = setting(input.image, 'MURM_WORKER_IMAGE', 'IMAGE');
+  const advertiseHost = callback.value ??
+    (loopbackLifecycle(lifecycleBaseUrl) ? networkInterfaces().docker0?.find(address => address.family === 'IPv4')?.address : undefined);
   return {
-    lifecycleBaseUrl, apiKey,
-    endpointHost: input.endpointHost ?? (environment.MURM_ENDPOINT_HOST || undefined) ?? example('ENDPOINT_HOST'),
-    advertiseHost: input.advertiseHost ?? (environment.MURM_ADVERTISE_HOST || undefined) ?? example('ADVERTISE_HOST') ??
-      (loopbackLifecycle(lifecycleBaseUrl) ? networkInterfaces().docker0?.find(address => address.family === 'IPv4')?.address : undefined),
-    image: input.image ?? (environment.MURM_WORKER_IMAGE || undefined) ?? example('IMAGE'),
-    endpointSource: input.lifecycleBaseUrl !== undefined ? 'config' : environment.MURM_LIFECYCLE_URL ? 'MURM_LIFECYCLE_URL' :
-      example('LIFECYCLE_URL') ? `MURM_${scope}_LIFECYCLE_URL` : environment.OPENSANDBOX_BASE_URL ? 'OPENSANDBOX_BASE_URL' : 'default',
+    lifecycleBaseUrl, apiKey, endpointHost: endpoint.value, advertiseHost, image: worker.value, endpointSource,
+    sources: {
+      lifecycleBaseUrl: endpointSource,
+      endpointHost: endpoint.source,
+      advertiseHost: callback.source ?? (advertiseHost === undefined ? undefined : 'docker0'),
+      image: worker.source,
+    },
   };
+}
+
+export function resolveSandboxConnection(input: ConnectionInput = {}, scope?: string) {
+  const { sources: _sources, ...connection } = resolveSandboxConnectionWithSources(input, scope);
+  return connection;
 }
 
 export async function loadMurmConfig(filename: string): Promise<unknown> {

@@ -5,12 +5,15 @@ section: 版本与更新
 order: 16
 ---
 
+固定的 v0.2.0 归档及候选版安装说明见[搭建第一个 SDK Harness](first-harness.md)。
+
 本页同步记录 **murm**（`@luna-shi/murm`）的历次重要变更，与仓库根目录的 [`CHANGELOG.md`](../../CHANGELOG.md) 保持一致。如需了解当前最新版本的完整功能导览，请查看 [最新版本 (v0.2.0)](latest.md)。
 
 ## 尚未发布
 
 - `createHarnessSession` 和 `HarnessRpcClient` 统一七个内置 Harness 的运行接口。Subagents 支持 Root 多轮交互，TaskPool 将反馈投递给当前受 fence 保护的 Execution，PeerMesh 支持定向批次和受控成员停止。
 - 原生 Pi Worker 支持每 Agent Session 的配置、结构化 context、有界查询、重试和队列控制，以及压缩决策。
+- [第一个 SDK Harness](first-harness.md)介绍如何用固定安装包运行、验证双 Agent 交接。候选 CLI 提供 `murm --version`、setup 连接与耗时报告，以及基于 Schema 的 Service 调用示例和参数诊断。
 - SDK 包根公开 Harness 作者契约。Subagents、TaskPool、PeerMesh、Lead–Worker 和 Substrate 可从同一份候选包安装，在各自目录构建和启动。
 - 启动提示使用 `swarm service invoke <service> <operation>` 调用已授权的操作。TaskPool 保留快捷命令，并拥有 Task、Material、Workspace、Mission 和 Judge 实现。
 - 固定 Lead–Worker 验证与 FATE 使用源码 checkout 构建后的 `dist/benchmarks/` 入口。常规项目示例接收目录和初始 prompt。

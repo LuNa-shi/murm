@@ -449,6 +449,11 @@ output/temporary-storage limits, fencing and cleanup remain in effect.
 
 ## Registered Bridge and current CLI lifecycle
 
+Manifest help uses the capability list filtered by the Bridge. It annotates accessible properties with the JSON type and required status. It tries one bounded example derived from the accessible schema and prints a JSON command only after local validation. It also prints a flag command when the CLI can represent every example field without type coercion or collisions with transport flags. Complex schemas continue to show the schema for manual input.
+
+Registered invocation rejects extra positional arguments and unreadable or invalid JSON before dispatch, with the exact Service and operation, the expected input form, and `request_outcome: not_executed`. Bridge schema validation still precedes adapter invocation. It returns the stable `SERVICE_INPUT_INVALID` code with an input pointer, expected type or constraint, observed type, and remediation. Unknown map keys and user values are omitted, and the number of reported schema errors is bounded. The original operation ID and request outcome remain available for correlation. Input failures preserve the CLI's contract-failure exit status. A write with invalid output still has an unknown request outcome.
+
+
 The registered Bridge exposes operations from its current role and Registry profile. Authenticated take and finish use the same ordinary `call` path as other domain operations, retaining current Agent/Task/Execution, lease, fence, preparation and cleanup guards. There is no separate host-control take/finish bypass. HTTP payload fields cannot replace the trusted binding. In-process and independent Context/Judge deployments retain lifecycle tests through this path.
 
 The CLI exposes Mission submission as `swarm mission submit --materials '[]'` for an explicit files-only selection, and `swarm mission submission view` for its receipt. These route to the existing Mission operations and retain their own authorization and final-tree checker contracts. Core Profiles and Service grants determine each Agent's available capabilities; an environment variable does not select an alternative solving role.

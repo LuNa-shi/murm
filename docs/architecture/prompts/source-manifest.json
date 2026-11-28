@@ -6,6 +6,18 @@
       "sha256": "726c9242d9662c63c0c66d64327744326f04051dc4259540dd8944393d036304"
     },
     {
+      "path": "examples/first-harness/main.ts",
+      "sha256": "8aae79c6b44ca5bec5821824e3f94b4974b1e586d4b5aaa0231b398e8f88e889"
+    },
+    {
+      "path": "examples/first-harness/turn.ts",
+      "sha256": "f8c9b951f7f20991c933bac94e756b5a9dffad9a08130f21798dc04bb16b715d"
+    },
+    {
+      "path": "examples/first-harness/handoff.ts",
+      "sha256": "90fdad9f2bb656066dcd19f44a01a9d6cb6d6933049408c67dacd5c8630727b5"
+    },
+    {
       "path": "test-support/taskpool-legacy/capability-profile.ts",
       "sha256": "8ff9b1fdcdb4a31421dbb59939a09d381db4de84c13a1b417593b46a533b65c5"
     },
@@ -15,7 +27,7 @@
     },
     {
       "path": "src/cli/swarm-cli.ts",
-      "sha256": "28b04858e08731781e8c4de4dc90095c041595b04ff58666d182e53aeaf79a00"
+      "sha256": "e2ef378e9f1e109f7518b4727b9e35d4a75604806d7953eeae3a56e342b53280"
     },
     {
       "path": "examples/taskpool/cli.ts",
@@ -614,6 +626,48 @@
       "anchor": "export const TASKPOOL_DISCOVERY_MESSAGE='",
       "line": 30,
       "sha256": "6d7ca4f8f3cea518e14e04e880e364dda393b6346b39942805c5939f5958e9a8"
+    },
+    {
+      "path": "examples/first-harness/main.ts",
+      "anchor": "prompt: 'Read release-data.txt.",
+      "line": 47,
+      "sha256": "1fde4a3c987c018144ffac8e376e20c833ffed157fbf9729e9f4948c52878bcf"
+    },
+    {
+      "path": "examples/first-harness/main.ts",
+      "anchor": "prompt: 'Run swarm service invoke handoff take",
+      "line": 51,
+      "sha256": "7bce2b53d7216eec7ffe9c0173e2a9ab7ecbface3d338459b7ac359b29099ddf"
+    },
+    {
+      "path": "examples/first-harness/main.ts",
+      "anchor": "await runTurn(publisher.id, [",
+      "line": 76,
+      "sha256": "a8e7c0fef1060022394f2f25860069cc28a3fb7f1df67118c72174ab35d826a7"
+    },
+    {
+      "path": "examples/first-harness/main.ts",
+      "anchor": "await runTurn(writer.id, `",
+      "line": 102,
+      "sha256": "3bdfc8f4fbf64d1e68042f5695ccf3dd7faf20a3c663086b357e9d0d1b042d22"
+    },
+    {
+      "path": "examples/first-harness/handoff.ts",
+      "anchor": "purpose: '",
+      "line": 17,
+      "sha256": "2bff6838dc9f09a1d9a7152064d1496ab46e779dd0fc48a615b57760eadeba15"
+    },
+    {
+      "path": "examples/first-harness/handoff.ts",
+      "anchor": "operation: 'publish', description: '",
+      "line": 21,
+      "sha256": "ee04a6bec5ef6ff1acefd770b8a678ebdd96b1a60d0fdcaa5bb580abd0bd8111"
+    },
+    {
+      "path": "examples/first-harness/handoff.ts",
+      "anchor": "operation: 'take', description: '",
+      "line": 27,
+      "sha256": "d4703e6ec519564fff22bbff350b91de739e495ac74a9b73fd945eb8f51250e2"
     }
   ],
   "prompt_send_sites": [
@@ -641,6 +695,11 @@
       "path": "examples/taskpool/harness/controller.ts",
       "line": 194,
       "expression": "const receipt=await runtime.send(row.agentId,text,{requestId,mode});"
+    },
+    {
+      "path": "examples/first-harness/turn.ts",
+      "line": 64,
+      "expression": "const receipt = await runtime.send(agentId, input, { requestId, mode: 'followUp' });"
     }
   ],
   "fixed_instruction_fields": [
@@ -775,6 +834,10 @@
     {
       "path": "docs/architecture/prompts/08-taskpool-harness.md",
       "sha256": "0d8b44a8055fc3954a909166810f482dd9181b660d6c3e2d401db12a79751ccd"
+    },
+    {
+      "path": "docs/architecture/prompts/11-first-sdk-harness.md",
+      "sha256": "99b412359d6d4c903017272658a2759c876f0b46a39d09bc9dc142e35e4233f4"
     }
   ]
 }

@@ -38,6 +38,10 @@ The PutnamBench Profile has no Added System Prompt. Its first user input include
 
 The input gives the workflow for saving and checking work, publishing structured Material content, sending it by response link, applying an exact saved revision, and recording adoption before a save. A directed response identifies the recipient via `--task-id`; the authenticated Execution supplies the producer. [PutnamBench first input](prompts/08-taskpool-harness.md#putnambench-first-user-input) · [Response link command](prompts/08-taskpool-harness.md#offline-swarm-task-link-help)
 
+## Installed first SDK Harness
+
+The [first SDK Harness prompt reference](prompts/11-first-sdk-harness.md) contains both Profile prompts and both user inputs. The publisher can discover the `handoff.publish` description, then reads a host-generated random reference from `release-data.txt` using an ordinary file tool. The registered Service records a question produced by that Agent and the host shows it to the operator. The terminal reply is normalized and validated by the host before insertion in the writer input. The operator question prompt itself is terminal UI text. The writer sees the authorized `handoff.take` operation and can retrieve the reference as a tool response. Both inputs are sent through the example turn runner with `mode: 'followUp'` after the corresponding Agent is idle. Settlement observation is independent of actual Service invocation and output bytes.
+
 ## Complete text and reproducible source inventory
 
 | Reference | Contents |
