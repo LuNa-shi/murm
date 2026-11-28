@@ -346,6 +346,43 @@ test('broken RPC output cancels admitted work and saves the available cleanup ev
   assert.deepEqual(report.cleanup, { status: 'complete', receipt: { closed: true } });
 });
 
+test('RPC bounds a burst of status updates and preserves the next event and result', { timeout: 10_000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-project-status-burst-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, 'harness.mjs'), `
+    export default { id: 'status-burst', apiVersion: 1, async run(context) {
+      context.markRunning();
+      for (let index = 0; index < 72; index++) {
+        context.updateStatus({ business: { index, bytes: 'x'.repeat(22000) } });
+        if (index === 35 || index === 71) context.emit({ kind: 'business-receipt', index });
+      }
+      return { outcome: 'completed', reason: 'burst-completed', artifacts: [], cleanup: { status: 'complete' } };
+    } };
+  `);
+  const client = rpcClient(t, directory, ['--harness', './harness.mjs', '--mode', 'rpc', '--output-dir', './output']);
+  await client.take(value => value.type === 'ready');
+  client.send({ id: 'run', operation: 'run', input: { prompt: 'Observe a status burst' } });
+  const indexes: number[] = [];
+  const first = await client.take(value => {
+    if (typeof value.event?.business?.index === 'number') indexes.push(value.event.business.index);
+    return value.event?.kind === 'business-receipt';
+  });
+  assert.equal(first.event.index, 35);
+  assert.equal(indexes.at(-1), 35);
+  const second = await client.take(value => {
+    if (typeof value.event?.business?.index === 'number') indexes.push(value.event.business.index);
+    return value.event?.kind === 'business-receipt';
+  });
+  assert.equal(second.event.index, 71);
+  assert.equal(indexes.at(-1), 71);
+  assert.ok(indexes.length < 72);
+  assert.ok(indexes.every((index, position) => position === 0 || index > indexes[position - 1]));
+  const { result } = await client.take(value => value.type === 'result');
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.stopReason, null);
+  assert.deepEqual(await client.exit, [0, null]);
+});
+
 test('startup rejection records the configuration error and zero allocated resources', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'murm-startup-validation-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

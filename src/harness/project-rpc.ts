@@ -12,7 +12,7 @@ import { projectError, resolveHarnessInput } from './project-input.js';
 import { readRpcLines } from './project-rpc-lines.js';
 import type { HarnessEvent, HarnessSession } from './harness-session-types.js';
 
-type Writer = (record: unknown) => Promise<void>;
+type Writer = (record: unknown, replaceableState?: boolean) => Promise<void>;
 type ParametersObject = Record<string, unknown>;
 type RpcRequest = { id: string; operation: string; input?: HarnessJson; requestId?: string };
 type QueryReceipt = { fingerprint: string; timer: NodeJS.Timeout };
@@ -170,8 +170,8 @@ export async function runProjectRpc(
   };
   const errorRecord = (code: string, id?: string) => ({ type: 'error', ...(id ? { id } : {}), ...location(), code });
   const reply = (id: string, result: unknown) => ({ type: 'reply', id, ...location(), result });
-  const send = (record: unknown) => {
-    if (!closed) void write(record).catch(() => stopHarnessTransport(session, 'output-failed'));
+  const send = (record: unknown, replaceableState = false) => {
+    if (!closed) void write(record, replaceableState).catch(() => stopHarnessTransport(session, 'output-failed'));
   };
 
   function watchCompletion() {
@@ -250,7 +250,7 @@ export async function runProjectRpc(
   signal.addEventListener('abort', stopTransport, { once: true });
   const unsubscribe = session.onEvent(event => {
     const record = eventRecord(event);
-    if (record) send(record);
+    if (record) send(record, event.type === 'state');
   });
   let detach: (() => void) | undefined;
   try {

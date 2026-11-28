@@ -13,6 +13,17 @@ const builtins = {
   subagents: new URL('../examples/subagents/project.js', import.meta.url).href,
 };
 
+const MAX_QUEUED_OUTPUT_BYTES = 1_048_576;
+const MAX_OUTPUT_RECORD_BYTES = 8 * 1024 * 1024;
+const OUTPUT_FLUSH_TIMEOUT_MS = 5_000;
+
+interface OutputFrame {
+  data: string;
+  bytes: number;
+  replaceableState: boolean;
+  flushed: PromiseWithResolvers<void>;
+}
+
 export async function runProjectCommand(command: ProjectCommand, launchDirectory: string) {
   const stdout = process.stdout.write;
   const transport = stdout.bind(process.stdout);
@@ -21,7 +32,9 @@ export async function runProjectCommand(command: ProjectCommand, launchDirectory
   let signalCode: number | undefined;
   let outputFailed = false;
   let lastWrite: Promise<void> | undefined;
-  let outstanding = 0;
+  const outputQueue: OutputFrame[] = [];
+  let queuedBytes = 0;
+  let flushing = false;
 
   const signal = (name: 'SIGINT' | 'SIGTERM') => {
     if (session) stopHarnessTransport(session, name);
@@ -29,11 +42,40 @@ export async function runProjectCommand(command: ProjectCommand, launchDirectory
     startup.abort();
   };
   const pipeFailed = () => {
+    if (outputFailed) return;
     outputFailed = true;
+    for (const frame of outputQueue.splice(0)) frame.flushed.resolve();
+    queuedBytes = 0;
     if (session) stopHarnessTransport(session, 'output-failed');
     startup.abort();
   };
-  const write = (record: unknown): Promise<void> => {
+
+  async function flushOutput() {
+    if (flushing) return;
+    flushing = true;
+    try {
+      for (let frame = outputQueue.shift(); frame; frame = outputQueue.shift()) {
+        queuedBytes -= frame.bytes;
+        let timer: NodeJS.Timeout | undefined;
+        try {
+          const data = frame.data;
+          await new Promise<void>((resolve, reject) => {
+            timer = setTimeout(() => reject(new Error('Output flush timed out')), OUTPUT_FLUSH_TIMEOUT_MS);
+            transport(data, error => error ? reject(error) : resolve());
+          });
+        } catch {
+          pipeFailed();
+        } finally {
+          clearTimeout(timer);
+          frame.flushed.resolve();
+        }
+      }
+    } finally {
+      flushing = false;
+    }
+  }
+
+  const write = (record: unknown, replaceableState = false): Promise<void> => {
     if (outputFailed) return Promise.resolve();
     let encoded: string;
     try {
@@ -44,19 +86,22 @@ export async function runProjectCommand(command: ProjectCommand, launchDirectory
     }
     const data = encoded + '\n';
     const bytes = Buffer.byteLength(data);
-    if (bytes > 8 * 1024 * 1024 || (outstanding !== 0 && outstanding + bytes > 1_048_576)) {
+    const last = outputQueue.at(-1);
+    const replace = replaceableState && last?.replaceableState ? last : undefined;
+    const otherBytes = queuedBytes - (replace?.bytes ?? 0);
+    if (bytes > MAX_OUTPUT_RECORD_BYTES ||
+        (otherBytes > 0 && otherBytes + bytes > MAX_QUEUED_OUTPUT_BYTES)) {
       pipeFailed();
       return Promise.resolve();
     }
-    outstanding += bytes;
-    let timer: NodeJS.Timeout | undefined;
-    lastWrite = new Promise<void>((resolve, reject) => {
-      timer = setTimeout(() => reject(new Error('Output flush timed out')), 5_000);
-      transport(data, error => error ? reject(error) : resolve());
-    }).catch(pipeFailed).finally(() => {
-      outstanding -= bytes;
-      clearTimeout(timer);
-    });
+    // Only an unsent state with no intervening ordinary record can be replaced.
+    const flushed = replace?.flushed ?? Promise.withResolvers<void>();
+    const frame = { data, bytes, replaceableState, flushed };
+    if (replace) outputQueue[outputQueue.length - 1] = frame;
+    else outputQueue.push(frame);
+    queuedBytes = otherBytes + bytes;
+    lastWrite = flushed.promise;
+    void flushOutput();
     return lastWrite;
   };
   const ignoreDiagnosticError = () => {};
