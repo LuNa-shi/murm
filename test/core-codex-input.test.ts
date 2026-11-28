@@ -41,8 +41,11 @@ test('Codex uses an Agent gateway token and retains one executor across inputs w
   assert.deepEqual(startup.args, []);
   assert.equal(startup.codex.model, 'explicit-codex-model');
   assert.equal(startup.codex.version, '0.172.0');
-  assert.match(startup.codex.baseUrl, /^http:\/\/172\.17\.0\.1:\d+\/v1$/);
+  assert.match(startup.codex.baseUrl, /^http:\/\/172\.17\.0\.1:\d+\/model\/[a-f0-9]{64}\/v1$/);
+  assert.equal(new URL(startup.codex.baseUrl).origin, new URL(startup.env.MURM_BRIDGE_URL).origin);
+  assert.equal(new URL(startup.env.MURM_BRIDGE_URL).pathname, '/bridge');
   assert.ok(startup.secretEnvironment.OPENAI_API_KEY);
+  assert.notEqual(startup.secretEnvironment.OPENAI_API_KEY, startup.secretEnvironment.MURM_BRIDGE_TOKEN);
   assert.equal(JSON.stringify(startup).includes('host-only-secret'), false);
   assert.equal(startup.modelCatalogResource, undefined);
   const before = provider.messages.length;
