@@ -116,3 +116,62 @@ test('real Runtime and OpenSandbox commit three automatic compactions, fence the
   assert.equal(upstream.failure, undefined);
   assert.deepEqual(hooks.filter(request => request.agentId === agentA.id).map(request => request.count), [0, 1, 2, 3]);
 });
+
+for (const fault of ['timeout', 'throw']) test(`real Runtime and Guest ${fault} compaction decision fences A while B continues`, {
+  skip: process.env.MURM_CORE_AGENT_CONTROLS_REAL_TEST !== '1' && 'Bounded local OpenSandbox compaction fault acceptance', timeout: 90000,
+}, async t => {
+  const image = process.env.MURM_CORE_TEST_IMAGE;
+  assert.ok(image);
+  const outputDir = join(process.cwd(), 'experiments', `core-agent-controls-${fault}-${Date.now()}`);
+  await mkdir(outputDir, { recursive: true, mode: 0o700 });
+  const upstream = await createAgentControlsUpstream({ requestLimit: 8 });
+  let runtime: Awaited<ReturnType<typeof createRuntime>> | undefined;
+  const events: any[] = [];
+  let cleanup: any;
+  let resolveLate: ((value: 'allow') => void) | undefined;
+  t.after(async () => {
+    resolveLate?.('allow');
+    try { if (runtime) cleanup = await runtime.close({ timeoutMs: 30000 }); }
+    finally {
+      await upstream.close();
+      await writeFile(join(outputDir, 'acceptance.json'), JSON.stringify({ image, fault, events, requests: upstream.requests.map(request => ({ kind: request.kind })), cleanup }, null, 2), { mode: 0o600 });
+    }
+    if (runtime) assert.deepEqual(await ownedContainers(runtime.id), []);
+    if (runtime) assert.equal(cleanup.cleanup, 'complete');
+  });
+  runtime = await createRuntime({ ...runtimeSettings({
+    sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 30000 },
+    bridge: { host: '0.0.0.0', publicUrl: process.env.MURM_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
+    modelGateway: { host: '0.0.0.0', advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', requestTimeoutMs: 10000, maxOutputTokens: 1000 },
+    models: { default: { provider: 'controlled', model: 'k3', capabilities: { tools: true, reasoning: false, contextWindow: 8000, maxOutputTokens: 1000 },
+      upstream: { url: upstream.url + '/responses', headers: {} } } },
+    executor: createPiExecutor({ version: process.env.MURM_CORE_TEST_PI_VERSION ?? '1.3.0' }),
+    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+  }), profiles: { worker: { prompt: 'Act on controlled input.', image, model: 'default', services: {}, writable: true,
+    session: { tools: [], compaction: { enabled: true, reserveTokens: 3000, keepRecentTokens: 500 }, retry: { enabled: false } } } },
+    maxAgents: 2, services: new ServiceRegistry(), outputDir,
+    hooks: { beforeCompact: { timeoutMs: 100,
+      handler() { if (fault === 'throw') throw new Error('CONTROLLED_HOOK_FAILURE'); return new Promise(resolve => { resolveLate = resolve; }); } } } });
+  runtime.onEvent(event => events.push(event.type === 'session' ? { type: event.type, agentId: event.agentId, event: event.event } :
+    { type: event.type, agentId: event.agentId }));
+  const a = await runtime.spawn({ profile: 'worker', requestId: 'fault-a' });
+  const b = await runtime.spawn({ profile: 'worker', requestId: 'fault-b', session: { compaction: { enabled: false } } });
+  const wait = async (predicate: () => Promise<boolean> | boolean) => {
+    const deadline = Date.now() + 30000;
+    while (!await predicate()) { assert.ok(Date.now() < deadline, 'Compaction fault did not settle'); await delay(25); }
+  };
+  await runtime.send(a.id, 'FIRST ' + 'long history content '.repeat(500), { requestId: 'fault-first' });
+  await wait(() => events.some(event => event.type === 'settled' && event.agentId === a.id));
+  await runtime.send(a.id, 'SECOND ' + 'long history content '.repeat(500), { requestId: 'fault-second' });
+  await wait(async () => (await runtime!.get(a.id)).status === 'closed');
+  assert.equal(upstream.requests.filter(request => request.kind === 'summary').length, 0);
+  resolveLate?.('allow');
+  await runtime.send(b.id, 'B CONTINUES AFTER FAILED A GATE', { requestId: 'fault-b-continue' });
+  await wait(() => events.some(event => event.type === 'settled' && event.agentId === b.id));
+  assert.equal((await runtime.get(b.id)).status, 'idle');
+  assert.equal(upstream.requests.length, 3);
+  assert.equal(upstream.failure, undefined);
+  if (fault === 'throw') assert.ok(events.some(event => event.event?.error?.code === 'HOOK_FAILED'));
+  else assert.ok(events.some(event => event.event?.reason === 'HOOK_TIMEOUT' || event.event?.error?.code === 'HOOK_TIMEOUT'));
+});
