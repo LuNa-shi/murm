@@ -2,7 +2,7 @@
 
 This profile uses the official OpenSandbox 1.2.1 umbrella chart at `db708c218771a8d311356f0e96552c15df6e097a`. It deploys ordinary BatchSandbox Pods behind the official Ingress gateway. The Lifecycle Server has one replica, the gateway has two, and the murm Runtime has one. Kubernetes places Agent Pods on nodes selected by the operator.
 
-The implementation is tracked in [#273](https://github.com/LuNa-shi/murm/issues/273) and depends on [#272](https://github.com/LuNa-shi/murm/issues/272). Cluster acceptance and capacity measurements are `not-run` in this checkout. Running the 2/8/32/128/1,024 tiers requires the owner's explicit experiment approval. Rendering these manifests allocates no cluster resources.
+The implementation is tracked in [#273](https://github.com/LuNa-shi/murm/issues/273) and depends on [#272](https://github.com/LuNa-shi/murm/issues/272). Cluster acceptance and capacity measurements are `not-run` in this checkout. Running the real 2/8 tiers requires the owner's explicit experiment approval. The owner requires local mock Agent API simulation for 32/128/1,024 tiers, and the workload CLI refuses real cluster execution at those tiers. Rendering these manifests allocates no cluster resources.
 
 ## Prerequisites
 
@@ -105,4 +105,4 @@ Once ownership is resolved, remove the application Runtime Deployment and uninst
 
 `bom.json` records registry manifest digests fetched for the fixed upstream release. Each deployment manifest adds its selected Worker and Runtime digests and records installed infrastructure versions. The upstream chart itself remains at the exact source commit. See the [pinned upstream deployment manual](https://github.com/opensandbox-group/OpenSandbox/blob/db708c218771a8d311356f0e96552c15df6e097a/docs/deployment/index.md) for component contracts and the [pinned API schema](https://github.com/opensandbox-group/OpenSandbox/blob/db708c218771a8d311356f0e96552c15df6e097a/server/opensandbox_server/api/schema.py) for supported requests and limits.
 
-The [capacity runner](../../benchmarks/kubernetes/README.md) provides one approved-manifest workflow for all five Agent tiers. Its default is a `not-run` plan; `--execute` requires a hash-bound owner approval and independent VM/inventory preflight. Workload success alone does not complete the fault matrix or authorize a capacity claim.
+The [capacity runner](../../benchmarks/kubernetes/README.md) uses real cluster deployment for 2/8 tiers and explicit local mock API simulation for 32/128/1,024 tiers. Its default is a `not-run` plan; Real cluster execution requires a hash-bound owner approval and independent VM/inventory preflight. Local mock execution uses explicit `--execute` and records its manifest hash. Workload success alone does not complete the fault matrix or authorize a capacity claim.

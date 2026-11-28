@@ -3557,6 +3557,30 @@
       "role": "Read-only independent check of terminal Run, allocation and resource evidence."
     },
     {
+      "path": "benchmarks/kubernetes/mock-provider.ts",
+      "category": "deployment",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Loopback simulation of Lifecycle, Execd and Agent APIs for local Sandbox resource contract tests."
+    },
+    {
+      "path": "benchmarks/kubernetes/mock-capacity.ts",
+      "category": "deployment",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Bounded high-tier simulation through the production SDK, ledger, events and cleanup paths."
+    },
+    {
+      "path": "benchmarks/kubernetes/mock-manifest.example.json",
+      "category": "deployment",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Explicit local mock API workload limits and approval inputs."
+    },
+    {
       "path": "benchmarks/kubernetes/capacity.ts",
       "category": "deployment",
       "chapters": [

@@ -12,8 +12,9 @@ import { ConnectionConfig, SandboxApiException, SandboxManager } from '@alibaba-
 import { createRuntime, createSandbox, ServiceRegistry, createInProcessAdapter } from '@luna-shi/murm';
 import { streamResponse } from '../../scripts/local-setup-upstream.js';
 import { checkLedger } from './check-ledger.js';
+import { mockCapacityPlan, runMockCapacity } from './mock-capacity.js';
 
-const tiers = new Map([[2, 0], [8, 900_000], [32, 900_000], [128, 1_800_000], [1024, 3_600_000]]);
+const tiers = new Map([[2, 0], [8, 900_000]]);
 const sha256 = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
 const digestReference = /^[a-z0-9][a-z0-9./:_-]*@sha256:[a-f0-9]{64}$/;
 const nearestRank = (values: number[], fraction: number) => values.length ? [...values].sort((a, b) => a - b)[Math.ceil(values.length * fraction) - 1] : null;
@@ -23,7 +24,7 @@ const fail = (message: string) => Object.assign(new Error(message), { code: 'BEN
 
 function plan(manifest: any) {
   assert.equal(manifest.schemaVersion, 1);
-  assert.ok(tiers.has(manifest.tier), 'tier must be 2, 8, 32, 128 or 1024');
+  assert.ok(tiers.has(manifest.tier), 'Real cluster tiers are 2 and 8. Tiers of 32 and above require workloadMode mock-api');
   for (const field of ['implementationCommit', 'prerequisiteCommit']) assert.match(manifest[field], /^[a-f0-9]{40}$/);
   assert.match(manifest.workerImage, digestReference);
   assert.equal(manifest.executor, 'pi', 'This fixture exercises actual Pi 1.3.0');
@@ -47,7 +48,7 @@ function plan(manifest: any) {
   const cadenceMs = 30_000;
   const metricRounds = Math.ceil(200 / manifest.tier) + 2;
   const steadyRounds = Math.max(2, Math.ceil(steadyMs / cadenceMs) + 1);
-  const churnWaves = manifest.tier === 32 ? 3 : 1;
+  const churnWaves = 1;
   const minimumModelRequests = manifest.tier * 2 * (2 + metricRounds + steadyRounds + (churnWaves - 1) * 2);
   assert.ok(manifest.maxModelRequests >= minimumModelRequests, `maxModelRequests must cover at least ${minimumModelRequests} attempts`);
   assert.ok(manifest.maxDurationMs >= steadyMs + manifest.cleanupDeadlineMs + 120_000, 'Duration must include startup, metrics, steady work and independent cleanup');
@@ -485,6 +486,15 @@ async function main() {
   const filename = args[0];
   assert.ok(filename && args.length <= 2 && (args.length === 1 || args[1] === '--execute'), 'Usage: node dist/benchmarks/kubernetes/capacity.js manifest.json [--execute]');
   const manifest = JSON.parse(await readFile(resolve(filename), 'utf8'));
+  if (manifest.tier >= 32) {
+    const planned = mockCapacityPlan(manifest);
+    if (args[1] !== '--execute') { console.log(JSON.stringify(planned, null, 2)); return; }
+    executionStarted = true;
+    const result = await runMockCapacity(manifest);
+    console.log(JSON.stringify({ status: result.status, tier: result.tier, capacityClaim: false,
+      result: join(resolve(manifest.outputDirectory), 'mock-result.json') }));
+    return;
+  }
   const planned = plan(manifest);
   if (args[1] !== '--execute') { console.log(JSON.stringify(planned, null, 2)); return; }
   await execute(manifest, planned);

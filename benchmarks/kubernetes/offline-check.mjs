@@ -11,10 +11,11 @@ const directory = await mkdtemp(join(tmpdir(), 'murm-capacity-offline-'));
 try {
   const example = JSON.parse(await readFile(new URL('./manifest.example.json', import.meta.url)));
   for (const tier of [2, 8, 32, 128, 1024]) {
-    const manifest = { ...structuredClone(example), tier, implementationCommit: '0'.repeat(40), prerequisiteCommit: '1'.repeat(40),
-      workerImage: 'registry.example.net/offline-worker@sha256:' + '2'.repeat(64), maxDurationMs: 18_000_000,
+    const manifest = { ...structuredClone(example), tier, ...(tier >= 32 ? { workloadMode: 'mock-api' } : {}), implementationCommit: '0'.repeat(40), prerequisiteCommit: '1'.repeat(40),
+      workerImage: 'registry.example.net/offline-worker@sha256:' + '2'.repeat(64), maxDurationMs: tier >= 32 ? 600_000 : 18_000_000,
       maxModelRequests: 1_000_000, budget: { ...example.budget, maxComputeHours: 100_000,
         existingResourceDescription: 'Offline check only; no resources authorized' } };
+    if (tier >= 32) manifest.outputDirectory = join(directory, `mock-${tier}`);
     const filename = join(directory, `manifest-${tier}.json`);
     await writeFile(filename, JSON.stringify(manifest));
     const run = args => spawnSync(process.execPath, [runner, filename, ...args], { encoding: 'utf8', timeout: 15_000,
@@ -23,6 +24,20 @@ try {
     assert.equal(planned.status, 0, planned.stderr);
     const parsed = JSON.parse(planned.stdout);
     assert.equal(parsed.status, 'not-run'); assert.equal(parsed.tier, tier); assert.match(parsed.manifestSha256, /^[a-f0-9]{64}$/);
+    if (tier >= 32) {
+      const invalidBounds = { ...manifest, concurrency: 33 };
+      await writeFile(filename, JSON.stringify(invalidBounds));
+      const refusedBounds = run(['--execute']);
+      assert.equal(refusedBounds.status, 2);
+      assert.match(refusedBounds.stderr, /exceeds its local bounds/);
+      const realForbidden = { ...manifest, workloadMode: 'real-cluster' };
+      await writeFile(filename, JSON.stringify(realForbidden));
+      const refusedReal = run(['--execute']);
+      assert.equal(refusedReal.status, 2);
+      assert.match(refusedReal.stderr, /require workloadMode mock-api/);
+      assert.equal(refusedReal.stdout, '');
+      continue;
+    }
     const refused = run(['--execute']);
     assert.equal(refused.status, 2);
     assert.equal(JSON.parse(refused.stderr.trim().split('\n').find(line => line.startsWith('{'))).status, 'not-run');

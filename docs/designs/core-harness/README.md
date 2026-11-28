@@ -109,4 +109,4 @@ TaskPool 现有宿主注入 `snapshotProject` 和已支持的公共 Workspace、
 
 [#273](https://github.com/LuNa-shi/murm/issues/273) 在 #272 的统一 SDK 接入上增加 Kubernetes 部署、资源账本、受限恢复、长轮询和分级验证。核查基线为 `main@b747b89affd2931863c156fc64e70a29f7ba13c9`；本轮 owner 允许 #273 草稿叠加在 #272 实施分支上。该决定不改变一票一个完整 PR，也不授权合并或大规模实验。
 
-当前恢复实现采用同主机、同 OS boot 的独占 SQLite writer，拒绝无法证明旧 Controller 已失权的跨节点接管。应用负责可验证的 Harness 和 Service 重建；动态 Service 必须重新解析适配器。关闭意图、未知资源、原始输入身份、事件游标和有限保留截止时间均需持久化。节点 API 404 不证明旧进程停止。实现说明见 [Architecture](../../architecture/24-runtime-recovery.md)。2/8/32/128/1,024 档真实集群验收均为 `not-run`，原票的基础关闭门槛、时延目标、真实 Worker 要求和独立清理对账保持不变。大规模实验开始前必须获得 owner 批准。
+当前恢复实现采用同主机、同 OS boot 的独占 SQLite writer，拒绝无法证明旧 Controller 已失权的跨节点接管。应用负责可验证的 Harness 和 Service 重建；动态 Service 必须重新解析适配器。关闭意图、未知资源、原始输入身份、事件游标和有限保留截止时间均需持久化。节点 API 404 不证明旧进程停止。实现说明见 [Architecture](../../architecture/24-runtime-recovery.md)。后续 owner 决定将大于等于 32 个 Sandbox 的验证改为 mock API 模拟 Agent，重点验证 Sandbox 的分配、容量占用、游标、输入重放、故障收敛与回收。32/128/1,024 档通过本机 HTTP 模拟外部 Lifecycle、Execd 和 Agent API，不启动 VM、Pod 或真实执行器；CLI 在这些档位拒绝真实集群路径。2/8 档保留至少两个独立 worker VM 上的真实 Worker 闭环、故障、时延与对账验收。模拟档的结果只建立软件合同证据，实际集群容量仍未验证。大规模实验开始前必须获得 owner 批准。
