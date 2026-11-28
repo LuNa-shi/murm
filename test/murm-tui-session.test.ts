@@ -109,12 +109,15 @@ test('terminal controller retries the original identity and leaves slow observat
   const seen: string[] = [];
   const submit = async ({ requestId }: { requestId: string }) => {
     seen.push(requestId);
-    return { status: seen.length < 3 ? 'unknown' : 'accepted' };
+    if (seen.length === 1) return { core: { cleanup: 'pending' } };
+    if (seen.length === 2) return { core: null, harnessEffects: { status: 'pending' } };
+    return { status: 'accepted' };
   };
   await model.mutate('root', 'first', submit);
   await model.mutate('root', 'changed', submit);
   const original = [...model.operations].find(([, operation]) => operation.payload === 'first')!;
   assert.equal(original[1].status, 'unknown');
+  assert.equal(model.operations.get('root')?.status, 'unknown');
   await model.retry(original[0]);
   assert.equal(seen[0], seen[2]);
   assert.notEqual(seen[0], seen[1]);

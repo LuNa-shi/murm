@@ -39,6 +39,7 @@ export function terminalObject(value: unknown): Record<string, unknown> {
 }
 
 const preferencesPath = () => resolve(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'murm', 'launcher.json');
+type ConfigurationChoice = { path?: string; source: string };
 type Preference = { version: 1; harness: string; configPath: string };
 
 async function readPreference(path: string): Promise<Preference | undefined> {
@@ -66,7 +67,7 @@ async function readPreference(path: string): Promise<Preference | undefined> {
 }
 
 export class LauncherConfiguration {
-  readonly workspace: string;
+  workspace: string;
   readonly preferencePath = preferencesPath();
   readonly budgetOverrides = new Map<string, number>();
   readonly isBuiltin: boolean;
@@ -78,12 +79,21 @@ export class LauncherConfiguration {
   error?: string;
   configuration?: Record<string, unknown>;
   diagnostics?: Awaited<ReturnType<typeof runLocalCommand>>;
-  private choice?: { path?: string; source: string };
+  private choice?: ConfigurationChoice;
 
-  constructor(readonly harness: string, readonly specifier: string, readonly launchDirectory: string, cwd?: string, path?: string) {
+  constructor(readonly harness: string, readonly specifier: string, readonly launchDirectory: string, cwd?: string, path?: string, choice?: ConfigurationChoice) {
     this.workspace = resolve(launchDirectory, cwd ?? '.');
     this.isBuiltin = builtin(specifier);
-    if (path) this.choice = { path: resolve(launchDirectory, path), source: '--config' };
+    this.choice = choice ?? (path ? { path: resolve(launchDirectory, path), source: '--config' } : undefined);
+  }
+
+  selectedChoice() { return this.choice; }
+
+  async setWorkspace(path: string) {
+    const directory = resolve(this.launchDirectory, path.trim() || '.');
+    if (!await stat(directory).then(file => file.isDirectory(), () => false)) throw new Error('Choose an existing directory.');
+    this.workspace = directory;
+    await this.refresh();
   }
 
   async refresh() {
@@ -97,7 +107,8 @@ export class LauncherConfiguration {
     const remembered = this.preference?.harness === this.harness ? this.preference : undefined;
     this.path = this.choice ? this.choice.path : remembered?.configPath;
     this.source = this.choice?.source ?? (remembered ? 'remembered' : this.isBuiltin ? 'environment' : 'Harness defaults');
-    if (this.specifier === 'subagents' && !this.legacyCandidate) {
+    this.legacyCandidate = undefined;
+    if (this.specifier === 'subagents') {
       const project = join(this.workspace, 'config.js');
       if (await stat(join(this.workspace, '.murm', 'installed.json')).then(file => file.isFile(), () => false) &&
           await stat(project).then(file => file.isFile(), () => false)) this.legacyCandidate = project;

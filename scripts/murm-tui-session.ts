@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { HarnessEvent, HarnessQuestion, HarnessRequest, HarnessResult, HarnessSession, HarnessState } from '../src/harness/project-harness.js';
+import { unresolvedHarnessReceipt } from '../src/harness/harness-session-view.js';
 import { terminalObject } from './murm-tui-config.js';
 
 const messageLimit = 96;
@@ -50,12 +51,6 @@ function messageText(message: Record<string, unknown>) {
     if (text.length >= contentLimit) break;
   }
   return text.slice(0, contentLimit);
-}
-
-function receiptUnknown(value: unknown) {
-  const result = terminalObject(value);
-  return result.status === 'unknown' || terminalObject(result.core).status === 'unknown' ||
-    terminalObject(result.harnessEffects).status === 'unknown';
 }
 
 export class TerminalSession {
@@ -143,7 +138,7 @@ export class TerminalSession {
         for (const operation of this.operations.values()) {
           if (operation.request.requestId === event.requestId && operation.status !== 'pending') {
             operation.receipt = event.result;
-            operation.status = receiptUnknown(event.result) ? 'unknown' : 'confirmed';
+            operation.status = unresolvedHarnessReceipt(event.result) ? 'unknown' : 'confirmed';
           }
         }
         break;
@@ -246,7 +241,7 @@ export class TerminalSession {
     try {
       const receipt = await operation.send(operation.request);
       operation.receipt = receipt;
-      operation.status = receiptUnknown(receipt) ? 'unknown' : 'confirmed';
+      operation.status = unresolvedHarnessReceipt(receipt) ? 'unknown' : 'confirmed';
       return receipt;
     } catch (error) {
       const { code } = terminalObject(error);

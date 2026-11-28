@@ -7,7 +7,7 @@ import type { RuntimeSession } from '../core/session-types.js';
 import type { AgentInfo } from '../core/types.js';
 import { maxSessionQueryBytes } from '../protocol/session-queries.js';
 import { stableStringify } from '../protocol/stable-json.js';
-import { boundHarnessState, defaultSnapshotBytes, jsonBytes, publicHarnessResult } from './harness-session-view.js';
+import { unresolvedHarnessReceipt, boundHarnessState, defaultSnapshotBytes, jsonBytes, publicHarnessResult } from './harness-session-view.js';
 import { collectRuntimeEvidence } from './run-report.js';
 import { projectRuntimeEvidence } from './project-runtime.js';
 import { HarnessEventStream } from './harness-event-stream.js';
@@ -354,7 +354,7 @@ export function createHarnessSession(definition: Harness, options: HarnessSessio
     const existing = records.get(id);
     if (existing) {
       if (existing.fingerprint !== hash) return Promise.reject(projectError('REQUEST_ID_CONFLICT', 'requestId already identifies different parameters or operation'));
-      if (existing.settled && existing.reconcile && isUnknown(existing.result)) {
+      if (existing.settled && existing.reconcile && unresolvedHarnessReceipt(existing.result)) {
         return observeHandler(existing.reconcile(), id, existing.result).then(value => structuredClone(updateReceipt(id, value)) as T);
       }
       return existing.settled ? Promise.resolve(structuredClone(existing.result) as T) : existing.promise as Promise<T>;
@@ -380,7 +380,7 @@ export function createHarnessSession(definition: Harness, options: HarnessSessio
     if (!record) return jsonCopy(value);
     const copy = jsonCopy(value);
     // Preserve the first confirmed outcome if an older timeout or query arrives later.
-    if (record.settled && !isUnknown(record.result)) return record.result;
+    if (record.settled && !unresolvedHarnessReceipt(record.result)) return record.result;
     if (record.settled && stableStringify(record.result) === stableStringify(copy)) return record.result;
     record.result = copy;
     record.settled = true;
@@ -408,13 +408,7 @@ export function createHarnessSession(definition: Harness, options: HarnessSessio
   }
   function operationSummaries(): NonNullable<HarnessResult['operations']> {
     return [...records].map(([requestId, record]) => ({ requestId, operation: record.operation,
-      status: record.failed ? 'failed' : isUnknown(record.result) ? 'unknown' : record.settled ? 'confirmed' : 'pending' }));
-  }
-  function isUnknown(value: unknown) {
-    return !!value && typeof value === 'object' && ((value as { status?: string }).status === 'unknown' ||
-      ((value as { core?: { status?: string } }).core?.status === 'unknown') ||
-      ((value as { core?: { cleanup?: string } }).core?.cleanup === 'pending') ||
-      ((value as { harnessEffects?: { status?: string } }).harnessEffects?.status === 'pending'));
+      status: record.failed ? 'failed' : unresolvedHarnessReceipt(record.result) ? 'unknown' : record.settled ? 'confirmed' : 'pending' }));
   }
   function admit() {
     if (stopping || finalizing || host.signal.aborted) throw projectError('RUN_STOPPING', 'Run admission is closed');

@@ -13,6 +13,10 @@
 
 当前实现、预算和失败语义见 [Harness 生命周期](../../architecture/23-project-harness.md)。两种 Pi 及包外候选的验收归 #281。
 
+## #280 前台终端
+
+[#280](https://github.com/LuNa-shi/murm/issues/280) 以 [f36055f2 设计修订](https://github.com/LuNa-shi/murm/tree/f36055f286687e7658b2818e7c065a1d5588f1b2/docs/designs/core-harness) 和合入 #281 后的公共 Session 为实现基础。安装后的裸 `murm` 打开 Subagents 终端界面。启动前允许选择 Harness、可信配置和要捕获的目录，首次提交才分配 Run。界面使用公有能力处理持续输入、问答和有序停止。显式前台和 RPC 保持机器入口，新模板将可编辑 host 与内置终端界面分别作为 `npm start` 和 `npm run tui`。操作、状态上限、收尾与终端恢复见[实现手册](../../architecture/25-foreground-tui.md)。
+
 ## 模块与路径
 
 ```ts

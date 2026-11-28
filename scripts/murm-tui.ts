@@ -82,6 +82,7 @@ class Foreground {
   ]));
   private readonly activityCounts = new Map<Page, number>();
   private readonly launchDirectory: string;
+  private specifier: string;
   private launcher?: LauncherConfiguration;
   private definition?: Harness;
   private lifetime: HarnessLifetime = 'task';
@@ -106,6 +107,7 @@ class Foreground {
 
   constructor(private readonly command: TuiCommand, launchDirectory: string) {
     this.launchDirectory = launchDirectory;
+    this.specifier = command.harness;
     this.terminal = new MurmTerminal(() => this.notice('Paste exceeds 256 KiB and was discarded.'));
     this.tui = new ForegroundScreen(this.terminal, () => this.requestExit(this.model ? 1 : 2, 'terminal-render-failed'));
     if (command.prompt) this.drafts.set('initial', terminalText(command.prompt));
@@ -176,6 +178,7 @@ class Foreground {
       if (this.terminalStarted) {
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
+          if (restorationError) this.terminal.restoreDisplay();
           await Promise.race([this.terminal.drained(), new Promise<never>((_, reject) => {
             timer = setTimeout(() => reject(new Error('Terminal restoration could not be confirmed')), 1000);
           })]);
@@ -205,18 +208,23 @@ class Foreground {
     }
   }
 
-  private async load() {
+  private async load(specifier = this.specifier) {
     try {
-      this.definition = await loadProjectHarness(this.launchDirectory, this.command.harness, builtins);
+      const definition = await loadProjectHarness(this.launchDirectory, specifier, builtins);
       this.shutdown.signal.throwIfAborted();
-      const lifetimes = this.definition.lifetimes ?? ['task'];
-      this.lifetime = this.command.lifetime ?? (this.command.harness === 'subagents' && lifetimes.includes('interactive')
+      const lifetimes = definition.lifetimes ?? ['task'];
+      const lifetime = this.command.lifetime ?? (specifier === 'subagents' && lifetimes.includes('interactive')
         ? 'interactive' : lifetimes.includes('task') ? 'task' : lifetimes[0]);
-      if (!lifetimes.includes(this.lifetime)) throw new Error('This Harness does not support the requested lifetime.');
-      const launcher = new LauncherConfiguration(this.definition.id, this.command.harness, this.launchDirectory,
-        this.command.cwd, this.command.configPath);
-      this.launcher = launcher;
+      if (!lifetimes.includes(lifetime)) throw new Error('This Harness does not support the requested lifetime.');
+      const launcher = new LauncherConfiguration(definition.id, specifier, this.launchDirectory,
+        this.launcher?.workspace ?? this.command.cwd, this.command.configPath, this.launcher?.selectedChoice());
       await launcher.refresh();
+      this.shutdown.signal.throwIfAborted();
+      this.lifetime = lifetime;
+      this.definition = definition;
+      this.specifier = specifier;
+      this.launcher = launcher;
+      this.exitCode = undefined;
       this.addSecrets(launcher.configuration);
       if (!this.shutdown.signal.aborted) this.notice(launcher.error ?? 'Ready. F5 edits the initial prompt.');
     } catch (error) {
@@ -361,12 +369,12 @@ class Foreground {
     catch (error) { this.notice(formatSessionError(error)); }
   }
 
-  private configure(action: () => Promise<void>) {
+  private configure(action: () => Promise<void>, report = true) {
     if (this.configurationBusy) { this.notice('A configuration check is already running.'); return; }
     this.configurationBusy = true;
     const running = action().then(() => {
       this.addSecrets(this.launcher?.configuration);
-      this.notice(this.launcher?.error ?? 'Configuration checked.');
+      if (report) this.notice(this.launcher?.error ?? 'Configuration checked.');
     }).finally(() => { this.configurationBusy = false; this.redraw(); });
     this.redraw();
     return running;
@@ -374,7 +382,18 @@ class Foreground {
 
   private configurationMenu() {
     const launcher = this.launcher;
-    if (!launcher) return;
+    const switchHarness = {
+      title: 'Select Harness', perform: () => this.menu('Harness', [
+        ...Object.keys(builtins).map(name => ({ title: name, perform: () => this.configure(() => this.load(name), false) })),
+        { title: 'Use a trusted module or installed package', perform: () =>
+          this.edit('harness', 'Harness module or package', value => {
+            if (!value.trim()) throw new Error('Enter a Harness specifier.');
+            this.drafts.delete('harness');
+            return this.configure(() => this.load(value.trim()), false);
+          }, { limit: 4096 }) },
+      ]),
+    };
+    if (!launcher) { this.menu('Configuration', [switchHarness]); return; }
     this.menu('Configuration', [
       { title: 'Select trusted configuration path', detail: 'Blank uses environment or Harness defaults',
         perform: () => this.edit('config', 'Trusted .js or .mjs path (relative to launch directory)', path =>
@@ -393,6 +412,9 @@ class Foreground {
           return running;
         }) },
       ] : []),
+      switchHarness,
+      { title: 'Select workspace directory', perform: () => this.edit('workspace', 'Workspace directory', value =>
+        this.configure(() => launcher.setWorkspace(value)), { value: launcher.workspace, limit: 4096 }) },
       ...launcher.budgetFields().map(field => ({ title: 'Set ' + field.key + ' (ms)', detail: String(field.value ?? 'unknown'),
         perform: () => this.edit('budget:' + field.key, 'Set ' + field.key + ' (ms)', value =>
           this.configure(() => launcher.setBudget(field, value)), { value: field.value === undefined ? '' : String(field.value), limit: 32 }) })),
@@ -422,12 +444,12 @@ class Foreground {
       return;
     }
     const detail = terminalObject(terminalObject(model.state?.business).detail);
-    if (this.command.harness === 'subagents') {
+    if (this.specifier === 'subagents') {
       this.edit('run:root', 'Run input to Root (steer)', text => this.sendRun('run:root', { text, mode: 'steer' }));
       return;
     }
-    if (this.command.harness === 'taskpool' || this.command.harness === 'peermesh') {
-      const task = this.command.harness === 'taskpool';
+    if (this.specifier === 'taskpool' || this.specifier === 'peermesh') {
+      const task = this.specifier === 'taskpool';
       const targets = task
         ? routeTargets(detail.tasks, 'taskId', item => String(item.taskId) + ' · ' + String(item.state), item => item.state === 'RUNNING')
         : routeTargets(detail.peers, 'key', item => String(item.key), item => item.stopped !== true && !item.unavailable);
@@ -611,7 +633,7 @@ class Foreground {
     }
     if (key('f7')) {
       if (this.page === 'Agents') this.agentMenu();
-      else if (this.page === 'Run' && this.command.harness === 'subagents' && this.model?.state?.capabilities.input.available) {
+      else if (this.page === 'Run' && this.specifier === 'subagents' && this.model?.state?.capabilities.input.available) {
         this.edit('run:root', 'Run input to Root (followUp)', text => this.sendRun('run:root', { text, mode: 'followUp' }));
       } else if (this.page === 'Result' && this.model?.result?.reportPath) {
         const path = this.model.result.reportPath;
@@ -687,7 +709,7 @@ class Foreground {
     const state = model?.state;
     return [
       'Workspace  ' + (launcher?.workspace ?? this.command.cwd ?? this.launchDirectory),
-      'Harness    ' + (this.definition?.id ?? this.command.harness) + ' · ' + this.lifetime,
+      'Harness    ' + (this.definition?.id ?? this.specifier) + ' · ' + this.lifetime,
       'Config     ' + (launcher?.source ?? 'loading') + (launcher?.path ? ' · ' + launcher.path : ''),
       ...(!model && launcher?.preference ? ['Saved      ' + launcher.preference.harness + ' · ' + launcher.preference.configPath] : []),
       ...(!model && launcher?.preferenceError ? [launcher.preferenceError] : []),
@@ -700,7 +722,7 @@ class Foreground {
         ...[...model.operations].slice(-12).map(([key, entry]) =>
           key + ' · ' + entry.status + ' · ' + this.formatReceipt(entry.receipt)),
         state?.capabilities.input.description ?? '',
-        ...(this.command.harness !== 'subagents' && state?.capabilities.input.schema ? [this.format(state.capabilities.input.schema)] : []),
+        ...(this.specifier !== 'subagents' && state?.capabilities.input.schema ? [this.format(state.capabilities.input.schema)] : []),
         this.format(state?.business),
       ] : [
         ...(launcher?.error ? [launcher.error] : []),

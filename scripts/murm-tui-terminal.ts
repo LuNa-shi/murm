@@ -128,7 +128,11 @@ export class MurmTerminal implements Terminal {
 
   get columns() { return this.stdout.columns || 80; }
   get rows() { return this.stdout.rows || 24; }
-  write(data: string) { this.transport(data); }
+  write(data: string) {
+    if (this.stdout.writableLength > 512 * 1024) throw new Error('Terminal output is not draining');
+    this.transport(data);
+  }
+  restoreDisplay() { this.transport('\x1b[?2026l\x1b[?2004l\x1b[?7h\x1b[?1049l\x1b[0m\x1b[?25h'); }
   drained() { return new Promise<void>((resolve, reject) => this.transport('', error => error ? reject(error) : resolve())); }
   async drainInput() {}
   moveBy(lines: number) { if (lines) this.write('\x1b[' + Math.abs(lines) + (lines < 0 ? 'A' : 'B')); }
