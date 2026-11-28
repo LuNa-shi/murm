@@ -222,7 +222,10 @@ export class HarnessRpcClient implements HarnessSession {
   async #call<T>(operation: string, input?: unknown, requestId?: string, atReply?: (value: T) => void): Promise<T> {
     await this.ready;
     if (this.#failure) throw this.#failure;
-    if (this.#pending.size >= 256 || this.#stdin.writableLength >= 262_144) {
+    const reserve = operation === 'stop' ? 65 : operation === 'answer' ? 64 : 0;
+    const requestLimit = 256 + reserve;
+    const byteLimit = 262_144 + reserve * (MAX_COMMAND_BYTES + 1);
+    if (this.#pending.size >= requestLimit || this.#stdin.writableLength >= byteLimit) {
       throw projectError('REQUEST_LIMIT', 'RPC client request limit reached');
     }
     const id = this.#prefix + ':' + (++this.#next);

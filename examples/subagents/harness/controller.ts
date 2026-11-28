@@ -89,6 +89,7 @@ export function createSubagentsController(
   let rootEpoch = 0;
   let rootPaused = false;
   let rootControl: 'compact' | 'interrupt' | 'clearQueue' | undefined;
+  const rootOffers = new Map<string, { message: Message; discarded?: boolean }>();
   const rootDeliveries = new Map<string, { hash: string; messages: Message[]; inputId?: string; status: string }>();
 
   function open() {
@@ -170,12 +171,21 @@ export function createSubagentsController(
     if (member.submitted.size >= operationLimit) fail('NOT_ALLOWED', 'The recipient delivery history limit has been reached');
     const { state: _state, ...payload } = message;
     const body = JSON.stringify(payload);
-    const receipt = await runtime.send(member.id!, body, {
-      requestId: message.id, source: message.from, mode: 'steer', wakeIfIdle: false,
-    });
+    const hash = createHash('sha256').update(body).digest('hex');
+    const activeOffer = member === root ? { message, discarded: false } : undefined;
+    if (activeOffer) rootOffers.set(hash, activeOffer);
+    let receipt: ConditionalInputReceipt;
+    try {
+      receipt = await runtime.send(member.id!, body, {
+        requestId: message.id, source: message.from, mode: 'steer', wakeIfIdle: false,
+      });
+    } finally {
+      if (activeOffer) rootOffers.delete(hash);
+    }
+    if (activeOffer?.discarded) return;
     if (receipt.status === 'accepted') {
       message.state = 'queued';
-      if (receipt.disposition === 'queued') member.submitted.set(createHash('sha256').update(body).digest('hex'), message);
+      if (receipt.disposition === 'queued') member.submitted.set(hash, message);
       removeMemberMessage(member, message);
       member.wait?.({ reason: 'input' });
     } else if (receipt.status === 'unknown') {
@@ -334,10 +344,18 @@ export function createSubagentsController(
       if (discarded.has(hash)) restore(message);
     }
     root.submitted.clear();
+    for (const [hash, offer] of rootOffers) {
+      if (discarded.has(hash)) {
+        offer.discarded = true;
+        restore(offer.message);
+      }
+    }
     for (const [requestId, delivery] of rootDeliveries) {
       if (discarded.has(delivery.hash)) {
         inputs.push({ requestId, ...(delivery.inputId ? { inputId: delivery.inputId } : {}) });
         for (const message of delivery.messages) restore(message);
+      } else if (delivery.status === 'unknown' || delivery.status === 'dispatching') {
+        continue;
       } else {
         for (const message of delivery.messages) removeMemberMessage(root, message);
       }

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { createInterface } from 'node:readline';
+import { PassThrough } from 'node:stream';
+import { HarnessRpcClient } from '@luna-shi/murm';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -491,4 +493,33 @@ test('the typed RPC client uses a fresh snapshot cut and preserves Unicode input
   await client.stop({ requestId: 'stop' });
   assert.equal((await client.completion).cleanup.status, 'complete');
   assert.deepEqual(await exit, [1, null]);
+});
+
+
+test('the typed RPC client reserves capacity for answers and overall stop', async () => {
+  const transport = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough() });
+  const client = new HarnessRpcClient(transport);
+  const received: string[] = [];
+  const input = createInterface({ input: transport.stdin });
+  input.on('line', line => {
+    const request = JSON.parse(line);
+    received.push(request.operation);
+    if (request.operation !== 'status') transport.stdout.write(JSON.stringify({
+      type: 'reply', id: request.id, result: { status: request.operation === 'stop' ? 'accepted' : 'answered' },
+    }) + '\n');
+  });
+  transport.stdout.write(JSON.stringify({
+    type: 'ready', version: 'v1', harness: { id: 'test', apiVersion: 1 }, descriptor: {}, status: {},
+  }) + '\n');
+  const pending = Array.from({ length: 256 }, () => client.getState().catch(() => undefined));
+  try {
+    await assert.rejects(client.getState(), { code: 'REQUEST_LIMIT' });
+    assert.equal((await client.respond('question', true, { requestId: 'answer' })).status, 'answered');
+    assert.equal((await client.stop({ requestId: 'stop' })).status, 'accepted');
+    assert.deepEqual(received.slice(-2), ['answer', 'stop']);
+  } finally {
+    input.close();
+    transport.emit('close');
+    await Promise.all(pending);
+  }
 });

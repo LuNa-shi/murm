@@ -63,6 +63,7 @@ const taskpool = {
     let contextService: ContextService | undefined;
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
     let storeCleanupConfirmed = true;
+    const unsubscribe: (() => void)[] = [];
     try {
       contextService = new ContextService(join(context.outputDir, 'context.sqlite'), { taskService });
       const workspaceRoot = join(context.outputDir, 'workspace');
@@ -109,12 +110,18 @@ const taskpool = {
             };
           };
           observation = observeProjectRuntime(runtime, context, state, { fence: () => controller.halt() });
+          const refresh = () => { void observation?.refresh(); };
+          unsubscribe.push(taskService.subscribeTaskEvents(refresh), taskService.subscribeExecutionState(refresh));
+          const refreshWorkspace = setInterval(refresh, 1000);
+          refreshWorkspace.unref();
+          unsubscribe.push(() => clearInterval(refreshWorkspace));
           context.registerInput(
             async (payload, { requestId, binding, signal }) => {
               signal.throwIfAborted();
               const feedback = feedbackInput(payload);
               const receipt = await controller.feedback({ ...feedback, requestId },
                 binding as unknown as ReturnType<typeof controller.captureFeedback>);
+              refresh();
               return JSON.parse(JSON.stringify(receipt));
             },
             feedbackDescription,
@@ -142,6 +149,7 @@ const taskpool = {
           receipt: { code: 'MISSION_WORKSPACE_READ_FAILED', workspaceId } } };
       }
     } finally {
+      for (const stop of unsubscribe) stop();
       observation?.close();
       if (storeCleanupConfirmed) {
         try { contextService?.close(); } finally { taskService.close(); }

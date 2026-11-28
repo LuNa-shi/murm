@@ -41,7 +41,7 @@ export async function createHarnessSessionUpstream(seed: string) {
       const output = (id: string) => rows.find(row => row.type === 'function_call_output' && row.call_id === id)?.output;
       const all = JSON.stringify(rows);
       let item;
-      if (rows.some(row => row.role === 'system' && JSON.stringify(row.content).includes('context summarization assistant'))) {
+      if (rows.some(row => (row.role === 'system' || row.role === 'developer') && JSON.stringify(row.content).includes('context summarization assistant'))) {
         stage = 'summary';
         item = text('summary', 'Summary of the controlled project work.');
       } else if (marker?.includes('SESSION_READ')) {
