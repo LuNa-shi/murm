@@ -12,7 +12,13 @@ const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
-const {createRuntime}=await import('@luna-shi/murm');hooks.deregister();
+const {createRuntime}=await import('@luna-shi/murm');
+const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
+const { createTaskPoolMissionService } = await import('../examples/taskpool/services/mission/mission-service.js');
+const { createMissionCoordination } = await import('../examples/taskpool/services/mission/mission-coordination.js');
+const { createTaskPoolTaskService } = await import('../examples/taskpool/services/task/agent-service.js');
+const { createTaskPoolAgentCoordinator } = await import('../examples/taskpool/harness/agent-coordinator.js');
+hooks.deregister();
 const execute=promisify(execFile);
 const checkerIdentity={checker_ref:'fixed-final',checker_version:'1',environment_ref:'controlled'};
 async function fixture(t,{permissions=['mission_submit'],registered=permissions,profileAllows=true}={}) {
@@ -156,11 +162,6 @@ test('normal math TaskPool reports a trusted accepted Mission as business succes
   stores.tasks.db.prepare('UPDATE missions SET acceptance_conditions_json=? WHERE mission_id=?').run(JSON.stringify({ required_check: checkerIdentity }), stores.missionId);
   const store = createMissionCoordination({ taskService: stores.tasks, contextService: stores.context, workspace: stores.workspace, workspaceId: stores.workspaceId, missionId: stores.missionId,
     deadline: Date.now()+60000, checker: { identity: checkerIdentity, timeoutMs: 5000, async check() { return { verdict: 'PASS' }; } } });
-const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
-const { createTaskPoolMissionService } = await import('../examples/taskpool/services/mission/mission-service.js');
-const { createMissionCoordination } = await import('../examples/taskpool/services/mission/mission-coordination.js');
-const { createTaskPoolTaskService } = await import('../examples/taskpool/services/task/agent-service.js');
-const { createTaskPoolAgentCoordinator } = await import('../examples/taskpool/harness/agent-coordinator.js');
   t.after(async () => { await store.shutdown(); stores.close(); await rm(root, { recursive: true, force: true }); });
   transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
   const accept = id => { transport.confirm(id, 'started'); transport.next = accept; }; transport.next = accept;

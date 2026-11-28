@@ -195,7 +195,7 @@
     },
     {
       "path": "examples/taskpool/services/workspace/mission-workspace.ts",
-      "sha256": "3b198eae8530cd2e8fc7b38fd2b488441da7dee6d62bbd109af5d7207ea55529"
+      "sha256": "8e8ea67c1405fe1139971d7d2363d73a2e1066325baa50b0944f0d094fad7f10"
     },
     {
       "path": "examples/taskpool/services/service-catalog.ts",

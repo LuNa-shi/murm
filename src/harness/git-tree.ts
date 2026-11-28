@@ -37,7 +37,8 @@ export async function importGitTree(root: string, files: Readonly<Record<string,
       }
     }
   }
-  for (const [path, mode] of Object.entries(modes ?? {})) {
+  const modesByPath = new Map(Object.entries(modes ?? {}));
+  for (const [path, mode] of modesByPath) {
     if (!paths.has(path) || (mode !== 0o644 && mode !== 0o755)) {
       throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Git tree modes must describe ordinary or executable files in the same tree');
     }
@@ -53,7 +54,7 @@ export async function importGitTree(root: string, files: Readonly<Record<string,
       await mkdir(dirname(target), { recursive: true });
       await writeFile(target, content);
       const blob = String(await git(root, ['hash-object', '--no-filters', '-w', '--', target])).trim();
-      index.push(`${modes?.[path] === 0o755 ? '100755' : '100644'} ${blob}\t${path}\0`);
+      index.push(`${modesByPath.get(path) === 0o755 ? '100755' : '100644'} ${blob}\t${path}\0`);
     }
     const env = gitEnvironment({ GIT_INDEX_FILE: join(stage, 'index') });
     await git(root, ['read-tree', '--empty'], { env });

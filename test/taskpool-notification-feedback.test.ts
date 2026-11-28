@@ -9,7 +9,6 @@ import { promisify } from 'node:util';
 import { controls } from './fixtures/taskpool-controller-backend.js';
 import { createSwarmCli } from '../src/cli/swarm-cli.js';
 import { ServiceRegistry } from '../src/core/services.js';
-const { runSwarmCli } = createSwarmCli(taskPoolCommands);
 
 const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
@@ -21,6 +20,7 @@ const { createTaskPoolPublicationServices } = await import('../examples/taskpool
 const { taskPoolCommands } = await import('../examples/taskpool/cli.js');
 const { makeEnvelope } = await import('../examples/taskpool/persistence/envelope.js');
 const {createRuntime}=await import('@luna-shi/murm');hooks.deregister();
+const { runSwarmCli } = createSwarmCli(taskPoolCommands);
 const execute=promisify(execFile);
 async function fixture(t, { feedbackAllowed = true } = {}) {
   const root=await mkdtemp(join(tmpdir(),'taskpool-feedback-'));

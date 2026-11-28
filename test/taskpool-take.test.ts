@@ -4,13 +4,8 @@ import { test } from 'node:test';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
-import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
-import { fixedExecutionInputHash } from '../examples/taskpool/services/task/task-service.js';
 import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
 import { completeDigest, decodeFileSeed } from '../src/core/files/core-file-seed.js';
-import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../examples/taskpool/services/task/agent-service.js';
-import { createTaskPoolAgentCoordinator } from '../examples/taskpool/harness/agent-coordinator.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const emptySnapshot = input => ({ requestId: input.requestId, version: 1, scope: 'complete', digest: completeDigest(decodeFileSeed({}).digest), files: {} });
@@ -19,13 +14,18 @@ const runProcess = promisify(execFile);
 
 async function fixture(t, hooks = {}, config = {}) {
   const root = await mkdtemp(join(tmpdir(), 'taskpool-take-'));
-  const { tasks, context, workspace, manager, task, material, missionId, workspaceId } = await createTaskPoolStores(root);
-  let runtime, service, provider;
-  t.after(async () => { await service?.close(); provider?.allowDeletion(); await runtime?.close({ timeoutMs: 1000 }); context.close(); tasks.close(); await rm(root, { recursive: true, force: true }); });
+  let runtime, service, provider, stores;
+  t.after(async () => { await service?.close(); provider?.allowDeletion(); await runtime?.close({ timeoutMs: 1000 }); stores?.close(); await rm(root, { recursive: true, force: true }); });
   provider = await createLifecycleProvider(t, { fileOperation(action, input) { return { body: { result: action === 'snapshot' ? emptySnapshot(input) : replaced(input) } }; }, ...hooks, allowHostGit: true }); provider.allowDeletion();
-  const { createRuntime } = await import('@luna-shi/murm');
-
-  const { ServiceRegistry } = await import('@luna-shi/murm');
+  // TaskPool imports the public SDK. Load it after installing the lifecycle fixture.
+  const { createRuntime, ServiceRegistry } = await import('@luna-shi/murm');
+  const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
+  const { createTaskPoolTaskService, taskPoolResearcherProfile } = await import('../examples/taskpool/services/task/agent-service.js');
+  const { createTaskPoolAgentCoordinator } = await import('../examples/taskpool/harness/agent-coordinator.js');
+  const { makeEnvelope } = await import('../examples/taskpool/persistence/envelope.js');
+  const { fixedExecutionInputHash } = await import('../examples/taskpool/services/task/task-service.js');
+  stores = await createTaskPoolStores(root);
+  const { tasks, context, workspace, manager, task, material, missionId, workspaceId } = stores;
   const { collect, stop, ...serviceConfig } = config;
   service = createTaskPoolTaskService({ runtime: () => stop ? { ...runtime, stop: (...args) => stop(runtime, ...args) } : runtime,
     taskService: tasks, missionId, missionWorkspace: workspace,
@@ -42,7 +42,7 @@ async function fixture(t, hooks = {}, config = {}) {
     selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
   const call = (agent, operation, input = {}, requestId = operation) => service.adapter.invoke({ capability: { operation }, input,
     caller: { runtimeId: runtime.id, agentId: agent.id, profile: 'researcher' }, envelope: { operation_id: requestId }, signal: new AbortController().signal });
-  return { root, tasks, context, workspace, manager, task, material, provider, runtime, service, spawn, call };
+  return { root, tasks, context, workspace, manager, task, material, provider, runtime, service, spawn, call, makeEnvelope, fixedExecutionInputHash };
 }
 
 test('public flat take joins one handoff and preserves pinned Workspace/Material bytes and independent resource version', async t => {
@@ -160,7 +160,7 @@ test('public Core CLI take pins verified Material and warns when main advances a
   } });
   const task = f.tasks.createTask({ mission_id: f.task.mission_id, gap: 'Read current public inputs after preview', priority: 'medium',
     summary: 'Current main and pinned Material', expected_output: 'Independent note', acceptance_conditions: ['Uses fixed inputs'],
-    input_material_refs: [f.material.material_id] }, makeEnvelope({ actorRef: 'host' })).task;
+    input_material_refs: [f.material.material_id] }, f.makeEnvelope({ actorRef: 'host' })).task;
   const agent = await f.spawn('preview');
   const url = new URL(startup.env.MURM_BRIDGE_URL); url.hostname = '127.0.0.1';
   const env = { ...process.env, ...startup.env, ...startup.secret_env, MURM_BRIDGE_URL: url.href };
@@ -185,7 +185,7 @@ test('public Core CLI take pins verified Material and warns when main advances a
   assert.deepEqual(actual.preview_diff.changes.map(change => [change.path, change.change]), [['input.txt', 'deleted'], ['updated.txt', 'added']]);
   assert.deepEqual(actual.material_inputs, [{ material_id: f.material.material_id, version: f.material.version, content_hash: f.material.content_hash }]);
   assert.deepEqual(result.materials[0].content, { text: 'fixed material bytes' });
-  assert.equal(result.execution.input_snapshot_hash, fixedExecutionInputHash(task, actual));
+  assert.equal(result.execution.input_snapshot_hash, f.fixedExecutionInputHash(task, actual));
   assert.deepEqual(f.tasks.getExecution(result.execution.execution_id).workspace_input, actual);
   assert.equal(await readFile(join(result.execution.workspace_ref, 'updated.txt'), 'utf8'), 'new main');
   await assert.rejects(readFile(join(result.execution.workspace_ref, 'input.txt')), { code: 'ENOENT' });
@@ -211,7 +211,7 @@ test('public take preserves binary Buffer bytes from the pinned Workspace throug
   assert.equal(Buffer.isBuffer(snapshot.files['binary.dat']), true);
   const task = f.tasks.createTask({ mission_id: f.task.mission_id, gap: 'Adopt binary Workspace bytes', priority: 'medium',
     summary: 'Pinned binary input', expected_output: 'Exact bytes', acceptance_conditions: ['Exact bytes'],
-    workspace: { workspace_id: f.task.workspace.workspace_id, revision: revision.revision } }, makeEnvelope({ actorRef: 'host' })).task;
+    workspace: { workspace_id: f.task.workspace.workspace_id, revision: revision.revision } }, f.makeEnvelope({ actorRef: 'host' })).task;
   const agent = await f.spawn('binary');
   const taken = await f.call(agent, 'task_take', { task_id: task.task_id }, 'binary-take');
   assert.equal(taken.workspace.revision, revision.revision);
@@ -333,7 +333,7 @@ test('a stale Execution fence after replacement cannot produce successful handof
   f = await fixture(t, { fileOperation(action, input) {
     if (action === 'snapshot') return { body: { result: emptySnapshot(input) } };
     const execution = f.tasks.getExecution(f.tasks.getAgent(agent.id).execution_id);
-    f.tasks.dispatch('fence_execution', { reason: 'fixed concurrent fencing' }, makeEnvelope({ actorRef: 'host', taskId: execution.task_id,
+    f.tasks.dispatch('fence_execution', { reason: 'fixed concurrent fencing' }, f.makeEnvelope({ actorRef: 'host', taskId: execution.task_id,
       executionId: execution.execution_id, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
     return { body: { result: replaced(input) } };
   } });

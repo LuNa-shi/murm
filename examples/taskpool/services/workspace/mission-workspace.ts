@@ -492,7 +492,9 @@ export class MissionWorkspace {
       const baseMetadata = parentMetadata[parents.indexOf(base)];
       const before = baseMetadata.files;
       const baseModes = await this.repository.readModes(root, baseMetadata.git_tree);
-      const modes = fileModes ?? Object.fromEntries(Object.keys(tree).map(path => [path, baseModes[path] ?? 0o644]));
+      const modes = fileModes ?? Object.fromEntries(Object.keys(tree).map(path => [
+        path, Object.hasOwn(baseModes, path) ? baseModes[path] : 0o644,
+      ]));
       const revision = record.next_revision;
       const imported = await this.repository.importTree(root, tree, parentMetadata.map((parent: any) => parent.git_commit), `Workspace revision ${revision}`, modes);
       const modeChanges = Object.keys(tree).filter(path => Object.hasOwn(before, path) && baseModes[path] !== (modes[path] ?? 0o644));
