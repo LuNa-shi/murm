@@ -76,7 +76,7 @@ export async function createHarnessSessionUpstream(seed: string) {
         item = text('resume', 'SAME_ROOT_RESUMED');
       } else if (marker?.includes('SESSION_ASKER')) {
         stage = output('child-question') ? 'child-answer' : 'child-question';
-        if (stage === 'child-question') item = service('child-question', 'user-interaction ask', { text: 'Which child value?' });
+        if (stage === 'child-question') item = service('child-question', 'service invoke user-interaction ask', { text: 'Which child value?' });
         else {
           assert.ok(String(output('child-question')).includes('CHILD_VALUE'));
           assert.ok(!String(output('child-question')).includes('ROOT_VALUE'));
@@ -88,7 +88,7 @@ export async function createHarnessSessionUpstream(seed: string) {
           item = service('spawn-asker', 'collaboration spawn_agent', { task_name: 'asker', message: 'SESSION_ASKER', fork_turns: 'none' });
         } else if (!output('root-question')) {
           stage = 'root-question';
-          item = service('root-question', 'user-interaction ask', { text: 'Which Root value?' });
+          item = service('root-question', 'service invoke user-interaction ask', { text: 'Which Root value?' });
         } else {
           stage = 'root-answer';
           assert.ok(String(output('root-question')).includes('ROOT_VALUE'));

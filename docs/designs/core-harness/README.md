@@ -75,7 +75,7 @@ TaskPool 现有宿主注入 `snapshotProject` 和已支持的公共 Workspace、
 
 ## 后续扩展 · CLI / TUI
 
-[#252](https://github.com/LuNa-shi/murm/issues/252) 跟踪用户项目目录中的前台、后续宿主和 attach/detach。其设计与实施消费新版 Core 的 `onEvent`、`get/list`、`runtime.state` 和操作回执。客户端一致快照、增量、断线重同步及 attach 由应用宿主提供；应用在 Core close 回执之上自行组织交付及收尾。原票引用的 observe/finalizeRun 按该边界迁移，交付候选与本地 apply 仍属于 #252。
+[#271](https://github.com/LuNa-shi/murm/issues/271) 第 12–15 节确认前台 `HarnessSession`。这是一次协作 Run 的公共句柄，供 SDK、JSONL RPC 和 TUI 客户端管理运行、成员控制、快照以及 Harness 级问答。`runtime.session` 单独提供每 Agent 的执行器会话配置、查询与控制。该决定替代 #252 中暂缓命名及采用上层 Session 的旧描述。完整 TUI、持久用户工作流程、本地成果候选与 apply、后台 Host 和 attach/detach 的交付仍由 [#252](https://github.com/LuNa-shi/murm/issues/252) 跟踪。
 
 ## 文档迁移与版本来源
 

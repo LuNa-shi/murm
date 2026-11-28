@@ -738,3 +738,7 @@ Once the baseline Swarm runs, you can evolve the coordination policy without tou
 ---
 
 **Next section:** explore the five production-ready patterns already built into `murm` in **[Choose a Harness](harnesses/index.md)**.
+
+## Expose the Run to a client
+
+Export a default `ProjectHarness` with `apiVersion: 1` and `run(context)`. Register a supported input handler before `markRunning()`. Keep its admission work short and publish changes through `updateStatus` and `emit`. A Runtime observation helper binds membership and read-only queries. Register a control only when your scheduler can reserve the required dispatch window, reconcile affected work and confirm its actual disposition. Use `context.askUser` with a stable source and cancellation signal when the client enables questions. The [standalone author and client example](../../examples/harness-session/README.md) shows the same module used in-process and over JSONL.

@@ -42,6 +42,7 @@ type ProjectControls = {
   childFiles?: FileTree;
   onRuntime?: (runtime: Runtime, team: ReturnType<typeof createSubagentsController>) => void;
   userQuestions?: ServiceRegistration;
+  onChange?: () => void;
 };
 
 export async function createSubagentsHarness(config: Config, controls: ProjectControls = {}) {
@@ -71,7 +72,7 @@ export async function createSubagentsHarness(config: Config, controls: ProjectCo
     },
   });
   team = createSubagentsController(runtime, {
-    maxDepth, childWorkspace: workspace?.child, childFiles: controls.childFiles, startupSignal: controls.signal,
+    maxDepth, childWorkspace: workspace?.child, childFiles: controls.childFiles, startupSignal: controls.signal, onChange: controls.onChange,
   });
   const closing = new AbortController();
   const sharedWriters = workspace?.root && 'id' in workspace.root &&

@@ -121,7 +121,7 @@ for (const via of ['sdk', 'rpc']) {
     const agentReceipt = result => result && 'core' in result ? result.core : result;
     const context = content => ({ type: 'context', customType: 'acceptance', display: false, content });
 
-    const start = await session.start({ cwd, prompt: 'SESSION_READ' }, { requestId: 'begin' });
+    const start = await session.start({ cwd, prompt: 'SESSION_READ ' + 'Read and verify the seeded project file. '.repeat(128) }, { requestId: 'begin' });
     const first = await completed('SEED_READ_OK');
     const root = first.agentId;
     runtimeId = (await session.getState()).business?.runtimeId;
@@ -139,14 +139,6 @@ for (const via of ['sdk', 'rpc']) {
     assert.ok((await session.agents.getMessages(root)).messages.some(message => JSON.stringify(message).includes('APPENDED_CONTEXT_VALUE')));
     await send('SESSION_SECOND', 'second');
     assert.equal((await completed('SECOND_TURN_OK')).agentId, root);
-    await wait('manual compact admission', async () => {
-      const state = await session.agents.getState(root);
-      return !state.active && !state.compacting;
-    });
-    const compacted = agentReceipt(await session.agents.compact(root, { requestId: 'compact' }));
-    assert.equal(compacted.status, 'completed');
-    assert.equal((await session.agents.getStats(root)).compactions.manual, 1);
-    assert.equal(upstream.requests.filter(row => row.stage === 'summary').length, 1);
 
     await send('SESSION_INTERRUPT', 'hold-root');
     await wait('Root wait Agent Service', async () => (await detail())?.members.some(member => member.agentId === root && member.waiting));
@@ -199,6 +191,14 @@ for (const via of ['sdk', 'rpc']) {
     assert.equal(agentReceipt(await session.agents.send(root, context('CONTINUE_WITH_CONTEXT'), { requestId: 'next-turn', delivery: 'nextTurn' })).disposition, 'pending-next-turn');
     await send('SESSION_AFTER_QUEUE', 'after-queue');
     await completed('CLEAR_QUEUE_VERIFIED');
+    await wait('manual compact admission', async () => {
+      const state = await session.agents.getState(root);
+      return !state.active && !state.compacting;
+    });
+    const compacted = agentReceipt(await session.agents.compact(root, { requestId: 'compact' }));
+    assert.equal(compacted.status, 'completed');
+    assert.equal((await session.agents.getStats(root)).compactions.manual, 1);
+    assert.equal(upstream.requests.filter(row => row.stage === 'summary').length, 1);
 
     await send('SESSION_RETRY', 'retry-work');
     await wait('native retry start', () => nativeEvents().find(event => event.type === 'session' && event.event.type === 'auto_retry_start'));

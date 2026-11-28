@@ -98,6 +98,7 @@ const subagents = {
         }
       } : undefined, {
         childFiles: context.initial.files,
+        onChange: () => { void observation?.refresh(); },
         userQuestions: context.clientCapabilities.questions ? userQuestions(context) : undefined,
         onRuntime: (runtime, team) => {
           const native = getExecutorCapabilities(config.executor ?? 'pi');
@@ -107,7 +108,7 @@ const subagents = {
               if (agentId !== team.rootId()) return {};
               return {
                 configure: { supported: !!native.session?.configure, fields: configureFields },
-                compact: { supported: !!native.session?.compact, available: !team.rootBusy(), reason: 'OPERATION_BUSY' },
+                compact: { supported: !!native.session?.compact, ...(team.rootBusy() ? { available: false, reason: 'OPERATION_BUSY' } : {}) },
                 abortRetry: { supported: !!native.session?.abortRetry },
                 clearQueue: { supported: !!native.session?.clearQueue },
                 send: { supported: true, text: true, context: !!native.session?.context,

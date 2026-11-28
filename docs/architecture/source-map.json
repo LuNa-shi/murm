@@ -66,6 +66,165 @@
   ],
   "files": [
     {
+      "path": "src/core/runtime-admissions.ts",
+      "category": "Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Runtime admission barriers coordinating delivery, input cancellation and Agent lifecycle"
+    },
+    {
+      "path": "src/core/session-config.ts",
+      "category": "Core",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Pi Session policy normalization, resource configuration and public input bounds"
+    },
+    {
+      "path": "src/core/session-controls.ts",
+      "category": "Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Per-Agent Session control dispatch, replay, action receipts and public queries"
+    },
+    {
+      "path": "src/core/session-types.ts",
+      "category": "Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Public Pi Session controls, configuration, statistics and redacted messages"
+    },
+    {
+      "path": "src/harness/harness-session-types.ts",
+      "category": "Project Harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Public HarnessSession operations, capability descriptors, state, questions and result contracts"
+    },
+    {
+      "path": "src/harness/harness-session.ts",
+      "category": "Project Harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Shared project Session admission, request replay, question lifecycle, events and stop barriers"
+    },
+    {
+      "path": "src/harness/project-rpc-client.ts",
+      "category": "Project Harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Typed package-root JSONL RPC client and event subscription"
+    },
+    {
+      "path": "src/harness/project-rpc-lines.ts",
+      "category": "Project Harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Strict UTF-8 encoding and bounded byte framing for JSON Lines"
+    },
+    {
+      "path": "scripts/pi-session-bridge.ts",
+      "category": "Backend",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Guest-local Pi AgentSession SDK loading, startup and resource attestation"
+    },
+    {
+      "path": "scripts/pi-session-controller.ts",
+      "category": "Backend",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Guest SDK Session settings, native input queues, retry, compaction, events and export"
+    },
+    {
+      "path": "examples/agent-session.ts",
+      "category": "public examples",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Package-root example of Agent configuration, inspection and structured context"
+    },
+    {
+      "path": "examples/harness-session/connection.ts",
+      "category": "public examples",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Independent example configuration and client interaction capability"
+    },
+    {
+      "path": "examples/harness-session/consume.ts",
+      "category": "public examples",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Shared interaction flow for installed in-process and RPC clients"
+    },
+    {
+      "path": "examples/harness-session/package.json",
+      "category": "public examples",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "External TypeScript Harness example runner and package dependency"
+    },
+    {
+      "path": "examples/harness-session/project.ts",
+      "category": "public examples",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Independent author example with input, status, questions and bounded completion"
+    },
+    {
+      "path": "examples/harness-session/rpc.ts",
+      "category": "public examples",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "External example consuming the public RPC client over a CLI child process"
+    },
+    {
+      "path": "examples/harness-session/sdk.ts",
+      "category": "public examples",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "External example invoking HarnessSession in process"
+    },
+    {
+      "path": "examples/harness-session/terminal.ts",
+      "category": "public examples",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Terminal client for routed input, questions and stop"
+    },
+    {
+      "path": "examples/harness-session/tsconfig.json",
+      "category": "public examples",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Independent typecheck configuration for package-root contract consumers"
+    },
+    {
       "path": "benchmarks/programbench-pastel/tsconfig.json",
       "category": "development benchmarks",
       "chapters": [

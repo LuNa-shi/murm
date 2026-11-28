@@ -73,8 +73,8 @@ function serial<T>(member: Member, work: () => Promise<T>) {
 export function createSubagentsController(
   runtime: Runtime,
   {
-    maxDepth, childWorkspace, childFiles, startupSignal,
-  }: { maxDepth: number; childWorkspace?: SpawnOptions['workspace']; childFiles?: SpawnOptions['files']; startupSignal?: AbortSignal },
+    maxDepth, childWorkspace, childFiles, startupSignal, onChange,
+  }: { maxDepth: number; childWorkspace?: SpawnOptions['workspace']; childFiles?: SpawnOptions['files']; startupSignal?: AbortSignal; onChange?: () => void },
 ) {
   const root = createMember('/root');
   const byPath = new Map([[root.path, root]]);
@@ -97,7 +97,8 @@ export function createSubagentsController(
 
   function track<T>(work: Promise<T>) {
     jobs.add(work);
-    void work.then(() => jobs.delete(work), () => jobs.delete(work));
+    const settled = () => { jobs.delete(work); onChange?.(); };
+    void work.then(settled, settled);
     return work;
   }
 
@@ -304,11 +305,13 @@ export function createSubagentsController(
         clearTimeout(timer);
         signal.removeEventListener('abort', cancel);
         if (member.wait === finish) member.wait = undefined;
+        onChange?.();
         resolve(result);
       }
       member.wait = finish;
       signal.addEventListener('abort', cancel, { once: true });
       releaseWait(member);
+      onChange?.();
     });
   }
 
