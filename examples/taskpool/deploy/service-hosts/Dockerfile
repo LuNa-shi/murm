@@ -17,7 +17,8 @@ RUN apt-get update \
 COPY package.json npm-shrinkwrap.json ./
 RUN npm ci --omit=dev --ignore-scripts
 COPY --from=typescript-build /build/dist ./dist
-COPY examples/taskpool/services/judge/*.lean ./dist/examples/taskpool/services/judge/
+COPY examples/taskpool/services/judge/final-tree-proof.lean examples/taskpool/services/judge/lean-module-build.lean examples/taskpool/services/judge/lean-module-verify.lean ./dist/examples/taskpool/services/judge/
+COPY examples/taskpool/services/judge/lean-module-verify.LICENSE.txt examples/taskpool/services/judge/lean-module-verify.NOTICE.md ./dist/examples/taskpool/services/judge/
 COPY examples/taskpool/deploy/service-hosts/service-host-entrypoint.sh ./scripts/service-host-entrypoint.sh
 COPY examples/taskpool/deploy/service-hosts/judge-peer-entrypoint.sh ./scripts/judge-peer-entrypoint.sh
 RUN chmod 0555 ./scripts/service-host-entrypoint.sh ./scripts/judge-peer-entrypoint.sh
