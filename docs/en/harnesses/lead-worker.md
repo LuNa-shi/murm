@@ -7,6 +7,10 @@ order: 14
 
 **Lead-Worker** (`examples/lead-worker/harness/`) fits teams that want one explicit owner of direction while enforcing that worker feedback discovered during execution actually reaches the next round of planning. One `lead` and 2–7 workers (`helper1..helperN`) run in persistent sessions with separate Gitea accounts, personal Git branches, and a local SQLite **`board` Service**. It supports both a fixed team (default) and a **dynamic team** mode where the Lead can deploy a checking Service, register a Profile, admit a new member, and update Worker grants mid-Run (see [examples/lead-worker/README.md](../../../examples/lead-worker/README.md)).
 
+## Project Session
+
+Both static and dynamic topologies expose workflow stages, active members, Board state and delivery through the public Session. The implemented controls cover observation and ending the whole Run.
+
 ## Quick run (CLI)
 
 Configure your Gitea and model host variables (see [examples/lead-worker/README.md](../../../examples/lead-worker/README.md)), then launch against any project directory:

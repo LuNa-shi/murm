@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { createHarnessSession, HarnessRpcClient } from '@luna-shi/murm';
+import { createHarnessSession, HarnessRpcClient, type Runtime } from '@luna-shi/murm';
 import subagents from '../examples/subagents/project.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { createHarnessSessionUpstream } from './fixtures/harness-session-upstream.js';
@@ -17,7 +17,7 @@ const cli = fileURLToPath(new URL('../scripts/murm.js', import.meta.url));
 const projectModule = fileURLToPath(new URL('../examples/subagents/project.js', import.meta.url));
 const nativeEnabled = process.env.MURM_HARNESS_SESSION_REAL_TEST === '1';
 
-for (const via of ['sdk', 'rpc']) {
+for (const via of ['sdk', 'rpc', 'export-failure']) {
   test(`interactive Subagents controls, interruption and Service questions traverse real OpenSandbox via ${via}`, {
     skip: !nativeEnabled && 'Requires candidate Worker and configured local OpenSandbox',
     timeout: 150_000,
@@ -58,10 +58,20 @@ for (const via of ['sdk', 'rpc']) {
     let exited;
     let stderr = '';
     let session;
+    let cleanupOwner: Runtime | undefined;
     try {
-      if (via === 'sdk') session = createHarnessSession(subagents, {
-        configuration: launchConfig, outputRoot, lifetime: 'interactive', clientCapabilities: { questions: true },
-      });
+      if (via !== 'rpc') {
+        const definition = via === 'export-failure' ? { ...subagents, run: context => subagents.run({
+          ...context,
+          registerAgentControls(registration) {
+            cleanupOwner = registration.runtime;
+            return context.registerAgentControls(registration);
+          },
+        }) } : subagents;
+        session = createHarnessSession(definition, {
+          configuration: launchConfig, outputRoot, lifetime: 'interactive', clientCapabilities: { questions: true },
+        });
+      }
       else {
         const modulePath = join(temporary, 'candidate-config.mjs');
         await writeFile(modulePath, 'export default JSON.parse(process.env.HARNESS_NATIVE_TEST_CONFIG);\n', { mode: 0o600 });
@@ -127,6 +137,27 @@ for (const via of ['sdk', 'rpc']) {
     runtimeId = (await session.getState()).business?.runtimeId;
     assert.ok(runtimeId);
     assert.equal((await session.getState()).phase, 'running');
+    if (via === 'export-failure') {
+      assert.ok(cleanupOwner);
+      const agentOutput = join(outputRoot, start.runId, runtimeId, root);
+      await mkdir(agentOutput, { mode: 0o700 });
+      const blocker = join(agentOutput, 'artifacts');
+      await writeFile(blocker, 'required project export fault', { flag: 'wx', mode: 0o600 });
+      try {
+        assert.equal((await session.stop({ requestId: 'stop-with-export-fault' })).status, 'accepted');
+        result = await session.completion;
+        assert.equal(result.export.status, 'pending');
+        assert.equal(result.cleanup.status, 'pending');
+        assert.ok(result.cleanup.pending.some(resource => resource.action === 'collect-artifacts' && resource.id === root));
+        assert.equal((await cleanupOwner.get(root)).lastStop?.execution, 'stopped');
+        assert.ok(result.artifacts.some(artifact => artifact.kind === 'session-archive'));
+        assert.equal((await ownedContainers(runtimeId)).length, 1);
+      } finally {
+        await rm(blocker);
+        assert.equal((await cleanupOwner.close({ timeoutMs: 30_000 })).cleanup, 'complete');
+      }
+      return;
+    }
     const manifest = JSON.parse(await readFile(join(outputRoot, start.runId, 'initial-files.json'), 'utf8'));
     assert.deepEqual(manifest, [{ path: 'seed.txt', mode: 420, bytes: Buffer.byteLength(seed),
       sha256: createHash('sha256').update(seed).digest('hex') }]);
@@ -213,7 +244,7 @@ for (const via of ['sdk', 'rpc']) {
     assert.equal(result.cleanup.status, 'complete');
     assert.equal(result.stopReason, 'requested');
     assert.equal(result.initial.digest.startsWith('complete:sha256:'), true);
-    assert.ok(result.artifacts.some(artifact => typeof artifact.path === 'string' && artifact.path.includes('session')));
+    assert.ok(result.artifacts.some(artifact => artifact.kind === 'session-archive' && typeof artifact.path === 'string'));
     assert.equal(result.reportSaveFailure, null);
     assert.equal(result.questions.filter(question => question.status === 'answered').length, 2);
     assert.equal(upstream.failure, undefined);

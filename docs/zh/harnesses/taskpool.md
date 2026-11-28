@@ -7,6 +7,10 @@ order: 12
 
 **TaskPool** 适合可以拆成一批独立子任务、并且允许成员完工或超时后自动换人接力的场景。所有成员一开始都是**只读**状态，只能查看待办任务和公共资料；谁成功认领了任务（拿到限时独占锁），宿主机就会把任务文件同步进它的沙箱并解锁写权限；做完验证后把改动合入公共工作区，再释放槽位换新成员继续推进。源码：[examples/taskpool](https://github.com/LuNa-shi/murm/tree/main/examples/taskpool)。
 
+## 项目 Session
+
+`session.input({ taskId, input, mode }, { requestId })` 在受理时绑定当前 Execution、owner 和 fence。控制器在投递前再次校验，没有路径时返回 `not_submitted`。反馈作用于该次执行，Task 合同和后续尝试独立维护各自的状态。
+
 ## 快速运行（CLI）
 
 配置好 `MURM_MODEL_URL` 与 `MURM_MODEL_TOKEN`（见 [快速上手](../quickstart.md)）后，在任意项目目录直接启动：

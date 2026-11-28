@@ -23,7 +23,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "92dfe247991161beac57852d324ce0c358541c3994dea2527ac9e4b555d9a44e"
+      "sha256": "ebb0e7fdb87620d971965e6fccbfe638d603ff00986017ea8e225a51508e879f"
     },
     {
       "path": "src/core/bridge.ts",
@@ -35,7 +35,7 @@
     },
     {
       "path": "src/core/sandbox/opensandbox-backend.ts",
-      "sha256": "59dded8aa138a4db5069636d8cf31bd11e22f74252574361658ede08ff257789"
+      "sha256": "d314392a70dc6c1360f5baf64df93d5b1033f16fb345c039f34cef8b1ddd199e"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
@@ -67,7 +67,7 @@
     },
     {
       "path": "examples/taskpool/project.ts",
-      "sha256": "33fb4cb0f452ee9da6ff67364f332c7dff3259800f280079cbef58375b6d89bc"
+      "sha256": "1e43c061631f1a415a910d8bf452584351f97b75f209f544dc273dbb2fa3c081"
     },
     {
       "path": "src/harness/project-git.ts",
@@ -119,7 +119,7 @@
     },
     {
       "path": "examples/subagents/harness/controller.ts",
-      "sha256": "2db0a0941d2058a6fbc3445e5d7b9ee8004317a7b954a36f819980540c85113f"
+      "sha256": "55ba907c921c4599daf949e5b1b5c8d0ca1b9585019e7156353f02b27aa0ce07"
     },
     {
       "path": "examples/subagents/prompts/prompts.ts",
@@ -600,7 +600,7 @@
     {
       "path": "examples/taskpool/project.ts",
       "anchor": "discoveryWorkflow: '",
-      "line": 89,
+      "line": 90,
       "sha256": "73ab49e2d714b512d60b202d907d936aeef6878330a345eaf517063aaf7849ae"
     },
     {
@@ -619,17 +619,17 @@
   "prompt_send_sites": [
     {
       "path": "examples/subagents/harness/controller.ts",
-      "line": 173,
-      "expression": "const receipt = await runtime.send(member.id!, body, {"
+      "line": 179,
+      "expression": "receipt = await runtime.send(member.id!, body, {"
     },
     {
       "path": "examples/subagents/harness/controller.ts",
-      "line": 272,
+      "line": 282,
       "expression": "receipt = await runtime.send(member.id!, body, { source: from, wakeIfIdle: true, ...options, requestId });"
     },
     {
       "path": "examples/subagents/harness/controller.ts",
-      "line": 387,
+      "line": 403,
       "expression": "const receipt = await runtime.send(root.id, input, options);"
     },
     {

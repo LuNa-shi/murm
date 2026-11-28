@@ -80,7 +80,7 @@ export function projectResult(report: any, context: ProjectHarnessContext, detai
   const pending = receipt?.pending ?? null;
   const cleanupConfirmed = !report.cleanupFailure && (!receipt ||
     (receipt.cleanup === 'complete' && (receipt.agents ?? []).every((agent: any) => agent.execution === 'stopped' && agent.cleanup === 'complete')));
-  const exportPending = pending?.some((entry: any) => entry.action === 'collect-artifacts');
+  const exportPending = pending?.some((entry: any) => ['archive-session', 'collect-artifacts'].includes(entry.action));
   const outcome = context.signal.aborted ? 'cancelled' :
     report.businessFailure || report.reportSaveFailure ? 'failed' : 'completed';
   return {
@@ -93,7 +93,10 @@ export function projectResult(report: any, context: ProjectHarnessContext, detai
       cleanupFailure: report.cleanupFailure ?? null, reportSaveFailure: report.reportSaveFailure ?? null,
       detail: detail ?? null,
     }),
-    artifacts: (receipt?.agents ?? []).flatMap((agent: any) => (agent.artifacts ?? []).map((path: string) => ({ agentId: agent.agentId, path }))),
+    artifacts: (receipt?.agents ?? []).flatMap((agent: any) => [
+      ...(agent.artifacts ?? []).map((path: string) => ({ agentId: agent.agentId, path })),
+      ...(agent.sessionArchive ? [{ agentId: agent.agentId, kind: 'session-archive', path: agent.sessionArchive }] : []),
+    ]),
     ...(exportPending ? { export: { status: 'pending' } } : {}),
     cleanup: {
       status: cleanupConfirmed ? 'complete' : 'pending',

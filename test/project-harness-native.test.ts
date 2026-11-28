@@ -257,7 +257,7 @@ export default config;
       const getReceipt = async (id: string) => {
         for (let attempts = 0; attempts < 200; attempts++) {
           const found = receipts.find(event => event.requestId === id);
-          if (found) return found.result;
+          if (found) return found.result.result;
           await new Promise(resolve => setTimeout(resolve, 25));
         }
         assert.fail('No operation receipt for ' + id);

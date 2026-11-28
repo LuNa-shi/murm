@@ -7,6 +7,10 @@ order: 13
 
 **Substrate**（`examples/substrate/harness/`）展示了一个多智能体 Harness 可以精简到什么程度：没有任务表、没有管理员、也没有私信。3–8 位对等成员围绕同一份 **SQLite 不可变共享库（substrate）** 并行探索——检索并阅读彼此先前的发现，再发布自包含的后续成果并显式声明引用。同时仓库还内置了面向 Lean 4 的 **FATE** 形式化定理证明运行器。
 
+## 项目 Session
+
+通过公共 Session 观察轮次、成员、发现和清理。任务生命周期沿用现有轮次或期限。此 Harness 暂不开放追加输入和单成员变更。
+
 ## 快速运行（CLI）
 
 按 [examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) 配置 `MURM_SUBSTRATE_*` 环境变量后，在项目目录直接启动：
