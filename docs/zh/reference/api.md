@@ -97,7 +97,7 @@ const runtime = await createRuntime({
   - 默认 `mode: 'steer'` 且 `wakeIfIdle: true`；传入 `mode: 'followUp'` 将输入排在当前执行之后。
   - 返回 `InputReceipt`（`{ status: 'accepted', disposition: 'started' | 'queued' | 'handled' }` 或 `{ status: 'unknown' }`），当 `wakeIfIdle: false` 且目标空闲时返回 `{ status: 'not-accepted', reason: 'idle' }`。
   - 遇到 `unknown` 时必须使用完全相同的 `requestId` 和参数重试对账；同一 `requestId` 修改参数会抛出 `CONFLICT`。
-- **`runtime.onEvent(listener)`**：返回 `unsubscribe()` 取消订阅函数。先订阅再执行 `spawn`/`send`，随后通过 `get`/`list`/`state` 读取当前视图。
+- **`runtime.onEvent(listener)`**：返回 `unsubscribe()` 取消订阅函数。先订阅再执行 `spawn`/`send`，随后通过 `get`/`list`/`state` 读取当前视图。 异步回调积压到 32 个时，监听器会在一个回调完成后收到带计数的 `subscriberGap`，随后可重新读取当前状态。
   - 推送 `output`、`settled`、`error`、`exit`、`agentChanged`、`runtimeChanged` 与 `management` 事件。
   - 事件可能在 `send()` 返回之前到达；单个监听者的异常彼此隔离并记录到账本。
 

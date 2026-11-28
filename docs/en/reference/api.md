@@ -97,7 +97,7 @@ const runtime = await createRuntime({
   - Defaults to `mode: 'steer'` and `wakeIfIdle: true`; pass `mode: 'followUp'` to queue work after the current execution.
   - Returns `InputReceipt` (`{ status: 'accepted', disposition: 'started' | 'queued' | 'handled' }` or `{ status: 'unknown' }`), or `{ status: 'not-accepted', reason: 'idle' }` when `wakeIfIdle: false`.
   - Reconcile `unknown` by replaying the exact `requestId` and arguments; changing arguments under the same `requestId` throws `CONFLICT`.
-- **`runtime.onEvent(listener)`**: returns an `unsubscribe()` function. Register before `spawn`/`send`, then query `get`/`list`/`state` for initial state.
+- **`runtime.onEvent(listener)`**: returns an `unsubscribe()` function. Register before `spawn`/`send`, then query `get`/`list`/`state` for initial state. A subscriber with 32 pending async callbacks receives a counted `subscriberGap` after a callback settles. Read current state to resynchronize.
   - Emits `output`, `settled`, `error`, `exit`, `agentChanged`, `runtimeChanged`, and `management`.
   - Events may arrive before `send()` resolves; listener errors are isolated and logged.
 

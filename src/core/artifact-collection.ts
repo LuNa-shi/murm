@@ -24,8 +24,10 @@ interface ArtifactFile {
 }
 
 import { createHash } from 'node:crypto';
-import { chmod, lstat, mkdir, mkdtemp, open, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, open, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { createReadStream } from 'node:fs';
+import { stableStringify } from '../protocol/stable-json.js';
 import { isCollectionPath, MAX_COLLECTION_CHUNK_BYTES as chunkLimit } from './files/core-collection.js';
 
 function collectionError(code: string, message: string, retryable = false) {
@@ -36,7 +38,52 @@ function valid(condition: unknown, message: string): asserts condition {
   if (!condition) throw collectionError('ARTIFACT_INVALID', message);
 }
 
-export async function saveAgentArtifacts({ outputDir, agentId, collect, records, bounds, destination = 'artifacts', redactStream, privateFiles = false }: {
+async function recoverPublishedArchive(directory: string, agentId: string, collect: CollectionSpec,
+  bounds: { bytes: number; inodes: number; maxFileBytes?: number; maxFiles?: number }) {
+  const existing = await lstat(directory).catch(error => {
+    if (error.code === 'ENOENT') return;
+    throw error;
+  });
+  if (!existing) return;
+  valid(existing.isDirectory() && await realpath(directory) === directory, 'Published artifact directory is invalid');
+  const manifestPath = join(directory, 'manifest.json');
+  const manifestStat = await lstat(manifestPath);
+  valid(manifestStat.isFile() && manifestStat.size <= 8 * 1024 ** 2, 'Published artifact manifest is invalid');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  valid(manifest.version === 1 && manifest.agentId === agentId && stableStringify(manifest.collect) === stableStringify(collect) &&
+    Array.isArray(manifest.files) && Array.isArray(manifest.directories) && manifest.files.length <= (bounds.maxFiles ?? bounds.inodes) &&
+    manifest.files.length + manifest.directories.length <= bounds.inodes, 'Published artifact manifest does not match this export');
+  const tree = join(directory, 'files');
+  valid((await lstat(tree)).isDirectory(), 'Published artifact tree is invalid');
+  const seen = new Set<string>();
+  let total = 0;
+  for (const entry of manifest.directories) {
+    const path = typeof entry === 'string' ? join(tree, entry) : '';
+    valid(isCollectionPath(entry) && !seen.has(entry) && (await lstat(path)).isDirectory() &&
+      await realpath(path) === path, 'Published artifact directory differs from its manifest');
+    seen.add(entry);
+  }
+  for (const entry of manifest.files) {
+    valid(entry && isCollectionPath(entry.path) && !seen.has(entry.path), 'Published artifact file path is invalid');
+    const path = join(tree, entry.path);
+    const stat = await lstat(path);
+    const sourceBytes = entry.sourceBytes ?? entry.bytes;
+    valid(stat.isFile() && await realpath(path) === path && stat.size === entry.bytes &&
+      (stat.mode & 0o777) === entry.mode && Number.isSafeInteger(sourceBytes) && sourceBytes >= 0 &&
+      sourceBytes <= Math.min(bounds.maxFileBytes ?? bounds.bytes, Math.min(collect.maxBytes, bounds.bytes) - total) &&
+      entry.bytes <= Math.max(1024, sourceBytes * 4), 'Published artifact file differs from its manifest');
+    const hash = createHash('sha256');
+    for await (const bytes of createReadStream(path)) hash.update(bytes);
+    valid(hash.digest('hex') === entry.sha256, 'Published artifact file digest differs from its manifest');
+    total += sourceBytes;
+    seen.add(entry.path);
+  }
+  valid(total === manifest.totalBytes && collect.paths.every(path => path === '.' || seen.has(path)) &&
+    (!collect.includeGit || collect.allowMissingGit || manifest.directories.includes('.git')), 'Published artifact coverage is incomplete');
+  return [manifestPath, tree];
+}
+
+export async function saveAgentArtifacts({ outputDir, agentId, collect, records, bounds, destination = 'artifacts', redactStream, privateFiles = false, recoverPublished = false }: {
   outputDir: string;
   agentId: string;
   collect: CollectionSpec;
@@ -45,6 +92,7 @@ export async function saveAgentArtifacts({ outputDir, agentId, collect, records,
   destination?: string;
   redactStream?: ReturnType<typeof createRedactor>['stream'];
   privateFiles?: boolean;
+  recoverPublished?: boolean;
 }) {
   const agentDir = join(outputDir, agentId);
   const finalDir = join(agentDir, destination);
@@ -61,6 +109,10 @@ export async function saveAgentArtifacts({ outputDir, agentId, collect, records,
       if (error.code !== 'EEXIST') throw error;
     });
     if (!(await lstat(agentDir)).isDirectory()) throw collectionError('ARTIFACT_WRITE_FAILED', 'Agent artifact parent is not a directory', true);
+    if (recoverPublished) {
+      const existing = await recoverPublishedArchive(finalDir, agentId, collect, bounds);
+      if (existing) return existing;
+    }
     staging = await mkdtemp(join(agentDir, '.collect-'));
     const tree = join(staging, 'files');
     await mkdir(tree, { mode: 0o700 });

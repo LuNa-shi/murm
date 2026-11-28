@@ -140,7 +140,7 @@ interface BackendOptions {
   modelAccess: Awaited<ReturnType<typeof createCoreModelAccess>>;
   registerPrivateValues?: (values: readonly unknown[]) => void;
   providers?: readonly OpenSandboxProvider[];
-  durability?: { ledger: AllocationLedger; retainForMs: number };
+  durability?: { ledger: AllocationLedger; retainForMs: number; renewConcurrency: number };
 }
 
 interface AllocationRecord {
@@ -354,11 +354,13 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
   const renewalLeadMs = Math.min(300_000, Math.max(20_000, Math.floor(lifetimeMs / 3)));
   const retentionMs = Math.min(300_000, durability?.retainForMs ?? 300_000);
   let leaseTimer: ReturnType<typeof setTimeout> | undefined;
-  let periodicRenewal: Promise<void> | undefined;
+  const periodicRenewals = new Set<Promise<void>>();
+  const renewConcurrency = durability?.renewConcurrency ?? 1;
+  let eventReads = 0;
 
   function scheduleLeases() {
     clearTimeout(leaseTimer);
-    if (closing || periodicRenewal) return;
+    if (closing || periodicRenewals.size >= renewConcurrency) return;
     let next = Infinity;
     for (const agent of agents.values()) {
       if (agent.lease && !agent.lease.work && !agent.deleting && agent.manager.renewExecution && shouldRenew(agent)) {
@@ -368,17 +370,20 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
     if (next !== Infinity) {
       leaseTimer = setTimeout(() => {
         const now = Date.now();
-        const due = [...agents.values()].find(agent => agent.lease && agent.lease.dueAt <= now &&
-          !agent.lease.work && !agent.deleting && agent.manager.renewExecution && shouldRenew(agent));
-        if (due) {
+        for (const due of agents.values()) {
+          if (periodicRenewals.size >= renewConcurrency) break;
+          if (!due.lease || due.lease.dueAt > now || due.lease.work || due.deleting ||
+              !due.manager.renewExecution || !shouldRenew(due)) continue;
           const requested = due.retainUntil ? Math.min(now + lifetimeMs, Date.parse(due.retainUntil)) : now + lifetimeMs;
-          periodicRenewal = renewLease(due, requested)?.finally(() => {
-            periodicRenewal = undefined;
+          const work = renewLease(due, requested);
+          if (!work) continue;
+          periodicRenewals.add(work);
+          void work.finally(() => {
+            periodicRenewals.delete(work);
             scheduleLeases();
           });
-        } else {
-          scheduleLeases();
         }
+        scheduleLeases();
       }, Math.min(2_147_483_647, Math.max(1, next - Date.now()))).unref();
     }
   }
@@ -495,9 +500,10 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
 
   async function readEventPage(agent: BackendAgent, waitMs: number, signal?: AbortSignal) {
     const identity = agent.workerIdentity!;
+    eventReads++;
     const page = await (agent.manager as OpenSandboxManager).readWorkerEvents(agent.id, {
       ...identity, afterSequence: agent.cursor, waitMs, maxRecords: 128, maxBytes: 512_000, signal,
-    });
+    }).finally(() => { eventReads--; });
     if (signal?.aborted) return false;
     let nativeExecuting: boolean | undefined;
     for (const record of page.records) {
@@ -711,7 +717,8 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
             controllerEpoch, filePolicy: config.filePolicy, controllerSpoolDirectory: outputDir, executionStopped: row.stopConfirmed,
           });
         } catch (error) {
-          if ((error as { details?: { status?: number } }).details?.status !== 404) throw error;
+          const details = (error as { details?: { status?: number; stage?: string } }).details;
+          if (details?.stage !== 'verify recovered Sandbox' || details.status !== 404) throw error;
           ledger.recordDeletion(row.resourceKey, sandboxId, 'Original authenticated Lifecycle GET returned 404');
           if (!row.stopConfirmed && workerIdentity) throw error;
           if (!row.stopConfirmed) ledger.recordStop(row.resourceKey, sandboxId, 'Worker start was never dispatched');
@@ -869,6 +876,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       }
       return submission.work;
     },
+    diagnostics() { return { eventReads, renewing: periodicRenewals.size }; },
     async probeWorkerEvent(agentId: string, id: string, timeoutMs: number) {
       const agent = agents.get(agentId);
       if (!agent?.workerIdentity || agent.historyLost || agent.stopping || closing) {
@@ -1000,7 +1008,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
     async detach() {
       closing = true;
       clearTimeout(leaseTimer);
-      await periodicRenewal;
+      await Promise.allSettled(periodicRenewals);
       for (const agent of agents.values()) agent.eventPoll.stop();
       await Promise.allSettled([...agents.values()].map(async agent => {
         await agent.polling;

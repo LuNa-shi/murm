@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { mkdir, readFile, writeFile, appendFile, readdir } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, appendFile, readdir, readlink } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
@@ -167,7 +167,7 @@ async function execute(manifest: any, planned: ReturnType<typeof plan>) {
     model: { kind: 'controlled Responses fixture', requests: 0, failures: 0 }, controllerSamples: 0, waves: [], lifecycleReconciliation: [],
     faultMatrix: { status: 'not-run', reason: 'Run the separate approved crash, partition and retention protocol before closing #273' },
     costs: { currency: 'USD', estimatedCostUsd: manifest.budget.estimatedCostUsd, maxCostUsd: manifest.budget.maxCostUsd },
-    diagnosticsUnavailable: ['Public operation queue depths, long-poll waiters and transport connection counts', 'Measured Worker/Pi/egress peak usage; declared requests are reservations, not empirical peak evidence'],
+    diagnosticsUnavailable: ['Measured Worker/Pi/egress peak usage; declared requests are reservations, not empirical peak evidence'],
     controllerLocation: { nodeName: process.env.MURM_RUNTIME_NODE_NAME ?? null, hostname: process.env.HOSTNAME ?? null },
     metricMethod: { control: 'Public Runtime method return after authoritative Worker acknowledgement, including queueing; unknown and timeout count as failure',
       event: 'Monotonic Runtime probe roundtrip through the ordinary Worker event channel and committed cursor', percentile: 'nearest rank', clock: 'Controller monotonic clock' } };
@@ -175,11 +175,18 @@ async function execute(manifest: any, planned: ReturnType<typeof plan>) {
   loop.enable();
   let stopSampling = false;
   let samplingFailure: unknown;
+  let runtime: Awaited<ReturnType<typeof createRuntime>> | undefined;
   const sampling = (async () => {
     while (!stopSampling) {
       const memory = process.memoryUsage();
+      const descriptors = await readdir('/proc/self/fd');
+      let socketDescriptors = 0;
+      for (const fd of descriptors) {
+        if ((await readlink(`/proc/self/fd/${fd}`).catch(() => '')).startsWith('socket:[')) socketDescriptors++;
+      }
       const row = { elapsedMs: performance.now() - started, rss: memory.rss, heapUsed: memory.heapUsed,
-        fd: (await readdir('/proc/self/fd')).length, cpu: process.cpuUsage(), eventLoopLagP99Ms: loop.percentile(99) / 1e6 };
+        fd: descriptors.length, socketDescriptors, runtime: runtime?.diagnostics() ?? null,
+        cpu: process.cpuUsage(), eventLoopLagP99Ms: loop.percentile(99) / 1e6 };
       await appendFile(join(output, 'controller-samples.jsonl'), JSON.stringify(row) + '\n', { mode: 0o600 });
       report.controllerSamples++;
       if (memory.rss > manifest.maxRssBytes) throw fail('Controller RSS exceeded the approved bound');
@@ -189,7 +196,6 @@ async function execute(manifest: any, planned: ReturnType<typeof plan>) {
   const administrativeConnection = new ConnectionConfig({ domain: manifest.lifecycleUrl.replace(/\/+$/, '').replace(/\/v1$/, '') + '/v1', apiKey: process.env.OPEN_SANDBOX_API_KEY, disableMetrics: true, requestTimeoutSeconds: 15, wakeRetryEnabled: false }).withTransportIfMissing();
   const lifecycle = SandboxManager.create({ connectionConfig: administrativeConnection });
   const runtimeIds: string[] = [];
-  let runtime: Awaited<ReturnType<typeof createRuntime>> | undefined;
   let activeDatabase: DatabaseSync | undefined;
   let upstreamServer: ReturnType<typeof createServer> | undefined;
   try {

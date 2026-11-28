@@ -207,12 +207,13 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
       ledger = AllocationLedger.open({ directory: outputDir, runtimeId, configFingerprint, maxAgents: options.maxAgents });
     }
   } catch (error: any) {
-    const code = error.code ?? 'INVALID_CONTRACT';
+    const code = error.allocationLedger ? error.code : 'INVALID_CONTRACT';
     throw resourceError(code, redactor.text(error.message), context, { details: [errorInfo(error, code)] });
   }
 
   const maxAgents = options.maxAgents;
   const prepareQueue = operationQueue(limits.prepare, limits.queued, limits.waitMs);
+  const reconcileQueue = operationQueue(limits.reconcile, limits.queued, limits.waitMs);
   const stopQueue = operationQueue(limits.stop, limits.queued, limits.waitMs);
   const transferQueue = operationQueue(limits.transfer, limits.queued, limits.waitMs);
   let ledgerFailed = false;
@@ -260,7 +261,7 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
     const agent = agents.get(agentId);
     return agent && {
       profile: agent.info.profile, model: agent.profile.model, status: agent.info.status,
-      unavailable: agent.fatal === true || ledgerFailed || recovering,
+      unavailable: agent.fatal === true || ledgerFailed || (ledger && !ledger.healthy) || recovering,
       ...management.bridgeAccess(agentId), parentId: agent.info.parentId, spawnProfiles: agent.profile.spawnProfiles, allowContextFork: agent.profile.allowContextFork,
     };
   };
@@ -351,7 +352,7 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
       onOwned: (owner: any) => { bridge = owner; } });
     assertAssembling();
     backend = await openOpenSandboxBackend(config, { runtimeId, outputDir, bridge, modelAccess,
-      registerPrivateValues: redactor.add, ...(ledger ? { durability: { ledger, retainForMs } } : {}) });
+      registerPrivateValues: redactor.add, ...(ledger ? { durability: { ledger, retainForMs, renewConcurrency: limits.renew } } : {}) });
     await saveSummary('open');
   })();
   const closeEndpoints = () => Promise.all([
@@ -479,19 +480,23 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
             if (subscription.dropped === 1) records.record('subscriber-overflow', { eventSeq: queued.seq, maximumPending: 32 });
             continue;
           }
-          try {
-            const result = subscription.handler(structuredClone(queued.event));
-            if (result) {
+          function deliver(event: RuntimeEvent) {
+            try {
+              const result = subscription.handler(structuredClone(event));
+              if (!result || typeof result.then !== 'function') return;
               subscription.active++;
               Promise.resolve(result).catch(recordFailure).finally(() => {
                 subscription.active--;
-                if (subscription.dropped) {
-                  records.record('subscriber-resumed', { dropped: subscription.dropped });
+                if (subscription.dropped && handlers.has(subscription)) {
+                  const dropped = subscription.dropped;
                   subscription.dropped = 0;
+                  records.record('subscriber-resumed', { dropped });
+                  deliver({ type: 'subscriberGap', dropped });
                 }
               });
-            }
-          } catch (error) { recordFailure(error); }
+            } catch (error) { recordFailure(error); }
+          }
+          deliver(queued.event);
         }
       }
     } finally {
@@ -597,72 +602,72 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
     agent.stopWork = (async () => {
       await agent.start?.catch(() => {});
       return stopQueue.run(async () => {
-      try {
-        if (!agent.executionStopped) {
-          stopPhase(agent, 'stop-execution');
-          const { collectable } = await backend.stopExecution(info.id);
-          agent.executionStopped = true;
-          agent.collectable = collectable;
+        try {
+          if (!agent.executionStopped) {
+            stopPhase(agent, 'stop-execution');
+            const { collectable } = await backend.stopExecution(info.id);
+            agent.executionStopped = true;
+            agent.collectable = collectable;
+            durable(owner => {
+              const row = owner.get(info.id);
+              owner.checkpoint(info.id, { publicState: { collectable } });
+              if (row.sandboxId && !row.stopConfirmed) owner.recordStop(info.id, row.sandboxId, 'Worker stop was confirmed or startup was never dispatched');
+            });
+          }
+          if (agent.collectable && !agent.sessionArchive && backend.collectSession) {
+            stopPhase(agent, 'archive-session');
+            const bounds = artifactBounds('session');
+            const collect = { paths: ['.'], includeGit: false, maxBytes: bounds.bytes, required: true };
+            durable(owner => owner.transition(info.id, 'exporting'));
+            [agent.sessionArchive] = await transferQueue.run(() => saveAgentArtifacts({ outputDir, agentId: info.id, collect,
+              bounds, records: () => backend.collectSession(info.id), recoverPublished: Boolean(ledger),
+              destination: 'session', redactStream: redactor.jsonl, privateFiles: true }));
+            durable(owner => owner.checkpoint(info.id, { archive: agent.sessionArchive }));
+            records.record('session-archive', { agentId: info.id, manifestPath: agent.sessionArchive });
+          }
+          if (agent.collect && agent.collectable && !agent.artifacts && !agent.optionalCollectionError) {
+            stopPhase(agent, 'collect-artifacts');
+            try {
+              durable(owner => owner.transition(info.id, 'exporting'));
+              agent.artifacts = await transferQueue.run(() => saveAgentArtifacts({ outputDir, agentId: info.id, collect: agent.collect,
+                bounds: artifactBounds('export'), recoverPublished: Boolean(ledger), records: () => backend.collect(info.id, agent.collect) }));
+              durable(owner => owner.checkpoint(info.id, { artifacts: agent.artifacts }));
+            } catch (error: any) {
+              if (agent.collect.required) throw error;
+              agent.optionalCollectionError = errorInfo(error);
+            }
+          }
+          stopPhase(agent, 'delete-sandbox');
+          durable(owner => {
+            const record = owner.get(info.id);
+            if (record.state !== 'rejected' && record.state !== 'deleted') owner.transition(info.id, 'deleting');
+          });
+          await backend.destroy(info.id);
           durable(owner => {
             const row = owner.get(info.id);
-            if (row.sandboxId && !row.stopConfirmed) owner.recordStop(info.id, row.sandboxId, 'Worker stop was confirmed or startup was never dispatched');
-            owner.checkpoint(info.id, { publicState: { collectable } });
+            if (row.state === 'rejected' || row.state === 'deleted') return;
+            if (!row.sandboxId) throw resourceError('OPERATION_UNKNOWN', 'Sandbox creation remains unconfirmed', { ...context, agentId: info.id });
+            if (!row.stopConfirmed) owner.recordStop(info.id, row.sandboxId, 'Worker startup was never dispatched');
+            owner.recordDeletion(info.id, row.sandboxId, 'Original Lifecycle confirmed deletion after stop');
           });
-        }
-        if (agent.collectable && !agent.sessionArchive && backend.collectSession) {
-          stopPhase(agent, 'archive-session');
-          const bounds = artifactBounds('session');
-          const collect = { paths: ['.'], includeGit: false, maxBytes: bounds.bytes, required: true };
-          durable(owner => owner.transition(info.id, 'exporting'));
-          [agent.sessionArchive] = await transferQueue.run(() => saveAgentArtifacts({ outputDir, agentId: info.id, collect,
-            bounds, records: () => backend.collectSession(info.id),
-            destination: 'session', redactStream: redactor.jsonl, privateFiles: true }));
-          durable(owner => owner.checkpoint(info.id, { archive: agent.sessionArchive }));
-          records.record('session-archive', { agentId: info.id, manifestPath: agent.sessionArchive });
-        }
-        if (agent.collect && agent.collectable && !agent.artifacts && !agent.optionalCollectionError) {
-          stopPhase(agent, 'collect-artifacts');
-          try {
-            durable(owner => owner.transition(info.id, 'exporting'));
-            agent.artifacts = await transferQueue.run(() => saveAgentArtifacts({ outputDir, agentId: info.id, collect: agent.collect,
-              bounds: artifactBounds('export'), records: () => backend.collect(info.id, agent.collect) }));
-            durable(owner => owner.checkpoint(info.id, { artifacts: agent.artifacts }));
-          } catch (error: any) {
-            if (agent.collect.required) throw error;
-            agent.optionalCollectionError = errorInfo(error);
+          agent.cleanupError = undefined;
+          info.status = 'closed';
+        } catch (error: any) {
+          agent.cleanupError = errorInfo(error);
+          if (agent.cleanupAction === 'archive-session' || agent.cleanupAction === 'collect-artifacts') {
+            const deadline = durable(owner => {
+              const row = owner.get(info.id);
+              const expires = row.retention?.deadline ?? new Date(Date.now() + retainForMs).toISOString();
+              owner.retain(info.id, { reason: agent.cleanupAction, deadline: expires, owner: runtimeId });
+              return expires;
+            });
+            backend.retain(info.id, agent.cleanupAction, deadline);
           }
         }
-        stopPhase(agent, 'delete-sandbox');
-        durable(owner => {
-          const record = owner.get(info.id);
-          if (record.state !== 'rejected' && record.state !== 'deleted') owner.transition(info.id, 'deleting');
-        });
-        await backend.destroy(info.id);
-        durable(owner => {
-          const row = owner.get(info.id);
-          if (row.state === 'rejected' || row.state === 'deleted') return;
-          if (!row.sandboxId) throw resourceError('OPERATION_UNKNOWN', 'Sandbox creation remains unconfirmed', { ...context, agentId: info.id });
-          if (!row.stopConfirmed) owner.recordStop(info.id, row.sandboxId, 'Worker startup was never dispatched');
-          owner.recordDeletion(info.id, row.sandboxId, 'Original Lifecycle confirmed deletion after stop');
-        });
-        agent.cleanupError = undefined;
-        info.status = 'closed';
-      } catch (error: any) {
-        agent.cleanupError = errorInfo(error);
-        if (agent.cleanupAction === 'archive-session' || agent.cleanupAction === 'collect-artifacts') {
-          const deadline = durable(owner => {
-            const row = owner.get(info.id);
-            const expires = row.retention?.deadline ?? new Date(Date.now() + retainForMs).toISOString();
-            owner.retain(info.id, { reason: agent.cleanupAction, deadline: expires, owner: runtimeId });
-            return expires;
-          });
-          backend.retain(info.id, agent.cleanupAction, deadline);
-        }
-      }
-      info.lastStop = stopReceipt(agent);
-      records.record('stop', { agentId: info.id, state: 'observed', receipt: info.lastStop });
-      agentChanged(agent);
-      return info.lastStop;
+        info.lastStop = stopReceipt(agent);
+        records.record('stop', { agentId: info.id, state: 'observed', receipt: info.lastStop });
+        agentChanged(agent);
+        return info.lastStop;
       }).catch(error => {
         agent.cleanupError = errorInfo(error);
         info.lastStop = stopReceipt(agent);
@@ -1095,6 +1100,7 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
     });
     if (blockedServices.length) records.record('runtime', { state: 'authority-blocked', serviceIds: blockedServices });
     const resumed: { agent: RuntimeAgent; row: AllocationRecord }[] = [];
+    const pending: { agent: RuntimeAgent; row: AllocationRecord }[] = [];
     for (const row of allocations) {
       const publicState = row.publicState ?? {};
       const profile = profiles.get(row.profile);
@@ -1107,7 +1113,7 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
       const agent = { info, profile, controller: new AbortController(), activityClaims: new Set(),
         nativeExecuting: publicState.nativeExecuting === true, executionStopped: row.stopConfirmed, executionEpoch: Number(publicState.executionEpoch ?? 0),
         eventSequence: row.afterSequence, interruptRequests: new Map(), collect: publicState.collect as CollectionSpec | undefined,
-        collectable: publicState.collectable === true, sessionArchive: row.archive, artifacts: row.artifacts } as RuntimeAgent;
+        collectable: publicState.collectable === true || (publicState.collectable === undefined && row.stopConfirmed && Boolean(row.workerInstanceId)), sessionArchive: row.archive, artifacts: row.artifacts } as RuntimeAgent;
       management.initAccess(info.id, profile.services, row.privateState?.bindings as Record<string, string> | undefined);
       agents.set(info.id, agent);
       fileControls.register(agent, { writable: publicState.writable === true, shared: false });
@@ -1115,17 +1121,26 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
       spawnRequests.set(JSON.stringify([row.caller ?? 'host', row.requestId]), request);
       if (terminal) {
         info.lastStop = stopReceipt(agent);
-        continue;
+      } else {
+        pending.push({ agent, row });
       }
-      const status = await stopQueue.run(() => backend.recover(row, {
+    }
+    async function reconcile({ agent, row }: { agent: RuntimeAgent; row: AllocationRecord }) {
+      const { info } = agent;
+      const publicState = row.publicState ?? {};
+      const status = await backend.recover(row, {
         onEvent: event => emit(agent, event),
         onExecutionStart: () => { agent.nativeExecuting = true; refreshActivity(agent); },
         onTrace: ({ type, ...entry }) => records.record(String(type), redactor.value({ ...entry, agentId: info.id }) as Record<string, unknown>),
-      }));
+      });
       agent.executionStopped ||= status.executionStopped;
       if (status.executionStopped && !status.terminal && row.sandboxId && !row.stopConfirmed) {
-        durable(owner => owner.recordStop(row.resourceKey, row.sandboxId!, 'Original Worker attested that its executor stopped'));
-        (agent as RuntimeAgent & { collectable?: boolean }).collectable = Boolean(row.workerInstanceId);
+        const collectable = publicState.collectable !== false && Boolean(row.workerInstanceId);
+        durable(owner => {
+          owner.checkpoint(row.resourceKey, { publicState: { collectable } });
+          owner.recordStop(row.resourceKey, row.sandboxId!, 'Original Worker attested that its executor stopped');
+        });
+        (agent as RuntimeAgent & { collectable?: boolean }).collectable = collectable;
       }
       if (status.terminal) {
         info.status = 'closed';
@@ -1136,6 +1151,10 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
         agent.fatal = true;
         info.lastError = { code: 'OPERATION_UNKNOWN', message: 'Only cleanup is available until Worker and authority recovery are confirmed', retryable: true };
       }
+    }
+    for (let offset = 0; offset < pending.length; offset += limits.reconcile) {
+      const batch = pending.slice(offset, offset + limits.reconcile);
+      await Promise.all(batch.map(entry => reconcileQueue.run(() => reconcile(entry))));
     }
     recovering = false;
     for (const { agent, row } of resumed) {
@@ -1174,6 +1193,13 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
 
   return Object.freeze<Runtime>({
     id: runtimeId,
+    diagnostics() {
+      const queueStatus = ({ active, queued }: { active: number; queued: number }) => ({ active, queued });
+      return { ...backend.diagnostics(),
+        queues: { prepare: queueStatus(prepareQueue), stop: queueStatus(stopQueue),
+          transfer: queueStatus(transferQueue), reconcile: queueStatus(reconcileQueue) },
+        pendingSubscriberCallbacks: [...handlers].reduce((count, handler) => count + handler.active, 0) };
+    },
     get state() { return finalClose ? 'closed' : closing ? 'closing' : 'open'; },
     profiles: management.profiles, services: management.services, access: management.access,
     management: Object.freeze({ get: () => ({ ...management.snapshot(),

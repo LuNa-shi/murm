@@ -66,7 +66,7 @@ const runtime = await createRuntime({
 
 ## 2. 如果你要监控运行过程：`runtime.onEvent()`
 
-Runtime 不会主动替你决定下一步怎么协作，而是把集群中发生的所有关键变化实时推送到 `runtime.onEvent()`。**务必在调用 `spawn()` 或 `send()` 之前先注册监听**，这样不会漏掉早期事件。
+请在调用 `spawn()` 或 `send()` 之前注册监听。每个监听器最多同时保留 32 个未完成回调。回调完成后，该监听器会收到带丢失计数的 `subscriberGap`。调用 `get()`、`list()` 或 `management.get()` 可以重新同步视图。
 
 最常用的事件对应四类常见需求：
 

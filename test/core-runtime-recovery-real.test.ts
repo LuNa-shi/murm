@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { fork, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, mkdtemp, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,9 +42,7 @@ function next(child: ChildProcess) {
   });
 }
 
-test('one real Worker survives Controller SIGKILL, replays a known input and exports from the existing Sandbox', {
-  skip: process.env.MURM_CORE_RECOVERY_REAL_TEST !== '1', timeout: 115_000,
-}, async () => {
+async function probeRecovery(retainExport: boolean) {
   const image = process.env.MURM_CORE_TEST_IMAGE;
   assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
   let arrivals = 0;
@@ -74,7 +72,7 @@ test('one real Worker survives Controller SIGKILL, replays a known input and exp
     callbackHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1' });
   const fixture = fileURLToPath(new URL('./fixtures/runtime-recovery-controller.js', import.meta.url));
   const run = (mode: string, directory = '') => fork(fixture, [mode, outputDir, config, directory], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
-  let controller = run('start');
+  let controller = run(retainExport ? 'retain' : 'start');
   let original: string | undefined;
   let complete = false;
   try {
@@ -87,14 +85,32 @@ test('one real Worker survives Controller SIGKILL, replays a known input and exp
     assert.equal(admitted.receipt.status, 'accepted');
     assert.equal(admitted.probe.requestId, 'before');
     assert.equal(arrivals, 1);
+    let blocker: string | undefined;
+    if (retainExport) {
+      blocker = join(original, admitted.agentId, 'artifacts');
+      await mkdir(join(original, admitted.agentId), { recursive: true, mode: 0o700 });
+      await writeFile(blocker, 'intentionally obstruct this export', { flag: 'wx', mode: 0o600 });
+      const response = next(controller);
+      controller.send('close');
+      const deferred = await response;
+      assert.equal(deferred.step, 'retained');
+      assert.equal(deferred.receipt.cleanup, 'pending');
+      const pending = deferred.receipt.pending.find((item: any) => item.action === 'collect-artifacts');
+      assert.ok(pending?.retention?.deadline && pending.retention.owner === runtimeId);
+      assert.ok(Date.parse(pending.expiresAt) > Date.now());
+    }
     await terminate(controller);
-    controller = run('recover', original);
+    if (blocker) await rm(blocker);
+    controller = run(retainExport ? 'finish-close' : 'recover', original);
     const recovered = await next(controller);
     assert.equal(recovered.step, 'closed');
-    assert.equal(recovered.agentId, admitted.agentId);
-    assert.deepEqual(recovered.replay, admitted.receipt);
-    assert.equal(recovered.probe.requestId, 'after');
-    assert.equal(Buffer.from(recovered.content.data, 'base64').toString(), 'survives controller restart\n');
+    if (!retainExport) {
+      assert.equal(recovered.agentId, admitted.agentId);
+      assert.deepEqual(recovered.replay, admitted.receipt);
+      assert.equal(recovered.probe.requestId, 'after');
+      assert.equal(Buffer.from(recovered.content.data, 'base64').toString(), 'survives controller restart\n');
+    }
+    assert.equal(await readFile(join(original, admitted.agentId, 'artifacts', 'files', 'recovered.txt'), 'utf8'), 'survives controller restart\n');
     assert.equal(recovered.receipt.cleanup, 'complete', JSON.stringify(recovered.receipt.pending));
     complete = true;
     assert.equal(arrivals, 1);
@@ -119,4 +135,10 @@ test('one real Worker survives Controller SIGKILL, replays a known input and exp
     gateway.closeAllConnections();
     await new Promise<void>(resolve => gateway.close(() => resolve()));
   }
-});
+}
+
+const native = { skip: process.env.MURM_CORE_RECOVERY_REAL_TEST !== '1', timeout: 115_000 };
+test('one real Worker survives Controller SIGKILL, replays a known input and exports from the existing Sandbox', native,
+  () => probeRecovery(false));
+test('a later Controller finishes retained export without reopening a durably closing Run', native,
+  () => probeRecovery(true));

@@ -34,3 +34,17 @@ test('native Session archive retains uncompacted history in private files with c
   assert.equal(manifest.files[0].bytes, Buffer.byteLength(archive));
   assert.equal((await stat(join(paths[1], 'native.jsonl'))).mode & 0o777, 0o600);
 });
+
+test('a verified archive published before a crash is recovered without another Worker transfer', async () => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'session-recovery-'));
+  const sourceDir = join(outputDir, 'source');
+  await mkdir(sourceDir);
+  await writeFile(join(sourceDir, 'work.txt'), 'original bytes');
+  const collect = { paths: ['work.txt'], includeGit: false, required: true, maxBytes: 1024 };
+  const options = { outputDir, collect, agentId: 'worker-one', bounds: { bytes: 1024, inodes: 10 }, recoverPublished: true };
+  const paths = await saveAgentArtifacts({ ...options, records: () => collectCoreWorkDir(sourceDir, collect) });
+  const noReplay = () => { throw new Error('Published export should not be replayed'); };
+  assert.deepEqual(await saveAgentArtifacts({ ...options, records: noReplay }), paths);
+  await writeFile(join(paths[1], 'work.txt'), 'modified bytes');
+  await assert.rejects(saveAgentArtifacts({ ...options, records: noReplay }), { code: 'ARTIFACT_INVALID' });
+});

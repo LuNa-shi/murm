@@ -190,6 +190,7 @@ export type AgentEvent = { agentId: string } & (
 export type RuntimeEvent = AgentEvent
   | { type: 'agentChanged'; agentId: string }
   | { type: 'runtimeChanged' }
+  | { type: 'subscriberGap'; dropped: number }
   | { type: 'management'; change: RuntimeManagementChange };
 
 export type RuntimeState = 'open' | 'closing' | 'closed';
@@ -332,6 +333,12 @@ export type RuntimeManagementChange = {
 export interface Runtime {
   readonly id: string;
   readonly state: RuntimeState;
+  diagnostics(): {
+    renewing: number;
+    eventReads: number;
+    pendingSubscriberCallbacks: number;
+    queues: Record<'prepare' | 'stop' | 'transfer' | 'reconcile', { active: number; queued: number }>;
+  };
   spawn(options: SpawnOptions): Promise<AgentInfo>;
   get(agentId: string): Promise<AgentInfo>;
   list(filter?: AgentListFilter): Promise<AgentInfo[]>;

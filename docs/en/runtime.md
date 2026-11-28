@@ -66,7 +66,7 @@ const runtime = await createRuntime({
 
 ## 2. Monitoring what happens: `runtime.onEvent()`
 
-Runtime never imposes a collaboration strategy — instead, it streams every meaningful transition through `runtime.onEvent()`. **Subscribe before calling `spawn()` or `send()`** so you never miss early events.
+Register before calling `spawn()` or `send()`. A listener can have at most 32 unresolved callbacks. If notifications are skipped, that listener receives `subscriberGap` with the dropped count after a callback settles. Read `get()`, `list()` or `management.get()` to resynchronize.
 
 | What you want to do | Event type | When it fires |
 | --- | --- | --- |

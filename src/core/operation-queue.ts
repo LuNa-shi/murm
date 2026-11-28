@@ -3,16 +3,18 @@ import { MurmError, ERROR_CODES } from '../errors.js';
 export interface OperationLimits {
   prepare?: number;
   stop?: number;
+  renew?: number;
+  reconcile?: number;
   transfer?: number;
   queued?: number;
   waitMs?: number;
 }
 
 export function operationLimits(input: OperationLimits = {}) {
-  const limits = { prepare: 8, stop: 8, transfer: 4, queued: 1024, waitMs: 60_000, ...input };
+  const limits = { prepare: 8, stop: 8, renew: 4, reconcile: 4, transfer: 4, queued: 1024, waitMs: 60_000, ...input };
   for (const key of Object.keys(limits)) {
     const value = limits[key as keyof typeof limits];
-    if (!(key === 'prepare' || key === 'stop' || key === 'transfer' || key === 'queued' || key === 'waitMs') ||
+    if (!(key === 'prepare' || key === 'stop' || key === 'renew' || key === 'reconcile' || key === 'transfer' || key === 'queued' || key === 'waitMs') ||
         !Number.isSafeInteger(value) || value < 1 || value > (key === 'waitMs' ? 600_000 : 4096)) {
       throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Invalid Runtime operation limits');
     }

@@ -1,3 +1,4 @@
+import { once } from 'node:events';
 import { createRuntime, createSandbox, recoverRuntime, ServiceRegistry, type CreateRuntimeOptions } from '@luna-shi/murm';
 
 const [mode, outputDir, configuration, runDirectory] = process.argv.slice(2);
@@ -18,7 +19,7 @@ const options: CreateRuntimeOptions = {
 };
 
 try {
-  if (mode === 'start') {
+  if (mode === 'start' || mode === 'retain') {
     const runtime = await createRuntime(options);
     process.send?.({ step: 'runtime', runId: runtime.id });
     const agent = await runtime.spawn({ requestId: 'spawn', profile: 'worker',
@@ -35,10 +36,21 @@ try {
     await settled;
     const probe = await runtime.probeWorkerEvent(agent.id, { requestId: 'before', timeoutMs: 8000 });
     process.send?.({ step: 'started', agentId: agent.id, receipt, probe });
+    if (mode === 'retain') {
+      await once(process, 'message');
+      process.send?.({ step: 'retained', receipt: await runtime.close({ timeoutMs: 20_000 }) });
+    }
   } else {
     const runtime = await recoverRuntime({ ...options, runDirectory, cleanupOnly: mode === 'cleanup' });
     const agents = await runtime.list();
-    if (mode === 'cleanup') {
+    if (mode === 'finish-close') {
+      if (runtime.state !== 'closing' || agents[0]?.status !== 'closing') throw new Error('Persisted shutdown unexpectedly reopened work');
+      let rejection: unknown;
+      try { await runtime.send(agents[0].id, 'A new input must remain fenced.', { requestId: 'blocked' }); }
+      catch (error) { rejection = (error as { code?: string }).code; }
+      if (rejection !== 'NOT_ALLOWED') throw new Error('Recovered closing Run admitted a new input');
+      process.send?.({ step: 'closed', receipt: await runtime.close({ timeoutMs: 20_000 }) });
+    } else if (mode === 'cleanup') {
       process.send?.({ step: 'closed', receipt: await runtime.close({ timeoutMs: 20_000 }) });
     } else {
       const [agent] = agents;
