@@ -42,13 +42,13 @@ This section is generated from executable exports and checked against the source
 | [src/errors.ts](../../src/errors.ts) | `5b436c6d7062a7b9fb0fd434af1375b9c050999cfa76bd6d97dac88558dca8b3` |
 | [src/core/index.ts](../../src/core/index.ts) | `9d2521d586cac412f3629b277d2d5ab0f1b77fe9f4420fb7928175c76b969f0f` |
 | [src/core/types.ts](../../src/core/types.ts) | `dc50ab5f34328c1cec598a9cad6b0db4b11c46f0263d608f01cd22254acca287` |
-| [src/core/services.ts](../../src/core/services.ts) | `823b7c83efd0fc61314c5511177b32b8863f469454cad5c5288bd04e5e82cf96` |
+| [src/core/services.ts](../../src/core/services.ts) | `794352ccfa8e02f63c4db087f1c165308198c6766c0d8c3cf8872e1b9c0617ab` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
 | [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `119644d2b3a11d942d5ba1f7472a69f500a1438f13cbc2e15e5119f061de133a` |
 | [src/core/sandbox/executor-driver.ts](../../src/core/sandbox/executor-driver.ts) | `56849cecb5e525d3752caca2feeb7571692c6e33afa7961619f40ad41272e6e7` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `e74c4fe8890e76e45c9e7795891c834bed666bf744693e8ff2663ddff07bd538` |
 | [src/core/sandbox/opensandbox-provider.ts](../../src/core/sandbox/opensandbox-provider.ts) | `eb98901a846c1ce294621d7a173cec46787ba4bf18b4edc65afc5c867e968c37` |
-| [src/core/sandbox/sandbox-connection.ts](../../src/core/sandbox/sandbox-connection.ts) | `d99209775f2c7b24b8611b08f6dea68e85d84d107f1da34836ac48174cb9f4c8` |
+| [src/core/sandbox/sandbox-connection.ts](../../src/core/sandbox/sandbox-connection.ts) | `2f7337b6fcbfd9f3df6735dfdf42be0d8f06b4c732963b21d4cdbd331b2f9249` |
 
 ### Exact built-in command operation surface
 
@@ -4179,9 +4179,25 @@ interface ConnectionInput {
     egressMode?: 'dns+nft';
 }
 export declare function normalizeRuntimePublicUrl(value: string): string;
-export declare function resolveSandboxConnection(input?: ConnectionInput, scope?: string, { useSaved }?: {
+export declare function resolveSandboxConnectionWithSources(input?: ConnectionInput, scope?: string, { useSaved }?: {
     useSaved?: boolean | undefined;
 }): {
+    lifecycleBaseUrl: string;
+    apiKey: string | undefined;
+    advertiseHost: string | undefined;
+    publicUrl: string | undefined;
+    image: string | undefined;
+    useServerProxy: boolean | undefined;
+    egressMode: "dns+nft" | undefined;
+    endpointHost: undefined;
+    endpointSource: string;
+    sources: {
+        lifecycleBaseUrl: string;
+        advertiseHost: string | undefined;
+        image: string | undefined;
+    };
+};
+export declare function resolveSandboxConnection(...settings: Parameters<typeof resolveSandboxConnectionWithSources>): {
     lifecycleBaseUrl: string;
     apiKey: string | undefined;
     advertiseHost: string | undefined;

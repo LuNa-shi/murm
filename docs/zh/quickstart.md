@@ -5,6 +5,8 @@ section: GET STARTED
 order: 1
 ---
 
+要使用已安装的 SDK 归档编写自己的应用，请从[搭建第一个 SDK Harness](first-harness.md)开始。
+
 `murm` 将 CLI 与 TypeScript SDK 打包在同一个安装包中，并在 [OpenSandbox](sandbox.md) 隔离沙箱中运行 Agent。你可以在 Linux 本机通过 Docker 一键启动 OpenSandbox，也可以接入团队已有的服务。
 
 ## 前置要求

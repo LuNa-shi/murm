@@ -33,6 +33,7 @@ const check = args[0] === '--check';
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 const sourcePaths = [
   'examples/taskpool/prompts/agent-contract.ts',
+  'examples/first-harness/main.ts', 'examples/first-harness/turn.ts', 'examples/first-harness/handoff.ts',
   'test-support/taskpool-legacy/capability-profile.ts',
   'test-support/taskpool-legacy/services-bridge.ts',
   'src/cli/swarm-cli.ts', 'examples/taskpool/cli.ts',
@@ -322,6 +323,31 @@ output('08-taskpool-harness.md', header('TaskPool discovery and continuation pro
   }, sampleCloseout), 'The persisted warning payload supplies the Execution ID and deadline. The controller records the notification ID and fixed composed message before dispatch.'));
 for (const [index, line] of sources.get(flatControllerPath)!.split('\n').entries()) {
   if (line.includes('await runtime.send(')) sendSites.push({ path: flatControllerPath, line: index + 1, expression: line.trim() });
+}
+const firstHarnessPath = 'examples/first-harness/main.ts';
+const firstHarnessTurnPath = 'examples/first-harness/turn.ts';
+const firstHarnessServicePath = 'examples/first-harness/handoff.ts';
+const publisherProfile = between(firstHarnessPath, "prompt: 'Read release-data.txt.", "',");
+const writerProfile = between(firstHarnessPath, "prompt: 'Run swarm service invoke handoff take", "',");
+const publisherInput = between(firstHarnessPath, "await runTurn(publisher.id, [", "].join(' ')")
+  .split('\n').flatMap(line => /^\s*'(.+)',\s*$/.exec(line)?.[1] ?? []).join(' ');
+const writerInput = between(firstHarnessPath, 'await runTurn(writer.id, `', '`');
+output('11-first-sdk-harness.md', '# First SDK Harness prompts\n\n'
+  + block('Publisher Profile', 'Read release-data.txt.' + publisherProfile,
+    'The host registers this read-only Profile. The unique reference is in release-data.txt in the publisher workspace.')
+  + block('Writer Profile', 'Run swarm service invoke handoff take' + writerProfile,
+    'The host registers this writable Profile. The writer gets the reference and question from the permitted Service.')
+  + block('Handoff Service discovery', [
+    between(firstHarnessServicePath, "purpose: '", "',"),
+    between(firstHarnessServicePath, "operation: 'publish', description: '", "',"),
+    between(firstHarnessServicePath, "operation: 'take', description: '", "',"),
+  ].join('\n'), 'Startup discovery includes the purpose and the description for the operation granted to that Agent.')
+  + block('Publisher follow-up', publisherInput,
+    'The host sends this text after successfully spawning the publisher.')
+  + block('Writer follow-up', writerInput,
+    'The host interpolates channel from its terminal reader after restricting it to a lowercase channel identifier, then starts the writer and sends this input.'));
+for (const [index, line] of sources.get(firstHarnessTurnPath)!.split('\n').entries()) {
+  if (line.includes('await runtime.send(')) sendSites.push({ path: firstHarnessTurnPath, line: index + 1, expression: line.trim() });
 }
 const manifest = {
   description: 'Offline source fingerprints and prompt extraction anchors; no actual run data. A hash match establishes source alignment, not delivery to an Agent.',

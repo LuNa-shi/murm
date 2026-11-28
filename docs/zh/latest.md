@@ -6,6 +6,8 @@ order: 15
 badge: v0.2.0
 ---
 
+[搭建第一个 SDK Harness](first-harness.md)的 v0.2.0 路径使用此发行归档，并说明版本查询和严格 Sandbox 配置。
+
 **`murm v0.2.0`**（发布日期：**2026-11-27**）是 `@luna-shi/murm` 的首个正式开源版本，将 TypeScript SDK、宿主机 CLI 与零外部依赖的浏览器 Trace Viewer 整合为单一安装包，用于构建、隔离运行并观测多智能体 Harness。
 
 本页描述已发布的 v0.2.0 安装包。[当前源码快速上手](quickstart.md)使用较新的 setup 与 Provider 接口，需要安装从当前检出源码构建的候选包。
