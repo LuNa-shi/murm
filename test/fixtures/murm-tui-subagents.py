@@ -41,6 +41,25 @@ def agent_action(terminal, operation):
     terminal.menu(operation)
 
 
+def context_input(terminal, delivery_option, text):
+    agent_action(terminal, 3)
+    terminal.wait('Send to')
+    terminal.menu(delivery_option)
+    terminal.wait('Structured context')
+    terminal.paste(text)
+    terminal.key(ENTER)
+
+
+def confirm_context(terminal, dispositions):
+    expected = tuple('accepted · ' + value for value in dispositions)
+    receipt = terminal.wait_any((*expected, 'unknown ·'))
+    if receipt.decode() == 'unknown ·':
+        terminal.key(F9)
+        terminal.wait('Reconcile unknown operation')
+        terminal.menu(0)
+        terminal.wait_any(expected)
+
+
 def export_fault(base, cwd, env):
     def owner(term, command, receipt, timeout=12):
         work = base / 'owner-input.tmp'
@@ -120,28 +139,15 @@ def run():
         wait_stage("busy-steer")
         wait_stage("busy-follow")
         term.wait("BUSY_FOLLOW_OK")
-        agent_action(term, 3)
-        term.wait("Send to")
-        term.menu(3)  # Append hidden context without starting a new model turn.
-        term.wait("Structured context")
-        term.paste("APPENDED_CONTEXT_VALUE")
-        term.key(ENTER)
-        receipt = term.wait_any(('accepted · appended', 'accepted · pending-append', 'unknown ·'))
-        if receipt == b'unknown \xc2\xb7':
-            term.key(F9)
-            term.wait('Reconcile unknown operation')
-            term.menu(0)
-            term.wait_any(('accepted · appended', 'accepted · pending-append'))
+        before_context = len(control('status')['requests'])
+        context_input(term, 3, 'APPENDED_CONTEXT_VALUE')
+        confirm_context(term, ('appended', 'pending-append'))
+        assert len(control('status')['requests']) == before_context
         send(term, 'SESSION_SECOND second turn')
         term.key(F2)
         term.wait("SECOND_TURN_OK")
 
-        agent_action(term, 3)
-        term.wait("Send to")
-        term.menu(6)
-        term.wait("Structured context")
-        term.paste("SESSION_CONTEXT_STEER extra context prompt")
-        term.key(ENTER)
+        context_input(term, 6, 'SESSION_CONTEXT_STEER extra context prompt')
         term.key(F2)
         term.wait("CONTEXT_STEER_OK")
 
@@ -149,6 +155,11 @@ def run():
         term.key(F2)
         wait_stage("root-wait")
         term.wait_any(('tool_execution_start bash', 'tool_execution_update bash'), timeout=20)
+        wait_stage('slow-child')
+        before_context = len(control('status')['requests'])
+        context_input(term, 5, 'DISCARD_ON_INTERRUPT')
+        confirm_context(term, ('pending-next-turn',))
+        assert len(control('status')['requests']) == before_context
         agent_action(term, 8)
         term.wait("Interrupt Agent")
         term.menu(1)

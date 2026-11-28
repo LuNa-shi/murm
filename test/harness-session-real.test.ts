@@ -162,6 +162,10 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task', 'editable']) 
     const detail = async () => (await session.getState()).business?.detail;
     const send = async (input, requestId) => assert.equal((await session.input(input, { requestId })).status, 'accepted');
     const agentReceipt = result => result && 'core' in result ? result.core : result;
+    const confirmed = (label, submit) => wait(label, async () => {
+      const receipt = await submit();
+      return agentReceipt(receipt)?.status === 'unknown' ? undefined : receipt;
+    });
     const context = content => ({ type: 'context', customType: 'acceptance', display: false, content });
 
     const start = await session.start({ cwd, prompt: 'SESSION_READ ' + 'Read and verify the seeded project file. '.repeat(128) }, { requestId: 'begin' });
@@ -205,12 +209,12 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task', 'editable']) 
     assert.deepEqual(manifest, [{ path: 'seed.txt', mode: 420, bytes: Buffer.byteLength(seed),
       sha256: createHash('sha256').update(seed).digest('hex') }]);
 
-    await wait('Root configure receipt', async () =>
-      agentReceipt(await session.agents.configure(root, { steeringMode: 'all' }, { requestId: 'settings' })).status === 'applied');
+    const configured = await confirmed('Root configure receipt', () => session.agents.configure(root, { steeringMode: 'all' }, { requestId: 'settings' }));
+    assert.equal(agentReceipt(configured).status, 'applied');
     assert.equal((await session.agents.getState(root)).configuration.steeringMode, 'all');
     const requestCount = upstream.requests.length;
-    await wait('Root append receipt', async () =>
-      agentReceipt(await session.agents.send(root, context('APPENDED_CONTEXT_VALUE'), { requestId: 'append', delivery: 'append' })).disposition === 'appended');
+    const appended = await confirmed('Root append receipt', () => session.agents.send(root, context('APPENDED_CONTEXT_VALUE'), { requestId: 'append', delivery: 'append' }));
+    assert.equal(agentReceipt(appended).disposition, 'appended');
     assert.equal(upstream.requests.length, requestCount);
     assert.ok((await session.agents.getMessages(root)).messages.some(message => JSON.stringify(message).includes('APPENDED_CONTEXT_VALUE')));
     await send('SESSION_SECOND', 'second');
@@ -218,8 +222,9 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task', 'editable']) 
 
     await send('SESSION_INTERRUPT', 'hold-root');
     await wait('Root wait Agent Service', async () => (await detail())?.members.some(member => member.agentId === root && member.waiting));
-    assert.equal(agentReceipt(await session.agents.send(root, context('DISCARD_ON_INTERRUPT'), { requestId: 'pending-before-interrupt', delivery: 'nextTurn' })).disposition, 'pending-next-turn');
-    const interrupt = await session.agents.interrupt(root, { requestId: 'interrupt-root' });
+    const nextBeforeInterrupt = await confirmed('Root next-turn receipt', () => session.agents.send(root, context('DISCARD_ON_INTERRUPT'), { requestId: 'pending-before-interrupt', delivery: 'nextTurn' }));
+    assert.equal(agentReceipt(nextBeforeInterrupt).disposition, 'pending-next-turn');
+    const interrupt = await confirmed('Root interrupt receipt', () => session.agents.interrupt(root, { requestId: 'interrupt-root' }));
     assert.equal(agentReceipt(interrupt).status, 'interrupted');
     assert.equal(interrupt.harnessEffects.paused, true);
     upstream.releaseChild();
@@ -250,7 +255,7 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task', 'editable']) 
     await send('SESSION_QOLD', 'old-execution-question');
     const oldQuestion = await wait('pending old Root execution question', async () =>
       (await session.getState()).questions.find(question => question.status === 'pending' && question.agentId === root));
-    assert.equal(agentReceipt(await session.agents.interrupt(root, { requestId: 'interrupt-question' })).status, 'interrupted');
+    assert.equal(agentReceipt(await confirmed('Question interrupt receipt', () => session.agents.interrupt(root, { requestId: 'interrupt-question' }))).status, 'interrupted');
     await wait('interrupted Root question cancelled', async () =>
       (await session.getState()).questions.find(question => question.questionId === oldQuestion.questionId)?.status === 'cancelled');
     await send('SESSION_QNEW', 'new-execution-question');
@@ -273,7 +278,7 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task', 'editable']) 
       const deliver = async delivery => {
         const request = { requestId: `identity-${index}-${delivery}`, delivery };
         const input = { ...context(content), display: index === 1 && delivery === 'append', details: { code: 'identical' } };
-        const receipt = agentReceipt(await session.agents.send(root, input, request));
+        const receipt = agentReceipt(await confirmed('context delivery receipt', () => session.agents.send(root, input, request)));
         assert.deepEqual(agentReceipt(await session.agents.send(root, input, request)), receipt);
         await assert.rejects(session.agents.send(root, { ...input, content: 'changed' }, request), { code: 'REQUEST_ID_CONFLICT' });
         return receipt;
@@ -285,10 +290,10 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task', 'editable']) 
       const append = byDelivery.get('append');
       assert.equal(follow.disposition, 'queued');
       assert.notEqual(follow.inputId, append.inputId);
-      const next = agentReceipt(await session.agents.send(root, context('DISCARDED_NEXT_TURN_281'), {
+      const next = agentReceipt(await confirmed('identity next-turn receipt', () => session.agents.send(root, context('DISCARDED_NEXT_TURN_281'), {
         requestId: 'identity-next-' + index, delivery: 'nextTurn',
-      }));
-      const interrupted = agentReceipt(await session.agents.interrupt(root, { requestId: 'identity-interrupt-' + index }));
+      })));
+      const interrupted = agentReceipt(await confirmed('identity interrupt receipt', () => session.agents.interrupt(root, { requestId: 'identity-interrupt-' + index })));
       assert.equal(interrupted.status, 'interrupted');
       upstream.releaseIdentity(index);
       const appended = await wait('archive-backed append receipt', () => dispositions(append.inputId).find(event => event.status === 'appended'));
@@ -304,8 +309,8 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task', 'editable']) 
       await wait('identity resume settles', async () => !(await session.agents.getState(root)).active);
     }
     for (let index = 0; index < 20; index++) {
-      const receipt = agentReceipt(await session.agents.send(root, { ...context('TWENTY_IDENTICAL_281'), details: { same: true } },
-        { requestId: 'identical-append-' + index, delivery: 'append' }));
+      const receipt = agentReceipt(await confirmed('repeated append receipt', () => session.agents.send(root, { ...context('TWENTY_IDENTICAL_281'), details: { same: true } },
+        { requestId: 'identical-append-' + index, delivery: 'append' })));
       assert.equal(receipt.disposition, 'appended');
       const appended = await wait('identity of repeated append', () => dispositions(receipt.inputId).find(event => event.status === 'appended'));
       nativeIdentityEvidence.push({ ...appended, content: 'TWENTY_IDENTICAL_281', display: false });
@@ -333,29 +338,32 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task', 'editable']) 
 
     await send('SESSION_HOLD_QUEUE', 'hold-queue');
     await wait('active Root before clearing queue', async () => (await session.agents.getState(root)).active);
-    assert.equal(agentReceipt(await session.agents.send(root, 'QUEUED_TEXT_TO_DISCARD', { requestId: 'queued-text', mode: 'followUp' })).disposition, 'queued');
-    assert.equal(agentReceipt(await session.agents.send(root, context('DISCARD_BY_CLEAR'), { requestId: 'queued-context', delivery: 'nextTurn' })).disposition, 'pending-next-turn');
-    const cleared = await session.agents.clearQueue(root, { requestId: 'clear-root' });
+    const queuedText = await confirmed('queued text receipt', () => session.agents.send(root, 'QUEUED_TEXT_TO_DISCARD', { requestId: 'queued-text', mode: 'followUp' }));
+    assert.equal(agentReceipt(queuedText).disposition, 'queued');
+    const queuedContext = await confirmed('queued context receipt', () => session.agents.send(root, context('DISCARD_BY_CLEAR'), { requestId: 'queued-context', delivery: 'nextTurn' }));
+    assert.equal(agentReceipt(queuedContext).disposition, 'pending-next-turn');
+    const cleared = await confirmed('clear-queue receipt', () => session.agents.clearQueue(root, { requestId: 'clear-root' }));
     assert.equal(agentReceipt(cleared).status, 'completed');
     assert.equal(cleared.harnessEffects.discardedUserInputs.length, 1);
     assert.equal(agentReceipt(cleared).discardedContextIds.length, 1);
     upstream.releaseQueue();
     await completed('QUEUE_TURN_OK');
     for (const [delivery, marker] of [['steer', 'STEER'], ['followUp', 'FOLLOW']]) {
-      const receipt = agentReceipt(await session.agents.send(root, context('SESSION_CONTEXT_' + marker), {
+      const receipt = agentReceipt(await confirmed('waking context receipt', () => session.agents.send(root, context('SESSION_CONTEXT_' + marker), {
         requestId: 'context-' + delivery, delivery,
-      }));
+      })));
       assert.equal(receipt.disposition, 'started');
       await completed('CONTEXT_' + marker + '_OK');
     }
-    assert.equal(agentReceipt(await session.agents.send(root, context('CONTINUE_WITH_CONTEXT'), { requestId: 'next-turn', delivery: 'nextTurn' })).disposition, 'pending-next-turn');
+    const nextTurn = await confirmed('next-turn receipt', () => session.agents.send(root, context('CONTINUE_WITH_CONTEXT'), { requestId: 'next-turn', delivery: 'nextTurn' }));
+    assert.equal(agentReceipt(nextTurn).disposition, 'pending-next-turn');
     await send('SESSION_AFTER_QUEUE', 'after-queue');
     await completed('CLEAR_QUEUE_VERIFIED');
     await wait('manual compact admission', async () => {
       const state = await session.agents.getState(root);
       return !state.active && !state.compacting;
     });
-    const compacted = agentReceipt(await session.agents.compact(root, { requestId: 'compact' }));
+    const compacted = agentReceipt(await confirmed('compact receipt', () => session.agents.compact(root, { requestId: 'compact' })));
     assert.equal(compacted.status, 'completed');
     assert.equal((await session.agents.getStats(root)).compactions.manual, 1);
     const summaries = upstream.requests.filter(row => row.stage === 'summary').length;
@@ -363,7 +371,7 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task', 'editable']) 
 
     await send('SESSION_RETRY', 'retry-work');
     await wait('native retry start', () => nativeEvents().find(event => event.type === 'session' && event.event.type === 'auto_retry_start'));
-    assert.equal(agentReceipt(await session.agents.abortRetry(root, { requestId: 'abort-retry' })).status, 'completed');
+    assert.equal(agentReceipt(await confirmed('abort-retry receipt', () => session.agents.abortRetry(root, { requestId: 'abort-retry' }))).status, 'completed');
     await wait('retry abort confirmed', async () => !(await session.agents.getState(root)).retrying);
     assert.equal(upstream.requests.filter(row => row.stage === 'retry').length, 1);
     assert.ok(nativeEvents().some(event => event.type === 'session' && event.event.type === 'textDelta'));

@@ -85,7 +85,6 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
         item = text('second', 'SECOND_TURN_OK');
       } else if (marker?.includes('SESSION_CHILD')) {
         stage = 'slow-child';
-        await slowChild.promise;
         item = text('slow-child', 'LATE_CHILD_RESULT');
       } else if (marker?.includes('SESSION_INTERRUPT')) {
         stage = output('spawn-slow') ? 'root-wait' : 'spawn-slow';
@@ -175,6 +174,7 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
         return;
       } else throw new Error('Unexpected controlled work request');
       requests.push({ stage, count: number });
+      if (stage === 'slow-child') await slowChild.promise;
       if (response.destroyed) return;
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       let bodyText = streamResponse('k3', number, item);

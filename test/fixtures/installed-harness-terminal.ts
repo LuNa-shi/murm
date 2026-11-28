@@ -11,6 +11,7 @@ export async function runInstalledHarnessTerminal(installation: { directory: str
   env?: NodeJS.ProcessEnv;
   observationText?: string;
   taskFeedback?: { text: string; release: string };
+  stopAfterClaim?: boolean;
   peerControl?: string;
 }) {
   const env = { ...installation.env, ...options.env };
@@ -24,6 +25,7 @@ export async function runInstalledHarnessTerminal(installation: { directory: str
     options.cwd, options.configPath, options.outputDir, options.prompt, options.observationText ?? '"runtimeState":',
     String(Math.floor(options.timeoutMs / 1000))];
   if (options.taskFeedback) args.push('--task-feedback', options.taskFeedback.text, '--release', options.taskFeedback.release);
+  if (options.stopAfterClaim) args.push('--stop-after-claim');
   if (options.peerControl) args.push('--peer-control', options.peerControl);
   await execute('python3', args, { cwd: installation.directory, env, timeout: options.timeoutMs, maxBuffer: 1024 * 1024 });
   const [runId, ...others] = await readdir(options.outputDir);
@@ -31,5 +33,6 @@ export async function runInstalledHarnessTerminal(installation: { directory: str
   assert.equal(others.length, 0);
   const reportPath = join(options.outputDir, runId, 'project-run.json');
   const result = JSON.parse(await readFile(reportPath, 'utf8'));
-  return { result: { ...result, reportPath }, status: options.peerControl ? 1 : 0, observation: { businessObserved: true, terminal: true } };
+  return { result: { ...result, reportPath }, status: options.stopAfterClaim ? 143 : options.peerControl ? 1 : 0,
+    observation: { businessObserved: true, terminal: true } };
 }

@@ -3,6 +3,7 @@
 import argparse
 import os
 from pathlib import Path
+import signal
 import time
 import urllib.parse
 import urllib.request
@@ -67,6 +68,7 @@ def run():
     parser.add_argument("--task-feedback")
     parser.add_argument("--release")
     parser.add_argument("--peer-control")
+    parser.add_argument("--stop-after-claim", action="store_true")
     options = parser.parse_args()
     env = {**os.environ, "TERM": "xterm-256color"}
     args = ["murm", "--mode", "tui", "--harness", options.harness, "--lifetime", "task",
@@ -87,6 +89,10 @@ def run():
                 with urllib.request.urlopen(urllib.parse.urljoin(options.release, '/claimed-task'), timeout=5) as response:
                     task = response.read().decode()
                 term.pump()
+            if options.stop_after_claim:
+                term.process.send_signal(signal.SIGTERM)
+                term.finish(143, timeout=45)
+                return
             while True:
                 term.key(F1 + F5)
                 try:

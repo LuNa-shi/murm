@@ -160,8 +160,10 @@ export default config;
   }, null, 2), { mode: 0o600 });
 });
 
-test('installed TaskPool routes fenced feedback to an installed native execution and publishes to seeded main', {
-  skip: process.env.MURM_PROJECT_NATIVE_TEST !== '1' && 'Requires the local OpenSandbox Worker',
+for (const stopAfterClaim of [false, true]) test(stopAfterClaim
+  ? 'installed TaskPool recovers the terminal and its native Worker on SIGTERM during an Execution'
+  : 'installed TaskPool routes fenced feedback to an installed native execution and publishes to seeded main', {
+  skip: (process.env.MURM_PROJECT_NATIVE_TEST !== '1' || (stopAfterClaim && !useNativeTerminal)) && 'Requires the local OpenSandbox Worker',
   timeout: 200_000,
 }, async t => {
   const image = process.env.MURM_CORE_TEST_IMAGE;
@@ -299,8 +301,8 @@ export default config;
   const options = {
     harness: 'taskpool', cwd: project, prompt, configPath, outputDir: join(evidence, 'output'), timeoutMs: 155_000,
   };
-  const { result, observation } = useNativeTerminal ? await runInstalledHarnessTerminal(installation, {
-    ...options, taskFeedback: { text: feedback, release: `http://127.0.0.1:${server.address().port}/release-feedback` },
+  const { result, observation, status } = useNativeTerminal ? await runInstalledHarnessTerminal(installation, {
+    ...options, stopAfterClaim, taskFeedback: { text: feedback, release: `http://127.0.0.1:${server.address().port}/release-feedback` },
   }) : await runInstalledHarnessRpc(installation, {
     ...options,
     async interact(session) {
@@ -335,6 +337,16 @@ export default config;
     },
   });
   assert.ifError(failure);
+  if (stopAfterClaim) {
+    assert.equal(status, 143);
+    assert.equal(result.outcome, 'cancelled');
+    assert.equal(result.stopReason, 'SIGTERM');
+    assert.equal(result.cleanup.status, 'complete');
+    assert.ok(claimedTaskId);
+    assert.equal(feedbackObserved, false);
+    assert.deepEqual(await ownedContainers(result.result.runtimeId), []);
+    return;
+  }
   assert.equal(feedbackObserved, true);
   assert.equal(result.outcome, 'completed');
   assert.equal(result.cleanup.status, 'complete');
