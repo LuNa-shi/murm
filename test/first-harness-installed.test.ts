@@ -31,13 +31,6 @@ ref = pathlib.Path('release-data.txt').read_text().strip()
 good = subprocess.check_output(command+['--reference='+ref, '--question=Which channel?', '--request-id=publish-release'], text=True)
 print(json.loads(good)['reference'])
 PYTHON`;
-  const writer = `python3 - <<'PYTHON'
-import json, pathlib, subprocess
-result = subprocess.check_output(['swarm','service','invoke','handoff','take','--request-id','take-release'], text=True)
-ref = json.loads(result)['reference']
-pathlib.Path('delivery.txt').write_text('reference='+ref+'\\nchannel=${channel}\\n')
-print(ref)
-PYTHON`;
   const tool = (id: string, command: string) => ({
     type: 'function_call', id: `fc_${id}`, call_id: id, name: 'bash',
     arguments: JSON.stringify({ command, timeout: 30 }),
@@ -65,11 +58,16 @@ PYTHON`;
         assert.match(reference, /^[0-9a-f]{12}$/);
         item = finish('publish');
       } else if (ordinal === 3) {
-        assert.ok(body.input.some(row => row.role === 'user' && JSON.stringify(row.content).includes(`The user chose channel ${channel}`)));
-        item = tool('take', writer);
+        const userInput = body.input.filter(row => row.role === 'user')
+          .flatMap(row => typeof row.content === 'string' ? [row.content] : row.content.map(part => part.text ?? ''))
+          .find(text => text.startsWith(`The user chose channel ${channel}.`));
+        assert.ok(userInput);
+        const command = userInput.split('\n').find(line => line.startsWith('swarm service invoke handoff take --request-id take-release | '));
+        assert.ok(command);
+        item = tool('take', `set -e -o pipefail\n${command}\ncat delivery.txt`);
       } else {
         assert.equal(ordinal, 4);
-        assert.equal(result('take'), reference);
+        assert.equal(result('take'), `reference=${reference}\nchannel=${channel}`);
         item = finish('take');
       }
       response.writeHead(200, { 'content-type': 'text/event-stream' });

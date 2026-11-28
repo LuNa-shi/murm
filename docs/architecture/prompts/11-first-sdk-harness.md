@@ -13,10 +13,10 @@ Read release-data.txt. Publish its reference and one short question asking the u
 
 The host registers this writable Profile. The writer gets the reference and question from the permitted Service.
 
-Body SHA-256: `850fc18599c7c2a4982a9c2d49097a0441985fe31685374992a85baa05139734`
+Body SHA-256: `3a0542d4cd34195627be5c8452929e2c379ceaba4be7bb1b689bb7c3d9d508ed`
 
 ````text
-Run swarm service invoke handoff take --request-id take-release. Use exactly that command with no additional input. Read the reference from its JSON result. Use the write tool to create delivery.txt in your workspace with exactly two newline-terminated lines: reference=<reference> and channel=<channel>. The host provides the channel. Do not write into /tmp.
+Run swarm service invoke handoff take using the exact Bash command supplied in your task. Use the bash tool in your writable workspace. The command reads the reference from the Service and writes delivery.txt with two newline-terminated lines.
 ````
 ## Handoff Service discovery
 
@@ -42,8 +42,10 @@ Read the reference in release-data.txt. Optional diagnostic: first attempt to pu
 
 The host interpolates channel from its terminal reader after restricting it to a lowercase channel identifier, then starts the writer and sends this input.
 
-Body SHA-256: `1be76a5fafc93c7c722e3f180c3b51046def9fd05b4806406497c6bb31d5fd92`
+Body SHA-256: `3bdfc8f4fbf64d1e68042f5695ccf3dd7faf20a3c663086b357e9d0d1b042d22`
 
 ````text
-The user chose channel ${channel}. Run the handoff command in your instructions, then create delivery.txt exactly as instructed.
+The user chose channel ${channel}. Run the following exact command with the bash tool in your workspace:
+swarm service invoke handoff take --request-id take-release | node -e 'const { reference } = JSON.parse(require("node:fs").readFileSync(0, "utf8")); console.log("reference=" + reference); console.log("channel=${channel}");' > delivery.txt
+Finish when the command succeeds.
 ````

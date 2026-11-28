@@ -48,7 +48,7 @@ async function main() {
       },
       writer: {
         model: 'default', image: config.image, services: { handoff: ['take'] }, writable: true,
-        prompt: 'Run swarm service invoke handoff take --request-id take-release. Use exactly that command with no additional input. Read the reference from its JSON result. Use the write tool to create delivery.txt in your workspace with exactly two newline-terminated lines: reference=<reference> and channel=<channel>. The host provides the channel. Do not write into /tmp.',
+        prompt: 'Run swarm service invoke handoff take using the exact Bash command supplied in your task. Use the bash tool in your writable workspace. The command reads the reference from the Service and writes delivery.txt with two newline-terminated lines.',
       },
     },
   });
@@ -99,7 +99,9 @@ async function main() {
       collect: { paths: ['delivery.txt'], maxBytes: 4096, includeGit: false, required: false },
     });
     phase = 'write';
-    await runTurn(writer.id, `The user chose channel ${channel}. Run the handoff command in your instructions, then create delivery.txt exactly as instructed.`,
+    await runTurn(writer.id, `The user chose channel ${channel}. Run the following exact command with the bash tool in your workspace:
+swarm service invoke handoff take --request-id take-release | node -e 'const { reference } = JSON.parse(require("node:fs").readFileSync(0, "utf8")); console.log("reference=" + reference); console.log("channel=${channel}");' > delivery.txt
+Finish when the command succeeds.`,
       { requestId: 'writer-turn', signal: cancel.signal });
     phase = 'verify';
     if (board.evidence().read?.reader !== writer.id) throw Object.assign(new Error(), { code: 'HANDOFF_NOT_READ' });

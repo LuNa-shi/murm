@@ -7,7 +7,7 @@
     },
     {
       "path": "examples/first-harness/main.ts",
-      "sha256": "e42c184649d71b0118acc04b122fdb7ae52bdf1af8d932589d3209b7ab44b04d"
+      "sha256": "8aae79c6b44ca5bec5821824e3f94b4974b1e586d4b5aaa0231b398e8f88e889"
     },
     {
       "path": "examples/first-harness/turn.ts",
@@ -637,7 +637,7 @@
       "path": "examples/first-harness/main.ts",
       "anchor": "prompt: 'Run swarm service invoke handoff take",
       "line": 51,
-      "sha256": "9c4c666704e46165c3c7427b1e735316d84ee834006b89dd7e4ec5878f3c09cf"
+      "sha256": "7bce2b53d7216eec7ffe9c0173e2a9ab7ecbface3d338459b7ac359b29099ddf"
     },
     {
       "path": "examples/first-harness/main.ts",
@@ -649,7 +649,7 @@
       "path": "examples/first-harness/main.ts",
       "anchor": "await runTurn(writer.id, `",
       "line": 102,
-      "sha256": "1be76a5fafc93c7c722e3f180c3b51046def9fd05b4806406497c6bb31d5fd92"
+      "sha256": "3bdfc8f4fbf64d1e68042f5695ccf3dd7faf20a3c663086b357e9d0d1b042d22"
     },
     {
       "path": "examples/first-harness/handoff.ts",
@@ -832,7 +832,7 @@
     },
     {
       "path": "docs/architecture/prompts/11-first-sdk-harness.md",
-      "sha256": "e5b02de94988da0f5e3f9af71cdd6ae7148cdbb509069acfdbeabc2c20bcec5e"
+      "sha256": "99b412359d6d4c903017272658a2759c876f0b46a39d09bc9dc142e35e4233f4"
     }
   ]
 }

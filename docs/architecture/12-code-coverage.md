@@ -228,7 +228,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 |---|---|---|---|
 | [examples/first-harness/config.ts](../../examples/first-harness/config.ts) | Resolves connection and model settings for the installed SDK archive | [07-run-configuration](07-run-configuration.md) | `5edb7c2fc0709dd25ff80cedbed9779679210870d1d8210a66fe980b133afcdb` |
 | [examples/first-harness/handoff.ts](../../examples/first-harness/handoff.ts) | Registers the first Harness handoff operations and records authorized caller evidence | [07-run-configuration](07-run-configuration.md) | `90fdad9f2bb656066dcd19f44a01a9d6cb6d6933049408c67dacd5c8630727b5` |
-| [examples/first-harness/main.ts](../../examples/first-harness/main.ts) | Runs the first SDK Harness, terminal question, artifact verification and cleanup | [07-run-configuration](07-run-configuration.md) | `e42c184649d71b0118acc04b122fdb7ae52bdf1af8d932589d3209b7ab44b04d` |
+| [examples/first-harness/main.ts](../../examples/first-harness/main.ts) | Runs the first SDK Harness, terminal question, artifact verification and cleanup | [07-run-configuration](07-run-configuration.md) | `8aae79c6b44ca5bec5821824e3f94b4974b1e586d4b5aaa0231b398e8f88e889` |
 | [examples/first-harness/tsconfig.json](../../examples/first-harness/tsconfig.json) | Compiles the example as an external TypeScript consumer | [07-run-configuration](07-run-configuration.md) | `f999d15937de480d331250e7df20faf364a385e982c6bb7cfcdae8a88dda7f31` |
 | [examples/first-harness/turn.ts](../../examples/first-harness/turn.ts) | Implements a bounded Agent turn over the public Runtime event and send interfaces | [07-run-configuration](07-run-configuration.md) | `f8c9b951f7f20991c933bac94e756b5a9dffad9a08130f21798dc04bb16b715d` |
 

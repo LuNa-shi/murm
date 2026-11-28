@@ -67,7 +67,7 @@ The first preflight should fail at `provider.health` with the configuration entr
 Save these five files to the project directory. All application imports use the SDK package root.
 
 - [main.ts](../../examples/first-harness/main.ts) runs the two turns, prints the question, verifies the bytes, and reports cleanup.
-- [handoff.ts](../../examples/first-harness/handoff.ts) registers `publish` and `take`. `take` returns the reference and question in one operation. The writer uses `swarm service invoke handoff take --request-id take-release` directly.
+- [handoff.ts](../../examples/first-harness/handoff.ts) registers `publish` and `take`. `take` returns the reference and question in one operation. The writer pipes `swarm service invoke handoff take --request-id take-release` into a formatter that writes two newline-terminated lines.
 - [turn.ts](../../examples/first-harness/turn.ts) is the version 1 reusable turn helper.
 - [config.ts](../../examples/first-harness/config.ts) selects the Sandbox and model settings for the installed archive.
 - [tsconfig.json](../../examples/first-harness/tsconfig.json) compiles the project.
