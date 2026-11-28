@@ -25,7 +25,18 @@ import { createServiceTrace, exportServiceStates } from './service-trace.js';
 import { registerServicePrivateValues, snapshotServiceRegistry, type ServiceRegistration } from './services.js';
 
 export type * from './session-types.js';
-export type { HarnessInput, HarnessJson, ProjectHarness, ProjectHarnessContext, ProjectHarnessResult } from '../harness/project-harness.js';
+export { createHarnessSession } from '../harness/project-harness.js';
+export type {
+  HarnessInput, HarnessInputHandler, HarnessInputPreparation, HarnessJson, HarnessStatusInfo,
+  ProjectHarness, ProjectHarnessContext, ProjectHarnessResult,
+} from '../harness/project-harness.js';
+export type {
+  HarnessAgentHandler, HarnessAgentReceipt, HarnessAgentRegistration, HarnessAgents, HarnessAnswer,
+  HarnessAnswerReceipt, HarnessCapability, HarnessDescriptor, HarnessEvent, HarnessInputDescriptor,
+  HarnessInputReceipt, HarnessLifetime, HarnessOperation, HarnessPhase, HarnessQuestion, HarnessQuestionKind,
+  HarnessQuestionRequest, HarnessQuestionSource, HarnessRequest, HarnessResult, HarnessSession,
+  HarnessSessionOptions, HarnessStartReceipt, HarnessState, HarnessStopReceipt,
+} from '../harness/harness-session-types.js';
 export { ProjectPreflightError } from '../harness/project-input.js';
 export { HarnessRpcClient } from '../harness/project-rpc-client.js';
 export type { HarnessRpcClientOptions, HarnessRpcReady, HarnessRpcTransport } from '../harness/project-rpc-client.js';

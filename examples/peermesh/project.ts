@@ -64,10 +64,10 @@ const peerMesh = {
                 if (!peer) throw Object.assign(new Error('Unknown peer Agent'), { code: 'UNKNOWN_RECIPIENT' });
                 try {
                   const receipt = await team!.stopPeer(peer.key);
-                  return { receipt, harnessEffects: { status: 'complete', routerStopped: true, sourceStopped: true } };
+                  return { core: receipt, harnessEffects: { status: 'complete', routerStopped: true, sourceStopped: true } };
                 } catch (error) {
                   if ((error as { code?: string }).code !== 'SOURCE_STOP_PENDING') throw error;
-                  return { receipt: null, harnessEffects: { status: 'pending', routerStopped: true, sourceStopped: false } };
+                  return { core: null, harnessEffects: { status: 'pending', routerStopped: true, sourceStopped: false } };
                 } finally {
                   void observation?.refresh();
                 }
