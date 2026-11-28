@@ -112,7 +112,7 @@ export interface HarnessAgentRegistration {
   /** Optional reconciliation reads the original operation and never redispatches it. */
   reconcile?: (operation: HarnessOperation, agentId: string, request: HarnessRequest) => Promise<unknown>;
 }
-export type HarnessAgentReceipt<T> = T | Readonly<{ core: T; harnessEffects: HarnessJson }>;
+export type HarnessAgentReceipt<T> = T | Readonly<{ core: T; harnessEffects: HarnessJson }> | Readonly<{ status: 'unknown'; requestId: string }>;
 export interface HarnessAgents {
   getState(agentId: string): Promise<AgentSessionState>;
   getStats(agentId: string): Promise<AgentSessionStats>;

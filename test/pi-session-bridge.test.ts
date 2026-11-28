@@ -149,6 +149,10 @@ test('Guest native SDK carries context into actual model requests and runs selec
   const stats = await command('stats', 'core_session_get_stats');
   assert.equal(stats.sessionUsage.source, 'pi-session');
   assert.equal(stats.sessionUsage.toolCalls, 2);
+  const messages = await command('message-identities', 'core_session_get_messages');
+  const assistantEnd = records.findLast(r => r.type === 'message_end' && r.message?.role === 'assistant');
+  const assistantView = messages.messages.findLast((message: any) => message.role === 'assistant');
+  assert.equal(assistantView.id, assistantEnd.messageId);
   assert.equal(records.filter(r => r.type === 'core_context_disposition' && r.status === 'appended').length, 2);
   child.stdin.end();
 });
