@@ -69,6 +69,9 @@ function fingerprint(value: unknown) { return createHash('sha256').update(stable
 
 /** One live Run. The Harness retains ownership of collaboration and resource cleanup. */
 export function createHarnessSession(definition: ProjectHarness, options: HarnessSessionOptions = {}): HarnessSession {
+  if (!definition || definition.apiVersion !== 1 || typeof definition.id !== 'string' || !/^[a-z0-9][a-z0-9_.:-]{0,127}$/.test(definition.id) || typeof definition.run !== 'function') {
+    throw projectError('INVALID_HARNESS_MODULE', 'Harness requires apiVersion 1, a stable id and run(context)');
+  }
   if (options.configuration !== undefined && options.configPath !== undefined) {
     throw projectError('INVALID_RUN_CONFIGURATION', 'configuration and configPath are mutually exclusive');
   }
@@ -216,7 +219,14 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     closeQuestions('run-finished');
     return { ...returned, questions: [...questions.values()].map(record => structuredClone(record.value)), operations: operationSummaries() };
   } };
-  const host = createProjectHost(wrapped, { launchDirectory: options.launchDirectory ?? process.cwd(), ...options }, raw => {
+  const host = createProjectHost(wrapped, { launchDirectory: options.launchDirectory ?? process.cwd(), ...options,
+    finalizeResult(business) {
+      return { ...business,
+        ...(fenceFailed ? { cleanup: { ...business.cleanup, status: 'pending' as const, pending: ['runtime-dispatch-fence-unconfirmed'] } } : {}),
+        questions: [...questions.values()].map(record => structuredClone(record.value)), operations: operationSummaries(),
+      };
+    },
+  }, raw => {
     const record = raw as { event?: HarnessJson };
     if (record.event && typeof record.event === 'object' && !Array.isArray(record.event) && 'kind' in record.event && record.event.kind === 'status') changed();
     else if (record.event !== undefined) { recordOutput(record.event); publish({ type: 'event', runId: host.status().runId, event: jsonCopy(record.event) }); }

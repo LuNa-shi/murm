@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -46,7 +46,12 @@ test('answering an existing question and stopping bypass a stalled input', async
     assert.equal(answer, 'yes');
     await session.stop({ requestId: 'stop' });
     assert.equal((await stalled).status, 'unknown');
-    assert.equal((await session.completion)!.cleanup.status, 'complete');
+    const completed = (await session.completion)!;
+    assert.equal(completed.cleanup.status, 'complete');
+    assert.equal(completed.operations?.find(operation => operation.requestId === 'input')?.status, 'unknown');
+    const saved = JSON.parse(await readFile(completed.reportPath!, 'utf8'));
+    assert.ok(['pending', 'unknown'].includes(saved.operations.find(operation => operation.requestId === 'input').status));
+    assert.equal((await session.getState()).result?.snapshotTruncated, true);
     assert.equal((await session.getState()).questions[0].answer, 'yes');
   } finally { await rm(cwd, { recursive: true, force: true }); await rm(outputRoot, { recursive: true, force: true }); }
 });
