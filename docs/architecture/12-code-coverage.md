@@ -282,7 +282,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [deploy/README.md](../../deploy/README.md) | Shared OpenSandbox and Worker installation, ownership and image publication | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `a04f4a3ded0a778b99bbb16eac58034478d845a37cb43baf307cfa872ae06032` |
+| [deploy/README.md](../../deploy/README.md) | Shared OpenSandbox and Worker installation, ownership and image publication | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `70744ea0664a5e2410d3475817de05b4c529fd7210438421b52b266e75acaae7` |
 
 ### development benchmarks (21)
 
