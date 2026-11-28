@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
-import { createRuntime, createSandbox, ServiceRegistry } from '@luna-shi/murm';
+import { createRuntime, createSandbox, createPiExecutor, ServiceRegistry } from '@luna-shi/murm';
 import { streamResponse } from '../scripts/local-setup-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 
@@ -21,6 +21,7 @@ test('native Session inputs, isolated configuration, resources, retry and queue 
 }, async t => {
   const execute = promisify(execFile);
   const image = process.env.MURM_CORE_TEST_IMAGE;
+  const piVersion = process.env.MURM_CORE_TEST_PI_VERSION ?? '1.3.0';
   assert.ok(image, 'An immutable fixture Worker image is required');
   const settings = JSON.parse(await readFile(process.env.MURM_TEST_SETTINGS ?? join(homedir(), '.config/murm/opensandbox.json'), 'utf8'));
   const outputDir = join(process.cwd(), 'experiments', `core-session-input-${Date.now()}`);
@@ -98,13 +99,14 @@ test('native Session inputs, isolated configuration, resources, retry and queue 
       deleted = runtime ? (await ownedContainers(runtime.id)).length === 0 : true;
     } finally {
       await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
-      await writeFile(join(outputDir, 'acceptance.json'), JSON.stringify({ failure: failure ?? (completed ? undefined : 'WORKLOAD_INCOMPLETE'), image, source: (await execute('git', ['rev-parse', 'HEAD'])).stdout.trim(), runtimeId: runtime?.id,
+      await writeFile(join(outputDir, 'acceptance.json'), JSON.stringify({ failure: failure ?? (completed ? undefined : 'WORKLOAD_INCOMPLETE'), image, piVersion, source: (await execute('git', ['rev-parse', 'HEAD'])).stdout.trim(), runtimeId: runtime?.id,
         requestCount: requests.length, requestPhases: requests.map(({ phase, summary }) => ({ phase, summary })), events: events.map(event => ({ type: event.type, child: event.event?.type, agentId: event.agentId })), receipts, cleanup, deleted }, null, 2), { mode: 0o600 });
     }
     assert.equal(cleanup?.cleanup, 'complete'); assert.equal(deleted, true); assert.equal(failure, undefined);
   });
   const host = settings.advertiseHost;
   runtime = await createRuntime({
+    executor: createPiExecutor({ version: piVersion }),
     sandbox: createSandbox({ lifecycleBaseUrl: settings.endpoint.replace(/\/$/, '').replace(/\/v1$/, '') + '/v1', apiKey: settings.apiKey, endpointHost: '127.0.0.1',
       resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 30000,
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } }),
@@ -123,6 +125,8 @@ test('native Session inputs, isolated configuration, resources, retry and queue 
   runtime.onEvent(event => events.push(event));
   const a = await runtime.spawn({ profile: 'full', requestId: 'a', files: { 'marker.txt': { encoding: 'utf8', data: seed } } });
   const b = await runtime.spawn({ profile: 'read', requestId: 'b' });
+  assert.equal((await runtime.session.getState(a.id)).executor.version, piVersion);
+  assert.equal((await runtime.session.getState(b.id)).executor.version, piVersion);
   const stateA = await runtime.session.getState(a.id); const stateB = await runtime.session.getState(b.id);
   assert.deepEqual([...stateA.tools].sort(), ['bash', 'read']); assert.deepEqual(stateB.tools, ['read']);
   assert.equal(stateA.configuration.retry.enabled, true); assert.equal(stateB.configuration.retry.enabled, false);
