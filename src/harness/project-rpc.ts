@@ -171,7 +171,9 @@ export async function runProjectRpc(
   const errorRecord = (code: string, id?: string) => ({ type: 'error', ...(id ? { id } : {}), ...location(), code });
   const reply = (id: string, result: unknown) => ({ type: 'reply', id, ...location(), result });
   const send = (record: unknown, replaceableState = false) => {
-    if (!closed) void write(record, replaceableState).catch(() => stopHarnessTransport(session, 'output-failed'));
+    // The CLI writer handles pipe failures. A replaced state can share the
+    // previous frame's flush promise without retaining a callback per update.
+    if (!closed) void write(record, replaceableState);
   };
 
   function watchCompletion() {
