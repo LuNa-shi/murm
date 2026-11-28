@@ -7,12 +7,13 @@ import { registerHooks } from 'node:module';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { transport } from './fixtures/core-agent-service-backend.js';
-import { createPeerMeshEventSubscription } from '../examples/peermesh/services/event-source.js';
 const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/peermesh-team-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { createPeerMeshTeam } = await import('../examples/peermesh/harness/team.js'); hooks.deregister();
+const { createPeerMeshTeam } = await import('../examples/peermesh/harness/team.js');
+const { createPeerMeshEventSubscription } = await import('../examples/peermesh/services/event-source.js');
+hooks.deregister();
 
 async function setup(t, extra = {}) {
   transport.reset(); transport.collectable = true;
