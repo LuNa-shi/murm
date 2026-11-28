@@ -540,7 +540,7 @@ export class AllocationLedger {
   }
 
   commitEvents(resourceKey: string, page: { workerInstanceId: string; streamEpoch: string; events: readonly { sequence: number; event: unknown }[];
-    nativeExecuting?: boolean; inputs?: readonly { caller: string; requestId: string; state: AllocationInput['state']; receipt?: unknown }[] }) {
+    nativeExecuting?: boolean; sessionResources?: unknown[]; inputs?: readonly { caller: string; requestId: string; state: AllocationInput['state']; receipt?: unknown }[] }) {
     if (page.events.length > 1024 || Buffer.byteLength(encode(page)) > 8 * 1024 ** 2) throw fault('INVALID_CONTRACT', 'Allocation event page exceeds its bounded budget');
     let gap = false;
     const result = this.transaction(() => {
@@ -571,6 +571,7 @@ export class AllocationLedger {
       }
       for (const input of page.inputs ?? []) this.writeInput(resourceKey, input.caller, input.requestId, input.state, input.receipt);
       if (page.nativeExecuting !== undefined) record.publicState = { ...record.publicState, nativeExecuting: page.nativeExecuting };
+      if (page.sessionResources !== undefined) record.privateState = { ...record.privateState, sessionResources: page.sessionResources };
       record.afterSequence = cursor;
       return this.save(record);
     });

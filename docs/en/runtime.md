@@ -197,3 +197,9 @@ The module's default export is the original options object or an async zero-argu
 `runtime.probeWorkerEvent(agentId, { requestId, timeoutMs })` measures the real authenticated Worker-to-Core event path without a model request. Current Workers use bounded cursor long polling and explicit gap detection; an event gap fences new work and preserves uncertain resources.
 
 The [Kubernetes deployment profile](../../deploy/opensandbox-kubernetes/README.md) pins official components and generates private deployment inputs. The [capacity workload](../../benchmarks/kubernetes/README.md) defaults to a `not-run` plan. All 2/8/32/128/1,024 real cluster tiers remain `not-run`, and no cluster capacity is verified. A passing workload still requires the separate failure and recovery matrix before a capacity claim. Obtain owner approval before large experiments. The full ownership and retry contract is in [Architecture](../architecture/24-runtime-recovery.md).
+
+## Session controls and Harness shutdown
+
+The `session` group on Runtime controls a specified Agent. It exposes configure, compact, abortRetry, clearQueue, getState, getStats and getMessages. Structured context uses the existing send method with explicit append, nextTurn, steer or followUp delivery. All configuration values and results use root-exported murm types. The selected Guest executor owns the native Session and the Host uses its confirmed configuration and receipts. The [Agent guide](agents.md#agent-session-settings-and-context) gives runnable call shapes.
+
+HarnessSession closes new Runtime and dispatcher admission synchronously at Run stop. Previously admitted operations remain available for reconciliation. The Harness that registered the Runtime owns the subsequent stop or close, archival, required exports and physical cleanup.

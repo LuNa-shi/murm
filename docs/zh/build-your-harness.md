@@ -742,3 +742,7 @@ try {
 ---
 
 **下一部分**：看看仓库已经为你准备好的五种成熟多智能体协作机制——**[选择内置 Harness](harnesses/index.md)**。
+
+## 向客户端公开运行对象
+
+默认导出 `ProjectHarness`，声明 `apiVersion: 1` 和 `run(context)`。在 `markRunning()` 前登记支持的输入处理器，短时间内接纳工作，通过 `updateStatus` 和 `emit` 发布进展。Runtime 观察帮助函数接入成员与只读查询。需要变更时登记具体处理器，由协作调度器建立排他窗口并结算受影响的工作。客户端具备回答通道时，`context.askUser` 使用稳定来源与取消信号发问。[包外作者与客户端示例](../../examples/harness-session/README.md) 展示同一模块的进程内与 JSONL 用法。

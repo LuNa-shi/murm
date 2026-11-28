@@ -34,6 +34,8 @@ Only an open Run with confirmed Worker identity, startup, available lease, event
 
 If Controller loss occurs after atomic export publication and before its ledger checkpoint, recovery verifies the original manifest and the published file sizes, modes and digests before recording the local export. Existing verified exports are not transferred again. An invalid export stays pending.
 
+The durable cursor commits a successful Guest Session attestation and the observed resource list in the same transaction. Takeover restores this attestation only after reattaching to the original Worker and stream. The restoration contract includes the configured before-compact timeout. New compaction requests use the supplied original hook once authority is restored. A request observed while recovery is still fenced receives a stop decision. The recovery contract covers public input receipts. Session mutation receipt maps and in-flight hooks belong to the original Controller process.
+
 ## Leases and finite export retention
 
 Renewal records requested expiry before sending the official SDK operation and persists actual observed expiry after confirmation. A lost response is reconciled by query. Local intended expiry is never promoted into confirmed server expiry. Scheduling uses actual expiry, safety lead and jitter, and limits concurrent renewals to four by default in durable mode. New work is fenced when confirmed remaining lease is insufficient or unknown. TTL, input waits, model budgets and Harness deadlines remain separate limits.

@@ -1,14 +1,32 @@
+import { reconcileRuntimeReceipt } from '../core/runtime-admissions.js';
 import type { Runtime } from '@luna-shi/murm';
 import { ProjectPreflightError } from './project-input.js';
+import type { HarnessAgentRegistration } from './harness-session-types.js';
 import type { HarnessJson, ProjectHarnessContext, ProjectHarnessResult } from './project-harness.js';
 
 const json = (value: unknown): HarnessJson => JSON.parse(JSON.stringify(value));
 
 /** Subscribe before spawn and serialize reads prompted by state changes. */
-export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessContext, business?: () => unknown) {
+export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessContext, business?: () => unknown | Promise<unknown>,
+  controls: Omit<HarnessAgentRegistration, 'runtime'> = {}) {
+  const unregister = context.registerAgentControls({ runtime, ...controls });
   let pending = false;
   let refreshing = false;
   let closed = false;
+  const observation = new AbortController();
+  const signal = AbortSignal.any([context.signal, observation.signal]);
+  async function read<T>(work: Promise<T> | T): Promise<T> {
+    signal.throwIfAborted();
+    let timer: NodeJS.Timeout | undefined;
+    const cancelled = Promise.withResolvers<never>();
+    const abort = () => cancelled.reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+      return await Promise.race([Promise.resolve(work), cancelled.promise, new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error('Observation timed out')), 10_000);
+      })]);
+    } finally { clearTimeout(timer); signal.removeEventListener('abort', abort); }
+  }
 
   async function refresh() {
     pending = true;
@@ -18,9 +36,10 @@ export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessC
       while (pending && !closed) {
         pending = false;
         try {
-          const agents = await runtime.list();
-          if (!closed) context.updateStatus({
-            agents: json(agents), business: json({ runtimeId: runtime.id, runtimeState: runtime.state, detail: business?.() ?? null }),
+          const agents = await read(runtime.list());
+          const detail = await read(business?.() ?? null);
+          if (!closed && !context.signal.aborted) context.updateStatus({
+            agents: json(agents), business: json({ runtimeId: runtime.id, runtimeState: runtime.state, detail }),
           });
         } catch {
           if (!closed) context.emit({ kind: 'observation-error', code: 'RUNTIME_STATE_UNAVAILABLE' });
@@ -34,12 +53,12 @@ export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessC
   const unsubscribe = runtime.onEvent(event => {
     if (event.type === 'agentChanged' || event.type === 'runtimeChanged' || event.type === 'management') {
       void refresh();
-    } else if (!closed) {
+    } else if (!closed && !context.agentEventsManaged) {
       context.emit({ kind: 'agent', event: json(event) });
     }
   });
   void refresh();
-  return { refresh, close() { closed = true; unsubscribe(); } };
+  return { refresh, reconcile: (agentId: string, operation: string, requestId: string) => reconcileRuntimeReceipt(runtime, agentId, operation, requestId), close() { closed = true; observation.abort(); unsubscribe(); unregister(); } };
 }
 
 export async function projectConfiguration<C>(context: ProjectHarnessContext, defaults: () => Promise<{ default: unknown }>) {
@@ -62,7 +81,7 @@ export function projectResult(report: any, context: ProjectHarnessContext, detai
   const pending = receipt?.pending ?? null;
   const cleanupConfirmed = !report.cleanupFailure && (!receipt ||
     (receipt.cleanup === 'complete' && (receipt.agents ?? []).every((agent: any) => agent.execution === 'stopped' && agent.cleanup === 'complete')));
-  const exportPending = pending?.some((entry: any) => entry.action === 'collect-artifacts');
+  const exportPending = pending?.some((entry: any) => ['archive-session', 'collect-artifacts'].includes(entry.action));
   const outcome = context.signal.aborted ? 'cancelled' :
     report.businessFailure || report.reportSaveFailure ? 'failed' : 'completed';
   return {
@@ -75,7 +94,10 @@ export function projectResult(report: any, context: ProjectHarnessContext, detai
       cleanupFailure: report.cleanupFailure ?? null, reportSaveFailure: report.reportSaveFailure ?? null,
       detail: detail ?? null,
     }),
-    artifacts: (receipt?.agents ?? []).flatMap((agent: any) => (agent.artifacts ?? []).map((path: string) => ({ agentId: agent.agentId, path }))),
+    artifacts: (receipt?.agents ?? []).flatMap((agent: any) => [
+      ...(agent.artifacts ?? []).map((path: string) => ({ agentId: agent.agentId, path })),
+      ...(agent.sessionArchive ? [{ agentId: agent.agentId, kind: 'session-archive', path: agent.sessionArchive }] : []),
+    ]),
     ...(exportPending ? { export: { status: 'pending' } } : {}),
     cleanup: {
       status: cleanupConfirmed ? 'complete' : 'pending',

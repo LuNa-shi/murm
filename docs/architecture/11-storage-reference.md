@@ -68,7 +68,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Core Runtime allocation ownership
 
-Source: [src/core/allocation-ledger.ts](../../src/core/allocation-ledger.ts); source SHA-256: `ccc0b168b1c99cb6e15d3eac1bc9b5156ec6496f0f29c4638fba38b4ba521187`.
+Source: [src/core/allocation-ledger.ts](../../src/core/allocation-ledger.ts); source SHA-256: `377a9087b964335e1bc97ca5c84c0922b3fb126b0657fc6a8570228eae6c43a9`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS allocation_run (id INTEGER PRIMARY KEY CHECK (id = 1), body TEXT NOT NULL);

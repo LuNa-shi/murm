@@ -7,6 +7,10 @@ order: 11
 
 **TaskPool** keeps a pool of workers making forward progress even as individual Agents finish, time out, or rotate. Each Agent starts read-only to discover ready Tasks, acquires an exclusive lease on one Task, receives host-installed writable files, publishes reusable Materials, and saves verified revisions back into the shared Workspace. Source: [examples/taskpool](https://github.com/LuNa-shi/murm/tree/main/examples/taskpool).
 
+## Project Session
+
+`session.input({ taskId, input, mode }, { requestId })` captures the Task’s current Execution, owner, and fence. The controller rechecks them before dispatch and reports `not_submitted` when there is no current route. Feedback applies to that execution. The Task contract and later attempts keep their own state.
+
 ## Quick run (CLI)
 
 With `MURM_MODEL_URL` and `MURM_MODEL_TOKEN` configured (see [Quickstart](../quickstart.md)), launch TaskPool directly against a project directory:

@@ -25,12 +25,24 @@ const substrate = {
       throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid Substrate sandbox configuration');
     }
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
+    let business: unknown = { stage: 'startup' };
+    function progress(snapshot: unknown) {
+      business = snapshot;
+      void observation?.refresh();
+    }
     try {
       const report = await runSubstrate({
         sandbox: sandboxHandle, executor: configuration.executor, connection, filePolicy: configuration.filePolicy, models, image, model, poolSize, maxRounds, workTimeoutMs, turnTimeoutMs, closeTimeoutMs,
         runId: context.runId, outputDir: context.outputDir, question: context.input.prompt, files: context.initial.files,
-        onRuntime: (runtime: Parameters<typeof observeProjectRuntime>[0]) => { observation = observeProjectRuntime(runtime, context); },
-        onReady: () => context.markRunning(),
+        onRuntime: (runtime: Parameters<typeof observeProjectRuntime>[0]) => { observation = observeProjectRuntime(runtime, context, () => business); },
+        onReady: ({ peerIds, snapshot }: { peerIds: string[]; snapshot: unknown }) => {
+          progress({ stage: 'running', peerIds, publication: snapshot });
+          context.markRunning();
+        },
+        onCycle: ({ agentId, round, attempt, snapshot }: { agentId: string; round: number; attempt: number; snapshot: unknown }) =>
+          progress({ stage: 'cycle', agentId, round, attempt, publication: snapshot }),
+        onPeerStop: ({ agentId, receipt, snapshot }: { agentId: string; receipt: unknown; snapshot: unknown }) =>
+          progress({ stage: 'peer-stopped', agentId, receipt, publication: snapshot }),
       }, context.signal);
       const result = projectResult(report, context, report.substrate);
       return { ...result, acceptance: { status: 'not-run' },

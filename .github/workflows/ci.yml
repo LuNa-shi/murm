@@ -42,6 +42,8 @@ jobs:
           trap 'rm -rf -- "$package_dir"' EXIT
           npm pack --loglevel=error --pack-destination "$package_dir"
           npm install --prefix "$package_dir/consumer" --prefer-offline --omit=dev --ignore-scripts --no-audit --no-fund "$package_dir"/*.tgz
+          tar -xzf "$package_dir"/*.tgz -C "$package_dir" package/examples/harness-session/package.json
+          npm install --prefix "$package_dir/package/examples/harness-session" --prefer-offline --no-save --ignore-scripts --no-audit --no-fund "$package_dir"/*.tgz
       - run: npm test
 
   trace-viewer:

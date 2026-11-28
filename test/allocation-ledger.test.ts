@@ -142,14 +142,16 @@ test('input receipts and events commit before their cursor and survive recovery 
   const { ledger, options } = await fixture(t); ready(ledger);
   const input = { resourceKey: intent.resourceKey, caller: 'host', requestId: 'send', inputId: 'native-input', parameterFingerprint: 'send-parameters', parameters: { input: 'private prompt' } };
   ledger.reserveInput(input); ledger.recordInput(intent.resourceKey, 'host', 'send', 'dispatched');
-  const page = { workerInstanceId: 'instance', streamEpoch: 'stream', events: [{ sequence: 1, event: { type: 'accepted', inputId: 'native-input' } }],
-    inputs: [{ caller: 'host', requestId: 'send', state: 'accepted', receipt: { inputId: 'native-input', status: 'accepted' } }] };
+  const page = { workerInstanceId: 'instance', streamEpoch: 'stream', events: [{ sequence: 1, event: { type: 'accepted', inputId: 'native-input' } },
+    { sequence: 2, event: { type: 'core_session_ready', resources: [{ path: 'session-resource' }] } }],
+    sessionResources: [{ path: 'session-resource' }], inputs: [{ caller: 'host', requestId: 'send', state: 'accepted', receipt: { inputId: 'native-input', status: 'accepted' } }] };
   ledger.commitEvents(intent.resourceKey, page);
-  assert.equal(ledger.commitEvents(intent.resourceKey, page).afterSequence, 1);
-  assert.equal(ledger.events(intent.resourceKey).length, 1);
+  assert.equal(ledger.commitEvents(intent.resourceKey, page).afterSequence, 2);
+  assert.equal(ledger.events(intent.resourceKey).length, 2);
   ledger.close();
   const recovered = AllocationLedger.open(options); t.after(() => recovered.close());
-  assert.equal(recovered.get(intent.resourceKey).afterSequence, 1);
+  assert.equal(recovered.get(intent.resourceKey).afterSequence, 2);
+  assert.deepEqual(recovered.get(intent.resourceKey).privateState.sessionResources, [{ path: 'session-resource' }]);
   assert.equal(recovered.inputs(intent.resourceKey)[0].state, 'accepted');
   assert.equal(recovered.reserveInput({ ...input, inputId: 'unused' }).inputId, 'native-input');
   assert.throws(() => recovered.reserveInput({ ...input, requestId: 'new' }), { code: 'NOT_ALLOWED' });

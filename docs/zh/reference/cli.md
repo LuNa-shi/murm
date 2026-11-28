@@ -107,6 +107,12 @@ node dist/scripts/read-harness-result.js --run-directory <dir> --runtime-id <id>
 
 内置 Harness 复用的辅助模块（`src/harness/run-input.ts`、`src/harness/run-report.ts`）属于仓库内部源码，而非 `@luna-shi/murm` 包的额外导出。
 
+### 会话选项与控制
+
+`--lifetime task|interactive` 选择生命周期，默认 `task`。Subagents 支持持续到期限或停止的前台 `interactive`。`--interaction none|questions` 声明客户端是否能回答，默认 `none`。带 `--prompt` 的显式前台入口立即发起工作。启用互动或问答后通过 JSONL 接收后续命令。`--mode rpc` 等待 `run` 命令启动。
+
+`describe` 查询能力，`status` 读取当前快照，`answer` 按 `questionId` 回答，`agent.getState`、`agent.getStats`、`agent.getMessages` 查询底层会话。成员变更可用 `agent.configure`、`agent.compact`、`agent.abortRetry`、`agent.clearQueue`、`agent.send`、`agent.interrupt` 与 `agent.stop`，实际开放范围由 Harness 和执行器决定。`stop` 收尾整个 Run。最终结果分别记录保存和清理事实。
+
 ## murm recover
 
 ```sh

@@ -159,3 +159,9 @@ For host `murm` commands, container `swarm` commands, and environment variables,
 `recoverRuntime(options: RecoverRuntimeOptions): Promise<Runtime>` is a public root export. Options extend `CreateRuntimeOptions` with `runDirectory`, optional `cleanupOnly`, and `restoreService(definition): Promise<ServiceRegistration | undefined>`. Creation options add `persistence: { deploymentId, contract, retainForMs? }` and `operationLimits`. Recovery verifies the original contract and same-host, same-boot ownership.
 
 `runtime.probeWorkerEvent(agentId, { requestId, timeoutMs? })` returns `{ requestId, elapsedMs }` after a correlated Worker event reaches Core. It requires a live Agent and uses the ordinary event ingestion path. See [Runtime recovery](../runtime.md#durable-recovery-and-kubernetes).
+
+## HarnessSession
+
+Create a `HarnessSession` with `createHarnessSession(projectHarness, options)` from the package root. Choose `lifetime`, a resolved `configuration` or `configPath`, `outputRoot` and optional `clientCapabilities.questions`. Use `describe()` to discover the input format, supported lifetimes and Agent controls. Start once with `start({ cwd, prompt }, { requestId })`. Follow `onEvent(handler, { initialSnapshot: true })` or get the current view with `getState()`. Submit supported work with `input(payload, { requestId })` and answer a pending question with `respond(questionId, answer, { requestId })`. Call `stop({ requestId, reason })` and await `completion` to check cleanup and export.
+
+`HarnessRpcClient` takes an existing piped child process, exposes a `ready` promise and implements the same operations over JSONL. The caller manages the process. The [standalone example](../../../examples/harness-session/README.md) shows direct SDK, RPC and terminal clients. See the [Harness lifecycle manual](../../architecture/23-project-harness.md).

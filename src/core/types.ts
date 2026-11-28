@@ -5,9 +5,11 @@ import type { FilePolicy } from './file-policy.js';
 import type { ServiceRegistration, ServiceRegistry } from './services.js';
 import type { ServiceManifest } from './service-types.js';
 
+import type { AgentSessionConfig, ContextInput, ContextInputReceipt, ContextSendOptions, RuntimeHooks, RuntimeSession, SessionEvent } from './session-types.js';
 export {};
 
 export interface Profile {
+  session?: AgentSessionConfig;
   /** Optional Harness instructions added to the standard startup prompt. */
   prompt?: string;
   model: string;
@@ -32,6 +34,7 @@ export interface CreateRuntimeOptions {
   maxAgents: number;
   outputDir: string;
   agentAccessPolicy?: AgentAccessPolicy;
+  hooks?: RuntimeHooks;
   operationLimits?: OperationLimits;
   persistence?: { deploymentId: string; contract: string; retainForMs?: number };
 }
@@ -103,6 +106,7 @@ export interface CollectionSpec {
 export type WorkspaceOptions = { id: string; mode: 'read-only' | 'read-write' };
 
 export interface SpawnOptions {
+  session?: AgentSessionConfig;
   forkFrom?: string;
   requestId: string;
   profile: string;
@@ -181,6 +185,7 @@ export interface AgentSpawnReceipt {
 
 export type AgentEvent = { agentId: string } & (
   | { type: 'workerProbe'; requestId: string }
+  | SessionEvent
   | { type: 'output'; text: string }
   | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
   | { type: 'error'; error: ErrorInfo; fatal: boolean }
@@ -339,6 +344,7 @@ export interface Runtime {
     pendingSubscriberCallbacks: number;
     queues: Record<'prepare' | 'stop' | 'transfer' | 'reconcile', { active: number; queued: number }>;
   };
+  readonly session: RuntimeSession;
   spawn(options: SpawnOptions): Promise<AgentInfo>;
   get(agentId: string): Promise<AgentInfo>;
   list(filter?: AgentListFilter): Promise<AgentInfo[]>;
@@ -346,6 +352,7 @@ export interface Runtime {
   probeWorkerEvent(agentId: string, options: { requestId: string; timeoutMs?: number }): Promise<{ requestId: string; elapsedMs: number }>;
   send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
   send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
+  send(agentId: string, input: ContextInput, options: ContextSendOptions): Promise<ContextInputReceipt>;
   onEvent(handler: (event: RuntimeEvent) => void | Promise<void>): () => void;
   stop(agentId: string, options?: StopOptions): Promise<StopReceipt>;
   close(options?: CloseOptions): Promise<CloseReceipt>;

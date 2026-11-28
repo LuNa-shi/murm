@@ -7,6 +7,8 @@ These terms describe the current implementation. Read [How murm works](docs/en/c
 | Term | Meaning |
 | --- | --- |
 | **Harness** | The host application that composes Profiles, Services and a collaboration policy. It chooses when to create Agents, route work, check results and finish. |
+| **ProjectHarness** | A project entry definition that supplies `run(context)`, declares its lifetime and registers the input and control policies for its work. |
+| **HarnessSession** | The public handle for one foreground Harness Run. SDK and RPC clients share its admission, member controls, questions, live state and completion. |
 | **Core** | The reusable library exposed through the `@luna-shi/murm` package. Its root entry provides Sandbox and Runtime creation, Service author APIs and public types. |
 | **Runtime** | One live Core instance managing its Agents, capacity, authenticated Service access, input delivery, observation and cleanup. |
 | **Run** | One execution of a Harness, identified and recorded through a Runtime. A Harness adds its own business outcome and evidence. |
@@ -19,6 +21,7 @@ These terms describe the current implementation. Read [How murm works](docs/en/c
 | **Sandbox Provider** | Trusted integration implementing Sandbox readiness, allocation, Worker transport, file transfer and cleanup. The default Provider connects through the OpenSandbox API. |
 | **Slot** | One unit of a Runtime's configured Agent capacity. An idle or settled Agent still occupies it; confirmed cleanup releases it. |
 | **Session** | An Agent's conversation and executor context retained across input turns. A Session is distinct from the current execution activity. |
+| **Agent session controls** | The Runtime's `session` methods for one Agent's effective settings, messages, statistics, compaction, retry and queues. A HarnessSession exposes the operations the Harness has authorized for its members. |
 | **Working directory** | An Agent's project files, private by default. A Harness can explicitly select a shared workspace or publish files through its Services. |
 | **Service** | A named capability with a manifest, operations and an adapter. It may hold collaboration state or connect an existing application. |
 | **Bridge** | The trusted host boundary that authenticates Agent calls, discovers permitted operations, validates requests and invokes Service adapters. |

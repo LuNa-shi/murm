@@ -7,6 +7,10 @@ order: 15
 
 **Lead-Worker**（`examples/lead-worker/harness/`）适合需要一人统筹方向、同时确保一线执行反馈真正落入下一轮规划的团队。1 名主管（`lead`）与 2–7 名执行成员（`helper1..helperN`）通过本地 SQLite 任务板（`board`）和 Gitea 协作：系统在数据库层强制**先读后写**——主管必须先读完一线反馈才能发布新方向，成员必须先读完新方向才能提交交付。除固定团队外，还支持运行中动态扩编与新增检查 Service（见 [examples/lead-worker/README.md](../../../examples/lead-worker/README.md)）。
 
+## 项目 Session
+
+static 和 dynamic 拓扑都通过公共 Session 公开工作阶段、活动成员、Board 和交付状态。当前开放观察和整次 Run 停止。
+
 ## 快速运行（CLI）
 
 先按 [examples/lead-worker/README.md](../../../examples/lead-worker/README.md) 配置 Gitea 与模型环境变量，再在项目目录启动：

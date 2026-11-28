@@ -20,7 +20,8 @@ def cli(operation,value,request_id):
 pid=os.getppid()
 for _ in range(12):
  stat=pathlib.Path(f'/proc/{pid}/stat').read_text(); fields=stat[stat.rindex(')')+2:].split()
- if stat[stat.index('(')+1:stat.rindex(')')] in ['pi','pi-rpc']:
+ command=pathlib.Path(f'/proc/{pid}/cmdline').read_bytes().split(bytes([0]))
+ if stat[stat.index('(')+1:stat.rindex(')')] in ['pi','pi-rpc'] or any(part.endswith(b'/pi-session-bridge.js') for part in command):
   identity={'pid':pid,'starttime':fields[19]}; break
  pid=int(fields[1]); assert pid>1
 else: raise AssertionError('Native Pi process missing')

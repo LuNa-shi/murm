@@ -200,3 +200,9 @@ murm recover --run-dir /private/runs/original-runtime-id --config /private/recov
 `runtime.probeWorkerEvent(agentId, { requestId, timeoutMs })` 通过真实鉴权 Worker 事件链路测量 Core 的观测时间，不调用模型。当前 Worker 使用有界游标长轮询；事件缺口会暂停新工作权限并保留不确定资源。
 
 [Kubernetes 部署配置](../../deploy/opensandbox-kubernetes/README.md) 固定官方组件并生成私有部署输入。[容量工作负载](../../benchmarks/kubernetes/README.md) 默认只输出 `not-run` 计划。2/8/32/128/1,024 档真实集群实验均未运行，没有已验证的集群容量声明。工作负载通过后仍需独立完成故障与恢复矩阵，才能声明容量。大规模实验开始前必须得到 owner 批准。完整归属、重试和回收流程见 [Architecture](../architecture/24-runtime-recovery.md)。
+
+## 会话控制与 Harness 收尾
+
+Runtime 的 session 分组针对指定 Agent 提供 configure、compact、abortRetry、clearQueue、getState、getStats 和 getMessages。结构化 context 继续经 send 提交，并明确 append、nextTurn、steer 或 followUp。配置和结果使用包根导出的 murm 类型，原生 Session 由 Guest 执行器持有，Host 使用实际确认的配置与回执。[Agent 指南](agents.md#agent-会话设置与结构化-context) 包含调用示例。
+
+HarnessSession 整体停止时同步关闭 Runtime 和 dispatcher 的新工作接纳，既有操作仍可核对。登记 Runtime 的 Harness 负责后续 stop 或 close、归档、必需导出和物理清理。

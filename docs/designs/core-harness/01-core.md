@@ -5,6 +5,12 @@
 > 来源：[Notion Core 设计](https://app.notion.com/p/4214e07aa023818d80cdd0a88891299c)，源修订时间 `2026-11-23T11:10:12.147Z`。
 > 原始实现基线：`fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e`。正文与 API 附录记录其评审合同；当前实现见 Architecture，验收状态见原 Issue/PR。后续确认的变更按阶段入口衔接。
 
+## #271 后续确认的会话合同
+
+[#271](https://github.com/LuNa-shi/murm/issues/271) 在 `f522a42f1b381394206b3ab650144dd9ca264702` 设计基线上确认了 Agent 会话配置、结构化输入、查询、事件、压缩前控制和 HarnessSession。该决定更新本文涉及的启动前固定配置和固定四工具限制。默认仍提供 read/write/edit/bash，可在启动时显式选择受支持的工具和资源。Profile.session 提供默认值，spawn.session 按字段覆盖单个实例；runtime.session 允许动态修改 thinking、compaction/retry 开关与两种输入队列模式。模型、动态资源 reload、Session reset/switch/restore 与 Pi UI 桥继续由后续需求定义。
+
+runtime.session 是指定 Agent 的能力分组。HarnessSession 是一次多 Agent Run 的公共句柄，ProjectHarness.run(context) 继续定义协作过程。HarnessSession 的能力取执行器、Harness 授权和当前目标状态的交集，调度敏感操作由 Harness 登记处理器。SDK 与 RPC 共用受理、去重、问答和运行观察。完整 TUI、持久用户工作流、候选/apply 和后台 attach/detach 由 #252 验收。实现细节见 [Core Runtime](../../architecture/15-core-runtime.md#agent-session-control) 与 [Guest bridge](../../architecture/16-pi-opensandbox-backend.md#guest-sdk-session-bridge)。本次设计、实现、迁移、候选产物、测试和文档通过同一个 #271 实现 PR 评审。
+
 ## 设计概览
 
 murm Core 是面向开发者的 minimal multi-agent harness。它负责运行独立 Agent、提供连续输入和运行事件、落实执行隔离与能力授权。Harness 通过公开模块编写协作逻辑，组合任务池、消息、公共成果库或其他共享服务。
@@ -457,7 +463,7 @@ Q1–Q8 与上述交接要求保留为首版合同记录。后续实施引用适
 
 ## 附录 A：公共类型清单
 
-下列声明是 #255 的基础 SDK 目标清单，Sandbox 配置按 #262 更新。当前 Provider 生命周期类型及全部导出以包根声明和 SDK 参考为准。动态管理成员及类型按 #235 衔接；本附录不独立限制后续已确认扩展的根导出。
+下列声明是 #255 的基础 SDK 目标清单，Sandbox 配置按 #272 更新。当前 Provider 生命周期类型及全部导出以包根声明和 SDK 参考为准。动态管理成员及类型按 #235 衔接；本附录不独立限制后续已确认扩展的根导出。
 
 ```ts
 declare const sandboxBrand: unique symbol;
@@ -472,16 +478,12 @@ export interface SandboxConfig {
   lifecycleBaseUrl?: string;
   apiKey?: string;
   execdToken?: string;
-  endpointHost?: string;
   useServerProxy?: boolean;
   /** Assertion by the deployment administrator. Smoke verifies the actual policy. */
   egressMode?: 'dns+nft';
   resourceLimits?: { cpu: string; memory: string };
   commandTimeoutMs?: number;
   timeoutSeconds?: number;
-  isolation?:
-    | { network?: 'local-docker'; disk: { bytes: number; inodes: number } }
-    | { network?: 'api'; disk?: { bytes: number; inodes?: never } };
 }
 
 export interface SandboxProviderConfig {
@@ -534,7 +536,7 @@ export interface CreateRuntimeOptions {
   outputDir: string;
 }
 
-export declare function createSandbox(config: SandboxConfig | SandboxProviderConfig): Sandbox;
+export declare function createSandbox(config?: SandboxConfig | SandboxProviderConfig): Sandbox;
 export declare function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
 export declare function getExecutorCapabilities(executor: ExecutorKind): ExecutorCapabilities;
 

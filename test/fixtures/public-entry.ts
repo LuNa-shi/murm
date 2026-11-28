@@ -1,7 +1,7 @@
 export const rootExports = [
-  'DEFAULT_WORKER_IMAGE', 'EXECUTOR_ADAPTER_PROTOCOL', 'MurmError', 'ProjectPreflightError',
+  'DEFAULT_WORKER_IMAGE', 'EXECUTOR_ADAPTER_PROTOCOL', 'HarnessRpcClient', 'MurmError', 'ProjectPreflightError',
   'ServiceRegistry', 'checkGitProject', 'commitGitTree', 'completeFileTreeDigest',
-  'createCodexExecutor', 'createExecutorAdapter', 'createHttpJsonAdapter', 'createInProcessAdapter',
+  'createCodexExecutor', 'createExecutorAdapter', 'createHarnessSession', 'createHttpJsonAdapter', 'createInProcessAdapter',
   'createInputAdmission', 'createOwnedResources', 'createPiExecutor', 'createRuntime',
   'createSandbox', 'decodeFileTree', 'getExecutorCapabilities', 'httpClient',
   'importGitTree', 'initializeGitRepository', 'isGitTreePath', 'observeProjectRuntime',
