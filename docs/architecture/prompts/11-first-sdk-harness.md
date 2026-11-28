@@ -13,10 +13,10 @@ Read release-data.txt. Publish its reference and one short question asking the u
 
 The host registers this writable Profile. The writer gets the reference and question from the permitted Service.
 
-Body SHA-256: `836b265a81e2848e990297a62ae10526643a0c4e05d2bfbc4692cb60a51026c7`
+Body SHA-256: `850fc18599c7c2a4982a9c2d49097a0441985fe31685374992a85baa05139734`
 
 ````text
-Run swarm service invoke handoff take --stdin with input {} and request ID take-release. Read its reference. Use the write tool to create delivery.txt in your workspace with exactly two newline-terminated lines: reference=<reference> and channel=<channel>. The host provides the channel. Do not write into /tmp.
+Run swarm service invoke handoff take --request-id take-release. Use exactly that command with no additional input. Read the reference from its JSON result. Use the write tool to create delivery.txt in your workspace with exactly two newline-terminated lines: reference=<reference> and channel=<channel>. The host provides the channel. Do not write into /tmp.
 ````
 ## Handoff Service discovery
 
@@ -42,8 +42,8 @@ Read the reference in release-data.txt. Optional diagnostic: first attempt to pu
 
 The host interpolates channel from its terminal reader after restricting it to a lowercase channel identifier, then starts the writer and sends this input.
 
-Body SHA-256: `084bc2c577836746a8b6d90ff582174c94316af4b93b27ae2a8f5bffba5da369`
+Body SHA-256: `1be76a5fafc93c7c722e3f180c3b51046def9fd05b4806406497c6bb31d5fd92`
 
 ````text
-The user chose channel ${channel}. Get the reference using handoff take, then create delivery.txt exactly as instructed.
+The user chose channel ${channel}. Run the handoff command in your instructions, then create delivery.txt exactly as instructed.
 ````

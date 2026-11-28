@@ -33,7 +33,7 @@ print(json.loads(good)['reference'])
 PYTHON`;
   const writer = `python3 - <<'PYTHON'
 import json, pathlib, subprocess
-result = subprocess.check_output(['swarm','service','invoke','handoff','take','--stdin','--request-id=take-release'], input='{}', text=True)
+result = subprocess.check_output(['swarm','service','invoke','handoff','take','--request-id','take-release'], text=True)
 ref = json.loads(result)['reference']
 pathlib.Path('delivery.txt').write_text('reference='+ref+'\\nchannel=${channel}\\n')
 print(ref)

@@ -67,7 +67,7 @@ murm doctor
 将这五个文件保存到项目目录。应用只从 SDK 包根入口导入。
 
 - [main.ts](../../examples/first-harness/main.ts) 运行两个回合、显示问题、校验文件并报告清理。
-- [handoff.ts](../../examples/first-harness/handoff.ts) 注册 `publish`、`take`。一次 `take` 返回发布编号和内容。
+- [handoff.ts](../../examples/first-harness/handoff.ts) 注册 `publish`、`take`。一次 `take` 返回发布编号和问题。交付 Agent 可直接执行 `swarm service invoke handoff take --request-id take-release`。
 - [turn.ts](../../examples/first-harness/turn.ts) 提供可复用的第 1 版回合 helper。
 - [config.ts](../../examples/first-harness/config.ts) 为已安装的归档选择 Sandbox 和模型配置。
 - [tsconfig.json](../../examples/first-harness/tsconfig.json) 配置编译。
