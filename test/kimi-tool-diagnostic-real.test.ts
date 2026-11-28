@@ -37,12 +37,11 @@ test('one Kimi Agent diagnoses its actual Bash result continuation with at most 
       recordGeometry: true, failFast: true, onFailure: () => work.abort() });
     const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
     runtime = await work.create(() => createRuntime({ ...runtimeSettings({
-      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
-        apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
+      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
       bridge: { host: '0.0.0.0', publicUrl: process.env.MURM_CORE_TEST_BRIDGE_URL ?? `http://${host}:{port}` },
       modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 60_000, maxOutputTokens: 512 },
       models: { default: { provider: 'kimi_proxy', model: 'k3', requestId: 'diagnostic-input', upstream: { url: proxy.url, headers: {} } } },
-      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+      isolation: { network: 'api' },
     }), services: new ServiceRegistry(), profiles: { worker: { prompt: 'Use the one requested Bash call, then finish briefly. Never inspect credentials or configuration.', model: 'default', image, writable: true, services: {},
       collect: { paths: ['.'], includeGit: false, maxBytes: 64 * 1024, required: true } } }, maxAgents: 1, outputDir: join(directory, 'core') }));
     report.runtimeId = runtime.id;

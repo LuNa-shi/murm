@@ -20,7 +20,7 @@ function required(...names: string[]) {
 export function handoffConfig(): HandoffConfig {
   const executor = process.env.MURM_EXECUTOR ?? process.env.MURM_SDK_EXECUTOR ?? 'pi';
   if (executor !== 'pi' && executor !== 'codex') throw new Error('Use pi or codex for MURM_SDK_EXECUTOR');
-  const { image, advertiseHost, endpointSource: _endpointSource, ...sandbox } = resolveSandboxConnection({}, 'SDK');
+  const { image, advertiseHost, publicUrl, endpointSource: _endpointSource, ...sandbox } = resolveSandboxConnection({}, 'SDK');
   const token = process.env.MURM_MODEL_TOKEN ?? process.env.MURM_SDK_MODEL_TOKEN;
   const externalUrl = process.env.MURM_SDK_MESSAGE_URL;
   return {
@@ -34,7 +34,7 @@ export function handoffConfig(): HandoffConfig {
       ...sandbox,
       resourceLimits: { cpu: '1', memory: '1Gi' },
       },
-    connection: { advertiseHost,
+    connection: { publicUrl, advertiseHost,
       modelGateway: { requestTimeoutMs: 25_000,
       maxOutputTokens: executor === 'codex' ? null : 4096 },
     },

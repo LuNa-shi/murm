@@ -23,10 +23,10 @@ test('Core close stops a ready sibling while a late allocation keeps its origina
   const outputDir = await mkdtemp(join(tmpdir(), 'core-startup-slots-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const runtime = await createRuntime({ ...runtimeSettings({
-    sandbox: { lifecycleBaseUrl: provider.url }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
+    sandbox: { lifecycleBaseUrl: provider.url, apiKey: provider.apiKey, egressMode: 'dns+nft' }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
     modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
+    isolation: { network: 'api' },
   }), profiles: { worker: { image: 'fixture-image', model: 'default', prompt: 'Controlled startup', writable: false, services: {} } },
   services: new ServiceRegistry(), maxAgents: 2, outputDir });
   t.after(async () => { release(); provider.allowDeletion(); await runtime.close(); });

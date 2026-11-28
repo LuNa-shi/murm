@@ -256,7 +256,7 @@ test('accepted Bridge finish survives a disconnected caller and closes through t
   const url = new URL(credentials.environment.MURM_BRIDGE_URL);
   url.hostname = '127.0.0.1';
   const disconnected = new Promise((resolve, reject) => {
-    client = request(new URL('/call', url), { method: 'POST', headers: {
+    client = request(new URL(url.href.replace(/\/$/, '') + '/call'), { method: 'POST', headers: {
       authorization: `Bearer ${credentials.secretEnvironment.MURM_BRIDGE_TOKEN}`,
       'content-type': 'application/json',
     } });

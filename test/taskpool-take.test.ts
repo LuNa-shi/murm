@@ -16,7 +16,7 @@ async function fixture(t, hooks = {}, config = {}) {
   const root = await mkdtemp(join(tmpdir(), 'taskpool-take-'));
   let runtime, service, provider, stores;
   t.after(async () => { await service?.close(); provider?.allowDeletion(); await runtime?.close({ timeoutMs: 1000 }); stores?.close(); await rm(root, { recursive: true, force: true }); });
-  provider = await createLifecycleProvider(t, { fileOperation(action, input) { return { body: { result: action === 'snapshot' ? emptySnapshot(input) : replaced(input) } }; }, ...hooks, allowHostGit: true }); provider.allowDeletion();
+  provider = await createLifecycleProvider(t, { fileOperation(action, input) { return { body: { result: action === 'snapshot' ? emptySnapshot(input) : replaced(input) } }; }, ...hooks }); provider.allowDeletion();
   // TaskPool imports the public SDK. Load it after installing the lifecycle fixture.
   const { createRuntime, ServiceRegistry } = await import('@luna-shi/murm');
   const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
@@ -32,10 +32,10 @@ async function fixture(t, hooks = {}, config = {}) {
     workspaceId, workspaceManager: manager, contextService: context,
     missionDeadline: () => Date.now() + 60_000, executionTimeoutMs: 60_000, ...serviceConfig });
   const services = new ServiceRegistry(); services.registerService(service);
-  runtime = await createRuntime({ ...runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url },
+  runtime = await createRuntime({ ...runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url, apiKey: provider.apiKey, egressMode: 'dns+nft' },
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } } }),
+    isolation: { network: 'api' } }),
     profiles: { researcher: taskPoolResearcherProfile({ prompt: 'Fixed discovery', model: 'default', image: 'fixture', ...(config.collect ? { collect: config.collect } : {}) }) }, services, maxAgents: 2, outputDir: join(root, 'output') });
   const coordinator = createTaskPoolAgentCoordinator({ runtime, taskService: tasks, missionId });
   const spawn = id => coordinator.spawn({ legacySlotId: `slot:${id}`, requestId: id, profile: 'researcher', writable: false,
@@ -135,7 +135,7 @@ for (const { reason, invalidate, agentState } of [
   };
   const url = new URL(startup.env.MURM_BRIDGE_URL);
   url.hostname = '127.0.0.1';
-  const pending = fetch(`${url.origin}/call`, { method: 'POST',
+  const pending = fetch(`${url.href.replace(/\/$/, '')}/call`, { method: 'POST',
     headers: { authorization: `Bearer ${startup.secret_env.MURM_BRIDGE_TOKEN}`, 'content-type': 'application/json' },
     body: JSON.stringify({ service_id: 'task', operation: 'task_view', operation_id: 'closing-preview', payload: { task_id: f.task.task_id } }),
     signal: AbortSignal.timeout(5000) });

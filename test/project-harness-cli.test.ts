@@ -353,7 +353,7 @@ test('startup rejection records the configuration error and zero allocated resou
   await mkdir(project);
   for (const [id, setting] of [['notes', 'turnTimeoutMs: 0'], ['lead-worker', 'turnTimeoutMs: 0']]) {
     const config = join(directory, id + '.mjs');
-    await writeFile(config, `export default {image:'unused', sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1', endpointHost:'127.0.0.1'}, models:{}, ${setting}};`);
+    await writeFile(config, `export default {image:'unused', sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1'}, models:{}, ${setting}};`);
     await assert.rejects(execute(process.execPath, [cli, '--harness', id, '--cwd', project,
       '--prompt', 'A task', '--config', config, '--output-dir', join(directory, 'output')],
     { cwd: directory, timeout: 10_000 }), error => {

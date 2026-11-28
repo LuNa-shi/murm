@@ -25,10 +25,7 @@ function options(outputDir, model = 'k3', sandbox = {}) {
           upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} },
         },
       },
-      isolation: {
-        network: 'local-docker',
-        disk: { bytes: 32 * 1024 ** 2, inodes: 2048 },
-      },
+      isolation: { network: 'api' },
     }),
     profiles: {
       writer: {
@@ -204,9 +201,20 @@ test('Runtime rejects reserved or unsupported ordinary environment values at ass
 
 async function lifecycleFixture(t) {
   const requests = [];
+  const apiKey = 'fixture-lifecycle-key';
   let received;
   const first = new Promise(resolve => { received = resolve; });
   const server = createServer(async (request, response) => {
+    if (request.headers['open-sandbox-api-key'] !== apiKey) {
+      response.writeHead(401, { 'content-type': 'application/json' }).end('{}');
+      return;
+    }
+    if (request.method === 'GET') {
+      response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({
+        items: [], pagination: { page: 1, pageSize: 1, totalItems: 0, totalPages: 0, hasNextPage: false },
+      }));
+      return;
+    }
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     requests.push(JSON.parse(Buffer.concat(chunks).toString()));
@@ -215,7 +223,7 @@ async function lifecycleFixture(t) {
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
-  return { requests, first, url: `http://127.0.0.1:${server.address().port}/v1`, reject(response) {
+  return { requests, first, apiKey, url: `http://127.0.0.1:${server.address().port}/v1`, reject(response) {
     response.writeHead(400, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ message: 'Deterministic allocation rejection' }));
   } };
@@ -225,7 +233,7 @@ test('starting Agent reserves capacity before provider allocation and retains it
   const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-test-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const provider = await lifecycleFixture(t);
-  const config = options(outputDir, 'k3', { lifecycleBaseUrl: provider.url });
+  const config = options(outputDir, 'k3', { lifecycleBaseUrl: provider.url, apiKey: provider.apiKey });
   config.profiles.writer.model = 'default';
   const runtime = await createRuntime(config);
   t.after(() => runtime.close());
@@ -246,7 +254,7 @@ test('Runtime snapshots Profiles and a reusable Sandbox creates independently ow
   const outputDir = await mkdtemp(join(tmpdir(), 'murm-core-test-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const provider = await lifecycleFixture(t);
-  const config = options(outputDir, 'k3', { lifecycleBaseUrl: provider.url });
+  const config = options(outputDir, 'k3', { lifecycleBaseUrl: provider.url, apiKey: provider.apiKey });
   config.profiles.writer.model = 'default';
   const runtime = await createRuntime(config);
   t.after(() => runtime.close());

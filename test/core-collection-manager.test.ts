@@ -1,6 +1,13 @@
+import { sdkFixtureFetch } from '../test-support/opensandbox-sdk-fixture.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createOpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
+import { createOpenSandboxManager as createSdkManager } from '../src/core/sandbox/opensandbox-manager.js';
+
+
+
+function createOpenSandboxManager(options) {
+  return createSdkManager({ ...options, fetchImpl: sdkFixtureFetch(options.fetchImpl), waitForExecdReady: options.waitForExecdReady ?? false });
+}
 
 const spec = { paths: ['.'], includeGit: false, maxBytes: 1024, required: true };
 async function fixture() {
@@ -14,7 +21,7 @@ async function fixture() {
       if (url.includes('/endpoints/44772')) return json({ url: 'http://execd.test' });
       if (url.includes('/endpoints/44100')) return json({ url: 'http://worker.test' });
       if (url.endsWith('/health')) return json({ ok: true });
-      if (url.endsWith('/start')) return json({ result: { contract: { version: 'murm-core-v1', resources: [] }, project_files: { version: 0, writable: false } } });
+      if (url.endsWith('/start')) return json({ result: { contract: { version: 'murm-core-v2', resources: [] }, project_files: { version: 0, writable: false } } });
       if (url.endsWith('/stop')) return json({ result: { stopped } });
       if (url.endsWith('/core/files/collect') || url.endsWith('/core/session/archive')) {
         assert.match(options.headers.authorization, /^Bearer /);

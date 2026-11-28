@@ -1,26 +1,15 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { lstat, readFile } from 'node:fs/promises';
-import { join, relative, resolve } from 'node:path';
-import { isDeepStrictEqual } from 'node:util';
+import { WorkerClient } from './worker-client.js';
+import { required, envs, safeDiagnostic, safeUrl } from './sandbox-validation.js';
+import { OpenSandboxSdk, sdkOperation, sdkExpiry } from './opensandbox-sdk.js';
+import { randomUUID } from 'node:crypto';
+import { DEFAULT_EGRESS_PORT } from '@alibaba-group/opensandbox';
 import { ERROR_CODES, MurmError } from '../../errors.js';
 import { openSandboxAgentKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
-import { decodeFileSeed, fileProtocol, fileTransferProtocol, snapshotFileSeed } from '../files/core-file-seed.js';
-import { fileTreeFrames, receiveFileTree } from '../files/file-tree-stream.js';
-import { DEFAULT_FILE_POLICY } from '../file-policy.js';
-import { PI_SESSION_PROTOCOL } from '../executor-adapter.js';
-import type { FileTree } from '../types.js';
-import { snapshotCollectionSpec, MAX_COLLECTION_LINE_BYTES } from '../files/core-collection.js';
 
 const DEFAULT_EXECd_PORT = 44772;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS = 60 * 60_000;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
-const SECRET_ENVIRONMENT = /(token|secret|passwd|password|api_?key|credential|private_?key)/i;
-
-function required(value: any, name: any) {
-  if (typeof value !== 'string' || value.length === 0) throw new TypeError(`${name} is required`);
-  return value;
-}
 
 function baseUrl(value: any) {
   const url = new URL(required(value, 'lifecycleBaseUrl'));
@@ -32,29 +21,6 @@ function timeout(value: any) {
   if (!Number.isFinite(value) || value <= 0 || value > MAX_TIMEOUT_MS) {
     throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `sandbox timeout must be between 1 and ${MAX_TIMEOUT_MS} ms`, { timeout_ms: value });
   }
-  return value;
-}
-
-function envs(value: any, { allowSecrets = false }: any = {}) {
-  if (value === undefined || value === null) return {};
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'sandbox env must be an object');
-  const result: Record<string, any> = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `sandbox env key is invalid: ${key}`);
-    if (!allowSecrets && SECRET_ENVIRONMENT.test(key)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, `sandbox env key is not allowed: ${key}`);
-    if (typeof item !== 'string' || item.length > 4096) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `sandbox env value is invalid: ${key}`);
-    result[key] = item;
-  }
-  return result;
-}
-
-const SENSITIVE_FIELD = /(authorization|api[-_]?key|token|secret|password|passwd|credential|private[-_]?key)/i;
-
-function safeDiagnostic(value: any, depth: any = 0): any {
-  if (depth > 3) return '[truncated]';
-  if (typeof value === 'string') return value.replace(/(?:bearer\s+|api[-_]?key\s*[=:]\s*)[^\s,;]+/ig, '[redacted]').slice(0, 2_000);
-  if (Array.isArray(value)) return value.slice(0, 20).map((item: any) => safeDiagnostic(item, depth + 1));
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).slice(0, 40).map(([key, item]: any) => [key, SENSITIVE_FIELD.test(key) ? '[redacted]' : safeDiagnostic(item, depth + 1)]));
   return value;
 }
 
@@ -85,85 +51,25 @@ function underWorkspace(value: any) {
   return cwd;
 }
 
-function safeUrl(value: any) {
-  try {
-    const url = new URL(value);
-    url.username = '';
-    url.password = '';
-    url.search = '';
-    url.hash = '';
-    return url.toString();
-  } catch {
-    return '[invalid provider URL]';
-  }
-}
-
 function appendOutput(current: any, text: any, maxBytes: any): [string, boolean] {
   const next = current + String(text ?? '');
   if (Buffer.byteLength(next) <= maxBytes) return [next, false];
-  return [next.slice(0, maxBytes), true];
+  return [new TextDecoder().decode(Buffer.from(next).subarray(0, maxBytes), { stream: true }), true];
 }
 
 function jsonData(data: any) {
   if (typeof data !== 'string') return data;
   try { return JSON.parse(data); } catch { return data; }
 }
-
-function parseSse(text: any) {
-  const events: any[] = [];
-  for (const block of String(text ?? '').split(/\r?\n\r?\n/)) {
-    if (!block.trim()) continue;
-    let event = 'message';
-    const data: any[] = [];
-    for (const line of block.split(/\r?\n/)) {
-      if (line.startsWith('event:')) event = line.slice(6).trim();
-      if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
-    }
-    if (data.length === 0) {
-      // Execd v1.1 emits newline-delimited JSON despite advertising the SSE
-      // media type. Treat each JSON record as an SSE-equivalent event.
-      const record: any = jsonData(block.trim());
-      if (record && typeof record === 'object' && !Array.isArray(record)) {
-        events.push({ event: record.type ?? record.event ?? 'message', data: record });
-        continue;
-      }
-    }
-    events.push({ event, data: jsonData(data.join('\n')) });
-  }
-  return events;
-}
-
-function responseValue(body: any) {
-  if (!body || typeof body !== 'object') return body;
-  return body.result ?? body.data ?? body;
-}
-
-function endpointUrl(value: any) {
-  const normalize = (candidate: any) => {
-    if (typeof candidate !== 'string' || candidate.length === 0) return null;
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(candidate)) return candidate;
-    // OpenSandbox 1.2 Docker returns host:port/path for proxied endpoints;
-    // the SDK examples also allow a URL-shaped value. Execd is HTTP here.
-    return `http://${candidate.replace(/^\/\//, '')}`;
-  };
-  if (typeof value === 'string') return normalize(value);
-  if (value?.url) return normalize(value.url);
-  if (value?.endpoint?.url) return normalize(value.endpoint.url);
-  if (value?.endpoint) return normalize(value.endpoint);
-  if (Array.isArray(value) && value.length === 1) return endpointUrl(value[0]);
-  return null;
-}
-
-function endpointForHost(value: any, host: string | null, proxyBase?: string) {
-  const endpoint = endpointUrl(value);
-  if (!endpoint) return null;
+function endpointUrl(value: { endpoint: string }, proxyBase?: string) {
+  if (typeof value?.endpoint !== 'string' || !value.endpoint) return null;
+  const endpoint = /^[a-z][a-z0-9+.-]*:\/\//i.test(value.endpoint) ? value.endpoint : `http://${value.endpoint}`;
   const url = new URL(endpoint);
   if (proxyBase) {
     const base = new URL(proxyBase);
     if (url.host === base.host || (url.hostname === base.hostname && !url.port)) url.protocol = base.protocol;
     if (url.origin !== base.origin || !url.pathname.startsWith(`${base.pathname.replace(/\/$/, '')}/sandboxes/`)) return null;
   }
-  if (host) url.hostname = host;
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) return null;
   return url.toString().replace(/\/$/, '');
 }
@@ -195,9 +101,9 @@ export class OpenSandboxManager {
   declare environment: any;
   declare volumes: any;
   declare execdPort: any;
-  declare endpointHost: any;
   declare requireManagementAuth: boolean;
   declare useServerProxy: boolean;
+  declare egressMode?: 'dns+nft';
   declare workerPort: any;
   declare workerCommand: any;
   declare foregroundSession: any;
@@ -213,6 +119,8 @@ export class OpenSandboxManager {
   declare reconciliationIds: any;
   declare projectInstallReceipts: any;
   declare verified: any;
+  readonly sdk: OpenSandboxSdk;
+  readonly worker: WorkerClient;
 
   constructor({
     lifecycleBaseUrl,
@@ -228,12 +136,14 @@ export class OpenSandboxManager {
     endpointHost = null,
     requireManagementAuth = false,
     useServerProxy = false,
+    egressMode,
     workerPort = 44100,
     workerCommand = ['node', '/opt/murm/agent-worker.mjs'],
     foregroundSession = false,
     waitForExecdReady = null,
     execdReadyTimeoutMs = 30_000,
     fetchImpl = globalThis.fetch,
+    adapterFactory,
     commandTimeoutMs = DEFAULT_TIMEOUT_MS,
     maxOutputBytes = MAX_OUTPUT_BYTES,
     logger = null,
@@ -254,18 +164,17 @@ export class OpenSandboxManager {
     this.environment = envs(environment);
     this.volumes = normalizeVolumes(volumes);
     this.execdPort = execdPort;
-    if (endpointHost !== null && (typeof endpointHost !== 'string' || endpointHost.length === 0 || endpointHost.includes('/') || endpointHost.includes(':'))) throw new TypeError('endpointHost must be a hostname or IP address');
-    this.endpointHost = endpointHost;
+    if (endpointHost !== null) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'endpointHost has been removed. Publish reachable endpoints in the OpenSandbox deployment or configure its Ingress.');
     this.requireManagementAuth = requireManagementAuth === true;
     this.useServerProxy = useServerProxy === true;
-    if (this.useServerProxy && endpointHost !== null) throw new TypeError('A server proxy URL cannot be combined with endpointHost');
+    this.egressMode = egressMode;
     if (!Number.isInteger(workerPort) || workerPort < 1 || workerPort > 65_535) throw new TypeError('workerPort must be an integer from 1 to 65535');
     if (!Array.isArray(workerCommand) || workerCommand.length === 0 || !workerCommand.every((part: any) => typeof part === 'string')) throw new TypeError('workerCommand must be a non-empty string array');
     this.workerPort = workerPort;
     this.workerCommand = [...workerCommand];
     this.foregroundSession = foregroundSession === true;
     // A custom fetch is normally a deterministic provider double; production
-    // uses the global fetch and must wait for Execd's /ready gate.
+    // uses the global fetch and must pass the SDK Execd health gate.
     this.waitForExecdReady = waitForExecdReady === null ? fetchImpl === globalThis.fetch : waitForExecdReady !== false;
     if (!Number.isFinite(execdReadyTimeoutMs) || execdReadyTimeoutMs < 1_000 || execdReadyTimeoutMs > MAX_TIMEOUT_MS) throw new TypeError('execdReadyTimeoutMs must be between 1000 and 3600000');
     this.execdReadyTimeoutMs = execdReadyTimeoutMs;
@@ -280,6 +189,12 @@ export class OpenSandboxManager {
     this.reconciliationIds = new Map<any, any>();
     this.projectInstallReceipts = new Map<any, any>();
     this.verified = null;
+    this.sdk = new OpenSandboxSdk({ lifecycleBaseUrl: this.lifecycleBaseUrl, apiKey: this.apiKey,
+      useServerProxy: this.useServerProxy, fetchImpl, adapterFactory });
+    this.worker = new WorkerClient({ executions: this.executions, projectInstallReceipts: this.projectInstallReceipts,
+      resolveEndpoint: record => this.#workerEndpoint(record), checkAgentBoundary: id => this.#checkAgentBoundary(id),
+      fetch: this.fetch, requireManagementAuth: this.requireManagementAuth, useServerProxy: this.useServerProxy,
+      workerPort: this.workerPort, commandTimeoutMs: this.commandTimeoutMs, logger: this.logger, now: this.now });
   }
 
   async preflight({ timeoutMs = 20_000 }: any = {}) {
@@ -287,10 +202,11 @@ export class OpenSandboxManager {
     if (this.requireManagementAuth && !this.apiKey) {
       throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'OpenSandbox API requires a trusted Lifecycle API key');
     }
-    const response = await this.#request(path, { method: 'GET', timeoutMs });
+    await sdkOperation('preflight', () => this.sdk.sandboxes.listSandboxes({ pageSize: 1 }));
+    const response = { status: 200 };
     if (this.requireManagementAuth) {
-      const unauthenticated = await this.#request(path, { timeoutMs, allowStatuses: [401, 403], omitLifecycleKey: true });
-      if (![401, 403].includes(unauthenticated.status) || !Array.isArray(response.body?.items)) {
+      const unauthenticated = await this.#probeManagementAuthentication(path, { timeoutMs, allowStatuses: [401, 403], omitLifecycleKey: true });
+      if (![401, 403].includes(unauthenticated.status)) {
         throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'OpenSandbox Lifecycle authentication could not be confirmed');
       }
     }
@@ -316,7 +232,8 @@ export class OpenSandboxManager {
       if (ms <= 0) throw new MurmError(ERROR_CODES.SERVICE_TIMEOUT, 'OpenSandbox reconciliation timed out', {}, { retryable: true });
       return ms;
     };
-    const sandboxes = await this.#listSandboxes(remaining);
+    const filter: Record<string, string> = runtimeId ? { runtime_key: openSandboxRuntimeKey(runtimeId) } : { mission_key: openSandboxMissionKey(missionId) };
+    const sandboxes = await this.#listSandboxes(remaining, filter);
     const result: any = { provider: 'opensandbox', quarantined: [], pending: [], confirmed_agent_ids: [], owned_agent_ids: [] };
     const dispositions = new Map<any, any>();
     const quarantine = async (target: any) => {
@@ -338,9 +255,7 @@ export class OpenSandboxManager {
     };
     const knownIds = new Set(targets.map((agent: any) => agent.sandbox_id).filter(Boolean));
     const ownerKey = runtimeId ? openSandboxRuntimeKey(runtimeId) : openSandboxMissionKey(missionId);
-    const missionMismatch = (metadata: any) => runtimeId
-      ? metadata.runtime_key !== ownerKey
-      : metadata.mission_key && metadata.mission_key !== ownerKey;
+    const ownerLabel = runtimeId ? 'runtime_key' : 'mission_key';
     for (const agent of targets) {
       if (owned(agent.resource_key)) {
         result.owned_agent_ids.push(agent.agent_id);
@@ -349,19 +264,36 @@ export class OpenSandboxManager {
       const target = { agent_id: agent.agent_id, mission_id: missionId, execution_id: agent.execution_id ?? null, resource_key: agent.resource_key };
       const agentKey = openSandboxAgentKey(agent.agent_id);
       const resourceKey = openSandboxAgentKey(agent.resource_key);
-      const matches = new Set(this.reconciliationIds.get(agent.resource_key));
+      const matches = new Set<string>(this.reconciliationIds.get(agent.resource_key));
       if (agent.sandbox_id) matches.add(agent.sandbox_id);
       let conflict = false;
+      const matchesOwner = (metadata: Record<string, unknown>) => metadata[ownerLabel] === ownerKey &&
+        metadata.agent_key === agentKey && metadata.resource_key === resourceKey;
       for (const [sandboxId, metadata] of sandboxes) {
         if (!matches.has(sandboxId) && metadata.agent_key !== agentKey && metadata.resource_key !== resourceKey) continue;
-        const incompatible = missionMismatch(metadata) || (metadata.agent_key && metadata.agent_key !== agentKey) ||
-          (metadata.resource_key && metadata.resource_key !== resourceKey) ||
+        const incompatible = !matchesOwner(metadata) ||
           (sandboxId !== agent.sandbox_id && knownIds.has(sandboxId)) || liveSandboxIds.has(sandboxId);
         if (incompatible) {
           conflict = true;
           matches.delete(sandboxId);
           result.pending.push({ ...target, sandbox_id: sandboxId, reason: 'provider_identity_mismatch' });
         } else matches.add(sandboxId);
+      }
+      for (const sandboxId of matches) {
+        if (sandboxes.has(sandboxId) || liveSandboxIds.has(sandboxId)) continue;
+        try {
+          const found = await sdkOperation('verify resource ownership', () => this.sdk.sandboxes.getSandbox(sandboxId));
+          const identity = found.metadata ?? {};
+          if (!matchesOwner(identity)) {
+            conflict = true;
+            matches.delete(sandboxId);
+            result.pending.push({ ...target, sandbox_id: sandboxId, reason: 'provider_identity_mismatch' });
+          }
+        } catch (error: any) {
+          if (error?.details?.status === 404) continue;
+          conflict = true;
+          result.pending.push({ ...target, sandbox_id: sandboxId, reason: 'provider_identity_unconfirmed' });
+        }
       }
       for (const sandboxId of matches) {
         if (!liveSandboxIds.has(sandboxId)) continue;
@@ -372,23 +304,27 @@ export class OpenSandboxManager {
       if (matches.size === 0 && !conflict) {
         result.pending.push({ ...target, sandbox_id: null, reason: 'creation_unconfirmed' });
       }
-      if (matches.size > 1) {
-        for (const sandboxId of matches) result.pending.push({ ...target, sandbox_id: sandboxId, reason: 'provider_identity_mismatch' });
-        continue;
-      }
       if (matches.size > 0) this.reconciliationIds.set(agent.resource_key, matches);
       else this.reconciliationIds.delete(agent.resource_key);
       if (conflict || matches.size === 0) continue;
-      const [sandboxId] = matches;
-      if (!agent.sandbox_id && onSandboxDiscovered) {
-        try {
-          await onSandboxDiscovered(agent, sandboxId);
-        } catch (error: any) {
+      let registrationFailed = false;
+      for (const sandboxId of matches) {
+        if (sandboxId === agent.sandbox_id || !onSandboxDiscovered) continue;
+        try { await onSandboxDiscovered(agent, sandboxId); }
+        catch (error: any) {
+          registrationFailed = true;
           result.pending.push({ ...target, sandbox_id: sandboxId, reason: 'resource_record_unconfirmed', error_class: error?.code ?? error?.name });
-          continue;
         }
       }
-      if (await quarantine({ ...target, sandbox_id: sandboxId })) {
+      if (registrationFailed) continue;
+      if (matches.size > 1) {
+        this.logger?.({ event: 'sandbox.duplicate_create', provider: 'opensandbox', agent_id: agent.agent_id, resource_count: matches.size });
+      }
+      let allDeleted = true;
+      for (const sandboxId of matches) {
+        if (!await quarantine({ ...target, sandbox_id: sandboxId })) allDeleted = false;
+      }
+      if (allDeleted) {
         this.reconciliationIds.delete(agent.resource_key);
         result.confirmed_agent_ids.push(agent.agent_id);
       }
@@ -397,11 +333,11 @@ export class OpenSandboxManager {
     return result;
   }
 
-  async #listSandboxes(remaining: any) {
+  async #listSandboxes(remaining: any, metadata: Record<string, string>) {
     const sandboxes = new Map<any, any>();
     for (let page = 1; ; page += 1) {
-      const response = await this.#request(`/sandboxes?pageSize=100${page === 1 ? '' : `&page=${page}`}`, { timeoutMs: remaining() });
-      const value = responseValue(response.body);
+      remaining();
+      const value = await sdkOperation('list', () => this.sdk.sandboxes.listSandboxes({ page, pageSize: 100, metadata }));
       const items = Array.isArray(value) ? value : (value?.items ?? value?.sandboxes);
       const pagination = value?.pagination;
       if (!Array.isArray(items) || (pagination && pagination.page !== page)) {
@@ -425,21 +361,24 @@ export class OpenSandboxManager {
   }
 
   async #confirmSandboxDeletion(sandboxId: any, remaining: any) {
-    const path = `/sandboxes/${encodeURIComponent(sandboxId)}`;
     try {
-      const deletion = await this.#request(path, { method: 'DELETE', timeoutMs: remaining(), allowStatuses: [404] });
-      if (deletion.status === 404) return;
+      await sdkOperation('delete', () => this.sdk.sandboxes.deleteSandbox(sandboxId, AbortSignal.timeout(remaining())));
     } catch (error: any) {
+      if (error?.details?.status === 404) return;
       if (!error?.retryable && error?.details?.status !== 409) throw error;
     }
-    const observed = await this.#request(path, { timeoutMs: remaining(), allowStatuses: [404] });
-    if (observed.status !== 404) {
-      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox deletion is still pending', { sandbox_id: sandboxId }, { retryable: true });
+    remaining();
+    try {
+      await sdkOperation('confirm deletion', () => this.sdk.sandboxes.getSandbox(sandboxId));
+    } catch (error: any) {
+      if (error?.details?.status === 404) return;
+      throw error;
     }
+    throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox deletion is still pending', { sandbox_id: sandboxId }, { retryable: true });
   }
 
   async ensureExecution({ executionId, agentId = null, onCreateDispatch = null, onCreateRejected = null, onCreated = null, onWorkerToken,
-    timeoutSeconds = 3600, projectQuotaRequired = false, cleanupOnFailure = true, workspaceRef = null, bindingVersion = null, environment = {}, metadata = {} }: any = {}) {
+    timeoutSeconds = 3600, projectQuotaRequired = false, cleanupOnFailure = true, workspaceRef = null, bindingVersion = null, environment = {}, metadata = {}, networkPolicy }: any = {}) {
     const id = required(executionId, 'execution_id');
     required(agentId, 'agent_id');
     const existing = this.executions.get(id);
@@ -456,28 +395,28 @@ export class OpenSandboxManager {
     const { mission_id: configuredMission = null, mission_key: _missionKey, agent_id: _agentId, agent_key: _agentKey,
       resource_key: _resourceKey, runtime_id: configuredRuntime = null, runtime_key: _runtimeKey, ...labels } = { ...this.metadata, ...metadata };
     const creation = { agent_id: agentId, resource_key: id, mission_id: configuredMission, runtime_id: configuredRuntime, inFlight: true, onCreated };
-    if (creation) this.pendingCreations.set(id, creation);
     const workerToken = randomUUID();
     const execdAccessToken = this.requireManagementAuth ? randomUUID() : null;
-    const workerEntrypoint = [...this.workerCommand, '--port', String(this.workerPort), ...(projectQuotaRequired ? ['--require-project-quota'] : [])];
+    if (projectQuotaRequired) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Exact workspace quotas require a custom Provider or supported OpenSandbox storage capability');
+    const workerEntrypoint = [...this.workerCommand, '--port', String(this.workerPort)];
+    this.pendingCreations.set(id, creation);
     try {
       onWorkerToken?.(workerToken);
       if (execdAccessToken) onWorkerToken?.(execdAccessToken);
       const admission = onCreateDispatch?.({ provider: 'opensandbox', timeout_seconds: timeoutSeconds });
       if (typeof admission?.then === 'function') await admission;
     } catch (error: any) {
-      if (creation) this.pendingCreations.delete(id);
+      this.pendingCreations.delete(id);
       throw error;
     }
-    const response = await this.#request('/sandboxes', {
-      method: 'POST',
-      body: {
+    const created = await sdkOperation('create', () => this.sdk.sandboxes.createSandbox({
         timeout: timeoutSeconds,
         image: { uri: this.image },
         entrypoint: workerEntrypoint,
         resourceLimits: this.resourceLimits,
         env: { ...launchBody, MURM_WORKER_TOKEN: workerToken, ...(execdAccessToken ? { EXECD_ACCESS_TOKEN: execdAccessToken } : {}) },
         ...(this.volumes.length > 0 ? { volumes: this.volumes } : {}),
+        ...(networkPolicy ? { networkPolicy } : {}),
         metadata: {
           ...labels,
           ...(configuredRuntime ? { runtime_key: openSandboxRuntimeKey(configuredRuntime) } : {}),
@@ -485,43 +424,36 @@ export class OpenSandboxManager {
           agent_key: openSandboxAgentKey(agentId), resource_key: openSandboxAgentKey(id),
           ...(bindingVersion === null || bindingVersion === undefined ? {} : { binding_version: String(bindingVersion) }),
         },
-      },
-      timeoutMs: 60_000,
-    }).catch(async (error: any) => {
-      if (creation) {
-        try {
-          if ([400, 401, 403, 422].includes(error?.details?.status)) {
-            await onCreateRejected?.();
-            this.pendingCreations.delete(id);
-          }
-        } finally {
-          creation.inFlight = false;
+      }, AbortSignal.timeout(60_000))).catch(async (error: any) => {
+      try {
+        if ([400, 401, 403, 422].includes(error?.details?.status)) {
+          await onCreateRejected?.();
+          this.pendingCreations.delete(id);
         }
+      } finally {
+        creation.inFlight = false;
       }
       throw error;
     });
-    if (creation) creation.inFlight = false;
-    const created = responseValue(response.body);
-    const sandboxId = created?.id ?? created?.sandbox_id;
+    creation.inFlight = false;
+    const sandboxId = created.id;
     if (typeof sandboxId !== 'string' || sandboxId.length === 0) {
-      throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return a sandbox id', { response: created });
+      throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return a sandbox id', { stage: 'create' });
     }
-    const suppliedExecdEndpoint = this.useServerProxy ? undefined : created?.execd_endpoint ?? created?.endpoint;
-    let execdUrl = endpointForHost(suppliedExecdEndpoint, this.endpointHost);
-    let execdHeaders = suppliedExecdEndpoint?.headers ?? {};
+    let execdUrl: string | null = null;
+    let execdHeaders: Record<string, string> = {};
     // Retain the resource as soon as its provider ID exists. Endpoint/health
     // preparation failures must not erase responsibility for deletion.
-    const record: any = { executionId: id, agentId, projectQuotaRequired, boundExecutionId: null, sandboxId, execdUrl: null, execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), workerToken, onWorkerToken, preparing: true };
+    const record: any = { executionId: id, agentId, projectQuotaRequired, boundExecutionId: null, sandboxId, execdUrl: null, execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), expiresAt: sdkExpiry(created.expiresAt), workerToken, onWorkerToken, preparing: true };
     this.executions.set(id, record);
     this.pendingCreations.delete(id);
+    let registered = false;
     try {
-      await onCreated?.({ ...this.#snapshot(record), expires_at: created.expiresAt ?? null });
-      if (!execdUrl) {
-        const endpointResponse = await this.#request(`/sandboxes/${encodeURIComponent(sandboxId)}/endpoints/${this.execdPort}${this.useServerProxy ? '?use_server_proxy=true' : ''}`, { method: 'GET', timeoutMs: 30_000 });
-        const endpoint = responseValue(endpointResponse.body);
-        execdUrl = endpointForHost(endpoint, this.endpointHost, this.useServerProxy ? this.lifecycleBaseUrl : undefined);
-        execdHeaders = endpoint?.headers ?? {};
-      }
+      await onCreated?.({ ...this.#snapshot(record), expires_at: sdkExpiry(created.expiresAt) });
+      registered = true;
+      const endpoint = await sdkOperation('resolve Execd endpoint', () => this.sdk.sandboxes.getSandboxEndpoint(sandboxId, this.execdPort, this.useServerProxy));
+      execdUrl = endpointUrl(endpoint, this.useServerProxy ? this.lifecycleBaseUrl : undefined);
+      execdHeaders = endpoint.headers ?? {};
       if (!execdUrl) throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return an Execd endpoint', { sandbox_id: sandboxId, port: this.execdPort });
       record.execdUrl = execdUrl.replace(/\/$/, '');
       record.execdHeaders = this.#dataPlaneHeaders(execdUrl, execdHeaders);
@@ -529,10 +461,12 @@ export class OpenSandboxManager {
       delete record.execdHeaders['x-execd-access-token'];
       if (activeToken) record.execdHeaders['X-EXECD-ACCESS-TOKEN'] = activeToken;
       for (const value of Object.values(record.execdHeaders) as string[]) onWorkerToken?.(value);
+      record.execd = this.sdk.execd({ url: record.execdUrl, headers: record.execdHeaders });
       if (this.waitForExecdReady) await this.#waitExecd(record);
       if (this.requireManagementAuth) await this.#checkExecdAuthentication(record);
+      if (networkPolicy && this.egressMode === 'dns+nft') await this.#verifyEgressPolicy(record, networkPolicy);
     } catch (error: any) {
-      if (cleanupOnFailure) await this.stopExecution(id).catch((cleanupError: any) => {
+      if (registered && cleanupOnFailure) await this.stopExecution(id).catch((cleanupError: any) => {
         this.logger?.({ event: 'sandbox.prepare_cleanup_error', provider: 'opensandbox', execution_id: id, sandbox_id: sandboxId, error_class: cleanupError?.code ?? cleanupError?.name });
       });
       throw error;
@@ -541,6 +475,37 @@ export class OpenSandboxManager {
     if (this.executions.get(id) !== record || record.stopPromise) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox was stopped during preparation', { execution_id: id }, { retryable: true });
     this.logger?.({ event: 'sandbox.started', provider: 'opensandbox', execution_id: id, sandbox_id: sandboxId, binding_version: bindingVersion });
     return this.#snapshot(record);
+  }
+
+  async renewExecution(executionId: string, minimumExpiresAtMs: number) {
+    if (!Number.isFinite(minimumExpiresAtMs) || minimumExpiresAtMs <= this.now()) {
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Lease minimum expiry must be a future timestamp');
+    }
+    const record = this.#record(executionId);
+    if (record.stopPromise) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox deletion is pending', {}, { retryable: true });
+    const previous = record.renewPromise ?? Promise.resolve();
+    const operation = previous.catch(() => undefined).then(async () => {
+      const current = await sdkOperation('observe lease', () => this.sdk.sandboxes.getSandbox(record.sandboxId));
+      record.expiresAt = sdkExpiry(current.expiresAt);
+      const observed = record.expiresAt ? Date.parse(record.expiresAt) : Number.NaN;
+      if (!Number.isFinite(observed)) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox did not report a finite expiry', {}, { retryable: true });
+      if (observed < minimumExpiresAtMs) {
+        let renewalError: unknown;
+        try {
+          await sdkOperation('renew lease', () => this.sdk.sandboxes.renewSandboxExpiration(record.sandboxId, { expiresAt: new Date(minimumExpiresAtMs).toISOString() }));
+        } catch (error) { renewalError = error; }
+        const confirmed = await sdkOperation('confirm lease', () => this.sdk.sandboxes.getSandbox(record.sandboxId));
+        record.expiresAt = sdkExpiry(confirmed.expiresAt);
+        if (!record.expiresAt || Date.parse(record.expiresAt) < minimumExpiresAtMs) {
+          if (renewalError) throw renewalError;
+          throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox lease extension could not be confirmed', { expires_at: record.expiresAt }, { retryable: true });
+        }
+      }
+      return { sandboxId: record.sandboxId, expiresAt: record.expiresAt };
+    });
+    record.renewPromise = operation;
+    try { return await operation; }
+    finally { if (record.renewPromise === operation) record.renewPromise = null; }
   }
 
   bindAgentExecution({ agentId, executionId, bindingVersion = null, workspaceRef = null }: any) {
@@ -561,223 +526,69 @@ export class OpenSandboxManager {
   }
 
   async exec({ executionId, command: value, cwd = '/workspace', timeoutMs = this.commandTimeoutMs, env = {}, internalEnvironment = {} }: any = {}) {
-    const record: any = this.#record(executionId);
+    const record = this.#record(executionId);
     const normalizedTimeout = timeout(timeoutMs);
-    if (this.foregroundSession) {
-      const sessionResult = await this.#execInSession(record, executionId, value, cwd, normalizedTimeout, env, internalEnvironment);
-      if (sessionResult) return sessionResult;
-    }
-    const payload = { ...command(value), cwd: underWorkspace(cwd), timeout: normalizedTimeout, background: false, envs: { ...envs(env), ...envs(internalEnvironment, { allowSecrets: true }) } };
-    const startedAt = this.now();
-    let response;
-    try {
-      response = await this.#execd(record, '/command', { method: 'POST', body: payload, timeoutMs: normalizedTimeout + 10_000 });
-    } catch (error: any) {
-      // OpenSandbox's current API documents native `argv`, while older
-      // Execd images shipped by the 1.2 server accepted only shell text. A
-      // quoted fallback keeps literal argument boundaries on those images
-      // without masking unrelated request validation failures.
-      const diagnostic = typeof error?.details?.diagnostic === 'string' ? error.details.diagnostic : JSON.stringify(error?.details?.diagnostic ?? '');
-      if (Array.isArray(value) && error?.code === ERROR_CODES.INVALID_CONTRACT && error?.details?.status === 400 && /command.*(required|missing)|invalid request body/i.test(diagnostic)) {
-        response = await this.#execd(record, '/command', {
-          method: 'POST',
-          body: { command: value.map(shellQuote).join(' '), cwd: underWorkspace(cwd), timeout: normalizedTimeout, background: false, envs: { ...envs(env), ...envs(internalEnvironment, { allowSecrets: true }) } },
-          timeoutMs: normalizedTimeout + 10_000,
-        });
-      } else {
-        if (error?.code === ERROR_CODES.SERVICE_TIMEOUT) {
-          // Execd's foreground contract binds the process lifetime to the SSE
-          // stream. Aborting this request closes that stream; a command ID is
-          // not available until Execd emits an accepted event, so a follow-up
-          // DELETE cannot be issued for this particular foreground request.
-          this.logger?.({ event: 'sandbox.exec_timeout_disconnect', provider: 'opensandbox', execution_id: executionId, timeout_ms: normalizedTimeout });
-        }
-        throw error;
-      }
-    }
-    const events = parseSse(response.text);
-    const result: any = this.#commandResult(events, response.body, { startedAt });
-    const job = { jobId: result.job_id, executionId, sandboxId: record.sandboxId, state: result.state, command: value, started_at: startedAt, finished_at: this.now(), exit_code: result.exit_code, timed_out: result.timed_out, truncated: result.truncated };
-    this.logger?.({ event: 'sandbox.exec', provider: 'opensandbox', execution_id: executionId, job_id: job.jobId, exit_code: job.exit_code, timed_out: job.timed_out, duration_ms: job.finished_at - startedAt });
-    return { execution_id: executionId, job_id: job.jobId, binding_version: record.bindingVersion, exit_code: job.exit_code, timed_out: job.timed_out, truncated: job.truncated, duration_ms: job.finished_at - startedAt, stdout: result.stdout, stderr: result.stderr };
-  }
-
-  async #execInSession(record: any, executionId: any, value: any, cwd: any, timeoutMs: any, environment: any, internalEnvironment: any = {}) {
     const normalized = command(value);
-    const workdir = underWorkspace(cwd);
-    let sessionId;
-    try {
-      const created = responseValue((await this.#execd(record, '/session', { method: 'POST', body: { cwd: workdir }, timeoutMs: 15_000 })).body);
-      sessionId = created?.session_id ?? created?.sessionId ?? created?.id ?? null;
-    } catch (error: any) {
-      // Older Execd deployments expose only /command. Preserve that path
-      // when the session endpoint is explicitly unavailable.
-      if (error?.details?.status === 404 || error?.code === ERROR_CODES.SERVICE_CAPABILITY_NOT_FOUND) return null;
-      throw error;
-    }
-    if (!sessionId) return null;
-    const startedAt = this.now();
     const commandText = normalized.command ?? normalized.argv.map(shellQuote).join(' ');
+    const environment = { ...envs(env), ...envs(internalEnvironment, { allowSecrets: true }) };
+    const workingDirectory = underWorkspace(cwd);
+    const startedAt = this.now();
+    const deadline = AbortSignal.timeout(normalizedTimeout + 10_000);
+    const commands = record.execd.commands;
+    let stdout = '';
+    let stderr = '';
+    let truncated = false;
+    const append = (current: string, text: string) => {
+      const [next, overflow] = appendOutput(current, text, this.maxOutputBytes);
+      truncated ||= overflow;
+      return next;
+    };
+    const handlers = {
+      skipAccumulation: true,
+      onStdout: (message: { text: string }) => { stdout = append(stdout, message.text); },
+      onStderr: (message: { text: string }) => { stderr = append(stderr, message.text); },
+    };
+    let sessionId: string | undefined;
     try {
-      const response = await this.#execd(record, `/session/${encodeURIComponent(sessionId)}/run`, {
-        method: 'POST',
-        body: { command: commandText, cwd: workdir, timeout: timeoutMs, envs: { ...envs(environment), ...envs(internalEnvironment, { allowSecrets: true }) } },
-        timeoutMs: timeoutMs + 10_000,
-      });
-      const events = parseSse(response.text);
-      const result: any = this.#commandResult(events, response.body, { startedAt });
-      const job = { jobId: result.job_id ?? sessionId, executionId, sandboxId: record.sandboxId, state: result.state, command: value, started_at: startedAt, finished_at: this.now(), exit_code: result.exit_code, timed_out: result.timed_out, truncated: result.truncated };
-      return { execution_id: executionId, job_id: job.jobId, binding_version: record.bindingVersion, exit_code: job.exit_code, timed_out: job.timed_out, truncated: job.truncated, duration_ms: job.finished_at - startedAt, stdout: result.stdout, stderr: result.stderr };
-    } catch (error: any) {
-      if (error?.code === ERROR_CODES.SERVICE_TIMEOUT) {
-        await this.#execd(record, `/command?id=${encodeURIComponent(sessionId)}`, { method: 'DELETE', timeoutMs: 15_000 }).catch(() => undefined);
-        this.logger?.({ event: 'sandbox.exec_session_cancelled', provider: 'opensandbox', execution_id: executionId, session_id: sessionId, timeout_ms: timeoutMs });
+      if (this.foregroundSession) {
+        try { sessionId = await sdkOperation('create command session', () => commands.createSession({ workingDirectory })); }
+        catch (error: any) { if (error?.details?.status !== 404) throw error; }
       }
+      const result: any = await sdkOperation('execute command', () => sessionId
+        ? commands.runInSession(sessionId, Object.keys(environment).length
+          ? ['env', ...Object.entries(environment).map(([key, value]) => shellQuote(`${key}=${value}`)), 'sh', '-c', shellQuote(commandText)].join(' ')
+          : commandText, { workingDirectory, timeoutSeconds: normalizedTimeout / 1000 }, handlers, deadline)
+        : commands.run(commandText, { workingDirectory, timeoutSeconds: normalizedTimeout / 1000, envs: environment }, handlers, deadline));
+      const timedOut = /timeout/i.test(result.error?.value ?? '');
+      const receipt = { execution_id: executionId, job_id: result.id ?? sessionId ?? randomUUID(),
+        binding_version: record.bindingVersion, exit_code: result.exitCode ?? (result.complete && !result.error ? 0 : null),
+        timed_out: timedOut, truncated, duration_ms: this.now() - startedAt, stdout, stderr };
+      this.logger?.({ event: 'sandbox.exec', provider: 'opensandbox', execution_id: executionId,
+        job_id: receipt.job_id, exit_code: receipt.exit_code, timed_out: timedOut, duration_ms: receipt.duration_ms });
+      return receipt;
+    } catch (error) {
+      if (sessionId && deadline.aborted) await commands.interrupt(sessionId).catch(() => undefined);
       throw error;
     } finally {
-      await this.#execd(record, `/session/${encodeURIComponent(sessionId)}`, { method: 'DELETE', timeoutMs: 15_000 }).catch(() => undefined);
+      if (sessionId) await commands.deleteSession(sessionId).catch(() => undefined);
     }
   }
 
-  async startAgent({ writable = false, files, forkSession, workspace, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, modelCatalogContent = null, codex, piSession, requirePiSessionProtocol = false, executorVersion, externalExecutor, filePolicy = DEFAULT_FILE_POLICY, controllerSpoolDirectory, signal, requireCoreFileProtocol = false, beforeAgentStart = null }: any = {}) {
-    const contract = { protocolVersion: 'murm-core-v1', resources: [] };
-    const record: any = this.#record(executionId);
-    const signature = (values: any) => Array.isArray(values) && values.every((item: any) => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
-      ? JSON.stringify(values.map(({ path, sha256 }: any) => ({ path, sha256 })).sort((a: any, b: any) => a.path.localeCompare(b.path))) : null;
-    const expectedVersion = files !== undefined || writable ? 1 : 0;
-    const expectedDigest = expectedVersion === 1 ? snapshotFileSeed(files ?? {}, filePolicy.initial).digest : undefined;
-    if (signature(resources) !== signature(contract.resources)) throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Agent contract');
-    if (!record.agentId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Agent Sandbox');
-    if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
-    if (record.agent) return { ...record.agent };
-    record.executionStopped = false;
-    const workerToken = record.workerToken;
-    if (typeof workerToken !== 'string' || workerToken.length === 0) throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox worker token is unavailable for this Execution');
-    const endpointInfo = responseValue((await this.#request(
-      `/sandboxes/${encodeURIComponent(record.sandboxId)}/endpoints/${this.workerPort}${this.useServerProxy ? '?use_server_proxy=true' : ''}`,
-      { method: 'GET', timeoutMs: 30_000 })).body);
-    let endpoint = endpointForHost(endpointInfo, this.endpointHost, this.useServerProxy ? this.lifecycleBaseUrl : undefined);
-    if (!endpoint) throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return the Agent worker endpoint', { sandbox_id: record.sandboxId, port: this.workerPort });
-    endpoint = endpoint.replace(/\/$/, '');
-    const routingHeaders = this.#dataPlaneHeaders(endpoint, endpointInfo?.headers);
-    for (const value of Object.values(routingHeaders)) record.onWorkerToken?.(value);
-    const execdProxy = record.execdUrl.endsWith(`/proxy/${this.execdPort}`) &&
-      endpoint === record.execdUrl.slice(0, -String(this.execdPort).length) + this.workerPort;
-    if (execdProxy && record.execdHeaders['X-EXECD-ACCESS-TOKEN']) {
-      routingHeaders['x-execd-access-token'] = record.execdHeaders['X-EXECD-ACCESS-TOKEN'];
-    }
-    const workerHeaders = {
-      ...routingHeaders, ...(this.useServerProxy ? { 'X-Murm-Worker-Token': workerToken } : { authorization: `Bearer ${workerToken}` }),
-    };
-    await this.#waitWorker(endpoint, workerHeaders);
-    if (this.requireManagementAuth) {
-      const denied = await this.#request(`${endpoint}/core/contract`, {
-        absolute: true, extraHeaders: routingHeaders, timeoutMs: 5000, allowStatuses: [401, 403],
-      });
-      if (![401, 403].includes(denied.status)) {
-        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Worker management authentication could not be confirmed');
-      }
-    }
-    let transfer = false;
-    let piSessionSupported = false;
-    if (requireCoreFileProtocol) {
-      const probe = await this.#request(`${endpoint}/core/contract`, {
-        absolute: true, method: 'GET', extraHeaders: workerHeaders, timeoutMs: 15_000, allowStatuses: [400, 404],
-      });
-      const supported = probe.body?.result?.file_protocol;
-      transfer = probe.body?.result?.file_transfer === fileTransferProtocol;
-      piSessionSupported = probe.body?.result?.pi_session_protocol === PI_SESSION_PROTOCOL;
-      if (supported !== fileProtocol) {
-        throw new MurmError(ERROR_CODES.INVALID_CONTRACT,
-          `Core requires Worker file protocol ${fileProtocol}; detected ${supported ?? 'none'}`);
-      }
-    }
-    if (requirePiSessionProtocol && !piSessionSupported) {
-      throw new MurmError('OPERATION_UNSUPPORTED', 'Worker does not support the Pi Session protocol');
-    }
-    if (!transfer) {
-      if (JSON.stringify(filePolicy) !== JSON.stringify(DEFAULT_FILE_POLICY)) {
-        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Configured file budgets require a Worker with the streamed file protocol');
-      }
-      if (files !== undefined) snapshotFileSeed(files, DEFAULT_FILE_POLICY.initial);
-    }
-    const isolation = this.requireManagementAuth ? await this.#checkAgentBoundary(executionId) : undefined;
-    beforeAgentStart?.();
-    record.coreAgent = true;
-    record.filePolicy = filePolicy;
-    record.controllerSpoolDirectory = controllerSpoolDirectory;
-    record.fileTransfer = transfer;
-    record.agent = { endpoint, token: workerToken, headers: workerHeaders, worker_port: this.workerPort, started_at: this.now(), starting: true };
-    const stream = transfer && files !== undefined;
-    const startup = await this.#request(`${endpoint}/start`, {
-      absolute: true,
-      workerStart: true,
-      method: 'POST',
-      extraHeaders: workerHeaders,
-      ...(stream ? { tree: files, fileBudget: filePolicy.initial } : {}),
-      signal,
-      body: {
-        command: codex ? 'codex' : required(agentCommand, 'agent_command'),
-        ...(codex ? { codex: { model: codex.model, baseUrl: codex.baseUrl } } : {}),
-        ...(executorVersion ? { executor_version: executorVersion } : {}),
-        ...(piSessionSupported && piSession ? { piSession } : {}),
-        ...(externalExecutor ? { executor_adapter: {
-          kind: externalExecutor.kind, protocol: externalExecutor.protocol, capabilities: externalExecutor.capabilities,
-        } } : {}),
-        ...(forkSession === undefined ? {} : { fork_session: forkSession }),
-        args: codex ? [] : args,
-        cwd,
-        env: envs(env, { allowSecrets: true }),
-        // Explicitly supplied secret values travel only over the authenticated
-        // worker channel and are never included in a manager snapshot/log.
-        secret_env: envs(secretEnvironment, { allowSecrets: true }),
-        system_prompt: systemPrompt,
-        system_prompt_path: systemPromptPath,
-        resources,
-        contract_version: contract.protocolVersion,
-        writable,
-        ...(transfer ? { file_policy: filePolicy } : {}),
-        ...(workspace ? { shared_workspace: workspace } : {}),
-        ...(files === undefined || stream ? {} : { files }),
-        ...(projectQuota ? { project_quota: projectQuota } : {}),
-        ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}),
-        ...(modelCatalogContent ? { model_catalog_content: modelCatalogContent } : {}),
-      },
-      timeoutMs: stream ? Math.max(30_000, filePolicy.initial.timeoutMs) : 30_000,
-    });
-    const receipt = startup.body?.result?.contract;
-    if (receipt?.version !== contract.protocolVersion || (requireCoreFileProtocol && receipt.file_protocol !== fileProtocol) || !Array.isArray(receipt.resources) || signature(receipt.resources) !== signature(resources)) {
-      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest the pinned Agent contract resources');
-    }
-    const backend = startup.body?.result?.backend;
-    if (codex && (backend?.kind !== 'codex' || backend.version !== codex.version ||
-      backend.authMode !== 'api-key' || typeof backend.threadId !== 'string' || !backend.threadId)) {
-      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest the pinned Codex executor, authentication and Session');
-    }
-    if (externalExecutor && (backend?.kind !== externalExecutor.kind ||
-      backend.version !== executorVersion || backend.protocol !== externalExecutor.protocol ||
-      !isDeepStrictEqual(backend.capabilities, externalExecutor.capabilities))) {
-      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker did not attest the selected adapter protocol, version and capabilities');
-    }
-    const quotaReceipt = startup.body?.result?.project_quota;
-    const catalogReceipt = startup.body?.result?.model_catalog_resource;
-    if (projectQuota && (quotaReceipt?.bytes !== projectQuota.bytes || quotaReceipt?.inodes !== projectQuota.inodes)) {
-      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest Agent workspace quota');
-    }
-    if (modelCatalogResource && signature([catalogReceipt]) !== signature([modelCatalogResource])) {
-      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest the pinned Pi model catalog');
-    }
-    const fileReceipt = startup.body?.result?.project_files;
-    if (workspace && JSON.stringify(startup.body?.result?.shared_workspace) !== JSON.stringify(workspace)) throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker did not attest shared workspace');
-    if (!workspace && (fileReceipt?.version !== expectedVersion || fileReceipt.writable !== writable || fileReceipt.digest !== expectedDigest)) {
-      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest initial Core files and workDir permissions');
-    }
-    record.agent = { endpoint, token: workerToken, headers: workerHeaders, worker_port: this.workerPort, started_at: this.now(), contract: receipt,
-      ...(codex || externalExecutor ? { backend } : {}),
-    };
-    this.logger?.({ event: 'sandbox.agent_started', provider: 'opensandbox', execution_id: executionId, sandbox_id: record.sandboxId, worker_port: this.workerPort });
-    return { ...record.agent, isolation };
-  }
+  startAgent(...args: Parameters<WorkerClient['startAgent']>) { return this.worker.startAgent(...args); }
+  syncWorkspace(...args: Parameters<WorkerClient['syncWorkspace']>) { return this.worker.syncWorkspace(...args); }
+  prepareAgentProject(...args: Parameters<WorkerClient['prepareAgentProject']>) { return this.worker.prepareAgentProject(...args); }
+  grantAgentProject(...args: Parameters<WorkerClient['grantAgentProject']>) { return this.worker.grantAgentProject(...args); }
+  coreSessionSnapshot(...args: Parameters<WorkerClient['coreSessionSnapshot']>) { return this.worker.coreSessionSnapshot(...args); }
+  coreFileOperation(...args: Parameters<WorkerClient['coreFileOperation']>) { return this.worker.coreFileOperation(...args); }
+  snapshotAgentProject(...args: Parameters<WorkerClient['snapshotAgentProject']>) { return this.worker.snapshotAgentProject(...args); }
+  installAgentProject(...args: Parameters<WorkerClient['installAgentProject']>) { return this.worker.installAgentProject(...args); }
+  queryAgentProjectInstall(...args: Parameters<WorkerClient['queryAgentProjectInstall']>) { return this.worker.queryAgentProjectInstall(...args); }
+  forgetAgentProjectInstalls(...args: Parameters<WorkerClient['forgetAgentProjectInstalls']>) { return this.worker.forgetAgentProjectInstalls(...args); }
+  confirmAgentProjectInstall(...args: Parameters<WorkerClient['confirmAgentProjectInstall']>) { return this.worker.confirmAgentProjectInstall(...args); }
+  agentRpc(...args: Parameters<WorkerClient['agentRpc']>) { return this.worker.agentRpc(...args); }
+  stopAgent(...args: Parameters<WorkerClient['stopAgent']>) { return this.worker.stopAgent(...args); }
+  collectCoreFiles(...args: Parameters<WorkerClient['collectCoreFiles']>) { return this.worker.collectCoreFiles(...args); }
+  collectCoreSession(...args: Parameters<WorkerClient['collectCoreSession']>) { return this.worker.collectCoreSession(...args); }
 
   /**
    * Resolve executable versions in the provider guest. The controller may not
@@ -803,226 +614,14 @@ export class OpenSandboxManager {
     return versions;
   }
 
-  async syncWorkspace({ executionId, workspaceRef, manifest = null, maxFileBytes = 2 * 1024 * 1024, maxTotalBytes = 16 * 1024 * 1024 }: any = {}) {
-    const record: any = this.#record(executionId);
-    if (typeof workspaceRef !== 'string' || workspaceRef.length === 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspaceRef is required to initialize the provider Workspace');
-    const root = workspaceRef;
-    const files: any[] = [];
-    if (!manifest) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Agent input requires a pinned manifest');
-    if (manifest) {
-      const rootInfo = await lstat(root);
-      if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace input root must be a regular directory');
-      for (const path of Object.keys(manifest)) {
-        const segments = path.split('/');
-        if (segments.some((segment: any) => !segment || ['.', '..', '.git', '.swarm', '.pi', '.env'].includes(segment) || segment.startsWith('.swarm-') || segment.startsWith('.env.')) || path.includes('\\') || path.includes('\0')) {
-          throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace manifest contains a forbidden path');
-        }
-        let current = root;
-        for (const [index, segment] of segments.entries()) {
-          current = join(current, segment);
-          const info = await lstat(current);
-          if (info.isSymbolicLink() || (index < segments.length - 1 ? !info.isDirectory() : !info.isFile())) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace input must contain regular files without symlinks');
-        }
-        files.push(join(root, path));
-      }
-    }
-    let total = 0;
-    const inputFiles = Object.create(null);
-    for (const source of files) {
-      const content = await readFile(source);
-      if (content.length > maxFileBytes || total + content.length > maxTotalBytes) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'initial Workspace exceeds provider sync bounds', { max_file_bytes: maxFileBytes, max_total_bytes: maxTotalBytes });
-      total += content.length;
-      const path = relative(root, source).split('\\').join('/');
-      const digest = createHash('sha256').update(content).digest('hex');
-      if (manifest && (manifest[path]?.content_hash !== digest || manifest[path]?.bytes !== content.length)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Public Workspace input bytes differ from the pinned manifest', { path });
-      inputFiles[path] = content.toString('base64');
-    }
-    await this.#projectCall(executionId, 'prepare', manifest, { files: inputFiles });
-    this.logger?.({ event: 'sandbox.workspace_initialized', provider: 'opensandbox', execution_id: executionId, file_count: files.length, bytes: total });
-    return { execution_id: executionId, file_count: files.length, bytes: total, workspace: '/workspace/project' };
-  }
-
-  async #projectCall(executionId: any, action: any, manifest: any = undefined, input: any = {}) {
-    const record: any = this.#record(executionId);
-    if (!record.agentId || record.boundExecutionId !== executionId || !record.agent || record.stopPromise) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Project control requires the live bound Agent worker');
-    const body = { ...input, execution_id: executionId, binding_version: record.bindingVersion, ...(manifest ? { manifest } : {}) };
-    const response = await this.#request(`${record.agent.endpoint}/project/${action}`, { absolute: true, method: 'POST',
-      extraHeaders: this.#workerHeaders(record), body, timeoutMs: action.startsWith('install') ? 5000 : 30_000 });
-    const result: any = responseValue(response.body);
-    const expected = action === 'prepare' ? 'PREPARED' : 'ACTIVE';
-    if ((!action.startsWith('install') && result?.state !== expected) || result?.execution_id !== executionId || result?.binding_version !== record.bindingVersion) throw new MurmError(ERROR_CODES.START_FAILED, 'Worker did not confirm the expected project permission state');
-    if (record.stopPromise || this.executions.get(executionId) !== record) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent stopped during project control');
-    this.logger?.({ event: `sandbox.project_${action === 'prepare' ? 'prepared' : action === 'grant' ? 'granted' : action}`, agent_id: record.agentId, execution_id: executionId, binding_version: record.bindingVersion });
-    return result;
-  }
-
-  prepareAgentProject({ executionId, manifest }: any) { return this.#projectCall(executionId, 'prepare', manifest); }
-  grantAgentProject({ executionId }: any) { return this.#projectCall(executionId, 'grant'); }
-
-  async coreSessionSnapshot(executionId: string) {
-    const record = this.#record(executionId);
-    if (record.agent?.contract?.version !== 'murm-core-v1' || record.stopPromise || record.executionStopped) {
-      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Context Fork requires a live Agent Worker');
-    }
-    const response = await this.#request(`${record.agent.endpoint}/core/session/snapshot`, {
-      absolute: true, method: 'POST', extraHeaders: this.#workerHeaders(record),
-      body: {}, timeoutMs: 15_000,
-    });
-    return responseValue(response.body);
-  }
-
-  async coreFileOperation(executionId: string, action: string, input: unknown) {
-    const record = this.#record(executionId);
-    if (record.agent?.contract?.version !== 'murm-core-v1' || record.stopPromise) {
-      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Core files require the live Agent Worker');
-    }
-    if (record.fileTransfer && action === 'snapshot') return this.#streamSnapshot(record, input);
-    const replace = record.fileTransfer && action === 'replace';
-    const { files, ...parameters } = replace ? input as { files: FileTree } : { files: undefined };
-    const response = await this.#request(`${record.agent.endpoint}/core/files/${action}`, {
-      absolute: true, method: 'POST', extraHeaders: this.#workerHeaders(record),
-      ...(replace ? { body: parameters, tree: files, fileBudget: record.filePolicy.replace } : { body: input }),
-      timeoutMs: replace ? record.filePolicy.replace.timeoutMs : 30_000, allowStatuses: [400],
-    });
-    return this.#fileReply(response);
-  }
-
-  #fileReply(response: { status: number; body: any }) {
-    if (response.status === 400) {
-      const { code, error } = response.body ?? {};
-      const recognized = ['CONFLICT', 'INVALID_CONTRACT', 'NOT_ALLOWED', 'WORKSPACE_BUSY', 'OPERATION_UNKNOWN', 'FILE_SPACE_INSUFFICIENT'];
-      throw new MurmError(recognized.includes(code) ? code : 'OPERATION_UNKNOWN',
-        typeof error === 'string' ? error : 'Worker could not confirm the Core file operation');
-    }
-    return responseValue(response.body);
-  }
-
-  async #streamSnapshot(record: any, input: unknown) {
-    const limit = record.filePolicy.snapshot;
-    const requestedBytes = (input as { maxBytes?: number }).maxBytes;
-    const budget = { ...limit, maxBytes: Math.min(requestedBytes ?? limit.maxBytes, limit.maxBytes) };
-    const signal = AbortSignal.timeout(budget.timeoutMs);
-    const response = await this.fetch(`${record.agent.endpoint}/core/files/snapshot`, {
-      method: 'POST', headers: { ...this.#workerHeaders(record), 'content-type': 'application/json', accept: 'application/x-ndjson' },
-      body: JSON.stringify(input), redirect: 'error', signal,
-    });
-    if (response.status === 400) return this.#fileReply({ status: 400, body: await response.json() });
-    if (!response.ok || !response.body || response.headers.get('content-type') !== 'application/x-ndjson') {
-      await response.body?.cancel();
-      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not return a bound file snapshot stream');
-    }
-    const staged = await receiveFileTree(response.body as AsyncIterable<Uint8Array>, {
-      parent: record.controllerSpoolDirectory, budget, label: 'Controller snapshot staging',
-      maxSpoolBytes: record.filePolicy.controllerSpoolBytes, signal,
-    });
-    try { return { ...staged.meta, files: Object.fromEntries(Object.entries(staged.files)) }; }
-    finally { await staged.dispose(); }
-  }
-
-  snapshotAgentProject({ executionId }: any) { return this.#projectCall(executionId, 'snapshot'); }
-  installAgentProject({ executionId, ...input }: any) { return this.#projectCall(executionId, 'install', undefined, input); }
-  queryAgentProjectInstall({ executionId, request_id }: any) {
-    const closed = this.projectInstallReceipts.get(executionId);
-    if (closed) return structuredClone(closed.receipts.find((receipt: any) => receipt.request_id === request_id) ?? { execution_id: executionId, binding_version: closed.bindingVersion, request_id, phase: 'not_found' });
-    return this.#projectCall(executionId, 'install-result', undefined, { request_id });
-  }
-  forgetAgentProjectInstalls({ executionId }: any) { this.projectInstallReceipts.delete(executionId); }
-  confirmAgentProjectInstall({ executionId, request_id, content_hash }: any) { return this.#projectCall(executionId, 'install-confirm', undefined, { request_id, content_hash }); }
-
-  /** Pull guest files back before Runtime checkpoints or deletes the sandbox. */
-  async agentRpc(executionId: any, message: any, { timeoutMs = 600_000, since, transportTimeoutMs = timeoutMs + 10_000, signal }: any = {}) {
-    const record: any = this.#record(executionId);
-    if (!record.agent) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent worker is not started', { execution_id: executionId });
-    const response = await this.#request(`${record.agent.endpoint}/rpc`, { absolute: true, method: 'POST', extraHeaders: this.#workerHeaders(record), body: { message, timeout_ms: timeoutMs, ...(since === undefined ? {} : { since }) }, timeoutMs: transportTimeoutMs, signal });
-    return responseValue(response.body);
-  }
-
-  async stopAgent(executionId: any, signal: any = 'SIGTERM', { preserveWorker = false }: any = {}) {
-    const record: any = this.executions.get(executionId);
-    if (!record?.agent) return record?.executionStopped === true;
-    if (record.executionStopped) {
-      if (!preserveWorker) record.agent = null;
-      return true;
-    }
-    const response = await this.#request(`${record.agent.endpoint}/stop`, { absolute: true, method: 'POST', extraHeaders: this.#workerHeaders(record), body: { signal }, timeoutMs: 15_000 });
-    const stopped = responseValue(response.body);
-    if (stopped?.stopped === true && Array.isArray(stopped.project_installs) && record.boundExecutionId) {
-      this.projectInstallReceipts.set(record.boundExecutionId, { bindingVersion: record.bindingVersion,
-        receipts: stopped.project_installs.filter((receipt: any) => receipt.execution_id === record.boundExecutionId && receipt.binding_version === record.bindingVersion) });
-    }
-    if (stopped?.stopped !== true) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not confirm execution stopped');
-    record.executionStopped = true;
-    if (!preserveWorker) record.agent = null;
-    return true;
-  }
-
   coreResource(executionId: any) {
     const record: any = this.executions.get(executionId);
     const creation = this.pendingCreations.get(executionId);
     return { resourceKey: record?.executionId ?? creation?.resource_key ?? executionId,
       ...(record?.sandboxId || creation?.sandbox_id ? { sandboxId: record?.sandboxId ?? creation.sandbox_id } : {}),
+      expiresAt: record?.expiresAt ?? null,
       creation: record ? 'created' : creation ? 'pending' : 'absent',
       executionStopped: record?.executionStopped === true };
-  }
-
-  async *collectCoreSession(executionId: string) {
-    const { filePolicy = DEFAULT_FILE_POLICY } = this.#record(executionId);
-    yield* this.collectCoreFiles(executionId, { paths: ['.'], includeGit: false, required: true, maxBytes: filePolicy.session.maxBytes }, { session: true });
-  }
-
-  async *collectCoreFiles(executionId: string, input: unknown, { session = false } = {}) {
-    const record: any = this.#record(executionId);
-    const budget = (record.filePolicy ?? DEFAULT_FILE_POLICY)[session ? 'session' : 'export'];
-    const requested = snapshotCollectionSpec(input);
-    const spec = { ...requested, maxBytes: Math.min(requested.maxBytes, budget.maxBytes) };
-    if (!record.executionStopped || !record.coreAgent || !record.agent || record.stopPromise) {
-      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Core collection requires a confirmed stopped Agent and retained Worker');
-    }
-    const fingerprint = JSON.stringify(spec);
-    const policyKey = session ? 'sessionCollectionSpec' : 'collectionSpec';
-    if (record[policyKey] && record[policyKey] !== fingerprint) throw new MurmError(ERROR_CODES.CONFLICT, 'Agent collection policy is immutable');
-    record[policyKey] = fingerprint;
-    const controller = new AbortController();
-    const deadline = setTimeout(() => controller.abort(new Error('Core collection transport deadline')), budget.timeoutMs);
-    let response;
-    try {
-      response = await this.fetch(`${record.agent.endpoint}${session ? '/core/session/archive' : '/core/files/collect'}`, { method: 'POST',
-        headers: { ...this.#workerHeaders(record), 'content-type': 'application/json', accept: 'application/x-ndjson' },
-        body: JSON.stringify(spec), signal: controller.signal, redirect: 'error' });
-      if (!response.ok || !response.body || response.headers.get('content-type')?.split(';')[0] !== 'application/x-ndjson') {
-        throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not return the bounded Core collection stream');
-      }
-      let pending = Buffer.alloc(0);
-      let ended = false;
-      for await (const chunk of response.body) {
-        let offset = 0;
-        const bytes = Buffer.from(chunk);
-        while (offset < bytes.length) {
-          controller.signal.throwIfAborted();
-          const newline = bytes.indexOf(10, offset);
-          const end = newline === -1 ? bytes.length : newline;
-          if (pending.length + end - offset > MAX_COLLECTION_LINE_BYTES) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record exceeds its line limit');
-          pending = Buffer.concat([pending, bytes.subarray(offset, end)]);
-          offset = end + (newline === -1 ? 0 : 1);
-          if (newline === -1) break;
-          if (ended) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Core collection contains records after its final receipt');
-          let value;
-          try { value = JSON.parse(pending.toString('utf8')); } catch { throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record is not valid JSON'); }
-          pending = Buffer.alloc(0);
-          if (value?.type === 'error') throw new MurmError(
-            ['INVALID_CONTRACT', 'NOT_ALLOWED', 'CONFLICT', 'SERVICE_UNAVAILABLE'].includes(value.code) ? value.code : ERROR_CODES.SERVICE_UNAVAILABLE,
-            typeof value.message === 'string' ? value.message : 'Worker collection failed');
-          if (!['directory', 'file', 'chunk', 'fileEnd', 'end'].includes(value?.type)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record type is invalid');
-          ended = value.type === 'end';
-          yield value;
-        }
-      }
-      if (!ended || pending.length) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker collection stream ended without a complete receipt');
-    } finally {
-      clearTimeout(deadline);
-      controller.abort();
-      if (response?.body && !response.body.locked) await response.body.cancel().catch(() => {});
-    }
   }
 
   async stopExecution(executionId: any) {
@@ -1069,66 +668,68 @@ export class OpenSandboxManager {
     return true;
   }
 
-  async stopAll() { for (const id of new Set([...this.executions.keys(), ...this.pendingCreations.keys()])) await this.stopExecution(id); }
+  async stopAll() {
+    for (const id of new Set([...this.executions.keys(), ...this.pendingCreations.keys()])) await this.stopExecution(id);
+    await this.sdk.close();
+  }
+
+  close() { return this.sdk.close(); }
 
   snapshot() { return { provider: 'opensandbox', lifecycle_url: this.lifecycleBaseUrl, image: this.image, verified: this.verified, executions: [...new Set(this.executions.values())].map((record: any) => this.#snapshot(record)) }; }
 
-  #snapshot(record: any) { return { execution_id: record.boundExecutionId, agent_id: record.agentId, resource_key: record.executionId, sandbox_id: record.sandboxId, binding_version: record.bindingVersion, workspace: '/workspace/project', host_workspace_ref: null, agent_worker: record.agent ? { worker_port: record.agent.worker_port, started_at: record.agent.started_at } : null }; }
+  #snapshot(record: any) { return { execution_id: record.boundExecutionId, agent_id: record.agentId, resource_key: record.executionId, sandbox_id: record.sandboxId, expires_at: record.expiresAt ?? null, binding_version: record.bindingVersion, workspace: '/workspace/project', host_workspace_ref: null, agent_worker: record.agent ? { worker_port: record.agent.worker_port, started_at: record.agent.started_at } : null }; }
   #record(executionId: any) { const record: any = this.executions.get(executionId); if (!record) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'sandbox is not bound to this Execution', { execution_id: executionId }); return record; }
-
-  async #waitWorker(endpoint: any, headers: any) {
-    const deadline = Date.now() + 30_000;
-    while (Date.now() < deadline) {
-      try {
-        const response = await this.fetch(`${endpoint}/health`, { method: 'GET', headers, redirect: 'error', signal: AbortSignal.timeout(3000) });
-        if (response.ok) return;
-      } catch { /* worker is still starting */ }
-      await new Promise<any>((resolve: any) => setTimeout(resolve, 100));
-    }
-    throw new MurmError(ERROR_CODES.START_FAILED, 'Agent worker did not become ready', { endpoint: safeUrl(endpoint) }, { retryable: true });
-  }
 
   async #waitExecd(record: any) {
     const deadline = Date.now() + this.execdReadyTimeoutMs;
     while (Date.now() < deadline) {
-      for (const path of ['/ready', '/ping']) {
-        try {
-          await this.#request(`${record.execdUrl}${path}`, { method: 'GET', timeoutMs: 3_000, absolute: true, extraHeaders: record.execdHeaders });
-          return;
-        } catch (error: any) {
-          // Execd v1.1 exposes /ping but not /ready; a 404 is a capability
-          // difference, while transport/503 errors should keep polling.
-          if (path === '/ready' && error?.details?.status === 404) continue;
-        }
-      }
-      await new Promise<any>((resolve: any) => setTimeout(resolve, 100));
+      try {
+        if (await record.execd.health.ping(AbortSignal.timeout(Math.min(3000, deadline - Date.now())))) return;
+      } catch { /* Execd is still starting. */ }
+      await new Promise<void>(resolve => setTimeout(resolve, 100));
     }
-    throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox Execd did not become ready', { endpoint: safeUrl(record.execdUrl), timeout_ms: this.execdReadyTimeoutMs }, { retryable: true });
+    throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox Execd did not become ready',
+      { endpoint: safeUrl(record.execdUrl), timeout_ms: this.execdReadyTimeoutMs }, { retryable: true });
   }
 
-  #commandResult(events: any, body: any, { startedAt }: any) {
-    let stdout = ''; let stderr = ''; let truncated = false; let jobId: any = null; let exitCode: any = null; let timedOut = false; let state = 'completed';
-    for (const item of events) {
-      const data = item.data && typeof item.data === 'object' ? item.data : {};
-      jobId = jobId ?? data.command_id ?? data.id ?? data.execution_id ?? null;
-      if (item.event === 'stdout' || item.event === 'output') [stdout, truncated] = appendOutput(stdout, data.text ?? data.data ?? (typeof item.data === 'string' ? item.data : ''), this.maxOutputBytes);
-      if (item.event === 'stderr') [stderr, truncated] = appendOutput(stderr, data.text ?? data.data ?? '', this.maxOutputBytes);
-      if (item.event === 'execution_complete' || item.event === 'complete') { state = 'completed'; exitCode = data.exit_code ?? data.exitCode ?? 0; }
-      if (item.event === 'error') { state = 'completed'; exitCode = data.exit_code ?? data.exitCode ?? 1; timedOut = /timeout/i.test(String(data.message ?? data.error ?? '')); }
+  async #verifyEgressPolicy(record: any, expected: { egress?: { target: string; ports?: number[] }[] }) {
+    const endpoint = await sdkOperation('resolve egress endpoint',
+      () => this.sdk.sandboxes.getSandboxEndpoint(record.sandboxId, DEFAULT_EGRESS_PORT, this.useServerProxy));
+    const url = endpointUrl(endpoint, this.useServerProxy ? this.lifecycleBaseUrl : undefined);
+    if (!url) throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return an egress endpoint');
+    const headers = this.#associatedEndpointHeaders(record, url, endpoint.headers, DEFAULT_EGRESS_PORT);
+    for (const value of Object.values(headers)) record.onWorkerToken?.(value);
+    const state = await sdkOperation('observe egress policy', () => this.sdk.readEgressPolicy({ url, headers }));
+    const targets = (rules: readonly { target?: string; ports?: number[] }[]) =>
+      new Set(rules.flatMap(rule => rule.ports?.length ? rule.ports.map(port => `${rule.target}:${port}`) : [rule.target]));
+    const requested = targets(expected.egress ?? []);
+    const observed = targets((state?.policy?.egress ?? []).filter(rule => rule.action === 'allow'));
+    if (state?.status !== 'ok' || state.enforcementMode !== 'dns+nft' || state.policy?.defaultAction !== 'deny' ||
+        requested.size !== observed.size || [...requested].some(target => !observed.has(target))) {
+      throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox did not confirm the requested dns+nft allowlist',
+        { stage: 'egress_policy', enforcement_mode: state?.enforcementMode === 'dns' ? 'dns' : 'unconfirmed' });
     }
-    const fallback = responseValue(body);
-    if (fallback && typeof fallback === 'object') {
-      jobId = jobId ?? fallback.command_id ?? fallback.id ?? null;
-      exitCode = exitCode ?? fallback.exit_code ?? null;
-      stdout ||= fallback.stdout ?? '';
-      stderr ||= fallback.stderr ?? '';
-      if (fallback.running === true) state = 'running';
-    }
-    if (events.length === 0 && !fallback) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'OpenSandbox Execd returned no command result', { started_at: startedAt }, { retryable: true });
-    return { job_id: jobId ?? randomUUID(), state, exit_code: exitCode, timed_out: timedOut, truncated, stdout, stderr };
   }
 
-  #workerHeaders(record: any) { return record.agent.headers ?? { authorization: `Bearer ${record.agent.token}` }; }
+  async #workerEndpoint(record: any) {
+    const info = await sdkOperation('resolve Worker endpoint', () => this.sdk.sandboxes.getSandboxEndpoint(record.sandboxId, this.workerPort, this.useServerProxy));
+    const url = endpointUrl(info, this.useServerProxy ? this.lifecycleBaseUrl : undefined);
+    if (!url) throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return the Agent Worker endpoint', { sandbox_id: record.sandboxId });
+    return { url, headers: this.#associatedEndpointHeaders(record, url, info.headers, this.workerPort) };
+  }
+
+  #associatedEndpointHeaders(record: any, url: string, upstreamHeaders: Record<string, string> | undefined, port: number) {
+    const headers = this.#dataPlaneHeaders(url, upstreamHeaders);
+    const execdProxy = record.execdUrl.endsWith(`/proxy/${this.execdPort}`) &&
+      url === record.execdUrl.slice(0, -String(this.execdPort).length) + port;
+    if (execdProxy && record.execdHeaders['X-EXECD-ACCESS-TOKEN']) headers['x-execd-access-token'] = record.execdHeaders['X-EXECD-ACCESS-TOKEN'];
+    return headers;
+  }
+
+  /** Deliberately unauthenticated probes are outside the authenticated SDK service interfaces. */
+  #probeManagementAuthentication(path: string, options: any = {}) {
+    return this.worker.request(options.absolute ? path : `${this.lifecycleBaseUrl}${path}`, options);
+  }
 
   #dataPlaneHeaders(endpoint: string, headers?: Record<string, string>) {
     const result = Object.fromEntries(new Headers(headers).entries());
@@ -1214,7 +815,7 @@ export class OpenSandboxManager {
     await Promise.all([
       ['/command', 'POST'], ['/files/info', 'GET'], ['/session', 'POST'],
     ].map(async ([path, method]) => {
-      const response = await this.#request(`${record.execdUrl}${path}`, {
+      const response = await this.#probeManagementAuthentication(`${record.execdUrl}${path}`, {
         absolute: true, method, extraHeaders: Object.fromEntries(headers), timeoutMs: 5000,
         ...(method === 'POST' ? { body: {} } : {}), allowStatuses: [401, 403],
       }).catch(() => undefined);
@@ -1224,43 +825,7 @@ export class OpenSandboxManager {
     }));
   }
 
-  async #execd(record: any, path: any, options: any) { return this.#request(`${record.execdUrl}${path}`, { ...options, absolute: true, extraHeaders: record.execdHeaders }); }
 
-  async #request(path: any, { method = 'GET', body = undefined, tree, fileBudget, timeoutMs = this.commandTimeoutMs, absolute = false, extraHeaders = {}, allowStatuses = [], workerStart = false, signal, omitLifecycleKey = false }: any = {}) {
-    const url = absolute ? path : `${this.lifecycleBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error('sandbox provider request timed out')), timeoutMs);
-    const requestSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
-    const headers = { accept: 'application/json', ...extraHeaders };
-    if (body !== undefined) headers['content-type'] = tree ? 'application/x-ndjson' : 'application/json';
-    if (tree && body?.file_policy) headers['x-murm-file-policy'] = JSON.stringify(body.file_policy);
-    if (!absolute && !omitLifecycleKey && this.apiKey) headers['OPEN-SANDBOX-API-KEY'] = this.apiKey;
-    try {
-      const payload = tree ? { body: fileTreeFrames(tree, fileBudget, body, requestSignal), duplex: 'half' } :
-        body === undefined ? {} : { body: JSON.stringify(body) };
-      const response = await this.fetch(url, { method, headers, ...payload, signal: requestSignal, redirect: 'error' });
-      const text = await response.text();
-      const parsed = response.headers?.get?.('content-type')?.includes('text/event-stream') ? null : (text ? jsonData(text) : {});
-      if (workerStart && response.status === 400 && parsed?.ok === false) {
-        if (parsed.code === 'FILE_SPACE_INSUFFICIENT') {
-          throw new MurmError('FILE_SPACE_INSUFFICIENT', 'Sandbox staging or workDir could not hold the initial project');
-        }
-        if (parsed.code === ERROR_CODES.AGENT_STARTUP_CONTRACT) {
-          throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker rejected the pinned Agent startup contract');
-        }
-      }
-      if (!response.ok && !allowStatuses.includes(response.status)) throw new MurmError(absolute && /\/project\/(snapshot|install|install-result|install-confirm)$/.test(new URL(url).pathname) && [ERROR_CODES.WORKSPACE_BUSY, ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED].includes(parsed?.code)
-        ? parsed.code : response.status >= 500 ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT,
-      `OpenSandbox request failed with HTTP ${response.status}`, { status: response.status, diagnostic: safeDiagnostic(parsed ?? text),
-        ...(absolute && parsed?.code === ERROR_CODES.WORKSPACE_BUSY && ['dirty', 'active_writer'].includes(parsed.apply_blocker) ? { apply_blocker: parsed.apply_blocker } : {}) },
-      { retryable: response.status >= 500 || response.status === 429 || parsed?.code === ERROR_CODES.WORKSPACE_BUSY });
-      return { status: response.status, body: parsed, text };
-    } catch (error: any) {
-      if (error instanceof MurmError) throw error;
-      if (controller.signal.aborted) throw new MurmError(ERROR_CODES.SERVICE_TIMEOUT, 'OpenSandbox request timed out', { url: safeUrl(url) }, { cause: error, retryable: true });
-      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, error?.message ?? 'OpenSandbox request failed', { url: safeUrl(url) }, { cause: error, retryable: true });
-    } finally { clearTimeout(timer); }
-  }
 }
 
 export function createOpenSandboxManager(options: any = {}) { return new OpenSandboxManager(options); }

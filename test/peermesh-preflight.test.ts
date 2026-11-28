@@ -69,7 +69,7 @@ test('exact PeerMesh Profile and Services assemble actual Runtime/Bridge/gateway
   const profile = createPeerProfile({ image: 'fixture-no-allocation', facilities });
   const runtime = await createRuntime({ outputDir, maxAgents: 1, services, profiles: { peer: profile }, ...runtimeSettings({
     sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
-    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 128 * 1024 ** 2, inodes: 8192 } },
+    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'api' },
   }) });
   const closed = await runtime.close(); assert.equal(closed.cleanup, 'complete'); assert.deepEqual(closed.agents, []);
   const configuration = JSON.parse(await readFile(join(outputDir, runtime.id, 'runtime.json'), 'utf8')).config;

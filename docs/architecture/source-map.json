@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "207be6356c16e5fb60c4b3c5b236d7a98383f991",
+  "runtime_baseline": "76aa64dee48052dcf2b861f1fa876eebcbb3b5d6",
   "reviewed_date": "2026-11-27",
   "scope_roots": [
     "src",
@@ -9,10 +9,10 @@
     "test-support/subagents",
     "website",
     "examples/services",
-    "examples/first-harness",
     "examples/taskpool/deploy",
     "examples/taskpool/services/judge",
-    "test-support/taskpool-legacy"
+    "test-support/taskpool-legacy",
+    "examples/first-harness"
   ],
   "scope_root_files": [
     "package.json",
@@ -443,15 +443,6 @@
       "role": "Node support, dependency requirements and executable package scripts"
     },
     {
-      "path": "scripts/agent-filesystem-policy.c",
-      "category": "runtime and execution",
-      "chapters": [
-        "docs/architecture/02-execution.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "UID-restricted Landlock policy inherited by Pi and its descendants"
-    },
-    {
       "path": "scripts/check-architecture.ts",
       "category": "documentation tooling",
       "chapters": [
@@ -524,15 +515,6 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Mathlib HTTP provider process and environment settings"
-    },
-    {
-      "path": "scripts/mount-agent-workspace.py",
-      "category": "runtime and execution",
-      "chapters": [
-        "docs/architecture/02-execution.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Pin and mount a bounded tmpfs in a verified Docker namespace"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
@@ -972,26 +954,6 @@
         "docs/architecture/13-historical-resume.md"
       ],
       "role": "Automatic transaction-aware private SQLite before/after row history and committed write boundaries"
-    },
-    {
-      "path": "src/core/sandbox/docker-agent-disk.ts",
-      "category": "runtime and execution",
-      "chapters": [
-        "docs/architecture/02-execution.md",
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Docker Agent identity validation and bounded filesystem preparation"
-    },
-    {
-      "path": "src/core/sandbox/docker-agent-network.ts",
-      "category": "Execution and control",
-      "chapters": [
-        "docs/architecture/02-execution.md",
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Pinned local Docker namespace egress enforcement with frozen per-Agent Profile origins"
     },
     {
       "path": "examples/taskpool/services/workspace/execution-workspace.ts",
@@ -1471,7 +1433,7 @@
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Public Sandbox Provider contract, API and strict OpenSandbox preparation, and shared workspace capabilities"
+      "role": "Public Sandbox Provider contract, authenticated OpenSandbox preflight and deployment capability guards"
     },
     {
       "path": "src/core/sandbox/sandbox-connection.ts",
@@ -2286,14 +2248,6 @@
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ]
-    },
-    {
-      "path": "scripts/mount-shared-workspace.py",
-      "category": "runtime and execution",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Trusted local Docker project mounts and shared tmpfs cleanup"
     },
     {
       "path": "src/core/service-trace.ts",
@@ -3461,6 +3415,40 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Compiles only the source-built HTTP server, peers and their dependencies"
+    },
+    {
+      "path": "src/core/runtime-callback.ts",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "One Runtime listener with prefix-preserving Bridge and model handler routing and owned closure"
+    },
+    {
+      "path": "src/core/sandbox/opensandbox-sdk.ts",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Pinned official SDK lifecycle and Execd adapters, owned transport and sanitized errors"
+    },
+    {
+      "path": "src/core/sandbox/sandbox-validation.ts",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Bounded Sandbox identifiers, environment, endpoint and command validation"
+    },
+    {
+      "path": "src/core/sandbox/worker-client.ts",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Authenticated murm Worker startup, input, file and Session protocol"
     },
     {
       "path": "examples/first-harness/config.ts",

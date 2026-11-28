@@ -24,8 +24,8 @@ async function fixture(t, onPrompt = () => {}, routerOptions = {}) {
   const outputDir = await mkdtemp(join(tmpdir(), 'agensh-router-')); t.after(() => rm(outputDir, { recursive: true, force: true }));
   const { createPeerMeshRouterHarness } = await import('../examples/peermesh/harness/routed.js');
   harness = await createPeerMeshRouterHarness({ runId: 'router', image: 'fixture', outputDir, exportLimit: 1024 ** 2,
-    ...runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
-      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 16 * 1024 ** 2, inodes: 2048 } } }),
+    ...runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url, apiKey: provider.apiKey, egressMode: 'dns+nft' }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
+      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'api' } }),
     prepare: async () => ({ runId: 'router', repository: { owner: 'owner', name: 'repo' }, repositoryUrl: 'http://172.17.0.1:3000/owner/repo.git', channelId: 'channel', boardId: 'board', issueNumber: 1,
       endpoints: { gitea: 'http://172.17.0.1:3000', message: 'http://127.0.0.1:1', board: 'http://127.0.0.1:1' },
       peer: { gitea: { binding: 'git', accountId: '101', username: 'peer', token: 'secret-git' }, message: { binding: 'mm', accountId: 'mm-peer', token: 'secret-mm' }, board: { binding: 'board', workerId: 'worker-router' } } }),

@@ -137,14 +137,13 @@ export function runtimeConfiguration({ config, profiles, registrations, maxAgent
     maxAgents,
     backend: {
       type: `${driver.kind}-${provider?.id ?? 'opensandbox'}`, [`${driver.kind}Version`]: driver.version,
-      authMode: 'api-key', capabilities: driver.capabilities, network: isolation.network, disk: isolation.disk,
+      authMode: 'api-key', capabilities: driver.capabilities, network: isolation.network,
       ...(provider ? {} : { cpu: redact(cpu), memory: redact(memory) }),
       provider: provider ? { id: provider.id, version: redact(provider.version), capabilities: provider.capabilities } :
-        { id: isolation.network === 'local-docker' ? 'local' : 'opensandbox', version: isolation.network === 'local-docker' ? 'strict-local-docker' : 'lifecycle-v1' },
+        { id: 'opensandbox', version: 'sdk-1.2.1' },
       constraints: {
-        requested: { ...sandbox.resourceLimits, ...(isolation.disk ? { disk: isolation.disk } : {}) },
-        ...(provider ? {} : { configured: { cpu: redact(cpu), memory: redact(memory),
-          ...(isolation.network === 'local-docker' ? { disk: { ...isolation.disk, scope: 'workspace' } } : {}) } }),
+        requested: { ...sandbox.resourceLimits },
+        ...(provider ? {} : { configured: { cpu: redact(cpu), memory: redact(memory) } }),
       },
     },
     waiting: {

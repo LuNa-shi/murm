@@ -1,12 +1,5 @@
 ARG NODE_IMAGE=node:22.19.0-bookworm-slim
 
-FROM ${NODE_IMAGE} AS filesystem-policy-build
-RUN apt-get update \
-  && apt-get install --no-install-recommends --yes gcc libc6-dev linux-libc-dev \
-  && rm -rf /var/lib/apt/lists/*
-COPY --chown=0:0 scripts/agent-filesystem-policy.c /tmp/agent-filesystem-policy.c
-RUN cc -O2 -Wall -Wextra -Werror -o /agent-filesystem-policy /tmp/agent-filesystem-policy.c
-
 FROM ${NODE_IMAGE} AS typescript-build
 WORKDIR /build
 COPY package.json npm-shrinkwrap.json tsconfig.json ./
@@ -28,7 +21,7 @@ LABEL org.opencontainers.image.source="https://github.com/LuNa-shi/murm" \
       org.murm.opensandbox.codex-version="${CODEX_VERSION}" \
       org.murm.opensandbox.worker-executors="${WORKER_EXECUTOR}" \
       org.murm.opensandbox.provider="openai" \
-      org.murm.opensandbox.worker-protocol="murm-core-v1" \
+      org.murm.opensandbox.worker-protocol="murm-core-v2" \
       org.murm.opensandbox.file-protocol="file-tree-v1"
 
 RUN apt-get update \
@@ -49,7 +42,6 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
   fi
 
 # Archive build contexts can carry the host checkout's UID and GID.
-COPY --from=filesystem-policy-build --chown=0:0 /agent-filesystem-policy /opt/murm/agent-filesystem-policy
 COPY --from=typescript-build --chown=0:0 /build/dist/src /opt/murm/dist/src
 COPY --from=typescript-build --chown=0:0 /build/dist/examples/taskpool/cli.js /opt/murm/dist/examples/taskpool/cli.js
 COPY --from=typescript-build --chown=0:0 \

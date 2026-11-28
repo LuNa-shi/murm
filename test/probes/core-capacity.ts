@@ -162,13 +162,13 @@ async function measure(count: number) {
     result.hostBaseline = await sample([]);
     const advertiseHost = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
     const backend = runtimeSettings({
-      sandbox: { lifecycleBaseUrl: lifecycle.href, endpointHost: '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' } },
+      sandbox: { lifecycleBaseUrl: lifecycle.href, resourceLimits: { cpu: '1', memory: '1Gi' } },
       bridge: { host: '0.0.0.0', publicUrl: `http://${advertiseHost}:{port}` },
       modelGateway: { host: '0.0.0.0', advertiseHost, maxOutputTokens: 128 },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: {
         url: `http://127.0.0.1:${probeServer.address().port}/v1/responses`, headers: {},
       } } },
-      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+      isolation: { network: 'api' },
     });
     runtime = await createRuntime({ ...backend, outputDir, services: new ServiceRegistry(), maxAgents: count,
       profiles: { probe: { prompt: 'Complete the controlled local file task.', image, writable: true, model: 'default', services: {} } } });

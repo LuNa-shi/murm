@@ -65,6 +65,10 @@ interface BackendAgent {
   polling?: Promise<void>;
   submissions?: Map<string, InputSubmission>;
   executionStopped?: boolean;
+  lease?: { expiresAt: string | null; dueAt: number; work?: Promise<void> };
+  retaining?: 'archive-session' | 'collect-artifacts';
+  retainAtRisk?: boolean;
+  deleting?: boolean;
 }
 
 type WorkerRecord = { worker_sequence: number; worker_at?: string; [key: string]: any } & (
@@ -123,9 +127,12 @@ export interface SandboxManager {
     sandboxId?: string;
     creation: 'created' | 'pending' | 'absent';
     executionStopped: boolean;
+    expiresAt?: string | null;
   } | undefined;
   /** Resolve after confirmed deletion or absence. Throw while the deletion outcome is uncertain. */
   stopExecution(agentId: string): Promise<unknown>;
+  renewExecution?(resourceKey: string, minimumExpiresAtMs: number): Promise<{ sandboxId: string; expiresAt: string }>;
+  close?(): Promise<void>;
 }
 
 interface BackendOptions {
@@ -166,9 +173,9 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { isIP } from 'node:net';
 import { createWorkerEventPoll } from '../worker-event-poll.js';
-import { resolveSandboxConnection } from './sandbox-connection.js';
+import { loopbackLifecycle, normalizeRuntimePublicUrl, resolveSandboxConnection } from './sandbox-connection.js';
 import { validId } from '../config.js';
-import { adaptSandboxProvider, checkLocalWorkspaceQuota, createApiOpenSandboxProvider, createLocalOpenSandboxProvider, type OpenSandboxProvider } from './opensandbox-provider.js';
+import { adaptSandboxProvider, createApiOpenSandboxProvider, type OpenSandboxProvider } from './opensandbox-provider.js';
 
 export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'> & {
   readonly driver: Readonly<ExecutorDriver>;
@@ -187,11 +194,17 @@ function freeze<T extends object>(value: T): Readonly<T> {
   return Object.freeze(value);
 }
 
-function httpUrl(value: string, label: string) {
-  let url;
-  try { url = new URL(value); } catch { throw invalid(`${label} must be an HTTP(S) URL`); }
-  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw invalid(`${label} must be an HTTP(S) URL without embedded credentials`);
-  return url;
+function networkAllowlist(destinations: readonly string[]) {
+  const egress = new Map<string, { action: 'allow'; target: string; ports: number[] }>();
+  for (const destination of destinations) {
+    const { hostname, port, protocol } = new URL(destination);
+    if (isIP(hostname) !== 4 || hostname.startsWith('127.')) {
+      throw invalid('OpenSandbox dns+nft requires a non-loopback IPv4 Runtime callback and IPv4 allowlist targets for exact ports');
+    }
+    const tcpPort = port ? Number(port) : protocol === 'https:' ? 443 : 80;
+    egress.set(`${hostname}:${tcpPort}`, { action: 'allow', target: hostname, ports: [tcpPort] });
+  }
+  return { defaultAction: 'deny' as const, egress: [...egress.values()] };
 }
 
 function sandboxExpiry(value: unknown) {
@@ -203,7 +216,7 @@ function sandboxExpiry(value: unknown) {
   return new Date(instant).toISOString();
 }
 
-export function createSandbox(config: SandboxConfig | SandboxProviderConfig): Sandbox {
+export function createSandbox(config: SandboxConfig | SandboxProviderConfig = {}): Sandbox {
   if (!config || typeof config !== 'object') throw invalid('createSandbox requires Sandbox settings');
   const timeoutSeconds = config.timeoutSeconds === undefined ? 3600 : config.timeoutSeconds;
   if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 60) {
@@ -224,16 +237,24 @@ export function createSandbox(config: SandboxConfig | SandboxProviderConfig): Sa
     return handle;
   }
   if ((config.kind !== undefined && config.kind !== 'opensandbox') ||
-      Object.keys(config).some(key => !['kind', 'lifecycleBaseUrl', 'apiKey', 'execdToken', 'endpointHost', 'useServerProxy',
+      Object.keys(config).some(key => !['kind', 'endpoint', 'lifecycleBaseUrl', 'apiKey', 'execdToken', 'endpointHost', 'useServerProxy', 'egressMode',
         'resourceLimits', 'commandTimeoutMs', 'timeoutSeconds', 'isolation'].includes(key))) {
     throw invalid('createSandbox requires an OpenSandbox configuration with only Sandbox settings');
   }
   const { kind: _kind, isolation, ...sandbox } = config;
-  const url = httpUrl(sandbox.lifecycleBaseUrl, 'sandbox.lifecycleBaseUrl');
-  if (url.search || url.hash) throw invalid('sandbox.lifecycleBaseUrl cannot contain a query or fragment');
-  if (isolation?.network !== undefined && isolation.network !== 'api' && isolation.network !== 'local-docker') {
-    throw invalid('Unsupported OpenSandbox isolation policy');
+  if (isolation !== undefined && (!isolation || typeof isolation !== 'object' ||
+      Object.keys(isolation).some(key => key !== 'network' && key !== 'disk'))) throw invalid('Unknown OpenSandbox isolation field');
+  if (isolation?.disk?.inodes !== undefined) {
+    throw invalid('OpenSandbox cannot enforce the legacy Workspace inode quota. Remove the request or use a trusted Provider that enforces it.');
   }
+  if (isolation?.disk !== undefined) {
+    throw invalid('OpenSandbox cannot enforce the legacy exact Workspace byte quota. File transfer budgets and volume capacity have different scopes.');
+  }
+  if (isolation?.network === 'local-docker') {
+    throw invalid('local-docker was removed. Configure OpenSandbox egress dns+nft for Profile network policies and remove isolation.network.');
+  }
+  if (isolation?.network !== undefined && isolation.network !== 'api') throw invalid('Unknown OpenSandbox isolation policy');
+  if (sandbox.egressMode !== undefined && sandbox.egressMode !== 'dns+nft') throw invalid('Only dns+nft supports the requested IP and port allowlist');
   if (sandbox.resourceLimits !== undefined) {
     const { cpu, memory } = sandbox.resourceLimits;
     if (typeof cpu !== 'string' || !/^\d+(?:\.\d+)?m?$/.test(cpu) || !(Number.parseFloat(cpu) > 0) || !Number.isFinite(Number.parseFloat(cpu)) ||
@@ -241,24 +262,11 @@ export function createSandbox(config: SandboxConfig | SandboxProviderConfig): Sa
       throw invalid('OpenSandbox resource limits require positive CPU and memory quantities, for example 500m and 512Mi');
     }
   }
-  const disk = isolation?.disk;
-  const strict = isolation?.network === 'local-docker' || disk?.inodes !== undefined;
-  let effective: SandboxSettings['isolation'] = { network: 'api' };
-  if (strict) {
-    if (isolation?.network === 'api' || !disk || !Number.isSafeInteger(disk.bytes) || !Number.isSafeInteger(disk.inodes)) {
-      throw invalid('Strict local Docker isolation requires explicit disk byte and inode limits');
-    }
-    const quota = { bytes: disk.bytes, inodes: disk.inodes! };
-    try { checkLocalWorkspaceQuota(quota); }
-    catch (error) { throw invalid((error as Error).message); }
-    effective = { network: 'local-docker', disk: quota };
-  } else if (disk !== undefined) {
-    throw invalid('The OpenSandbox API policy cannot enforce a workspace disk limit. Select a Provider that implements the requested storage policy.');
-  }
-  const connection = resolveSandboxConnection(sandbox);
+  const { lifecycleBaseUrl: _alias, endpoint: _endpoint, endpointHost: _endpointHost, ...settings } = sandbox;
+  const { lifecycleBaseUrl, apiKey, publicUrl, advertiseHost, useServerProxy, egressMode } = resolveSandboxConnection(sandbox);
   sandboxes.set(handle, freeze(structuredClone({
-    sandbox: { ...sandbox, lifecycleBaseUrl: connection.lifecycleBaseUrl, apiKey: connection.apiKey,
-      endpointHost: connection.endpointHost, timeoutSeconds }, isolation: effective,
+    sandbox: { ...settings, lifecycleBaseUrl, apiKey, publicUrl, advertiseHost, useServerProxy, egressMode, timeoutSeconds },
+    isolation: { network: 'api' } as const,
   })));
   return handle;
 }
@@ -268,21 +276,27 @@ export function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRun
   if (!settings) throw invalid('A createSandbox handle is required');
   const { executor, models, connection } = options;
   const driver = selectExecutorDriver(executor);
-  const workerHost = connection?.advertiseHost ?? resolveSandboxConnection().advertiseHost ?? '172.17.0.1';
-  const urlHost = workerHost.includes(':') ? `[${workerHost}]` : workerHost;
-  const publicUrl = connection?.bridge?.publicUrl ?? `http://${urlHost}:{port}`;
   const gateway = connection?.modelGateway;
-  const advertiseHost = gateway?.advertiseHost ?? workerHost;
-  const publicGateway = gateway?.publicUrl;
-  for (const [template, label] of [[publicUrl, 'connection.bridge.publicUrl'], [publicGateway ?? `http://${advertiseHost.includes(':') ? `[${advertiseHost}]` : advertiseHost}:{port}`, 'connection.modelGateway.publicUrl']]) {
-    if (!template.includes('{port}')) throw invalid(`${label} must contain {port}`);
-    const url = httpUrl(template.replaceAll('{port}', '12345'), label);
-    if (url.search || url.hash || ['0.0.0.0', '[::]'].includes(url.hostname)) throw invalid(`${label} requires a reachable origin`);
-    if (settings.isolation.network === 'local-docker' &&
-        (isIP(url.hostname) !== 4 || url.hostname.startsWith('127.'))) {
-      throw invalid('Strict local Docker destinations require concrete non-loopback IPv4 addresses');
-    }
+  const legacyUrls = [connection?.bridge?.publicUrl, gateway?.publicUrl].filter((url): url is string => url !== undefined);
+  const explicitUrls = [connection?.publicUrl, ...legacyUrls].filter((url): url is string => url !== undefined);
+  const candidates = new Set(explicitUrls.map(normalizeRuntimePublicUrl));
+  if (candidates.size > 1) throw invalid('Bridge and Model Gateway must use the same connection.publicUrl');
+  const hosts = new Set([connection?.bindHost, connection?.bridge?.host, gateway?.host].filter(host => host !== undefined));
+  if (hosts.size > 1) throw invalid('Bridge and Model Gateway must use the same connection.bindHost');
+  const port = connection?.bindPort ?? 0;
+  if (!Number.isSafeInteger(port) || port < 0 || port > 65_535) throw invalid('connection.bindPort must be from 0 through 65535');
+  const advertiseHost = connection?.advertiseHost ?? gateway?.advertiseHost ?? settings.sandbox.advertiseHost ??
+    ((settings.sandbox.lifecycleBaseUrl && loopbackLifecycle(settings.sandbox.lifecycleBaseUrl)) || settings.provider ? '172.17.0.1' : undefined);
+  const savedPublicUrl = settings.sandbox.publicUrl;
+  const advertised = [...candidates][0] ?? savedPublicUrl;
+  if (!advertised && !advertiseHost) throw invalid('For an existing remote OpenSandbox, set connection.publicUrl to the Runtime address reachable from the Sandbox');
+  const workerHost = advertiseHost ?? new URL(advertised!).hostname.replace(/^\[|\]$/g, '');
+  if (!/^[a-zA-Z0-9.:-]+$/.test(workerHost) || ['localhost', '0.0.0.0', '::'].includes(workerHost) && !advertised) {
+    throw invalid('connection.advertiseHost requires a Sandbox-reachable host');
   }
+  const urlHost = workerHost.includes(':') ? `[${workerHost}]` : workerHost;
+  const publicUrl = advertised ?? `http://${urlHost}:{port}`;
+  const host = [...hosts][0] ?? '0.0.0.0';
   const requestLimit = gateway?.maxRequests;
   if (requestLimit !== undefined && (!Number.isSafeInteger(requestLimit) || requestLimit < 1)) {
     throw invalid('modelGateway.maxRequests must be a positive safe integer');
@@ -301,15 +315,15 @@ export function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRun
     return [alias, settings];
   })));
   const snapshot = freeze(structuredClone({
-    bridge: { host: connection?.bridge?.host ?? '0.0.0.0', publicUrl },
-    modelGateway: { requestTimeoutMs: gateway?.requestTimeoutMs, host: gateway?.host ?? '0.0.0.0', advertiseHost, publicUrl: publicGateway, maxOutputTokens: outputPolicy, maxRequests: requestLimit },
+    callback: { host, port, publicUrl },
+    bridge: { host, publicUrl },
+    modelGateway: { requestTimeoutMs: gateway?.requestTimeoutMs, host, advertiseHost: workerHost, publicUrl, maxOutputTokens: outputPolicy, maxRequests: requestLimit },
   }));
   return Object.freeze({ ...settings, ...snapshot, models: routes, driver, filePolicy: resolveFilePolicy(options.filePolicy) });
 }
 
 export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, {
-  runtimeId, outputDir, bridge, modelAccess, registerPrivateValues = () => {}, providers = [config.provider ?? (
-    config.isolation.network === 'local-docker' ? createLocalOpenSandboxProvider(config) : createApiOpenSandboxProvider(config))],
+  runtimeId, outputDir, bridge, modelAccess, registerPrivateValues = () => {}, providers = [config.provider ?? createApiOpenSandboxProvider(config)],
 }: BackendOptions) {
   const { driver } = config;
   const agents = new Map<string, BackendAgent>();
@@ -321,6 +335,59 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
   await Promise.all(targets.map(target => target.preflight?.()));
   let closing = false;
   let nextTarget = 0;
+  const lifetimeMs = (config.sandbox.timeoutSeconds ?? 3600) * 1000;
+  const renewalLeadMs = Math.min(300_000, Math.max(20_000, Math.floor(lifetimeMs / 3)));
+  const retentionMs = 300_000;
+  let leaseTimer: ReturnType<typeof setTimeout> | undefined;
+  let periodicRenewal: Promise<void> | undefined;
+
+  function scheduleLeases() {
+    clearTimeout(leaseTimer);
+    if (closing || periodicRenewal) return;
+    let next = Infinity;
+    for (const agent of agents.values()) {
+      if (agent.lease && !agent.lease.work && !agent.deleting && agent.manager.renewExecution) next = Math.min(next, agent.lease.dueAt);
+    }
+    if (next !== Infinity) {
+      leaseTimer = setTimeout(() => {
+        const now = Date.now();
+        const due = [...agents.values()].find(agent => agent.lease && agent.lease.dueAt <= now &&
+          !agent.lease.work && !agent.deleting && agent.manager.renewExecution);
+        if (due) {
+          periodicRenewal = renewLease(due, now + lifetimeMs)?.finally(() => {
+            periodicRenewal = undefined;
+            scheduleLeases();
+          });
+        } else {
+          scheduleLeases();
+        }
+      }, Math.min(2_147_483_647, Math.max(1, next - Date.now()))).unref();
+    }
+  }
+
+  function renewLease(agent: BackendAgent, minimum: number) {
+    const { lease, manager } = agent;
+    if (!lease || !manager.renewExecution || agent.deleting) return;
+    if (lease.work) return lease.work;
+    lease.work = Promise.resolve().then(async () => {
+      try {
+        const observation = await manager.renewExecution!(agent.id, minimum);
+        const expiresAt = sandboxExpiry(observation.expiresAt);
+        if (!expiresAt) throw new Error('OpenSandbox expiry could not be confirmed');
+        lease.expiresAt = expiresAt;
+        lease.dueAt = Math.max(Date.now() + 5_000, Date.parse(expiresAt) - renewalLeadMs);
+        trace(agent, { type: 'sandbox-lease', state: 'observed', sandboxId: observation.sandboxId, expiresAt });
+      } catch {
+        lease.expiresAt = sandboxExpiry(manager.coreResource(agent.id)?.expiresAt) ?? lease.expiresAt;
+        lease.dueAt = Date.now() + 5_000;
+        trace(agent, { type: 'sandbox-lease', state: 'unconfirmed', expiresAt: lease.expiresAt });
+      }
+    }).finally(() => {
+      lease.work = undefined;
+      scheduleLeases();
+    });
+    return lease.work;
+  }
 
   function trace(agent: BackendAgent, record: Readonly<Record<string, unknown>>) {
     // Trace persistence is observational and cannot fail an Agent's execution.
@@ -478,10 +545,16 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
       const provider = entry?.provider ?? targets[nextTarget];
       if (!entry) nextTarget = (nextTarget + 1) % targets.length;
-      if (workspace && provider.capabilities && !provider.capabilities.sharedWorkspace) throw invalid('The selected Sandbox Provider does not support live shared workspaces');
-      if (profile.network?.allow.length && provider.capabilities && !provider.capabilities.networkAllowlist) {
+      if (workspace && provider.capabilities && !provider.capabilities.sharedWorkspace) {
+        throw invalid('Live shared workspaces require a trusted Provider with sharedWorkspace support; use files or Services for explicit handoff');
+      }
+      if (profile.network !== undefined && provider.capabilities && !provider.capabilities.networkAllowlist) {
         throw invalid('The selected Sandbox Provider cannot enforce the requested network allowlist');
       }
+      const networkPolicy = provider.id === 'opensandbox' && !config.provider && profile.network
+        ? networkAllowlist([bridge.publicUrl, ...profile.network.allow]) : undefined;
+      await provider.beforeAllocation?.();
+      if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
       const manager = provider.openManager(profile.image);
       const agent: BackendAgent = { id: agentId, provider, manager, onEvent, onExecutionStart, onTrace, cursor: 0, output: '', error: null,
         beforeCompact, stopping: false, exited: false, eventPoll: createWorkerEventPoll(), nativeExecuting: false, pendingInputs: 0 };
@@ -501,18 +574,23 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       };
       assertOpen();
       const allocation = { providerId: provider.id, resourceKey: agentId };
-      const sandbox = await manager.ensureExecution({ executionId: agentId, agentId, timeoutSeconds: config.sandbox.timeoutSeconds ?? 3600, projectQuotaRequired: provider.projectQuotaRequired ?? true, cleanupOnFailure: false,
+      const sandbox = await manager.ensureExecution({ executionId: agentId, agentId, timeoutSeconds: config.sandbox.timeoutSeconds ?? 3600, projectQuotaRequired: false, cleanupOnFailure: false, networkPolicy,
         metadata: { runtime_id: runtimeId }, onWorkerToken: (token: string) => registerPrivateValues([token]),
         onCreateDispatch: (entry: { timeout_seconds: number }) => recordAllocation({ ...allocation, state: 'allocation-dispatched', timeoutSeconds: entry.timeout_seconds }),
-        onCreated: (entry: { sandbox_id: string; expires_at?: string }) => recordAllocation({ ...allocation, state: 'allocation-observed', sandboxId: entry.sandbox_id,
-          observation: Object.hasOwn(entry, 'expires_at') ? 'create-response' : 'cleanup-lookup', expiresAt: sandboxExpiry(entry.expires_at) }),
+        onCreated: (entry: { sandbox_id: string; expires_at?: string }) => {
+          const expiresAt = sandboxExpiry(entry.expires_at);
+          agent.lease = { expiresAt, dueAt: expiresAt ? Date.parse(expiresAt) - renewalLeadMs : Date.now() + 5_000 };
+          scheduleLeases();
+          return recordAllocation({ ...allocation, state: 'allocation-observed', sandboxId: entry.sandbox_id,
+            observation: Object.hasOwn(entry, 'expires_at') ? 'create-response' : 'cleanup-lookup', expiresAt });
+        },
       });
       assertOpen();
       const identity = { agent_id: agentId, runtime_id: runtimeId, resource_key: agentId };
       const credentials = modelAccess.credentialsForAgent(agentId, profile.model);
       const bridgeCredentials = bridge.credentialsForAgent(agentId);
       registerPrivateValues([...Object.values(credentials.secretEnvironment), ...Object.values(bridgeCredentials.secretEnvironment)]);
-      const quota = await provider.prepareSandbox({ sandboxId: sandbox.sandbox_id, agent: identity, bridgeUrl: bridge.publicUrl,
+      await provider.prepareSandbox({ sandboxId: sandbox.sandbox_id, agent: identity, bridgeUrl: bridge.publicUrl,
         modelUrl: credentials.baseUrl, additionalEndpoints: profile.network?.allow ?? [], workspace, assertOpen });
       const versions = await manager.agentVersions({ executionId: agentId, executor: driver.kind, externalExecutor: Boolean(driver.adapter) });
       const actualVersion = versions[`${driver.kind}Version`];
@@ -539,7 +617,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         files: options.files, forkSession, workspace,
         env: { ...(profile.env ?? {}), ...bridgeCredentials.environment, ...credentials.environment },
         secretEnvironment: { ...(options.secretEnv ?? {}), ...bridgeCredentials.secretEnvironment, ...credentials.secretEnvironment },
-        requireCoreFileProtocol: true, projectQuota: quota, modelCatalogResource: credentials.catalogResource,
+        requireCoreFileProtocol: true, modelCatalogResource: credentials.catalogResource,
         ...(credentials.catalogContent !== undefined ? { modelCatalogContent: credentials.catalogContent } : {}),
         beforeAgentStart: assertOpen });
       if (driver.adapter) {
@@ -550,10 +628,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
             { code: 'AGENT_STARTUP_CONTRACT' });
         }
       }
-      const effective = startup?.isolation || quota ? {
-        ...startup?.isolation,
-        ...(quota ? { disk: { ...quota, scope: 'workspace' as const } } : {}),
-      } : undefined;
+      const effective = startup?.isolation;
       if (effective) trace(agent, { type: 'sandbox-isolation', providerId: provider.id,
         sandboxId: sandbox.sandbox_id, effective });
       agent.started = true;
@@ -747,17 +822,49 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       const agent = agents.get(agentId);
       if (!agent) return;
       const resource = agent.manager.coreResource(agentId);
-      return resource && { ...resource, providerId: agent.provider.id };
+      return resource && {
+        ...resource, providerId: agent.provider.id,
+        ...(agent.lease ? { expiresAt: agent.lease.expiresAt } : {}),
+        ...(agent.retaining ? { retention: {
+          reason: agent.retaining,
+          status: agent.retainAtRisk || !agent.lease?.expiresAt || Date.parse(agent.lease.expiresAt) <= Date.now()
+            ? 'retain-at-risk' : 'retained',
+          autoRenewing: !closing && Boolean(agent.lease && agent.manager.renewExecution),
+        } } : {}),
+      };
+    },
+    retain(agentId: string, reason: NonNullable<BackendAgent['retaining']>) {
+      const agent = agents.get(agentId);
+      if (agent) agent.retaining = reason;
+    },
+    async finishRetention() {
+      closing = true;
+      clearTimeout(leaseTimer);
+      for (const agent of agents.values()) {
+        if (!agent.retaining) continue;
+        const deadline = Date.now() + retentionMs;
+        await agent.lease?.work;
+        if (!agent.lease?.expiresAt || Date.parse(agent.lease.expiresAt) < deadline) {
+          await renewLease(agent, deadline);
+        }
+        agent.retainAtRisk = !agent.lease?.expiresAt || Date.parse(agent.lease.expiresAt) < deadline;
+        trace(agent, { type: 'sandbox-retention', state: agent.retainAtRisk ? 'retain-at-risk' : 'retained',
+          reason: agent.retaining, expiresAt: agent.lease?.expiresAt ?? null });
+      }
     },
     async destroy(agentId: string) {
       const agent = agents.get(agentId);
       if (!agent) return;
       if (!agent.executionStopped) throw Object.assign(new Error('Sandbox deletion requires confirmed execution stop'), { code: 'NOT_ALLOWED' });
       agent.eventPoll.stop();
+      agent.retaining = undefined;
+      agent.deleting = true;
+      await agent.lease?.work;
       const deletion = await agent.manager.stopExecution(agentId);
-      if (config.provider && deletion === false && agent.manager.coreResource(agentId)?.creation !== 'absent') {
+      if (deletion === false && agent.manager.coreResource(agentId)?.creation !== 'absent') {
         throw Object.assign(new Error('Sandbox Provider did not confirm deletion'), { code: 'SERVICE_UNAVAILABLE', retryable: true });
       }
+      await agent.manager.close?.();
       await agent.polling;
       if (agent.workspace) {
         const workspaceId = agent.workspace.id;
@@ -769,9 +876,11 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         }
       }
       agents.delete(agentId);
+      scheduleLeases();
     },
     async close() {
       closing = true;
+      clearTimeout(leaseTimer);
       if (agents.size) throw Object.assign(new Error('Backend still owns Agent resources'), { code: 'CONFLICT' });
     },
   };

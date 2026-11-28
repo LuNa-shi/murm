@@ -237,11 +237,10 @@ async function checkNativeAdoption(t, materialNotificationMode) {
   try {
     report = await runTaskPoolHarness({
       ...runtimeSettings({ sandbox: {
-        lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
-        apiKey: process.env.MURM_CORE_TEST_API_KEY, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
+        lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', apiKey: process.env.MURM_CORE_TEST_API_KEY, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 150_000, maxOutputTokens: 4096 },
         models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {} } } },
-        isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } }),
+        isolation: { network: 'api' } }),
       model: 'default', image, outputDir, taskService: tasks, contextService: context, missionWorkspace: workspace, workspaceManager: manager,
       missionId, workspaceId: initial.workspace_id, capacity, deadlineAt, autonomousTasks: true, workspaceCapture: 'core', prompt: '',
       controller: { discoveryContext: 'FIXED_NATIVE_ORIGINAL_PROBLEM', automaticContinuation: false, deliverNotifications: true, materialNotificationMode, selectionMs: 180_000, hardBudgetMs: 210_000, stallMs: 180_000,

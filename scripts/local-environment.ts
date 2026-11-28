@@ -2,22 +2,28 @@ import { execFile, spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { access, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { createConnection, isIP } from 'node:net';
-import { homedir, networkInterfaces, platform } from 'node:os';
+import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { OpenSandboxSdk } from '../src/core/sandbox/opensandbox-sdk.js';
 import { localApiKeyPath, loopbackLifecycle, resolveSandboxConnection, resolveSandboxConnectionWithSources } from '../src/core/sandbox/sandbox-connection.js';
 
 const execute = promisify(execFile);
-export const localProviderImage = 'opensandbox/server:release-1.2.0@sha256:25bebdcf1cf7724eb923faecbdbbf82d4038c6ab35c736151574726d14006f30';
-export const localExecdImage = 'opensandbox/execd:v1.1.0@sha256:6cf7dba2f21f0b536e100563d841ac58a9f31c2b0a081b7ac76796a24d6f47e2';
-const profileVersion = 'murm-local-linux-api-v2';
+export const localProviderImage = 'opensandbox/server:release-1.2.1@sha256:07f9b39adb8cadf68357dd1b86367068210e960fc4cb50e11b75176387557ea7';
+export const localExecdImage = 'opensandbox/execd:release-1.2.1@sha256:6b12d17844ac7167271488302c71934e47f76abb9ddab19ec8529bd1c1c56b23';
+export const localEgressImage = 'opensandbox/egress:release-1.2.1@sha256:84b98d3b5989a87389c977f6433f8cd3c7998d03aa15aaae41ebcb15b7eb8000';
+const profileVersion = 'murm-local-linux-sdk-v3';
 const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
 const root = sourceRoot.endsWith('/dist/') ? fileURLToPath(new URL('../../', import.meta.url)) : sourceRoot;
 
 export interface LocalEnvironmentConfig {
+  endpoint?: string;
   lifecycleBaseUrl: string;
+  publicUrl?: string;
+  egressMode?: 'dns+nft';
+  useServerProxy?: boolean;
   endpointHost?: string;
   advertiseHost?: string;
   apiKey?: string;
@@ -41,7 +47,7 @@ export interface LocalProviderHandle {
   config: LocalEnvironmentConfig;
   created: boolean;
   id: string;
-  images: { server: string; execd: string };
+  images: { server: string; execd: string; egress: string };
   retain(): Promise<void>;
   cleanup(): Promise<ProviderCleanup>;
 }
@@ -52,15 +58,6 @@ async function run(command: string, args: string[], signal?: AbortSignal) {
 
 function check(id: string, ok: boolean, detail: string, remedy?: string): DiagnosticCheck {
   return { id, ok, detail, ...(!ok && remedy ? { remedy } : {}) };
-}
-
-async function commandCheck(id: string, command: string, args: string[], detail: string, remedy: string) {
-  try {
-    await run(command, args);
-    return check(id, true, detail);
-  } catch {
-    return check(id, false, `${detail} could not be confirmed`, remedy);
-  }
 }
 
 export async function resolveLocalEnvironment(partial: Partial<LocalEnvironmentConfig> = {}, scope?: string) {
@@ -123,55 +120,6 @@ export async function checkLocalDocker() {
   }
 }
 
-export async function checkStrictLocalHost(config: LocalEnvironmentConfig): Promise<DiagnosticCheck[]> {
-  const checks: DiagnosticCheck[] = [];
-  if (platform() !== 'linux') return checks;
-  const advertised = config.advertiseHost ?? '';
-  const addressValid = isIP(advertised) === 4 && !advertised.startsWith('127.') && advertised !== '0.0.0.0';
-  let hostOwnsAddress = addressValid && Object.values(networkInterfaces()).flat().some(value => value?.address === config.advertiseHost);
-  if (addressValid && !hostOwnsAddress && platform() === 'linux') {
-    // An idle Docker bridge can be down until the first Sandbox joins it.
-    const interfaces: { addr_info: { local: string }[] }[] = await run('ip', ['-j', '-4', 'address', 'show'])
-      .then(value => JSON.parse(value)).catch(() => []);
-    hostOwnsAddress = interfaces.some(device => device.addr_info?.some(info => info.local === config.advertiseHost));
-  }
-  checks.push(check('host.advertise-ipv4', hostOwnsAddress,
-    addressValid ? `Advertise IPv4 ${config.advertiseHost} ${hostOwnsAddress ? 'belongs to this host' : 'is absent from this host'}` : 'Advertise host requires a non-loopback IPv4 address',
-    'Set advertiseHost to the local Docker bridge gateway or another host interface reachable by Sandbox containers.'));
-  if (platform() !== 'linux') return checks;
-  let dockerLocal = false;
-  try {
-    const context = JSON.parse(await run('docker', ['context', 'inspect']))[0];
-    const dockerHost = process.env.DOCKER_HOST ?? context?.Endpoints?.docker?.Host;
-    const socketPath = typeof dockerHost === 'string' && dockerHost.startsWith('unix://') ? dockerHost.slice(7) : '';
-    const socket = socketPath ? await realpath(socketPath).catch(() => '') : '';
-    dockerLocal = socket === '/run/docker.sock' || socket === '/var/run/docker.sock';
-    checks.push(check('host.docker-local', dockerLocal, dockerLocal ? 'Docker uses the local system Unix socket' : 'Docker endpoint is outside the supported local system socket',
-      'Select the local rootful Docker context using /var/run/docker.sock and unset remote DOCKER_HOST overrides.'));
-    const info = JSON.parse(await run('docker', ['info', '--format', '{{json .}}']));
-    const rootful = info.OSType === 'linux' && !info.SecurityOptions?.some((value: string) => value.includes('rootless')) && !/docker desktop/i.test(info.OperatingSystem ?? '');
-    checks.push(check('host.docker-engine', rootful, rootful ? `Linux rootful Docker ${info.ServerVersion}` : 'Docker Engine does not match the supported Linux rootful profile',
-      'Use a rootful Linux Docker Engine on this host with namespace isolation enabled.'));
-    // A same-host daemon must expose a process in this host's /proc namespace.
-    if (dockerLocal && Number.isInteger(info.NCPU)) {
-      const processId = Number(await readFile('/run/docker.pid', 'utf8').catch(() => '0'));
-      const command = processId > 1 ? await readFile(`/proc/${processId}/comm`, 'utf8').catch(() => '') : '';
-      checks.push(check('host.docker-same-host', command.trim() === 'dockerd', 'Local dockerd process visibility',
-        'Run murm directly on the Docker host, with /run/docker.pid and dockerd visible in /proc.'));
-    }
-  } catch {
-    checks.push(check('host.docker-engine', false, 'Docker Engine access could not be confirmed', 'Install and start local rootful Docker, and allow this user to access its Unix socket.'));
-  }
-  checks.push(...await Promise.all([
-    commandCheck('host.namespaces', 'sudo', ['-n', '/usr/bin/unshare', '--mount', '--net', '--', '/usr/bin/true'], 'Mount and network namespace creation', 'Allow noninteractive privileged namespace operations and enable mount/network namespace support.'),
-    commandCheck('host.nftables', 'sudo', ['-n', '/usr/sbin/nft', '-j', 'list', 'tables'], 'nftables and privileged network access', 'Install nftables and allow the host network helper to use sudo without prompting.'),
-    commandCheck('host.mount-tools', '/usr/bin/python3', ['-I', '-c', "import os; paths=['/usr/bin/nsenter','/usr/bin/mount','/usr/bin/umount','/usr/bin/stat','/usr/bin/mktemp','/usr/bin/touch','/usr/bin/rm','/usr/bin/rmdir','/usr/bin/flock']; assert all(os.access(p,os.X_OK) for p in paths); assert all(os.path.exists('/proc/self/ns/'+n) for n in ['mnt','net'])"], 'Namespace, mount and setup lock executables', 'Install Python 3, util-linux and coreutils on the Linux host.'),
-    commandCheck('host.mount-permission', 'sudo', ['-n', '-l', '/usr/bin/python3', '-I', join(root, 'dist/scripts/mount-agent-workspace.py'), '2', '0'.repeat(64), '67108864', '4096'], 'Noninteractive workspace mount helper permission', 'Select the API policy, or contact the administrator of the explicit strict local deployment.'),
-    commandCheck('host.landlock', '/usr/bin/python3', ['-I', '-c', "import ctypes,platform; assert platform.machine() in ('x86_64','aarch64'); libc=ctypes.CDLL(None,use_errno=True); abi=libc.syscall(444,0,0,1); assert abi>=5, 'Landlock ABI 5 required'"], 'Landlock ABI 5 or newer', 'Use a Linux kernel with Landlock enabled and ABI 5 or newer. Setup preserves the Worker filesystem policy.'),
-  ]));
-  return checks;
-}
-
 interface ProviderInfo {
   Id: string;
   Image: string;
@@ -197,18 +145,22 @@ async function providerHealthy(config: LocalEnvironmentConfig, authenticated: bo
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash || url.search) return false;
     url.pathname = `${url.pathname.replace(/\/$/, '')}/sandboxes`;
     url.search = 'page=1&pageSize=1';
-    const headers: Record<string, string> = authenticated && config.apiKey ? { 'OPEN-SANDBOX-API-KEY': config.apiKey } : {};
-    const response = await fetch(url, { headers, signal: AbortSignal.timeout(5000), redirect: 'error' });
     if (!authenticated) {
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000), redirect: 'error' });
       await response.body?.cancel();
       return response.status === 401 || response.status === 403;
     }
-    if (!response.ok) {
-      await response.body?.cancel();
-      return false;
+    const sdk = new OpenSandboxSdk({
+      lifecycleBaseUrl: config.lifecycleBaseUrl, apiKey: config.apiKey, useServerProxy: config.useServerProxy ?? false,
+      fetchImpl: (input, init) => fetch(input, { ...init, redirect: 'error',
+        signal: AbortSignal.any([...(init?.signal ? [init.signal] : []), AbortSignal.timeout(5000)]) }),
+    });
+    try {
+      const result = await sdk.sandboxes.listSandboxes({ page: 1, pageSize: 1 });
+      return Array.isArray(result.items);
+    } finally {
+      await sdk.close();
     }
-    const result = await response.json() as { items?: unknown[] };
-    return Array.isArray(result.items);
   } catch {
     return false;
   }
@@ -306,6 +258,7 @@ async function ensureLocalProviderLocked(config: LocalEnvironmentConfig, { signa
   if (!config.apiKey) throw new Error('Could not load the owner-only OpenSandbox lifecycle key.');
   if (existing && await providerHealthy(config, true)) {
     await prepareProviderImage(localExecdImage, 'PROVIDER_EXECD_PULL_FAILED', signal);
+    await prepareProviderImage(localEgressImage, 'PROVIDER_EGRESS_PULL_FAILED', signal);
     return reuse(existing);
   }
   if (existing) throw Object.assign(new Error('The pinned OpenSandbox provider exists but its lifecycle API is unavailable or unauthorized'), { code: 'PROVIDER_UNHEALTHY' });
@@ -324,7 +277,7 @@ async function ensureLocalProviderLocked(config: LocalEnvironmentConfig, { signa
   let id = '';
   let created = false;
   let providerReady = false;
-  const handle: LocalProviderHandle = { config, created: false, id: name, images: { server: '', execd: '' },
+  const handle: LocalProviderHandle = { config, created: false, id: name, images: { server: '', execd: '', egress: '' },
     retain: async () => {
       const current: ProviderInfo = JSON.parse(await run('docker', ['inspect', name]))[0];
       if (current.Id !== id || current.Config.Labels?.['org.murm.setup.owner'] !== token) throw new Error('Provider ownership changed');
@@ -363,6 +316,7 @@ async function ensureLocalProviderLocked(config: LocalEnvironmentConfig, { signa
   };
   try {
     await prepareProviderImage(localExecdImage, 'PROVIDER_EXECD_PULL_FAILED', signal);
+    await prepareProviderImage(localEgressImage, 'PROVIDER_EGRESS_PULL_FAILED', signal);
     await prepareProviderImage(localProviderImage, 'PROVIDER_SERVER_PULL_FAILED', signal);
     try {
       id = await run('docker', ['run', '-d', '--name', name, '--network', 'host', '--restart', 'unless-stopped', '--label', `org.murm.setup.profile=${profileVersion}`, '--label', `org.murm.setup.owner=${token}`, '--label', `org.murm.setup.state=${stateDir}`, '-v', `${socket}:/var/run/docker.sock`, '-v', `${join(stateDir, 'config.toml')}:/config/config.toml:ro`, '-v', `${join(stateDir, 'data')}:/root/.opensandbox`, localProviderImage, '--config', '/config/config.toml'], signal);
@@ -379,7 +333,7 @@ async function ensureLocalProviderLocked(config: LocalEnvironmentConfig, { signa
       if (provider && await providerHealthy(config, true)) {
         if (created) {
           providerReady = true;
-          return { ...handle, created: true, id, images: await imageIds(provider) };
+          return { ...handle, config: { ...config, egressMode: 'dns+nft' }, created: true, id, images: await imageIds(provider) };
         }
         await rm(stateDir, { recursive: true, force: true });
         return reuse(provider);
@@ -395,7 +349,7 @@ async function ensureLocalProviderLocked(config: LocalEnvironmentConfig, { signa
   async function reuse(provider: ProviderInfo): Promise<LocalProviderHandle> {
     const path = provider.Config.Labels?.['org.murm.setup.state'];
     if (provider.Config.Labels?.['org.murm.setup.profile'] === profileVersion && path?.startsWith(join(homedir(), '.cache/murm/opensandbox/'))) await writeFile(join(path, 'adopted'), '', { mode: 0o600 });
-    return { config, id: provider.Id, images: await imageIds(provider), created: false, retain: async () => {
+    return { config: { ...config, egressMode: 'dns+nft' }, id: provider.Id, images: await imageIds(provider), created: false, retain: async () => {
       const current = await inspectProvider(config);
       if (current?.Id !== provider.Id) throw new Error('Provider identity changed');
     }, cleanup: async () => ({ status: 'complete', id: provider.Id, retained: true }) };
@@ -403,5 +357,6 @@ async function ensureLocalProviderLocked(config: LocalEnvironmentConfig, { signa
 }
 
 async function imageIds(provider: ProviderInfo) {
-  return { server: provider.Image, execd: await run('docker', ['image', 'inspect', '--format', '{{.Id}}', localExecdImage]).catch(() => 'unavailable') };
+  return { server: provider.Image, execd: await run('docker', ['image', 'inspect', '--format', '{{.Id}}', localExecdImage]).catch(() => 'unavailable'),
+    egress: await run('docker', ['image', 'inspect', '--format', '{{.Id}}', localEgressImage]).catch(() => 'unavailable') };
 }

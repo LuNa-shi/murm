@@ -1,3 +1,4 @@
+import type { RuntimeCallback } from '../runtime-callback.js';
 import type { AgentInfo, ErrorInfo, PendingCleanup } from '../types.js';
 import type { createModelTrace } from './model-trace.js';
 import type { ResolvedOpenSandboxBackendConfig } from '../sandbox/opensandbox-backend.js';
@@ -20,6 +21,7 @@ interface ModelOptions {
   outputDir: string;
   config: ResolvedOpenSandboxBackendConfig;
   getAgent(id: string): ModelAgent | undefined;
+  callback?: RuntimeCallback;
   modelTrace?: ReturnType<typeof createModelTrace>;
   onOwned?: (owner: ModelOwner) => void;
 }
@@ -32,6 +34,7 @@ interface ModelAlias {
   db?: DatabaseSync;
   gateway?: ResponsesBudgetGateway;
   baseUrl?: string;
+  removeRoute?: () => void;
   capabilities?: ModelConfig['capabilities'];
   capabilitySource?: 'shipped-catalog' | 'configured' | 'compatibility-default';
   effectiveMaxOutputTokens?: number | null;
@@ -125,7 +128,7 @@ function kimiResponsesPayload(payload: { input?: unknown; [key: string]: unknown
   return input.length === payload.input.length ? payload : { ...payload, input };
 }
 
-export async function createCoreModelAccess({ runtimeId, outputDir, config, getAgent, modelTrace, onOwned }: ModelOptions) {
+export async function createCoreModelAccess({ runtimeId, outputDir, config, getAgent, modelTrace, onOwned, callback }: ModelOptions) {
   if (typeof runtimeId !== 'string' || !runtimeId || typeof outputDir !== 'string' || !outputDir ||
       typeof getAgent !== 'function' || !config?.models || !Object.keys(config.models).length) {
     throw invalid('Model access requires Runtime identity, output directory, models and Agent authority');
@@ -171,6 +174,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
     closePromise = Promise.allSettled([...aliases].map(async ([alias, entry]) => {
       try {
         if (entry.gateway) {
+          entry.removeRoute?.();
           await entry.gateway.stop();
           entry.gateway = undefined;
         }
@@ -214,10 +218,17 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getA
         } };
       entry.gateway = new ResponsesBudgetGateway(gatewayOptions);
       entry.effectiveMaxOutputTokens = entry.gateway.policy.maxOutputTokens;
-      const listening = await entry.gateway.start({ host: gatewayConfig.host });
-      const hostname = gatewayConfig.advertiseHost.includes(':') ? `[${gatewayConfig.advertiseHost}]` : gatewayConfig.advertiseHost;
-      entry.baseUrl = `${(gatewayConfig.publicUrl ?? `http://${hostname}:{port}`)
-        .replaceAll('{port}', String(listening.port)).replace(/\/$/, '')}/v1`;
+      if (callback) {
+        const path = '/model/' + createHash('sha256').update(alias).digest('hex');
+        const route = callback.mount(path, entry.gateway.handleRequest);
+        entry.baseUrl = route.url + '/v1';
+        entry.removeRoute = route.remove;
+      } else {
+        const listening = await entry.gateway.start({ host: gatewayConfig.host });
+        const hostname = gatewayConfig.advertiseHost.includes(':') ? `[${gatewayConfig.advertiseHost}]` : gatewayConfig.advertiseHost;
+        entry.baseUrl = `${(gatewayConfig.publicUrl ?? `http://${hostname}:{port}`)
+          .replaceAll('{port}', String(listening.port)).replace(/\/$/, '')}/v1`;
+      }
     }
   } catch (caught) {
     const error = caught as Error & { code?: string };

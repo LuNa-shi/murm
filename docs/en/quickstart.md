@@ -65,57 +65,38 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Keep the candidate tarball if you want to install the same SDK in an [independent example project](../../examples/README.md).
 
-## 2. Set up OpenSandbox & build the Worker
+## 2. Prepare OpenSandbox and the Worker
 
 ```bash
 murm setup
 ```
 
-`murm setup` walks through three stages automatically (allow a few minutes on a fresh machine while images are pulled and built):
+With a saved or configured endpoint, setup verifies and reuses that connection. Otherwise it prepares a local service on `127.0.0.1:8080`. Local setup pulls pinned Server, Execd and Egress 1.2.1 images, prepares a compatible Worker, and runs a bounded smoke check of Service calls, model traffic, files, export and deletion using a controlled model response. Wait for `"ok": true` and `"infrastructure": "ready"` for that local probe.
 
-1. **Starts local OpenSandbox:** pulls the pinned OpenSandbox server and Execd images and launches a managed instance on `127.0.0.1:8080`.
-2. **Prepares the Worker image:** reuses a compatible local Docker cache when present, or builds the selected executor from the bundled `deploy/worker/Dockerfile` (default: Pi; requires the Node base image, Debian packages, and npm).
-3. **Runs an end-to-end smoke probe:** starts a temporary sandbox and verifies the Service Bridge, Model Gateway, file export, and deletion using a local test response (no model API key needed).
+Published Worker images are preferred. When developing a candidate whose Worker protocol has changed, run `MURM_BUILD_WORKER=1 murm setup --mode local` to build from the installed package's recipe. This tree uses `murm-core-v2`; an older image receives a mismatch diagnostic. Local builds require access to the Node base image, Debian repositories and npm. An explicitly configured `MURM_WORKER_IMAGE` must already be compatible.
 
-Wait for `"infrastructure": "ready"` and `"ok": true` in the output. If a check fails, resolve the reported issue and rerun `murm setup`. Later, run `murm doctor` for a fast Lifecycle check or `murm doctor --smoke` to rerun the full probe.
-
-<details>
-<summary>Connect to an existing OpenSandbox service</summary>
-
-Export the service endpoint, controller callback host, and the operator's `MURM_LIFECYCLE_TOKEN` (the controller must reach Lifecycle and Worker endpoints, and Workers must reach the controller's Bridge and Model Gateway):
+### Connect to an existing OpenSandbox
 
 ```bash
-export MURM_LIFECYCLE_URL='https://sandbox.example.net/v1'
-export MURM_LIFECYCLE_TOKEN='<your-lifecycle-token>'
-export MURM_ADVERTISE_HOST='controller.internal.example.net'
-murm setup --mode existing
+export OPEN_SANDBOX_API_KEY='<operator-provided-key>'
+murm setup --mode existing --endpoint https://sandbox.example.net \
+  --public-url https://runtime.example.net/murm
+murm doctor --smoke
 ```
 
-Ask the service operator to pre-load a compatible Worker image if the remote engine cannot pull it. See [Sandboxes](sandbox.md) and [Host Gateway](gateway.md) for proxy routing and HTTPS callbacks.
+Existing setup verifies authentication and saves the endpoint, key and callback in owner-only user configuration. The remote Controller needs Node and network access. Its operator prepares a matching Worker image on the service. `doctor` performs a read-only configuration and Lifecycle check. `doctor --smoke` allocates a temporary Sandbox and verifies Controller-to-Worker and Sandbox-to-Runtime traffic before confirming export and deletion. An unavailable saved remote connection produces an error for that connection.
 
-</details>
+`connection.publicUrl` is one callback address for Bridge and model requests. A reverse proxy should forward that path prefix to the Runtime's `bindHost` and fixed `bindPort`. Local setup discovers its reachable host and available port. Details and legacy configuration migration are in [Sandboxes](sandbox.md) and [Host Gateway](gateway.md).
 
-<details>
-<summary>Troubleshoot image pull or Worker build failures</summary>
+### Diagnose image availability
 
-- **OpenSandbox server or Execd pull failure:** setup prints the exact failing image digest and a `docker pull` command to retry in the same Docker context. On restricted networks, configure a [Docker daemon proxy](https://docs.docker.com/engine/daemon/proxy/), have an administrator pre-load the pinned references, or connect to an existing OpenSandbox service.
-- **Local Worker build failure:** verify Docker access to the Node base image, Debian packages, and npm, or run the manual `docker build` command shown in the error report. Explicitly configured registry images can still be pulled when absent from the cache.
-- **Build the default Pi Worker from a trusted mirror** (replace `registry.example.net` with your mirror):
+Setup reports the failed image reference and a retry command. Verify registry access from the selected Docker engine or ask an administrator to preload the pinned images. For offline use, transfer an image with `docker save` and `docker load`, then set `MURM_WORKER_IMAGE` to its compatible reference. A development build can use the packaged Dockerfile.
 
 ```bash
-(
-  cd "$(dirname "$(readlink -f "$(command -v murm)")")/../.." &&
-    docker build -f deploy/worker/Dockerfile -t murm-worker:local \
-      --build-arg WORKER_EXECUTOR=pi \
-      --build-arg NODE_IMAGE=registry.example.net/library/node:22.19.0-bookworm-slim .
-) &&
-  export MURM_WORKER_IMAGE=murm-worker:local &&
-  murm setup
+docker build -f deploy/worker/Dockerfile -t murm-worker:local .
+export MURM_WORKER_IMAGE=murm-worker:local
+murm setup --mode local
 ```
-
-- **Transfer a Worker offline:** on a machine with registry access and the same CPU architecture, run `docker save -o worker.tar IMAGE`, copy the archive, and run `docker load -i worker.tar` in the target Docker context. If the loaded tag differs from the default, keep `export MURM_WORKER_IMAGE=IMAGE` set for both `murm setup` and your runs.
-
-</details>
 
 ## 3. Run your first example
 

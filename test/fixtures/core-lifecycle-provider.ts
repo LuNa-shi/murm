@@ -1,28 +1,14 @@
 import { fileProtocol } from '../../src/core/files/core-file-seed.js';
-import assert from 'node:assert/strict';
-import childProcess from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { WORKER_PROTOCOL } from '../../src/core/worker-image.js';
 import { createServer } from 'node:http';
-import { syncBuiltinESMExports } from 'node:module';
 import { once } from 'node:events';
-import { promisify } from 'node:util';
-import { AGENT_UID } from '../../scripts/sandbox-project.js';
 import { decodeFileSeed } from '../../src/core/files/core-file-seed.js';
 
-let runCommand;
-let hostGit;
-const execute = (...args) => {
-  if (args[0] === 'git' && hostGit) return hostGit(...args);
-  throw new Error('Fixture expects promisified OS commands');
-};
-execute[promisify.custom] = (...args) => runCommand(...args);
-
-// Simulate only external infrastructure: provider/Worker HTTP and host OS commands.
-// Core, its backend, manager, admission state and cleanup are the actual modules.
-export async function createLifecycleProvider(t, { fileOperation, onStart, onCollect, onStop, onCreate, createExpiresAt, onGet, onRpc, allowHostGit = false } = {}) {
+// External Lifecycle, Execd and Worker services are simulated over HTTP.
+// Runtime admission, ownership, SDK transport and cleanup use production modules.
+export async function createLifecycleProvider(t, { fileOperation, onStart, onCollect, onStop, onCreate, createExpiresAt, onGet, onRenew, onEgress, onRpc } = {}) {
   const resources = new Map();
   const records = [];
-  const tables = new Map();
   let allocations = 0;
   let rejectDelete = true;
   let deletion;
@@ -30,84 +16,65 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
   let holdDelete = true;
   const deletionStarted = new Promise(resolve => { deletion = resolve; });
   const deletionReleased = new Promise(resolve => { releaseDelete = resolve; });
-  const originalExec = childProcess.execFile;
-  hostGit = allowHostGit ? originalExec : null;
-  const run = async (command, args, options) => {
-    if (command === 'git' && hostGit) return promisify(originalExec)(command, args, options);
-    if (command === 'docker') {
-      const id = args.at(-1);
-      const resource = [...resources.values()].find(row => `sandbox-${row.id}` === id || row.container === id);
-      assert.ok(resource, 'Fixture OS accepts only its own resource');
-      const format = args[args.indexOf('--format') + 1];
-      if (format.startsWith('{"id"')) return { stdout: JSON.stringify({ id: resource.container, pid: resource.pid,
-        started: 'fixture-start', running: true, labels: resource.labels }) };
-      return { stdout: [resource.container, resource.pid, true, 'fixture-start', 'bridge', false, resource.labels].map(JSON.stringify).join(' ') };
-    }
-    assert.equal(command, 'sudo');
-    const [, program, ...rest] = args;
-    if (program.endsWith('/stat')) return { stdout: rest.at(-1) === '/proc/1/ns/net' ? '4:22' : '4:111' };
-    if (program.endsWith('/cat')) {
-      const pid = Number(/^\/proc\/(\d+)\//.exec(rest[0])?.[1]);
-      const resource = [...resources.values()].find(row => row.pid === pid);
-      return { stdout: rest[0].endsWith('/cgroup') ? `0::/docker/${resource.container}` : '0 0 65536' };
-    }
-    if (program.endsWith('/mktemp')) return { stdout: '/tmp/murm-netns.ABCDEFG123' };
-    if (program.endsWith('/nsenter')) {
-      const commands = rest.slice(3);
-      const emit = rows => ({ stdout: JSON.stringify({ nftables: rows }) });
-      if (commands[0] === '-j' && commands[2] === 'tables') return emit([...tables.values()].map(rows => rows[0]));
-      if (commands[0] === '-j') return emit(tables.get(commands.at(-1)));
-      const declarations = commands[0].split('\n');
-      const table = /^add table inet (swarmbot_[a-f0-9]+)$/.exec(declarations.shift())[1];
-      declarations.shift();
-      const owner = { match: { op: '==', left: { meta: { key: 'skuid' } }, right: AGENT_UID } };
-      const match = (protocol, field, right) => ({ match: { op: '==', left: { payload: { protocol, field } }, right } });
-      tables.set(table, [{ table: { family: 'inet', name: table } },
-        { chain: { family: 'inet', table, name: 'output', type: 'filter', hook: 'output', prio: -150, policy: 'accept' } },
-        ...declarations.map(line => {
-          const rule = line.slice(`add rule inet ${table} output meta skuid ${AGENT_UID} `.length);
-          const [, address, port] = /^ip daddr ([\d.]+) tcp dport (\d+) accept$/.exec(rule) ?? [];
-          return { rule: { family: 'inet', table, chain: 'output', expr: address
-            ? [owner, match('ip', 'daddr', address), match('tcp', 'dport', Number(port)), { accept: null }]
-            : [owner, { reject: { type: 'icmpx', expr: 'port-unreachable' } }] } };
-        })]);
-      return { stdout: '' };
-    }
-    assert.ok(['/usr/bin/touch', '/usr/bin/mount', '/usr/bin/umount', '/usr/bin/rm', '/usr/bin/rmdir', '/usr/bin/python3'].includes(program));
-    return { stdout: '' };
-  };
-  runCommand = run;
-  childProcess.execFile = execute;
-  syncBuiltinESMExports();
-  t.after(() => { childProcess.execFile = originalExec; syncBuiltinESMExports(); runCommand = undefined; });
+  const apiKey = 'fixture-management-key';
+  const info = resource => ({
+    id: resource.id, createdAt: resource.createdAt, expiresAt: resource.expiresAt,
+    status: { state: 'Running' }, metadata: resource.labels,
+  });
   const server = createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
-    const path = new URL(request.url, 'http://fixture').pathname;
+    const url = new URL(request.url, 'http://fixture');
+    const path = url.pathname.replace(/^\/v1(?=\/)/, '');
     const send = (value, status = 200) => { response.writeHead(status, { 'content-type': 'application/json' }); response.end(JSON.stringify(value)); };
+    if (path.startsWith('/sandboxes') && request.headers['open-sandbox-api-key'] !== apiKey) {
+      return send({ message: 'Lifecycle authentication required' }, 401);
+    }
+    const active = [...resources.values()].find(resource => path.startsWith('/execd/')
+      ? resource.execdToken && request.headers['x-execd-access-token'] === resource.execdToken
+      : request.headers.authorization === `Bearer ${resource.workerToken}` ||
+        request.headers['x-murm-worker-token'] === resource.workerToken);
+    if ((path.startsWith('/worker/') || path.startsWith('/execd/')) && !active) {
+      return send({ message: 'Data plane authentication required' }, 401);
+    }
     if (path === '/sandboxes' && request.method === 'POST') {
       const id = `fixture-${++allocations}`;
       records.length = 0;
-      resources.set(id, { id, pid: 53 + allocations, container: createHash('sha256').update(id).digest('hex'), labels: { ...body.metadata, 'opensandbox.io/id': id } });
+      resources.set(id, { id, createdAt: new Date().toISOString(),
+        expiresAt: createExpiresAt ? createExpiresAt(id) : new Date(Date.now() + body.timeout * 1000).toISOString(),
+        workerToken: body.env.MURM_WORKER_TOKEN, execdToken: body.env.EXECD_ACCESS_TOKEN,
+        resourceLimits: body.resourceLimits, networkPolicy: body.networkPolicy, labels: { ...body.metadata, 'opensandbox.io/id': id } });
       if (await onCreate?.(id, body) === false) return response.destroy();
-      return send({ id, expiresAt: createExpiresAt?.(id), execd_endpoint: { url: `${base}/execd` } });
+      return send(info(resources.get(id)));
     }
     if (path === '/sandboxes' && request.method === 'GET') {
-      return send({ items: [...resources.values()].map(row => ({ id: row.id, metadata: row.labels })) });
+      const items = [...resources.values()].map(info);
+      return send({ items, pagination: { page: 1, pageSize: 100, totalItems: items.length, totalPages: 1, hasNextPage: false } });
     }
-    if (path.includes('/endpoints/')) return send({ url: `${base}/worker` });
-    if (['/execd/ready', '/worker/health'].includes(path)) return send({ ok: true });
+    const egressEndpoint = path.match(/^\/sandboxes\/([^/]+)\/endpoints\/18080$/);
+    if (egressEndpoint) return send({ endpoint: `${base}/egress/${egressEndpoint[1]}`, headers: { 'opensandbox-egress-auth': 'fixture-egress-key' } });
+    const egressPolicy = path.match(/^\/egress\/([^/]+)\/policy$/);
+    if (egressPolicy) {
+      if (request.headers['opensandbox-egress-auth'] !== 'fixture-egress-key') return send({}, 401);
+      const policy = resources.get(egressPolicy[1])?.networkPolicy;
+      return send(await onEgress?.(policy) ?? { status: 'ok', enforcementMode: 'dns+nft', policy });
+    }
+    if (path.includes('/endpoints/')) return send({ endpoint: `${base}/${path.endsWith('/44772') ? 'execd' : 'worker'}` });
+    if (['/execd/ping', '/worker/health'].includes(path)) return send({ ok: true });
     if (path === '/execd/command') {
-      const argv = body.argv ?? [];
+      const command = body.command ?? '';
+      const cpu = Number.parseFloat(active.resourceLimits.cpu) / (active.resourceLimits.cpu.endsWith('m') ? 1000 : 1);
+      const output = command.includes('NoNewPrivs') ? JSON.stringify({ cpu, memory: 1024 ** 3 }) :
+        command.includes('pi') ? '1.3.0' : 'v22.19.0';
       response.writeHead(200, { 'content-type': 'text/event-stream' });
-      return response.end(`event: stdout\ndata: ${JSON.stringify({ text: argv[0] === 'pi' ? '1.3.0' : 'v22.19.0' })}\n\nevent: execution_complete\ndata: {"exit_code":0}\n\n`);
+      return response.end(`data: ${JSON.stringify({ type: 'stdout', text: output })}\n\ndata: {"type":"execution_complete","exit_code":0}\n\n`);
     }
-    if (path === '/worker/core/contract') return send({ result: { file_protocol: fileProtocol } });
+    if (path === '/worker/core/contract') return send({ result: { worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol } });
     if (path === '/worker/start') {
       const version = body.writable || body.files !== undefined ? 1 : 0;
-      const result = { contract: { version: 'murm-core-v1', resources: [], file_protocol: fileProtocol },
-        project_quota: body.project_quota, model_catalog_resource: body.model_catalog_resource,
+      const result = { contract: { version: WORKER_PROTOCOL, resources: [], file_protocol: fileProtocol },
+        model_catalog_resource: body.model_catalog_resource,
         project_files: { writable: body.writable, version, ...(version ? { digest: decodeFileSeed(body.files ?? {}).digest } : {}) } };
       onStart?.(body, result);
       return send({ result });
@@ -136,6 +103,14 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
         records: records.filter(row => row.worker_sequence > (body.message.since ?? 0)) } });
     }
     if (path === '/worker/stop') return send({ result: await onStop?.() ?? { stopped: true } });
+    if (path.startsWith('/sandboxes/') && path.endsWith('/renew-expiration') && request.method === 'POST') {
+      const id = path.split('/')[2];
+      const resource = resources.get(id);
+      if (!resource) return send({}, 404);
+      if (await onRenew?.(resource, body.expiresAt) === false) return send({}, 503);
+      resource.expiresAt = body.expiresAt;
+      return send({ expiresAt: resource.expiresAt });
+    }
     if (path.startsWith('/sandboxes/') && request.method === 'DELETE') {
       deletion();
       if (holdDelete) await deletionReleased;
@@ -145,7 +120,7 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
     }
     if (path.startsWith('/sandboxes/') && request.method === 'GET') {
       const id = path.split('/').at(-1); const resource = resources.get(id);
-      return send(onGet && resource ? await onGet(id, resource, response) : {}, resource ? 200 : 404);
+      return send(onGet && resource ? { createdAt: resource.createdAt, ...await onGet(id, resource, response) } : resource ? info(resource) : {}, resource ? 200 : 404);
     }
     return send({ message: 'Unrecognized fixture request' }, 400);
   });
@@ -154,7 +129,7 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
   const base = `http://127.0.0.1:${server.address().port}`;
   t.after(() => { releaseDelete(); return new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }); });
   return {
-    url: base, deletionStarted,
+    url: `${base}/v1`, apiKey, deletionStarted,
     allocations: () => allocations,
     publish(row) { records.push({ ...row, worker_sequence: records.length + 1 }); },
     unexpectedExit() { records.push({ type: 'worker_exit', code: 1, worker_sequence: records.length + 1 }); },

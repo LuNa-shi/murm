@@ -3,7 +3,7 @@ import { selectExecutorDriver } from './sandbox/executor-driver.js';
 import type { ExecutorSelection } from './executor-adapter.js';
 
 export const WORKER_IMAGE_REPOSITORY = 'ghcr.io/luna-shi/murm-worker';
-export const WORKER_PROTOCOL = 'murm-core-v1';
+export const WORKER_PROTOCOL = 'murm-core-v2';
 export const WORKER_PI_VERSION = '1.3.0';
 
 function readPackageVersion(): string {

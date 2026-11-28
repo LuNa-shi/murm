@@ -5,6 +5,8 @@ export const provider = {
   publish(record) { this.records.push({ ...record, worker_sequence: this.records.length + 1 }); },
 };
 export class OpenSandboxManager {
+  async preflight() {}
+  async close() {}
   async ensureExecution() { return { sandbox_id: 'controlled' }; }
   async agentVersions({ executor } = {}) { return executor === 'codex' ? { codexVersion: '0.172.0' } : { piVersion: '1.3.0' }; }
   async startAgent(input) {
@@ -37,5 +39,3 @@ export class OpenSandboxManager {
   async *collectCoreSession() { yield { type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 }; }
   async stopExecution() {}
 }
-export class DockerAgentNetwork { async isolate() {} }
-export class DockerAgentDisk { async isolate() { return {}; } }

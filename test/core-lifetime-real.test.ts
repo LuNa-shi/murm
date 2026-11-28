@@ -32,12 +32,12 @@ test('four idle native Core Agents attest actual provider lifetime and terminal 
     const { ServiceRegistry } = await import('@luna-shi/murm');
 
     const backend = runtimeSettings({
-      sandbox: { lifecycleBaseUrl: lifecycle, endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey,
+      sandbox: { lifecycleBaseUrl: lifecycle, apiKey,
         timeoutSeconds: lifetimeProbePlan.timeoutSeconds, resourceLimits: lifetimeProbePlan.resourceLimits, commandTimeoutMs: 30000 },
       bridge: { host: '0.0.0.0', publicUrl: process.env.MURM_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
       modelGateway: { host: '0.0.0.0', advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', ...lifetimeProbePlan.modelGatewayLimits },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `http://127.0.0.1:${upstream.address().port}/v1/responses`, headers: {} } } },
-      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 * 1024, inodes: 4096 } },
+      isolation: { network: 'api' },
     });
     runtime = await budget.run(async () => {
       const created = await createRuntime({ ...backend, outputDir, maxAgents: lifetimeProbePlan.agents, services: new ServiceRegistry(),
@@ -81,5 +81,98 @@ test('four idle native Core Agents attest actual provider lifetime and terminal 
   } finally {
     // A thrown setup error before spawn has no allocated resources. Otherwise the probe already closes.
     upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve));
+  }
+});
+
+for (const mode of ['idle', 'active'] as const) test(`one ${mode} Agent remains usable past the observed initial lease and exports its files`, {
+  skip: process.env.MURM_CORE_RENEWAL_REAL_TEST !== '1', timeout: 120_000,
+}, async t => {
+  const { createRuntime, ServiceRegistry } = await import('@luna-shi/murm');
+  const { resolveSandboxConnection } = await import('../src/core/sandbox/sandbox-connection.js');
+  const { OpenSandboxSdk } = await import('../src/core/sandbox/opensandbox-sdk.js');
+  const { setTimeout: delay } = await import('node:timers/promises');
+  const image = process.env.MURM_CORE_TEST_IMAGE;
+  assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
+  const lifecycle = process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1';
+  const apiKey = process.env.MURM_CORE_TEST_API_KEY;
+  const connection = resolveSandboxConnection({ lifecycleBaseUrl: lifecycle, apiKey });
+  // This observer only reads Lifecycle state and does not need to hold a pool.
+  const observerFetch = (...args: Parameters<typeof fetch>) => fetch(...args);
+  const sdk = new OpenSandboxSdk({ ...connection, useServerProxy: false, fetchImpl: observerFetch });
+  t.after(() => sdk.close());
+  const root = resolve('experiments');
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  const outputDir = await mkdtemp(join(root, 'core-renewal-'));
+  const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
+  let upstreamUrl = 'http://127.0.0.1:1/v1/responses';
+  let completeModel: (() => void) | undefined;
+  if (mode === 'active') {
+    const { streamResponse } = await import('../scripts/local-setup-upstream.js');
+    const upstream = createServer((req, res) => {
+      req.resume();
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.flushHeaders();
+      completeModel = () => res.end(streamResponse('k3', 1, {
+        type: 'message', id: 'msg_renewal', role: 'assistant', status: 'completed',
+        content: [{ type: 'output_text', text: 'LEASE CONFIRMED', annotations: [] }],
+      }));
+    });
+    upstream.listen(0, '127.0.0.1');
+    await once(upstream, 'listening');
+    const address = upstream.address();
+    assert.ok(address && typeof address === 'object');
+    upstreamUrl = `http://127.0.0.1:${address.port}/v1/responses`;
+    t.after(() => { upstream.closeAllConnections(); upstream.close(); });
+  }
+  const settings = runtimeSettings({
+    sandbox: { lifecycleBaseUrl: lifecycle, apiKey, timeoutSeconds: 60, resourceLimits: { cpu: '1', memory: '1Gi' } },
+    bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
+    modelGateway: { requestTimeoutMs: 95_000, maxRequests: 1 },
+    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstreamUrl, headers: {} } } },
+    isolation: { network: 'api' },
+  });
+  const runtime = await createRuntime({ ...settings, outputDir, maxAgents: 1, services: new ServiceRegistry(),
+    profiles: { worker: { image, prompt: 'Wait for host input.', writable: true, model: 'default', services: {},
+      collect: { paths: ['renewal.txt'], maxBytes: 1024, includeGit: false, required: true } } } });
+  try {
+    const bytes = Buffer.from('available after the initial lease');
+    const agent = await runtime.spawn({ requestId: 'lease', profile: 'worker',
+      files: { 'renewal.txt': { encoding: 'base64', data: bytes.toString('base64') } } });
+    const evidence = (await readFile(join(outputDir, runtime.id, 'evidence.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+    const allocation = evidence.find(row => row.type === 'spawn' && row.state === 'allocation-observed');
+    assert.ok(allocation?.sandboxId);
+    const initial = Date.parse(allocation.expiresAt);
+    assert.ok(initial > Date.now() && initial <= Date.now() + 61_000);
+    const settlements: string[] = [];
+    const unsubscribe = runtime.onEvent(event => {
+      if (event.type === 'settled' && event.agentId === agent.id) settlements.push(event.outcome);
+    });
+    t.after(unsubscribe);
+    if (mode === 'active') {
+      const receipt = await runtime.send(agent.id, 'Return the controlled reply.', { requestId: 'across-initial-ttl' });
+      assert.equal(receipt.status, 'accepted');
+      for (let attempts = 0; !completeModel && attempts < 100; attempts++) await delay(50);
+      assert.equal(typeof completeModel, 'function');
+      assert.equal((await runtime.get(agent.id)).status, 'running');
+    }
+    await delay(initial + 500 - Date.now());
+    const observed = await sdk.sandboxes.getSandbox(allocation.sandboxId);
+    assert.ok(observed.expiresAt.getTime() > initial);
+    assert.equal((await runtime.get(agent.id)).status, mode === 'active' ? 'running' : 'idle');
+    if (mode === 'active') {
+      completeModel!();
+      for (let attempts = 0; !settlements.length && attempts < 100; attempts++) await delay(50);
+      assert.deepEqual(settlements, ['completed']);
+    }
+    const captured = await runtime.files.snapshot(agent.id, { requestId: 'after-initial-ttl', paths: ['renewal.txt'] });
+    assert.deepEqual(Buffer.from(captured.files['renewal.txt'].data, 'base64'), bytes);
+    const stopped = await runtime.stop(agent.id);
+    assert.equal(stopped.cleanup, 'complete', JSON.stringify(stopped.errors));
+    assert.ok(stopped.artifacts.length);
+    assert.deepEqual(await ownedContainers(runtime.id), []);
+  } finally {
+    completeModel?.();
+    const closed = await runtime.close();
+    assert.equal(closed.cleanup, 'complete', JSON.stringify(closed.agents.flatMap(agent => agent.errors)));
   }
 });

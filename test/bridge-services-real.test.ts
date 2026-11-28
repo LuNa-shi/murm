@@ -70,12 +70,12 @@ async function openHarness(t, label, registrations, profiles, commands) {
   const runtime = await createRuntime({ profiles, services, outputDir, maxAgents: Object.keys(profiles).length,
     ...runtimeSettings({ sandbox: {
       lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
+      apiKey: process.env.MURM_CORE_TEST_API_KEY,
       resourceLimits: { cpu: '1', memory: '1Gi' },
     }, bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host },
     models: { default: { provider: 'kimi_proxy', model: 'k3',
       upstream: { url: `http://127.0.0.1:${upstream.address().port}/v1/responses`, headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } }),
+    isolation: { network: 'api' } }),
   });
   t.after(async () => {
     assert.equal((await runtime.close()).cleanup, 'complete');

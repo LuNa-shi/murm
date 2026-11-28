@@ -5,6 +5,7 @@ The terms in [LICENSE](../LICENSE) cover murm's original code and documentation.
 | Material | License and provenance |
 | --- | --- |
 | Codex CLI in the Worker image | Apache-2.0. The image installs `@openai/codex` 0.172.0 from OpenAI. [Upstream license](https://github.com/openai/codex/blob/3d86e43b075adeba2193ec5c22ac92f55afd82e6/LICENSE) at the `rust-v0.172.0` revision. |
+| OpenSandbox JavaScript SDK | Apache-2.0. The Controller installs `@alibaba-group/opensandbox` 1.2.1. [Upstream license](https://github.com/opensandbox-group/OpenSandbox/blob/db708c218771a8d311356f0e96552c15df6e097a/LICENSE) |
 | Lean module replay driver | Apache-2.0. The [driver notice](../examples/taskpool/services/judge/lean-module-verify.NOTICE.md) identifies the upstream source, copyright and local modifications. [Upstream license copy](../examples/taskpool/services/judge/lean-module-verify.LICENSE.txt) |
 | Agensh Board schema fixture (source-checkout tests) | MIT. [Source attribution and license copy](../test/fixtures/agensh-board-schema.LICENSE.txt) |
 | Agensh reference implementation | Separate Git submodule. See the [upstream license](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/LICENSE) at the recorded revision. |

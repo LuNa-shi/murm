@@ -149,6 +149,8 @@ for (const path of (await Promise.all(['src', 'examples/taskpool', 'test-support
     const value = evaluate(match[2]);
     assert.equal(typeof value, 'string', `non-static instruction field requires explicit documentation: ${path}`);
     if (key === 'action' && nonInstructionActions.has(value)) continue;
+    // OpenSandbox's create policy uses a provider-side enum, outside the Agent prompt.
+    if (key === 'action' && path === 'src/core/sandbox/opensandbox-backend.ts' && value === 'allow') continue;
     if (key === 'action' && path === 'src/core/runtime-management.ts' && value === 'retire-service') continue;
     if (key === 'action' && ['src/core/index.ts', 'src/core/model/model-access.ts', 'examples/lead-worker/harness/index.ts'].includes(path) && cleanupActions.has(value)) continue;
     if (key === 'action') assert.ok(instructionActions.has(value), `review new literal action field for prompt delivery: ${path}: ${value}`);

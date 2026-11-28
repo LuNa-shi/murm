@@ -18,7 +18,7 @@ test('TaskPool recovers exact binary workDir bytes through Core after a lost sna
     if (snapshotRequests === 1) return { disconnect: true };
     assert.equal(input.requestId, receipt.requestId);
     return { body: { result: receipt } };
-  }, allowHostGit: true });
+  } });
   const { createRuntime } = await import('../src/core/index.js');
   const { ServiceRegistry, snapshotServiceRegistry, invokeService } = await import('../src/core/services.js');
   const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
@@ -28,11 +28,11 @@ test('TaskPool recovers exact binary workDir bytes through Core after a lost sna
   provider.allowDeletion();
   const outputDir = await mkdtemp(join(tmpdir(), 'taskpool-core-capture-'));
   const runtime = await createRuntime({ ...runtimeSettings({
-    sandbox: { lifecycleBaseUrl: provider.url },
+    sandbox: { lifecycleBaseUrl: provider.url, apiKey: provider.apiKey, egressMode: 'dns+nft' },
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
     modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
+    isolation: { network: 'api' },
   }), profiles: { researcher: { image: 'fixture-image', model: 'default', prompt: 'fixture', writable: false, services: {} } },
   services: new ServiceRegistry(), maxAgents: 1, outputDir });
   try {

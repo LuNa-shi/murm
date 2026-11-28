@@ -19,11 +19,11 @@ Prepare the following facilities before starting the project:
   schema. The host starts a dedicated Board process and stops that process during
   cleanup. It does not install or own the MySQL server.
 
-The current Git Profiles request an enforced endpoint allowlist. The default
-configuration therefore retains strict local Docker isolation, including a
-128 MiB/8,192-inode project quota. The generic API Provider does not support that
-allowlist. Follow [the strict-host prerequisites](../../docs/architecture/16-pi-opensandbox-backend.md)
-or supply a compatible provider through a trusted configuration.
+The Git Profiles require an enforced endpoint allowlist. Use an OpenSandbox
+deployment configured for `dns+nft` and allow the Gitea origin in the platform's
+network policy. The example bounds exports at 64 MiB. For a physical disk or
+inode quota, use a deployment with that storage policy.
+See the [OpenSandbox deployment requirements](../../docs/architecture/16-pi-opensandbox-backend.md).
 
 Check the Gitea `/api/v1/version` and Mattermost `/api/v4/system/ping` endpoints
 at the configured origins. Supply the Board directory from [Agensh commit

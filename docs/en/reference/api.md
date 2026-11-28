@@ -53,10 +53,7 @@ import {
   createSandbox,
 } from '@luna-shi/murm';
 
-const sandbox = createSandbox({
-  lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
-  apiKey: process.env.MURM_LIFECYCLE_TOKEN,
-});
+const sandbox = createSandbox(); // setup connection defaults
 
 const runtime = await createRuntime({
   sandbox,
@@ -79,15 +76,17 @@ const runtime = await createRuntime({
 });
 ```
 
-- **`createSandbox`**: defaults to the OpenSandbox API policy; supports `endpointHost`, `useServerProxy: true`, or a custom `{ provider }` `SandboxProvider`. Pass `isolation: { network: 'local-docker', disk: { bytes, inodes } }` when strict same-host `tmpfs` quotas, live shared mounts, or UID egress allowlists are needed. Optional `timeoutSeconds` defaults to `3600` (`>= 60`).
-- **`connection`**: `advertiseHost` advertises a Worker-reachable host or IP; `connection.bridge.publicUrl` and `connection.modelGateway.publicUrl` accept explicit HTTP(S) URL templates containing `{port}`. `modelGateway` supports `requestTimeoutMs`, `maxOutputTokens` (`null` disables clamping), and `maxRequests`.
+- **`createSandbox`**. Reads setup defaults or accepts explicit `endpoint`, `apiKey`, resources and creation lifetime. A trusted `{ provider }` keeps the custom integration contract. Removed strict quotas and endpoint host rewriting fail before allocation.
+
+- **`connection`**. One `publicUrl` supports a reverse-proxy prefix. `bindHost` and `bindPort` control the listener. `modelGateway` retains `requestTimeoutMs`, `maxOutputTokens` and `maxRequests`.
+
 - **`models`**: defaults to streaming Responses; Pi also supports `protocol: 'chat-completions'` and `capabilities: { contextWindow, maxOutputTokens, tools, reasoning }`; trusted host modules can supply a custom `ModelTransport`. Upstream credentials stay strictly on the host.
 - **`filePolicy`**: independently configure `initial`, `snapshot`, `replace`, `export`, and `session` limits (`maxBytes`, `maxFileBytes`, `maxFiles`, `maxEntries`, `timeoutMs`) plus `controllerSpoolBytes` and `workerSpoolBytes`.
 - **`getExecutorCapabilities(selection)`**: Pi (`1.3.0` / `1.4.0`) supports `contextFork`, `activeSteer`, `followUp`, and `one-at-a-time`; Codex (`0.172.0`) supports `activeSteer`, `followUp`, and `all` without context forking.
 
 ## Agent lifecycle
 
-- **`runtime.spawn({ requestId, profile, parentId?, forkFrom?, writable?, files?, bindings?, secretEnv?, workspace?, collect? })`**: reserves a Slot (up to `maxAgents`), provisions the Sandbox, and resolves to an `idle` `AgentInfo`. Seed private files via `files`, or attach a shared workspace via `workspace: { id, mode: 'read-only' | 'read-write' }`. `forkFrom` clones live Session context on supported executors (`pi`).
+- **`runtime.spawn({ requestId, profile, parentId?, forkFrom?, writable?, files?, bindings?, secretEnv?, workspace?, collect? })`**: reserves a Slot (up to `maxAgents`), provisions the Sandbox, and resolves to an `idle` `AgentInfo`. Seed private files via `files`, or request a shared workspace from a trusted Provider declaring that capability. `forkFrom` clones live Session context on supported executors (`pi`).
 - **`runtime.get(agentId)`** / **`runtime.list({ parentId?, status? })`**: return current `AgentInfo` snapshots.
 - **`runtime.state`**: `'open' | 'closing' | 'closed'`.
 

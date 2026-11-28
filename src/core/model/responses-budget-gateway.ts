@@ -3,7 +3,7 @@ import { chatCompletionsTransport } from './chat-completions-transport.js';
 import { fields, integer, localSchemaReferences, object, optionalText } from './model-request-validation.js';
 import type { createModelTrace } from './model-trace.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
@@ -287,14 +287,7 @@ export class ResponsesBudgetGateway {
 
   async start({ host = '127.0.0.1', port = 0 }: any = {}) {
     if (this.#closing || this.#server) throw new Error('Responses gateway cannot start again');
-    this.#server = createServer((request: any, response: any) => {
-      const work = Promise.resolve().then(() => this.#handle(request, response)).catch((error: any) => {
-        reject(response, error instanceof GatewayError ? error.status : 502,
-          error instanceof GatewayError ? error.message : 'upstream_unavailable');
-      });
-      this.#working.add(work);
-      work.then(() => this.#working.delete(work), () => this.#working.delete(work));
-    });
+    this.#server = createServer(this.handleRequest);
     this.#server.requestTimeout = this.policy.requestTimeoutMs;
     this.#server.headersTimeout = Math.min(10_000, this.policy.requestTimeoutMs);
     const server = this.#server;
@@ -319,6 +312,15 @@ export class ResponsesBudgetGateway {
     const hostname = host.includes(':') ? `[${host}]` : host;
     return { port: address.port, baseUrl: `http://${hostname}:${address.port}/v1` };
   }
+
+  handleRequest = (request: IncomingMessage, response: ServerResponse) => {
+    const work = Promise.resolve().then(() => this.#handle(request, response)).catch((error: unknown) => {
+      reject(response, error instanceof GatewayError ? error.status : 502,
+        error instanceof GatewayError ? error.message : 'upstream_unavailable');
+    });
+    this.#working.add(work);
+    void work.then(() => this.#working.delete(work), () => this.#working.delete(work));
+  };
 
   issueToken({ runtimeId, agentId }: any = {}) {
     if (this.#closing || typeof runtimeId !== 'string' || !runtimeId || typeof agentId !== 'string' || !agentId) {
@@ -404,6 +406,14 @@ export class ResponsesBudgetGateway {
   }
 
   #prepareResponses(body: any) {
+    if (this.#executor === 'codex' && Array.isArray(body?.input)) {
+      // Codex serializes omitted reasoning content as null when replaying a provider summary.
+      body = { ...body, input: body.input.map((item: any) => {
+        if (item?.type !== 'reasoning' || item.content !== null) return item;
+        const { content: _content, ...summary } = item;
+        return summary;
+      }) };
+    }
     if (!validPayload(body, this.policy.model, this.#executor)) return null;
     if (this.#capabilities?.tools === false && (body.tools?.length || body.parallel_tool_calls !== undefined ||
         (body.tool_choice !== undefined && body.tool_choice !== 'none') ||

@@ -25,10 +25,10 @@ test('host checkpoints verify durable search, visit, citation and reads after co
   const { createSubstrateService } = await import('../examples/substrate/services/substrate.js');
   substrate = createSubstrateService({ databasePath: join(directory, 'substrate.sqlite'), runId: 'evidence' });
 
-  const backend = runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url },
+  const backend = runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url, apiKey: provider.apiKey, egressMode: 'dns+nft' },
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } });
+    isolation: { network: 'api' } });
   runtime = await createRuntime({ ...backend, outputDir: directory, maxAgents: 2, services: substrate.services,
     profiles: { peer: { image: 'fixture', model: 'default', prompt: 'Fixed peer', writable: true, services: { substrate: ['publish', 'search', 'visit'] } } } });
   substrate.bindRuntime(runtime.id);

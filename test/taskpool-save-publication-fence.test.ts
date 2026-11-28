@@ -55,7 +55,7 @@ async function fixture(t,installed) {
   stores.tasks.markCoreAgentReady(agent.id);
   const credentials=controls.credentials.get(agent.id);
   const env={...installed.env,...credentials.environment,...credentials.secretEnvironment};
-  const url=new URL(env.MURM_BRIDGE_URL);url.hostname='127.0.0.1';env.MURM_BRIDGE_URL=url.origin;
+  const url=new URL(env.MURM_BRIDGE_URL);url.hostname='127.0.0.1';env.MURM_BRIDGE_URL=url.href.replace(/\/$/, '');
   const cli=async(...args)=>JSON.parse((await execute(process.execPath,[join(installed.directory,'node_modules/@luna-shi/murm/dist/scripts/swarm.js'),...args],{cwd:installed.directory,env,timeout:15000})).stdout);
   await cli('task','take',stores.task.task_id,'--request-id','take');
   return {...stores,root,agent,cli,captures:()=>captures};

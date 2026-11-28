@@ -103,7 +103,7 @@ test('native Worker rejects retired SSE while RPC joins in-flight input and quer
       console.log(JSON.stringify({receivedInputs:1,sideEffects:1,queryState:'complete',conflict:true,retiredEventsStatus:retiredEvents.status}));
     } finally { worker.kill('SIGKILL'); }
   `;
-  const input = { contract_version: 'murm-core-v1', resources: [],
+  const input = { contract_version: 'murm-core-v2', resources: [],
     system_prompt: 'Controlled Worker RPC receipt probe', system_prompt_path: '/workspace/runtime/profile-prompt.txt',
     command: 'pi', args: ['--mode', 'rpc', '--system-prompt', '/workspace/runtime/profile-prompt.txt'] };
   const result = await run('docker', ['run', '--rm', '--name', name, '--label', `murm.core-input-probe=${probeId}`,

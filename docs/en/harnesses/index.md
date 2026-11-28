@@ -29,7 +29,7 @@ Built-in names: `subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`,
 | Lead-Worker | Configured Gitea; its optional dynamic example also needs a Docker image for the checking Service and candidate verifier. |
 | Optional Lean workloads | The TaskPool or Substrate FATE configuration supplies its checker/toolchain and may use [Mathlib Search](../../../examples/services/mathlib-search/README.md). |
 
-Default setup prepares the common runtime deployment. PeerMesh and Lead-Worker currently select strict local Docker isolation for their Git network allowlists; follow their example-specific host and facility instructions. [Deployment ownership](../../../deploy/README.md) explains which components setup creates and which it only connects to.
+Default setup prepares the common runtime deployment. PeerMesh and Lead-Worker require an OpenSandbox deployment that enforces their Git network allowlists with `dns+nft`. Follow each example's network and application requirements. [Deployment ownership](../../../deploy/README.md) explains which components setup creates and which it only connects to.
 
 ## Where the implementations live
 

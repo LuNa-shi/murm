@@ -36,7 +36,7 @@ test('native Worker resumes writers before replacement receipt and rejects an op
     try{
       await wait(()=>fetch(origin+'/health').then(r=>r.ok,()=>false));
       const seed={'proof.lean':{encoding:'utf8',data:'original'}};
-      const start=await post('/start',{contract_version:'murm-core-v1',resources:[],command:'pi',args:[],system_prompt:'Controlled file installation probe',system_prompt_path:'/workspace/runtime/profile-prompt.txt',files:seed,writable:true});
+      const start=await post('/start',{contract_version:'murm-core-v2',resources:[],command:'pi',args:[],system_prompt:'Controlled file installation probe',system_prompt_path:'/workspace/runtime/profile-prompt.txt',files:seed,writable:true});
       assert.equal(start.status,200);
       await wait(()=>exists('/workspace/runtime/home/beat'));
       const pid=(await fetch(origin+'/health').then(r=>r.json())).pid;
