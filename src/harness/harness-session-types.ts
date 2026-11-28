@@ -98,6 +98,8 @@ export type HarnessResult = ProjectHarnessResult & {
   failure: Readonly<{ code: string; message: string }> | null;
   reportSaveFailure: Readonly<{ code: string; message: string }> | null;
   questions?: readonly HarnessQuestion[];
+  operations?: readonly Readonly<{ requestId: string; operation: string; status: 'pending' | 'unknown' | 'confirmed' | 'failed' }>[];
+  snapshotTruncated?: boolean;
   reportPath?: string;
 };
 export type HarnessAgentHandler = (agentId: string, payload: unknown, request: HarnessRequest & { signal: AbortSignal }) => Promise<unknown> | unknown;
