@@ -1,17 +1,33 @@
 import {
-  createSandbox, type CreateRuntimeOptions, type SandboxConfig, type ProjectHarness,
+  createSandbox, type CreateRuntimeOptions, type SandboxConfig, type HarnessJson, type ProjectHarness,
   ProjectPreflightError, checkGitProject, observeProjectRuntime, projectConfiguration,
   projectResult,
 } from '@luna-shi/murm';
 import { addAbortListener } from 'node:events';
-import { runPeerMeshTeam } from './harness/team.js';
+import { runPeerMeshTeam, type createPeerMeshTeam } from './harness/team.js';
 import { peerMeshConfig } from './project-config.js';
 
 type Config = Omit<ReturnType<typeof peerMeshConfig>, 'models' | 'sandbox'> &
   Pick<CreateRuntimeOptions, 'executor' | 'models' | 'filePolicy'> & { sandbox: SandboxConfig };
 
+const userBatchDescription = {
+  description: 'Queue a user batch for one peer. The peer reads current shared context before the batch starts.',
+  schema: { type: 'object', required: ['recipient', 'input'], additionalProperties: false, properties: {
+    recipient: { type: 'string' }, input: { type: 'string' },
+  } },
+} as const;
+
+function batchInput(payload: HarnessJson) {
+  if (!payload || typeof payload !== 'object' || !('recipient' in payload) || !('input' in payload) ||
+      typeof payload.recipient !== 'string' || !payload.recipient || typeof payload.input !== 'string' || !payload.input.trim() ||
+      Object.keys(payload).some(key => key !== 'recipient' && key !== 'input')) {
+    throw Object.assign(new TypeError('Expected one recipient and nonblank input'), { code: 'INVALID_HARNESS_INPUT' });
+  }
+  return { recipient: payload.recipient, input: payload.input };
+}
+
 const peerMesh = {
-  id: 'peermesh', apiVersion: 1,
+  id: 'peermesh', apiVersion: 1, input: true, inputDescriptor: userBatchDescription,
   async run(context) {
     const config = await projectConfiguration<Config>(context, async () => ({ default: peerMeshConfig() }));
     const { durationMs = 120_000 } = config;
@@ -25,6 +41,7 @@ const peerMesh = {
     let sandbox;
     try { sandbox = createSandbox(config.sandbox); }
     catch { throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid PeerMesh sandbox configuration'); }
+    let team: Awaited<ReturnType<typeof createPeerMeshTeam>> | undefined;
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
     try {
       const report = await runPeerMeshTeam({
@@ -34,9 +51,41 @@ const peerMesh = {
         project: { title: 'Project task', body: context.input.prompt, durationMs },
         exportLimit: 64 * 1024 ** 2,
         onRuntime: (runtime: Parameters<typeof observeProjectRuntime>[0], snapshot: () => unknown) => {
-          observation = observeProjectRuntime(runtime, context, snapshot);
+          observation = observeProjectRuntime(runtime, context, snapshot, {
+            fence: () => team?.halt(),
+            capabilities: agentId => {
+              const peer = team?.currentPeers().peers.find((entry: { agentId: string }) => entry.agentId === agentId);
+              return { stop: { supported: true, available: !!peer && !peer.stopped, reason: peer?.stopped ? 'peer-closed' : undefined } };
+            },
+            handlers: {
+              async stop(agentId, _payload, { signal }) {
+                signal.throwIfAborted();
+                const peer = team?.currentPeers().peers.find((entry: { agentId: string }) => entry.agentId === agentId);
+                if (!peer) throw Object.assign(new Error('Unknown peer Agent'), { code: 'UNKNOWN_RECIPIENT' });
+                try {
+                  const receipt = await team!.stopPeer(peer.key);
+                  return { receipt, harnessEffects: { status: 'complete', routerStopped: true, sourceStopped: true } };
+                } catch (error) {
+                  if ((error as { code?: string }).code !== 'SOURCE_STOP_PENDING') throw error;
+                  return { receipt: null, harnessEffects: { status: 'pending', routerStopped: true, sourceStopped: false } };
+                } finally {
+                  void observation?.refresh();
+                }
+              },
+            },
+          });
         },
-        beforeInitialDispatch: () => context.markRunning(),
+        beforeInitialDispatch: (ready: Awaited<ReturnType<typeof createPeerMeshTeam>>) => {
+          team = ready;
+          context.registerInput((payload, { requestId, signal }) => {
+            signal.throwIfAborted();
+            const receipt = ready.input({ ...batchInput(payload), requestId });
+            void observation?.refresh();
+            return ready.redact({ batchId: receipt.batchId, requestId: receipt.requestId,
+              state: receipt.state, ...(receipt.inputId ? { inputId: receipt.inputId } : {}) });
+          }, userBatchDescription);
+          context.markRunning();
+        },
       }, async (team: { signal: AbortSignal; snapshot(): unknown }) => {
         if (!team.signal.aborted) {
           await new Promise<void>(resolve => {
