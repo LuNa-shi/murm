@@ -185,8 +185,8 @@ unsubscribe();
 await runtime.send(agent.id, 'Read a note', { requestId: 'invalid', mode: 'later' });
 // @ts-expect-error Services require their complete manifest.
 registry.registerService({ manifest: {}, adapter });
-// @ts-expect-error OpenSandbox requires its explicit configuration.
-createSandbox({});
+// @ts-expect-error OpenSandbox rejects removed local-docker configuration.
+createSandbox({ kind: 'local-docker' });
 // @ts-expect-error A built-in version selection uses a version string.
 getExecutorCapabilities({ kind: 'pi', version: 13 });
 await runtime.close();
@@ -203,7 +203,7 @@ await runtime.close();
     assert.equal(error.code, 1);
     assert.match(error.stdout, /InputMode/);
     assert.match(error.stdout, /ServiceManifest/);
-    assert.match(error.stdout, /SandboxConfig/);
+    assert.match(error.stdout, /local-docker/);
     return true;
   });
 });
