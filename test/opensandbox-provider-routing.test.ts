@@ -160,7 +160,6 @@ test('Host Session reads release every large reply and stop at a Worker history 
     modelAccess: { credentialsForAgent: () => ({ baseUrl: publicUrl, environment: {}, secretEnvironment: {} }) },
   });
   const events = [];
-  t.after(async () => { barrier.resolve(); await backend.close(); });
   await backend.spawn({ agentId: 'reader', onEvent: event => events.push(event), recordAllocation() {},
     profile: { model: 'default', image: 'test-image', writable: false, services: {} } });
   assert.deepEqual(backend.sessionCapabilities('reader'), capabilities);
@@ -191,4 +190,8 @@ test('Host Session reads release every large reply and stop at a Worker history 
   assert.ok(events.some(event => event.type === 'error' && event.fatal && event.error.message.includes('history has a gap')));
   await assert.rejects(read('new-after-gap', 1), { code: 'SESSION_UNAVAILABLE' });
   assert.equal(pageRequests, 204);
+  await backend.stopExecution('reader');
+  await backend.destroy('reader');
+  assert.equal(provider.occupied(), false);
+  await backend.close();
 });
