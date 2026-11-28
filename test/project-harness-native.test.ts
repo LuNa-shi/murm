@@ -337,6 +337,7 @@ export default config;
   const { result, status, observation } = await runInstalledHarnessRpc(installation, {
     harness: 'substrate', cwd: project, prompt: projectSource.prompt, configPath, outputDir: join(evidence, 'output'), timeoutMs: 145_000,
   }).catch(error => { assert.ifError(upstream.receipt().failure); throw error; });
+  assert.ifError(upstream.receipt().failure);
   assert.equal(status, 0);
   assert.equal(observation.businessObserved, true);
   assert.equal(result.outcome, 'completed');
