@@ -23,13 +23,13 @@ Supply these example dependencies:
 | `MURM_LEAD_WORKER_TEAM` | Optional `static` (default) or `dynamic` project team. |
 | `MURM_LEAD_WORKER_CHECKING_IMAGE` | Immutable local Docker image ID for dynamic checking; falls back to the selected Worker image. |
 
-The Git Profiles require an enforced endpoint allowlist. The current default
-therefore retains strict local Docker isolation, including a 64 MiB/4,096-inode
-project quota. The default API Provider does not advertise this capability.
-Follow [the strict-host prerequisites](../../docs/architecture/16-pi-opensandbox-backend.md)
-or supply a compatible provider through trusted run configuration. The default
-team has one Lead and two Workers, a 120-second work window and a separate
-30-second close wait. `--config` can supply other supported settings.
+The Git Profiles require an enforced endpoint allowlist. Use an OpenSandbox
+deployment configured for `dns+nft` and allow the Gitea origin in the platform's
+network policy. The example bounds exports at 64 MiB. For a physical disk or
+inode quota, use a deployment with that storage policy. See the
+[OpenSandbox deployment requirements](../../docs/architecture/16-pi-opensandbox-backend.md).
+The default team has one Lead and two Workers, a 120-second work window and a
+separate 30-second close wait. `--config` can supply other supported settings.
 
 Check the Gitea origin at `/api/v1/version` before running. In dynamic mode the
 example starts and probes its checker containers, then removes those it owns on

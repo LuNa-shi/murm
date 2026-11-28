@@ -29,7 +29,7 @@ murm --harness subagents --prompt "修复解析器并补充测试"
 | Lead-Worker | 已配置的 Gitea；可选动态示例还需要运行检查 Service 与候选验证器的 Docker 镜像。 |
 | 可选 Lean 工作负载 | TaskPool 或 Substrate FATE 配置提供检查器与工具链，并可接入 [Mathlib Search](../../../examples/services/mathlib-search/README.md)。 |
 
-默认 setup 准备共同的运行设施。PeerMesh 和 Lead-Worker 当前为 Git 网络白名单选择了严格本机 Docker 隔离，需要按各自示例配置宿主机与外部服务。[部署职责](../../../deploy/README.md)说明哪些组件由 setup 创建、哪些组件需要预先准备并接入。
+默认 setup 准备共同的运行设施。PeerMesh 和 Lead-Worker 需要启用 `dns+nft` 的 OpenSandbox 部署来强制执行 Git 网络白名单。按各自示例配置网络和所需的应用服务。[部署职责](../../../deploy/README.md)说明哪些组件由 setup 创建、哪些组件需要预先准备并接入。
 
 ## 实现放在哪里
 

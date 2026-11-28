@@ -16,12 +16,10 @@ example that uses it.
 | [lead-worker](lead-worker/README.md) | A Lead assigns work and integrates Worker output. | SQLite Board, scoped Git identities and adapters; optional dynamic checker service. | Gitea; Docker checker image for dynamic mode. |
 | [substrate](substrate/README.md) | Peers publish, retrieve and cite contributions. | SQLite publication Service. | Common infrastructure. The explicit FATE benchmark also needs Lean/Mathlib/checker dependencies. |
 
-PeerMesh and Lead-Worker still select strict local Docker isolation because their
-Profiles request an enforced network allowlist for native Git. They need the
-[documented strict-host capabilities](../docs/architecture/16-pi-opensandbox-backend.md).
-The generic OpenSandbox API Provider does not currently advertise that capability.
-The other project examples use the normal API policy unless their supplied
-configuration selects another supported policy.
+PeerMesh and Lead-Worker require an enforced network allowlist for native Git.
+Use an OpenSandbox deployment configured for `dns+nft`, and verify that the
+Workers can reach the configured Git origin under its platform policy. See the
+[deployment requirements](../docs/architecture/16-pi-opensandbox-backend.md).
 
 ## Run an example from its directory
 
