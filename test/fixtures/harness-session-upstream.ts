@@ -50,7 +50,7 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       const rows: any[] = body.input;
       const users = rows.filter(row => row.role === 'user').flatMap(row => row.content ?? []).map(block => block.text ?? '');
-      const marker = users.filter(value => /SESSION_(READ|SECOND|INTERRUPT|CHILD|RESUME|QUESTIONS|ASKER|QOLD|QNEW|HOLD_QUEUE|IDENTITY_HOLD|IDENTITY_RESUME|CONTEXT_STEER|CONTEXT_FOLLOW|AFTER_QUEUE|RETRY)/.test(value)).at(-1);
+      const marker = users.filter(value => /SESSION_(READ|SECOND|BUSY_STEER|BUSY_FOLLOW|INTERRUPT|CHILD|RESUME|QUESTIONS|ASKER|QOLD|QNEW|HOLD_QUEUE|IDENTITY_HOLD|IDENTITY_RESUME|CONTEXT_STEER|CONTEXT_FOLLOW|AFTER_QUEUE|RETRY)/.test(value)).at(-1);
       const output = (id: string) => rows.find(row => row.type === 'function_call_output' && row.call_id === id)?.output;
       const all = JSON.stringify(rows);
       let item;
@@ -58,7 +58,7 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
         stage = 'summary';
         item = text('summary', 'Summary of the controlled project work.');
       } else if (marker?.includes('SESSION_READ')) {
-        stage = output('seed-read') ? 'seed-result' : 'seed-read';
+        stage = !output('seed-read') ? 'seed-read' : terminal && !output('seed-artifact') ? 'seed-artifact' : 'seed-result';
         if (stage === 'seed-read') {
           assert.ok(!all.includes(seed), 'capture was not embedded in the initial prompt');
           if (editable) {
@@ -66,10 +66,19 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
             assert.ok(marker.includes(editable.controller), 'the actual Root turn passes through the edited controller');
           }
           item = tool('seed-read', 'read', { path: 'seed.txt' });
+        } else if (stage === 'seed-artifact') {
+          assert.ok(String(output('seed-read')).includes(seed));
+          item = tool('seed-artifact', 'bash', { command: 'cp -- seed.txt terminal-artifact.txt && wc -c < terminal-artifact.txt', timeout: 10 });
         } else {
           assert.ok(String(output('seed-read')).includes(seed), 'actual read result includes captured bytes');
-          item = text('seed-result', terminal ? 'NATIVE_STREAM_START SEED_READ_OK' : 'SEED_READ_OK');
+          item = text('seed-result', terminal ? 'NATIVE_STREAM_START ' + '.'.repeat(512) + ' SEED_READ_OK' : 'SEED_READ_OK');
         }
+      } else if (marker?.includes('SESSION_BUSY_STEER')) {
+        stage = 'busy-steer';
+        item = text(stage, 'BUSY_STEER_OK');
+      } else if (marker?.includes('SESSION_BUSY_FOLLOW')) {
+        stage = 'busy-follow';
+        item = text(stage, 'BUSY_FOLLOW_OK');
       } else if (marker?.includes('SESSION_SECOND')) {
         stage = 'second';
         assert.ok(all.includes('APPENDED_CONTEXT_VALUE'));
@@ -185,7 +194,7 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
         const index = frames.findIndex(frame => frame.startsWith('event: response.output_text.delta'));
         const parts = frames[index].split('\ndata: ');
         const delta = JSON.parse(parts[1]);
-        const prefix = 'NATIVE_STREAM_START';
+        const prefix = 'NATIVE_STREAM_START ' + '.'.repeat(512);
         frames[index] = parts[0] + '\ndata: ' + JSON.stringify({ ...delta, delta: prefix });
         response.write(frames.slice(0, index + 1).join('\n\n') + '\n\n');
         await heldStream.promise;

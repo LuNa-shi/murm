@@ -50,23 +50,27 @@ class Terminal:
         return self
 
     def __exit__(self, *_):
+        try:
+            if self.process.poll() is None:
+                self.process.send_signal(signal.SIGTERM)
+                try:
+                    self.finish(143, timeout=45, restored=False)
+                except (AssertionError, subprocess.TimeoutExpired, OSError):
+                    self.process.kill()
+                    self.process.wait(timeout=5)
+        finally:
+            if self.master is not None:
+                os.close(self.master)
+            os.close(self.slave)
+            for stream in [self.process.stdin, self.process.stdout]:
+                if stream is not None:
+                    stream.close()
         transcript = os.environ.get("MURM_TUI_TEST_TRANSCRIPT")
         if transcript:
-            with open(transcript, "wb") as evidence:
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW
+            descriptor = os.open(transcript, flags, 0o600)
+            with os.fdopen(descriptor, "wb") as evidence:
                 evidence.write(self.output)
-        if self.process.poll() is None:
-            self.process.send_signal(signal.SIGTERM)
-            try:
-                self.finish(143, timeout=45, restored=False)
-            except (AssertionError, subprocess.TimeoutExpired, OSError):
-                self.process.kill()
-                self.process.wait(timeout=5)
-        if self.master is not None:
-            os.close(self.master)
-        os.close(self.slave)
-        for stream in [self.process.stdin, self.process.stdout]:
-            if stream is not None:
-                stream.close()
 
     def resize(self, rows, columns):
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
@@ -85,16 +89,20 @@ class Terminal:
             raise AssertionError("PTY output limit exceeded")
 
     def wait(self, text, timeout=15):
-        needle = text.encode() if isinstance(text, str) else text
+        return self.wait_any((text,), timeout)
+
+    def wait_any(self, texts, timeout=15):
+        needles = [text.encode() if isinstance(text, str) else text for text in texts]
         until = time.monotonic() + timeout
         while True:
-            found = self.output.find(needle, self.mark)
-            if found >= 0:
+            matches = [(found, needle) for needle in needles if (found := self.output.find(needle, self.mark)) >= 0]
+            if matches:
+                found, needle = min(matches)
                 self.mark = found + len(needle)
-                return
+                return needle
             if time.monotonic() >= until:
                 preview = bytes(self.output[max(0, len(self.output) - 2300):])
-                raise AssertionError(f"Missing PTY text {needle!r}. Recent output: {preview!r}")
+                raise AssertionError(f"Missing PTY text {needles!r}. Recent output: {preview!r}")
             self.pump(min(0.1, until - time.monotonic()))
 
     def key(self, keys):

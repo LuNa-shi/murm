@@ -260,8 +260,12 @@ class Foreground {
   private formatReceipt(value: unknown) {
     const receipt = terminalObject(value);
     const nested = terminalObject(receipt.result ?? receipt.core);
+    const effects = terminalObject(receipt.harnessEffects);
     return [receipt.status ?? nested.status, nested.disposition ?? nested.state ?? receipt.disposition,
-      receipt.reason ?? nested.reason, nested.inputId ?? receipt.inputId ?? receipt.questionId].filter(value => typeof value === 'string').join(' · ')
+      receipt.reason ?? nested.reason, nested.inputId ?? receipt.inputId ?? receipt.questionId,
+      effects.routerStopped === true ? 'router stopped' : undefined,
+      effects.sourceStopped === true ? 'source stopped' : effects.sourceStopped === false ? 'source stop pending' : undefined,
+    ].filter(value => typeof value === 'string').join(' · ')
       || this.format(value).replace(/\n\s*/g, ' ');
   }
 
@@ -344,7 +348,8 @@ class Foreground {
     if (!items.length) { this.notice('No targets or operations are currently available.'); return; }
     const list = new SelectList(items.map((item, index): SelectItem => ({
       value: String(index), label: this.clean(item.title), description: item.detail && this.clean(item.detail),
-    })), Math.max(2, Math.min(9, this.terminal.rows - 9)), theme);
+    })), Math.max(2, Math.min(9, this.terminal.rows - 9)), theme,
+    { minPrimaryColumnWidth: 28, maxPrimaryColumnWidth: 48 });
     list.onSelect = item => {
       this.closeModal();
       this.invoke(items[Number(item.value)].perform);
@@ -427,8 +432,10 @@ class Foreground {
 
   private async sendRun(key: string, payload: HarnessJson) {
     const model = this.model!;
+    const submitted = this.drafts.get(key);
+    if (model.operations.get(key)?.status !== 'pending') this.notice('Submitting input…');
     const receipt = await model.mutate(key, payload, request => model.session.input(payload, request));
-    if (terminalObject(receipt).status === 'accepted') this.drafts.delete(key);
+    if (terminalObject(receipt).status === 'accepted' && this.drafts.get(key) === submitted) this.drafts.delete(key);
     this.notice(receipt ? this.formatReceipt(receipt) : 'Input already pending.');
   }
 
@@ -445,7 +452,7 @@ class Foreground {
     }
     const detail = terminalObject(terminalObject(model.state?.business).detail);
     if (this.specifier === 'subagents') {
-      this.edit('run:root', 'Run input to Root (steer)', text => this.sendRun('run:root', { text, mode: 'steer' }));
+      this.rootInput('steer');
       return;
     }
     if (this.specifier === 'taskpool' || this.specifier === 'peermesh') {
@@ -463,6 +470,14 @@ class Foreground {
       return;
     }
     this.customInput(capability.schema, capability.description ?? 'Harness input');
+  }
+
+  private rootInput(mode: 'steer' | 'followUp') {
+    const key = 'run:root';
+    const model = this.model;
+    if (!model?.state?.capabilities.input.available || model.result || model.subscribing || this.stopping) return;
+    if (model.operations.get(key)?.status === 'pending') { this.notice('Submitting input…'); return; }
+    this.edit(key, 'Run input to Root (' + mode + ')', text => this.sendRun(key, { text, mode }));
   }
 
   private customInput(schema: HarnessJson | undefined, title: string) {
@@ -634,7 +649,7 @@ class Foreground {
     if (key('f7')) {
       if (this.page === 'Agents') this.agentMenu();
       else if (this.page === 'Run' && this.specifier === 'subagents' && this.model?.state?.capabilities.input.available) {
-        this.edit('run:root', 'Run input to Root (followUp)', text => this.sendRun('run:root', { text, mode: 'followUp' }));
+        this.rootInput('followUp');
       } else if (this.page === 'Result' && this.model?.result?.reportPath) {
         const path = this.model.result.reportPath;
         this.invoke(() => this.model!.read('report', () => readReport(path)));
@@ -775,17 +790,17 @@ class Foreground {
     const report = this.model!.observations.get('report');
     return [
       'Outcome     ' + result.outcome + ' · ' + result.reason,
-      'Acceptance  ' + this.format(result.acceptance ?? 'unknown'),
-      'Export      ' + this.format(result.export ?? 'unknown'),
-      'Artifacts   ' + this.format(result.artifacts),
       'Cleanup     ' + result.cleanup.status,
-      'Pending     ' + this.format(result.cleanup.pending ?? terminalObject(result.cleanup.receipt).pending ?? 'unknown'),
-      'Retained    ' + this.format(result.cleanup.retained ?? 'unknown'),
       'Report save ' + (result.reportSaveFailure ? this.format(result.reportSaveFailure) : result.reportPath ? 'saved' : 'unknown'),
       ...(result.reportPath ? ['Report path ' + result.reportPath + ' · F7 reads preview'] : []),
+      'Acceptance  ' + this.format(result.acceptance ?? 'unknown'),
+      'Export      ' + this.format(result.export ?? 'unknown'),
+      'Pending     ' + this.format(result.cleanup.pending ?? terminalObject(result.cleanup.receipt).pending ?? 'unknown'),
+      'Retained    ' + this.format(result.cleanup.retained ?? 'unknown'),
       ...(result.failure ? ['Failure     ' + this.format(result.failure)] : []),
       ...(result.cleanup.status === 'pending' ? ['Cleanup is unconfirmed. Use the report to locate resources and their original owner.'] : []),
       'Unconfirmed operations  ' + this.format(result.operations?.filter(entry => entry.status === 'pending' || entry.status === 'unknown') ?? []),
+      'Artifacts   ' + this.format(result.artifacts),
       ...(report ? ['Report preview', report.pending ? 'Reading…' : report.error ?? this.format(report.result)] : []),
     ];
   }

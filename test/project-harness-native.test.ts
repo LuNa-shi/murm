@@ -7,6 +7,7 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { runInstalledHarnessRpc } from './fixtures/installed-harness-rpc.js';
+import { runInstalledHarnessTerminal, useNativeTerminal } from './fixtures/installed-harness-terminal.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { createSubstrateUpstream } from './fixtures/substrate-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
@@ -117,7 +118,7 @@ config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 if (process.env.MURM_TEST_MESSAGES_URL) config.externalMessages = { url: process.env.MURM_TEST_MESSAGES_URL, token: process.env.MURM_TEST_MESSAGES_TOKEN };
 export default config;
 `, { mode: 0o600 });
-      const { result, status, observation } = await runInstalledHarnessRpc(installation, {
+      const { result, status, observation } = await (useNativeTerminal ? runInstalledHarnessTerminal : runInstalledHarnessRpc)(installation, {
         harness: id, cwd: project, prompt, configPath, outputDir: join(evidenceDir, scenario), timeoutMs: 115_000,
         ...(external ? { env: { MURM_TEST_MESSAGES_URL: external.url, MURM_TEST_MESSAGES_TOKEN: external.token } } : {}),
       }).catch(error => { assert.ifError(failure); throw error; });
@@ -227,6 +228,12 @@ MURM_PROJECT_TEST`;
   let feedbackObserved = false;
   let failure: unknown;
   const server = createServer(async (req, res) => {
+    if (useNativeTerminal && req.method === 'GET' && req.url === '/release-feedback') {
+      release.resolve();
+      res.writeHead(200);
+      res.end();
+      return;
+    }
     try {
       assert.ok(++calls <= 8);
       const { input } = await new Response(req).json();
@@ -281,8 +288,13 @@ MURM_PROJECT_TEST`;
 config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;
 `, { mode: 0o600 });
-  const { result, observation } = await runInstalledHarnessRpc(installation, {
+  const options = {
     harness: 'taskpool', cwd: project, prompt, configPath, outputDir: join(evidence, 'output'), timeoutMs: 155_000,
+  };
+  const { result, observation } = useNativeTerminal ? await runInstalledHarnessTerminal(installation, {
+    ...options, taskFeedback: { text: feedback, release: `http://127.0.0.1:${server.address().port}/release-feedback` },
+  }) : await runInstalledHarnessRpc(installation, {
+    ...options,
     async interact(session) {
       const taskId = await binding.promise;
       const receipts: any[] = [];
@@ -368,7 +380,7 @@ test('installed Substrate peers publish and cite bytes from the supplied project
 config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;
 `, { mode: 0o600 });
-  const { result, status, observation } = await runInstalledHarnessRpc(installation, {
+  const { result, status, observation } = await (useNativeTerminal ? runInstalledHarnessTerminal : runInstalledHarnessRpc)(installation, {
     harness: 'substrate', cwd: project, prompt: projectSource.prompt, configPath, outputDir: join(evidence, 'output'), timeoutMs: 145_000,
   }).catch(error => { assert.ifError(upstream.receipt().failure); throw error; });
   assert.ifError(upstream.receipt().failure);
