@@ -40,11 +40,11 @@ This section is generated from executable exports and checked against the source
 | [test-support/taskpool-legacy/services-bridge.ts](../../test-support/taskpool-legacy/services-bridge.ts) | `bddb5744b172e34d5939b958f5e92946f736d6816b31c9b54938976ded8e1ca6` |
 | [examples/services/mathlib-search/service.json](../../examples/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5b436c6d7062a7b9fb0fd434af1375b9c050999cfa76bd6d97dac88558dca8b3` |
-| [src/core/index.ts](../../src/core/index.ts) | `ed1b4dc52876f5f72662f442d864a40367002563da063108b13104e9ba181bd7` |
-| [src/core/types.ts](../../src/core/types.ts) | `5ea24467ac57e43c243c5c96fee1949e100ddd6e74c275f530c06020b72b156b` |
+| [src/core/index.ts](../../src/core/index.ts) | `66ff58be83c72a60af05e869c86ead4f28cdc5a4b28b51b2d391542c45308d11` |
+| [src/core/types.ts](../../src/core/types.ts) | `62028f29e2c7dff3848058776b3949d3f71c60291f79259d1c4252d09c54dbd5` |
 | [src/core/services.ts](../../src/core/services.ts) | `823b7c83efd0fc61314c5511177b32b8863f469454cad5c5288bd04e5e82cf96` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
-| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `9de7bb617889c3a04eae556e661149dc948912fb982a2fb101035e8c18f72e16` |
+| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `125e240a078e106f226f4da2e011c2ccfc7fe7afb211cace5e7406c1a4197ba5` |
 | [src/core/sandbox/executor-driver.ts](../../src/core/sandbox/executor-driver.ts) | `56849cecb5e525d3752caca2feeb7571692c6e33afa7961619f40ad41272e6e7` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `d647cbdf76ea438b8a618e85e2955f0c9b3cd413a1f7989c34403cf5ce450fcf` |
 | [src/core/sandbox/opensandbox-provider.ts](../../src/core/sandbox/opensandbox-provider.ts) | `eb98901a846c1ce294621d7a173cec46787ba4bf18b4edc65afc5c867e968c37` |
@@ -3343,6 +3343,9 @@ export type RuntimeEvent = AgentEvent | {
 } | {
     type: 'runtimeChanged';
 } | {
+    type: 'subscriberGap';
+    dropped: number;
+} | {
     type: 'management';
     change: RuntimeManagementChange;
 };
@@ -3489,6 +3492,15 @@ export type RuntimeManagementChange = {
 export interface Runtime {
     readonly id: string;
     readonly state: RuntimeState;
+    diagnostics(): {
+        renewing: number;
+        eventReads: number;
+        pendingSubscriberCallbacks: number;
+        queues: Record<'prepare' | 'stop' | 'transfer' | 'reconcile', {
+            active: number;
+            queued: number;
+        }>;
+    };
     spawn(options: SpawnOptions): Promise<AgentInfo>;
     get(agentId: string): Promise<AgentInfo>;
     list(filter?: AgentListFilter): Promise<AgentInfo[]>;
@@ -3879,6 +3891,7 @@ interface BackendOptions {
     durability?: {
         ledger: AllocationLedger;
         retainForMs: number;
+        renewConcurrency: number;
     };
 }
 interface AllocationRecord {
@@ -3945,6 +3958,10 @@ export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBacken
         wakeIfIdle: boolean;
         queryOnly?: boolean;
     }): Promise<BackendInputReceipt>;
+    diagnostics(): {
+        eventReads: number;
+        renewing: number;
+    };
     probeWorkerEvent(agentId: string, id: string, timeoutMs: number): Promise<void>;
     interrupt(agentId: string, { interruptId, executionEpoch }: {
         interruptId: string;
