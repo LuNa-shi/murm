@@ -22,3 +22,23 @@ test('Sandbox rejects removed exact Workspace quota and endpoint rewriting befor
     endpoint: 'https://example.test', endpointHost: 'localhost',
   }), /publish.*endpoint/i);
 });
+
+test('an explicit endpoint can replace a malformed saved connection', async t => {
+  const [{ mkdtemp, mkdir, writeFile, rm }, { tmpdir }, { join }, { spawnSync }] = await Promise.all([
+    import('node:fs/promises'), import('node:os'), import('node:path'), import('node:child_process'),
+  ]);
+  const home = await mkdtemp(join(tmpdir(), 'murm-connection-'));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const config = join(home, '.config', 'murm');
+  await mkdir(config, { recursive: true });
+  await writeFile(join(config, 'opensandbox.json'), '{invalid', { mode: 0o600 });
+  const resolver = new URL('../src/core/sandbox/sandbox-connection.js', import.meta.url);
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import { resolveSandboxConnection } from ${JSON.stringify(resolver.href)};
+    assert.throws(() => resolveSandboxConnection(), /Saved OpenSandbox connection is invalid/);
+    assert.equal(resolveSandboxConnection({ endpoint: 'https://replace.example.test' }).lifecycleBaseUrl,
+      'https://replace.example.test/v1');
+  `], { env: { HOME: home }, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+});

@@ -110,18 +110,27 @@ export function resolveSandboxConnection(input: ConnectionInput = {}, scope?: st
   const explicit = input.endpoint === undefined ? undefined : lifecycleUrl(input.endpoint, 'endpoint');
   const alias = input.lifecycleBaseUrl === undefined ? undefined : lifecycleUrl(input.lifecycleBaseUrl, 'lifecycleBaseUrl');
   if (explicit && alias && explicit !== alias) throw connectionError('endpoint and lifecycleBaseUrl must refer to the same Lifecycle API');
-  const saved = useSaved ? loadSavedConnection() : {};
-  const savedUrl = saved.endpoint === undefined ? undefined : lifecycleUrl(saved.endpoint, 'Saved endpoint');
   const candidates: readonly (readonly [string, string | undefined])[] = [
     ['config', explicit ?? alias],
     ['OPEN_SANDBOX_ENDPOINT', environment.OPEN_SANDBOX_ENDPOINT],
     ['MURM_LIFECYCLE_URL', environment.MURM_LIFECYCLE_URL],
     [`MURM_${scope}_LIFECYCLE_URL`, example('LIFECYCLE_URL')],
     ['OPENSANDBOX_BASE_URL', environment.OPENSANDBOX_BASE_URL],
-    ['saved', savedUrl],
-    ['default', defaultLifecycleUrl],
   ];
-  const [endpointSource, endpoint] = candidates.find(([, value]) => value !== undefined && value !== '')!;
+  const selected = candidates.find(([, value]) => value !== undefined && value !== '');
+  let saved: ConnectionInput = {};
+  let savedUrl: string | undefined;
+  if (useSaved) {
+    try {
+      const stored = loadSavedConnection();
+      savedUrl = stored.endpoint === undefined ? undefined : lifecycleUrl(stored.endpoint, 'Saved endpoint');
+      saved = stored;
+    } catch (error) {
+      // A higher-priority endpoint can replace a damaged connection file.
+      if (!selected) throw error;
+    }
+  }
+  const [endpointSource, endpoint] = selected ?? (savedUrl ? ['saved', savedUrl] : ['default', defaultLifecycleUrl]);
   const lifecycleBaseUrl = lifecycleUrl(endpoint!, 'Endpoint');
   const local = loopbackLifecycle(lifecycleBaseUrl);
   const stored = savedUrl === lifecycleBaseUrl ? saved : {};

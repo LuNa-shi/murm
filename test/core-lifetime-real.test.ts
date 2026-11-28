@@ -83,3 +83,56 @@ test('four idle native Core Agents attest actual provider lifetime and terminal 
     upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve));
   }
 });
+
+test('one idle Agent remains usable past the observed initial lease and exports its files', {
+  skip: process.env.MURM_CORE_RENEWAL_REAL_TEST !== '1', timeout: 120_000,
+}, async t => {
+  const { createRuntime, ServiceRegistry } = await import('@luna-shi/murm');
+  const { resolveSandboxConnection } = await import('../src/core/sandbox/sandbox-connection.js');
+  const { OpenSandboxSdk } = await import('../src/core/sandbox/opensandbox-sdk.js');
+  const { setTimeout: delay } = await import('node:timers/promises');
+  const { rm } = await import('node:fs/promises');
+  const image = process.env.MURM_CORE_TEST_IMAGE;
+  assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
+  const lifecycle = process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1';
+  const apiKey = process.env.MURM_CORE_TEST_API_KEY;
+  const connection = resolveSandboxConnection({ lifecycleBaseUrl: lifecycle, apiKey });
+  const sdk = new OpenSandboxSdk({ ...connection, useServerProxy: false, fetchImpl: fetch });
+  t.after(() => sdk.close());
+  const root = resolve('experiments');
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  const outputDir = await mkdtemp(join(root, 'core-renewal-'));
+  t.after(() => rm(outputDir, { recursive: true, force: true }));
+  const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
+  const settings = runtimeSettings({
+    sandbox: { lifecycleBaseUrl: lifecycle, apiKey, timeoutSeconds: 60, resourceLimits: { cpu: '1', memory: '1Gi' } },
+    bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
+    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
+    isolation: { network: 'api' },
+  });
+  const runtime = await createRuntime({ ...settings, outputDir, maxAgents: 1, services: new ServiceRegistry(),
+    profiles: { worker: { image, prompt: 'Wait for host input.', writable: true, model: 'default', services: {},
+      collect: { paths: ['renewal.txt'], maxBytes: 1024, includeGit: false, required: true } } } });
+  try {
+    const bytes = Buffer.from('available after the initial lease');
+    const agent = await runtime.spawn({ requestId: 'lease', profile: 'worker',
+      files: { 'renewal.txt': { encoding: 'base64', data: bytes.toString('base64') } } });
+    const evidence = (await readFile(join(outputDir, runtime.id, 'evidence.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+    const allocation = evidence.find(row => row.type === 'spawn' && row.state === 'allocation-observed');
+    assert.ok(allocation?.sandboxId);
+    const initial = Date.parse(allocation.expiresAt);
+    assert.ok(initial > Date.now() && initial <= Date.now() + 61_000);
+    await delay(initial + 500 - Date.now());
+    const observed = await sdk.sandboxes.getSandbox(allocation.sandboxId);
+    assert.ok(observed.expiresAt.getTime() > initial);
+    assert.equal((await runtime.get(agent.id)).status, 'idle');
+    const captured = await runtime.files.snapshot(agent.id, { requestId: 'after-initial-ttl', paths: ['renewal.txt'] });
+    assert.deepEqual(Buffer.from(captured.files['renewal.txt'].data, 'base64'), bytes);
+    const stopped = await runtime.stop(agent.id);
+    assert.equal(stopped.cleanup, 'complete');
+    assert.ok(stopped.artifacts.length);
+    assert.deepEqual(await ownedContainers(runtime.id), []);
+  } finally {
+    assert.equal((await runtime.close()).cleanup, 'complete');
+  }
+});

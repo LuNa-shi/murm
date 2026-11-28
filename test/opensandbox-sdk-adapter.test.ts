@@ -230,3 +230,20 @@ test('invalid SDK expiry cannot erase a successfully returned Sandbox ID', async
   assert.equal((recorded[0] as any).sandbox_id, 'owned-sandbox');
   assert.equal(manager.coreResource('resource').creation, 'created');
 });
+
+test('reconciliation keeps a listed resource pending when an ownership label is missing', async () => {
+  const { openSandboxRuntimeKey, openSandboxAgentKey } = await import('../src/core/sandbox/opensandbox-metadata.js');
+  let deletions = 0;
+  const factory = { createLifecycleStack() { return { sandboxes: {
+    async listSandboxes() { return { items: [
+      { id: 'missing-resource-key', metadata: { runtime_key: openSandboxRuntimeKey('runtime'), agent_key: openSandboxAgentKey('agent') } },
+      { id: 'missing-agent-key', metadata: { runtime_key: openSandboxRuntimeKey('runtime'), resource_key: openSandboxAgentKey('resource') } },
+    ] }; },
+    async deleteSandbox() { deletions++; },
+  } }; } };
+  const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'https://lifecycle.test/v1', image: 'worker', adapterFactory: factory });
+  const result = await manager.reconcileExecutions({ runtimeId: 'runtime', agents: [{ runtime_id: 'runtime', agent_id: 'agent', resource_key: 'resource' }] });
+  assert.equal(deletions, 0);
+  assert.deepEqual(result.pending.map(row => row.reason), ['provider_identity_mismatch', 'provider_identity_mismatch']);
+  assert.deepEqual(result.confirmed_agent_ids, []);
+});

@@ -255,9 +255,7 @@ export class OpenSandboxManager {
     };
     const knownIds = new Set(targets.map((agent: any) => agent.sandbox_id).filter(Boolean));
     const ownerKey = runtimeId ? openSandboxRuntimeKey(runtimeId) : openSandboxMissionKey(missionId);
-    const missionMismatch = (metadata: any) => runtimeId
-      ? metadata.runtime_key !== ownerKey
-      : metadata.mission_key && metadata.mission_key !== ownerKey;
+    const ownerLabel = runtimeId ? 'runtime_key' : 'mission_key';
     for (const agent of targets) {
       if (owned(agent.resource_key)) {
         result.owned_agent_ids.push(agent.agent_id);
@@ -269,10 +267,11 @@ export class OpenSandboxManager {
       const matches = new Set<string>(this.reconciliationIds.get(agent.resource_key));
       if (agent.sandbox_id) matches.add(agent.sandbox_id);
       let conflict = false;
+      const matchesOwner = (metadata: Record<string, unknown>) => metadata[ownerLabel] === ownerKey &&
+        metadata.agent_key === agentKey && metadata.resource_key === resourceKey;
       for (const [sandboxId, metadata] of sandboxes) {
         if (!matches.has(sandboxId) && metadata.agent_key !== agentKey && metadata.resource_key !== resourceKey) continue;
-        const incompatible = missionMismatch(metadata) || (metadata.agent_key && metadata.agent_key !== agentKey) ||
-          (metadata.resource_key && metadata.resource_key !== resourceKey) ||
+        const incompatible = !matchesOwner(metadata) ||
           (sandboxId !== agent.sandbox_id && knownIds.has(sandboxId)) || liveSandboxIds.has(sandboxId);
         if (incompatible) {
           conflict = true;
@@ -285,7 +284,7 @@ export class OpenSandboxManager {
         try {
           const found = await sdkOperation('verify resource ownership', () => this.sdk.sandboxes.getSandbox(sandboxId));
           const identity = found.metadata ?? {};
-          if (missionMismatch(identity) || identity.agent_key !== agentKey || identity.resource_key !== resourceKey) {
+          if (!matchesOwner(identity)) {
             conflict = true;
             matches.delete(sandboxId);
             result.pending.push({ ...target, sandbox_id: sandboxId, reason: 'provider_identity_mismatch' });

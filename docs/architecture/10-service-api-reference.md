@@ -48,7 +48,7 @@ This section is generated from executable exports and checked against the source
 | [src/core/sandbox/executor-driver.ts](../../src/core/sandbox/executor-driver.ts) | `56849cecb5e525d3752caca2feeb7571692c6e33afa7961619f40ad41272e6e7` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `e74c4fe8890e76e45c9e7795891c834bed666bf744693e8ff2663ddff07bd538` |
 | [src/core/sandbox/opensandbox-provider.ts](../../src/core/sandbox/opensandbox-provider.ts) | `eb98901a846c1ce294621d7a173cec46787ba4bf18b4edc65afc5c867e968c37` |
-| [src/core/sandbox/sandbox-connection.ts](../../src/core/sandbox/sandbox-connection.ts) | `d5fc3164e0fc5b8fc352896a9462b52469ea0a9a5a8efc0fd4d78663f47a6837` |
+| [src/core/sandbox/sandbox-connection.ts](../../src/core/sandbox/sandbox-connection.ts) | `d99209775f2c7b24b8611b08f6dea68e85d84d107f1da34836ac48174cb9f4c8` |
 
 ### Exact built-in command operation surface
 

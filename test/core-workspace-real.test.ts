@@ -82,7 +82,10 @@ pathlib.Path('unexported').write_text('private')`)],
     if (!new URL(url instanceof Request ? url.url : url).pathname.endsWith('/core/files/snapshot')) return response;
     const { requestId } = JSON.parse(options.body);
     if (requestId === 'lost-response' && !lostCapture) {
-      lostCapture = (await response.json()).result;
+      const frames = (await response.text()).trim().split('\n').map(JSON.parse);
+      assert.equal(frames.at(0).type, 'tree');
+      assert.equal(frames.at(-1).type, 'end');
+      lostCapture = frames.at(0).meta;
       throw new Error('Simulated loss after the native Worker completed the snapshot');
     }
     if (requestId === 'stop-race') {
