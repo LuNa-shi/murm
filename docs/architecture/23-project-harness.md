@@ -12,7 +12,12 @@ directory. Built-in aliases use the copies compiled into the installed package.
 The examples' Services and scheduling code import the package root or local
 modules. TaskPool chooses its Workspace revision after the initial capture.
 PeerMesh and Lead–Worker initialize their team repositories from a shared SDK
-Git/FileTree helper, then own branch coordination and delivery.
+Git/FileTree helper, then own branch coordination and delivery. The shared
+Git import validates relative paths, reserved Git metadata, file/directory
+collisions and executable modes before writing a staging file. It writes each
+blob without Git filters, constructs a temporary index, commits the fixed tree
+and removes staging on success or failure. The owning Harness records any
+foreign or uncertain delivery state.
 
 A project module declares the `ProjectHarness` contract from the package root.
 Use `projectConfiguration` to combine host-provided configuration and defaults

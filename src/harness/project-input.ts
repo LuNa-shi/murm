@@ -39,7 +39,7 @@ export function resolveHarnessInput(value: unknown, launchDirectory: string) {
       (cwd !== undefined && (typeof cwd !== 'string' || !cwd || cwd.includes('\0') || !cwd.isWellFormed()))) {
     throw projectError('INVALID_HARNESS_INPUT', 'Expected a non-blank prompt and a valid directory path');
   }
-  return Object.freeze({ cwd: resolve(launchDirectory, cwd ?? '.'), prompt });
+  return Object.freeze({ cwd: resolve(launchDirectory, typeof cwd === 'string' ? cwd : '.'), prompt });
 }
 
 export function isInside(directory: string, path: string) {

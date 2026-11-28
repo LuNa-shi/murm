@@ -5,7 +5,9 @@ integrations. It is not installed by `murm setup`, and it is unrelated to the
 MySQL database used by PeerMesh's Board.
 
 The provider exposes `/v1/mathlib_search` through the retained HTTP JSON v1
-service-bundle protocol. Its server currently uses private compatibility modules;
+service-bundle protocol. Its Docker build explicitly includes the TaskPool v1
+HTTP host, manifest and search contract. Check `GET /readyz` at the configured
+host and port before attaching a workload. The host uses those compatibility modules;
 it is not a standalone package or an HTTP JSON v2 adapter example. Use the
 [Messages tutorial](../../messages/README.md) to learn the current public Service API.
 

@@ -28,8 +28,10 @@ or supply a compatible provider through a trusted configuration.
 Check the Gitea `/api/v1/version` and Mattermost `/api/v4/system/ping` endpoints
 at the configured origins. Supply the Board directory from [Agensh commit
 2dae4e14](https://github.com/microsoft/Agensh/tree/2dae4e14a653da48549fd9aa093f834841475d6c)
-with its Python dependencies installed. Apply its schema to the supplied MySQL
-database and verify the configured DSN before launch. Startup checks that the
+and set `MURM_PEERMESH_BOARD_SOURCE` to its absolute `board-service/` path.
+Install that directory's `requirements.txt` for the Python executable you
+select. Apply `mini-router/sql/03_board_schema.sql` to the Board database and
+verify the configured DSN before launch. Startup checks that the
 per-run Board is readable; the Board stores its state in MySQL. PeerMesh
 connects to existing Gitea, Mattermost and MySQL installations. It closes the
 Board process it creates, while the shared services and persisted data remain.
