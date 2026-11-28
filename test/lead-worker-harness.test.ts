@@ -21,7 +21,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
 } });
 const { createLeadWorkerHarness } = await import('../examples/lead-worker/harness/index.js'); hooks.deregister();
 
-async function scenario(t, failure, fixturePrograms = false, helperCount = 2, staged = false) {
+async function scenario(t, failure, fixturePrograms = false, helperCount = 2, staged = false, sessionBurst = false) {
   const helpers = Array.from({ length: helperCount }, (_, index) => `helper${index + 1}`);
   transport.reset(); transport.collectable = true; let harness; let lock; let server;
   const work = new Set(), guests = new Map(), commands = new AbortController(); let stopping = false;
@@ -91,6 +91,12 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
     assert.equal(input.mode, 'followUp');
     const helperInput = payload.type === 'helper-initial' || payload.type === 'helper-followup';
     try {
+      if (sessionBurst && payload.type === 'initialize') {
+        const { onEvent } = transport.spawns.get(input.agentId);
+        for (let index = 0; index < 300; index++) {
+          onEvent({ type: 'session', event: { type: 'messageStart', messageId: `telemetry-${index}`, role: 'assistant' } });
+        }
+      }
       if (fixturePrograms) {
         const start = transport.spawns.get(input.agentId);
         if (!guests.has(role)) {
@@ -279,6 +285,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
 }
 
 test('public Core and actual CLI/Bridge verify initialization, both owners, Git bytes, user feedback and adopted direction', t => scenario(t));
+test('verbose Session telemetry does not fence the Lead–Worker Board', t => scenario(t, undefined, false, 2, false, true));
 test('helper failed round ends bounded work and preserves its original claim', t => scenario(t, 'failed'));
 test('helper submission and stop unknown retain original owner, input identity and required dependencies', t => scenario(t, 'unknown'));
 
