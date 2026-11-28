@@ -153,6 +153,22 @@ async function boundedMap<T>(items: T[], concurrency: number, action: (item: T, 
   if (failure?.status === 'rejected') throw failure.reason;
 }
 
+async function finishCleanup<T extends { cleanup: 'complete' | 'pending'; errors: readonly { retryable: boolean }[] }>(
+  operation: (timeoutMs: number) => Promise<T>, deadline: number,
+) {
+  let remaining = Math.max(1, Math.ceil(deadline - performance.now()));
+  let receipt = await operation(remaining);
+  while (receipt.cleanup === 'pending' && !receipt.errors.some(error => !error.retryable)) {
+    remaining = Math.ceil(deadline - performance.now());
+    if (remaining <= 0) break;
+    await delay(Math.min(remaining, 500));
+    remaining = Math.ceil(deadline - performance.now());
+    if (remaining <= 0) break;
+    receipt = await operation(remaining);
+  }
+  return receipt;
+}
+
 let executionStarted = false;
 
 async function execute(manifest: any, planned: ReturnType<typeof plan>) {
@@ -179,6 +195,7 @@ async function execute(manifest: any, planned: ReturnType<typeof plan>) {
   loop.enable();
   let stopSampling = false;
   let samplingFailure: unknown;
+  let cleanupDeadline: number | undefined;
   let runtime: Awaited<ReturnType<typeof createRuntime>> | undefined;
   const sampling = (async () => {
     while (!stopSampling) {
@@ -330,6 +347,7 @@ const proof = {slot:${slot}, round:${round}, digest, peerDigest, executorObserve
         return identities;
       };
       const initialPods = await observePods('ready');
+      let closeDeadline: number;
       let nextRound = 0;
       const round = async (measured: boolean) => {
         const selectedRound = nextRound++;
@@ -393,9 +411,11 @@ const proof = {slot:${slot}, round:${round}, digest, peerDigest, executorObserve
         }
         const finalPods = await observePods('finished');
         assert.deepEqual(finalPods.sort((a: any, b: any) => a.uid.localeCompare(b.uid)), initialPods.sort((a: any, b: any) => a.uid.localeCompare(b.uid)), 'Warmup, stable work and metrics must use the same Pods');
+        closeDeadline = cleanupDeadline = performance.now() + manifest.cleanupDeadlineMs;
+        const stopSignal = AbortSignal.timeout(manifest.cleanupDeadlineMs);
         await boundedMap(agents, manifest.exportConcurrency, async (agent, slot) => {
           const at = performance.now();
-          const stop = await activeRuntime.stop(agent.id, { timeoutMs: manifest.cleanupDeadlineMs });
+          const stop = await finishCleanup(timeoutMs => activeRuntime.stop(agent.id, { timeoutMs }), closeDeadline);
           stages.export.push(performance.now() - at);
           assert.equal(stop.execution, 'stopped'); assert.equal(stop.cleanup, 'complete'); assert.ok(stop.sessionArchive && stop.artifacts.length);
           const files = stop.artifacts.find((path: string) => path.endsWith('/artifacts/files'));
@@ -404,10 +424,10 @@ const proof = {slot:${slot}, round:${round}, digest, peerDigest, executorObserve
           assert.equal(proof.digest, expectedDigest(slot, nextRound - 1));
           assert.equal(sha256(await readFile(join(files, 'probe.txt'))), proof.digest);
           waveResult.artifacts++;
-        }, signal);
+        }, stopSignal);
       } finally { unsubscribe(); }
       const at = performance.now();
-      const closed = await runtime.close({ timeoutMs: manifest.cleanupDeadlineMs });
+      const closed = await finishCleanup(timeoutMs => activeRuntime.close({ timeoutMs }), closeDeadline);
       stages.close.push(performance.now() - at);
       assert.equal(closed.cleanup, 'complete');
       runtime = undefined;
@@ -428,10 +448,12 @@ const proof = {slot:${slot}, round:${round}, digest, peerDigest, executorObserve
     report.error = { code: (error as any)?.code ?? (error as Error)?.name, message: (error as Error)?.message };
   } finally {
     // Cleanup has a separate deadline and is independent of the work cancellation.
-    const cleanupSignal = AbortSignal.timeout(manifest.cleanupDeadlineMs);
+    const deadline = cleanupDeadline ?? performance.now() + manifest.cleanupDeadlineMs;
+    const cleanupSignal = AbortSignal.timeout(Math.max(1, Math.ceil(deadline - performance.now())));
     if (runtime) {
       try {
-        const closed = await runtime.close({ timeoutMs: manifest.cleanupDeadlineMs });
+        const closing = runtime;
+        const closed = await finishCleanup(timeoutMs => closing.close({ timeoutMs }), deadline);
         report.finalClose = { cleanup: closed.cleanup, pending: closed.pending, errors: closed.errors };
         if (closed.cleanup !== 'complete') report.status = 'failed';
       } catch { report.status = 'failed'; report.finalClose = { cleanup: 'unknown' }; }
@@ -447,10 +469,18 @@ const proof = {slot:${slot}, round:${round}, digest, peerDigest, executorObserve
           resources.push(...listed.items);
           if (!listed.pagination?.hasNextPage) break;
         }
-        const pods = await kube(['get', 'pods', '-n', 'opensandbox', '-l', `runtime_key=${runtimeKey}`], cleanupSignal);
-        const batch = await kube(['get', 'batchsandboxes', '-n', 'opensandbox', '-l', `runtime_key=${runtimeKey}`], cleanupSignal);
-        await writeFile(join(output, `final-${sha256(runtimeId).slice(0, 12)}.json`), JSON.stringify({ runtimeId, resources, pods, batch }), { mode: 0o600, flag: 'wx' });
         const { sandboxIds, ...ledger } = checkLedger(directory, runtimeId, manifest.tier);
+        const selected = ['-n', 'opensandbox', '-l', `runtime_key=${runtimeKey}`];
+        let pods, batch;
+        do {
+          [pods, batch] = await Promise.all([
+            kube(['get', 'pods', ...selected], cleanupSignal),
+            kube(['get', 'batchsandboxes', ...selected], cleanupSignal),
+          ]);
+          if (!ledger.complete || !pods.items.length && !batch.items.length) break;
+          await delay(500, undefined, { signal: cleanupSignal });
+        } while (!cleanupSignal.aborted);
+        await writeFile(join(output, `final-${sha256(runtimeId).slice(0, 12)}.json`), JSON.stringify({ runtimeId, resources, pods, batch }), { mode: 0o600, flag: 'wx' });
         let knownSandboxesStillPresent = 0;
         await boundedMap(sandboxIds, manifest.createConcurrency, async sandboxId => {
           try {

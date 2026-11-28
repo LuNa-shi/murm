@@ -316,7 +316,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [benchmarks/kubernetes/capacity.ts](../../benchmarks/kubernetes/capacity.ts) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `3d13a8a0eaa16e6b3978bf0ea74250864e8628cac5dbae9ba52b2b0d7a891420` |
+| [benchmarks/kubernetes/capacity.ts](../../benchmarks/kubernetes/capacity.ts) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `2d7a2df6eaf5e6058af76cedf027c07253c75dcdea003721057ec4ab4ddc798e` |
 | [benchmarks/kubernetes/check-ledger.ts](../../benchmarks/kubernetes/check-ledger.ts) | Read-only independent check of terminal Run, allocation and resource evidence. | [24-runtime-recovery](24-runtime-recovery.md) | `3e5ac545934bc16c7680d11d35164721c53eac96c4dbd4df6a144f109aea57e7` |
 | [benchmarks/kubernetes/manifest.example.json](../../benchmarks/kubernetes/manifest.example.json) | Reproducible Kubernetes deployment and capacity verification inputs. | [24-runtime-recovery](24-runtime-recovery.md) | `71d770d6a27ea79577a87d9956ca3f5d10a3dc638db6eb9576e7dfecc0837252` |
 | [benchmarks/kubernetes/mock-capacity.ts](../../benchmarks/kubernetes/mock-capacity.ts) | Bounded high-tier simulation through the production SDK, ledger, events and cleanup paths. | [24-runtime-recovery](24-runtime-recovery.md) | `260119e5dddc02b58a6e12085a8f33f7727c39a9b6e2142b375d4d06e2559529` |
@@ -499,7 +499,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [benchmarks/kubernetes/README.md](../../benchmarks/kubernetes/README.md) | Operator procedure, acceptance boundaries and approval gates for Kubernetes deployment and workload verification. | [24-runtime-recovery](24-runtime-recovery.md) | `b4bd1e5ffa25bcf25ffe517d8dd319de94c003e3d1fbb7061719ae425ebcac5f` |
+| [benchmarks/kubernetes/README.md](../../benchmarks/kubernetes/README.md) | Operator procedure, acceptance boundaries and approval gates for Kubernetes deployment and workload verification. | [24-runtime-recovery](24-runtime-recovery.md) | `e81e87f92d41e850039c83eb345f93724374e212dbee817694ee0b2f94b0dbc1` |
 | [deploy/opensandbox-kubernetes/README.md](../../deploy/opensandbox-kubernetes/README.md) | Operator procedure, acceptance boundaries and approval gates for Kubernetes deployment and workload verification. | [24-runtime-recovery](24-runtime-recovery.md) | `c53da260b6a88e4afefa5e3b340cd7a75a2f723609136f615eefc814ec915879` |
 | [deploy/opensandbox/config.toml](../../deploy/opensandbox/config.toml) | Pinned local OpenSandbox Docker deployment recipe | [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `0d13477b80ac0c3125acc702fee32d1343a97ede01ab6c9c3cb580e4cecb3ee4` |
 | [examples/services/mathlib-search/Dockerfile](../../examples/services/mathlib-search/Dockerfile) | Mathlib provider image recipe | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `bd089373e4a9aecc9304d080aa8a358edf4d5fcbafb7c8e35d1953d7c5b2f06d` |

@@ -21,6 +21,8 @@ The 2/8 path uses real Pi 1.3.0 through the Worker and controlled Responses serv
 
 Build normally, copy `manifest.example.json` to a private location, and replace every placeholder. Set `runtimePublicUrl` to `MURM_RUNTIME_PUBLIC_URL` from the Runtime Pod, which contains the `murm-runtime` Service's IPv4 address and port. Run from the pinned checkout, inside the Runtime's private network and writable persistent directory. The runner occupies the stable Runtime Service listener. The Service must keep its ClusterIP and route to this process, and the Sandbox policy permits that address on the exact callback port. Apply the [deployment profile](../../deploy/opensandbox-kubernetes/README.md) and record its inventory first.
 
+After the workload, the runner retries pending stops and close within the manifest's cleanup deadline while the receipts remain retryable. Core reuses the original stop and export state. The runner then checks the ledger, Lifecycle and Kubernetes resources independently within that deadline. A required export failure or unresolved resource stays visible in the report.
+
 ```sh
 npm run build
 node dist/benchmarks/kubernetes/capacity.js /secure/capacity-manifest.json
