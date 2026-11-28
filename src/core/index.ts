@@ -635,7 +635,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       spawnRequests.set(requestKey, request);
       records.record('spawn', { state: 'registered', agentId: info.id, parentId: info.parentId, profile: info.profile, profileDigest: management.profileDigest(info.profile),
         ...(parameters.forkFrom ? { forkFrom: parameters.forkFrom } : {}),
-        requestId: redactor.text(requestId), source: caller, collect: parameters.collect, writable: parameters.writable ?? agent.profile.writable });
+        requestId: redactor.text(requestId), source: caller, session: redactor.value(parameters.session), collect: parameters.collect, writable: parameters.writable ?? agent.profile.writable });
       agent.start = Promise.resolve().then(async () => {
         agent.controller.signal.throwIfAborted();
         const resource = await backend.spawn({ agentId: info.id, profile: agent.profile, options: parameters,

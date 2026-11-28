@@ -57,6 +57,7 @@ interface BackendAgent {
   started?: boolean;
   executionEpoch?: number;
   sessionReady?: boolean;
+  loadedResources?: readonly unknown[];
   activeMessageId?: string;
   sessionCommands?: Map<string, { fingerprint: string; command: string }>;
   decisions?: Set<string>;
@@ -342,7 +343,11 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (record.type === 'core_session_ready') {
         if (!isDeepStrictEqual(record.capabilities, driver.capabilities.session) || record.version !== driver.version) {
           agent.onEvent({ type: 'error', error: { code: 'EXECUTOR_CAPABILITY_MISMATCH', message: 'Guest session bridge does not match selected capabilities', retryable: false }, fatal: true });
-        } else agent.sessionReady = true;
+        } else {
+          agent.sessionReady = true;
+          agent.loadedResources = Array.isArray(record.resources) ? record.resources : [];
+          trace(agent, { type: 'session-resources', executor: driver.kind, version: record.version, resources: agent.loadedResources });
+        }
       }
       if (record.type === 'core_before_compact') {
         agent.decisions ??= new Set();
@@ -673,7 +678,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (command === 'core_context' && ['appended', 'pending-append', 'pending-next-turn', 'started', 'queued'].includes(data.status)) {
         return { ...data, status: 'accepted', disposition: data.status };
       }
-      return data;
+      return command === 'core_session_get_state' ? { ...data, loadedResources: agent.loadedResources ?? [] } : data;
     },
     async interrupt(agentId: string, { interruptId, executionEpoch }: { interruptId: string; executionEpoch: number }): Promise<Omit<InterruptReceipt, 'interruptId'>> {
       const agent = agents.get(agentId);
