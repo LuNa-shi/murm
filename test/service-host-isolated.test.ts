@@ -74,9 +74,9 @@ async function runCli(args, env) {
 }
 
 test('built-in service image includes the checker git dependency and prebuild entrypoint', async () => {
-  const dockerfile = await readFile(new URL('../deploy/builtin-services/Dockerfile', import.meta.url), 'utf8');
+  const dockerfile = await readFile(new URL('../examples/taskpool/deploy/service-hosts/Dockerfile', import.meta.url), 'utf8');
   const entrypoint = await readFile(new URL('../scripts/service-host-entrypoint.sh', import.meta.url), 'utf8');
-  const compose = await readFile(new URL('../deploy/builtin-services/compose.yaml', import.meta.url), 'utf8');
+  const compose = await readFile(new URL('../examples/taskpool/deploy/service-hosts/compose.yaml', import.meta.url), 'utf8');
   assert.match(dockerfile, /apt-get install[\s\S]*ca-certificates git/);
   assert.match(dockerfile, /ENTRYPOINT \["\.\/scripts\/service-host-entrypoint\.sh"\]/);
   assert.match(entrypoint, /MURM_JUDGE_PREBUILD/);

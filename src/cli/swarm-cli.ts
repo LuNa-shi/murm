@@ -261,7 +261,7 @@ async function bridgeCall(operation: string, payload: unknown, options: any = {}
   }); } catch (error: any) {
     if (requestId && (error.code === 'SERVICE_TIMEOUT' || !error.code || /^(ECONN|EPIPE|ENET|EHOST|EAI_)/.test(error.code))) {
       error.details = { ...error.details, request_id: requestId, operation, request_outcome: 'unknown',
-        notice: `请求 ${requestId} 结果未明。查询或重试同一请求；仅用相同 ID 和相同参数恢复原请求；修改参数应使用新请求。` };
+        notice: `The outcome of request ${requestId} is unknown. Query or retry the same request. Resume the original request only with the same ID and parameters; use a new request for changed parameters.` };
     }
     throw error;
   }

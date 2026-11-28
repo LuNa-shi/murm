@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createSandbox } from '@luna-shi/murm';
-import { runLeadWorker } from '../../src/harnesses/lead-worker/index.js';
+import { runLeadWorker } from './harness/index.js';
 import { dynamicOrders } from './dynamic-orders.js';
 
 export async function runLeadWorkerExample(config: any, signal: any) {

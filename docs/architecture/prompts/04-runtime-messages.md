@@ -7,22 +7,22 @@ The TaskPool controller composes durable handoff warnings and eligible Material/
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## handoff_warning
 
-Body SHA-256: `2e150b215757a25d32d47037f49049ac311c66ec0566fa36454629a0f6824cc1`
+Body SHA-256: `6352144dd7a12bc8edbbf63da81a9da998c1daea9cce810d79ef64d4f8e97141`
 
 ````text
-E <EXECUTION_ID> 接近 Execution 时间上限，收尾额度为 30000 ms。停止扩展，保存已有文件和研究内容，再按真实结果 finish。 通知 ID: <NOTIFICATION_ID>
+E <EXECUTION_ID> is approaching its Execution time limit. Remaining closeout budget: 30000 ms. Stop expanding work, save existing files and research content, then finish with the actual outcome. Notification ID: <NOTIFICATION_ID>
 ````
 ## material_available
 
-Body SHA-256: `17fc8793d8d272c143b2c440c0107b9ef4b6e1cb253bc2ae003f22569fe9aec1`
+Body SHA-256: `0cf5de9bd639109dd17cb808b05846b23851ec8bb2050d94efd9e9dff70cf856`
 
 ````text
-Task <SOURCE_TASK_ID> / Execution <SOURCE_EXECUTION_ID> 发布的 Material <MATERIAL_ID> 已关联到当前 Task。用 swarm material view 读取，判断实际影响，并用 swarm task feedback --notification-id <NOTIFICATION_ID> --decision ... --action ... 记录处理。通知本身不证明成果正确，也不结束当前 E。
+Material <MATERIAL_ID>, published by Task <SOURCE_TASK_ID> / Execution <SOURCE_EXECUTION_ID>, is now linked to the current Task. Read it with swarm material view, assess its actual impact, and record your response with swarm task feedback --notification-id <NOTIFICATION_ID> --decision ... --action ... . This notification does not establish that the result is correct or end the current E.
 ````
 ## dependency_satisfied
 
-Body SHA-256: `510660f9cc8a7b6248dfd0680d2fd94efb6e0b470f51c7698485c3d62b10fdc8`
+Body SHA-256: `5a140ffeb928c4d53cdc83df26b05537d24f47b05c9b2bd7d4ac89054e0ab01e`
 
 ````text
-Task <TASK_ID> 的依赖状态已更新；通过 swarm task view 核对当前合同与状态。通知不自动授予 Task/E。
+Dependencies for Task <TASK_ID> have changed. Check the current contract and state with swarm task view. This notification does not automatically grant a Task/E.
 ````

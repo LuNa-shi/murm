@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { fetchOrdersCandidate, withOrdersCandidate } from '../../examples/lead-worker/dynamic-orders.js';
-import { httpClient } from '../../src/harnesses/peermesh/http.js';
+import { httpClient } from '../../src/harness/http.js';
 
 const sha1 = /^[a-f0-9]{40}$/;
 const fileHash = (encoded: string) => createHash('sha256').update(Buffer.from(encoded, 'base64')).digest('hex');

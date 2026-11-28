@@ -103,4 +103,4 @@ node dist/scripts/run-harness.js --config <host-config.mjs>
 node dist/scripts/read-harness-result.js --run-directory <dir> --runtime-id <id>
 ```
 
-Internal Harness helpers (`src/harnesses/shared/run-input.ts` and `src/harnesses/shared/run-report.ts`) are repository utilities rather than exports of `@luna-shi/murm`.
+Internal Harness helpers (`src/harness/run-input.ts` and `src/harness/run-report.ts`) are repository utilities rather than exports of `@luna-shi/murm`.

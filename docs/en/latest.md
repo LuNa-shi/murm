@@ -8,6 +8,8 @@ badge: v0.2.0
 
 **`murm v0.2.0`** (released **2026-11-27**) is the first public open-source release of `@luna-shi/murm` — a unified TypeScript SDK, host CLI, and zero-dependency browser Trace Viewer for building and observing isolated multi-agent Harnesses.
 
+This page describes the published v0.2.0 artifact. The [current-source Quickstart](quickstart.md) uses newer setup and Provider APIs; those instructions require a tarball built from the current checkout.
+
 | Release artifact | Reference |
 | --- | --- |
 | **Version** | `v0.2.0` ([GitHub Release](https://github.com/LuNa-shi/murm/releases/tag/v0.2.0) · [SHA256SUMS](https://github.com/LuNa-shi/murm/releases/download/v0.2.0/SHA256SUMS)) |

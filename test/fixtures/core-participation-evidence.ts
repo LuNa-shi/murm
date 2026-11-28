@@ -1,4 +1,4 @@
-import { runInput } from '../../src/harnesses/shared/run-input.js';
+import { runInput } from '../../src/harness/run-input.js';
 
 // Test/host preparation only. The host owns this Runtime's exclusive input
 // sources. Correlation uses runInput's idle, followUp and unresolved-input guards;

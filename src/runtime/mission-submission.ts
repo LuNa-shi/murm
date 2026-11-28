@@ -647,9 +647,9 @@ export class MissionSubmissionStore {
         const held = Boolean(workspace.frozen_submission_id && workspace.frozen_submission_id === row.freeze_id);
         const freeze_release_result = held ? 'held' : row.freeze_epoch == null || row.state === 'reused' ? 'never_acquired' : 'released';
         let notice;
-        if (row.state === 'pending') notice = `submission ${row.submission_id} 已固定 main ${row.main_revision} 和材料 ${materials}。新的 main merge 暂停；查询同一 submission，不创建第二个有效提交。`;
-        else if (outcome === accepted) notice = `submission ${row.submission_id} 已通过，接受的成果为 ${row.main_revision} 和材料 ${materials}。进入正常收尾；现有 E 仅在剩余收尾额度内 save/publish/finish，不再扩展工作。`;
-        else if (!active.includes(row.state)) notice = `submission ${row.submission_id} 结果为 ${outcome}：${row.result?.code ?? row.result?.verdict ?? outcome}，检查对象仍固定为 ${row.main_revision ?? '未固定'}。本提交冻结的处理结果为 ${freeze_release_result}；当前 Mission 为 ${state}，当前冻结归属为 ${live.active_submission_id ?? '无'}，main 合入可用性为 ${live.merge_allowed}。未通过不能记为成功，旧结果不能解除较新提交或停止状态的限制。`;
+        if (row.state === 'pending') notice = `Submission ${row.submission_id} has fixed main ${row.main_revision} and Materials ${materials}. New main merges are paused. Query this submission; do not create a second active submission.`;
+        else if (outcome === accepted) notice = `Submission ${row.submission_id} was accepted. The accepted results are ${row.main_revision} and Materials ${materials}. Begin normal closeout. Existing E may only save/publish/finish within the remaining closeout budget; do not expand work.`;
+        else if (!active.includes(row.state)) notice = `Submission ${row.submission_id} outcome is ${outcome}: ${row.result?.code ?? row.result?.verdict ?? outcome}. The checked input remains fixed at ${row.main_revision ?? 'not fixed'}. This submission's freeze result is ${freeze_release_result}; the current Mission state is ${state}, the current freeze owner is ${live.active_submission_id ?? 'none'}, and main merge availability is ${live.merge_allowed}. An unsuccessful result must not be recorded as success. An older result cannot lift restrictions imposed by a newer submission or a stopped state.`;
         return { ...row, current: live, freeze_release_result, ...(notice ? { notice } : {}) };
       };
       if (submissionId) {

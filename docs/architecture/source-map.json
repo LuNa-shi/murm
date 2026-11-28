@@ -1,14 +1,15 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "9e2804864c9f348e46095aa91f6ddf72fef016f5",
-  "reviewed_date": "2026-11-26",
+  "runtime_baseline": "207be6356c16e5fb60c4b3c5b236d7a98383f991",
+  "reviewed_date": "2026-11-27",
   "scope_roots": [
     "src",
     "scripts",
     "deploy",
-    "integrations",
     "test-support/subagents",
-    "website"
+    "website",
+    "examples/services",
+    "examples/taskpool/deploy"
   ],
   "scope_root_files": [
     "package.json",
@@ -353,7 +354,7 @@
       "role": "Trusted local checker lock generator with source provenance checks"
     },
     {
-      "path": "scripts/mathlib-search-service.ts",
+      "path": "examples/services/mathlib-search/main.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/00-overview.md",
@@ -462,7 +463,7 @@
       "role": "Executable swarm CLI entry point and exit-code boundary"
     },
     {
-      "path": "deploy/builtin-services/compose.yaml",
+      "path": "examples/taskpool/deploy/service-hosts/compose.yaml",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -471,7 +472,7 @@
       "role": "Four-process isolated service deployment with independent persistent volumes"
     },
     {
-      "path": "deploy/builtin-services/Dockerfile",
+      "path": "examples/taskpool/deploy/service-hosts/Dockerfile",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -482,7 +483,7 @@
       "role": "Built-in service image recipe and persisted database mount"
     },
     {
-      "path": "deploy/builtin-services/judge-peer-entrypoint.sh",
+      "path": "examples/taskpool/deploy/service-hosts/judge-peer-entrypoint.sh",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -492,7 +493,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "deploy/builtin-services/README.md",
+      "path": "examples/taskpool/deploy/service-hosts/README.md",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -503,7 +504,7 @@
       "role": "Built-in provider deployment configuration"
     },
     {
-      "path": "deploy/mathlib-search/Dockerfile",
+      "path": "examples/services/mathlib-search/Dockerfile",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -514,7 +515,7 @@
       "role": "Mathlib provider image recipe"
     },
     {
-      "path": "src/services/mathlib-search/README.md",
+      "path": "examples/services/mathlib-search/README.md",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -525,7 +526,7 @@
       "role": "Mathlib provider configuration and operation notes"
     },
     {
-      "path": "src/services/mathlib-search/references/loogle.md",
+      "path": "examples/services/mathlib-search/references/loogle.md",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -536,7 +537,7 @@
       "role": "Repository-owned query guidance loaded by bundle"
     },
     {
-      "path": "src/services/mathlib-search/service.json",
+      "path": "examples/services/mathlib-search/service.json",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -547,7 +548,7 @@
       "role": "Optional provider manifest, schemas, help and documentation declarations"
     },
     {
-      "path": "src/services/mathlib-search/SKILL.md",
+      "path": "examples/services/mathlib-search/SKILL.md",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1135,7 +1136,7 @@
       "role": "Provider registration, profile projection, readiness cache and invocation"
     },
     {
-      "path": "src/services/mathlib-search/service.ts",
+      "path": "examples/services/mathlib-search/service.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1240,8 +1241,8 @@
       "role": "Runtime assembly, Agent admission, input and bounded lifecycle"
     },
     {
-      "path": "src/harnesses/shared/run-finalization.ts",
-      "category": "programmable Core",
+      "path": "src/harness/run-finalization.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
@@ -1402,8 +1403,8 @@
       "role": "Host artifact stream validation, private staging and manifest publication"
     },
     {
-      "path": "src/harnesses/shared/run-input.ts",
-      "category": "Execution and control",
+      "path": "src/harness/run-input.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
       ],
@@ -1436,7 +1437,7 @@
       "role": "Installed-package Notes Harness Service, role prompts, input order, archive verification and saved-report CLI"
     },
     {
-      "path": "examples/bridge-services/messages.ts",
+      "path": "examples/messages/messages.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1444,7 +1445,7 @@
       "role": "Shared Messages manifest and in-process or already-running HTTP Service adapter selection"
     },
     {
-      "path": "examples/bridge-services/handoff-config.ts",
+      "path": "examples/messages/handoff-config.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
@@ -1452,7 +1453,7 @@
       "role": "Standalone handoff backend, executor, model and existing Service configuration"
     },
     {
-      "path": "examples/bridge-services/handoff.ts",
+      "path": "examples/messages/handoff.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/08-prompts.md",
@@ -1461,7 +1462,7 @@
       "role": "Public SDK handoff, live Service and execution observation, and verified artifact reporting"
     },
     {
-      "path": "examples/bridge-services/tsconfig.handoff.json",
+      "path": "examples/messages/tsconfig.handoff.json",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
@@ -1469,7 +1470,7 @@
       "role": "Strict build configuration for the installed handoff sample"
     },
     {
-      "path": "examples/bridge-services/gh-issues.ts",
+      "path": "examples/services/github-issues/index.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1485,8 +1486,8 @@
       "role": "Sample host lifecycle, provider, model, output and resource configuration"
     },
     {
-      "path": "src/harnesses/shared/run-report.ts",
-      "category": "Execution and control",
+      "path": "src/harness/run-report.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
@@ -1537,7 +1538,7 @@
       "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/harnesses/peermesh/board-process.ts",
+      "path": "examples/peermesh/harness/board-process.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md"
@@ -1545,15 +1546,15 @@
       "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/harnesses/peermesh/http.ts",
-      "category": "Harness integration",
+      "path": "src/harness/http.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md"
       ],
-      "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
+      "role": "Shared host HTTP policy: bounded responses, no redirect/retry and sanitized failures"
     },
     {
-      "path": "src/harnesses/peermesh/index.ts",
+      "path": "examples/peermesh/harness/index.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md",
@@ -1562,7 +1563,7 @@
       "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/harnesses/peermesh/provision.ts",
+      "path": "examples/peermesh/harness/provision.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md"
@@ -1570,7 +1571,15 @@
       "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/harnesses/peermesh/resources.ts",
+      "path": "src/harness/owned-resources.ts",
+      "category": "harness-support",
+      "chapters": [
+        "docs/architecture/18-peermesh-harness.md"
+      ],
+      "role": "Shared application resource ownership and bounded cleanup with retained/pending receipts"
+    },
+    {
+      "path": "examples/peermesh/harness/services.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md"
@@ -1578,15 +1587,7 @@
       "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/harnesses/peermesh/services.ts",
-      "category": "Harness integration",
-      "chapters": [
-        "docs/architecture/18-peermesh-harness.md"
-      ],
-      "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
-    },
-    {
-      "path": "src/harnesses/substrate/index.ts",
+      "path": "examples/substrate/harness/index.ts",
       "category": "Harness composition",
       "chapters": [
         "docs/architecture/19-substrate-harness.md",
@@ -1595,7 +1596,7 @@
       "role": "Fixed three-peer Harness drivers, serial exclusive inputs, independent stop and persistent content reporting"
     },
     {
-      "path": "src/harnesses/substrate/substrate.ts",
+      "path": "examples/substrate/harness/substrate.ts",
       "category": "Harness composition",
       "chapters": [
         "docs/architecture/19-substrate-harness.md",
@@ -1604,7 +1605,7 @@
       "role": "Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking"
     },
     {
-      "path": "src/harnesses/substrate/collaboration-evidence.ts",
+      "path": "examples/substrate/harness/collaboration-evidence.ts",
       "category": "Harness composition",
       "chapters": [
         "docs/architecture/19-substrate-harness.md"
@@ -1691,7 +1692,7 @@
       "role": "Local subagents host model, resource and deadline configuration"
     },
     {
-      "path": "src/harnesses/peermesh/router.ts",
+      "path": "examples/peermesh/harness/router.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md",
@@ -1700,7 +1701,7 @@
       "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
     },
     {
-      "path": "src/harnesses/peermesh/routed.ts",
+      "path": "examples/peermesh/harness/routed.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md",
@@ -1709,7 +1710,7 @@
       "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
     },
     {
-      "path": "src/harnesses/peermesh/event-source.ts",
+      "path": "examples/peermesh/harness/event-source.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md"
@@ -1717,7 +1718,7 @@
       "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
     },
     {
-      "path": "src/harnesses/lead-worker/board.ts",
+      "path": "examples/lead-worker/harness/board.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -1725,7 +1726,7 @@
       "role": "Transactional durable Board, trusted caller ownership and proof acceptance"
     },
     {
-      "path": "src/harnesses/lead-worker/git.ts",
+      "path": "examples/lead-worker/harness/git.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -1733,7 +1734,7 @@
       "role": "Run-scoped fixed-team Git provisioning, PR authorization, head and pinned byte verification"
     },
     {
-      "path": "src/harnesses/lead-worker/index.ts",
+      "path": "examples/lead-worker/harness/index.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -1741,7 +1742,7 @@
       "role": "Public Core fixed-team Harness, exclusive short or four-stage workflow and pending cleanup ownership"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md",
@@ -1750,7 +1751,7 @@
       "role": "Lead/helper role and finite continuation instructions"
     },
     {
-      "path": "src/harnesses/lead-worker/team.ts",
+      "path": "examples/lead-worker/harness/team.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -1782,7 +1783,7 @@
       "role": "Frozen host-side JSONL task cases and candidate transcript checks for #235"
     },
     {
-      "path": "src/harnesses/peermesh/team.ts",
+      "path": "examples/peermesh/harness/team.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md",
@@ -1792,7 +1793,7 @@
       "role": "One Runtime with independently bound peers, exclusive routers and shared cleanup"
     },
     {
-      "path": "src/harnesses/peermesh/delivery.ts",
+      "path": "examples/peermesh/harness/delivery.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md"
@@ -1856,8 +1857,8 @@
       "role": "Host CLI for saved result inspection using the shared reader"
     },
     {
-      "path": "src/harnesses/shared/read-result.ts",
-      "category": "launch and composition",
+      "path": "src/harness/read-result.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
@@ -1890,8 +1891,8 @@
       "role": "Installed project command, stream ownership, signal handling and protocol flush"
     },
     {
-      "path": "src/harnesses/shared/project-input.ts",
-      "category": "launch and composition",
+      "path": "src/harness/project-input.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md",
         "docs/architecture/23-project-harness.md"
@@ -1899,8 +1900,8 @@
       "role": "Bounded capture of the selected host project and canonical initial file digest"
     },
     {
-      "path": "src/harnesses/shared/project-harness.ts",
-      "category": "launch and composition",
+      "path": "src/harness/project-harness.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md",
         "docs/architecture/23-project-harness.md"
@@ -1908,8 +1909,8 @@
       "role": "ESM Harness module loading, application Run admission, lifecycle and result persistence"
     },
     {
-      "path": "src/harnesses/shared/project-rpc.ts",
-      "category": "launch and composition",
+      "path": "src/harness/project-rpc.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md",
         "docs/architecture/23-project-harness.md"
@@ -1917,16 +1918,16 @@
       "role": "Project Run JSONL protocol, request replay, bounded input queue and priority stop"
     },
     {
-      "path": "src/harnesses/shared/foreground-host.ts",
-      "category": "launch and composition",
+      "path": "src/cli/foreground-harnesses.ts",
+      "category": "cli",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Shared foreground Harness driver using existing mode controllers and lifecycle reports"
     },
     {
-      "path": "src/harnesses/shared/foreground-commands.ts",
-      "category": "launch and composition",
+      "path": "src/harness/foreground-commands.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
@@ -2027,8 +2028,8 @@
       "role": "TaskPool-owned trusted Workspace merge policy, final-tree checker ownership and bounded shutdown"
     },
     {
-      "path": "src/harnesses/shared/input-admission.ts",
-      "category": "Harness execution",
+      "path": "src/harness/input-admission.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md",
         "docs/architecture/19-substrate-harness.md"
@@ -2189,7 +2190,7 @@
       "role": "Task search, working Lean budget, stable request scope and durable proof submission"
     },
     {
-      "path": "src/harnesses/substrate/paper-substrate.ts",
+      "path": "examples/substrate/harness/paper-substrate.ts",
       "category": "Environment composition",
       "chapters": [
         "docs/architecture/19-substrate-harness.md"
@@ -2742,7 +2743,7 @@
       "role": "Run-owned Profile and Service registration, retirement, access generations and management receipts"
     },
     {
-      "path": "src/harnesses/lead-worker/dynamic.ts",
+      "path": "examples/lead-worker/harness/dynamic.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -2750,7 +2751,7 @@
       "role": "Lead delegation, source and deployment receipts, and four-Agent membership admission"
     },
     {
-      "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",
+      "path": "examples/lead-worker/harness/dynamic-scheduler.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -2790,23 +2791,23 @@
       "role": "Minimal incomplete orders CLI seeded into the dynamic acceptance project"
     },
     {
-      "path": "src/harnesses/shared/project-git.ts",
-      "category": "launch and composition",
+      "path": "src/harness/project-git.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/23-project-harness.md"
       ],
       "role": "Exact Git seed, authenticated push and populated checkout instructions"
     },
     {
-      "path": "src/harnesses/shared/project-runtime.ts",
-      "category": "launch and composition",
+      "path": "src/harness/project-runtime.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/23-project-harness.md"
       ],
       "role": "Ordered Runtime event observation, configuration loading and result projection"
     },
     {
-      "path": "examples/bridge-services/project.ts",
+      "path": "examples/messages/project.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/23-project-harness.md"
@@ -2819,7 +2820,7 @@
       "chapters": [
         "docs/architecture/23-project-harness.md"
       ],
-      "role": "Lead–Worker project resource, provider and Gitea defaults"
+      "role": "Lead\u2013Worker project resource, provider and Gitea defaults"
     },
     {
       "path": "examples/lead-worker/project.ts",
@@ -2827,7 +2828,7 @@
       "chapters": [
         "docs/architecture/23-project-harness.md"
       ],
-      "role": "Static and dynamic Lead–Worker project dispatch and final delivery receipt"
+      "role": "Static and dynamic Lead\u2013Worker project dispatch and final delivery receipt"
     },
     {
       "path": "examples/notes/project.ts",
@@ -3102,6 +3103,46 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Bundled Departure Mono font asset served by the static Trace Viewer demo"
+    },
+    {
+      "path": "deploy/README.md",
+      "category": "deployment",
+      "role": "Shared OpenSandbox and Worker installation, ownership and image publication",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ]
+    },
+    {
+      "path": "examples/services/README.md",
+      "category": "service-integrations",
+      "role": "Optional Service examples and protocol boundaries",
+      "chapters": [
+        "docs/architecture/04-services.md"
+      ]
+    },
+    {
+      "path": "examples/services/github-issues/README.md",
+      "category": "service-integrations",
+      "role": "Public SDK authoring guide for a scoped host GitHub CLI adapter",
+      "chapters": [
+        "docs/architecture/04-services.md"
+      ]
+    },
+    {
+      "path": "benchmarks/putnambench-taskpool/registration.ts",
+      "category": "benchmark-support",
+      "role": "Private Putnam registration parsing, model matching and pinned-code launch checks",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md"
+      ]
+    },
+    {
+      "path": "benchmarks/putnambench-taskpool/registration.test.ts",
+      "category": "benchmark-verification",
+      "role": "Offline validation of private Putnam registration gates",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md"
+      ]
     }
   ]
 }

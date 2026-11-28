@@ -23,7 +23,7 @@ test('installed Substrate host resolves the public backend and saves an aborted 
     assert.deepEqual(saved.peers,[]);assert.equal(saved.businessFailure.code,'CONTROLLED_ABORT');
     assert.equal(JSON.stringify(saved).includes('PRIVATE_MODEL_TOKEN'),false);
     assert.ok(import.meta.resolve('@luna-shi/murm').includes('/node_modules/@luna-shi/murm/'));
-    const fate = { ...config, poolSize: 4, fate: {projectRoot:'unused', leanRoot:'unused'} };
+    const fate = { ...config, models: {default: {...config.models.default, provider:'kimi_proxy', model:'k3'}}, poolSize: 4, fate: {projectRoot:'unused', leanRoot:'unused'} };
     const withModel = (provider, model) => ({
       ...fate,
       models: {default: {...fate.models.default, provider, model}},

@@ -6,7 +6,7 @@
   },
   "license": "MIT",
   "type": "module",
-  "description": "A local-first runtime for durable, checkable agent swarm tasks.",
+  "description": "Build and run custom multi-agent collaboration with isolated coding agents.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/LuNa-shi/murm.git"
@@ -49,7 +49,7 @@
     "swarm": "node dist/scripts/swarm.js",
     "test": "node --test --test-concurrency=1 'dist/test/**/*.test.js'",
     "pretest": "npm run docs:check",
-    "service:mathlib-search": "node dist/scripts/mathlib-search-service.js",
+    "service:mathlib-search": "node dist/examples/services/mathlib-search/main.js",
     "service:builtin": "node dist/scripts/service-host.js",
     "docs:generate": "node dist/scripts/generate-architecture-prompts.js && node dist/scripts/generate-architecture-api.js && node dist/scripts/generate-architecture-coverage.js",
     "docs:check": "node dist/scripts/check-architecture.js",

@@ -4,7 +4,7 @@ import { isFateBenchmark } from './fate-checker.js';
 
 export async function runSubstrateExample(config: any, signal: any) {
   const { createSandbox } = await import('@luna-shi/murm');
-  const { runSubstrate } = await import('../../src/harnesses/substrate/index.js');
+  const { runSubstrate } = await import('./harness/index.js');
   return runSubstrate({ ...config, sandbox: createSandbox(config.sandbox) }, signal);
 }
 
@@ -50,7 +50,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       process.stdout.write(`${usage}\nThe fixed peer pool stops on completion, Ctrl+C or SIGTERM. Result inspection reads saved receipts.\n`);
     } else if (args.length === 4 && args[0] === '--result' && args[1] && !args[1].startsWith('--') &&
         args[2] === '--runtime-id' && args[3] && !args[3].startsWith('--')) {
-      const { readHarnessResult } = await import('../../src/harnesses/shared/read-result.js');
+      const { readHarnessResult } = await import('../../src/harness/read-result.js');
       const result = await readHarnessResult({ runDirectory: args[1], runtimeId: args[3] });
       process.stdout.write(`${JSON.stringify(result)}\n`);
       process.exitCode = result.harness.state === 'read' && result.core.state === 'read' ? 0 : 1;

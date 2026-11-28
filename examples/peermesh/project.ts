@@ -1,10 +1,10 @@
 import { createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@luna-shi/murm';
 import { addAbortListener } from 'node:events';
-import { runPeerMeshTeam } from '../../src/harnesses/peermesh/team.js';
-import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
-import { ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
-import { checkGitProject } from '../../src/harnesses/shared/project-git.js';
-import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
+import { runPeerMeshTeam } from './harness/team.js';
+import type { ProjectHarness } from '../../src/harness/project-harness.js';
+import { ProjectPreflightError } from '../../src/harness/project-input.js';
+import { checkGitProject } from '../../src/harness/project-git.js';
+import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harness/project-runtime.js';
 import { peerMeshConfig } from './project-config.js';
 
 type Config = Omit<ReturnType<typeof peerMeshConfig>, 'models' | 'sandbox'> &

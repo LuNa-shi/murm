@@ -2,7 +2,7 @@
 
 [总览](README.md) · [Harness §7](02-harness.md#7-substrate) · [执行票 #202](https://github.com/LuNa-shi/SwarmEnv/issues/202)
 
-本修订合入后规定 #202 的论文对齐配置及验收。原有通用示例与历史证据继续按各自固定版本解释。[固定审核](https://github.com/LuNa-shi/SwarmEnv/blob/66536e631fdea8cbf1a16bc7643c5b13433021d1/docs/reviews/scalemas-example-review.md) 记录原版论文、源码差距和评测来源，本文记录首轮交付范围。
+本修订记录 #202 经评审的论文对齐配置及验收。当前实现见 [Substrate](../../architecture/19-substrate-harness.md)，剩余验收留在 #202；后续明确变更按[总览](README.md)衔接。原有通用示例与历史证据继续按各自固定版本解释。[固定审核](https://github.com/LuNa-shi/SwarmEnv/blob/66536e631fdea8cbf1a16bc7643c5b13433021d1/docs/reviews/scalemas-example-review.md) 记录原版论文、源码差距和评测来源，本文记录首轮交付范围。
 
 ## 普通入口与运行
 

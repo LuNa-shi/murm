@@ -13,7 +13,7 @@ These terms describe the current implementation. Read [How murm works](docs/en/c
 | **Agent** | A Runtime-owned execution identity with its own Sandbox, working directory and Session. A settled Agent can receive another input. |
 | **Profile** | A named Agent configuration containing its prompt, model, image, Service permissions and optional control/file settings. Runtime creation captures its definition. A host can register additional immutable definitions during the Run. |
 | **Backend** | The execution and resource integration used by the Runtime. The Runtime resolves the executor during assembly and uses a Sandbox Provider to allocate and control Agent resources. |
-| **Executor** | The Agent implementation running inside the Sandbox: Pi or Codex. Capabilities such as context fork differ between executors. |
+| **Executor** | The Agent implementation running inside the Sandbox: a supported Pi or Codex version, or an image-installed adapter. Capabilities such as context fork differ between executors. |
 | **Sandbox** | An Agent's isolated execution environment. The public `createSandbox` factory registers reusable OpenSandbox connection settings or a trusted Provider implementation. |
 | **Worker** | The container image and guest-side programs that implement the murm execution protocol, tools and selected executor. |
 | **Sandbox Provider** | Trusted integration implementing Sandbox readiness, allocation, Worker transport, file transfer and cleanup. The default Provider connects through the OpenSandbox API. |

@@ -155,7 +155,7 @@ test('independent public contributions merge before a failed Mission check and a
   assert.equal(settled.result.verdict, 'FAIL');
   assert.equal(settled.freeze_release_result, 'released');
   assert.equal(settled.current.merge_allowed, true);
-  assert.match(settled.notice, /未通过不能记为成功/);
+  assert.match(settled.notice, /An unsuccessful result must not be recorded as success/);
   const discovery = await describe();
   assert.equal(discovery.state, 'open');
   assert.equal(discovery.current.main_revision, merge.main_revision);

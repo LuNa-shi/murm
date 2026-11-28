@@ -1,7 +1,7 @@
-import type { ServiceRegistration } from '../../src/core/services.js';
+import type { ServiceRegistration } from '@luna-shi/murm';
 import { MurmError } from '../../src/errors.js';
 import { assertNewExecutionWork } from '../../src/task/execution-budget.js';
-import { createMathlibSearchManifest, type MathlibSearchService } from '../../src/services/mathlib-search/service.js';
+import { createMathlibSearchManifest, type MathlibSearchService } from '../services/mathlib-search/service.js';
 
 export function createTaskPoolMathlibService({ provider, runtimeId, taskService, missionId, deadline }: {
   provider: MathlibSearchService;

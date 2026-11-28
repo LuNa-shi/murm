@@ -7,9 +7,9 @@ order: 10
 
 A **Harness** defines how a multi-agent team divides work, shares information, and decides when the job is done.
 
-`murm` ships **five complete multi-agent patterns** (`Subagents`, `TaskPool`, `PeerMesh`, `Substrate`, and `Lead-Worker`), plus two minimal starters (`notes` and `messages`). All of them share the exact same Sandboxes, Host Gateway, and Trace Viewer — only their Services and orchestration rules differ.
+`murm` ships **five reference collaboration patterns** (`Subagents`, `TaskPool`, `PeerMesh`, `Substrate`, and `Lead-Worker`), plus two minimal starters (`notes` and `messages`). All of them share the exact same Sandboxes, Host Gateway, and Trace Viewer — only their Services and orchestration rules differ.
 
-> **How to use them**: run any built-in directly via `murm --harness <name>`, or inspect `examples/` and `src/harnesses/` to adapt them. To build your own from scratch, see [Build a Swarm Harness](../build-your-harness.md).
+> **How to use them**: select a built-in CLI alias with `murm --harness <name>` after preparing its prerequisites. Each alias loads an ordinary module from the corresponding `examples/<name>/` directory. Read the [example index](../../../examples/README.md) to run or adapt one. To build your own, see [Build a Swarm Harness](../build-your-harness.md).
 
 ## Run in one command
 
@@ -20,7 +20,22 @@ cd my-project
 murm --harness subagents --prompt "Fix the parser and add tests"
 ```
 
-Built-in names: `subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes`, `messages`. (`subagents`, `taskpool`, `notes`, and `messages` only need your model environment variables; `peermesh`, `substrate`, and `lead-worker` also use external facilities such as Gitea or Mattermost.)
+Built-in names: `subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes`, `messages`. OpenSandbox, a compatible Worker image and model access are common prerequisites. The selected example owns its collaboration Services:
+
+| Examples | Additional facilities |
+| --- | --- |
+| Subagents, TaskPool, Notes, Messages, ordinary Substrate | Their normal project entrypoints create the in-process Services and stores they need. No global Task/Context/Judge service stack is required. |
+| PeerMesh | Configured Gitea and Mattermost, plus MySQL and the upstream Board process. |
+| Lead-Worker | Configured Gitea; its optional dynamic example also needs a Docker image for the checking Service and candidate verifier. |
+| Optional Lean workloads | The TaskPool or Substrate FATE configuration supplies its checker/toolchain and may use [Mathlib Search](../../../examples/services/mathlib-search/README.md). |
+
+Default setup prepares the common runtime deployment. PeerMesh and Lead-Worker currently select strict local Docker isolation for their Git network allowlists; follow their example-specific host and facility instructions. [Deployment ownership](../../../deploy/README.md) explains which components setup creates and which it only connects to.
+
+## Where the implementations live
+
+The five mechanisms and their coordination code belong to `examples/subagents`, `examples/taskpool`, `examples/peermesh`, `examples/substrate` and `examples/lead-worker`. The latter three keep their controllers and Services under a local `harness/` directory. Common project input, host/RPC and report helpers live in private `src/harness/` support. A built-in alias is a convenience loader, not a Core-owned mechanism or an additional SDK export.
+
+The examples currently build with the repository and still use private helpers; TaskPool also uses domain modules remaining under `src`. Copying one directory into an unrelated project is not yet a complete installation path. The [repository implementation plan](../../designs/repository-layout.md) defines the remaining extraction and the acceptance check for independent SDK consumers.
 
 ## Five collaboration patterns at a glance
 

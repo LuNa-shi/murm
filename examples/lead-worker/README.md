@@ -1,37 +1,81 @@
 # Lead-Worker Harness
 
-## Run from your project
+A Lead assigns work through a local SQLite Board and integrates Workers' Git
+output. Every member has a separate Sandbox, Session and scoped Git identity.
+The example owns its coordination Services and per-run identities; you supply
+the Gitea facility and the common OpenSandbox/model infrastructure.
+
+## Prepare and configure
+
+Install a release using [Quickstart](../../docs/en/quickstart.md), or run
+`npm ci --ignore-scripts` and `npm run build` at the checkout root. Configure the
+common `MURM_MODEL_URL`, `MURM_MODEL_TOKEN`, `MURM_MODEL_PROVIDER`,
+`MURM_MODEL_ID` and optional `MURM_EXECUTOR`. Pi is the default executor;
+Codex requires an explicit model ID. Scoped `MURM_LEAD_WORKER_MODEL_*` and
+`MURM_LEAD_WORKER_EXECUTOR` variables remain fallbacks.
+
+Supply these example dependencies:
+
+| Setting | Purpose |
+| --- | --- |
+| `MURM_LEAD_WORKER_GITEA_ORIGIN` | Gitea origin reachable from the host and Agent network. |
+| `MURM_LEAD_WORKER_GITEA_OWNER` | Owner of the retained per-run repository. |
+| `MURM_LEAD_WORKER_GITEA_ADMIN_TOKEN` | Host credential permitted to create scoped accounts and repositories. |
+| `MURM_LEAD_WORKER_TEAM` | Optional `static` (default) or `dynamic` project team. |
+| `MURM_LEAD_WORKER_CHECKING_IMAGE` | Immutable local Docker image ID for dynamic checking; falls back to the selected Worker image. |
+
+The Git Profiles require an enforced endpoint allowlist. The current default
+therefore retains strict local Docker isolation, including a 64 MiB/4,096-inode
+project quota. The default API Provider does not advertise this capability.
+Follow [the strict-host prerequisites](../../docs/architecture/16-pi-opensandbox-backend.md)
+or supply a compatible provider through trusted run configuration. The default
+team has one Lead and two Workers, a 120-second work window and a separate
+30-second close wait. `--config` can supply other supported settings.
+
+## Run a project
+
+From this example directory after building the checkout:
+
+```sh
+node ../../dist/scripts/murm.js --harness lead-worker \
+  --cwd /absolute/path/to/project \
+  --prompt 'Implement the project requirements, delegate work and verify the integrated result'
+```
+
+With the CLI installed, the equivalent entry is:
 
 ```sh
 cd my-project
-murm --harness lead-worker --prompt "Inspect this project and explain how to verify it"
+murm --harness lead-worker --prompt 'Implement the requested change and verify it'
 ```
 
-Lead–Worker sends the prompt to the Lead and initializes team Git and member Sandbox files. Choose the dynamic team with `MURM_LEAD_WORKER_TEAM=dynamic`. The dynamic checker uses an immutable Docker image ID from `MURM_LEAD_WORKER_CHECKING_IMAGE` or the Worker image setting.
+The directory seeds the team repository and member files; the prompt is the
+Lead's goal. This path creates its own run ID and needs no workload file.
+Dynamic project mode lets the Lead create a checking Service/Profile and change
+member grants through the same Board and Git project. It requires local Docker
+for the example-owned checker containers; default `murm setup` does not deploy
+Gitea or those application services.
 
-After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
+Read the final report for business, export and cleanup status. A failed export
+or uncertain stop can retain a Sandbox and dependent identities for
+reconciliation. The shared repository and Board remain available for inspection.
+Project correctness needs independent evaluation of the delivered files.
 
+See the [mechanism guide](../../docs/en/harnesses/lead-worker.md),
+[implementation manual](../../docs/architecture/20-lead-worker-harness.md) and
+[dynamic-team design](../../docs/designs/dynamic-lead-worker.md).
 
-This example creates one lead and two helpers through the public Core SDK. The default workflow uses preconfigured Profiles and a fixed team. Each Agent has its own Profile, sandbox, workDir, persistent Session, Git account and branch. The Board is a local SQLite Service with exclusive owner claims, not PeerMesh's soft overlapping CLAIM notes. The trusted host owns the controller, identity bindings and cleanup.
+## Fixed-team verification fixture
 
-The host imports the Runtime, Sandbox and Service author APIs from `@luna-shi/murm`. The Lead-Worker controller runs from the bundled example. See the [Runtime guide](../../docs/en/runtime.md), [mechanism guide](../../docs/en/harnesses/lead-worker.md) and [dynamic-team design](../../docs/designs/dynamic-lead-worker.md).
+`main.ts` and `config.ts` retain a deterministic two-stage text-report exercise
+for verification. It is separate from the project command above and requires
+`MURM_LEAD_WORKER_RUN`:
 
-## Install and configure
-
-After `npm ci`, build the editable TypeScript with `npm run build`. From the checkout root:
-
-```bash
-node dist/examples/lead-worker/main.js dist/examples/lead-worker/config.js
+```sh
+node ../../dist/examples/lead-worker/main.js ../../dist/examples/lead-worker/config.js
 ```
 
-The package is currently private and consumed as a checkout-built tarball. After following the [SDK installation recipe](../../docs/en/reference/api.md#install-the-sdk), run it in a consumer directory with:
-
-```bash
-example=node_modules/@luna-shi/murm/dist/examples/lead-worker
-node "$example/main.js" "$example/config.js"
-```
-
-The config module lists required environment variables. Supply a fresh unique run name, an immutable Worker image including the existing native Git credential helper, a local OpenSandbox endpoint, an existing Gitea admin account and a model endpoint. The sample selects Kimi K3. The Gitea origin must be an IPv4 literal reachable from the containers; loopback is not admitted as an Agent network origin. Administrator credentials remain host-side. The provisioner creates one retained private repository and three restricted accounts with scoped tokens and disables/revokes only its confirmed owned identities after complete Core cleanup. It never deletes the shared project or existing work.
+The remaining sections describe this explicit fixture and its benchmark variants.
 
 ## Direction, work and feedback
 
@@ -81,12 +125,6 @@ node dist/examples/lead-worker/verify-orders.js <harness-report.json> <orders-ca
 ```
 
 The command verifies the frozen candidate and saved cleanup receipts, then reruns the nine independent orders cases. It exits nonzero for a missing or mismatched artifact, incomplete saved cleanup, or a failed case. Full L4 collaboration replay remains a follow-up for [Issue #235](https://github.com/LuNa-shi/murm/issues/235). It must verify grant/revoke, original Worker Session continuity and checker feedback adoption from frozen Run evidence. The [acceptance design](../../docs/designs/dynamic-lead-worker.md) specifies these requirements.
-
-### 动态订单模式
-
-在现有配置中设置上面的 `dynamic` 字段，检查容器镜像使用本地不可变 Docker image ID。Lead 和两名原 Worker 先启动。Lead 可以部署检查服务、登记 checker Profile、加入第四名成员，并给原 Worker 授权或撤权。任务与反馈仍由同一个 Board 和 Git 项目推进。
-
-宿主从 Lead 提交的固定 Git 版本提取文件，用包内冻结的独立测试检查退出码、stdout 和 stderr。Run 关闭后，用上面的 `verify-orders.js`、Run 报告和候选包核对冻结产物与保存的清理回执，并重跑九项独立用例。完整 L4 复验留待 [Issue #235](https://github.com/LuNa-shi/murm/issues/235) 的后续切片，需要从冻结的 Run 证据核对 grant/revoke、原 Worker Session 连续性和 checker 反馈采用。
 
 The installed native scripted gate can be run with `MURM_LEAD_WORKER_DYNAMIC_NATIVE_TEST=1` and the immutable `MURM_CORE_TEST_IMAGE` and `MURM_LEAD_WORKER_SERVICE_IMAGE` IDs. Build the Checkout first, then run `node --test dist/test/lead-worker-dynamic-native.test.js`. The gate provisions a fresh private Gitea facility, runs the packaged example at an external installation, and reruns its oracle offline.
 

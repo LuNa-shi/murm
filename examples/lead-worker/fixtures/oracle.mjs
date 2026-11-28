@@ -20,11 +20,11 @@ export const publicInputs = Object.freeze({
     '{"id":"c","currency":"EUR","amount_cents":50}',
   ].join('\n') + '\n',
   'orders-b': [
-    '{"id":"日","currency":"GBP","amount_cents":400}',
-    '{"id":"雨","currency":"GBP","amount_cents":125}',
-    '{"id":"日","currency":"GBP","amount_cents":900}',
+    '{"id":"\u65e5","currency":"GBP","amount_cents":400}',
+    '{"id":"\u96e8","currency":"GBP","amount_cents":125}',
+    '{"id":"\u65e5","currency":"GBP","amount_cents":900}',
     'not JSON',
-    '{"id":"雲","currency":"USD","amount_cents":20}',
+    '{"id":"\u96f2","currency":"USD","amount_cents":20}',
   ].join('\r\n'),
 });
 
@@ -37,7 +37,7 @@ const cases = [
     { USD: 350, EUR: 50 }, [error(3, 'DUPLICATE_ID'), error(4, 'INVALID_JSON')],
   )],
   ['orders-b', { file: publicInputs['orders-b'] }, success(
-    [order('日', 'GBP', 400), order('雨', 'GBP', 125), order('雲', 'USD', 20)],
+    [order('\u65e5', 'GBP', 400), order('\u96e8', 'GBP', 125), order('\u96f2', 'USD', 20)],
     { GBP: 525, USD: 20 }, [error(3, 'DUPLICATE_ID'), error(4, 'INVALID_JSON')],
   )],
   ['empty', { stdin: '' }, success()],

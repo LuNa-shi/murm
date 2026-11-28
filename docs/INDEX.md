@@ -23,7 +23,7 @@ Start with the user guides to run a Harness or build your own. The English and C
 | --- | --- |
 | [Development](workflows/development.md) | Build, validate and contribute changes. |
 | [Coding Agent instructions](../AGENTS.md) | Project-specific work rules, permissions and documentation requirements. |
-| [Agent configuration](agents/domain.md) · [Issue tracker](agents/issue-tracker.md) | Domain and execution-record conventions. |
+| [Engineering record conventions](../AGENTS.md#engineering-record-conventions) | Issue scope, evidence and triage conventions. |
 | [Trace Viewer](operations/trace-viewer.md) | Inspect saved and active Run records. |
 | [Website implementation](architecture/22-website.md) | Content loading, links, bilingual build and deployment. |
 | [Research context](PROJECT.md) · [Experiment workflow](workflows/experiment.md) | Research questions, resources and evidence standards. |
@@ -33,10 +33,12 @@ Start with the user guides to run a Harness or build your own. The English and C
 
 The user guides describe the supported public surface. The architecture manual describes how the current tree implements it. Source code and generated references establish exact fields and defaults; tests and experiments establish what was verified. Changes to this baseline need corresponding documentation in their implementation PR.
 
-The [Phase 0005 Core / Harness design](designs/core-harness/README.md) retains the stage's decisions and acceptance criteria. The design index links the approved [dynamic Lead-Worker extension](designs/dynamic-lead-worker.md) and the upcoming CLI/TUI design work in [#252](https://github.com/LuNa-shi/murm/issues/252). Human-approved Issues define scope and acceptance for other stages.
+The [Core / Harness design](designs/core-harness/README.md) retains reviewed, version-bound decisions and acceptance criteria. Read it with the applicable Issue and later explicit owner decisions; older first-release limits do not override those changes. The design index links the [dynamic Lead-Worker contract](designs/dynamic-lead-worker.md) and CLI/TUI work in [#252](https://github.com/LuNa-shi/murm/issues/252). Current implementation belongs in Architecture; remaining acceptance stays in the original Issue/PR. Design updates, code, migration, tests and documentation are reviewed together in the implementation PR.
+
+The [repository implementation plan](designs/repository-layout.md) distinguishes the cleanup already implemented from remaining TaskPool domain extraction, the public Harness author contract, and independent example packaging. The five collaboration mechanisms live under their owning `examples/` directories; `src/harness/` holds common host support. CLI aliases load example modules and do not make those policies part of Core. See [examples](../examples/README.md) and [deployment ownership](../deploy/README.md) for their actual dependencies.
 
 Superseded plans from earlier phases, migration inventories and superseded ADRs remain in [Git history before this cleanup](https://github.com/LuNa-shi/murm/tree/fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02/docs).
 
 ## Historical evidence
 
-[Experiment reports](experiments/INDEX.md) remain because they record what a particular run actually did. Keep their original implementation, model, inputs, failed attempts and limitations intact. Links to retired designs point to fixed Git revisions. Historical observations and old acceptance targets do not override the current SDK contract.
+Current documentation covers supported behavior and active development. Historical experiment reports are retained at [their last tracked revision](https://github.com/LuNa-shi/murm/tree/207be6356c16e5fb60c4b3c5b236d7a98383f991/docs/experiments), with their original implementation, model, inputs, failures and limitations. New run registrations and reviewed conclusions belong in the originating Issue/PR; raw evidence remains in ignored local directories. See the [experiment workflow](workflows/experiment.md). Historical observations do not override the current SDK contract.

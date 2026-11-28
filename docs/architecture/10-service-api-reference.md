@@ -37,8 +37,8 @@ This section is generated from executable exports and checked against the source
 | [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `3759b5509820d4ee1793c802e1e5c99aee0f7095fc6d43244d1ca0a773776dd0` |
 | [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `ee72fba940f1e45926b4f8c04a13c355868e6d15b84df6cade45f2371b4db770` |
 | [src/agent/capability-profile.ts](../../src/agent/capability-profile.ts) | `53a57335eb59af29119a889b12044d94d838c5df9d138cc86e2d0da5bd01f0c5` |
-| [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `af9fd45a15bdf6edceccde3558264adec75c60c8709b60bee402c0388e4bb28f` |
-| [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
+| [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `44646ed59e6ffceddf56cef9d807fd2cb312db9dec5aa15a81e039a657db5b88` |
+| [examples/services/mathlib-search/service.json](../../examples/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
 | [src/core/index.ts](../../src/core/index.ts) | `f7d942b55b4b783620909aa05b0e7ea6e9e88bf54ebf5584ccf4f6c64c8b3dfe` |
 | [src/core/types.ts](../../src/core/types.ts) | `1161fe11a40d1da8d229fc7f469bec00c7a139c709010daf7713e7708325619b` |

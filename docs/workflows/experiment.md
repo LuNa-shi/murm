@@ -2,7 +2,7 @@
 
 > Type: Workflow · Status: Active · Updated: 2026-11-26
 
-**GitHub Issues organize research and engineering work.** The [Phase 0005 design](../designs/core-harness/README.md) governs the Core / Harness product requirements and acceptance. Other stages use their human-approved Issues for those requirements. Research permission, testing scope and resources require explicit authorization in the applicable Issue or a linked human-approved decision.
+**GitHub Issues organize research and engineering work.** The [Core / Harness design](../designs/core-harness/README.md) records version-bound reviewed requirements and acceptance. Apply it with the relevant approved Issue and later explicit owner decisions. Research permission, testing scope and resources require explicit authorization in the applicable Issue or a linked human-approved decision.
 
 Distinguish implementation diagnostics from formal research or acceptance experiments.
 
@@ -26,7 +26,7 @@ An umbrella research program may contain several linked Issues; each approved Is
 
 ### 2. Register the run
 
-Before each formal run allocate `EXP-YYYYMMDD-NN` (UTC) in [the experiment index](../experiments/INDEX.md). Record the parent Issue, clean code commit and candidate archive, Harness and executor, task/checker inputs, relevant toolchain versions, provider/model, prompt/Profile/Service-schema hashes, Agent capacity, work and cleanup deadlines, resource budget, main observations and stop conditions. For a Lean task, include Lean and Mathlib revisions; other tasks record their own language, build and evaluator versions. A rerun receives a new ID linked to the previous one.
+Before each formal run allocate a unique `EXP-YYYYMMDD-NN` (UTC) in the originating Issue/PR and record its registration there. Check existing registrations before choosing the next sequence number. Record the parent Issue, clean code commit and candidate archive, Harness and executor, task/checker inputs, relevant toolchain versions, provider/model, prompt/Profile/Service-schema hashes, Agent capacity, work and cleanup deadlines, resource budget, main observations and stop conditions. For a Lean task, include Lean and Mathlib revisions; other tasks record their own language, build and evaluator versions. A rerun receives a new ID linked to the previous one.
 
 A formal registration is for experimental traceability, **not a request for per-run approval**. Runs within the Issue's authorized matrix and spending cap can proceed autonomously. Changes outside it return to the human owner before execution.
 
@@ -36,7 +36,7 @@ Declare the runner's working-window timestamps before execution and use the same
 
 Raw Agent transcripts, working files, checker/candidate source, credentials and private state remain in ignored local `experiments/`. Preserve Harness, Runtime, Agent, input/request and Service operation identities together with source revisions. Add the domain identifiers actually used by the Harness: TaskPool needs Mission/Task/Execution/Material/Workspace and Judge identities; a Git-based team needs repository, commit and delivery identities. Mark unavailable inputs or tools as BLOCKED rather than silently substituting.
 
-Follow the [report template](../experiments/TEMPLATE.md). **Results** describe facts, **Analysis** evaluates evidence and competing explanations, and **Next steps** distinguish delegated fixes from pending human decisions. Unknown evidence is not zero. Input admission, execution settlement, checked business success and cleanup are distinct results; high Agent activity or many shared artifacts do not prove meaningful collaboration.
+Keep the reviewed report in the originating Issue/PR, or link an explicitly requested research artifact from it. **Results** describe facts, **Analysis** evaluates evidence and competing explanations, and **Next steps** distinguish delegated fixes from pending human decisions. Unknown evidence is not zero. Input admission, execution settlement, checked business success and cleanup are distinct results; high Agent activity or many shared artifacts do not prove meaningful collaboration.
 
 ### 4. Sync decisions and evidence
 

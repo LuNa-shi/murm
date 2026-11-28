@@ -11,7 +11,7 @@ async function directory(t) {
 }
 
 test('host report preserves business and cleanup failures independently and saves their trusted identities', async t => {
-  const { runWithReport } = await import('../src/harnesses/shared/run-report.js');
+  const { runWithReport } = await import('../src/harness/run-report.js');
   const outputDir = await directory(t);
   const business = Object.assign(new Error('Original business failure'), { code: 'MODEL_ERROR', runtimeId: 'runtime-one', agentId: 'agent-one', requestId: 'input-one', inputId: 'actual-input', details: [{ code: 'UPSTREAM_REJECTED' }], privateToken: 'omit-this-field' });
   const report = await runWithReport({ outputDir, closeTimeoutMs: 100,
@@ -27,7 +27,7 @@ test('host report preserves business and cleanup failures independently and save
 });
 
 test('factory failure retains pending cleanup identity without invoking business work or hiding its report path', async t => {
-  const { runWithReport } = await import('../src/harnesses/shared/run-report.js');
+  const { runWithReport } = await import('../src/harness/run-report.js');
   const outputDir = await directory(t); let ran = false;
   const error = Object.assign(new Error('Factory allocation uncertain'), { code: 'OPERATION_UNKNOWN', runtimeId: 'factory-run', cleanup: 'pending', reportPath: '/controlled/core-report.json', details: [{ code: 'MODEL_CLOSE_FAILED' }] });
   const report = await runWithReport({ outputDir, createRuntime: async () => { throw error; }, run: async () => { ran = true; } });
@@ -38,7 +38,7 @@ test('factory failure retains pending cleanup identity without invoking business
 });
 
 test('report saving failure remains separate from prior business and cleanup failures and returns no false saved path', async t => {
-  const { runWithReport } = await import('../src/harnesses/shared/run-report.js');
+  const { runWithReport } = await import('../src/harness/run-report.js');
   const outputDir = await directory(t);
   await writeFile(join(outputDir, 'blocked-run'), 'controlled blocker');
   const report = await runWithReport({ outputDir, createRuntime: async () => ({ id: 'blocked-run', close: async () => ({ cleanup: 'pending', agents: [{ agentId: 'b', execution: 'unknown', cleanup: 'pending' }], pending: [{ sandboxId: 'actual-sandbox' }] }) }),
@@ -49,7 +49,7 @@ test('report saving failure remains separate from prior business and cleanup fai
 });
 
 test('a hung close has a finite host wait and preserves the business result for explicit later reconciliation', { timeout: 1000 }, async t => {
-  const { runWithReport } = await import('../src/harnesses/shared/run-report.js');
+  const { runWithReport } = await import('../src/harness/run-report.js');
   const outputDir = await directory(t);
   let closeCalls = 0;
   const report = await runWithReport({ outputDir, closeTimeoutMs: 10, createRuntime: async () => ({ id: 'hung-close', close({ timeoutMs }) { closeCalls++; assert.equal(timeoutMs, 10); return new Promise(() => {}); } }), run: async () => ({ accepted: false }) });
@@ -59,7 +59,7 @@ test('a hung close has a finite host wait and preserves the business result for 
 });
 
 test('a hung post-close reconciliation preserves the physical receipt within the original host wait', { timeout: 1000 }, async t => {
-  const { runWithReport } = await import('../src/harnesses/shared/run-report.js');
+  const { runWithReport } = await import('../src/harness/run-report.js');
   const outputDir = await directory(t);
   const receipt = { cleanup: 'complete', agents: [{ agentId: 'closed-agent', execution: 'stopped', cleanup: 'complete' }] };
   const report = await runWithReport({ outputDir, closeTimeoutMs: 10,
@@ -76,7 +76,7 @@ test('a hung post-close reconciliation preserves the physical receipt within the
 });
 
 test('a close receipt arriving after the host timeout cannot start domain reconciliation or alter the report', { timeout: 1000 }, async t => {
-  const { runWithReport } = await import('../src/harnesses/shared/run-report.js');
+  const { runWithReport } = await import('../src/harness/run-report.js');
   const outputDir = await directory(t);
   const closed = Promise.withResolvers();
   let reconciliations = 0;
@@ -95,7 +95,7 @@ test('a close receipt arriving after the host timeout cannot start domain reconc
 });
 
 test('post-close work finishing after its timeout cannot mutate the saved or returned result projection', { timeout: 1000 }, async t => {
-  const { runWithReport } = await import('../src/harnesses/shared/run-report.js');
+  const { runWithReport } = await import('../src/harness/run-report.js');
   const outputDir = await directory(t);
   const reconciled = Promise.withResolvers();
   const result = { finalization: 'pending' };
@@ -116,7 +116,7 @@ test('post-close work finishing after its timeout cannot mutate the saved or ret
 });
 
 test('a report-save failure returns a detached snapshot before late domain reconciliation finishes', { timeout: 1000 }, async t => {
-  const { runWithReport } = await import('../src/harnesses/shared/run-report.js');
+  const { runWithReport } = await import('../src/harness/run-report.js');
   const outputDir = await directory(t);
   await writeFile(join(outputDir, 'blocked-late-reconciliation'), 'controlled blocker');
   const reconciled = Promise.withResolvers();
@@ -140,7 +140,7 @@ test('a report-save failure returns a detached snapshot before late domain recon
 });
 
 test('save failure also detaches earlier business failure details from late reconciliation', { timeout: 1000 }, async t => {
-  const { runWithReport } = await import('../src/harnesses/shared/run-report.js');
+  const { runWithReport } = await import('../src/harness/run-report.js');
   const outputDir = await directory(t);
   await writeFile(join(outputDir, 'blocked-business-details'), 'controlled blocker');
   const reconciled = Promise.withResolvers();
@@ -161,7 +161,7 @@ test('save failure also detaches earlier business failure details from late reco
 });
 
 test('initial JSON serialization failure stays a detached report-save failure', async t => {
-  const { runWithReport } = await import('../src/harnesses/shared/run-report.js');
+  const { runWithReport } = await import('../src/harness/run-report.js');
   const outputDir = await directory(t);
   const details = [{ count: 1n }];
   const report = await runWithReport({ outputDir,
@@ -178,7 +178,7 @@ test('initial JSON serialization failure stays a detached report-save failure', 
 });
 
 test('successful Runtime reports use separate directories and apply host redaction before save and return', async t => {
-  const { runWithReport } = await import('../src/harnesses/shared/run-report.js');
+  const { runWithReport } = await import('../src/harness/run-report.js');
   const outputDir = await directory(t);
   const run = id => runWithReport({ outputDir,
     createRuntime: async () => ({ id, close: async () => ({ cleanup: 'complete', agents: [{ execution: 'stopped', cleanup: 'complete' }] }) }),

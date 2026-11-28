@@ -6,11 +6,11 @@ The default engineering procedure is defined by the [installed Matt Pocock engin
 
 ## Current baseline and intended changes
 
-Read the [architecture manual](../architecture/INDEX.md), [Runtime](../en/runtime.md), [SDK & API Reference](../en/reference/api.md) and [GLOSSARY](../../GLOSSARY.md) for the current implementation. The [Phase 0005 Core / Harness design on main](../designs/core-harness/README.md) governs target requirements and acceptance for that stage. Review changes to that design before synchronizing affected Issues. In other stages, human-approved Issues define intended changes and acceptance. Read the relevant Issue's full discussion and linked design before implementing it.
+Read the [architecture manual](../architecture/INDEX.md), [Runtime](../en/runtime.md), [SDK & API Reference](../en/reference/api.md) and [GLOSSARY](../../GLOSSARY.md) for the current implementation. The [Core / Harness design](../designs/core-harness/README.md), human-approved Issues and the owner's later explicit decisions define intended changes and acceptance. Include any authorized design update with its implementation in the same PR. Read the relevant Issue's full discussion and linked design before implementing it.
 
 Keep approvals, dependencies, progress and evidence on the Issue/PR. A large change may use a reviewed design in `docs/designs/`, with its exact revision linked from the Issue. Mark future behavior explicitly. Once implemented, reconcile the behavior into Architecture and retire superseded requirements through Git history.
 
-Use `/to-spec` and optional `/to-tickets` when those installed skills fit the requested workflow. One Issue with multiple implementation PRs is also valid. The [pending dynamic Lead-Worker design](../designs/dynamic-lead-worker.md) illustrates the boundary between a reviewed target and current SDK behavior.
+Use `/to-spec` and optional `/to-tickets` when those installed skills fit the requested workflow. Use one Issue per complete implementation PR unless the owner requests a different split. The [dynamic Lead-Worker design](../designs/dynamic-lead-worker.md) records its reviewed acceptance, while [the implementation chapter](../architecture/20-lead-worker-harness.md) describes the existing fixed and dynamic modes and remaining validation limits.
 
 ## Implementation and review
 

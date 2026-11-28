@@ -98,7 +98,7 @@ export async function installNotesExample(selection, { requireCleanCheckout = fa
     const extension = compiled ? 'js' : 'mjs';
     await copyFile(join(executableRoot, `examples/notes/main.${extension}`), join(directory, 'main.mjs'));
     for (const name of ['run-input', 'run-report', 'read-result']) {
-      await copyFile(join(executableRoot, `src/harnesses/shared/${name}.js`), join(directory, `${name}.${extension}`));
+      await copyFile(join(executableRoot, `src/harness/${name}.js`), join(directory, `${name}.${extension}`));
     }
     const env = { ...process.env }; delete env.NODE_PATH; delete env.NODE_OPTIONS;
     return { directory, env, metadata: { name: metadata.name, version: metadata.version,

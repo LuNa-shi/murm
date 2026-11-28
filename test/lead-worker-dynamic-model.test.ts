@@ -121,7 +121,7 @@ test('two clean installed-package Lead-Worker Runs against the approved real pro
   const [oracle, specification, rolePrompts] = await Promise.all([
     readFile(join(packagedFiles, 'examples/lead-worker/fixtures/oracle.mjs')),
     readFile(join(packagedFiles, 'examples/lead-worker/fixtures/spec.md')),
-    readFile(join(packagedFiles, 'dist/src/harnesses/lead-worker/prompts.js')),
+    readFile(join(packagedFiles, 'dist/examples/lead-worker/harness/prompts.js')),
   ]);
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
 

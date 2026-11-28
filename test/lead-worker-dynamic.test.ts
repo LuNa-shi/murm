@@ -18,7 +18,7 @@ const hook = registerHooks({ resolve(specifier, context, next) {
     return { url: new URL('./fixtures/lead-worker-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { createLeadWorkerHarness } = await import('../src/harnesses/lead-worker/index.js');
+const { createLeadWorkerHarness } = await import('../examples/lead-worker/harness/index.js');
 hook.deregister();
 
 test('Board work wakes original Agents and a ready checker on normal CLI bindings', { timeout: 40_000 }, async t => {

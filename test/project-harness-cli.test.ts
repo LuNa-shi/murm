@@ -64,14 +64,14 @@ test('the project CLI launches external ESM with the requested prompt and actual
   `);
   const { stdout } = await execute(process.execPath, [
     cli, '--harness', '../modules/harness.mjs', '--cwd', '../project',
-    '--prompt', '  检查项目  ', '--output-dir', '../project/runs',
+    '--prompt', '  \u68c0\u67e5\u9879\u76ee  ', '--output-dir', '../project/runs',
   ], { cwd: launcher, timeout: 10_000 });
   const record = JSON.parse(stdout);
   assert.equal(record.type, 'result');
   assert.equal(record.result.harness.id, 'project-probe');
   assert.equal(record.result.outcome, 'completed');
   assert.deepEqual(record.result.result, {
-    cwd: project, prompt: '  检查项目  ', caller: launcher, moduleAsset: 'from module\n',
+    cwd: project, prompt: '  \u68c0\u67e5\u9879\u76ee  ', caller: launcher, moduleAsset: 'from module\n',
     files: {
       '.settings': { encoding: 'base64', data: 'aGlkZGVuCg==', mode: 0o644 },
       run: { encoding: 'base64', data: 'AP8=', mode: 0o755 },
@@ -87,7 +87,7 @@ test('the project CLI launches external ESM with the requested prompt and actual
   assert.ok(record.result.reportPath.startsWith(output + '/'));
   assert.deepEqual(JSON.parse(await readFile(record.result.reportPath, 'utf8')).result, record.result.result);
   assert.equal((await readdir(join(output, record.runId))).some(name => name.startsWith('.initial-files-')), false);
-  assert.equal(await readFile(record.result.prompt.path, 'utf8'), '  检查项目  ');
+  assert.equal(await readFile(record.result.prompt.path, 'utf8'), '  \u68c0\u67e5\u9879\u76ee  ');
 });
 
 test('RPC acknowledges one Run, keeps control available during input and saves actual stop receipts', { timeout: 10_000 }, async t => {
@@ -289,7 +289,7 @@ test('EOF and SIGTERM preserve the admitted Run stop reason and saved result', {
 });
 
 test('team Git receives exact FileTree bytes and modes, and participant checkout preserves them', async t => {
-  const { seedTeamRepository, seededCheckoutInstruction } = await import('../src/harnesses/shared/project-git.js');
+  const { seedTeamRepository, seededCheckoutInstruction } = await import('../src/harness/project-git.js');
   const directory = await mkdtemp(join(tmpdir(), 'murm-team-git-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const remote = join(directory, 'remote.git');

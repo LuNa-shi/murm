@@ -1,9 +1,9 @@
 import { createRuntime, createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@luna-shi/murm';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
-import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
-import { projectError, ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
+import type { ProjectHarness } from '../../src/harness/project-harness.js';
+import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harness/project-runtime.js';
+import { projectError, ProjectPreflightError } from '../../src/harness/project-input.js';
 import { createNotes } from './main.js';
 import { runInput } from './run-input.js';
 import { runWithReport } from './run-report.js';

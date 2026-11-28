@@ -9,27 +9,15 @@ order: 1
 
 **Prerequisites**: a Linux machine with **Node.js 22.19+** and **Docker** for the default one-command local setup (if your team already runs a shared OpenSandbox service, the Controller only needs Node.js).
 
-## 1. Install `murm`
+## 1. Install the current source candidate
 
-Install the published CLI globally from the latest [GitHub Release](https://github.com/LuNa-shi/murm/releases):
+This guide follows the current `main` source. The released **v0.2.0** has an older setup contract: its `murm setup` command does not accept `--mode`. To use that release, follow the [v0.2.0 installation guide](latest.md) and its pinned Quickstart. The website installer downloads the latest published release, not the current source tree.
 
-```bash
-curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
-```
-
-Or install directly with npm:
+Build and install the candidate used by this guide:
 
 ```bash
-npm install -g --ignore-scripts --allow-remote=root \
-  https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz
-```
-
-<details>
-<summary>Testing unreleased changes from a source checkout? Expand to build and install a local tarball</summary>
-
-### Install a candidate from a checkout
-
-```bash
+git clone https://github.com/LuNa-shi/murm.git
+cd murm
 npm ci --no-audit --no-fund
 pack_dir=$(mktemp -d)
 npm pack --pack-destination "$pack_dir"
@@ -37,7 +25,7 @@ npm install -g --prefix "$HOME/.local" --ignore-scripts "$pack_dir"/*.tgz
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-</details>
+Keep the generated tarball if you also want to install this SDK candidate in another project. The candidate still carries package version `0.2.0`; identify source builds by their Git revision as well as their package version.
 
 ## 2. Initialize OpenSandbox
 
@@ -106,31 +94,32 @@ Run the built-in `Subagents` Harness against any project directory:
 
 ```bash
 cd my-project
-murm --harness subagents --prompt "Inspect the tests and explain or fix any failures"
+murm --harness subagents --output-dir ../murm-runs --prompt "Inspect the tests and explain or fix any failures"
 ```
 
-> You can also run bare `murm` to start an interactive session in the current directory, or scaffold an editable starter project with `murm init --template subagents --dir ./my-harness`.
+The explicit output directory keeps Run data outside the input project and gives the Trace Viewer a predictable location. Without `--output-dir`, the host normally uses `$XDG_STATE_HOME/murm/runs` or `~/.local/state/murm/runs` and reports the actual result path.
+
+To use the separate scaffolded interactive example, create it with `murm init --template subagents --dir ./my-harness`, enter that directory, then run bare `murm`. Bare `murm` expects the generated `main.js`, `config.js` and installation receipt; it does not start an interactive session in an arbitrary repository.
 
 Inspect the run timeline, Service handoffs, and exported files in the built-in **Trace Viewer**:
 
 ```bash
-murm trace --root ./runs --port 8787 --open
+murm trace --root ../murm-runs --port 8787 --open
 ```
 
 When started inside an SSH session on a remote Linux host, `murm trace` prints the exact `ssh -N -L` forwarding command to paste on your laptop.
 
 ## 4. Using the TypeScript SDK in your own project
 
-Install `@luna-shi/murm` in any Node.js 22.19+ project (Node 22.19+ executes `.ts` files natively):
+Install the same tarball from Step 1 in your own ESM project:
 
 ```bash
 mkdir my-swarm && cd my-swarm
 npm init -y && npm pkg set type=module
-npm install --ignore-scripts --allow-remote=root \
-  https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+npm install --ignore-scripts /absolute/path/to/luna-shi-murm-0.2.0.tgz
 ```
 
-> Testing from a source checkout? Install the local `.tgz` packed in Step 1 instead. For a minimal two-Agent handoff script, see [`examples/bridge-services/handoff.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/handoff.ts).
+Use the actual path inside the `pack_dir` created in Step 1. Node.js 22.19+ can execute TypeScript with erasable syntax directly; the SDK package contains built JavaScript and declarations. For a minimal two-Agent handoff script, see [`examples/messages/handoff.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/messages/handoff.ts).
 
 ## Next steps
 

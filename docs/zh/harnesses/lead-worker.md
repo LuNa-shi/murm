@@ -5,7 +5,7 @@ section: 内置 Harness
 order: 15
 ---
 
-**Lead-Worker**（`src/harnesses/lead-worker/`）适合需要一人统筹方向、同时确保一线执行反馈真正落入下一轮规划的团队。1 名主管（`lead`）与 2–7 名执行成员（`helper1..helperN`）通过本地 SQLite 任务板（`board`）和 Gitea 协作：系统在数据库层强制**先读后写**——主管必须先读完一线反馈才能发布新方向，成员必须先读完新方向才能提交交付。除固定团队外，还支持运行中动态扩编与新增检查 Service（见 [examples/lead-worker/README.md](../../../examples/lead-worker/README.md)）。
+**Lead-Worker**（`examples/lead-worker/harness/`）适合需要一人统筹方向、同时确保一线执行反馈真正落入下一轮规划的团队。1 名主管（`lead`）与 2–7 名执行成员（`helper1..helperN`）通过本地 SQLite 任务板（`board`）和 Gitea 协作：系统在数据库层强制**先读后写**——主管必须先读完一线反馈才能发布新方向，成员必须先读完新方向才能提交交付。除固定团队外，还支持运行中动态扩编与新增检查 Service（见 [examples/lead-worker/README.md](../../../examples/lead-worker/README.md)）。
 
 ## 快速运行（CLI）
 
@@ -23,7 +23,7 @@ Lead-Worker 会根据项目目录初始化团队 Git 仓库与成员沙箱，并
 
 ## 1. 注册的 Services 与非对称权限
 
-[src/harnesses/lead-worker/board.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/board.ts) 在 Service Bridge（`Profile.services`）与适配器内部双重执行非对称角色权限：
+[examples/lead-worker/harness/board.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/board.ts) 在 Service Bridge（`Profile.services`）与适配器内部双重执行非对称角色权限：
 
 ```ts
 export const boardPermissions = Object.freeze({
@@ -43,7 +43,7 @@ export const boardPermissions = Object.freeze({
 3. **字节级实时 Git 核验**：提交 `landed` 或 `complete` 前，适配器调用 `git.verifyDelivery()` 实时请求 Gitea 核对提交分支、commit SHA、文件路径、字节长度与精确 SHA-256（并在后续轮次校验产物中是否真正包含更新后的方向文本）。
 
 ```ts
-// 节选自 src/harnesses/lead-worker/board.ts
+// 节选自 examples/lead-worker/harness/board.ts
 if (['landed', 'complete'].includes(operation)) {
   const subtask = deliveryGuard(state, caller, input, role);
   delivery = await verifyDelivery({
@@ -68,7 +68,7 @@ swarm board complete --input complete.json --request-id helper1-done
 
 ## 2. 分阶段控制循环与故障围栏
 
-在 [src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/index.ts) 中，`createLeadWorkerHarness()` 一次性启动固定团队（`maxAgents: 1 + helperCount`），把团队成员绑定到 `board` 与 `git`，并订阅 `runtime.onEvent()`——一旦任何成员出现 `fatal` 错误、非 `completed` 收束或意外退出，立即调用 `board.fence()` 冻结后续写操作，同时完整保留所有证据与归属状态。
+在 [examples/lead-worker/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/index.ts) 中，`createLeadWorkerHarness()` 一次性启动固定团队（`maxAgents: 1 + helperCount`），把团队成员绑定到 `board` 与 `git`，并订阅 `runtime.onEvent()`——一旦任何成员出现 `fatal` 错误、非 `completed` 收束或意外退出，立即调用 `board.fence()` 冻结后续写操作，同时完整保留所有证据与归属状态。
 
 默认工作流交替执行两轮。仓库辅助函数 `runInput` 先订阅收束事件，再投递一个由宿主独占管理的输入。下面的流程省略了每个阶段共用的取消信号与结果验证：
 
@@ -116,7 +116,7 @@ node dist/examples/lead-worker/main.js dist/examples/lead-worker/config.js
 
 ## 源码索引
 
-- 编排器（`runWorkflow`、`prepareStages`、`runStage`）：[src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/index.ts)
-- SQLite `board` Service 与因果门控：[src/harnesses/lead-worker/board.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/board.ts)
-- Gitea 资源准备与 SHA-256 交付核验：[src/harnesses/lead-worker/git.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/git.ts)
+- 编排器（`runWorkflow`、`prepareStages`、`runStage`）：[examples/lead-worker/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/index.ts)
+- SQLite `board` Service 与因果门控：[examples/lead-worker/harness/board.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/board.ts)
+- Gitea 资源准备与 SHA-256 交付核验：[examples/lead-worker/harness/git.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/git.ts)
 - 示例配置与说明：[examples/lead-worker/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/README.md)

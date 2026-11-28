@@ -46,10 +46,10 @@ test('checkout TMPDIR cannot make an external frozen consumer inherit checkout d
   await writeFile(join(poison, 'index.js'), 'export default true;');
   const packageRoot = join(root, 'package');
   await mkdir(join(packageRoot, 'examples/notes'), { recursive: true });
-  await mkdir(join(packageRoot, 'src/harnesses/shared'), { recursive: true });
+  await mkdir(join(packageRoot, 'src/harness'), { recursive: true });
   await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@luna-shi/murm', version: '0.0.0-external', type: 'module', exports: './examples/notes/main.mjs' }));
   await writeFile(join(packageRoot, 'examples/notes/main.mjs'), `import value from '${dependency}';export default value;`);
-  for (const name of ['run-input', 'run-report', 'read-result']) await writeFile(join(packageRoot, `src/harnesses/shared/${name}.js`), '');
+  for (const name of ['run-input', 'run-report', 'read-result']) await writeFile(join(packageRoot, `src/harness/${name}.js`), '');
   const archive = join(root, 'candidate.tgz'); await execute('tar', ['-czf', archive, 'package'], { cwd: root, timeout: 5000 });
   const expectedSha256 = createHash('sha256').update(await readFile(archive)).digest('hex');
   const script = `import assert from 'node:assert/strict';import {realpath,writeFile,readFile} from 'node:fs/promises';import {dirname,join} from 'node:path';
@@ -100,10 +100,10 @@ test('matching frozen archive installs its exact bytes outside checkout without 
   const root = await mkdtemp(join(tmpdir(), 'notes-frozen-install-')); t.after(() => rm(root, { recursive: true, force: true }));
   const packageRoot = join(root, 'package');
   await mkdir(join(packageRoot, 'examples/notes'), { recursive: true });
-  await mkdir(join(packageRoot, 'src/harnesses/shared'), { recursive: true });
+  await mkdir(join(packageRoot, 'src/harness'), { recursive: true });
   await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@luna-shi/murm', version: '0.0.0-frozen-fixture', type: 'module', exports: './examples/notes/main.mjs' }));
   await writeFile(join(packageRoot, 'examples/notes/main.mjs'), "export const marker = 'frozen-candidate';\n");
-  for (const name of ['run-input', 'run-report', 'read-result']) await writeFile(join(packageRoot, `src/harnesses/shared/${name}.js`), `export const name = '${name}';\n`);
+  for (const name of ['run-input', 'run-report', 'read-result']) await writeFile(join(packageRoot, `src/harness/${name}.js`), `export const name = '${name}';\n`);
   const archive = join(root, 'candidate.tgz');
   await execute('tar', ['-czf', archive, 'package'], { cwd: root, timeout: 5000 });
   const bytes = await readFile(archive), expectedSha256 = createHash('sha256').update(bytes).digest('hex');
@@ -194,7 +194,7 @@ test('candidate package admits only declared distribution roots and retains exec
     'dist/src/core/index.js', 'dist/src/core/index.d.ts', 'dist/src/core/services.js', 'dist/src/core/services.d.ts',
     'dist/src/core/opensandbox-backend.js', 'dist/src/core/backend-config.d.ts',
     'dist/scripts/swarm.js', 'dist/scripts/opensandbox-agent-worker.js',
-    'deploy/worker/pi-models.json', 'dist/src/harnesses/shared/run-report.js',
+    'deploy/worker/pi-models.json', 'dist/src/harness/run-report.js',
     'dist/examples/substrate/main.js', 'dist/examples/substrate/config.js',
     'dist/examples/notes/main.js', 'dist/test-support/subagents/communication-fixture-controller.js',
     'dist/examples/peermesh/config.js', 'examples/peermesh/README.md',

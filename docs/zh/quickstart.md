@@ -9,27 +9,15 @@ order: 1
 
 **前置环境**：一台 Linux 机器，安装 **Node.js 22.19+** 与 **Docker**，即可直接在本机一键配置（若团队已有共享 OpenSandbox 服务，控制端仅需 Node.js 即可接入）。
 
-## 1. 安装 `murm`
+## 1. 安装当前源码候选包
 
-从最新 [GitHub Release](https://github.com/LuNa-shi/murm/releases) 一行命令安装正式版 CLI：
+本页对应当前 `main` 源码。已发布的 **v0.2.0** 使用较早的安装流程，`murm setup` 不接受 `--mode` 参数。如果使用该发行版，请遵循 [v0.2.0 安装指南](latest.md)及其中固定版本的快速上手。官网安装脚本下载最新正式发行版，不会安装当前主线源码。
 
-```bash
-curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
-```
-
-也可以直接用 npm 全局安装：
+按下面的命令构建并安装本页对应的候选包：
 
 ```bash
-npm install -g --ignore-scripts --allow-remote=root \
-  https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz
-```
-
-<details>
-<summary>测试当前源码仓库里尚未发布的最新改动？展开查看本地打包安装命令</summary>
-
-### 从源码检出安装候选包
-
-```bash
+git clone https://github.com/LuNa-shi/murm.git
+cd murm
 npm ci --no-audit --no-fund
 pack_dir=$(mktemp -d)
 npm pack --pack-destination "$pack_dir"
@@ -37,7 +25,7 @@ npm install -g --prefix "$HOME/.local" --ignore-scripts "$pack_dir"/*.tgz
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-</details>
+保留打包得到的文件，后续可以把同一份 SDK 安装到自己的项目。当前候选包仍标记为 `0.2.0`，因此记录版本时还需保留源码 Git revision，不能仅靠包版本区分正式版与主线改动。
 
 ## 2. 一键初始化 OpenSandbox
 
@@ -106,31 +94,32 @@ export MURM_MODEL_TOKEN='sk-...'
 
 ```bash
 cd my-project
-murm --harness subagents --prompt "检查项目测试并解释或修复失败用例"
+murm --harness subagents --output-dir ../murm-runs --prompt "检查项目测试并解释或修复失败用例"
 ```
 
-> 也可以直接执行 `murm` 启动当前项目的交互式会话，或用 `murm init --template subagents --dir ./my-harness` 生成一个可编辑的模板项目。
+显式输出目录把运行记录放在输入项目之外，也让 Trace Viewer 有确定的读取位置。省略 `--output-dir` 时，宿主通常使用 `$XDG_STATE_HOME/murm/runs` 或 `~/.local/state/murm/runs`，并在结果中报告实际路径。
+
+如需使用独立的交互式模板，先运行 `murm init --template subagents --dir ./my-harness`，进入生成的目录后再执行 `murm`。不带参数的 `murm` 依赖模板生成的 `main.js`、`config.js` 和安装回执，不能在任意代码仓库中直接开启交互式会话。
 
 运行结束后（或运行过程中），用内置 **Trace Viewer** 在浏览器中查看完整时间线、协作交接与导出产物：
 
 ```bash
-murm trace --root ./runs --port 8787 --open
+murm trace --root ../murm-runs --port 8787 --open
 ```
 
 如果跑在远程 Linux 服务器上，`murm trace` 会自动打印对应的 `ssh -N -L` 端口转发命令，复制到本机终端即可打开 `http://127.0.0.1:8787`。
 
 ## 4. 在自己的 TypeScript 项目中使用 SDK
 
-想用代码编写自定义协作机制，只需在 Node.js 22.19+ 项目中安装 `@luna-shi/murm`（Node.js 22.19+ 原生支持直接运行 `.ts` 文件）：
+在自己的 ESM 项目中安装第 1 步得到的同一份候选包：
 
 ```bash
 mkdir my-swarm && cd my-swarm
 npm init -y && npm pkg set type=module
-npm install --ignore-scripts --allow-remote=root \
-  https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+npm install --ignore-scripts /absolute/path/to/luna-shi-murm-0.2.0.tgz
 ```
 
-> 如果在测试当前源码检出，直接安装第 1 步 `npm pack` 生成的本地 `.tgz` 即可。想先看一个最小的双 Agent 传消息脚本，可以直接参考仓库中的 [`examples/bridge-services/handoff.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/handoff.ts)。
+把路径替换为第 1 步 `pack_dir` 中的实际文件路径。Node.js 22.19+ 可以直接执行仅使用可擦除语法的 TypeScript 文件；SDK 安装包包含已构建的 JavaScript 和声明文件。最小双 Agent 传消息脚本见 [`examples/messages/handoff.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/messages/handoff.ts)。
 
 ## 下一步
 

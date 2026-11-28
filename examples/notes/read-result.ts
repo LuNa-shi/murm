@@ -1,1 +1,1 @@
-export * from '../../src/harnesses/shared/read-result.js';
+export * from '../../src/harness/read-result.js';

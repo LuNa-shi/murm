@@ -6,11 +6,11 @@ These instructions apply to **Coding Agents developing murm**, not research Agen
 
 The [architecture manual](docs/architecture/INDEX.md) is the maintained description of the current implementation. The [SDK and user guides](docs/INDEX.md) describe its supported public surface and are also the website's content source. Current code and schemas establish exact behavior; tests and experiments establish what has been verified. Keep these sources aligned in the same PR.
 
-The [Phase 0005 Core / Harness design on main](docs/designs/core-harness/README.md) governs this stage's target requirements, scope, decisions and acceptance. Its derived Issues cite the exact design revision and track implementation, dependencies and evidence. Update requirements through a reviewed design PR and synchronize affected Issues. The design index links the [dynamic Lead-Worker extension](docs/designs/dynamic-lead-worker.md) and the open CLI/TUI design work.
+The [Core / Harness design](docs/designs/core-harness/README.md) and its linked extensions record reviewed product requirements and acceptance. Read them together with the relevant Issue and the owner's later explicit decisions; a later explicit decision supersedes an older conflicting clause without changing unrelated acceptance or resource limits. When an authorized change updates the design, include the design, implementation, migration, tests and documentation in the same PR. The design index links the [dynamic Lead-Worker extension](docs/designs/dynamic-lead-worker.md) and the open CLI/TUI work; current implemented behavior belongs in Architecture.
 
-Outside Phase 0005, human-approved GitHub Issues define work requirements, scope, acceptance and resources. Read the full relevant Issue, linked tickets, comments and accepted Agent Brief. Cite the exact revision of any reviewed design and preserve its acceptance. Superseded phase plans remain in Git history and linked Issues. Resource, research, merge and publication permissions follow the project rules below.
+Human-approved GitHub Issues and explicit user instructions define work requirements, scope, acceptance and resources. Read the full relevant Issue, linked tickets, comments and accepted Agent Brief. Cite the exact revision of any reviewed design and preserve its acceptance. Superseded phase plans remain in Git history and linked Issues. Resource, research, merge and publication permissions follow the project rules below.
 
-An Issue may cover several PRs or dependent tickets. Keep approvals, progress, dependencies and handoffs on GitHub. When source, the current manual and the approved change disagree, identify the discrepancy and resolve it within the authorized scope. Start from [docs/INDEX.md](docs/INDEX.md), [GLOSSARY.md](GLOSSARY.md), then the relevant source and tests; do not load every document by default.
+Use one Issue per complete implementation PR unless the owner explicitly requests a different split. Keep approvals, progress, dependencies and handoffs on GitHub. When source, the current manual and the approved change disagree, identify the discrepancy and resolve it within the authorized scope. Start from [docs/INDEX.md](docs/INDEX.md), [GLOSSARY.md](GLOSSARY.md), then the relevant source and tests; do not load every document by default.
 
 ## Human decisions and delegated autonomy
 
@@ -18,18 +18,18 @@ The human owner decides which research questions are valuable, their priority, w
 
 Within an approved Issue, an Agent may select implementation details and autonomously iterate **implement → review → test/probe → diagnose → fix → retest**. Use isolated branches/worktrees, not `main`. Create every new linked worktree under the primary repository checkout's `.worktree/<task-or-branch>/` directory (on this machine, `/home/ubuntu/murm/.worktree/`). Do not create worktrees beside the primary checkout or nest them under another linked worktree. Keep `/.worktree/` ignored; existing active worktrees must not be relocated while a run or process still depends on their paths. Repeated deterministic checks and bounded diagnostic probes need no per-run human report or new approval when their environment, provider/model, budget, and time limits are already authorized.
 
-Return to the Issue for human review before changing intended behavior, acceptance criteria, architecture scope, research hypotheses, benchmark/checker/fixture, provider/model, or resource budget. Paid/external experiments require explicit authorization or a previously approved allowance. Technical difficulty does not confer permission to widen the Issue.
+For a change not already authorized by an explicit owner instruction or the applicable Issue, return to the Issue for human review before changing intended behavior, acceptance criteria, architecture scope, research hypotheses, benchmark/checker/fixture, provider/model, or resource budget. Paid/external experiments require explicit authorization or a previously approved allowance. Technical difficulty does not confer permission to widen the Issue.
 
 ## Default engineering workflow — Matt skills
 
 Follow the **installed skills** when applicable; do not claim a skill ran if it is unavailable. These skills govern the engineering *procedure*, not product requirements or research approval.
 
-- **`/to-spec`**: derive Phase 0005 Issues from the authoritative Core / Harness design. For other work, turn an agreed discussion into a GitHub spec Issue using the current architecture and glossary. Link the exact revision of any reviewed design and distinguish confirmed direction from proposals awaiting review.
-- **`/to-tickets`** (optional): propose complete vertical slices with blocking edges; obtain human agreement before publishing GitHub sub-Issues and dependencies. One Issue with multiple implementation PRs is also valid.
+- **`/to-spec`**: turn the agreed scope into a GitHub spec Issue using the current architecture, glossary, applicable reviewed design and later explicit owner decisions. Link the exact design revision and distinguish confirmed direction from proposals awaiting review.
+- **`/to-tickets`** (optional): propose complete vertical slices with blocking edges; obtain human agreement before publishing GitHub sub-Issues and dependencies. Keep the agreed one-Issue/one-PR boundary unless the owner requests another split.
 - **`/implement`**: implement one Issue or ticket, use **`/tdd`** at pre-agreed public seams, run relevant checks, and finish with **`/code-review`**.
 - **`/implement-spec`**: implement an approved Issue/ticket graph on an integration branch with per-ticket branches/worktrees and fresh contexts where supported. Track dependencies on GitHub, not in local Markdown.
 - **`/diagnosing-bugs`**: reproduce, minimize, instrument, fix, and regression-test difficult failures.
-- **`/code-review`**: evaluate **Spec** against the authoritative Core / Harness design and derived Issue for Phase 0005, or the approved Issue/Agent Brief and its reviewed design for other stages. Evaluate **Standards** (repository conventions and code quality) separately.
+- **`/code-review`**: evaluate **Spec** against the applicable approved Issue/Agent Brief, its reviewed design revision and later explicit owner decisions. Evaluate **Standards** (repository conventions and code quality) separately.
 - **`/pr`**: present a concise Summary, before/after Evidence, and Merge Danger (reversibility and blast radius).
 
 An explicit request to invoke a skill permits its normal in-scope operations; it does **not** authorize unapproved spending, new research goals, unrelated Issue changes, or merging PRs.
@@ -54,16 +54,20 @@ The owner reads `docs/architecture/` to understand the implementation **without 
 - Maintain full repository-controlled prompt text, composition conditions, dynamic field provenance and actual send paths in [Prompts](docs/architecture/08-prompts.md). Include discovery, ordinary turns, tool instructions, feedback, lifecycle rejection, notification, recovery, compaction/rotation and legacy paths. Distinguish composed snapshots from messages actually sent; external Pi/provider context is not recoverable from repository templates alone.
 - Regenerate the prompt/API/storage references and source fingerprints with `npm run docs:generate`; then run `npm run docs:check` and `git diff --check`. Read the generated diff and update the explanatory chapters as well. Do not treat regeneration or a successful check as semantic approval.
 - The implementation PR must link changed code areas to the changed architecture chapters, report the checks performed, and identify implemented limitations or unresolved discrepancies. If a change has no architecture effect, state the reason. At stage closeout, verify the final merged code revision, generated references, narrative, Issue acceptance and linked verification evidence together.
-- Keep `docs/experiments/` for version-bound experimental evidence. Explain current rationale and tradeoffs alongside the relevant architecture. Active designs explain a reviewed future change; Architecture explains what actually runs. An accepted design is not evidence of implementation or successful research.
+- Keep historical experiment reports in Git history. Register new formal runs and link reviewed conclusions in their originating Issue/PR; retain raw evidence only in ignored local directories. Explain current rationale and tradeoffs alongside the relevant architecture. Active designs explain a reviewed change; Architecture explains what actually runs. An accepted design is not evidence of implementation or successful research.
 
-## Agent skills configuration
+## Engineering record conventions
 
-### Issue tracker
-GitHub Issues and sub-Issues own execution briefs, comments, dependencies, progress and evidence. Phase 0005 requirements remain in its authoritative design. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+GitHub Issues and PRs in [LuNa-shi/murm](https://github.com/LuNa-shi/murm) own execution briefs, scope, dependencies, progress and evidence. Read the relevant Issue's body, comments, labels, linked tickets and accepted Agent Brief before implementing. Explicit user instructions take precedence over older plans. Record a reviewed design's exact revision when the Issue relies on it, and keep a requirement change with its implementation PR. Use structured tool arguments or `gh --body-file` for multiline text.
 
-### Triage labels
-See [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
+A readiness label records triage state; it does not independently authorize a new research question, spending, merging or publication. The repository uses these labels when they are needed:
 
-### Domain docs
-Single-context repository: root [GLOSSARY.md](GLOSSARY.md), [Architecture](docs/architecture/INDEX.md), and [docs/agents/domain.md](docs/agents/domain.md).
+| State | Label |
+| --- | --- |
+| Maintainer evaluation required | `needs-triage` |
+| More information needed | `needs-info` |
+| Scope sufficiently clear for implementation | `ready-for-agent` |
+| Human decision or intervention required | `ready-for-human` |
+| Work will not be pursued | `wontfix` |
 
+Use [GLOSSARY.md](GLOSSARY.md), the [architecture manual](docs/architecture/INDEX.md) and the [SDK guides](docs/INDEX.md) for domain language. Mission, Task, Execution, Material and Workspace belong to TaskPool; other Harnesses do not need them. The English and Chinese guides are also the website source. Keep API examples aligned with public exports and runnable examples. The [development workflow](docs/workflows/development.md) contains the build and validation commands.

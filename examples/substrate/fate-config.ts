@@ -1,4 +1,4 @@
-import { resolveSandboxConnection } from '../../src/core/index.js';
+import { resolveSandboxConnection } from '@luna-shi/murm';
 function required(name: string) {
   const value = process.env[name];
   if (!value) throw new Error(`Set ${name}`);

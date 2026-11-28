@@ -109,7 +109,7 @@ Hosts can select the repository-owned **independent** deployment. Task/Mission/W
 
 `MURM_SERVICE_ISOLATED=true` starts one Service per process. Catalog opens no domain database. Endpoint overrides configure Catalog discovery. Standalone Task and Context have no cross-domain writer. Without that boundary isolated Context and Judge report not-ready and reject data/check routes. Task and Catalog expose their configured capabilities; Task attributes calls to the authenticated actor and scopes registered Agents to their Mission and owned Execution. Workspace and final submission require the coordinator. A shared legacy bearer is no longer accepted on built-in invocation routes. All built-in POSTs require a configured principal whose actor, role and optional operation list match the request. Health and manifests remain public.
 
-`deploy/builtin-services/compose.yaml` is the checked-in four-process deployment entry point. It builds the same image once for Task, Context, Judge and Catalog, gives the stateful services separate named volumes, wires their HTTP endpoint variables by service name, and publishes host ports 8781–8784 by default. Judge's health/manifest routes can be available without usable checks. The standalone script does not connect Judge's Task lifecycle authority, so `/readyz` and data/check routes remain unavailable even after a fixture/toolchain is mounted. Context in isolated mode also lacks its required authority seam; these containers do not provide the coordinated production deployment.
+`examples/taskpool/deploy/service-hosts/compose.yaml` is the checked-in four-process deployment entry point. It builds the same image once for Task, Context, Judge and Catalog, gives the stateful services separate named volumes, wires their HTTP endpoint variables by service name, and publishes host ports 8781–8784 by default. Judge's health/manifest routes can be available without usable checks. The standalone script does not connect Judge's Task lifecycle authority, so `/readyz` and data/check routes remain unavailable even after a fixture/toolchain is mounted. Context in isolated mode also lacks its required authority seam; these containers do not provide the coordinated production deployment.
 
 The built-in image enters through `scripts/service-host-entrypoint.sh`. It only runs `lake build --directory <project>` when `MURM_JUDGE_PREBUILD=true`; the successful `MURM_JUDGE_PREBUILD_KEY` is written to the Judge volume marker. A later process start with the same key skips compilation, while a changed key forces an explicit rebuild. Normal Task, Context, Judge and Catalog starts never trigger an implicit checker build.
 
@@ -130,7 +130,7 @@ The complete built-in host environment is:
 
 Both host scripts print their service identity, endpoint and manifest hash at startup; the built-in script also prints its database path. SIGINT/SIGTERM stops HTTP and closes owned database handles. The built-in Dockerfile uses Node 22, installs production dependencies with lifecycle scripts disabled, exposes 8787, selects `task` by default, and sets its database to `/var/lib/murm/service.sqlite` on the declared volume. It does not install Lean or configure the full multi-provider deployment.
 
-Sources: [manifest](../../src/sdk/service-manifest.ts), [Registry](../../src/sdk/service-registry.ts), [adapters](../../src/sdk/service-adapter.ts), [host](../../src/sdk/service-host.ts), [hosting script](../../scripts/service-host.ts), [builtin container](../../deploy/builtin-services/Dockerfile).
+Sources: [manifest](../../src/sdk/service-manifest.ts), [Registry](../../src/sdk/service-registry.ts), [adapters](../../src/sdk/service-adapter.ts), [host](../../src/sdk/service-host.ts), [hosting script](../../scripts/service-host.ts), [builtin container](../../examples/taskpool/deploy/service-hosts/Dockerfile).
 
 ### Documentation bundles
 
@@ -138,7 +138,7 @@ Sources: [manifest](../../src/sdk/service-manifest.ts), [Registry](../../src/sdk
 
 The bundle records each document's content/hash/byte size and binds the metadata into the manifest. `service://<id>/<resource>` resolves only Registry-owned resources. This is reviewed documentation available for prompt composition, not a fetch-any-URL tool. The host decides whether an initial input includes a composed documentation block; the exact send paths are in [08 Prompts](08-prompts.md).
 
-Sources: [bundle loader](../../src/sdk/service-bundle.ts), [bundle tests](../../test/service-bundle.test.ts), [Mathlib bundle](../../src/services/mathlib-search/service.json).
+Sources: [bundle loader](../../src/sdk/service-bundle.ts), [bundle tests](../../test/service-bundle.test.ts), [Mathlib bundle](../../examples/services/mathlib-search/service.json).
 
 ### 3.1 Bash CLI boundary (Issue 119)
 
@@ -331,7 +331,7 @@ The standalone Mathlib host's complete environment is:
 
 The Mathlib image similarly uses Node 22 and exposes port 8787. It copies the source implementation/launcher but does not ship a Mathlib checkout. A caller must supply the upstream or mounted tree. Programmatic provider options additionally include project/module-boundary settings, fetch injection and result limits; their input behavior remains subject to the validation described above.
 
-Sources: [Mathlib Service](../../src/services/mathlib-search/service.ts), [hosting entry](../../scripts/mathlib-search-service.ts), [bundle](../../src/services/mathlib-search/service.json), [Mathlib tests](../../test/mathlib-search-service.test.ts).
+Sources: [Mathlib Service](../../examples/services/mathlib-search/service.ts), [hosting entry](../../examples/services/mathlib-search/main.ts), [bundle](../../examples/services/mathlib-search/service.json), [Mathlib tests](../../test/mathlib-search-service.test.ts).
 
 ### Current TaskPool notification handling
 

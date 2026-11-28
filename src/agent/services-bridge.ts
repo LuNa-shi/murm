@@ -439,19 +439,19 @@ export class ServicesBridge {
           const operation = input.operation;
           let notice;
           if (operation === 'workspace_save' && !['NOT_ALLOWED', 'WORKSPACE_RESULT_UNKNOWN'].includes(body.code) && !details.phase) {
-            notice = `工作目录未成功保存：${details.cause_code ?? body.code}。不得把私有文件声明为交付；在有效 E 和剩余重试额度内处理。`;
+            notice = `The working directory was not saved successfully: ${details.cause_code ?? body.code}. Do not claim private files as delivered. Resolve this within the valid E and remaining retry budget.`;
           } else if (operation === 'workspace_merge' && details.check && details.checked_tree) {
-            notice = `固定 main ${details.main_revision} 与来源 ${details.source_revision} 的最终合成树未通过 ${details.check.checker?.checker_version ?? '未知版本'}：${details.check.verdict ?? body.code}。main、源版本和当前 E 保持不变。依据固定来源、main 与诊断修复并 save 新版本，再按剩余额度重试；运行中的文件目录不会自动接入公开版本。`;
+            notice = `The final merged tree for fixed main ${details.main_revision} and source ${details.source_revision} failed checker ${details.check.checker?.checker_version ?? 'unknown version'}: ${details.check.verdict ?? body.code}. Main, the source revision, and the current E are unchanged. Use the fixed source, main, and diagnostics to repair and save a new revision, then retry within the remaining budget. The running working directory does not automatically adopt the public revision.`;
           } else if (operation === 'workspace_merge' && body.code === 'MAIN_MOVED' && details.observed_revision) {
-            notice = `检查后 main 已从 ${details.observed_revision} 前进到 ${details.actual_revision}；本请求未覆盖 main。可在剩余额度内重新合成并检查；若需修复，保留来源 ${details.source_revision} 的公开证据并 save 新版本后重试。`;
+            notice = `After checking, main advanced from ${details.observed_revision} to ${details.actual_revision}; this request did not overwrite main. Rebuild and check the merged tree within the remaining budget. If repairs are needed, preserve the public evidence for source ${details.source_revision}, save a new revision, and retry.`;
           } else if (details.phase === 'hard_stop') {
-            notice = '已达到硬上限或发生强制停止，当前 E 不再有发布机会。此前未保存/发布的内容不视为已交接。';
+            notice = 'A hard limit was reached or a forced stop occurred. The current E has no remaining opportunity to publish. Content not previously saved or published is not considered handed off.';
           } else if (operation === 'agent_exit' && details.phase === 'discovery_required') {
-            notice = 'Mission 尚未结束且选工时间仍有剩余。查看当前 Mission、公开 Workspace、材料和已有 Task，领取可推进的责任；没有合适 Task 时保持只读，按选工预算处理，不得创建占位 Task。';
+            notice = 'The Mission is still open and selection time remains. Inspect the current Mission, public Workspace, Materials, and existing Tasks, then take a responsibility you can advance. If no suitable Task exists, remain read-only and respect the selection budget. Do not create placeholder Tasks.';
           } else if (details.phase === 'selection_budget') {
-            notice = '选工额度已到时间上限。尚未绑定 E 时使用 agent exit --reason selection-budget；不能为保持运行制造任务。';
+            notice = 'The selection time budget is exhausted. If no E is bound, use agent exit --reason selection-budget. Do not manufacture work to keep running.';
           } else if (operation === 'task_take' && body.code === 'CONFLICT' && details.condition === 'task_occupied') {
-            notice = `Task ${input.payload?.task_id} 当前由其他 Execution 占有。本请求未建立 E；仍在选工阶段，可在剩余预算内选择其他责任。`;
+            notice = `Task ${input.payload?.task_id} is currently owned by another Execution. This request did not establish an E. You remain in selection and may choose another responsibility within the remaining budget.`;
           } else if (body.code === 'NOT_ALLOWED') {
             const agent = this.taskService.getAgent(this.actorRef);
             const execution = agent.execution_id && this.taskService.getExecution(agent.execution_id);
@@ -465,7 +465,7 @@ export class ServicesBridge {
               : [];
             const allowedOperations = [...new Set(allowed)];
             body.details = { ...details, phase, allowed_operations: allowedOperations };
-            notice = `操作 ${operation} 在阶段 ${phase} 未获授权。可用范围为 ${allowedOperations.join(', ') || '无'}，不能通过另一接口绕过。`;
+            notice = `Operation ${operation} is not authorized during phase ${phase}. Available operations: ${allowedOperations.join(', ') || 'none'}. Do not bypass this restriction through another interface.`;
           }
           if (notice) body.details = { ...body.details, request_id: input.operation_id ?? null, notice };
         }
@@ -705,7 +705,7 @@ export class ServicesBridge {
       }
       if (operation === 'task_finish') {
         const finish = result.disposition === 'closing'
-          ? { request_id: bridgeOperationId, notice: `结束请求 ${bridgeOperationId} 已持久受理，E ${result.execution.execution_id} 正在 closing。不得再 save/publish；Runtime 停止全部进程，连接可能断开。` } : {};
+          ? { request_id: bridgeOperationId, notice: `Finish request ${bridgeOperationId} was durably accepted and E ${result.execution.execution_id} is closing. Do not save/publish again. Runtime is stopping all processes and the connection may close.` } : {};
         result = await this.#afterAcceptedFinish(result);
         result = { ...result, ...finish };
         log({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });

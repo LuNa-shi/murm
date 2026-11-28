@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { runInput } from '../src/harnesses/shared/run-input.js';
+import { runInput } from '../src/harness/run-input.js';
 
 const agentId = 'peer';
 const started = { inputId: 'input-one', status: 'accepted', disposition: 'started' };

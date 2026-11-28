@@ -1,16 +1,16 @@
 # Phase 0005：Core / Harness — Build your own swarm
 
-本阶段沿用原设计和验收边界。术语采用 murm 网站的 Agent、Service、Harness、Runtime、Sandbox、Run。原文的 Bot 对应 Agent，Environment 对应 Harness。五种 Harness 的现名为 Subagents、TaskPool（原 `flat`）、PeerMesh（原 `agensh`）、Substrate（原 `scaleMAS`）、Lead-Worker（原 `lead-helper`）。历史链接与示例中的协议字面值仍按各自版本解释。
+本目录保留分阶段评审的设计与验收合同，按各自固定版本解释；后续 owner 明确确认的变更按下述规则衔接。术语采用 murm 网站的 Agent、Service、Harness、Runtime、Sandbox、Run。原文的 Bot 对应 Agent，Environment 对应 Harness。五种 Harness 的现名为 Subagents、TaskPool（原 `flat`）、PeerMesh（原 `agensh`）、Substrate（原 `scaleMAS`）、Lead-Worker（原 `lead-helper`）。历史链接与示例中的协议字面值仍按各自版本解释。
 
-> 本阶段唯一权威设计。当前实现见 [Architecture](../../architecture/INDEX.md)，各项验收证据见关联 Issue 与 PR。
+> 版本化的已评审设计与验收合同。当前实现见 [Architecture](../../architecture/INDEX.md)，完成情况及尚欠的验收证据见原 Issue 与 PR；历史首版限制不覆盖后续 owner 明确确认的变更。
 
 ## 权威入口与适用范围
 
-按项目负责人 2026-11-23 的明确要求，**本设计及其链接扩展在 `main` 上已合入的版本，是 Core / Harness 阶段需求、范围、设计决策和验收条件的唯一权威**。此处承接 [Phase 0005 迁移前的设计基线](https://github.com/LuNa-shi/murm/tree/fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02/docs/phases/0005-core-harness)。
+2026-11-23 的设计是首版 Core / Harness 的评审基线，承接 [Phase 0005 迁移前的版本](https://github.com/LuNa-shi/murm/tree/fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02/docs/phases/0005-core-harness)。这些详细合同继续用于解释相应候选与验收，不是可以覆盖后续 owner 决定的独立现行规范。
 
-GitHub Issue 记录实施切片、依赖、进度、PR 和验收证据。每张票引用相关设计的固定 commit 与对应章节。若票内摘要与设计冲突，以设计为准并修正任务。需求变化先通过文档 PR 更新权威设计，再同步受影响 Issue，并明确标记受影响的任务与验收版本。
+实施以适用的已确认 Issue、其引用的设计修订及 owner 后续明确指示为依据。后续明确决定替代同一事项的旧条款；不冲突的验收和资源边界继续保留。GitHub Issue/PR 记录实施、依赖、进度、具体候选与证据。发现来源冲突时说明差异，按已授权的最新范围同步受影响文档，不要求用户重新批准已经确认的决定。
 
-这一权威规则仅适用于 Phase 0005。其他阶段保留既有的 Issue-led 工作方式。[Architecture](../../architecture/INDEX.md) 继续说明实际运行的代码；历史 ADR、旧阶段设计和 Notion 来源用于理解背景，不覆盖本目录的新阶段合同。当前文档发布不表示新 Core 已实现、旧运行逻辑已迁移或任何真实实验已经通过。运行预算、对外发布等仍遵守[项目工作约定](../../../AGENTS.md)。
+遵守后续确认的**一个 Issue 对应一个完整实施 PR**：设计说明、接口、代码、迁移、测试和文档在同一 PR 中审阅与交付；不设置先行合入设计 PR、M0 单独审批或设计提交先获批准的前置关卡。[Architecture](../../architecture/INDEX.md) 说明当前行为；本文的设计代码及首次实施待办按其版本阅读，不能据此推断当前仍未实现，也不能据实现存在推断真实验收已完成。未完成的验收仍由原 Issue/PR 跟踪。运行预算、研究、合并和对外发布权限继续遵守[项目工作约定](../../../AGENTS.md)。
 
 ## 阅读顺序
 
@@ -24,11 +24,13 @@ GitHub Issue 记录实施切片、依赖、进度、PR 和验收证据。每张�
 | [项目 Harness 的共同入口](06-project-harness.md) | #257 的项目目录与 prompt、模块加载、前台 CLI / RPC 和结果合同 |
 | [动态 Core 与 Lead–Worker](../dynamic-lead-worker.md) | #235 的 Q2 后续扩展、可选动态团队模式与真实模型验收 |
 
-Core 文档定义公共接口及其最低保证；Harness 文档在此保证内定义各模式。推进计划安排交付顺序，不改变技术合同。单次宿主等待的 60 秒是建议默认值，具体配置需要有界且可检验，不是整个项目的耗时承诺。
+Core 文档记录评审时的接口及最低保证，Harness 文档记录对应模式合同。当前公开签名以 [SDK 参考](../../en/reference/api.md) 和包根声明为准；原验收要求与后续变更在对应 Issue 中衔接。推进计划保留当时的交付顺序，不独立修改技术合同。单次宿主等待的 60 秒是建议默认值，具体配置需要有界且可检验，不是整个项目的耗时承诺。
 
 ## 已确认决策：Q1–Q8
 
-| 决策 | 本阶段采用的选择 |
+下表是 2026-11-23 首版决定的版本记录。Q1 后续由 #225、#262、#263 扩展执行器与 Provider 接入，Q2 由 #235 增加动态管理，公共 API 由 #255 调整，目录与 prompt 的共同入口由 #257 规定。按这些已确认变更解释当前范围，不能把下表的“首版仅支持”恢复成新的限制。其他验收条件及原候选的证据边界仍按其 Issue 保留。
+
+| 决策 | 首版记录的选择 |
 | --- | --- |
 | Q1 | 首版仅 Pi 1.3.0 + OpenSandbox；保留内部 backend 边界，不公开通用多执行器插件接口 |
 | Q2 | 首版启动前装配并冻结，可按已登记 Profile spawn。#235 按[后续扩展](../dynamic-lead-worker.md)增加受控动态登记、Service 退役和实例授权。 |
@@ -39,20 +41,20 @@ Core 文档定义公共接口及其最低保证；Harness 文档在此保证内�
 | Q7 | PeerMesh 首版验证 Git/PR、peer messages、shared context 与事件续轮核心闭环；完整 mid-turn notices 和 ACP/MCP 运维细节不作门槛 |
 | Q8 | 首版最低交付为 **TaskPool + PeerMesh + 仓库外最小开发者示例**，三者实际复用同一 Core 并通过验收 |
 
-`subagents / Substrate / Lead-Worker` 保留为后续累计交付目标，不阻塞 Q8 首版。Core 内置 Agent Service 的合同验证不等于 Subagents Harness 已交付。旧稿中的“Task/Material + 无 Task 公共结果库”不再定义第二个正式 mode；当前第二个 mode 是 PeerMesh，Notes 示例负责证明无 Task 自定义 Service 接入。
+在该首版合同中，`subagents / Substrate / Lead-Worker` 是后续累计交付目标，不阻塞 Q8 首版。当前五种实现及各自限制见 Architecture；原首版范围不等于当前功能清单。Core 内置 Agent Service 的合同验证不等于 Subagents Harness 已交付。旧稿中的“Task/Material + 无 Task 公共结果库”不再定义第二个正式 mode；当前第二个 mode 是 PeerMesh，Notes 示例负责证明无 Task 自定义 Service 接入。
 
 ## 2026-11-24 owner 确认的本轮范围调整
 
 以下记录首版的验收边界。后续 #255 在既有 Core 文件捕获上增加单步替换及 TaskPool 的原生交接/在线更新回归。
 
-本轮按 owner 的明确指示，将以下工作延后；本节在经评审合入 `main` 后，作为下述章节的范围限定，并由原有执行票引用固定修订同步，不能将延后事项记为已经实现或验收。
+以下是 2026-11-24 当轮延后决定，供原执行票按固定修订解释。后续 #200、#255 等已确认合同对相同事项的调整按其版本衔接；本节不是当前所有候选的统一待办，也不能将曾延后的事项直接记为已经验收。
 
 - [#197](https://github.com/LuNa-shi/SwarmEnv/issues/197) 所记录的标准 Core 到 TaskPool 的生产 live capture 接线留待后续处理。本轮不要求新增在线读取私有 workDir 的公共 API，或将运行中的 Agent 文件经该接线保存为 Workspace revision。[#196](https://github.com/LuNa-shi/SwarmEnv/pull/196) 的相关接口与重试方案仍为延后草稿，不因本次范围调整成为已批准实现。
 - 五种 Example 的统一符合性核对留待后续。本轮不新增“全部五种 Example 同时满足统一核对表”的关闭门槛；已有模式的支持合同、各自有效的回归和实际证据继续保留。`subagents / Substrate / Lead-Worker` 的累计目标及 Q8 的最低组合不变。
 
 TaskPool 现有宿主注入 `snapshotProject` 和已支持的公共 Workspace、Materials、Git 与显式 artifact 路径按实际能力使用和记录。可信宿主注入仍须证明字节来源及当前 Agent/Task/Execution/fence，遵守原有权限、版本、幂等、租约、关闭和清理检查；不能用模型提供的任意文件载荷代替可信捕获。未配置 `snapshotProject` 时，允许只装配当前可支持的 TaskPool 能力：从 Registry/Profile 及提示中省略依赖实时捕获的 `workspace save/status/current-diff`，保留公共 Workspace 读取及 Material/finish 等现有路径；相关提示须如实说明可用成果交接方式。不得使不可用的捕获操作进入执行，也不得因此放宽 Task 的 completion contract、领域 fence 或原有调用与收尾顺序。显式传入无效绑定仍须拒绝；声明启用捕获能力时，其可信绑定和 readiness 检查继续适用。预置或预发布的公共产物能够验证其实际发生的发布、读取、消费和清理，不能证明运行中私有文件已被生产 live capture 保存。接口确定性检查与真实模式运行仍分别记录，历史证据保留原有源码、安装包和配置 pin。
 
-本次只缩减上述两项本轮范围。Core 的 Q1–Q8、TaskPool 的领域与生命周期正确性、PeerMesh 的真实协作闭环、仓库外最小开发者示例和实际验收要求继续适用。文翔本人安装使用的验收、后续外部试用的启动条件及对外发布权限保持独立；本节不代表这些 gate 已通过，也不授权合并、关闭票或发布。受影响的记录为 #164、#176、#181–#185、#194、#196 与 #197，继续在原票/PR 中区分本轮完成、延后事项及剩余验收。
+该次决定只缩减上述两项当轮范围。按当时版本解释的 Core Q1–Q8、TaskPool 的领域与生命周期正确性、PeerMesh 的真实协作闭环、仓库外最小开发者示例和实际验收要求继续适用。文翔本人安装使用的验收、后续外部试用的启动条件及对外发布权限保持独立；本节不代表这些 gate 已通过，也不授权合并、关闭票或发布。受影响的记录为 #164、#176、#181–#185、#194、#196 与 #197，继续在原票/PR 中区分本轮完成、延后事项及剩余验收。
 
 ## 实现基线、术语与证据
 
@@ -69,7 +71,7 @@ TaskPool 现有宿主注入 `snapshotProject` 和已支持的公共 Workspace、
 
 ## 后续扩展 · 公共 SDK
 
-[#237](https://github.com/LuNa-shi/murm/issues/237) 完成仓库外的初版 SDK 消费。其证据对应原候选。[#255](https://github.com/LuNa-shi/murm/issues/255) 以 `main@ea400e2dc020022f94426d328644c6cca87aa03c` 为首次核查基线，规定六个根导出、Sandbox 与 Runtime 配置职责、唯一 send/事件入口、单步文件替换和应用内收尾。[Core 设计](01-core.md) 与 [Harness 设计](02-harness.md) 规定行为，[交付与验收](03-delivery-and-validation.md#公共-sdk-的外部应用验收) 规定 M0–M6、A1–A16 和两条 E2E。M0 评审合入后，实施票引用固定修订。验证和部署继续复用 [#236](https://github.com/LuNa-shi/murm/issues/236) 已交付的设施边界。
+[#237](https://github.com/LuNa-shi/murm/issues/237) 完成仓库外的初版 SDK 消费。其证据对应原候选。[#255](https://github.com/LuNa-shi/murm/issues/255) 以 `main@ea400e2dc020022f94426d328644c6cca87aa03c` 为首次核查基线，规定六个根导出、Sandbox 与 Runtime 配置职责、唯一 send/事件入口、单步文件替换和应用内收尾。[Core 设计](01-core.md) 与 [Harness 设计](02-harness.md) 规定行为，[交付与验收](03-delivery-and-validation.md#公共-sdk-的外部应用验收) 规定 M0–M6、A1–A16 和两条 E2E。M0 是同一实施 PR 内核对基线与接口的工作项，不要求先评审或合入设计提交；设计、实现与验收证据一起审阅。验证和部署继续复用 [#236](https://github.com/LuNa-shi/murm/issues/236) 已交付的设施边界。
 
 ## 后续扩展 · CLI / TUI
 
@@ -83,7 +85,7 @@ TaskPool 现有宿主注入 `snapshotProject` 和已支持的公共 Workspace、
 | [Notion Harness 设计](https://app.notion.com/p/4214e07aa023813e9e5bdeb3dc7b3e32) | `2026-11-23T11:10:13.849Z` | 完整五模式、Notes 与 runInput；转换 Markdown，更新阶段状态 |
 | [Notion 收尾计划](https://app.notion.com/p/41f4e07aa023816a962ec311172f3599) | `2026-11-22T15:00:32.538Z` | 保留推进、试用、发布内容；将过时的未定范围与阶段时态对齐 Q1–Q8 |
 
-[11 月 21 日项目方案](https://app.notion.com/p/41f4e07aa0238193a49af0567b5aa16a)仅作为历史讨论来源，不是并行的实施规范。旧文中通用 AgentExecutor、物理拆包数量、第二协作机制、完整交互等候选，均不得覆盖本目录的已确认范围。
+[11 月 21 日项目方案](https://app.notion.com/p/41f4e07aa0238193a49af0567b5aa16a)仅作为历史讨论来源，不是并行的实施规范。旧文中通用 AgentExecutor、物理拆包数量、第二协作机制、完整交互等候选，均不得自行覆盖后续已确认 Issue 或 owner 决定。
 
 本次迁移保留详细设计代码围栏内部原文、固定源码引用和全部验收/失败路径；只转换 Notion 格式、修复误识别的代码链接、更新交叉链接和已被最新指示取代的“暂不创建 issue”状态说明。
 
@@ -96,3 +98,7 @@ TaskPool 现有宿主注入 `snapshotProject` 和已支持的公共 Workspace、
 ### Linux Sandbox Provider 与安装
 
 [#262](https://github.com/LuNa-shi/murm/issues/262) 更新 [Core 配置与资源归属](01-core.md#33-配置与资源归属)。OpenSandbox API 成为默认接入，支持本机或远端服务与仓库外 Sandbox Provider。严格 Docker 配额、Landlock 与 UID 网络策略留在显式同机模式。Pi 和 Codex 继续使用 Responses。相关旧描述和验收证据按原修订解释。
+
+### 执行器、模型与文件配置的后续合同
+
+[#263](https://github.com/LuNa-shi/murm/issues/263) 在 #262 的接入与安装边界上扩展执行器版本、外部 adapter、模型协议与分阶段文件预算；这些决定替代首版 Q1 的封闭执行器限制及较早的仅 Responses 描述。实现行为见 [运行配置](../../architecture/07-run-configuration.md#executor-and-file-policy-selection) 与 [后端](../../architecture/16-pi-opensandbox-backend.md)，验收状态仍以原 Issue/PR 的候选和证据为准。

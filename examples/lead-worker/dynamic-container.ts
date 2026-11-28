@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createHttpJsonAdapter } from '@luna-shi/murm';
-import type { DynamicDeploymentRequest } from '../../src/harnesses/lead-worker/dynamic.js';
+import type { DynamicDeploymentRequest } from './harness/dynamic.js';
 
 const localEndpoint = 'http://127.0.0.1:8080';
 const ownerLabel = 'org.murm.lead-worker.owner';

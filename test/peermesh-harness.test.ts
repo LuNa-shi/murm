@@ -8,7 +8,7 @@ import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
 
 test('Environment admits one real Core peer with bindings, native Git secret and required collection before work', async t => {
   let start; const provider = await createLifecycleProvider(t, { onStart: body => { start = body; }, onCollect: () => ({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Fixture export pending' } }) });
-  const { createPeerMeshHarness } = await import('../src/harnesses/peermesh/index.js');
+  const { createPeerMeshHarness } = await import('../examples/peermesh/harness/index.js');
   provider.allowDeletion();
   const outputDir = await mkdtemp(join(tmpdir(), 'agensh-harness-')); t.after(() => rm(outputDir, { recursive: true, force: true }));
   let facilityClosed = false;
@@ -35,7 +35,7 @@ test('Environment admits one real Core peer with bindings, native Git secret and
 });
 
 test('partial facility startup closes only registered owned resources and retains a sanitized pending ledger', async () => {
-  const { createPeerMeshHarness } = await import('../src/harnesses/peermesh/index.js');
+  const { createPeerMeshHarness } = await import('../examples/peermesh/harness/index.js');
   const attempts = [];
   await assert.rejects(createPeerMeshHarness({ runId: 'partial', image: 'unused', exportLimit: 1024, prepare: async ({ resources }) => {
     resources.own({ kind: 'channel', id: 'shared', retained: true });

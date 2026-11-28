@@ -6,10 +6,10 @@ import { makeEnvelope } from '../../src/protocol/envelope.js';
 import { MissionWorkspace } from '../../src/runtime/mission-workspace.js';
 import { WorkspaceManager } from '../../src/runtime/workspace-manager.js';
 import { TaskService } from '../../src/task/task-service.js';
-import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
-import { checkGitProject } from '../../src/harnesses/shared/project-git.js';
-import { ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
-import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
+import type { ProjectHarness } from '../../src/harness/project-harness.js';
+import { checkGitProject } from '../../src/harness/project-git.js';
+import { ProjectPreflightError } from '../../src/harness/project-input.js';
+import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harness/project-runtime.js';
 import { runTaskPoolHarness } from './harness.js';
 
 interface Configuration extends Pick<CreateRuntimeOptions, 'connection' | 'models' | 'executor' | 'filePolicy'> {

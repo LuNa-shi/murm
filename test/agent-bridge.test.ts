@@ -47,7 +47,7 @@ test('the authenticated Agent Bridge gives actionable feedback for premature exi
     assert.equal(receipt.ok, false);
     assert.equal(receipt.error.code, 'NOT_ALLOWED');
     assert.equal(receipt.error.details.phase, 'discovery_required');
-    assert.match(receipt.error.details.notice, /已有 Task/);
+    assert.match(receipt.error.details.notice, /existing Tasks/);
     assert.equal(service.getAgent('agent:discover-gap').state, 'UNBOUND');
   }
 });

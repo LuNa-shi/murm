@@ -12,7 +12,7 @@ import { createCleanupBudget } from './fixtures/peermesh-deadline.js';
 import { createLeadWorkerUpstream, adjustedDirection } from './fixtures/lead-worker-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';
-import { httpClient } from '../src/harnesses/peermesh/http.js';
+import { httpClient } from '../src/harness/http.js';
 const execute = promisify(execFile);
 
 test('installed native lead plus two helpers claim exclusively, push verified Git artifacts and adopt mediated direction', {

@@ -5,7 +5,7 @@ section: HARNESSES
 order: 14
 ---
 
-**Lead-Worker** (`src/harnesses/lead-worker/`) fits teams that want one explicit owner of direction while enforcing that worker feedback discovered during execution actually reaches the next round of planning. One `lead` and 2–7 workers (`helper1..helperN`) run in persistent sessions with separate Gitea accounts, personal Git branches, and a local SQLite **`board` Service**. It supports both a fixed team (default) and a **dynamic team** mode where the Lead can deploy a checking Service, register a Profile, admit a new member, and update Worker grants mid-Run (see [examples/lead-worker/README.md](../../../examples/lead-worker/README.md)).
+**Lead-Worker** (`examples/lead-worker/harness/`) fits teams that want one explicit owner of direction while enforcing that worker feedback discovered during execution actually reaches the next round of planning. One `lead` and 2–7 workers (`helper1..helperN`) run in persistent sessions with separate Gitea accounts, personal Git branches, and a local SQLite **`board` Service**. It supports both a fixed team (default) and a **dynamic team** mode where the Lead can deploy a checking Service, register a Profile, admit a new member, and update Worker grants mid-Run (see [examples/lead-worker/README.md](../../../examples/lead-worker/README.md)).
 
 ## Quick run (CLI)
 
@@ -23,7 +23,7 @@ Lead-Worker initializes the team Git repository and member Sandboxes from your p
 
 ## 1. Registered Services & asymmetric permissions
 
-[src/harnesses/lead-worker/board.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/board.ts) enforces distinct operations per role at both the Service Bridge (`Profile.services`) and inside the adapter:
+[examples/lead-worker/harness/board.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/board.ts) enforces distinct operations per role at both the Service Bridge (`Profile.services`) and inside the adapter:
 
 ```ts
 export const boardPermissions = Object.freeze({
@@ -43,7 +43,7 @@ Inside the Board's SQLite `BEGIN IMMEDIATE` transaction, three strict invariants
 3. **Live byte-level Git verification**: before committing `landed` or `complete`, the adapter calls `git.verifyDelivery()` against Gitea to confirm the helper's own branch commit SHA, file path, byte length, and exact SHA-256 digest (and on later rounds, verifies the artifact contains the revised direction text).
 
 ```ts
-// Excerpt from src/harnesses/lead-worker/board.ts
+// Excerpt from examples/lead-worker/harness/board.ts
 if (['landed', 'complete'].includes(operation)) {
   const subtask = deliveryGuard(state, caller, input, role);
   delivery = await verifyDelivery({
@@ -68,7 +68,7 @@ swarm board complete --input complete.json --request-id helper1-done
 
 ## 2. Staged control loop & failure fencing
 
-In [src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/index.ts), `createLeadWorkerHarness()` spawns the fixed team upfront (`maxAgents: 1 + helperCount`), binds their IDs into `board` and `git`, and subscribes to `runtime.onEvent()` so any fatal error, non-completed settlement, or unexpected exit immediately calls `board.fence()` — freezing further Board mutations while preserving all records for inspection.
+In [examples/lead-worker/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/index.ts), `createLeadWorkerHarness()` spawns the fixed team upfront (`maxAgents: 1 + helperCount`), binds their IDs into `board` and `git`, and subscribes to `runtime.onEvent()` so any fatal error, non-completed settlement, or unexpected exit immediately calls `board.fence()` — freezing further Board mutations while preserving all records for inspection.
 
 The default workflow runs two alternating rounds. Its repository `runInput` helper sends one host-owned input after subscribing to settlement events. The following sketch omits the shared cancellation signal and validation around each stage:
 
@@ -116,7 +116,7 @@ On close, the host fences new Board writes and calls `runtime.close()`. It close
 
 ## Source files
 
-- Harness orchestrator (`runWorkflow`, `prepareStages`, `runStage`): [src/harnesses/lead-worker/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/index.ts)
-- SQLite `board` Service & causal gates: [src/harnesses/lead-worker/board.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/board.ts)
-- Gitea provisioning & SHA-256 delivery verification: [src/harnesses/lead-worker/git.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/lead-worker/git.ts)
+- Harness orchestrator (`runWorkflow`, `prepareStages`, `runStage`): [examples/lead-worker/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/index.ts)
+- SQLite `board` Service & causal gates: [examples/lead-worker/harness/board.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/board.ts)
+- Gitea provisioning & SHA-256 delivery verification: [examples/lead-worker/harness/git.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/git.ts)
 - Example config & guide: [examples/lead-worker/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/README.md)

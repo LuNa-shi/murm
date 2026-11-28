@@ -52,7 +52,7 @@ test('installed TaskPool CLI and headless host preserve the same directed Task b
   await writeFile(entry, `
 import configuration from ${JSON.stringify(pathToFileURL(config).href)};
 import {readFile} from 'node:fs/promises';
-const {runForegroundHarness}=await import(${JSON.stringify(pathToFileURL(join(root, 'dist/src/harnesses/shared/foreground-host.js')).href)});
+const {runForegroundHarness}=await import(${JSON.stringify(pathToFileURL(join(root, 'dist/src/cli/foreground-harnesses.js')).href)});
 const records=[];
 const report=await runForegroundHarness(configuration,async host=>{
   records.push({type:'ready',status:await host.status()});

@@ -11,7 +11,7 @@ import { promisify } from 'node:util';
 import { createRuntime } from '@luna-shi/murm';
 
 import { ServiceRegistry } from '@luna-shi/murm';
-import { runInput } from '../../src/harnesses/shared/run-input.js';
+import { runInput } from '../../src/harness/run-input.js';
 import { ownedContainers } from '../fixtures/core-runtime-containers.js';
 import { streamResponse } from '../fixtures/core-controlled-upstream.js';
 

@@ -9,7 +9,7 @@ test('external installed subagents example imports only package exports and adja
   for (const name of ['main', 'controller', 'collaboration-service', 'prompts']) {
     await copyFile(join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/subagents', `${name}.js`), join(installed.directory, `${name}.js`));
   }
-  await copyFile(join(installed.directory, 'node_modules/@luna-shi/murm/dist/src/harnesses/shared/run-report.js'), join(installed.directory, 'run-report.js'));
+  await copyFile(join(installed.directory, 'node_modules/@luna-shi/murm/dist/src/harness/run-report.js'), join(installed.directory, 'run-report.js'));
   await writeFile(join(installed.directory, 'smoke.mjs'), `
 import assert from 'node:assert/strict';
 import {runSubagentsHarness} from './main.js';

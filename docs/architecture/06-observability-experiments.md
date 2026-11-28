@@ -39,7 +39,7 @@ The [offline demo](../operations/trace-viewer.md#replay-the-included-demo) exerc
 
 The research tree at `dc011003fa0354a881b7a3ba9ba901fe36cbcac9` preserves benchmark report construction, parallelism accounting, offline research analysis, historical importer and their tests. Historical report fields and results retain the semantics of their recorded source revision.
 
-Historical implementation details remain in the [research observation manual](https://github.com/LuNa-shi/murm/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/docs/architecture/06-observability-experiments.md). Formal evidence structure follows the [experiment workflow](../workflows/experiment.md) and [report template](../experiments/TEMPLATE.md).
+Historical implementation details remain in the [research observation manual](https://github.com/LuNa-shi/murm/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/docs/architecture/06-observability-experiments.md). Formal evidence structure follows the [experiment workflow](../workflows/experiment.md) and [report template](https://github.com/LuNa-shi/murm/blob/207be6356c16e5fb60c4b3c5b236d7a98383f991/docs/experiments/TEMPLATE.md).
 
 ## Evidence needed for runtime questions
 

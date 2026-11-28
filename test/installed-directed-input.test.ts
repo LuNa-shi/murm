@@ -212,7 +212,7 @@ test('installed headless and CLI share configuration, directed input provenance 
   const headlessOutput = join(installed.directory, 'headless-output');
   await mkdir(headlessOutput);
   const headlessEntry = join(installed.directory, 'headless.mjs');
-  const hostModule = pathToFileURL(join(root, 'dist/src/harnesses/shared/foreground-host.js')).href;
+  const hostModule = pathToFileURL(join(root, 'dist/src/cli/foreground-harnesses.js')).href;
   await writeFile(headlessEntry, [
     `import configuration from ${JSON.stringify(pathToFileURL(configuration).href)};`,
     `const { runForegroundHarness } = await import(${JSON.stringify(hostModule)});`,

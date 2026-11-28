@@ -1,16 +1,16 @@
 import { isSoftCloseout } from '../task/execution-budget.js';
 
-export const AGENT_CONTINUATION_MESSAGE = '继续当前 Task/E。先核对剩余预算、真实 Workspace 状态和新的 Material/检查反馈，再推进当前责任。需要收尾时先保存有用文件、发布有用 Material，再以真实 outcome 调用 swarm task finish；未保存、未确认或失败的操作不能声明成功。';
+export const AGENT_CONTINUATION_MESSAGE = 'Continue the current Task/E. Check the remaining budget, actual Workspace state, and new Material or checker feedback before advancing your current responsibility. When closing out, save useful files and publish useful Material, then call swarm task finish with the actual outcome. Do not claim success for unsaved, unconfirmed, or failed operations.';
 
 
-export const AGENT_SOFT_CLOSEOUT_MESSAGE = '当前 Task/E 已进入软收尾窗口。停止扩展责任和发起新计算；仅保存已有有用文件、发布已有研究内容并调用 swarm task finish 给出真实 outcome。不要提出新 Task、发起新 Judge 检查、Mission 验收或 merge main。已受理请求使用原 ID 查询或重放，未确认持久成功的成果不能声明成功。';
-export const AGENT_MATERIAL_CONTINUATION_MESSAGE = '继续当前 Task/E。先核对剩余预算、公开 Workspace 和新的 Material/检查反馈，再推进当前责任。收尾时发布有用 Material，并按真实完成条件调用 swarm task finish；只有已确认持久保存的成果才能作为完成依据。';
-export const AGENT_MATERIAL_SOFT_CLOSEOUT_MESSAGE = '当前 Task/E 已进入软收尾窗口。停止扩展责任和发起新计算；发布已有研究内容并调用 swarm task finish 给出真实 outcome。不要发起新 Judge 检查、Mission 验收或 merge main。已受理请求使用原 ID 查询或重放，未确认持久成功的成果不能声明成功。';
+export const AGENT_SOFT_CLOSEOUT_MESSAGE = 'The current Task/E has entered its soft closeout window. Stop expanding your responsibility or starting new computation. Only save existing useful files, publish existing research content, and call swarm task finish with the actual outcome. Do not propose new Tasks, start new Judge checks or Mission acceptance, or merge main. Query or replay accepted requests with their original IDs. Do not claim success for results whose durable persistence has not been confirmed.';
+export const AGENT_MATERIAL_CONTINUATION_MESSAGE = 'Continue the current Task/E. Check the remaining budget, public Workspace, and new Material or checker feedback before advancing your current responsibility. When closing out, publish useful Material and call swarm task finish according to the actual completion conditions. Only results with confirmed durable persistence can establish completion.';
+export const AGENT_MATERIAL_SOFT_CLOSEOUT_MESSAGE = 'The current Task/E has entered its soft closeout window. Stop expanding your responsibility or starting new computation. Publish existing research content and call swarm task finish with the actual outcome. Do not start new Judge checks or Mission acceptance, or merge main. Query or replay accepted requests with their original IDs. Do not claim success for results whose durable persistence has not been confirmed.';
 
 export function buildAgentSoftCloseoutNotice(executionId: any, deadline: any, at: any = Date.now(), { workspaceSaveAvailable = true }: any = {}) {
   const remaining = Math.max(0, Date.parse(deadline ?? '') - at);
-  const closeout = workspaceSaveAvailable ? '保存已有文件和研究内容' : '发布已有研究内容';
-  return `E ${executionId} 接近 Execution 时间上限，收尾额度为 ${Number.isFinite(remaining) ? remaining + ' ms' : '未知'}。停止扩展，${closeout}，再按真实结果 finish。`;
+  const closeout = workspaceSaveAvailable ? 'save existing files and research content' : 'publish existing research content';
+  return `E ${executionId} is approaching its Execution time limit. Remaining closeout budget: ${Number.isFinite(remaining) ? remaining + ' ms' : 'unknown'}. Stop expanding work, ${closeout}, then finish with the actual outcome.`;
 }
 
 export function buildAgentContinuationMessage(execution: any, {
@@ -26,9 +26,9 @@ export function buildAgentContinuationMessage(execution: any, {
 
 export function buildAgentNotification(notification: any, { at = Date.now(), workspaceSaveAvailable = true }: any = {}) {
   const payload = notification.payload ?? {};
-  if (notification.notification_type === 'handoff_warning') return `${buildAgentSoftCloseoutNotice(payload.execution_id, payload.deadline, at, { workspaceSaveAvailable })} 通知 ID: ${notification.notification_id}`;
-  if (notification.notification_type === 'material_available') return `Task ${notification.source_task_id ?? payload.producer_task_id ?? '<unknown>'} / Execution ${notification.source_execution_id ?? payload.producer_execution_id ?? '<unknown>'} 发布的 Material ${notification.material_id ?? payload.material_id ?? '<unknown>'} 已关联到当前 Task。用 swarm material view 读取，判断实际影响，并用 swarm task feedback --notification-id ${notification.notification_id} --decision ... --action ... 记录处理。通知本身不证明成果正确，也不结束当前 E。`;
-  return `Task ${notification.recipient_task_id} 的依赖状态已更新；通过 swarm task view 核对当前合同与状态。通知不自动授予 Task/E。`;
+  if (notification.notification_type === 'handoff_warning') return `${buildAgentSoftCloseoutNotice(payload.execution_id, payload.deadline, at, { workspaceSaveAvailable })} Notification ID: ${notification.notification_id}`;
+  if (notification.notification_type === 'material_available') return `Material ${notification.material_id ?? payload.material_id ?? '<unknown>'}, published by Task ${notification.source_task_id ?? payload.producer_task_id ?? '<unknown>'} / Execution ${notification.source_execution_id ?? payload.producer_execution_id ?? '<unknown>'}, is now linked to the current Task. Read it with swarm material view, assess its actual impact, and record your response with swarm task feedback --notification-id ${notification.notification_id} --decision ... --action ... . This notification does not establish that the result is correct or end the current E.`;
+  return `Dependencies for Task ${notification.recipient_task_id} have changed. Check the current contract and state with swarm task view. This notification does not automatically grant a Task/E.`;
 }
 
 

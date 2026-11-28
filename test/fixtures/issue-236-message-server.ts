@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { createMessageService } from '../../examples/bridge-services/messages.js';
+import { createMessageService } from '../../examples/messages/messages.js';
 
 const token = process.env.MURM_TEST_MESSAGE_TOKEN;
 if (!token || !process.send) throw new Error('Start this fixture from the local acceptance test');

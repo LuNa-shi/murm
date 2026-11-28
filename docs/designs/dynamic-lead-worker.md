@@ -1,8 +1,8 @@
-# 动态 Core 与 Lead–Worker：待实现设计
+# 动态 Core 与 Lead–Worker：已评审合同与验收边界
 
-> 状态：已确认的目标设计，尚未成为当前 SDK。实施与验收见 [#235](https://github.com/LuNa-shi/murm/issues/235)。当前行为见 [Core Runtime](../architecture/15-core-runtime.md) 和 [固定 Lead-Worker](../architecture/20-lead-worker-harness.md)。
+> 状态：已确认的版本化设计；动态 Core 接口与可选 Lead-Worker 模式已有实现。当前行为见 [Core Runtime](../architecture/15-core-runtime.md) 和 [Lead-Worker 固定与动态模式](../architecture/20-lead-worker-harness.md)。完整验收、候选版本与剩余证据继续由 [#235](https://github.com/LuNa-shi/murm/issues/235) 跟踪，本文不宣告验收完成。
 
-本设计记录 owner 在 2026-11-26 确认的扩展，由 [#235](https://github.com/LuNa-shi/murm/issues/235) 跟踪实施与证据。原始核查基线为 [`a6049b1a`](https://github.com/LuNa-shi/murm/commit/a6049b1a227ca0b2d997879c4eae0635d1634915)，本设计复核基线为 [`b7d23b9c`](https://github.com/LuNa-shi/murm/commit/b7d23b9c16043fbdaf4a269c7ad086f5d013b792)。Q2 首版的冻结配置和历史验收按当时版本解释。本文规定后续目标。已运行 Agent 的模型、镜像和系统提示热替换、同 ID 服务替换、通用插件加载、跨 Run 服务共享、宿主崩溃自动恢复、完整输入消费追踪及 Trace Viewer 改版均留在本次扩展范围之外。
+本设计记录 owner 在 2026-11-26 确认的扩展，由 [#235](https://github.com/LuNa-shi/murm/issues/235) 跟踪实施与证据。原始核查基线为 [`a6049b1a`](https://github.com/LuNa-shi/murm/commit/a6049b1a227ca0b2d997879c4eae0635d1634915)，本设计复核基线为 [`b7d23b9c`](https://github.com/LuNa-shi/murm/commit/b7d23b9c16043fbdaf4a269c7ad086f5d013b792)。Q2 首版的冻结配置和历史验收按当时版本解释。本文保留该扩展经评审的技术与验收合同；后续明确的 owner 决定按[设计入口的版本规则](core-harness/README.md#权威入口与适用范围)衔接，设计、实现、迁移、测试与文档同 PR 交付。已运行 Agent 的模型、镜像和系统提示热替换、同 ID 服务替换、通用插件加载、跨 Run 服务共享、宿主崩溃自动恢复、完整输入消费追踪及 Trace Viewer 改版均留在本次扩展范围之外。
 
 ## Runtime 合同
 

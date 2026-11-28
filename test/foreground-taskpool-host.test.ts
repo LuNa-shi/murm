@@ -12,7 +12,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/taskpool-controller-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { runForegroundHarness } = await import('../src/harnesses/shared/foreground-host.js'); hooks.deregister();
+const { runForegroundHarness } = await import('../src/cli/foreground-harnesses.js'); hooks.deregister();
 
 test('flat foreground input uses the current controller Task binding and stops with domain reconciliation', async t => {
   const root = await mkdtemp(join(tmpdir(), 'foreground-taskpool-'));

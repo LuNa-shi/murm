@@ -1165,7 +1165,7 @@ test('registered CLI distinguishes a failed merge check from a changed main', as
     const result = JSON.parse(error.stderr);
     assert.equal(result.details.main_revision, '0.1');
     assert.equal(result.details.source_revision, saved.revision);
-    assert.match(result.details.notice, /最终合成树未通过 1：FAIL/);
+    assert.match(result.details.notice, /final merged tree .* failed checker 1: FAIL/);
     return true;
   });
   const peer = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1',
@@ -1178,7 +1178,7 @@ test('registered CLI distinguishes a failed merge check from a changed main', as
     const result = JSON.parse(error.stderr);
     assert.equal(result.code, 'MAIN_MOVED');
     assert.equal(result.details.observed_revision, '0.1');
-    assert.match(result.details.notice, /检查后 main 已从 0\.1 前进到 .*本请求未覆盖 main/);
+    assert.match(result.details.notice, /After checking, main advanced from 0\.1 to .*this request did not overwrite main/);
     return true;
   });
 });
@@ -1285,7 +1285,7 @@ test('soft closeout allows real CLI save publish finish and receipt replay', asy
   assert.ok((await command('workspace', 'save', '--request-id', 'soft-save')).revision);
   assert.ok((await command('material', 'publish', '--content', 'Existing conclusion', '--request-id', 'soft-note')).material.material_id);
   const finish = await command('task', 'finish', '--outcome', 'incomplete', '--request-id', 'soft-finish');
-  assert.match(finish.notice, /结束请求 soft-finish 已持久受理.*不得再 save\/publish/);
+  assert.match(finish.notice, /Finish request soft-finish was durably accepted.*Do not save\/publish again/);
   assert.notEqual(service.getExecution(execution.execution_id).state, 'RUNNING');
 });
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readHarnessResult } from '../src/harnesses/shared/read-result.js';
+import { readHarnessResult } from '../src/harness/read-result.js';
 
 const usage = 'node dist/scripts/read-harness-result.js --run-directory <directory> --runtime-id <expected-id>';
 const args = process.argv.slice(2);

@@ -18,12 +18,25 @@ The trusted checker configuration uses the same settings as the lock command and
 
 ## Run the registered benchmark
 
-Build the Worker from the clean, pinned implementation, then record its immutable image ID and the checker lock in the [experiment registry](../../docs/experiments/INDEX.md). The registry entry uses `**REGISTERED` status, links #200 and pins the implementation commit. The operator supplies K3 credentials through `PI_KIMI_PROXY_BASE_URL` and `PI_KIMI_PROXY_API_KEY`. An equivalent local Pi catalog can supply the model configuration through `MURM_PI_MODELS_FILE`, which defaults to `~/.pi/agent/models.json`. The local sandbox settings use `MURM_SANDBOX_LIFECYCLE_URL`, `MURM_SANDBOX_ENDPOINT_HOST`, `MURM_SANDBOX_ADVERTISE_HOST` and the optional `MURM_SANDBOX_API_KEY`.
+Build the Worker from the clean, pinned implementation, then record its immutable image ID, checker lock, approved model and budget in a private experiment registry and sibling report. Set `MURM_EXPERIMENT_REGISTRY` to that registry's Markdown file; an absolute path is used directly and a relative path resolves from the launch directory. An ignored path such as `experiments/registry/INDEX.md` keeps registration outside the distributed documentation. Follow the [experiment workflow](../../docs/workflows/experiment.md); registration does not replace the human-approved Issue and resource allowance.
+
+The registry retains the existing Markdown table format. It must contain exactly one row for the run, with `**REGISTERED` status, a link to #200, an implementation commit and a sibling Markdown report link. For example:
+
+```markdown
+| ID | Parent Issue / context | Type and status | Code | Report |
+| --- | --- | --- | --- | --- |
+| `EXP-YYYYMMDD-NN` | [Issue #200](https://github.com/LuNa-shi/murm/issues/200) | **REGISTERED** | `<implementation-commit>` | [Run](run.md) |
+```
+
+Replace both placeholders before launch. The registered commit must resolve to the exact clean checkout `HEAD`, and the Worker revision label must match it. A later documentation commit also requires a new matching implementation pin and Worker build. Keep `run.md` beside the registry and include the selected model line, for example `` Model · `kimi_proxy/k3` ``, along with the approved timing and checker/image pins.
+
+The operator supplies K3 credentials through `PI_KIMI_PROXY_BASE_URL` and `PI_KIMI_PROXY_API_KEY`. An equivalent local Pi catalog can supply the model configuration through `MURM_PI_MODELS_FILE`, which defaults to `~/.pi/agent/models.json`. The local sandbox settings use `MURM_SANDBOX_LIFECYCLE_URL`, `MURM_SANDBOX_ENDPOINT_HOST`, `MURM_SANDBOX_ADVERTISE_HOST` and the optional `MURM_SANDBOX_API_KEY`.
 
 ```sh
 docker build --label org.opencontainers.image.revision="$(git rev-parse HEAD)" \
   -f deploy/worker/Dockerfile -t murm-putnam-flat .
 docker image inspect murm-putnam-flat --format '{{.Id}}'
+export MURM_EXPERIMENT_REGISTRY=/absolute/private/registry/INDEX.md
 node benchmarks/putnambench-taskpool/main.ts run trusted-checker-config.json /path/to/PutnamBench \
   EXP-YYYYMMDD-NN sha256:<worker-image-id>
 ```
@@ -38,5 +51,5 @@ The runner claims the experiment directory once. It keeps the original fixture, 
 
 ```sh
 npx tsc -p benchmarks/putnambench-taskpool/tsconfig.json
-node --test benchmarks/putnambench-taskpool/case.test.ts benchmarks/shared/run-window.test.ts
+node --test benchmarks/putnambench-taskpool/case.test.ts benchmarks/putnambench-taskpool/registration.test.ts benchmarks/shared/run-window.test.ts
 ```

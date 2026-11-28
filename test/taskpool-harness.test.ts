@@ -11,7 +11,7 @@ import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { stableStringify } from '../src/protocol/envelope.js';
 import { transport, controls } from './fixtures/taskpool-controller-backend.js';
-import { readHarnessResult } from '../src/harnesses/shared/read-result.js';
+import { readHarnessResult } from '../src/harness/read-result.js';
 const hooks=registerHooks({resolve(specifier,context,next){
   if(specifier==='./opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);

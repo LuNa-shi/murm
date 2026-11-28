@@ -3,7 +3,7 @@
   "sources": [
     {
       "path": "src/agent/agent-contract.ts",
-      "sha256": "9ba4659e069246bba43587d465245cb821b82ed619e83094607d08f2b2349556"
+      "sha256": "b059234717a788abf5535cfa2632ed2ffbcb76f4b4aad838c8798e32b816b670"
     },
     {
       "path": "src/agent/capability-profile.ts",
@@ -11,11 +11,11 @@
     },
     {
       "path": "src/agent/services-bridge.ts",
-      "sha256": "af9fd45a15bdf6edceccde3558264adec75c60c8709b60bee402c0388e4bb28f"
+      "sha256": "44646ed59e6ffceddf56cef9d807fd2cb312db9dec5aa15a81e039a657db5b88"
     },
     {
       "path": "src/cli/swarm-cli.ts",
-      "sha256": "49f36777848ed576ee314f93eb609e7125e08ca83e2a8b2e092862f8d9cf1c5c"
+      "sha256": "8413858c0cbcabd23a0bbda749d6ecda19ac7862cf7988800d9b7ba60b3370e8"
     },
     {
       "path": "src/cli/service-command.ts",
@@ -54,7 +54,7 @@
       "sha256": "a96b4f1e96f29a4a927f88f9a231d399ff251540cbf7132d801fa15b37ed38e0"
     },
     {
-      "path": "examples/bridge-services/handoff.ts",
+      "path": "examples/messages/handoff.ts",
       "sha256": "69d6e0ce7b3cb1bd0ca33eaf2625ddc7283acb8391495f28c1181fe88ab69c01"
     },
     {
@@ -63,27 +63,27 @@
     },
     {
       "path": "examples/notes/project.ts",
-      "sha256": "ecd7db0b5989833817166e81bf1248ee4959d93272873751763284005947e57e"
+      "sha256": "5226acaa72af276bb22bab5915ec2997666ee98142d15b16632924d38d5eb4c8"
     },
     {
       "path": "examples/taskpool/project.ts",
-      "sha256": "47d3d135f062786b1a043c3888cfe3c37369f0e126eb5cc5929414efd2ceb490"
+      "sha256": "3025cf9a75f32eef270dc7535f46f4f128c7dfe282a01739e62907802b58efbd"
     },
     {
-      "path": "src/harnesses/shared/project-git.ts",
-      "sha256": "4a26f0695f9524fa11cd2e8e97bba4010f5e5483f7d3a46404b748be53a07fda"
+      "path": "src/harness/project-git.ts",
+      "sha256": "e5f40cd2163990501a44a35f231dc2e38c8289f38d1b5c59ec3fb2c05bb9664e"
     },
     {
-      "path": "src/harnesses/shared/run-input.ts",
-      "sha256": "dcbc8613d4ff832ae0ce9b19ed671ed5b1098ad7489ee31bfa3875fefb99c149"
+      "path": "src/harness/run-input.ts",
+      "sha256": "ba9f92c690931e1344ffcbdb0dc6c3167ab526775f117c6d7afeae6b77ed2a64"
     },
     {
-      "path": "src/harnesses/substrate/index.ts",
-      "sha256": "a917951eb3ebcd6b32b683d2c19a903bf539cfb5019f8752e49eb8e359a6c1a8"
+      "path": "examples/substrate/harness/index.ts",
+      "sha256": "1a0422599cf77850a4496c96e85a5d83995d5a0e807ed487190381a358f940ae"
     },
     {
-      "path": "src/harnesses/substrate/substrate.ts",
-      "sha256": "97c5c82c95ee6bfbcc208443c02d1cef9832d326333f051e223e4ef16bca7727"
+      "path": "examples/substrate/harness/substrate.ts",
+      "sha256": "9c5fe35422ac421036415dc4023eebc22d045f3f28931424d42255fb71369d30"
     },
     {
       "path": "examples/taskpool/controller.ts",
@@ -91,19 +91,19 @@
     },
     {
       "path": "examples/taskpool/harness.ts",
-      "sha256": "7528eea2264e01e20942c92b401434a67affab67f94ce301021ce389702ca596"
+      "sha256": "1615ab9df358b3809a8c54520d40f8a29f0fff642d26b8559ce92231b0d5614f"
     },
     {
       "path": "examples/substrate/fate-run.ts",
-      "sha256": "a8b7a886b172899b1337d9264d74467064081a18f93f2ed1c3c3e968ed0aae6d"
+      "sha256": "f9fa4a5d24223fbcbaf9689403a067f5470ae930184c962b320ed2a644c40e0b"
     },
     {
       "path": "examples/substrate/fate-service.ts",
-      "sha256": "93385567fd925af5d753e04232aefc79c2477451e4b81bb83d1d380e9fc1e277"
+      "sha256": "a4e47c0f77a7cde0ee35f49a8c05c7b031cc7875a2c710a6534629b02f37212f"
     },
     {
-      "path": "src/harnesses/substrate/paper-substrate.ts",
-      "sha256": "fa67574c86987bae3cc0108d16a453afa0b2f6ab1ae85199f16c23bf573cbe62"
+      "path": "examples/substrate/harness/paper-substrate.ts",
+      "sha256": "8e34834c849a50ac7393eff2367c700422e9670c52d3e6675e758b84d68c1dbd"
     },
     {
       "path": "benchmarks/putnambench-taskpool/run.ts",
@@ -131,7 +131,7 @@
     },
     {
       "path": "test-support/subagents/communication-fixture.ts",
-      "sha256": "24425f0bbc8f298f0b9551ce465d4add36222ce71c854efc0bdf7beaef34f4cf"
+      "sha256": "01ec779fb8658dcf26a693fa8862f02cee67926ed31b6245f335d469cbcf73a2"
     },
     {
       "path": "test-support/subagents/communication-fixture-controller.ts",
@@ -142,20 +142,20 @@
       "sha256": "81318484855ba6f82bc090213586455b56f9cb5c6223084d5f4ffea6cd742e8c"
     },
     {
-      "path": "src/harnesses/peermesh/index.ts",
-      "sha256": "74575caac35d4bc396f81c7b720279ff3a2633d4b5e2367952bed35f062299cf"
+      "path": "examples/peermesh/harness/index.ts",
+      "sha256": "20f8ef20f6945daeff02f69070cf9a0960629b85dbe27e9db74e4fca649e500e"
     },
     {
-      "path": "src/harnesses/peermesh/router.ts",
-      "sha256": "0a9ad669493ec0f5c911bb904943d2b0ffc40f7b029c5e3e2fcf9dcc25fd417e"
+      "path": "examples/peermesh/harness/router.ts",
+      "sha256": "41912257719f250c098d29d2b6036aabfbfcefc84296fa594cb43965cf887ae6"
     },
     {
-      "path": "src/harnesses/peermesh/routed.ts",
-      "sha256": "a4623c4f5c68b635500701b6ea181bf5c261e8faa34ef57818d46fc8d12720ee"
+      "path": "examples/peermesh/harness/routed.ts",
+      "sha256": "964165caef6e4faf242d6b8539b74d9fa84c1347cbb2bac425735ea333f8e6b9"
     },
     {
-      "path": "src/harnesses/peermesh/team.ts",
-      "sha256": "4e17aed7ec824aa2fb9673e65e94a1926d2fb59b2d6d04f2f06b45301d62eb1d"
+      "path": "examples/peermesh/harness/team.ts",
+      "sha256": "a480fc738d62ac607825ac434af726cb128f9276fd55993dbda28f8b3049021d"
     },
     {
       "path": "test/fixtures/peermesh-team-kimi.ts",
@@ -163,27 +163,27 @@
     },
     {
       "path": "test/peermesh-team-kimi-real.test.ts",
-      "sha256": "12cc54f9e505a49b771c1ed15b7cc99a28d1446c5cb48683e383a0be76887e7e"
+      "sha256": "2f9d5c04d12d662c3c60170a8b957a059850b729c1ca2069291a7bd8d5be0a54"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "sha256": "b333ec442a14647f09be51513502e0a063e42e2d82c334390556bedf100d8ea3"
     },
     {
-      "path": "src/harnesses/lead-worker/index.ts",
-      "sha256": "fe185b9c09889e3ebd47b928a8d78b30fc0e4b3de4550c669c93d069989cbe89"
+      "path": "examples/lead-worker/harness/index.ts",
+      "sha256": "1b901f1aac71f1962744e59bde86b4038e7529e916454499dff3ac05e6a4f7d9"
     },
     {
-      "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",
+      "path": "examples/lead-worker/harness/dynamic-scheduler.ts",
       "sha256": "729596347dab0e824fc9373dbb678108d086d56215a3dd865329af948f832625"
     },
     {
-      "path": "src/harnesses/lead-worker/dynamic.ts",
-      "sha256": "f3b23808fd391c44d0095be6d8558e6cb0d2074406c7175a6cf98dd9b743f7bd"
+      "path": "examples/lead-worker/harness/dynamic.ts",
+      "sha256": "c3c3f0c8f42512d212afe9ad79df0d147c55d8b7c8d62c4f5f5956026169a9a2"
     },
     {
       "path": "examples/lead-worker/dynamic-orders.ts",
-      "sha256": "c8f242e8afeb925305b8c8071786308238d57f78052660adcf861d213791f454"
+      "sha256": "f4ba9bf436b7a11082d5dfb1eecb0ff142245da49ecfadd49c989b8c6e05623c"
     },
     {
       "path": "src/runtime/runtime.ts",
@@ -230,15 +230,15 @@
       "sha256": "fe71c025f6236adde42d949cf7cc70b788a76dbf2a152384e4d6520d771dd722"
     },
     {
-      "path": "src/services/mathlib-search/service.json",
+      "path": "examples/services/mathlib-search/service.json",
       "sha256": "c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f"
     },
     {
-      "path": "src/services/mathlib-search/SKILL.md",
+      "path": "examples/services/mathlib-search/SKILL.md",
       "sha256": "e7f79c40eed183b5a5bb0568923ec5575d450016dba41ff5a7cef94414e6f27c"
     },
     {
-      "path": "src/services/mathlib-search/references/loogle.md",
+      "path": "examples/services/mathlib-search/references/loogle.md",
       "sha256": "3aff1ebba86327de5465c0b44b37cb5ec57f5bac6b07c90ed211a0b2f02376bd"
     }
   ],
@@ -268,37 +268,37 @@
       "sha256": "fc61ef0ba300ba64b83180539f16e5a535fe0d926bdd55bae62b522a78a238c0"
     },
     {
-      "path": "examples/bridge-services/handoff.ts",
+      "path": "examples/messages/handoff.ts",
       "anchor": "const writerPrompt = ",
       "line": 11,
       "sha256": "80582434592fe2938ac659fbd9e4ed077920d775c6dd2be743e0d5e87c88d1a4"
     },
     {
-      "path": "examples/bridge-services/handoff.ts",
+      "path": "examples/messages/handoff.ts",
       "anchor": "const readerPrompt = ",
       "line": 12,
       "sha256": "51a136d54713243403eec6e7c7471ec9e9629e5f1e466b6cb12910560662e1e8"
     },
     {
-      "path": "examples/bridge-services/handoff.ts",
+      "path": "examples/messages/handoff.ts",
       "anchor": "`Publish",
       "line": 98,
       "sha256": "8a7fe8d7d3f66f1d87f7433cb71cf6ebf4abc286d73f539b107ae2c908d2ed9c"
     },
     {
-      "path": "examples/bridge-services/handoff.ts",
+      "path": "examples/messages/handoff.ts",
       "anchor": "`Receive",
       "line": 104,
       "sha256": "cde44c4b0ea9925676271d20960d61c567ddc218c147cdded5ecd9ab24c18291"
     },
     {
-      "path": "examples/bridge-services/handoff.ts",
+      "path": "examples/messages/handoff.ts",
       "anchor": "`Inspect",
       "line": 97,
       "sha256": "e42a8b191a851a669fba935c512ac3564dfee3c59ff5b24a921b82c8b9280c4d"
     },
     {
-      "path": "examples/bridge-services/handoff.ts",
+      "path": "examples/messages/handoff.ts",
       "anchor": "`Check",
       "line": 103,
       "sha256": "67f49aa87701b2da1a9fb0cacd2f31841cf82f8ef53471fd6c57cd37ea80ce9e"
@@ -346,43 +346,43 @@
       "sha256": "05c26ed53c67fbb7695f75540d677abf442593c7cc128144dedd0a612098d4f2"
     },
     {
-      "path": "src/harnesses/substrate/index.ts",
+      "path": "examples/substrate/harness/index.ts",
       "anchor": "export const peerPrompt = '",
       "line": 9,
       "sha256": "80f964edecba1ce3c7c40cfb732799bdfb7ae96699d39185e2f6635555a6daeb"
     },
     {
-      "path": "src/harnesses/substrate/substrate.ts",
+      "path": "examples/substrate/harness/substrate.ts",
       "anchor": "purpose: '",
       "line": 92,
       "sha256": "0a5954f75ed9fac077a64924acfeeb5b9d0871937b25133d43f17756ab349700"
     },
     {
-      "path": "src/harnesses/substrate/substrate.ts",
+      "path": "examples/substrate/harness/substrate.ts",
       "anchor": "capability('publish', '",
       "line": 94,
       "sha256": "6467664b40aa318b9471d337f8aff53a5ae1306c1371c6c623bfe4eb3559b5a8"
     },
     {
-      "path": "src/harnesses/substrate/substrate.ts",
+      "path": "examples/substrate/harness/substrate.ts",
       "anchor": "capability('visit', '",
       "line": 95,
       "sha256": "2ba12cb0a0ff3527b9894ca1582cb29e63d19a6f5e65441a21161867a5adadc8"
     },
     {
-      "path": "src/harnesses/substrate/substrate.ts",
+      "path": "examples/substrate/harness/substrate.ts",
       "anchor": "capability('search', '",
       "line": 96,
       "sha256": "fbf343059b480fcf7250e0cfe40d58971d1f9151239e1416fa224c4f05973d5d"
     },
     {
-      "path": "src/harnesses/substrate/index.ts",
+      "path": "examples/substrate/harness/index.ts",
       "anchor": "export const cyclePrompt = '",
       "line": 10,
       "sha256": "c783b6377a748f73ae5b941513f362f67a9ef7155f6da56671047e8af5182df4"
     },
     {
-      "path": "src/harnesses/substrate/index.ts",
+      "path": "examples/substrate/harness/index.ts",
       "anchor": "                  const text = ",
       "line": 102,
       "sha256": "b3e9b0b92a6fbc3eec0a9e5903b3944b28a194009884d169e9fcc163a769f877"
@@ -394,61 +394,61 @@
       "sha256": "6430a48b9dce088568b31fe6d537888fd59bcfa9bedf8308434285d4759ccf24"
     },
     {
-      "path": "src/harnesses/peermesh/index.ts",
+      "path": "examples/peermesh/harness/index.ts",
       "anchor": "export const peerPrompt = `",
       "line": 9,
       "sha256": "c595b9fea0f91a1967a914c7f9a5b27bf69626995e9aac6ba3f2824edfb6fe20"
     },
     {
-      "path": "src/harnesses/peermesh/index.ts",
+      "path": "examples/peermesh/harness/index.ts",
       "anchor": "export const projectPeerPrompt = `",
       "line": 11,
       "sha256": "9f7bb83c8e59fc4859bb8a422ca2443597d425c4c2723567b951b796b187e139"
     },
     {
-      "path": "src/harnesses/shared/project-git.ts",
+      "path": "src/harness/project-git.ts",
       "anchor": "export const seededCheckoutInstruction = '",
       "line": 51,
       "sha256": "913610c10d4bab6c0d9b8d266577bbdaea47272a39f7be7226a4b86518d7b737"
     },
     {
-      "path": "src/harnesses/peermesh/team.ts",
+      "path": "examples/peermesh/harness/team.ts",
       "anchor": "router.kickoff(",
       "line": 178,
       "sha256": "44a86c7b2af129d1bc52061deff91cd39283d1e6b62f805dcb688a5e4997e936"
     },
     {
-      "path": "src/harnesses/peermesh/router.ts",
+      "path": "examples/peermesh/harness/router.ts",
       "anchor": "const input = `",
       "line": 124,
       "sha256": "af43c6bff137ff9e10f45f78dee5898ff864fba2101f83793f42c5e08db2d079"
     },
     {
-      "path": "src/harnesses/peermesh/router.ts",
+      "path": "examples/peermesh/harness/router.ts",
       "anchor": "export const routerInstruction = '",
       "line": 8,
       "sha256": "0549b9edb487efe012477936229c3cf7135a1b8d918b20829727733f1be07310"
     },
     {
-      "path": "src/harnesses/peermesh/router.ts",
+      "path": "examples/peermesh/harness/router.ts",
       "anchor": "export const projectRouterInstruction = '",
       "line": 10,
       "sha256": "dd7597be74cad79f3c9f16695773803c092324f3dbfe36c31f188db6847ea355"
     },
     {
-      "path": "src/harnesses/peermesh/router.ts",
+      "path": "examples/peermesh/harness/router.ts",
       "anchor": "export const noticeInstruction = '",
       "line": 11,
       "sha256": "c6b65d41480fc2ca7a3183492509b000eb210a712ad8d6a6c4149a7e0b449a7f"
     },
     {
-      "path": "src/harnesses/peermesh/router.ts",
+      "path": "examples/peermesh/harness/router.ts",
       "anchor": "const steerText = `",
       "line": 53,
       "sha256": "6095e708b6735ad9e9f79414129a7c29efbc9fed340ed4d90ad1920ae80f4f77"
     },
     {
-      "path": "src/harnesses/peermesh/router.ts",
+      "path": "examples/peermesh/harness/router.ts",
       "anchor": "export const idleNudgeInput = '",
       "line": 7,
       "sha256": "4434a9725ae7dfe349ef64dbbacf6d10b80cc11e06828ee222e0c76f4eb33b0f"
@@ -484,97 +484,97 @@
       "sha256": "8f943ea32b0291bed1fdbb8ecd6c55761fd81fb047587040bff06c185d1e063c"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "anchor": "export const leadPrompt = `",
       "line": 1,
       "sha256": "66c233e655bf948d04a594d7f4d63567941f8f466ea2fae9e431618ac77c9ed9"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "anchor": "export const helperPrompt = `",
       "line": 2,
       "sha256": "8db6a32be12a5f1837aa6130ce8f0689f8f9a68d05b5fe3a234dd727c1e62684"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "anchor": "export const initializeInstruction = '",
       "line": 3,
       "sha256": "0bb76cfd2a5782258de1f2c0ac5304b1ab3761c2e5c59c5dbf9133267d6dccf2"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "anchor": "export const helperInitialInstruction = '",
       "line": 4,
       "sha256": "655a5ce3f8cca7a5a32fa0cc01c843d16df7d1f622e2a4464151c67cd162cfc3"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "anchor": "export const leadAdjustmentInstruction = '",
       "line": 5,
       "sha256": "b87643bf5ec03c1de13086039f771375d845f9ea0a81a6fb21b41ebd4b98bbde"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "anchor": "export const helperFollowupInstruction = '",
       "line": 6,
       "sha256": "0045a458adf415fb6e61371af1a6e0031af98fe1e8df8ee5f9cfd9cb78379e85"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "anchor": "export const dynamicLeadPrompt = `",
       "line": 8,
       "sha256": "0b2857905c23f7bd6ed84b4c07c59d653c6f68dd81f9c0cf47f8d76bbf10b86e"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "anchor": "export const dynamicWorkerPrompt = `",
       "line": 16,
       "sha256": "50f148705ee19eadd67d4ef431c0cdf2dca0c7af53805dcb40c84993c90319f0"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "anchor": "export const projectLeadPrompt = `",
       "line": 20,
       "sha256": "72b916f95994e8c593c8346ae66117ff23824a373fd62acf890be90d2ab3a69e"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "anchor": "export const projectStaticWorkerPrompt = `",
       "line": 21,
       "sha256": "112dda5447f989d9f05ac8a39b5bfa86c90b72bafe76d79401aa72ce6ec2d863"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "anchor": "export const projectDynamicLeadPrompt = `",
       "line": 22,
       "sha256": "c701759dfe633e15be0519a77a8f1da559ccc8f1ab1cc26bf48980293424d59f"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "anchor": "export const projectDynamicWorkerPrompt = `",
       "line": 23,
       "sha256": "a18f1dff55528bda10ed49f142980ef5893b5ef397110fc19f7a9e6a8868fbd8"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "anchor": "export const projectIntegrationInstruction = '",
       "line": 25,
       "sha256": "da5842e79b67ce1190525c5c2f842f942ee4a67f616beace1dbc531bfcbac2c1"
     },
     {
-      "path": "src/harnesses/lead-worker/index.ts",
+      "path": "examples/lead-worker/harness/index.ts",
       "anchor": "                  const nextPath =",
       "line": 252,
       "sha256": "d899bf6da9a12ab775120db5f1068857fe565eb414938a7dc3d584039e096f28"
     },
     {
-      "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",
+      "path": "examples/lead-worker/harness/dynamic-scheduler.ts",
       "anchor": "    send(lead, { type: 'dynamic-goal'",
       "line": 49,
       "sha256": "03cd6cfc940618705fcfe04f34241366944ff13a5bad31e38bda7856cb9f4bae"
     },
     {
-      "path": "src/harnesses/lead-worker/dynamic.ts",
+      "path": "examples/lead-worker/harness/dynamic.ts",
       "anchor": "                model, image, writable: true, prompt:",
       "line": 248,
       "sha256": "1554c54d99e2089de7dbf2fd4c4ffdee1f0310288d36a608b7685b1f8d294f83"
@@ -607,7 +607,7 @@
       "path": "examples/taskpool/harness.ts",
       "anchor": "export const TASKPOOL_WITHOUT_WORKSPACE_SAVE_PROMPT = '",
       "line": 12,
-      "sha256": "5371acb1ed023ed240934f27c739c3e6f2feed68e9618378e2165db46e6e97b9"
+      "sha256": "598459c8887bdd36cec17afedecb8d7dff907b55cc2ca51ffb23c9efcb6fddb7"
     },
     {
       "path": "examples/taskpool/controller.ts",
@@ -721,15 +721,15 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "2659fd9f13256e062025898c3dce7e50df4c1140488e19cbfbd907a3cb33d2e1"
+      "sha256": "c78a96d1801ffeb372c9b32cbe5d13c8b51eadec119f6a0a5f7b5d56554fb6d9"
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",
-      "sha256": "892e45d3d02ef3bd76712334acfe44c5754606d6803ea2ab5941331d1c0bb9b6"
+      "sha256": "15bd09d977bdeb097769863d6a527595e16d247c8cb130ec92625252d5512204"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
-      "sha256": "44712ef797f937035aec471b43777975581ae69f51aa4c50ed743ad1418f5df1"
+      "sha256": "fd4d67ade6a67a3261031133ea7606f4e884e6f283ce8d9a9b4ab3b6813c4776"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
@@ -769,7 +769,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-taskpool-harness.md",
-      "sha256": "90027b63abc10b05b4151abf3a0e0722d4a4afe90f95fcf21a62501d108c2069"
+      "sha256": "0d8b44a8055fc3954a909166810f482dd9181b660d6c3e2d401db12a79751ccd"
     }
   ]
 }

@@ -4,10 +4,10 @@ import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createRuntime, type CreateRuntimeOptions, type Profile, type StopReceipt } from '@luna-shi/murm';
 import { ServiceRegistry, type ServiceCaller } from '@luna-shi/murm';
-import { runInput } from '../../src/harnesses/shared/run-input.js';
-import { runWithReport } from '../../src/harnesses/shared/run-report.js';
-import { createPaperSubstrate, type SharingMode } from '../../src/harnesses/substrate/paper-substrate.js';
-import { MathlibSearchService } from '../../src/services/mathlib-search/service.js';
+import { runInput } from '../../src/harness/run-input.js';
+import { runWithReport } from '../../src/harness/run-report.js';
+import { createPaperSubstrate, type SharingMode } from './harness/paper-substrate.js';
+import { MathlibSearchService } from '../services/mathlib-search/service.js';
 import { createFateChecker, loadFateProject, sha256, type FateBenchmark, type FateProject } from './fate-checker.js';
 import { maxFateOperationsPerPeer, createFateTaskService, type FateCandidate, type MathlibMatch } from './fate-service.js';
 

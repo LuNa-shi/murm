@@ -122,7 +122,7 @@ export async function prepareSubagentsProject(options: SubagentsProjectOptions) 
       const text = await readFile(join(packageRoot, 'dist/examples/subagents', `${filename}.js`), 'utf8');
       await create(`${filename}.js`, filename === 'main' ? `import './environment.js';\n${text}` : text);
     }
-    await create('run-report.js', await readFile(join(packageRoot, 'dist/src/harnesses/shared/run-report.js'), 'utf8'));
+    await create('run-report.js', await readFile(join(packageRoot, 'dist/src/harness/run-report.js'), 'utf8'));
     for (const filename of ['environment.js', 'config.js']) {
       await create(filename, await readFile(join(packageRoot, 'scripts/local-setup/templates', filename), 'utf8'));
     }

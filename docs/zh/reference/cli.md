@@ -103,4 +103,4 @@ node dist/scripts/run-harness.js --config <host-config.mjs>
 node dist/scripts/read-harness-result.js --run-directory <dir> --runtime-id <id>
 ```
 
-内置 Harness 复用的辅助模块（`src/harnesses/shared/run-input.ts`、`src/harnesses/shared/run-report.ts`）属于仓库内部源码，而非 `@luna-shi/murm` 包的额外导出。
+内置 Harness 复用的辅助模块（`src/harness/run-input.ts`、`src/harness/run-report.ts`）属于仓库内部源码，而非 `@luna-shi/murm` 包的额外导出。

@@ -11,9 +11,9 @@ import { test } from 'node:test';
 import { createRuntime } from '@luna-shi/murm';
 import { ServiceRegistry } from '@luna-shi/murm';
 
-import { createMessageService } from '../examples/bridge-services/messages.js';
-import { createGhIssuesService } from '../examples/bridge-services/gh-issues.js';
-import { runInput } from '../src/harnesses/shared/run-input.js';
+import { createMessageService } from '../examples/messages/messages.js';
+import { createGhIssuesService } from '../examples/services/github-issues/index.js';
+import { runInput } from '../src/harness/run-input.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 

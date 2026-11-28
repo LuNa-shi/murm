@@ -50,6 +50,12 @@ node --env-file=.env ../../dist/examples/subagents/main.js \
 
 The entry waits for Root's reply, closes the team, and writes the task result and cleanup receipts to `subagents-runs/<runtimeId>/harness-report.json`. Edit `config.ts` or `main.ts` here and rebuild from the checkout root to try changes.
 
+## Fixed or interactive host entry
+
+The `main.ts` command above is the direct host demonstration. For a captured
+project, use `murm --harness subagents --cwd /path/to/project --prompt '...'`.
+The collaboration Service is in-process and needs no separate deployment.
+
 ## Interactive mode
 
 Pass `--interactive` in place of the task to keep the example open.
@@ -86,4 +92,4 @@ Import `createSubagentsHarness` from the local example module after building. Th
 
 ## Verification
 
-The [Subagents verification guide](../../test/README.md#subagents-verification) describes the regression and native OpenSandbox checks. The [ProgramBench fd experiment](../../docs/experiments/EXP-20261125-10-issue199-fd.md) records a real three-Agent run, including the file handoff, follow-up and independent score.
+The [Subagents verification guide](../../test/README.md#subagents-verification) describes the regression and native OpenSandbox checks. The [ProgramBench fd experiment](https://github.com/LuNa-shi/murm/blob/207be6356c16e5fb60c4b3c5b236d7a98383f991/docs/experiments/EXP-20261125-10-issue199-fd.md) records a real three-Agent run, including the file handoff, follow-up and independent score.

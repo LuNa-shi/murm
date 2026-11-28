@@ -379,7 +379,7 @@ test('Gateway records both request bodies and complete success, rejection and in
       return;
     }
     const event = { type: 'response.completed', response: { status: 'completed', model: 'k3',
-      usage: { input_tokens: 20, output_tokens: 2 }, echo: remoteSecret, unicode: '中文😀' } };
+      usage: { input_tokens: 20, output_tokens: 2 }, echo: remoteSecret, unicode: '\u4e2d\u6587😀' } };
     const bytes = Buffer.from('data: ' + JSON.stringify(event) + '\n\n');
     const boundary = bytes.indexOf(remoteSecret) + 7;
     response.write(bytes.subarray(0, boundary));
@@ -430,7 +430,7 @@ test('Gateway records both request bodies and complete success, rejection and in
   assert.deepEqual(traces.get('success').request.before.input[1], emptyAssistant);
   assert.equal(received[0].input.length, 2);
   assert.deepEqual(traces.get('success').request.after.input, [previousCall, { ...toolOutput, output: '[redacted]' }]);
-  assert.match(traces.get('success').response, /中文😀/);
+  assert.match(traces.get('success').response, /\u4e2d\u6587😀/);
   assert.deepEqual(traces.get('success').result.usage, { inputTokens: 20, outputTokens: 2 });
   assert.match(traces.get('reject').response, /full rejection/);
   assert.equal(traces.get('reject').result.upstreamStatus, 429);

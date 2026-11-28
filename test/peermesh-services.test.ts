@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createPeerMeshServices } from '../src/harnesses/peermesh/services.js';
+import { createPeerMeshServices } from '../examples/peermesh/harness/services.js';
 import { snapshotServiceRegistry, invokeService } from '../src/core/services.js';
 
 test('all three Services resolve only their own trusted account and fix board identity', async t => {
@@ -96,7 +96,7 @@ test('project peers can open and merge a PR from a self-chosen branch in their r
   const facilities = { project: true, runId: 'run', repository: { owner: 'owner', name: 'repo' }, channelId: 'channel', boardId: 'board',
     endpoints: { gitea: origin, message: origin, board: origin }, peers: [{ key: 'a', branch: 'peer-run-a', gitea: { binding: 'git', accountId: '1', token: 'git-secret' },
       message: { binding: 'mm', accountId: 'm', token: 'mm-secret' }, board: { binding: 'board', workerId: 'worker-a' } }] };
-  const { createPeerMeshDelivery } = await import('../src/harnesses/peermesh/delivery.js');
+  const { createPeerMeshDelivery } = await import('../examples/peermesh/harness/delivery.js');
   const service = createPeerMeshServices(facilities, createPeerMeshDelivery({ facilities, adminToken: 'host', maxReadinessReads: 1 }));
   service.bindAgent({ runtimeId: 'runtime', agentId: 'agent', peerKey: 'a', profile: 'peer-a' });
   const registry = snapshotServiceRegistry(service.services);

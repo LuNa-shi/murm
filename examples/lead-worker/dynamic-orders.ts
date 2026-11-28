@@ -4,8 +4,8 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { DynamicDeploymentRequest, DynamicLeadWorkerOptions } from '../../src/harnesses/lead-worker/dynamic.js';
-import { httpClient } from '../../src/harnesses/peermesh/http.js';
+import type { DynamicDeploymentRequest, DynamicLeadWorkerOptions } from './harness/dynamic.js';
+import { httpClient } from '../../src/harness/http.js';
 import { assertContainerImage, deployDynamicContainer, docker, isolatedContainer } from './dynamic-container.js';
 
 type Variant = 'orders-a' | 'orders-b';

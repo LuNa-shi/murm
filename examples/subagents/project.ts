@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { runSubagentsHarness } from './main.js';
-import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
-import { projectError, ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
-import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
+import type { ProjectHarness } from '../../src/harness/project-harness.js';
+import { projectError, ProjectPreflightError } from '../../src/harness/project-input.js';
+import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harness/project-runtime.js';
 
 const subagents = {
   id: 'subagents',

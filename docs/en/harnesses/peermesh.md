@@ -5,7 +5,7 @@ section: HARNESSES
 order: 12
 ---
 
-**PeerMesh** (`src/harnesses/peermesh/`) models a flat team of 2–8 peer engineers with no central dispatcher and no exclusive task locks. Each peer has its own Gitea account, Mattermost account, persistent Pi session, and Git checkout. Peers choose work on personal branches, post advisory `CLAIM` notes and updates on a shared Board, discuss in team chat and DMs, and land PRs into protected `main` through host verification.
+**PeerMesh** (`examples/peermesh/harness/`) models a flat team of 2–8 peer engineers with no central dispatcher and no exclusive task locks. Each peer has its own Gitea account, Mattermost account, persistent Pi session, and Git checkout. Peers choose work on personal branches, post advisory `CLAIM` notes and updates on a shared Board, discuss in team chat and DMs, and land PRs into protected `main` through host verification.
 
 ## Quick run (CLI)
 
@@ -20,7 +20,7 @@ PeerMesh creates a shared project repository and issue from the directory and pr
 
 ## 1. Registered Services
 
-[src/harnesses/peermesh/services.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/services.ts) registers three Services per run, binding every peer's container identity to its own provisioned accounts while keeping facility administrator and Service-adapter tokens on the host. Native Git uses a separate per-peer token supplied through `secretEnv`, as described below:
+[examples/peermesh/harness/services.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/services.ts) registers three Services per run, binding every peer's container identity to its own provisioned accounts while keeping facility administrator and Service-adapter tokens on the host. Native Git uses a separate per-peer token supplied through `secretEnv`, as described below:
 
 | Service | Operations | Purpose |
 | --- | --- | --- |
@@ -45,11 +45,11 @@ swarm gitea pull_request_merge \
   --request-id merge-pr-3
 ```
 
-When a peer calls `pull_request_merge`, [delivery.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/delivery.ts) verifies the caller, repository, PR number, and pinned `head_sha` before merging into protected `main`. A stale commit SHA is rejected and requires a fresh merge check.
+When a peer calls `pull_request_merge`, [delivery.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/delivery.ts) verifies the caller, repository, PR number, and pinned `head_sha` before merging into protected `main`. A stale commit SHA is rejected and requires a fresh merge check.
 
 ## 2. Per-peer router & mid-turn steering
 
-In [team.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/team.ts) and [router.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/router.ts), each peer gets an independent serial router. Event subscriptions poll Mattermost and Gitea; successful Board writes also enqueue notices. The router delivers these events into the peer's persistent Pi session (`runInput` is the repository's shared single-turn helper from `src/harnesses/shared/run-input.ts`). This excerpt shows the project-run configuration; the complete factory also installs failure fencing and shutdown handlers:
+In [team.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/team.ts) and [router.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/router.ts), each peer gets an independent serial router. Event subscriptions poll Mattermost and Gitea; successful Board writes also enqueue notices. The router delivers these events into the peer's persistent Pi session (`runInput` is the repository's shared single-turn helper from `src/harness/run-input.ts`). This excerpt shows the project-run configuration; the complete factory also installs failure fencing and shutdown handlers:
 
 ```ts
 const router = createPeerMeshRouter({
@@ -128,8 +128,8 @@ node dist/scripts/read-harness-result.js \
 
 ## Source files
 
-- Team assembly & lifecycle: [src/harnesses/peermesh/team.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/team.ts)
-- Per-peer router, steering & nudges: [src/harnesses/peermesh/router.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/router.ts)
-- Service wrappers (`peermesh-context`, `message`, `gitea`): [src/harnesses/peermesh/services.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/services.ts)
-- Host PR merge verification & archive export: [src/harnesses/peermesh/delivery.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/delivery.ts)
+- Team assembly & lifecycle: [examples/peermesh/harness/team.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/team.ts)
+- Per-peer router, steering & nudges: [examples/peermesh/harness/router.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/router.ts)
+- Service wrappers (`peermesh-context`, `message`, `gitea`): [examples/peermesh/harness/services.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/services.ts)
+- Host PR merge verification & archive export: [examples/peermesh/harness/delivery.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/delivery.ts)
 - Example config & guide: [examples/peermesh/config.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/config.ts) · [examples/peermesh/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/README.md)

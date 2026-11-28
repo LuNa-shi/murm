@@ -1,6 +1,6 @@
 # 项目 Harness 的共同入口
 
-本设计随 [#257](https://github.com/LuNa-shi/murm/issues/257) 的实施 PR 一起评审。Core 文件、事件和停止合同以 [#255](https://github.com/LuNa-shi/murm/issues/255) 的最终实现版本为准。仓库的 [Architecture](../../architecture/INDEX.md) 说明已实现的行为。
+本页记录随 [#257](https://github.com/LuNa-shi/murm/issues/257) 实施 PR 一起评审的共同入口合同；当前实现见 [Project Harness](../../architecture/23-project-harness.md)，验收状态由原 Issue/PR 跟踪。Core 文件、事件和停止合同以 [#255](https://github.com/LuNa-shi/murm/issues/255) 的最终实现版本为准。仓库的 [Architecture](../../architecture/INDEX.md) 说明已实现的行为。
 
 ## 模块与路径
 

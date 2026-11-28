@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRuntime } from '../src/core/index.js';
-import { createPeerProfile } from '../src/harnesses/peermesh/index.js';
-import { createPeerMeshServices } from '../src/harnesses/peermesh/services.js';
-import { createBoardLauncher } from '../src/harnesses/peermesh/board-process.js';
+import { createPeerProfile } from '../examples/peermesh/harness/index.js';
+import { createPeerMeshServices } from '../examples/peermesh/harness/services.js';
+import { createBoardLauncher } from '../examples/peermesh/harness/board-process.js';
 import { execute } from './fixtures/notes-installed-package.js';
 
 test('foreground PeerMesh example validates host configuration without starting facilities', async t => {

@@ -5,18 +5,17 @@ section: 参考手册
 order: 15
 ---
 
-本页汇总 **`@luna-shi/murm` `0.2.0`** 的全部公开运行时导出、方法契约与错误恢复规则。概念与实践请先阅读 [Runtime 与 Agent](../runtime.md) 和 [Service 与权限](../services.md)；完整 TypeScript 声明见 [类型定义与源码映射](./types.md)；宿主机与容器命令行参数见 [CLI 参考](./cli.md)。
+本页汇总 **`@luna-shi/murm` 当前源码**的公开运行时导出、方法契约与错误恢复规则。包版本仍为 `0.2.0`，但已发布的 v0.2.0 安装包不包含本页列出的部分新接口。概念与实践请先阅读 [Runtime 与 Agent](../runtime.md) 和 [Service 与权限](../services.md)；完整 TypeScript 声明见 [类型定义与源码映射](./types.md)；宿主机与容器命令行参数见 [CLI 参考](./cli.md)。
 
 ## 安装 SDK
 
-在 Node.js 22.19+ 项目中安装对应版本的 GitHub Release 压缩包：
+先按 [当前源码快速上手](../quickstart.md)构建候选包，再把同一份文件安装到 Node.js 22.19+ 项目：
 
 ```bash
-npm install --ignore-scripts --allow-remote=root \
-  https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+npm install --ignore-scripts /absolute/path/to/luna-shi-murm-0.2.0.tgz
 ```
 
-> 使用 npm 12+ 从包含远程 tarball URL 的 lockfile 重新安装时，同样需要传入 `--allow-remote=root`（如 `npm ci --allow-remote=root`）。运行沙箱前请按 [快速上手](../quickstart.md) 准备或连接 OpenSandbox。
+如果使用正式发行版，请遵循 [v0.2.0 安装指南](../latest.md)及其 [固定版本 API 参考](https://github.com/LuNa-shi/murm/blob/v0.2.0/docs/zh/reference/api.md)。所使用的安装包、Worker 镜像和文档应对应同一源码候选版本。
 
 ## 公开包入口
 
@@ -35,7 +34,9 @@ npm install --ignore-scripts --allow-remote=root \
 | `createInProcessAdapter(impl)` | 函数 | 将宿主进程内的 `invoke` 处理器（及可选 `exportState`）包装为 `ServiceAdapter`。 |
 | `createHttpJsonAdapter(options)` | 函数 | 将外部 HTTP JSON Service 包装为 `ServiceAdapter`（携带 `Idempotency-Key` 与可选 Bearer 认证）。 |
 
-> 仓库中 `examples/` 与 `src/harnesses/` 下的内置 Harness 属于可编辑参考实现，不作为 `@luna-shi/murm` 的额外包导出。
+五种参考 Harness 的实现位于各自的 `examples/` 目录。内置 CLI 名称负责加载这些模块，不增加 Core SDK 导出。`src/harness/` 存放私有的通用宿主/RPC、项目输入和报告工具。示例仍依赖部分仓库内部模块；[独立示例打包](../../designs/repository-layout.md#make-each-example-an-independent-sdk-consumer)属于后续工作。
+
+Runtime 创建自己的 Bridge、模型网关与内置 `agent` Service。示例创建的进程内 Service 无须独立容器；外部协作设施和可选 [Mathlib Search](../../../examples/services/mathlib-search/README.md)按示例声明部署与资源归属，向 SDK 注册 Service 本身不会启动或销毁这些设施。详见 [部署说明](../../../deploy/README.md)。
 
 ## `createSandbox(config)` 与 `createRuntime(options)`
 

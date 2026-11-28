@@ -80,7 +80,7 @@ test('TaskPool owns one durable handoff warning at the persisted threshold witho
   const submitted=f.controller.snapshot().inputs.filter(row=>row.source==='handoff-warning');
   assert.equal(submitted.length,1);assert.equal(submitted[0].mode,'followUp');assert.equal(submitted[0].status,'accepted');
   const sent=[...transport.submissions.values()].filter(row=>row.input.includes(warning.notification_id));
-  assert.equal(sent.length,1);assert.match(sent[0].input,/停止扩展，保存已有文件和研究内容，再按真实结果 finish/);
+  assert.equal(sent.length,1);assert.match(sent[0].input,/Stop expanding work, save existing files and research content, then finish with the actual outcome/);
   await f.controller.tick();f.settle();await f.controller.flush();await f.controller.tick();
   assert.equal([...transport.submissions.values()].filter(row=>row.input.includes(warning.notification_id)).length,1);
   assert.equal(enqueues,1);assert.equal(signals,1);

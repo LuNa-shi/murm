@@ -10,7 +10,7 @@ import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
-import { readHarnessResult } from '../src/harnesses/shared/read-result.js';
+import { readHarnessResult } from '../src/harness/read-result.js';
 import { installNotesExample } from './fixtures/notes-installed-package.js';
 
 const execute = promisify(execFile);

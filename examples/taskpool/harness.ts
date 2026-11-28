@@ -1,15 +1,15 @@
 import { taskPoolCoordinationPermissions } from './coordination-permissions.js';
 import { createTaskPoolMissionService } from './mission-service.js';
-import { createRuntime } from '../../src/core/index.js';
-import { ServiceRegistry } from '../../src/core/services.js';
+import { createRuntime } from '@luna-shi/murm';
+import { ServiceRegistry } from '@luna-shi/murm';
 import { MurmError } from '../../src/errors.js';
-import { runWithReport } from '../../src/harnesses/shared/run-report.js';
+import { runWithReport } from '../../src/harness/run-report.js';
 import { createTaskPoolTaskService, taskPoolResearcherProfile } from './task-service.js';
 import { createTaskPoolPublicationServices } from './publication-services.js';
 import { createTaskPoolController } from './controller.js';
 import { createTaskPoolMathlibService } from './mathlib-service.js';
 
-export const TASKPOOL_WITHOUT_WORKSPACE_SAVE_PROMPT = '当前配置支持读取公开 Workspace 和发布 Material。请领取可通过这些能力完成的 Task，按照 Task 的真实完成条件提交结果。运行期间的私有文件只保留在 Agent 工作目录中。';
+export const TASKPOOL_WITHOUT_WORKSPACE_SAVE_PROMPT = 'The current configuration supports reading the public Workspace and publishing Material. Take Tasks that can be completed with these capabilities, and submit results according to their actual completion conditions. Private files remain only in the Agent working directory during the run.';
 
 /** Trusted host entry point. Domain stores remain caller-owned and readable. */
 export async function runTaskPoolHarness({sandbox, executor, models, connection, filePolicy,model,image,prompt='',

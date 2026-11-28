@@ -62,13 +62,13 @@ export MURM_MODEL_TOKEN="sk-..."
 
 # 4. Run a built-in Harness against your project
 cd my-project
-murm --harness subagents --prompt "Fix the parser and add tests"
+murm --harness subagents --output-dir ../murm-runs --prompt "Fix the parser and add tests"
 
 # 5. Inspect timelines, model exchanges, and artifacts in the built-in Trace Viewer
-murm trace --root ./subagents-runs --port 8787
+murm trace --root ../murm-runs --port 8787
 ```
 
-`Subagents`, `TaskPool`, `Notes`, and `Messages` default to the versioned Worker image for the selected executor. Override it with `MURM_WORKER_IMAGE` when using a custom image. Use `--harness` to select any built-in (`subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes`, `messages`), a local ESM module, or an installed package. In `--mode rpc`, tasks arrive over JSONL with live `status` and `stop` control.
+The built-in project Harnesses default to the versioned Worker image for the selected executor. Override it with `MURM_WORKER_IMAGE` when using a custom image. Use `--harness` to select any built-in (`subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes`, `messages`), a local ESM module, or an installed package. In `--mode rpc`, tasks arrive over JSONL with live `status` and `stop` control.
 
 ## Build with the TypeScript SDK
 
@@ -81,7 +81,7 @@ npm install --ignore-scripts /path/to/luna-shi-murm-0.2.0.tgz
 Import Runtime, Service and Sandbox Provider APIs from `@luna-shi/murm`.
 
 - Core building blocks & Swarm tutorial: [Sandboxes](docs/en/sandbox.md) · [Runtime](docs/en/runtime.md) · [Agents](docs/en/agents.md) · [Host Gateway](docs/en/gateway.md) · [Services](docs/en/services.md) · [Build a Swarm Harness](docs/en/build-your-harness.md)
-- Minimal runnable two-Agent script: [`examples/bridge-services/handoff.ts`](examples/bridge-services/handoff.ts)
+- Minimal runnable two-Agent script: [`examples/messages/handoff.ts`](examples/messages/handoff.ts)
 - Exact signatures, CLI flags, and types: [API Reference](docs/en/reference/api.md) · [CLI Reference](docs/en/reference/cli.md) · [Types & Source Map](docs/en/reference/types.md)
 
 ## Built-in Harnesses
@@ -96,6 +96,8 @@ The repository includes five substantial Harnesses sharing the same Runtime with
 | **Substrate** | A fixed peer pool publishes, searches, reads, and cites immutable contributions (with optional Lean/FATE checking). | [Guide](docs/en/harnesses/substrate.md) · [Example](examples/substrate/README.md) |
 | **Lead-Worker** | A lead and fixed or dynamic helpers coordinate through a Board and retain deliveries in Git. | [Guide](docs/en/harnesses/lead-worker.md) · [Example](examples/lead-worker/README.md) |
 
+See [example dependencies and ownership](examples/README.md) and [common deployment](deploy/README.md) for the services each mechanism needs.
+
 Compare mechanisms in [Choose a Harness](docs/en/harnesses/index.md) or write your own in [Build Your Own Harness](docs/en/build-your-harness.md).
 
 ## Built-in Trace Viewer
@@ -103,7 +105,7 @@ Compare mechanisms in [Choose a Harness](docs/en/harnesses/index.md) or write yo
 Inspect saved or live Run timelines, Service handoffs, model exchanges, and exported artifacts in a local browser UI bundled inside `@luna-shi/murm` (zero extra dependencies):
 
 ```sh
-murm trace --root ./subagents-runs --port 8787
+murm trace --root ../murm-runs --port 8787
 ```
 
 When started inside an SSH session, `murm trace` prints the matching `ssh -N -L` port-forwarding command automatically. See the [Trace Viewer guide](docs/operations/trace-viewer.md).
@@ -112,7 +114,7 @@ When started inside an SSH session, `murm trace` prints the matching `ssh -N -L`
 
 - **Latest release (`v0.2.0`)**: [What's New](docs/en/latest.md) · [最新版本特性 (中文)](docs/zh/latest.md) · [GitHub Release](https://github.com/LuNa-shi/murm/releases/tag/v0.2.0)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md) · [Website Changelog](docs/en/changelog.md) · [更新日志 (中文)](docs/zh/changelog.md)
-- **Architecture & research**: [Architecture Manual](docs/architecture/INDEX.md) · [Research Context](docs/PROJECT.md) · [ProgramBench Pastel](benchmarks/programbench-pastel/README.md) · [PutnamBench TaskPool](benchmarks/putnambench-taskpool/README.md) · [Experiment Reports](docs/experiments/INDEX.md)
+- **Architecture & research**: [Architecture Manual](docs/architecture/INDEX.md) · [Research Context](docs/PROJECT.md) · [ProgramBench Pastel](benchmarks/programbench-pastel/README.md) · [PutnamBench TaskPool](benchmarks/putnambench-taskpool/README.md)
 
 ## Contributing & developing from source
 

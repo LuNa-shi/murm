@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS runtime_model_policies (
 
 ### Mission submission coordinator
 
-Source: [src/runtime/mission-submission.ts](../../src/runtime/mission-submission.ts); source SHA-256: `6e50760e9fc8aaf9983a0a3c4aebd3ff26a2dd1602f69807aede5b369151fc77`.
+Source: [src/runtime/mission-submission.ts](../../src/runtime/mission-submission.ts); source SHA-256: `989093177d6454dad76bf46f036b587ee9c553cc7020f01eb16d159fcdb981a4`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_final_check_policies (
