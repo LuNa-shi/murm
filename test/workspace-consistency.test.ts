@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
+import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
 import { MurmError } from '../src/errors.js';
 const run = promisify(execFile);
 
@@ -127,7 +127,7 @@ test('SIGKILL after ref update releases the writer and recovers the original mer
     const workspace = new MissionWorkspace({ rootDir: process.argv[2], fault: stage => { if (stage === 'after_ref') process.kill(process.pid, 'SIGKILL'); } });
     await workspace.merge({ workspaceId: 'workspace-test', fromRevision: process.argv[3], requestId: 'merge:killed' });
   `;
-  await assert.rejects(run(process.execPath, ['--input-type=module', '-e', script, new URL('../src/runtime/mission-workspace.js', import.meta.url).href, root, source.revision]), error => error.signal === 'SIGKILL');
+  await assert.rejects(run(process.execPath, ['--input-type=module', '-e', script, new URL('../examples/taskpool/services/workspace/mission-workspace.js', import.meta.url).href, root, source.revision]), error => error.signal === 'SIGKILL');
   const recovered = new MissionWorkspace({ rootDir: root });
   let current;
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -184,7 +184,7 @@ test('another coordinator cannot run the same request checker while its owner is
       console.log(JSON.stringify({ result }));
     } catch (error) { console.log(JSON.stringify({ code: error.code, message: error.message, retryable: error.retryable })); }
   `;
-  const args = ['--input-type=module', '-e', script, new URL('../src/runtime/mission-workspace.js', import.meta.url).href, root, source.revision];
+  const args = ['--input-type=module', '-e', script, new URL('../examples/taskpool/services/workspace/mission-workspace.js', import.meta.url).href, root, source.revision];
   try {
     const busy = JSON.parse((await run(process.execPath, args)).stdout);
     assert.equal(busy.code, 'WORKSPACE_BUSY');
@@ -203,7 +203,7 @@ test('a lost checker attempt cannot select a newer main or charge its original r
     const store = new MissionWorkspace({ rootDir: process.argv[2] });
     await store.merge({ workspaceId: 'workspace-test', fromRevision: process.argv[3], requestId: 'merge:lost-checker', checker: async () => { process.kill(process.pid, 'SIGKILL'); } });
   `;
-  await assert.rejects(run(process.execPath, ['--input-type=module', '-e', script, new URL('../src/runtime/mission-workspace.js', import.meta.url).href, root, source.revision]), error => error.signal === 'SIGKILL');
+  await assert.rejects(run(process.execPath, ['--input-type=module', '-e', script, new URL('../examples/taskpool/services/workspace/mission-workspace.js', import.meta.url).href, root, source.revision]), error => error.signal === 'SIGKILL');
   await store.merge({ workspaceId, fromRevision: source.revision, requestId: 'merge:new-attempt' });
   await assert.rejects(store.merge({ workspaceId, fromRevision: source.revision, requestId: 'merge:lost-checker', checker: async () => assert.fail('old checker attempt must not rerun') }), { code: 'WORKSPACE_REQUEST_ABORTED' });
 });

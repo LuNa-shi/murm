@@ -3,17 +3,17 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createTaskPoolStores } from './taskpool-task-stores.js';
 import { controls, transport } from './taskpool-controller-backend.js';
 
 // Only provider execution is controlled. Core, authenticated Bridge, Agent CLI,
 // TaskPool preparation, directed input and domain/physical close run normally.
 registerHooks({ resolve(specifier, context, next) {
-  if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) {
+  if (specifier === './sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) {
     return { url: new URL('./taskpool-controller-backend.js', import.meta.url).href, shortCircuit: true };
   }
   return next(specifier, context);
 } });
+const { createTaskPoolStores } = await import('./taskpool-task-stores.js');
 transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
 transport.next = function accept(id) { transport.confirm(id, 'started'); transport.next = accept; };
 const outputDir = process.env.FOREGROUND_TEST_OUTPUT;

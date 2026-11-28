@@ -1,8 +1,6 @@
 import { createHash } from 'node:crypto';
 import { runSubagentsHarness } from './main.js';
-import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
-import { projectError, ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
-import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
+import { type ProjectHarness, ProjectPreflightError, observeProjectRuntime, projectConfiguration, projectResult } from '@luna-shi/murm';
 
 const subagents = {
   id: 'subagents',
@@ -27,7 +25,7 @@ const subagents = {
           context.registerInput(async (input, { requestId }) => {
             const text = typeof input === 'string' ? input :
               input && typeof input === 'object' && 'text' in input ? input.text : undefined;
-            if (typeof text !== 'string' || !text.trim()) throw projectError('INVALID_HARNESS_INPUT', 'Expected non-blank text');
+            if (typeof text !== 'string' || !text.trim()) throw Object.assign(new TypeError('Expected non-blank text'), { code: 'INVALID_HARNESS_INPUT' });
             const id = createHash('sha256').update(requestId).digest('hex');
             return JSON.parse(JSON.stringify(await harness.input(text, `rpc:${id}`)));
           });

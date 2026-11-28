@@ -4,8 +4,8 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/core/services.js';
-import { createLeadWorkerGit, prepareLeadWorkerGit } from '../src/harnesses/lead-worker/git.js';
-import { createOwnedResources } from '../src/harnesses/peermesh/resources.js';
+import { createLeadWorkerGit, prepareLeadWorkerGit } from '../examples/lead-worker/harness/git.js';
+import { createOwnedResources } from '../src/harness/owned-resources.js';
 
 async function server(t, callback) {
   const server = createServer(async (request, response) => {

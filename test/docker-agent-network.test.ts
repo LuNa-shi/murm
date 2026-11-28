@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AGENT_UID } from '../scripts/sandbox-project.js';
-import { DockerAgentNetwork } from '../src/runtime/docker-agent-network.js';
-import { openSandboxAgentKey, openSandboxMissionKey } from '../src/runtime/opensandbox-metadata.js';
+import { DockerAgentNetwork } from '../src/core/sandbox/docker-agent-network.js';
+import { openSandboxAgentKey, openSandboxMissionKey } from '../src/core/sandbox/opensandbox-metadata.js';
 
 const agent = { agent_id: 'agent:1', mission_id: 'mission:1', resource_key: 'agent:1' };
 const sandboxId = 'sandbox-identity';

@@ -1,0 +1,9 @@
+{
+  "extends": "../../../../tsconfig.json",
+  "include": [],
+  "files": [
+    "start-service-host.ts",
+    "start-context-service-peer.ts",
+    "start-judge-service-peer.ts"
+  ]
+}

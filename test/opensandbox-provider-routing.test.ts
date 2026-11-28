@@ -2,8 +2,8 @@ import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { test, type TestContext } from 'node:test';
-import { claimOpenSandboxBackend, openOpenSandboxBackend } from '../src/core/opensandbox-backend.js';
-import { OpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
+import { claimOpenSandboxBackend, openOpenSandboxBackend } from '../src/core/sandbox/opensandbox-backend.js';
+import { OpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
 
 async function endpoint(t: TestContext, id: string, version: number) {
   const calls: string[] = [];

@@ -3,8 +3,8 @@ import test from 'node:test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
-import { readWorkspaceHistory, WORKSPACE_HISTORY_DIR } from '../src/runtime/workspace-repository.js';
+import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
+import { readWorkspaceHistory, WORKSPACE_HISTORY_DIR } from '../examples/taskpool/services/workspace/workspace-repository.js';
 
 const time = second => `2026-01-02T03:04:${String(second).padStart(2, '0')}.000Z`;
 

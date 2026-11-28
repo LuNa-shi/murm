@@ -4,14 +4,14 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { ContextService } from '../src/context/context-service.js';
-import { JudgeService } from '../src/judge/judge-service.js';
-import { LeanChecker } from '../src/judge/lean-adapter.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
-import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
-import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
-import { TaskService } from '../src/task/task-service.js';
-import { prepareTaskPoolInputs } from '../examples/taskpool/prepare-inputs.js';
+import { ContextService } from '../examples/taskpool/services/material/context-service.js';
+import { JudgeService } from '../examples/taskpool/services/judge/judge-service.js';
+import { LeanChecker } from '../examples/taskpool/services/judge/lean-adapter.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
+import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
+import { WorkspaceManager } from '../examples/taskpool/services/workspace/workspace-manager.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { prepareTaskPoolInputs } from '../examples/taskpool/harness/prepare-inputs.js';
 
 const checkerIdentity = { checker_ref: 'lean', checker_version: 'test', environment_ref: 'test-project' };
 const initialFiles = {

@@ -6,13 +6,13 @@ import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { transport, controls } from './fixtures/taskpool-controller-backend.js';
 const hooks = registerHooks({ resolve(specifier, context, next) {
-  if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/taskpool-controller-backend.js', import.meta.url).href, shortCircuit: true };
+  if (specifier === './sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/taskpool-controller-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { runForegroundHarness } = await import('../src/harnesses/shared/foreground-host.js'); hooks.deregister();
+const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
+const { runForegroundHarness } = await import('../src/cli/foreground-harnesses.js'); hooks.deregister();
 
 test('flat foreground input uses the current controller Task binding and stops with domain reconciliation', async t => {
   const root = await mkdtemp(join(tmpdir(), 'foreground-taskpool-'));

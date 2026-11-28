@@ -22,7 +22,7 @@ async function fixture(t, onPrompt = () => {}, routerOptions = {}) {
       ] };
     } }); provider.allowDeletion();
   const outputDir = await mkdtemp(join(tmpdir(), 'agensh-router-')); t.after(() => rm(outputDir, { recursive: true, force: true }));
-  const { createPeerMeshRouterHarness } = await import('../src/harnesses/peermesh/routed.js');
+  const { createPeerMeshRouterHarness } = await import('../examples/peermesh/harness/routed.js');
   harness = await createPeerMeshRouterHarness({ runId: 'router', image: 'fixture', outputDir, exportLimit: 1024 ** 2,
     ...runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 16 * 1024 ** 2, inodes: 2048 } } }),
@@ -215,7 +215,7 @@ test('actual Core input timeout preserves admission and cancels later batches wi
 });
 
 test('a busy project router steers DM and Board events once while keeping ordinary follow-up serial', async t => {
-  const { createPeerMeshRouter } = await import('../src/harnesses/peermesh/router.js');
+  const { createPeerMeshRouter } = await import('../examples/peermesh/harness/router.js');
   const kickoff = Promise.withResolvers();
   const entered = Promise.withResolvers();
   const calls = [];
@@ -257,7 +257,7 @@ test('a busy project router steers DM and Board events once while keeping ordina
 });
 
 test('settlement racing with a started steer waits for that execution before the next work batch', async t => {
-  const { createPeerMeshRouter } = await import('../src/harnesses/peermesh/router.js');
+  const { createPeerMeshRouter } = await import('../examples/peermesh/harness/router.js');
   const kickoff = Promise.withResolvers(), entered = Promise.withResolvers(), steerEntered = Promise.withResolvers();
   const steer = Promise.withResolvers();
   const calls = [];
@@ -292,7 +292,7 @@ test('settlement racing with a started steer waits for that execution before the
 });
 
 test('a steer with unknown receipt reuses its request identity and never becomes a second prompt', async t => {
-  const { createPeerMeshRouter } = await import('../src/harnesses/peermesh/router.js');
+  const { createPeerMeshRouter } = await import('../examples/peermesh/harness/router.js');
   const kickoff = Promise.withResolvers(), entered = Promise.withResolvers();
   const attempts = [];
   let runs = 0;

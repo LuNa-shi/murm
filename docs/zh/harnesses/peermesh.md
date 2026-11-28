@@ -5,7 +5,7 @@ section: 内置 Harness
 order: 13
 ---
 
-**PeerMesh**（`src/harnesses/peermesh/`）模拟一个 2–8 人的扁平研发小组，没有中心管理员，也不强行对任务加独占锁。每位成员拥有独立的 Gitea 与 Mattermost 账号、持久化会话和本地 Git 仓库：大家在共享任务板上登记自己正在处理的模块（`CLAIM`）、通过频道和私信商量分工、各自在个人分支开发并提 PR，最后由宿主机核验代码后再合入受保护的 `main`。
+**PeerMesh**（`examples/peermesh/harness/`）模拟一个 2–8 人的扁平研发小组，没有中心管理员，也不强行对任务加独占锁。每位成员拥有独立的 Gitea 与 Mattermost 账号、持久化会话和本地 Git 仓库：大家在共享任务板上登记自己正在处理的模块（`CLAIM`）、通过频道和私信商量分工、各自在个人分支开发并提 PR，最后由宿主机核验代码后再合入受保护的 `main`。
 
 ## 快速运行（CLI）
 
@@ -20,7 +20,7 @@ PeerMesh 会根据当前目录和提示词自动建立团队仓库与 Issue，�
 
 ## 1. 注册的 Services
 
-[src/harnesses/peermesh/services.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/services.ts) 为每次运行注册三个 Service，将容器身份精准绑定到该成员专属的外部账号，同时把管理员令牌严格留在宿主机：
+[examples/peermesh/services/services.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/services.ts) 为每次运行注册三个 Service，将容器身份精准绑定到该成员专属的外部账号，同时把管理员令牌严格留在宿主机：
 
 | Service | 支持的操作 | 用途 |
 | --- | --- | --- |
@@ -45,11 +45,11 @@ swarm gitea pull_request_merge \
   --request-id merge-pr-3
 ```
 
-调用 `pull_request_merge` 时，[delivery.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/delivery.ts) 会在宿主侧核验调用者身份、仓库、PR 编号与固定的 `head_sha` 后再合入 `main`；若分支已更新导致 SHA 过期，会直接拒绝并要求重新验证。
+调用 `pull_request_merge` 时，[delivery.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/delivery.ts) 会在宿主侧核验调用者身份、仓库、PR 编号与固定的 `head_sha` 后再合入 `main`；若分支已更新导致 SHA 过期，会直接拒绝并要求重新验证。
 
 ## 2. 每成员串行 Router 与途中转向
 
-在 [team.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/team.ts) 和 [router.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/router.ts) 中，每位成员都有一个专属串行 Router。事件订阅轮询 Mattermost 和 Gitea，成功的 Board 写入也会追加通知，Router 将这些事件投递到成员的持久化 Pi 会话中（其中的 `runInput` 是仓库共用的单轮执行辅助函数 `src/harnesses/shared/run-input.ts`）。下面节选项目运行配置，完整工厂还会安装故障处理与关闭逻辑：
+在 [team.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/team.ts) 和 [router.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/router.ts) 中，每位成员都有一个专属串行 Router。事件订阅轮询 Mattermost 和 Gitea，成功的 Board 写入也会追加通知，Router 将这些事件投递到成员的持久化 Pi 会话中（其中的 `runInput` 是仓库共用的单轮执行辅助函数 `src/harness/run-input.ts`）。下面节选项目运行配置，完整工厂还会安装故障处理与关闭逻辑：
 
 ```ts
 const router = createPeerMeshRouter({
@@ -128,8 +128,8 @@ node dist/scripts/read-harness-result.js \
 
 ## 源码索引
 
-- 团队装配与生命周期：[src/harnesses/peermesh/team.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/team.ts)
-- 每成员串行 Router、途中 steer 与提醒：[src/harnesses/peermesh/router.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/router.ts)
-- Service 封装（`peermesh-context`、`message`、`gitea`）：[src/harnesses/peermesh/services.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/services.ts)
-- 宿主 PR 合并校验与主干导出：[src/harnesses/peermesh/delivery.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/peermesh/delivery.ts)
+- 团队装配与生命周期：[examples/peermesh/harness/team.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/team.ts)
+- 每成员串行 Router、途中 steer 与提醒：[examples/peermesh/harness/router.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/router.ts)
+- Service 封装（`peermesh-context`、`message`、`gitea`）：[examples/peermesh/services/services.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/services.ts)
+- 宿主 PR 合并校验与主干导出：[examples/peermesh/harness/delivery.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/delivery.ts)
 - 示例配置与指南：[examples/peermesh/config.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/config.ts) · [examples/peermesh/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/README.md)

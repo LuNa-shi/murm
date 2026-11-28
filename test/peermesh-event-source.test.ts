@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createPeerMeshEventSubscription } from '../src/harnesses/peermesh/event-source.js';
+import { createPeerMeshEventSubscription } from '../examples/peermesh/services/event-source.js';
 
 test('real HTTP subscription baselines before readiness and routes stable external, mention and direct message identities without self echoes', async t => {
   let comments = [], posts = [], dms = []; const deliveries = [];

@@ -11,7 +11,7 @@ Now let's combine all six building blocks into a **real multi-agent Swarm** — 
 - **Two collaborative rounds**: round 1 gathers independent findings onto the board; round 2 keeps each Agent's session context alive while peers search each other's entries to fill gaps or challenge claims with explicit citations.
 - **1 synthesizer (`synthesizer`)**: read-only access to the board (`board: ['search']`) plus write access to its workspace; reads the team's collective findings and writes `report.md`, exported automatically via `Profile.collect`.
 
-Everything runs locally with **zero external databases or Git containers** once `murm setup` is done. The walkthrough below shows focused, annotated snippets; the complete runnable files are tucked at the end.
+Follow the source installation, setup, and model configuration in [Quickstart](quickstart.md). Keep the SDK tarball for the example below. The Swarm runs locally without an external database or Git service. The walkthrough shows key snippets, followed by the complete runnable files.
 
 ## Step 1: Write your shared board as a plain class (`board.ts`)
 
@@ -322,13 +322,12 @@ Trace Viewer shows all 3 parallel researcher swimlanes, their shared `board` cal
 <details>
 <summary>Expand complete runnable source files (strict TypeScript, ready to save and execute)</summary>
 
-Initialize a project and install `@luna-shi/murm`:
+Initialize a project and install `@luna-shi/murm` from the source tarball you built in Quickstart. Use the same shell so `pack_dir` is available, or set it to the absolute path of the directory containing the tarball.
 
 ```bash
 mkdir research-swarm && cd research-swarm
 npm init -y && npm pkg set type=module
-npm install --ignore-scripts --allow-remote=root \
-  https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+npm install --ignore-scripts "$pack_dir"/*.tgz
 ```
 
 ### Complete file 1: `board.ts`

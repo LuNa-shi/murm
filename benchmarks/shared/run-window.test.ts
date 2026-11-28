@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
-import { ResponsesBudgetGateway } from '../../dist/src/agent/responses-budget-gateway.js';
+import { ResponsesBudgetGateway } from '../../dist/src/core/model/responses-budget-gateway.js';
 import { createRunWindow } from './run-window.ts';
 
 const completion = 'data: ' + JSON.stringify({ type: 'response.completed',

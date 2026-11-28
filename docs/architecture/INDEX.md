@@ -29,8 +29,8 @@ Start with [00 System overview](00-overview.md). For an SDK application, continu
 | [13 Private history](13-historical-resume.md) | Which service row journals and Workspace publication records remain, and what recovery paths are no longer provided? |
 | [18 PeerMesh](18-peermesh-harness.md) | How do peer accounts, messages, Board work, Git integration and shutdown compose? |
 | [19 Substrate](19-substrate-harness.md) | How do fixed peers publish, search and reuse contributions? How do generic and FATE configurations differ? |
-| [20 Lead-Worker](20-lead-worker-harness.md) | How does the fixed lead/helper team use Board transactions, direction, feedback and Git deliveries? |
-| [21 Historical acceptance boundary](21-hour-matrix.md) | Where is version-bound long-run evidence retained, and which current paths replace retired acceptance runners? |
+| [20 Lead-Worker](20-lead-worker-harness.md) | How do fixed and dynamic lead/helper teams use Board transactions, direction, feedback, scoped management and Git deliveries? |
+| [21 Native acceptance and benchmark registration](21-hour-matrix.md) | Where is version-bound evidence retained, and how do current formal benchmarks enforce private registration and pinned source/image checks? |
 
 Subagents is explained in chapter 17 and its [user guide](../en/harnesses/subagents.md). The [five-Harness comparison](../en/harnesses/index.md) is the short route for choosing a mechanism.
 
@@ -50,13 +50,15 @@ For a runtime flow, explain its entry point, callers, inputs and defaults, guard
 
 The prompt reference includes repository-controlled text and the conditions under which it is composed and sent. Future task input, external Service content and executor/provider internals are not fixed repository templates. A composed snapshot or prompt hash does not establish the complete conversation of a particular Run.
 
-Generated references and fingerprints are coverage aids. They reproduce code-controlled facts and identify source bytes; they do not prove semantic completeness, successful model execution or scientific progress. Acceptance evidence stays in the relevant Issue/PR, and historical results stay in their versioned [experiment reports](../experiments/INDEX.md).
+Generated references and fingerprints are coverage aids. They reproduce code-controlled facts and identify source bytes; they do not prove semantic completeness, successful model execution or scientific progress. Acceptance evidence stays in the relevant Issue/PR, and historical results stay in their fixed-revision [experiment reports](https://github.com/LuNa-shi/murm/blob/207be6356c16e5fb60c4b3c5b236d7a98383f991/docs/experiments/INDEX.md).
 
 ## Current architecture and future changes
 
 Current behavior is maintained here and in the user guides. Human-approved Issues and explicit user instructions define intended changes and their acceptance. A linked design describes a future target until implementation and validation establish it. The [dynamic Lead-Worker design](../designs/dynamic-lead-worker.md) describes the target requirements. The [implemented dynamic and project paths](20-lead-worker-harness.md) document the current enablement and permissions.
 
 Superseded phase plans and migration requirements are retained in Git history, rather than beside this manual as competing current contracts. Documentation cleanup does not change an ongoing Issue's approved acceptance or resource budget.
+
+The [repository migration](../designs/repository-layout.md) records the ownership changes and acceptance scope. The five applications use the [public Harness author contract](23-project-harness.md#authoring-an-example) and own their concrete coordination and Services under `examples/`. See the [example index](../../examples/README.md) and [deployment guide](../../deploy/README.md) for their required facilities.
 
 ## Updating and checking the manual
 

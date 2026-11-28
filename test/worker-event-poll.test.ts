@@ -62,7 +62,7 @@ test('wake during a pending read requests another read once, and stopping aborts
 
 test('a bounded Worker history request times out at the transport and is abortable by its owner', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const { createOpenSandboxManager } = await import('../src/runtime/opensandbox-manager.js');
+  const { createOpenSandboxManager } = await import('../src/core/sandbox/opensandbox-manager.js');
   let active = 0;
   const manager = createOpenSandboxManager({
     lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',

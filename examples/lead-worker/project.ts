@@ -1,9 +1,9 @@
-import { createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@luna-shi/murm';
-import { runLeadWorker } from '../../src/harnesses/lead-worker/index.js';
-import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
-import { ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
-import { checkGitProject } from '../../src/harnesses/shared/project-git.js';
-import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
+import {
+  createSandbox, type CreateRuntimeOptions, type SandboxConfig, type ProjectHarness,
+  ProjectPreflightError, checkGitProject, observeProjectRuntime, projectConfiguration,
+  projectResult,
+} from '@luna-shi/murm';
+import { runLeadWorker } from './harness/index.js';
 import { deployDynamicContainer } from './dynamic-container.js';
 import { leadWorkerConfig } from './project-config.js';
 

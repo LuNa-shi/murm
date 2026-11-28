@@ -1,13 +1,13 @@
-import { createProjectHost, failureCode, loadProjectHarness } from '../src/harnesses/shared/project-harness.js';
-import { resolveHarnessInput } from '../src/harnesses/shared/project-input.js';
-import { runProjectRpc } from '../src/harnesses/shared/project-rpc.js';
+import { createProjectHost, failureCode, loadProjectHarness } from '../src/harness/project-harness.js';
+import { resolveHarnessInput } from '../src/harness/project-input.js';
+import { runProjectRpc } from '../src/harness/project-rpc.js';
 import type { ProjectCommand } from './murm-arguments.js';
 
 const builtins = {
   'lead-worker': new URL('../examples/lead-worker/project.js', import.meta.url).href,
   peermesh: new URL('../examples/peermesh/project.js', import.meta.url).href,
   notes: new URL('../examples/notes/project.js', import.meta.url).href,
-  messages: new URL('../examples/bridge-services/project.js', import.meta.url).href,
+  messages: new URL('../examples/messages/project.js', import.meta.url).href,
   taskpool: new URL('../examples/taskpool/project.js', import.meta.url).href,
   substrate: new URL('../examples/substrate/project.js', import.meta.url).href,
   subagents: new URL('../examples/subagents/project.js', import.meta.url).href,

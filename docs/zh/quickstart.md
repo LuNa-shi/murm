@@ -61,6 +61,8 @@ npm install -g --prefix "$HOME/.local" --ignore-scripts "$pack_dir"/*.tgz
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+如果要在[独立示例项目](../../examples/README.md)中使用同一份 SDK，请保留生成的候选版 tarball。
+
 ## 2. 初始化 OpenSandbox 并构建 Worker
 
 ```bash

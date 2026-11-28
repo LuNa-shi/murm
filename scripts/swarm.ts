@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
-import { runSwarmCli } from '../src/cli/swarm-cli.js';
+import { createSwarmCli } from '../src/cli/swarm-cli.js';
+import { taskPoolCommands } from '../examples/taskpool/cli.js';
+
+const { runSwarmCli } = createSwarmCli(taskPoolCommands);
 
 try {
   process.exitCode = await runSwarmCli();

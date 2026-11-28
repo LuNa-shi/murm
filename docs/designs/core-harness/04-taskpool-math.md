@@ -2,7 +2,7 @@
 
 [总览](README.md) · [Harness §6](02-harness.md#6-flat) · [执行票 #200](https://github.com/LuNa-shi/SwarmEnv/issues/200)
 
-本修订承接上一轮延后的生产文件保存，恢复原版 [`fcbe0107`](https://github.com/LuNa-shi/SwarmEnv/commit/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e) 的数学协作行为。迁移后对照基线为 [`ce3e503`](https://github.com/LuNa-shi/SwarmEnv/commit/ce3e503ba534d2b9cf42423aa0cdcdcc80766828)。[审核文档](https://github.com/LuNa-shi/SwarmEnv/blob/c840828cdcda16c565e6a6a3a19298b0a55f1204/docs/reviews/flat-formalization-comparison.md) 保留逐项差距及历史证据。本修订合入后约束 #200 的数学交付，历史范围与验收记录按各自固定版本解释。
+本修订承接上一轮延后的生产文件保存，恢复原版 [`fcbe0107`](https://github.com/LuNa-shi/SwarmEnv/commit/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e) 的数学协作行为。迁移后对照基线为 [`ce3e503`](https://github.com/LuNa-shi/SwarmEnv/commit/ce3e503ba534d2b9cf42423aa0cdcdcc80766828)。[审核文档](https://github.com/LuNa-shi/SwarmEnv/blob/c840828cdcda16c565e6a6a3a19298b0a55f1204/docs/reviews/flat-formalization-comparison.md) 保留逐项差距及历史证据。该修订记录 #200 的数学交付合同，历史范围与验收记录按各自固定版本解释。当前实现见 [TaskPool 执行](../../architecture/02-execution.md)，剩余验收留在 #200；后续明确变更按[总览](README.md)衔接。
 
 ## 普通入口
 

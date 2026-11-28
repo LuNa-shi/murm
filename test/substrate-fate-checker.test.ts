@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createFateChecker, loadFateProject } from '../examples/substrate/fate-checker.js';
-import { prepareFate } from '../examples/substrate/fate-run.js';
+import { createFateChecker, loadFateProject } from '../benchmarks/fate/fate-checker.js';
+import { prepareFate } from '../benchmarks/fate/fate-run.js';
 
 const projectRoot = process.env.MURM_FATE_TEST_PROJECT;
 const leanRoot = process.env.MURM_FATE_TEST_LEAN;

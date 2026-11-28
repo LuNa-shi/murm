@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline';
 import { DatabaseSync } from 'node:sqlite';
-import { execute, installNotesExample } from './fixtures/notes-installed-package.js';
+import { execute, installNotesExample, stageInstalledTestFixtures } from './fixtures/notes-installed-package.js';
 
 const feedback = taskId => ({ taskId, input: 'PRIVATE_FIXED_DIRECTION', requestId: 'fixed-direction', mode: 'steer' });
 
@@ -15,6 +15,7 @@ test('installed TaskPool CLI and headless host preserve the same directed Task b
   const installed = await installNotesExample();
   t.after(() => installed.close());
   const root = join(installed.directory, 'node_modules/@luna-shi/murm');
+  await stageInstalledTestFixtures(root);
   const config = join(root, 'dist/test/fixtures/foreground-taskpool-configuration.js');
   const cliOutput = join(installed.directory, 'cli-flat');
   const headlessOutput = join(installed.directory, 'headless-flat');
@@ -52,7 +53,7 @@ test('installed TaskPool CLI and headless host preserve the same directed Task b
   await writeFile(entry, `
 import configuration from ${JSON.stringify(pathToFileURL(config).href)};
 import {readFile} from 'node:fs/promises';
-const {runForegroundHarness}=await import(${JSON.stringify(pathToFileURL(join(root, 'dist/src/harnesses/shared/foreground-host.js')).href)});
+const {runForegroundHarness}=await import(${JSON.stringify(pathToFileURL(join(root, 'dist/src/cli/foreground-harnesses.js')).href)});
 const records=[];
 const report=await runForegroundHarness(configuration,async host=>{
   records.push({type:'ready',status:await host.status()});

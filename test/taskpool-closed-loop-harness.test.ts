@@ -7,17 +7,17 @@ import { dirname, join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
-import { makeEnvelope, stableStringify } from '../src/protocol/envelope.js';
-import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { transport, controls } from './fixtures/taskpool-controller-backend.js';
 
 const hooks = registerHooks({ resolve(specifier, context, next) {
-  if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) {
+  if (specifier === './sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) {
     return { url: new URL('./fixtures/taskpool-controller-backend.js', import.meta.url).href, shortCircuit: true };
   }
   return next(specifier, context);
 } });
-const { runTaskPoolHarness } = await import('../examples/taskpool/harness.js');
+const { makeEnvelope, stableStringify } = await import('../examples/taskpool/persistence/envelope.js');
+const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
+const { runTaskPoolHarness } = await import('../examples/taskpool/harness/harness.js');
 hooks.deregister();
 const execute = promisify(execFile);
 const hash = value => createHash('sha256').update(value).digest('hex');

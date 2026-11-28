@@ -5,9 +5,9 @@ import { basename, join } from 'node:path';
 import { createRuntime, createSandbox, ServiceRegistry, type RuntimeEvent, type CloseReceipt,
   type FilePolicy, type ModelConfig, type PendingCleanup, type Runtime, type RuntimeConnectionOptions, type SandboxConfig } from '../src/core/index.js';
 import { createLocalSetupUpstream, SETUP_CONTINUATION, SETUP_CONTINUED, SETUP_MARKER, SETUP_READ, SETUP_RESULT } from './local-setup-upstream.js';
-import { selectExecutorDriver } from '../src/core/executor-driver.js';
+import { selectExecutorDriver } from '../src/core/sandbox/executor-driver.js';
 import type { ExecutorSelection } from '../src/core/executor-adapter.js';
-import type { ModelProtocol } from '../src/core/model-transport.js';
+import type { ModelProtocol } from '../src/core/model/model-transport.js';
 
 export interface LocalSmokeOptions {
   image: string;

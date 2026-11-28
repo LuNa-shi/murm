@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { makeEnvelope } from '../src/protocol/envelope.js';
-import { MurmError, ERROR_CODES } from '../src/errors.js';
-import { TaskService } from '../src/task/task-service.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
+import { MurmError, ERROR_CODES } from '../examples/taskpool/errors.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
 
 function env() {
   const service = new TaskService(new DatabaseSync(':memory:'));

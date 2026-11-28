@@ -5,13 +5,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
-import { createTaskPoolPublicationServices } from '../examples/taskpool/publication-services.js';
+import { createTaskPoolPublicationServices } from '../examples/taskpool/services/workspace/publication-services.js';
 import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/core/services.js';
-import { completeDigest, decodeFileSeed } from '../scripts/core-file-seed.js';
+import { completeDigest, decodeFileSeed } from '../src/core/files/core-file-seed.js';
 import { createHash } from 'node:crypto';
-import { prepareTaskPoolInputs } from '../examples/taskpool/prepare-inputs.js';
+import { prepareTaskPoolInputs } from '../examples/taskpool/harness/prepare-inputs.js';
 import { MurmError } from '../src/errors.js';
-import { stableStringify, makeEnvelope } from '../src/protocol/envelope.js';
+import { stableStringify, makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 
 async function fixture(t, options = {}) {
   const root = await mkdtemp(join(tmpdir(), 'taskpool-publication-'));

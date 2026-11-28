@@ -30,6 +30,16 @@ flowchart TD
 
 The public package entry is `@luna-shi/murm`. It supplies Sandbox and Runtime assembly, Service author interfaces and public types. The [Core chapter](15-core-runtime.md) describes each contract.
 
+## Repository layout and application ownership
+
+The public SDK is implemented in `src/core/`. Shared project capture, host/RPC, reporting and resource helpers live in `src/harness/`; these are private implementation support, not a collection of built-in collaboration policies. The five mechanism applications live in `examples/subagents`, `examples/taskpool`, `examples/peermesh`, `examples/substrate` and `examples/lead-worker`. PeerMesh, Substrate and Lead-Worker keep their controllers and Services under their own `harness/` directories. Subagents and TaskPool keep the corresponding modules directly in their example directories.
+
+The `murm --harness` names are CLI aliases for those ordinary example modules. The same loader can select a local module or installed package. The aliases do not make TaskPool, a Board, or another example's Services part of Core. The older TaskPool/PeerMesh foreground dispatch lives in `src/cli/foreground-harnesses.ts`, separate from common host support. `examples/messages` and `examples/notes` are smaller Service tutorials; `examples/services` holds optional integration examples.
+
+Shared deployment under `deploy/` prepares OpenSandbox and the Worker image. Each Runtime starts its own Bridge, Model Gateway and built-in `agent` Service without another container. Examples assemble their own in-process Services and explicitly configured external facilities. Mathlib Search belongs to `examples/services/mathlib-search` and is optional for Lean workloads; it is unrelated to PeerMesh's MySQL Board database. [Deployment ownership](../../deploy/README.md) and the [example index](../../examples/README.md) list the actual prerequisites.
+
+The five collaboration examples compile against the package root and run through their own `project.js` or a bundled CLI alias. TaskPool owns its domain stores and compatibility modules. The common host handles entry loading and project capture, and each example composes its Runtime and Services. See the [author contract](23-project-harness.md#authoring-an-example) and [deployment ownership](../../deploy/README.md).
+
 ## One complete Run
 
 ### 1. The host assembles the application
@@ -40,7 +50,7 @@ A Service can be a local function, an HTTP JSON v2 endpoint, or a custom adapter
 
 ### 2. The Runtime prepares each Agent
 
-`spawn` validates a named Profile and a request ID, reserves a Slot, then asks the backend to allocate the Sandbox and initialize the executor. Host-supplied files or workspace settings are applied through controlled paths. Startup prepares the Service CLI, model route and selected executor's instructions. The current backend supports the local Docker-backed OpenSandbox deployment; Pi and Codex have different capabilities.
+`spawn` validates a named Profile and a request ID, reserves a Slot, then asks the backend to allocate the Sandbox and initialize the executor. Host-supplied files or workspace settings are applied through controlled paths. Startup prepares the Service CLI, model route and selected executor's instructions. The default backend connects to OpenSandbox through its API, including an existing reachable deployment. A trusted Sandbox Provider can supply a different integration. Strict same-host Docker isolation is optional; executor capabilities are checked independently.
 
 A successful spawn receipt identifies a ready Agent. Startup can have an uncertain outcome if the host's wait expires after work began. The original Runtime retains the request and resource identity for reconciliation. Retrying with a fresh identity may create another Agent. [Backend](16-pi-opensandbox-backend.md) covers allocation, guest startup and failure cleanup.
 
@@ -72,12 +82,12 @@ Core close stops admission and tracks in-flight work. Agent cleanup and endpoint
 | TaskPool | Exclusive Task take, Execution ownership, Materials, versioned Workspace and final Mission checks. | [Execution](02-execution.md), [Mission/Task](03-mission-task.md), [Workspace](05-workspace-continuity.md) |
 | PeerMesh | Peer identities, Board, communication and Git integration. | [PeerMesh](18-peermesh-harness.md) |
 | Substrate | Fixed peers, contribution publication, search, reading and reuse evidence. | [Substrate](19-substrate-harness.md) |
-| Lead-Worker | A fixed lead/helper team, Board transactions, feedback and Git deliveries. | [Lead-Worker](20-lead-worker-harness.md) |
+| Lead-Worker | A fixed or dynamic lead/helper team, Board transactions, feedback and Git deliveries. | [Lead-Worker](20-lead-worker-harness.md) |
 
 The retained domain Runtime and TaskPool-specific mechanisms are documented in chapters 01–07. They remain callable implementation paths and must not be confused with mandatory Core objects. Historical timestamp resume, old benchmark assembly and removed schemas are described only where needed to explain retained records; they are not current SDK features.
 
 ## Current implementation and evidence
 
-This manual follows the source inventory in [source-map.json](source-map.json). Generated references reproduce prompt, Service, storage and type declarations; they do not prove every branch has been executed. Issues and PRs preserve acceptance evidence, while [experiments](../experiments/INDEX.md) retain the settings and results of their own revisions.
+This manual follows the source inventory in [source-map.json](source-map.json). Generated references reproduce prompt, Service, storage and type declarations; they do not prove every branch has been executed. Issues and PRs preserve acceptance evidence, while [experiments](https://github.com/LuNa-shi/murm/blob/207be6356c16e5fb60c4b3c5b236d7a98383f991/docs/experiments/INDEX.md) retain the settings and results of their own revisions.
 
-The [known boundaries](09-known-boundaries.md) belong to the current contract. The [dynamic Lead-Worker design](../designs/dynamic-lead-worker.md) remains a future extension tracked by its Issue; its registration and access APIs are not available in this Runtime.
+The [known boundaries](09-known-boundaries.md) belong to the current contract. The [dynamic Lead-Worker design](../designs/dynamic-lead-worker.md) records the approved acceptance requirements. Runtime registration and access APIs and the optional dynamic Harness are implemented; [the Lead-Worker chapter](20-lead-worker-harness.md#dynamic-orders-mode) explains their scope, trusted deployment and remaining evidence requirements.

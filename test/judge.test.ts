@@ -5,12 +5,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ERROR_CODES, MurmError } from '../src/errors.js';
-import { JudgeService } from '../src/judge/judge-service.js';
-import { LeanChecker } from '../src/judge/lean-adapter.js';
-import { agentCheckResult } from '../src/judge/check-result.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
-import { validateFixtureManifest, createFixtureManifest } from '../src/judge/fixture.js';
+import { ERROR_CODES, MurmError } from '../examples/taskpool/errors.js';
+import { JudgeService } from '../examples/taskpool/services/judge/judge-service.js';
+import { LeanChecker } from '../examples/taskpool/services/judge/lean-adapter.js';
+import { agentCheckResult } from '../examples/taskpool/services/judge/check-result.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
+import { validateFixtureManifest, createFixtureManifest } from '../examples/taskpool/services/judge/fixture.js';
 
 const fixtureSource = 'theorem fixture_truth : True := by trivial\n';
 

@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
-import { verifySubstrateCollaboration } from '../src/harnesses/substrate/collaboration-evidence.js';
+import { verifySubstrateCollaboration } from '../examples/substrate/harness/collaboration-evidence.js';
 const execute = promisify(execFile);
 
 test('host checkpoints verify durable search, visit, citation and reads after confirmed publisher stop', async t => {
@@ -22,7 +22,7 @@ test('host checkpoints verify durable search, visit, citation and reads after co
   const starts = [];
   const provider = await createLifecycleProvider(t, { onStart: body => starts.push(body) }); provider.allowDeletion();
   const { createRuntime } = await import('@luna-shi/murm');
-  const { createSubstrateService } = await import('../src/harnesses/substrate/substrate.js');
+  const { createSubstrateService } = await import('../examples/substrate/services/substrate.js');
   substrate = createSubstrateService({ databasePath: join(directory, 'substrate.sqlite'), runId: 'evidence' });
 
   const backend = runtimeSettings({ sandbox: { lifecycleBaseUrl: provider.url },

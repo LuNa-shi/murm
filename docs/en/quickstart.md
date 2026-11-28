@@ -61,6 +61,8 @@ npm install -g --prefix "$HOME/.local" --ignore-scripts "$pack_dir"/*.tgz
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+Keep the candidate tarball if you want to install the same SDK in an [independent example project](../../examples/README.md).
+
 ## 2. Set up OpenSandbox & build the Worker
 
 ```bash

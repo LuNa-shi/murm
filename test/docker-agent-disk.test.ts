@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DockerAgentDisk } from '../src/runtime/docker-agent-disk.js';
-import { openSandboxAgentKey, openSandboxMissionKey } from '../src/runtime/opensandbox-metadata.js';
+import { DockerAgentDisk } from '../src/core/sandbox/docker-agent-disk.js';
+import { openSandboxAgentKey, openSandboxMissionKey } from '../src/core/sandbox/opensandbox-metadata.js';
 
 const agent = { agent_id: 'agent:test', mission_id: 'mission:test', resource_key: 'agent:resource' };
 const sandboxId = 'test-sandbox';

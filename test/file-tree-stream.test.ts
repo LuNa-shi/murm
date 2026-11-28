@@ -3,7 +3,7 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { checkFileSpace, fileTreeFrames, receiveFileTree } from '../scripts/file-tree-stream.js';
+import { checkFileSpace, fileTreeFrames, receiveFileTree } from '../src/core/files/file-tree-stream.js';
 import { DEFAULT_FILE_POLICY } from '../src/core/file-policy.js';
 
 test('bounded tree transfers verify fragments and discard incomplete or invalid uploads', async t => {

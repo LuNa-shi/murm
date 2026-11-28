@@ -4,12 +4,12 @@ import { mkdtemp, copyFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { verifyClosedOrders } from '../examples/lead-worker/verify-orders.js';
+import { verifyClosedOrders } from '../benchmarks/lead-worker-orders/verify-orders.js';
 
 type OrdersInput = { stdin?: string; file?: string; args?: string[] };
 type OrdersTranscript = { status: number | null; stdout: string; stderr: string };
 
-const oracleUrl = new URL('../../examples/lead-worker/fixtures/oracle.mjs', import.meta.url);
+const oracleUrl = new URL('../../benchmarks/lead-worker-orders/fixtures/oracle.mjs', import.meta.url);
 const fixture = new URL('initial-project/orders.mjs', oracleUrl);
 const { verifyOrders } = await import(oracleUrl.href) as {
   verifyOrders(execute: (input: OrdersInput) => Promise<OrdersTranscript>): Promise<{

@@ -7,9 +7,9 @@ order: 10
 
 **Harness** 决定了多智能体团队怎么分工、怎么交换信息、以及什么时候算完成。
 
-`murm` 内置了**五种成熟的多智能体协作模板**（`Subagents`、`TaskPool`、`PeerMesh`、`Substrate`、`Lead-Worker`），外加两个轻量入门示例（`notes` 与 `messages`）。它们共用同一套沙箱、网关和轨迹观测底座，唯一区别在于协作服务和调度规则。
+`murm` 提供了**五种多智能体协作参考实现**（`Subagents`、`TaskPool`、`PeerMesh`、`Substrate`、`Lead-Worker`），外加两个轻量入门示例（`notes` 与 `messages`）。它们共用同一套沙箱、网关和轨迹观测底座，唯一区别在于协作服务和调度规则。
 
-> **使用方式**：安装 `@luna-shi/murm` 后即可直接运行 `murm --harness <名称>`；想按自己的业务改写或从零构建，请看 [实战：构建 Swarm Harness](../build-your-harness.md) 或参考仓库中的 `examples/` 与 `src/harnesses/` 源码。
+> **使用方式**：准备好所选示例的前置条件后，通过 `murm --harness <名称>` 选择内置 CLI 别名。每个别名加载对应 `examples/<名称>/` 目录中的普通模块。运行与改写入口见 [示例索引](../../../examples/README.md)；从零构建请看 [实战：构建 Swarm Harness](../build-your-harness.md)。
 
 ## 一条命令运行
 
@@ -20,7 +20,22 @@ cd my-project
 murm --harness subagents --prompt "修复解析器并补充测试"
 ```
 
-内置名称包括 `subagents`、`taskpool`、`peermesh`、`substrate`、`lead-worker`、`notes`、`messages`。其中 `subagents`、`taskpool`、`notes`、`messages` 配好模型环境变量就能直接跑；`peermesh`、`substrate`、`lead-worker` 需按对应文档配置外部服务（如 Gitea / Mattermost）。
+内置名称包括 `subagents`、`taskpool`、`peermesh`、`substrate`、`lead-worker`、`notes`、`messages`。OpenSandbox、兼容 Worker 镜像和模型访问是共同前提；协作 Service 由所选示例负责：
+
+| 示例 | 额外设施 |
+| --- | --- |
+| Subagents、TaskPool、Notes、Messages、普通 Substrate | 常规项目入口创建各自需要的进程内 Service 和存储，无须统一部署一套 Task/Context/Judge 服务。 |
+| PeerMesh | 已配置的 Gitea、Mattermost，以及 MySQL 和上游 Board 进程。 |
+| Lead-Worker | 已配置的 Gitea；可选动态示例还需要运行检查 Service 与候选验证器的 Docker 镜像。 |
+| 可选 Lean 工作负载 | TaskPool 或 Substrate FATE 配置提供检查器与工具链，并可接入 [Mathlib Search](../../../examples/services/mathlib-search/README.md)。 |
+
+默认 setup 准备共同的运行设施。PeerMesh 和 Lead-Worker 当前为 Git 网络白名单选择了严格本机 Docker 隔离，需要按各自示例配置宿主机与外部服务。[部署职责](../../../deploy/README.md)说明哪些组件由 setup 创建、哪些组件需要预先准备并接入。
+
+## 实现放在哪里
+
+五种机制的协作策略和服务分别归属各自的 `examples/` 目录。通用宿主负责加载入口、采集项目和处理 RPC。内置名称加载包内的同一个项目入口。
+
+五个例子都能单独复制到其他目录，安装候选 SDK 后在各自目录构建和启动。请按[示例索引](../../../examples/README.md#run-an-example-from-its-directory)准备候选包和外部设施。
 
 ## 五种协作模式一眼看懂
 

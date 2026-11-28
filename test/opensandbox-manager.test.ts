@@ -1,9 +1,9 @@
-import { fileProtocol } from '../scripts/core-file-seed.js';
-import { openSandboxAgentKey, openSandboxMissionKey, openSandboxRuntimeKey } from '../src/runtime/opensandbox-metadata.js';
+import { fileProtocol } from '../src/core/files/core-file-seed.js';
+import { openSandboxAgentKey, openSandboxMissionKey, openSandboxRuntimeKey } from '../src/core/sandbox/opensandbox-metadata.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
-import { ERROR_CODES } from '../src/errors.js';
+import { createOpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
+import { ERROR_CODES } from '../examples/taskpool/errors.js';
 
 function response(body, { status = 200, contentType = 'application/json' } = {}) {
   const text = typeof body === 'string' ? body : JSON.stringify(body ?? {});

@@ -3,20 +3,20 @@ import { test } from 'node:test';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { registerHooks } from 'node:module';
 import { promisify } from 'node:util';
 import { setTimeout as wait } from 'node:timers/promises';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { stableStringify } from '../src/protocol/envelope.js';
 import { transport, controls } from './fixtures/taskpool-controller-backend.js';
-import { readHarnessResult } from '../src/harnesses/shared/read-result.js';
+import { readHarnessResult } from '../src/harness/read-result.js';
 const hooks=registerHooks({resolve(specifier,context,next){
-  if(specifier==='./opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
+  if(specifier==='./sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
-const {runTaskPoolHarness}=await import('../examples/taskpool/harness.js');hooks.deregister();
+const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
+const { stableStringify } = await import('../examples/taskpool/persistence/envelope.js');
+const {runTaskPoolHarness}=await import('../examples/taskpool/harness/harness.js');hooks.deregister();
 
 test('TaskPool can finish with a public Material when no live Workspace capture is configured', async t => {
   const root=await mkdtemp(join(tmpdir(),'taskpool-environment-'));

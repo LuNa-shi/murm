@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { TaskService } from '../src/task/task-service.js';
-import { ContextService } from '../src/context/context-service.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { ContextService } from '../examples/taskpool/services/material/context-service.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
+import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
 
 function fixture(t, database = ':memory:', contextDatabase = null) {
   const tasks = new TaskService(database);

@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { preparePeerMeshFacilities } from '../src/harnesses/peermesh/provision.js';
-import { createOwnedResources } from '../src/harnesses/peermesh/resources.js';
+import { preparePeerMeshFacilities } from '../examples/peermesh/harness/provision.js';
+import { createOwnedResources } from '../src/harness/owned-resources.js';
 
 test('single-peer provisioning creates independent account mappings and retains shared data on cleanup', async t => {
   const seen = []; const users = new Map();

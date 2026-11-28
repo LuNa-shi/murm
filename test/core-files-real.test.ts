@@ -11,7 +11,7 @@ import { ServiceRegistry } from '@luna-shi/murm';
 import { createFilesUpstream, seededFiles, preparedFiles } from './fixtures/core-files-upstream.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
-import { openSandboxAgentKey } from '../src/runtime/opensandbox-metadata.js';
+import { openSandboxAgentKey } from '../src/core/sandbox/opensandbox-metadata.js';
 
 const execute = promisify(execFile);
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
-import { createPeerMeshDelivery } from '../src/harnesses/peermesh/delivery.js';
+import { createPeerMeshDelivery } from '../examples/peermesh/harness/delivery.js';
 
 test('host merge admits only pinned own PR and repeats reuse one write receipt including unknown', async t => {
   let writes = 0; let merged = false;

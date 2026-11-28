@@ -8,9 +8,9 @@ import { join } from 'node:path';
 import { createRuntime } from '@luna-shi/murm';
 
 import { ServiceRegistry } from '@luna-shi/murm';
-import { TaskService } from '../src/task/task-service.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
-import { createTaskPoolAgentCoordinator } from '../examples/taskpool/agent-coordinator.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
+import { createTaskPoolAgentCoordinator } from '../examples/taskpool/harness/agent-coordinator.js';
 import { createCappedUpstream } from './fixtures/core-capped-upstream.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';

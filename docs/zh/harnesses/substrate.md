@@ -5,7 +5,7 @@ section: 内置 Harness
 order: 13
 ---
 
-**Substrate**（`src/harnesses/substrate/`）展示了一个多智能体 Harness 可以精简到什么程度：没有任务表、没有管理员、也没有私信。3–8 位对等成员围绕同一份 **SQLite 不可变共享库（substrate）** 并行探索——检索并阅读彼此先前的发现，再发布自包含的后续成果并显式声明引用。同时仓库还内置了面向 Lean 4 的 **FATE** 形式化定理证明运行器。
+**Substrate**（`examples/substrate/harness/`）展示了一个多智能体 Harness 可以精简到什么程度：没有任务表、没有管理员、也没有私信。3–8 位对等成员围绕同一份 **SQLite 不可变共享库（substrate）** 并行探索——检索并阅读彼此先前的发现，再发布自包含的后续成果并显式声明引用。同时仓库还内置了面向 Lean 4 的 **FATE** 形式化定理证明运行器。
 
 ## 快速运行（CLI）
 
@@ -20,7 +20,7 @@ murm --harness substrate --prompt "根据解析测试修复当前项目"
 
 ## 1. 通用成果库 Service（`substrate`）
 
-[src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/substrate.ts) 注册了唯一的进程内 SQLite Service（`substrate`），仅包含三个操作：
+[examples/substrate/services/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/substrate.ts) 注册了唯一的进程内 SQLite Service（`substrate`），仅包含三个操作：
 
 | 操作 | 入参 | 存储与排序保障 |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ swarm substrate publish \
 
 ## 2. 宿主控制循环
 
-宿主使用 `createRuntime`、`spawn`、输入投递、事件和 `stop`/`close`。`runInput` 是仓库中的辅助函数，用于向空闲 Agent 投递一个由宿主独占管理的输入；它先订阅事件，再发送输入并检查执行收束结果。它不是 Runtime 方法，也没有从公共包入口导出。在 [src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/index.ts) 中，`Promise.all` 并行驱动每位成员执行 `maxRounds` 轮（2–32 轮），并支持可选 `maxConcurrentInputs` 限流与 `onCycle` 宿主纠偏钩子。下面的节选省略了截止时间与错误记录逻辑：
+宿主使用 `createRuntime`、`spawn`、输入投递、事件和 `stop`/`close`。`runInput` 是仓库中的辅助函数，用于向空闲 Agent 投递一个由宿主独占管理的输入；它先订阅事件，再发送输入并检查执行收束结果。它不是 Runtime 方法，也没有从公共包入口导出。在 [examples/substrate/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/index.ts) 中，`Promise.all` 并行驱动每位成员执行 `maxRounds` 轮（2–32 轮），并支持可选 `maxConcurrentInputs` 限流与 `onCycle` 宿主纠偏钩子。下面的节选省略了截止时间与错误记录逻辑：
 
 ```ts
 // 1. 启动 poolSize (3..8) 个对等成员并绑定到 substrate Service
@@ -98,7 +98,7 @@ runtime_id=RUNTIME_ID_FROM_RESULT
 node dist/examples/substrate/main.js --result "./substrate-runs/$runtime_id" --runtime-id "$runtime_id"
 ```
 
-[collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/collaboration-evidence.ts) 会联合审计 `substrate_contents`、`substrate_references` 和 `substrate_reads` 三张表，检查跨成员复用链：
+[collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/collaboration-evidence.ts) 会联合审计 `substrate_contents`、`substrate_references` 和 `substrate_reads` 三张表，检查跨成员复用链：
 
 1. 成员 A 发布成果，且在成员 A 退役停止后依然持久化存在；
 2. 成员 B 通过 `search` 检索到该成果并通过 `visit` 实际阅读；
@@ -111,7 +111,7 @@ node dist/examples/substrate/main.js --result "./substrate-runs/$runtime_id" --r
 - `private`：每位成员只能读写自己的私有库；
 - `none`：不提供 substrate 知识库。
 
-FATE 使用 [paper-substrate.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/paper-substrate.ts) 实现成果库。发布结构为 `{ sub_task, artifact, rationale, refs }`，阅读接受 `addresses` 数组，搜索使用归一化 BM25 与引用权重排序。这些契约与前文通用库的 `content` / `references` 不同；在实际运行中通过 `swarm service view substrate` 查看对应 schema。
+FATE 使用 [paper-substrate.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/paper-substrate.ts) 实现成果库。发布结构为 `{ sub_task, artifact, rationale, refs }`，阅读接受 `addresses` 数组，搜索使用归一化 BM25 与引用权重排序。这些契约与前文通用库的 `content` / `references` 不同；在实际运行中通过 `swarm service view substrate` 查看对应 schema。
 
 启用 `fate.verifiedCompletion: true` 后，提前完成要求提交的精确证明已经得到 `passed` 检查结果。未提交最终证明的普通文本回复可在同一会话中触发后续追问输入，但仍受工作截止时间和剩余 Service/检查次数约束。最终正确性由宿主检查冻结候选确定，发布或引用本身不构成正确性证据。
 
@@ -122,13 +122,13 @@ export MURM_FATE_BENCHMARK=FATE-X
 export MURM_FATE_PROJECT=/path/to/fate-x
 export MURM_FATE_LEAN=/path/to/lean-4.28.0
 
-node dist/examples/substrate/main.js --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-X
-node dist/examples/substrate/main.js --fate-run dist/examples/substrate/fate-config.js
+node dist/benchmarks/fate/main.js --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-X
+node dist/benchmarks/fate/main.js --fate-run dist/benchmarks/fate/fate-config.js
 ```
 
 ## 源码索引
 
-- 并行轮次驱动：[src/harnesses/substrate/index.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/index.ts)
-- SQLite `substrate` Service：[src/harnesses/substrate/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/substrate.ts)
-- 跨成员复用证据审计：[src/harnesses/substrate/collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/substrate/collaboration-evidence.ts)
-- CLI 与 FATE Lean 指南：[examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) · [FATE-X #31 运行报告](https://github.com/LuNa-shi/murm/blob/main/docs/experiments/EXP-20261125-20-scalemas-fatex-verified.md)
+- 并行轮次驱动：[examples/substrate/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/index.ts)
+- SQLite `substrate` Service：[examples/substrate/services/substrate.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/substrate.ts)
+- 跨成员复用证据审计：[examples/substrate/harness/collaboration-evidence.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/collaboration-evidence.ts)
+- CLI 与 FATE Lean 指南：[examples/substrate/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/README.md) · [FATE-X #31 运行报告](https://github.com/LuNa-shi/murm/blob/207be6356c16e5fb60c4b3c5b236d7a98383f991/docs/experiments/EXP-20261125-20-scalemas-fatex-verified.md)

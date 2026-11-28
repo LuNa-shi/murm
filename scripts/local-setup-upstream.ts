@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import type { ModelProtocol } from '../src/core/model-transport.js';
+import type { ModelProtocol } from '../src/core/model/model-transport.js';
 
 export const SETUP_MARKER = 'MURM_LOCAL_SETUP_VERIFIED';
 export const SETUP_BASH = `printf '%s' '{"key":"smoke"}' | swarm service invoke setup-probe verify --stdin --request-id setup-probe && printf '%s\\n' '${SETUP_MARKER}' > setup-smoke.txt`;

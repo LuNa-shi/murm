@@ -4,10 +4,10 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { TaskService } from '../src/task/task-service.js';
-import { ContextService } from '../src/context/context-service.js';
-import { ServicesBridge } from '../src/agent/services-bridge.js';
-import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { ContextService } from '../examples/taskpool/services/material/context-service.js';
+import { ServicesBridge } from '../test-support/taskpool-legacy/services-bridge.js';
+import { createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
 
 const exec = promisify(execFile);
 

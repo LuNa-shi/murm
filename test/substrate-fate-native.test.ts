@@ -8,7 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { substrateBackendConfiguration } from './fixtures/substrate-configuration.js';
-import { execute, installNotesExample } from './fixtures/notes-installed-package.js';
+import { execute, installNotesExample, stageInstalledBenchmark } from './fixtures/notes-installed-package.js';
 
 const artifact = 'FATE_HANDOFF: simplify the cardinality of the finite product with Fintype.card_pi.\n';
 const bash = `python3 - <<'FATE_HANDOFF'
@@ -129,7 +129,7 @@ test('installed FATE-M peer adopts exact anonymous bytes after the producer is p
     backend, fate: { projectRoot: process.env.MURM_FATE_TEST_PROJECT, leanRoot: process.env.MURM_FATE_TEST_LEAN, mode: 'shared' },
     runId, image, outputDir: evidenceRoot, poolSize: 2, workTimeoutMs: 120_000, closeTimeoutMs: 30_000, checkpointAfterMs: 1_000,
   })}\n`, { mode: 0o600 });
-  const main = join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/substrate/main.js');
+  const main = join(await stageInstalledBenchmark(installed.directory, 'fate'), 'main.js');
   await execute(process.execPath, [main, configuration], { cwd: installed.directory, env: installed.env, timeout: 180_000, maxBuffer: 4 * 1024 ** 2 });
   assert.ifError(providerFailure);
   assert.equal(requests, 4);
@@ -233,7 +233,7 @@ FATE_HANDOFF`;
     fate: { projectRoot: process.env.MURM_FATE_TEST_PROJECT, leanRoot: process.env.MURM_FATE_TEST_LEAN, verifiedCompletion: true },
     runId, image, outputDir, poolSize: 1, workTimeoutMs: 120_000, closeTimeoutMs: 30_000,
   })}\n`, { mode: 0o600 });
-  const main = join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/substrate/main.js');
+  const main = join(await stageInstalledBenchmark(installed.directory, 'fate'), 'main.js');
   await execute(process.execPath, [main, configuration], { cwd: installed.directory, env: installed.env, timeout: 170_000 });
   assert.ifError(failure);
   assert.equal(requests, 5);
@@ -298,7 +298,7 @@ FATE_HANDOFF`;
       image: process.env.MURM_CORE_TEST_IMAGE, poolSize: 1, workTimeoutMs: 90_000, closeTimeoutMs: 30_000,
       fate: { mode: 'none', projectRoot: process.env.MURM_FATE_TEST_PROJECT, leanRoot: process.env.MURM_FATE_TEST_LEAN, verifiedCompletion: true },
     })}\n`, { mode: 0o600 });
-    const main = join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/substrate/main.js');
+    const main = join(await stageInstalledBenchmark(installed.directory, 'fate'), 'main.js');
     const execution = await execute(process.execPath, [main, configuration], { cwd: installed.directory, env: installed.env, timeout: 160_000 })
       .then(() => null, error => error);
     assert.ifError(failure);

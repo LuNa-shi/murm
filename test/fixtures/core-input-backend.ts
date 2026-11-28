@@ -1,6 +1,6 @@
 export const createSandbox = () => Object.freeze({});
 import { DEFAULT_FILE_POLICY } from '../../src/core/file-policy.js';
-import { selectExecutorDriver } from '../../src/core/executor-driver.js';
+import { selectExecutorDriver } from '../../src/core/sandbox/executor-driver.js';
 
 export const configuration = {
   sandbox: {},

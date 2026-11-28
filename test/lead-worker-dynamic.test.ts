@@ -10,15 +10,15 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
 import { transport } from './fixtures/core-agent-service-backend.js';
-import { decodeFileSeed, partialDigest } from '../scripts/core-file-seed.js';
+import { decodeFileSeed, partialDigest } from '../src/core/files/core-file-seed.js';
 
 const execute = promisify(execFile);
 const hook = registerHooks({ resolve(specifier, context, next) {
-  if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js'))
+  if (specifier === './sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js'))
     return { url: new URL('./fixtures/lead-worker-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { createLeadWorkerHarness } = await import('../src/harnesses/lead-worker/index.js');
+const { createLeadWorkerHarness } = await import('../examples/lead-worker/harness/index.js');
 hook.deregister();
 
 test('Board work wakes original Agents and a ready checker on normal CLI bindings', { timeout: 40_000 }, async t => {

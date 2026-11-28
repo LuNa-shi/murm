@@ -21,7 +21,7 @@ async function walk(directory: any, prefix: any = ''): Promise<any>  {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (prefix === '' && skipRoots.has(entry.name)) continue;
     const path = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (skipPaths.has(path)) continue;
+    if (skipPaths.has(path) || (prefix.startsWith('examples/') && ['node_modules', 'dist', '.murm'].includes(entry.name))) continue;
     if (entry.isSymbolicLink()) throw new Error(`Source inventory needs an explicit symlink policy: ${path}`);
     if (entry.isDirectory()) files.push(...await walk(resolve(directory, entry.name), path));
     else if (entry.isFile()) files.push(path);

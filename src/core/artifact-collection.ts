@@ -26,7 +26,7 @@ interface ArtifactFile {
 import { createHash } from 'node:crypto';
 import { chmod, lstat, mkdir, mkdtemp, open, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { isCollectionPath, MAX_COLLECTION_CHUNK_BYTES as chunkLimit } from '../../scripts/core-collection.js';
+import { isCollectionPath, MAX_COLLECTION_CHUNK_BYTES as chunkLimit } from './files/core-collection.js';
 
 function collectionError(code: string, message: string, retryable = false) {
   return Object.assign(new Error(message), { code, retryable });

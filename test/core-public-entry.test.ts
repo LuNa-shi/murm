@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as core from '@luna-shi/murm';
+import { rootExports } from './fixtures/public-entry.js';
 
 test('the Core package has one narrow public entry point', async () => {
-  assert.deepEqual(Object.keys(core).sort(), [
-    'DEFAULT_WORKER_IMAGE', 'EXECUTOR_ADAPTER_PROTOCOL', 'ServiceRegistry', 'createCodexExecutor',
-    'createExecutorAdapter', 'createHttpJsonAdapter', 'createInProcessAdapter', 'createPiExecutor',
-    'createRuntime', 'createSandbox', 'getExecutorCapabilities', 'resolveSandboxConnection', 'workerImageFor',
-  ]);
+  assert.deepEqual(Object.keys(core).sort(), rootExports);
   assert.match(core.DEFAULT_WORKER_IMAGE, /^ghcr\.io\/luna-shi\/murm-worker:\d+\.\d+\.\d+/);
   for (const name of ['services', 'backends/opensandbox', 'backends/pi-opensandbox']) {
     await assert.rejects(import(`@luna-shi/murm/${name}`), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });

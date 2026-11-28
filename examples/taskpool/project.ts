@@ -1,16 +1,15 @@
-import { createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@luna-shi/murm';
+import {
+  createSandbox, type CreateRuntimeOptions, type SandboxConfig, decodeFileTree,
+  type ProjectHarness, checkGitProject, ProjectPreflightError, observeProjectRuntime,
+  projectConfiguration, projectResult,
+} from '@luna-shi/murm';
 import { join } from 'node:path';
-import { decodeFileSeed } from '../../scripts/core-file-seed.js';
-import { ContextService } from '../../src/context/context-service.js';
-import { makeEnvelope } from '../../src/protocol/envelope.js';
-import { MissionWorkspace } from '../../src/runtime/mission-workspace.js';
-import { WorkspaceManager } from '../../src/runtime/workspace-manager.js';
-import { TaskService } from '../../src/task/task-service.js';
-import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
-import { checkGitProject } from '../../src/harnesses/shared/project-git.js';
-import { ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
-import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
-import { runTaskPoolHarness } from './harness.js';
+import { ContextService } from './services/material/context-service.js';
+import { makeEnvelope } from './persistence/envelope.js';
+import { MissionWorkspace } from './services/workspace/mission-workspace.js';
+import { WorkspaceManager } from './services/workspace/workspace-manager.js';
+import { TaskService } from './services/task/task-service.js';
+import { runTaskPoolHarness } from './harness/harness.js';
 
 interface Configuration extends Pick<CreateRuntimeOptions, 'connection' | 'models' | 'executor' | 'filePolicy'> {
   sandbox: SandboxConfig;
@@ -39,7 +38,7 @@ const taskpool = {
       throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid TaskPool sandbox configuration');
     }
     checkGitProject(context.initial.files);
-    const entries = decodeFileSeed(context.initial.files).entries;
+    const entries = decodeFileTree(context.initial.files).entries;
     const taskService = new TaskService(join(context.outputDir, 'tasks.sqlite'));
     let contextService: ContextService | undefined;
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;

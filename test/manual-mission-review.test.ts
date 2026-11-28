@@ -8,12 +8,12 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
-import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
-import { MissionSubmissionStore } from '../src/runtime/mission-submission.js';
-import { createManualMissionChecker } from '../src/runtime/manual-mission-review.js';
+import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
+import { MissionSubmissionStore } from '../examples/taskpool/services/mission/mission-submission.js';
+import { createManualMissionChecker } from '../examples/taskpool/services/mission/manual-mission-review.js';
 
 const exec = promisify(execFile);
-const cli = fileURLToPath(new URL('../scripts/review-mission.js', import.meta.url));
+const cli = fileURLToPath(new URL('../examples/taskpool/services/mission/review-mission.js', import.meta.url));
 const identity = { checker_ref: 'manual-operator', checker_version: 'review-policy-1', environment_ref: 'owner-review' };
 const input = { missionId: 'mission:first', workspaceId: 'workspace-first', actorRef: 'agent:first', materialIds: [], requestId: 'manual-1' };
 

@@ -4,9 +4,9 @@ import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry, type CollectionSpec,
   type CreateRuntimeOptions, type FileTree, type Runtime, type SandboxConfig, type SpawnOptions } from '@luna-shi/murm';
-import { collaborationOperations, createCollaborationService } from './collaboration-service.js';
-import { createSubagentsController } from './controller.js';
-import { childPrompt, rootPrompt } from './prompts.js';
+import { collaborationOperations, createCollaborationService } from './services/collaboration-service.js';
+import { createSubagentsController } from './harness/controller.js';
+import { childPrompt, rootPrompt } from './prompts/prompts.js';
 import { runWithReport } from './run-report.js';
 
 interface Config extends Pick<CreateRuntimeOptions, 'connection' | 'executor' | 'models' | 'filePolicy'> {

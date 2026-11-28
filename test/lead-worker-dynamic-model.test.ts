@@ -5,7 +5,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
-import { createNativeEvidenceDirectory, installNativeNotesExample } from './fixtures/notes-installed-package.js';
+import { createNativeEvidenceDirectory, installNativeNotesExample, stageInstalledBenchmark } from './fixtures/notes-installed-package.js';
 import { createLocalPeerMeshStack } from './fixtures/peermesh-local-stack.js';
 import { createCleanupBudget } from './fixtures/peermesh-deadline.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
@@ -116,12 +116,12 @@ test('two clean installed-package Lead-Worker Runs against the approved real pro
   assert.match(serviceImage ?? '', imageId);
   const installed = await installNativeNotesExample();
   t.after(installed.close);
-  const packageDir = join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/lead-worker');
+  const packageDir = await stageInstalledBenchmark(installed.directory, 'lead-worker-orders');
   const packagedFiles = join(installed.directory, 'node_modules/@luna-shi/murm');
   const [oracle, specification, rolePrompts] = await Promise.all([
-    readFile(join(packagedFiles, 'examples/lead-worker/fixtures/oracle.mjs')),
-    readFile(join(packagedFiles, 'examples/lead-worker/fixtures/spec.md')),
-    readFile(join(packagedFiles, 'dist/src/harnesses/lead-worker/prompts.js')),
+    readFile(join(packageDir, 'fixtures/oracle.mjs')),
+    readFile(join(packageDir, 'fixtures/spec.md')),
+    readFile(join(packagedFiles, 'dist/examples/lead-worker/harness/prompts.js')),
   ]);
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
 

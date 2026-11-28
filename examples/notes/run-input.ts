@@ -1,1 +1,1 @@
-export * from '../../src/harnesses/shared/run-input.js';
+export * from '../../src/harness/run-input.js';

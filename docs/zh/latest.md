@@ -8,6 +8,8 @@ badge: v0.2.0
 
 **`murm v0.2.0`**（发布日期：**2026-11-27**）是 `@luna-shi/murm` 的首个正式开源版本，将 TypeScript SDK、宿主机 CLI 与零外部依赖的浏览器 Trace Viewer 整合为单一安装包，用于构建、隔离运行并观测多智能体 Harness。
 
+本页描述已发布的 v0.2.0 安装包。[当前源码快速上手](quickstart.md)使用较新的 setup 与 Provider 接口，需要安装从当前检出源码构建的候选包。
+
 | 发布产物 | 说明与链接 |
 | --- | --- |
 | **版本号** | `v0.2.0`（[GitHub Release](https://github.com/LuNa-shi/murm/releases/tag/v0.2.0) · [SHA256SUMS](https://github.com/LuNa-shi/murm/releases/download/v0.2.0/SHA256SUMS)） |

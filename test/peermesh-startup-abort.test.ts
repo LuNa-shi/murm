@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createPeerMeshHarness } from '../src/harnesses/peermesh/index.js';
-import { preparePeerMeshFacilities } from '../src/harnesses/peermesh/provision.js';
+import { createPeerMeshHarness } from '../examples/peermesh/harness/index.js';
+import { preparePeerMeshFacilities } from '../examples/peermesh/harness/provision.js';
 import { createWorkGate } from './fixtures/peermesh-deadline.js';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 

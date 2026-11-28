@@ -5,10 +5,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { loadPutnamB1, putnamModel, putnamSelectionMs, putnamWindowMs } from './case.ts';
+import { verifyPutnamRegistration } from './registration.ts';
 
 const execute = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const git = (args: string[]) => execute('git', args, { cwd: root, timeout: 10_000 });
 const [operation, checkerConfig, datasetRoot, experimentId, image, windowSeconds, selectionSeconds, modelArg, ...extra] = process.argv.slice(2);
 if (!['preflight', 'run'].includes(operation) || !checkerConfig || !datasetRoot || extra.length ||
     (operation === 'preflight' && experimentId !== undefined) ||
@@ -21,26 +21,11 @@ const problem = await loadPutnamB1(datasetRoot, putnamModel(modelArg));
 let code: string | undefined;
 let directory: string | undefined;
 if (operation === 'run') {
-  const index = await readFile(join(root, 'docs/experiments/INDEX.md'), 'utf8');
-  const rows = index.split('\n').filter(line => line.startsWith(`| \`${experimentId}\` |`));
-  if (rows.length !== 1) throw new Error('The formal run ID must have one entry in the experiment index');
-  const [, , issue, status, pinnedCode, report] = rows[0].split('|').map(value => value.trim());
-  if (!issue.includes('/issues/200)') || !status.startsWith('**REGISTERED') || !pinnedCode.match(/^`[a-f0-9]{7,40}`$/)) {
-    throw new Error('Register the Putnam run under #200 and pin its code before launch');
-  }
-  const reportName = report?.match(/\(([a-z0-9-]+\.md)\)$/i)?.[1];
-  const reportBody = reportName && await readFile(join(root, 'docs/experiments', reportName), 'utf8');
-  const registeredModel = reportBody && reportBody.match(/^Model · `([^\n`]+)`$/m)?.[1];
-  if ((registeredModel || modelArg !== undefined) && registeredModel !== problem.provider + '/' + problem.model) {
-    throw new Error('The selected Putnam model pair must match the registered report');
-  }
-  code = (await git(['rev-parse', `${pinnedCode.slice(1, -1)}^{commit}`])).stdout.trim();
-  await git(['merge-base', '--is-ancestor', code, 'HEAD']);
-  const { stdout: changed } = await git(['diff', '--name-only', code, 'HEAD']);
-  if (changed.split('\n').filter(Boolean).some(path => !path.startsWith('docs/experiments/')) ||
-      (await git(['status', '--porcelain'])).stdout) {
-    throw new Error('The checkout differs from the registered implementation');
-  }
+  const registration = await verifyPutnamRegistration({
+    registryPath: process.env.MURM_EXPERIMENT_REGISTRY, experimentId, repository: root,
+    model: problem, requireModel: modelArg !== undefined,
+  });
+  code = registration.code;
   const { stdout } = await execute('docker', ['image', 'inspect', image, '--format', '{{json .}}'], { timeout: 10_000 });
   const worker = JSON.parse(stdout);
   if (worker.Id !== image || worker.Config?.Labels?.['org.opencontainers.image.revision'] !== code) {
@@ -66,7 +51,7 @@ if (operation === 'preflight') {
 } else {
   const { runPutnamTaskPool } = await import('./run.ts');
   const { createSandbox } = await import('@luna-shi/murm');
-  const { assertShippedModelPair } = await import('../../dist/src/agent/model-catalog.js');
+  const { assertShippedModelPair } = await import('../../dist/src/core/model/model-catalog.js');
   await assertShippedModelPair({ provider: problem.provider, model: problem.model });
   const environmentPrefix = 'PI_' + problem.provider.toUpperCase();
   let base = process.env[environmentPrefix + '_BASE_URL'];

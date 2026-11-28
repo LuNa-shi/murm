@@ -1,14 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { join } from 'node:path';
-import { installNotesExample, execute } from './fixtures/notes-installed-package.js';
+import { installNotesExample, execute, stageInstalledBenchmark } from './fixtures/notes-installed-package.js';
 
 test('installed Substrate host resolves the public backend and saves an aborted run without allocating resources', { timeout: 180_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());
   const main = join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/substrate/main.js');
+  await stageInstalledBenchmark(installed.directory, 'fate');
   const script = `import assert from 'node:assert/strict';
     import {readFile} from 'node:fs/promises';import {pathToFileURL} from 'node:url';
-    const {runSubstrateExample,runFateExample}=await import(pathToFileURL(${JSON.stringify(main)}));
+    const {runSubstrateExample}=await import(pathToFileURL(${JSON.stringify(main)}));
+    const {runFateExample}=await import(new URL('../../benchmarks/fate/main.js',pathToFileURL(${JSON.stringify(main)})));
     const signal=AbortSignal.abort(Object.assign(new Error('Controlled stop'),{code:'CONTROLLED_ABORT'}));
     process.env.MURM_SUBSTRATE_RUN='installed-abort';process.env.MURM_SUBSTRATE_IMAGE='no-allocation';
     process.env.MURM_SUBSTRATE_MODEL_URL='http://127.0.0.1:1/v1/responses';
@@ -23,7 +25,7 @@ test('installed Substrate host resolves the public backend and saves an aborted 
     assert.deepEqual(saved.peers,[]);assert.equal(saved.businessFailure.code,'CONTROLLED_ABORT');
     assert.equal(JSON.stringify(saved).includes('PRIVATE_MODEL_TOKEN'),false);
     assert.ok(import.meta.resolve('@luna-shi/murm').includes('/node_modules/@luna-shi/murm/'));
-    const fate = { ...config, poolSize: 4, fate: {projectRoot:'unused', leanRoot:'unused'} };
+    const fate = { ...config, models: {default: {...config.models.default, provider:'kimi_proxy', model:'k3'}}, poolSize: 4, fate: {projectRoot:'unused', leanRoot:'unused'} };
     const withModel = (provider, model) => ({
       ...fate,
       models: {default: {...fate.models.default, provider, model}},

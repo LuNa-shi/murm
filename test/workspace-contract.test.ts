@@ -8,8 +8,8 @@ import { MurmError } from '../src/errors.js';
 import {
   WORKSPACE_ERROR_CODES,
   normalizeWorkspaceContract,
-} from '../src/runtime/workspace-contract.js';
-import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
+} from '../examples/taskpool/services/workspace/workspace-contract.js';
+import { WorkspaceManager } from '../examples/taskpool/services/workspace/workspace-manager.js';
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');

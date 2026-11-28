@@ -5,18 +5,17 @@ section: REFERENCE
 order: 15
 ---
 
-This reference documents every public runtime export, method contract, and error code in **`@luna-shi/murm` `0.2.0`**. For conceptual guides, start with [Runtime & Agents](../runtime.md) and [Services & Permissions](../services.md); for exact TypeScript declarations, see [Types & Source Map](./types.md); for host and container CLIs, see [CLI Reference](./cli.md).
+This reference follows the current source implementation of **`@luna-shi/murm`**. Its package version is still `0.2.0`, but the published v0.2.0 artifact predates some APIs listed here. For conceptual guides, start with [Runtime & Agents](../runtime.md) and [Services & Permissions](../services.md); for exact TypeScript declarations, see [Types & Source Map](./types.md); for host and container CLIs, see [CLI Reference](./cli.md).
 
 ## Install the SDK
 
-In a Node.js 22.19+ project, install the pinned GitHub Release tarball:
+Build a candidate archive using the [current-source Quickstart](../quickstart.md), then install that exact archive in a Node.js 22.19+ project:
 
 ```bash
-npm install --ignore-scripts --allow-remote=root \
-  https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+npm install --ignore-scripts /absolute/path/to/luna-shi-murm-0.2.0.tgz
 ```
 
-> With npm 12+, lockfile reinstalls of remote tarball URLs also require `--allow-remote=root` (e.g. `npm ci --allow-remote=root`). Follow [Quickstart](../quickstart.md) to prepare or connect to OpenSandbox before launching sandboxes.
+For the published release instead, use the [v0.2.0 installation guide](../latest.md) and its [fixed API reference](https://github.com/LuNa-shi/murm/blob/v0.2.0/docs/en/reference/api.md). Keep the package, Worker image and documentation aligned with the source candidate you run.
 
 ## Public package exports
 
@@ -34,8 +33,15 @@ All public values and TypeScript types are imported from the single root entry `
 | `ServiceRegistry` | Class | Holds Service registrations passed into `createRuntime()`. |
 | `createInProcessAdapter(impl)` | Function | Wraps a host-process `invoke` handler (and optional `exportState`) as a `ServiceAdapter`. |
 | `createHttpJsonAdapter(options)` | Function | Wraps an external HTTP JSON Service endpoint with `Idempotency-Key` and optional bearer auth. |
+| `ProjectHarness`, `ProjectHarnessContext`, `ProjectHarnessResult`, `HarnessInput`, `HarnessJson` | Types | Describe an ESM project entry, captured input, host callbacks and final result. |
+| `ProjectPreflightError`, `projectConfiguration`, `observeProjectRuntime`, `projectResult` | Class / Functions | Normalize trusted configuration, represent rejection before allocation, observe Runtime state and project the saved result. |
+| `runInput`, `createInputAdmission`, `runWithReport`, `readHarnessResult`, `createOwnedResources` | Functions | Track an exclusive turn, fence input, save or inspect a report, and reconcile owned resources. |
+| `checkGitProject`, `seedTeamRepository`, `seededCheckoutInstruction`, `initializeGitRepository`, `importGitTree`, `commitGitTree`, `isGitTreePath` | Functions | Validate and seed a Git project from a captured FileTree, and describe its initial checkout. |
+| `decodeFileTree`, `snapshotFileTree`, `completeFileTreeDigest`, `stableStringify`, `MurmError`, `requestHttp`, `httpClient` | Functions / Class | Work with bounded file bytes and stable digests, retain error codes, or connect to a trusted Service. |
 
-> Repository Harnesses under `examples/` and `src/harnesses/` are editable reference implementations and are **not** additional exports from `@luna-shi/murm`.
+The five [reference Harness applications](../../../examples/README.md) build against this root entry. The [author contract](../../architecture/23-project-harness.md#authoring-an-example) describes lifecycle and file handling. Built-in aliases load the bundled entries.
+
+Runtime assembles its own Bridge, model gateway and built-in `agent` Service. Example-owned in-process Services need no separate container. External collaboration facilities and optional [Mathlib Search](../../../examples/services/mathlib-search/README.md) have explicit example deployment and ownership; SDK registration alone does not start or destroy them. [Deployment guide](../../../deploy/README.md)
 
 ## `createSandbox(config)` & `createRuntime(options)`
 

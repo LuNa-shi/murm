@@ -1,7 +1,7 @@
-import { createJudgeServicePeer } from '../src/sdk/judge-service-peer.js';
-import { LeanFinalTreeVerifier } from '../src/judge/lean-final-tree-verifier.js';
+import { createJudgeServicePeer } from '../examples/taskpool/deploy/service-hosts/judge-service-peer.js';
+import { LeanFinalTreeVerifier } from '../examples/taskpool/services/judge/lean-final-tree-verifier.js';
 import { readFile } from 'node:fs/promises';
-import { runProcess, LeanChecker } from '../src/judge/lean-adapter.js';
+import { runProcess, LeanChecker } from '../examples/taskpool/services/judge/lean-adapter.js';
 const config = JSON.parse(process.env.JUDGE_PEER_FIXTURE!);
 let checker: any = {
   timeoutMs: config.processTimeoutMs ?? 2000,

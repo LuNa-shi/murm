@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createOwnedResources } from '../src/harnesses/peermesh/resources.js';
+import { createOwnedResources } from '../src/harness/owned-resources.js';
 
 test('owned cleanup gives every resource a bounded chance, preserves shared data and retries pending', async () => {
   const resources = createOwnedResources({ timeoutMs: 15 }); const attempts = []; let allow = false; let release;

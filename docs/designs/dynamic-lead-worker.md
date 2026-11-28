@@ -1,8 +1,8 @@
-# 动态 Core 与 Lead–Worker：待实现设计
+# 动态 Core 与 Lead–Worker：已评审合同与验收边界
 
-> 状态：已确认的目标设计，尚未成为当前 SDK。实施与验收见 [#235](https://github.com/LuNa-shi/murm/issues/235)。当前行为见 [Core Runtime](../architecture/15-core-runtime.md) 和 [固定 Lead-Worker](../architecture/20-lead-worker-harness.md)。
+> 状态：已确认的版本化设计；动态 Core 接口与可选 Lead-Worker 模式已有实现。当前行为见 [Core Runtime](../architecture/15-core-runtime.md) 和 [Lead-Worker 固定与动态模式](../architecture/20-lead-worker-harness.md)。完整验收、候选版本与剩余证据继续由 [#235](https://github.com/LuNa-shi/murm/issues/235) 跟踪，本文不宣告验收完成。
 
-本设计记录 owner 在 2026-11-26 确认的扩展，由 [#235](https://github.com/LuNa-shi/murm/issues/235) 跟踪实施与证据。原始核查基线为 [`a6049b1a`](https://github.com/LuNa-shi/murm/commit/a6049b1a227ca0b2d997879c4eae0635d1634915)，本设计复核基线为 [`b7d23b9c`](https://github.com/LuNa-shi/murm/commit/b7d23b9c16043fbdaf4a269c7ad086f5d013b792)。Q2 首版的冻结配置和历史验收按当时版本解释。本文规定后续目标。已运行 Agent 的模型、镜像和系统提示热替换、同 ID 服务替换、通用插件加载、跨 Run 服务共享、宿主崩溃自动恢复、完整输入消费追踪及 Trace Viewer 改版均留在本次扩展范围之外。
+本设计记录 owner 在 2026-11-26 确认的扩展，由 [#235](https://github.com/LuNa-shi/murm/issues/235) 跟踪实施与证据。原始核查基线为 [`a6049b1a`](https://github.com/LuNa-shi/murm/commit/a6049b1a227ca0b2d997879c4eae0635d1634915)，本设计复核基线为 [`b7d23b9c`](https://github.com/LuNa-shi/murm/commit/b7d23b9c16043fbdaf4a269c7ad086f5d013b792)。Q2 首版的冻结配置和历史验收按当时版本解释。本文保留该扩展经评审的技术与验收合同；后续明确的 owner 决定按[设计入口的版本规则](core-harness/README.md#权威入口与适用范围)衔接，设计、实现、迁移、测试与文档同 PR 交付。已运行 Agent 的模型、镜像和系统提示热替换、同 ID 服务替换、通用插件加载、跨 Run 服务共享、宿主崩溃自动恢复、完整输入消费追踪及 Trace Viewer 改版均留在本次扩展范围之外。
 
 ## Runtime 合同
 
@@ -52,7 +52,7 @@ Harness 从调用者自己的工作目录捕获受限路径与大小的源码/ma
 
 ## 任务与关闭条件
 
-[订单任务规格](../../examples/lead-worker/fixtures/spec.md)定义 JSONL 程序的接口和边界。[独立 oracle](../../examples/lead-worker/fixtures/oracle.mjs)固定验收输入、期望和比较规则；宿主在隔离环境从最终 commit 执行候选，只向 oracle 提供真实退出码及 stdout/stderr。规格、oracle 和两套公开输入随候选冻结，Agent 无权修改宿主评判。Lead 自行生成检查 Service 源码；宿主另核对该 Service 对合法及重复/非法输入的实际返回。
+[订单任务规格](../../benchmarks/lead-worker-orders/fixtures/spec.md)定义 JSONL 程序的接口和边界。[独立 oracle](../../benchmarks/lead-worker-orders/fixtures/oracle.mjs)固定验收输入、期望和比较规则；宿主在隔离环境从最终 commit 执行候选，只向 oracle 提供真实退出码及 stdout/stderr。规格、oracle 和两套公开输入随候选冻结，Agent 无权修改宿主评判。Lead 自行生成检查 Service 源码；宿主另核对该 Service 对合法及重复/非法输入的实际返回。
 
 两名原 Worker 均先开始工作并各有实质成果。Lead 经真实 CLI 部署 Service、登记新 Profile、加入 checker。checker 领取任务并检查本轮固定 Git 候选，提交带具体依据的反馈。原 Worker 经 CLI 先探测不可用，grant 后在原身份、Session、目录及 Git 身份下实际调用，revoke 后再次不可用，checker 仍可用。Lead 读取反馈，安排原 Worker 在原 Session 继续，最终代码或测试出现可追踪的变化。Lead 整合固定 commit，宿主独立验收。宿主负责设施、真实通知和判题，Lead 决定分工、管理调用、修订与整合。
 

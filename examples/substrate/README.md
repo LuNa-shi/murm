@@ -1,121 +1,76 @@
-# Editable Substrate host
+# Substrate Harness
 
-## Run from your project
+Substrate gives a fixed pool of peers a publication Service. Peers publish,
+search and visit contributions while keeping separate Sessions and project
+directories. The generic project mode creates no Task records and requires no
+separate database container: the example owns its SQLite publication store.
 
-```sh
-cd my-project
-murm --harness substrate --prompt "Inspect this project and explain how to verify it"
-```
+## Configure and run a project
 
-Each peer receives the captured files and uses the prompt as the question in every cycle. FATE remains an explicit benchmark through prepare, run, matrix and rescore flags.
+Prepare the common
+OpenSandbox/Worker infrastructure and set `MURM_MODEL_URL`, `MURM_MODEL_TOKEN`,
+`MURM_MODEL_PROVIDER` and `MURM_MODEL_ID`. Pi is the default executor; select
+`MURM_EXECUTOR=codex` with an explicit model ID to use Codex.
+`MURM_SUBSTRATE_MODEL_*` and `MURM_SUBSTRATE_EXECUTOR` remain scoped fallbacks.
 
-After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
+Use Node.js 22.19 or newer on Linux. Set `MURM_ARCHIVE` to the absolute path of
+the SDK tarball built from this revision. The published v0.2.0 archive predates
+the project author API used here. See [SDK preparation](../README.md#run-an-example-from-its-directory)
+for the pack command, Sandbox setup and model configuration.
 
-
-The host imports only from `@luna-shi/murm` for Runtime, Sandbox and Service author APIs. See the [Runtime guide](../../docs/en/runtime.md) for configuration and resource ownership.
-
-The package is currently private and distributed as a checkout-built tarball. Install checkout dependencies with `npm ci` first. TypeScript sources compile with `npm run build` into `dist/`; `npm pack` builds JavaScript and declarations before archiving.
-
-This example runs the existing fixed peer pool through the public Core and Pi/OpenSandbox backend. Three peers publish, search and visit immutable content through the substrate Service, with independent Sessions and private directories. It creates no Task records. Successful turns and citations do not establish that the generated content is correct.
-
-Use Node.js 22.19 or newer, local Docker OpenSandbox with the Core isolation prerequisites, a compatible Pi 1.3.0 Worker image and a Kimi K3 Responses endpoint. Build the candidate archive from a clean checkout, then install its locked production dependencies in an independent directory:
-
-```sh
-repo=/absolute/path/to/murm
-consumer=$(mktemp -d)
-npm pack "$repo" --pack-destination "$consumer"
-cd "$consumer"
-npm init -y
-npm pkg set type=module
-npm install --omit=dev --ignore-scripts ./luna-shi-murm-0.2.0.tgz
-cp node_modules/@luna-shi/murm/dist/examples/substrate/config.js ./config.js
-```
-
-Run the shipped host in its installed package directory and edit the copied `config.js` in the consumer root. The host imports the shipped Harness and saved-result reader using package-relative paths; the Harness itself uses public Core and Services. Keep `main.js` in its installed location if you edit the host policy. These shipped Harness files are not additional package exports.
+From this example directory:
 
 ```sh
-node node_modules/@luna-shi/murm/dist/examples/substrate/main.js --help
+npm install --no-save "$MURM_ARCHIVE"
+npm run check
+npm run build
+npm run start -- --cwd /absolute/path/to/project \
+  --prompt 'Compare implementation approaches and cite peer contributions you use'
 ```
 
-Set `MURM_SUBSTRATE_RUN` to a fresh lowercase alphanumeric/hyphen identifier (up to 64 characters), `MURM_SUBSTRATE_IMAGE` to your immutable Worker image ID, and `MURM_SUBSTRATE_MODEL_URL` to the exact Kimi K3 `/v1/responses` endpoint. Set `MURM_SUBSTRATE_MODEL_TOKEN` if it needs bearer authentication. `MURM_SUBSTRATE_HOST` defaults to `172.17.0.1`; choose the guest-reachable host IPv4 address. The config also reads optional lifecycle URL, token and endpoint-host variables. Tokens stay in host backend configuration; never include them in the question or contribution text.
+With the CLI installed, run `murm --harness substrate --prompt '...'` in your
+project. Each peer receives the captured files and uses the prompt as its
+question. The host creates the run ID. No question/workload file is required.
 
-Edit the copied `config.js` question and limits, then launch from the consumer root:
+The default is three peers, two rounds, a 120-second work window, a 30-second
+per-turn wait and a separate 30-second close wait. The normal API isolation
+policy is used; it does not promise a host-enforced disk/inode quota. Supply a
+trusted module with `--config` to change limits, models, executor or provider.
+Generic mode supports 3–8 peers and 2–32 rounds. It has no dynamic spawning or
+interactive input during those rounds.
+
+## Inspect and modify the mechanism
+
+The final command record points to the saved run report, publication database,
+Trace and private artifacts. Business execution, export, cleanup and report
+saving are reported separately. Contributions and citations show information
+flow; they do not establish correctness. Required export or uncertain execution
+can leave resources pending. Review those receipts before treating a run as
+fully closed.
+
+The Harness module owns peer prompts, work order and stopping policy. Its
+substrate Service owns publication permissions, ranking and persistence. See the
+[mechanism guide](../../docs/en/harnesses/substrate.md) and
+[implementation manual](../../docs/architecture/19-substrate-harness.md).
+
+## Explicit fixture and benchmark entrypoints
+
+`main.ts` remains the entry for fixed-question fixtures, saved-result inspection
+for ordinary Substrate. `config.ts` is its fixed-question configuration and
+requires `MURM_SUBSTRATE_RUN`; it is not the input to the normal project command.
+From this directory after building:
 
 ```sh
-node node_modules/@luna-shi/murm/dist/examples/substrate/main.js \
-  ./config.js > substrate-result.json
+node ../../dist/examples/substrate/main.js --help
+node ../../dist/examples/substrate/main.js ../../dist/examples/substrate/config.js
 ```
 
-The default is three peers, two rounds each, a 120-second work window, a 30-second per-turn wait, a separate 30-second close wait and 2,048 output tokens per model request. The existing mechanism allows three through eight peers and two through 32 rounds. These are bounded example settings, not a one-hour endurance policy or a global request-count cap. To change collaboration, edit the question/config first; `src/harnesses/substrate/index.ts` owns peer prompts, the serial drivers and stopping policy, and `substrate.ts` owns content permissions, ranking and persistence. No dynamic spawning or interactive input is provided.
+For an installed package, replace `../../dist/examples/substrate` with
+`node_modules/@luna-shi/murm/dist/examples/substrate` from your consumer project.
+Keep the shipped modules in their installed location because their relative
+imports are part of the package. `--result <run-directory> --runtime-id <id>`
+reads saved reports without loading model credentials.
 
-Ctrl+C or SIGTERM aborts further work and enters bounded Core close. The command exits 0 only when business execution, cleanup and report saving succeeded; failures exit 1. Invalid arguments exit 2. Configuration errors print a constant diagnostic code without printing the configuration or exception message. Required export failures or unknown execution can leave resources pending. Neither the one-shot CLI nor `runSubstrateExample(config, signal)` exposes the underlying Runtime for retry or reconciliation. They return reports and leave pending ownership explicit; reconciling such resources requires a separate trusted host procedure using the recorded identities, not another call to this wrapper.
-
-`substrate-result.json` contains `runtimeId`, `reportPath`, per-peer turn receipts and separate business, cleanup and save failures. Under `substrate-runs/<runtimeId>/`, Core records `runtime.json`, evidence and collected private files. `harness-report.json` also includes the substrate content/read snapshot and the database path. The persistent `substrate-runs/substrate.sqlite` survives Agent cleanup; use a fresh output directory/run ID for each independent run. It closes after report projection even when physical cleanup is pending. Published data is not removed. Contributions, queries, artifacts and model output can contain private project text; these files are private run evidence.
-
-Read saved receipts without importing model configuration or contacting a running Runtime:
-
-```sh
-runtime_id=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("substrate-result.json","utf8")).runtimeId)')
-run_dir=$(node -e 'console.log(require("path").dirname(JSON.parse(require("fs").readFileSync("substrate-result.json","utf8")).reportPath))')
-node node_modules/@luna-shi/murm/dist/examples/substrate/main.js \
-  --result "$run_dir" --runtime-id "$runtime_id"
-```
-
-Inspection exits 0 when both matching reports were readable, including recorded failures, and 1 for missing or invalid reports. It summarizes receipts and artifact availability, not business acceptance. Inspect the Harness's `substrate.contents`, references and read records, and compare collected files when judging whether another peer's contribution was actually adopted. The installed-package deterministic test covers launch/import, pre-start cancellation and saved inspection. Separate native tests remain version-bound evidence for the mechanism; this wrapper introduces no new native acceptance claim.
-
-## FATE publication and checking protocol
-
-A configuration with `fate` selects `fate-run.ts` instead of the generic fixed-round runner. It adds the `fate` Service (`search_mathlib`, `check_lean`, `submit`) and uses `src/harnesses/substrate/paper-substrate.ts` for publication. Publish requests contain `sub_task`, `artifact`, `rationale` and `refs`; visits take an `addresses` array; retrieval combines normalized BM25 with citation weights. The generic example uses `content`, `references` and a single `address` with a simpler ranking rule. Inspect `swarm service view substrate` in the run you started before composing a request.
-
-## FATE-M with K3
-
-The FATE-M configuration uses the same installed host entry. It freezes problem 1, gives each of four peers the original Lean and natural-language statements, and independently checks every final submission. Shared library, private library and no library are the three conditions. Each group starts after its peers are ready and runs for at most 30 minutes. No host request count, token or cost quota is imposed on K3. The task Service still limits each peer to ten working Lean checks.
-
-The host needs Linux with Bubblewrap, `prlimit`, Git, the pinned Lean 4.28.0 toolchain and the frozen FATE-M workspace with compiled dependencies. Keep the project and toolchain controlled by the host and outside agent directories. The pinned upstream preparation commands are:
-
-```sh
-git clone https://github.com/frenzymath/FATE-M.git fate-m
-git -C fate-m checkout --detach 4eb33c8ccd0ff058b461cd763cc406509129743f
-elan toolchain install leanprover/lean4:v4.28.0
-(cd fate-m && lake exe cache get)
-```
-
-From a consumer directory containing the installed murm tarball, set `MURM_FATE_PROJECT` to that workspace and `MURM_FATE_LEAN` to the installed Lean toolchain directory. Set `MURM_SUBSTRATE_RUN` to a fresh ID, `MURM_SUBSTRATE_IMAGE` to the reviewed worker image, and `MURM_SUBSTRATE_MODEL_URL` and `MURM_SUBSTRATE_MODEL_TOKEN` to the approved K3 endpoint and credential. The model URL includes its Responses route. Optional lifecycle settings are listed in the generic example above. `MURM_SUBSTRATE_OUTPUT` defaults to `./experiments/substrate-fate`.
-
-```sh
-example=node_modules/@luna-shi/murm/dist/examples/substrate
-node "$example/main.js" --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN"
-node "$example/main.js" --fate-matrix "$example/fate-config.js"
-node "$example/main.js" --fate-rescore "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" \
-  "./experiments/substrate-fate/${MURM_SUBSTRATE_RUN}-shared/fate-frozen-candidates.json"
-```
-
-For a single condition, set `MURM_FATE_MODE` to `shared`, `private` or `none`, then pass the configuration file directly. The matrix uses an independent directory for each condition, in that order, and stops launching groups if a prior group's cleanup is pending. A run ID cannot overwrite earlier evidence. Preparation and rescoring make no model calls. Formal runs require the repository's frozen experiment registration.
-
-`fate-result.json` records task/peer state, score, end reasons, model usage, Core Trace and cleanup, and points to the frozen candidate bundle. A final candidate is a Lean term such as a `by` proof, with any helper lemmas declared locally inside the proof. Sources, candidate contents, peer journals and raw tool results are private run evidence. See the [architecture chapter](../../docs/architecture/19-substrate-harness.md#fate-paper-alignment-configurations) for the current checker, publication and scoring contracts. Experiment reports pin the implementation and evidence for a particular run.
-
-## FATE-H with K3
-
-The shipped FATE configuration selects `kimi_proxy/k3`. An explicit host configuration can also set the selected `backend.models` entry to `provider: 'gpt_proxy', model: 'gpt-6.1-sol'` and supply that provider's Responses URL and host credential.
-
-Set `MURM_FATE_BENCHMARK=FATE-H` and `MURM_FATE_PROJECT` to the prepared workspace for FATE-H #2. Freeze [FATE-H at `17967b3`](https://github.com/frenzymath/FATE-H/tree/17967b3118082adfba7c5a5fc03b5f4a53717b59) and run `lake exe cache get` in that workspace. It uses the same Lean 4.28.0 and dependency source revisions as FATE-M. Pass `FATE-H` after the project and toolchain paths in `--fate-prepare`. A frozen bundle selects its own benchmark during rescoring, and the supplied project must match it.
-
-```sh
-export MURM_FATE_BENCHMARK=FATE-H
-node "$example/main.js" --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-H
-node "$example/main.js" --fate-matrix "$example/fate-config.js"
-```
-
-This configuration gives four peers up to 45 minutes of work and samples progress after 30 minutes. `fate-work-checkpoint.json` is host-only and records timestamps, peer state, candidate digests and tool/substrate evidence if the group is still working. If the group ends early, `fate-result.json` records `not_reached` and its actual closeout. Checkpoint capture does not send a wake or change the work deadline.
-
-## FATE-X #31
-
-Prepare [FATE-X at `a6fb49e`](https://github.com/frenzymath/FATE-X/tree/a6fb49ee85fd05bb8ce9fc66e1c66797b5a0592d) with `lake exe cache get`. It uses the same Lean 4.28.0 and Mathlib revision. Point `MURM_FATE_PROJECT` at that workspace, then select FATE-X in the launcher and preparation steps. The checker uses the full original `Problem31.UFD_of_ge_5` declaration with its local definitions. The default work window is 30 minutes.
-
-```sh
-export MURM_FATE_BENCHMARK=FATE-X
-node "$example/main.js" --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-X
-node "$example/main.js" --fate-run "$example/fate-config.js"
-```
-
-A host configuration can set `fate.verifiedCompletion: true` for a sustained attempt. The first task input tells the peer its work window. To finish early, the peer must first get `passed` from `check_lean` on the exact proof it submits. After an unfinished natural reply, the host continues the same Session only while its remaining Service and Lean-check allowances still permit a verified submission. A peer with an already checked proof can use its last Service operation to submit the same bytes.
+The dedicated [FATE benchmark](../../benchmarks/fate/README.md) owns its Lean
+checker, paper-oriented publication policy, scoring and pinned workload
+configuration. Ordinary projects use the SQLite Service described above.

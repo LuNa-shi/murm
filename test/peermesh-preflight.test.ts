@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRuntime } from '../src/core/index.js';
-import { createPeerProfile } from '../src/harnesses/peermesh/index.js';
-import { createPeerMeshServices } from '../src/harnesses/peermesh/services.js';
-import { createBoardLauncher } from '../src/harnesses/peermesh/board-process.js';
+import { createPeerProfile } from '../examples/peermesh/harness/index.js';
+import { createPeerMeshServices } from '../examples/peermesh/services/services.js';
+import { createBoardLauncher } from '../examples/peermesh/services/board-process.js';
 import { execute } from './fixtures/notes-installed-package.js';
 
 test('foreground PeerMesh example validates host configuration without starting facilities', async t => {
@@ -16,8 +16,9 @@ test('foreground PeerMesh example validates host configuration without starting 
   t.after(() => rm(directory, { recursive: true, force: true }));
   const config = new URL('../examples/peermesh/config.js', import.meta.url);
   const cli = new URL('../scripts/run-harness.js', import.meta.url);
-  const backendModule = new URL('../src/core/opensandbox-backend.js', import.meta.url);
-  const env = { PATH: process.env.PATH };
+  const backendModule = new URL('../src/core/sandbox/opensandbox-backend.js', import.meta.url);
+  // Configuration validation does not depend on host network-interface discovery.
+  const env = { PATH: process.env.PATH, MURM_ADVERTISE_HOST: '192.0.2.1' };
   const options = { cwd: directory, env, timeout: 5_000 };
   const command = [fileURLToPath(cli), '--config', fileURLToPath(config)];
   await assert.rejects(execute(process.execPath, command, options), error => {
@@ -47,6 +48,7 @@ test('foreground PeerMesh example validates host configuration without starting 
     assert.equal(options.gitea.owner, 'fixture-owner');
     assert.equal(options.mattermost.teamId, 'fixture-team');
     assert.equal(options.outputDir, './peermesh-runs');
+    assert.equal(options.connection.advertiseHost, '192.0.2.1');
     assert.equal(timeoutMs, 3_720_000);
     assert.equal(options.project.durationMs, 3_600_000);
     assert.deepEqual(options.peerKeys, ['a', 'b', 'c', 'd']);

@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
-import { ResponsesBudgetGateway } from '../src/agent/responses-budget-gateway.js';
+import { ResponsesBudgetGateway } from '../src/core/model/responses-budget-gateway.js';
 
 const model = 'gpt-6.1-sol';
 

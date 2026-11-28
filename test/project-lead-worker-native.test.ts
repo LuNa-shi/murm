@@ -8,7 +8,7 @@ import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { createNativeEvidenceDirectory, execute, installNativeNotesExample } from './fixtures/notes-installed-package.js';
 import { createLocalPeerMeshStack } from './fixtures/peermesh-local-stack.js';
-import { httpClient } from '../src/harnesses/peermesh/http.js';
+import { httpClient } from '../src/harness/http.js';
 
 function projectCommand(stage: string, sequence: number, dynamic: boolean) {
   return `python3 - <<'MURM_PROJECT_TEAM'

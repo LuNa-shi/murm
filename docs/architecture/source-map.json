@@ -1,14 +1,17 @@
 {
   "schema_version": 1,
-  "runtime_baseline": "9e2804864c9f348e46095aa91f6ddf72fef016f5",
-  "reviewed_date": "2026-11-26",
+  "runtime_baseline": "207be6356c16e5fb60c4b3c5b236d7a98383f991",
+  "reviewed_date": "2026-11-27",
   "scope_roots": [
     "src",
     "scripts",
     "deploy",
-    "integrations",
     "test-support/subagents",
-    "website"
+    "website",
+    "examples/services",
+    "examples/taskpool/deploy",
+    "examples/taskpool/services/judge",
+    "test-support/taskpool-legacy"
   ],
   "scope_root_files": [
     "package.json",
@@ -24,11 +27,12 @@
     "tsconfig.json",
     "tsconfig.tests.json",
     ".dockerignore",
-    "examples/substrate/FateProofGuard.lean",
-    "examples/substrate/VerifyFateProof.lean",
+    "benchmarks/fate/FateProofGuard.lean",
+    "benchmarks/fate/VerifyFateProof.lean",
     ".github/workflows/ci.yml",
     ".github/workflows/deploy-website.yml",
-    ".github/workflows/release.yml"
+    ".github/workflows/release.yml",
+    "examples/taskpool/.npmignore"
   ],
   "excluded": [
     {
@@ -297,7 +301,7 @@
       "role": "Offline documentation gate and local-link/anchor verification"
     },
     {
-      "path": "scripts/context-service-peer.ts",
+      "path": "examples/taskpool/deploy/service-hosts/start-context-service-peer.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -334,7 +338,7 @@
       "role": "Offline exact prompt extraction, synthetic composition and drift check"
     },
     {
-      "path": "scripts/judge-service-peer.ts",
+      "path": "examples/taskpool/deploy/service-hosts/start-judge-service-peer.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -344,7 +348,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "scripts/lock-final-tree-checker.ts",
+      "path": "examples/taskpool/services/judge/lock-final-tree-checker.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -353,7 +357,7 @@
       "role": "Trusted local checker lock generator with source provenance checks"
     },
     {
-      "path": "scripts/mathlib-search-service.ts",
+      "path": "examples/services/mathlib-search/main.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/00-overview.md",
@@ -415,7 +419,7 @@
       "role": "Immutable same-UID process inspection before changing paused project paths"
     },
     {
-      "path": "scripts/review-mission.ts",
+      "path": "examples/taskpool/services/mission/review-mission.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -435,7 +439,7 @@
       "role": "Trusted worker-owned project directory preparation, manifest validation, grant and revocation"
     },
     {
-      "path": "scripts/service-host-entrypoint.sh",
+      "path": "examples/taskpool/deploy/service-hosts/service-host-entrypoint.sh",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -444,7 +448,7 @@
       "role": "Explicit Judge checker prebuild gate and persistent volume marker"
     },
     {
-      "path": "scripts/service-host.ts",
+      "path": "examples/taskpool/deploy/service-hosts/start-service-host.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/00-overview.md",
@@ -462,7 +466,7 @@
       "role": "Executable swarm CLI entry point and exit-code boundary"
     },
     {
-      "path": "deploy/builtin-services/compose.yaml",
+      "path": "examples/taskpool/deploy/service-hosts/compose.yaml",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -471,7 +475,7 @@
       "role": "Four-process isolated service deployment with independent persistent volumes"
     },
     {
-      "path": "deploy/builtin-services/Dockerfile",
+      "path": "examples/taskpool/deploy/service-hosts/Dockerfile",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -482,7 +486,7 @@
       "role": "Built-in service image recipe and persisted database mount"
     },
     {
-      "path": "deploy/builtin-services/judge-peer-entrypoint.sh",
+      "path": "examples/taskpool/deploy/service-hosts/judge-peer-entrypoint.sh",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -492,7 +496,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "deploy/builtin-services/README.md",
+      "path": "examples/taskpool/deploy/service-hosts/README.md",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -503,7 +507,7 @@
       "role": "Built-in provider deployment configuration"
     },
     {
-      "path": "deploy/mathlib-search/Dockerfile",
+      "path": "examples/services/mathlib-search/Dockerfile",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -514,7 +518,7 @@
       "role": "Mathlib provider image recipe"
     },
     {
-      "path": "src/services/mathlib-search/README.md",
+      "path": "examples/services/mathlib-search/README.md",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -525,7 +529,7 @@
       "role": "Mathlib provider configuration and operation notes"
     },
     {
-      "path": "src/services/mathlib-search/references/loogle.md",
+      "path": "examples/services/mathlib-search/references/loogle.md",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -536,7 +540,7 @@
       "role": "Repository-owned query guidance loaded by bundle"
     },
     {
-      "path": "src/services/mathlib-search/service.json",
+      "path": "examples/services/mathlib-search/service.json",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -547,7 +551,7 @@
       "role": "Optional provider manifest, schemas, help and documentation declarations"
     },
     {
-      "path": "src/services/mathlib-search/SKILL.md",
+      "path": "examples/services/mathlib-search/SKILL.md",
       "category": "provider deployment and instructions",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -578,7 +582,7 @@
       "role": "Native Pi compatible-provider catalog with runtime environment interpolation"
     },
     {
-      "path": "src/agent/agent-contract.ts",
+      "path": "examples/taskpool/prompts/agent-contract.ts",
       "category": "Agent and prompts",
       "chapters": [
         "docs/architecture/01-agent-core.md",
@@ -588,8 +592,8 @@
       "role": "TaskPool continuation and notification messages with Service directory projection"
     },
     {
-      "path": "src/agent/capability-profile.ts",
-      "category": "Agent and prompts",
+      "path": "test-support/taskpool-legacy/capability-profile.ts",
+      "category": "controlled verification fixture",
       "chapters": [
         "docs/architecture/01-agent-core.md",
         "docs/architecture/08-prompts.md",
@@ -598,7 +602,7 @@
       "role": "Role-specific capability profile, binding requirements and tool directory"
     },
     {
-      "path": "src/agent/responses-budget-gateway.ts",
+      "path": "src/core/model/responses-budget-gateway.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -609,8 +613,8 @@
       "role": "Runtime-owned time-bounded Responses forwarding, request receipts, and observed usage"
     },
     {
-      "path": "src/agent/services-bridge.ts",
-      "category": "Agent and prompts",
+      "path": "test-support/taskpool-legacy/services-bridge.ts",
+      "category": "controlled verification fixture",
       "chapters": [
         "docs/architecture/01-agent-core.md",
         "docs/architecture/08-prompts.md",
@@ -619,7 +623,7 @@
       "role": "Authenticated per-Core tool endpoint, binding and lifecycle orchestration"
     },
     {
-      "path": "src/cli/service-command.ts",
+      "path": "examples/taskpool/cli.ts",
       "category": "service and Agent integration",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -639,7 +643,7 @@
       "role": "Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation"
     },
     {
-      "path": "src/context/context-service.ts",
+      "path": "examples/taskpool/services/material/context-service.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -660,7 +664,7 @@
       "role": "Shared structured error vocabulary and normalization"
     },
     {
-      "path": "src/judge/check-result.ts",
+      "path": "examples/taskpool/services/judge/check-result.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -670,7 +674,7 @@
       "role": "Check outcome/diagnostic classification and caller-safe result projections"
     },
     {
-      "path": "src/judge/checker-owner.ts",
+      "path": "examples/taskpool/services/judge/checker-owner.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -679,7 +683,7 @@
       "role": "Durable checker resource ownership and confirmed systemd cleanup"
     },
     {
-      "path": "src/judge/checker-process-limits.ts",
+      "path": "examples/taskpool/services/judge/checker-process-limits.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -688,7 +692,7 @@
       "role": "Verified systemd cgroup limits and process-tree cleanup ownership"
     },
     {
-      "path": "src/judge/final-tree-deployment.ts",
+      "path": "examples/taskpool/services/judge/final-tree-deployment.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -697,7 +701,7 @@
       "role": "Pinned source/artifact lock and production checker startup gate"
     },
     {
-      "path": "src/judge/final-tree-proof.lean",
+      "path": "examples/taskpool/services/judge/final-tree-proof.lean",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md"
@@ -705,7 +709,7 @@
       "role": "Trusted Comparator harness consuming inert proof exports"
     },
     {
-      "path": "src/judge/fixture.ts",
+      "path": "examples/taskpool/services/judge/fixture.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -715,7 +719,7 @@
       "role": "Locked fixture metadata and Candidate identity validation"
     },
     {
-      "path": "src/judge/judge-service.ts",
+      "path": "examples/taskpool/services/judge/judge-service.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -726,7 +730,7 @@
       "role": "Idempotent checks, preflight health, retries and durable CheckResults"
     },
     {
-      "path": "src/judge/lean-adapter.ts",
+      "path": "examples/taskpool/services/judge/lean-adapter.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -736,7 +740,7 @@
       "role": "Independent Lean preflight/compiler process and diagnostic extraction"
     },
     {
-      "path": "src/judge/lean-final-tree-verifier.ts",
+      "path": "examples/taskpool/services/judge/lean-final-tree-verifier.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -746,7 +750,7 @@
       "role": "Locked offline Lake project builds, isolated proof export, theorem comparison and kernel replay"
     },
     {
-      "path": "src/judge/lean-module-build.lean",
+      "path": "examples/taskpool/services/judge/lean-module-build.lean",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -755,7 +759,7 @@
       "role": "Pinned Lean frontend driver recording completed fixed-source elaboration before module serialization"
     },
     {
-      "path": "src/judge/lean-module-checker.ts",
+      "path": "examples/taskpool/services/judge/lean-module-checker.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -764,7 +768,7 @@
       "role": "Isolated module dependency compilation and Mission-scoped immutable artifact cache"
     },
     {
-      "path": "src/judge/lean-source-policy.ts",
+      "path": "examples/taskpool/services/judge/lean-source-policy.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -773,7 +777,7 @@
       "role": "Shared Lean comment handling and source locations for diagnostic and final policy rejections"
     },
     {
-      "path": "src/judge/lean-module-verify.lean",
+      "path": "examples/taskpool/services/judge/lean-module-verify.lean",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -782,7 +786,7 @@
       "role": "Isolated module identity/completion verification and kernel replay of new safe declarations without candidate initializers"
     },
     {
-      "path": "src/protocol/envelope.ts",
+      "path": "examples/taskpool/persistence/envelope.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -802,7 +806,7 @@
       "role": "Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers"
     },
     {
-      "path": "src/replay/service-history.ts",
+      "path": "examples/taskpool/persistence/service-history.ts",
       "category": "private history",
       "chapters": [
         "docs/architecture/13-historical-resume.md"
@@ -810,7 +814,7 @@
       "role": "Automatic transaction-aware private SQLite before/after row history and committed write boundaries"
     },
     {
-      "path": "src/runtime/docker-agent-disk.ts",
+      "path": "src/core/sandbox/docker-agent-disk.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -820,7 +824,7 @@
       "role": "Docker Agent identity validation and bounded filesystem preparation"
     },
     {
-      "path": "src/runtime/docker-agent-network.ts",
+      "path": "src/core/sandbox/docker-agent-network.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -830,7 +834,7 @@
       "role": "Pinned local Docker namespace egress enforcement with frozen per-Agent Profile origins"
     },
     {
-      "path": "src/runtime/execution-workspace.ts",
+      "path": "examples/taskpool/services/workspace/execution-workspace.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -839,7 +843,7 @@
       "role": "Authenticated guest snapshot, durable E save lineage, save reconciliation and recovery-only pre-retirement install acknowledgement"
     },
     {
-      "path": "src/runtime/manual-mission-review.ts",
+      "path": "examples/taskpool/services/mission/manual-mission-review.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -849,7 +853,7 @@
       "role": "Explicit bounded manual Mission checker and immutable operator decision ledger"
     },
     {
-      "path": "examples/taskpool/mathlib-service.ts",
+      "path": "examples/taskpool/services/mathlib/mathlib-service.ts",
       "category": "runtime implementation",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -858,7 +862,7 @@
       "role": "Core-authorized same-version Mathlib search for the current TaskPool Execution"
     },
     {
-      "path": "examples/taskpool/mission-service.ts",
+      "path": "examples/taskpool/services/mission/mission-service.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -867,7 +871,7 @@
       "role": "Optional Core Bridge Mission reads and explicit-grant submission to caller-owned coordination"
     },
     {
-      "path": "examples/taskpool/mission-coordination.ts",
+      "path": "examples/taskpool/services/mission/mission-coordination.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -876,7 +880,7 @@
       "role": "TaskPool assembly of Task and Context authority for Mission acceptance"
     },
     {
-      "path": "src/runtime/mission-submission.ts",
+      "path": "examples/taskpool/services/mission/mission-submission.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/00-overview.md",
@@ -887,7 +891,7 @@
       "role": "Durable Mission submission snapshot, single active freeze, and late-result fencing"
     },
     {
-      "path": "src/runtime/mission-workspace.ts",
+      "path": "examples/taskpool/services/workspace/mission-workspace.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/00-overview.md",
@@ -899,7 +903,7 @@
       "role": "Runtime-owned Mission Workspace repository with immutable public revisions, fixed-file reads, materialization, and whole-revision merge"
     },
     {
-      "path": "src/runtime/opensandbox-manager.ts",
+      "path": "src/core/sandbox/opensandbox-manager.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -909,7 +913,7 @@
       "role": "OpenSandbox lifecycle and Execd provider boundary for one Execution"
     },
     {
-      "path": "src/runtime/opensandbox-metadata.ts",
+      "path": "src/core/sandbox/opensandbox-metadata.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -918,8 +922,8 @@
       "role": "Provider-compatible Mission, Agent and Execution identity labels"
     },
     {
-      "path": "src/runtime/runtime.ts",
-      "category": "Execution and control",
+      "path": "test-support/taskpool-legacy/runtime.ts",
+      "category": "controlled verification fixture",
       "chapters": [
         "docs/architecture/02-execution.md",
         "docs/architecture/05-workspace-continuity.md",
@@ -929,7 +933,7 @@
       "role": "Registered Agent binding, physical resource ownership, process failure cleanup and fencing"
     },
     {
-      "path": "src/runtime/workspace-contract.ts",
+      "path": "examples/taskpool/services/workspace/workspace-contract.ts",
       "category": "Workspace and Sandbox",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -938,7 +942,7 @@
       "role": "Workspace path normalization, input/output contracts and required-input validation"
     },
     {
-      "path": "src/runtime/workspace-manager.ts",
+      "path": "examples/taskpool/services/workspace/workspace-manager.ts",
       "category": "Workspace and Sandbox",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -947,7 +951,7 @@
       "role": "Execution-owned filesystem, manifests, revisions, local Git and snapshots"
     },
     {
-      "path": "src/runtime/workspace-publication.ts",
+      "path": "examples/taskpool/services/workspace/workspace-publication.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md"
@@ -955,7 +959,7 @@
       "role": "Synchronous lifecycle SQLite lock around Git publication and unknown-result classification"
     },
     {
-      "path": "src/runtime/workspace-repository.ts",
+      "path": "examples/taskpool/services/workspace/workspace-repository.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -965,7 +969,7 @@
       "role": "Workspace Git object creation, single-writer OS locking, immutable revision refs, durable request results and ref/index recovery barrier"
     },
     {
-      "path": "src/sdk/builtin-registry.ts",
+      "path": "examples/taskpool/services/builtin-registry.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -975,7 +979,7 @@
       "role": "Built-in registered manifests and local/remote provider composition"
     },
     {
-      "path": "src/sdk/context-service-peer.ts",
+      "path": "examples/taskpool/deploy/service-hosts/context-service-peer.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -985,7 +989,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/coordinator-peer-client.ts",
+      "path": "examples/taskpool/deploy/service-hosts/coordinator-peer-client.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -995,7 +999,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/coordinator-peer-host.ts",
+      "path": "examples/taskpool/deploy/service-hosts/coordinator-peer-host.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1005,7 +1009,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/independent-services.ts",
+      "path": "examples/taskpool/deploy/service-hosts/independent-services.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1015,7 +1019,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/judge-service-peer.ts",
+      "path": "examples/taskpool/deploy/service-hosts/judge-service-peer.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1025,7 +1029,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/peer-process-lifetime.ts",
+      "path": "examples/taskpool/deploy/service-hosts/peer-process-lifetime.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1035,7 +1039,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/remote-context-service.ts",
+      "path": "examples/taskpool/deploy/service-hosts/remote-context-service.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1045,7 +1049,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/remote-judge-service.ts",
+      "path": "examples/taskpool/deploy/service-hosts/remote-judge-service.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1055,7 +1059,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/service-adapter.ts",
+      "path": "examples/taskpool/deploy/service-hosts/service-adapter.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1065,7 +1069,7 @@
       "role": "In-process and HTTP adapters, readiness, timeout and transport errors"
     },
     {
-      "path": "src/sdk/service-authority-snapshot.ts",
+      "path": "examples/taskpool/deploy/service-hosts/service-authority-snapshot.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1075,7 +1079,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/service-bundle.ts",
+      "path": "examples/taskpool/deploy/service-hosts/service-bundle.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1085,7 +1089,7 @@
       "role": "Manifest and Service documentation loading with containment/hash checks"
     },
     {
-      "path": "src/sdk/service-catalog.ts",
+      "path": "examples/taskpool/services/service-catalog.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1095,7 +1099,7 @@
       "role": "Operation schemas/help, discoverability and retained compatibility catalog"
     },
     {
-      "path": "src/sdk/service-commit-gate.ts",
+      "path": "examples/taskpool/deploy/service-hosts/service-commit-gate.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1105,7 +1109,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/service-host.ts",
+      "path": "examples/taskpool/deploy/service-hosts/service-host.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1115,7 +1119,7 @@
       "role": "HTTP manifest/readiness/invocation server and token/role/binding checks"
     },
     {
-      "path": "src/sdk/service-manifest.ts",
+      "path": "examples/taskpool/deploy/service-hosts/service-manifest.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1125,7 +1129,7 @@
       "role": "Manifest/capability normalization, endpoint and schema metadata validation"
     },
     {
-      "path": "src/sdk/service-registry.ts",
+      "path": "examples/taskpool/deploy/service-hosts/service-registry.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1135,7 +1139,7 @@
       "role": "Provider registration, profile projection, readiness cache and invocation"
     },
     {
-      "path": "src/services/mathlib-search/service.ts",
+      "path": "examples/services/mathlib-search/service.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1145,7 +1149,7 @@
       "role": "Upstream or local lexical Mathlib provider, cache, limits and fallback"
     },
     {
-      "path": "src/storage/context-schema.ts",
+      "path": "examples/taskpool/services/material/context-schema.ts",
       "category": "durable storage",
       "chapters": [
         "docs/architecture/11-storage-reference.md",
@@ -1155,7 +1159,7 @@
       "role": "Material/consumption/operation SQL schema"
     },
     {
-      "path": "src/storage/judge-schema.ts",
+      "path": "examples/taskpool/services/judge/judge-schema.ts",
       "category": "durable storage",
       "chapters": [
         "docs/architecture/11-storage-reference.md",
@@ -1165,7 +1169,7 @@
       "role": "Checker health/request/result/operation SQL schema"
     },
     {
-      "path": "src/storage/schema.ts",
+      "path": "examples/taskpool/services/task/schema.ts",
       "category": "durable storage",
       "chapters": [
         "docs/architecture/11-storage-reference.md",
@@ -1175,7 +1179,7 @@
       "role": "Mission/Task/Execution/dependency/notification/operation SQL schema"
     },
     {
-      "path": "src/storage/service-peer-schema.ts",
+      "path": "examples/taskpool/persistence/service-peer-schema.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1184,7 +1188,7 @@
       "role": "Independent service gate, receipt and phase storage definitions"
     },
     {
-      "path": "src/task/execution-budget.ts",
+      "path": "examples/taskpool/services/task/execution-budget.ts",
       "category": "task and lifecycle authority",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1194,7 +1198,7 @@
       "role": "Shared durable soft-closeout boundary for Task, Workspace and actual Agent continuation dispatch"
     },
     {
-      "path": "src/task/task-service.ts",
+      "path": "examples/taskpool/services/task/task-service.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -1205,7 +1209,7 @@
       "role": "Authoritative Task/Execution transactions, admission, projections and lifecycle"
     },
     {
-      "path": "src/task/task-types.ts",
+      "path": "examples/taskpool/services/task/task-types.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -1240,8 +1244,8 @@
       "role": "Runtime assembly, Agent admission, input and bounded lifecycle"
     },
     {
-      "path": "src/harnesses/shared/run-finalization.ts",
-      "category": "programmable Core",
+      "path": "src/harness/run-finalization.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
@@ -1284,7 +1288,7 @@
       "role": "Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch"
     },
     {
-      "path": "src/core/model-access.ts",
+      "path": "src/core/model/model-access.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1292,7 +1296,7 @@
       "role": "Runtime-scoped model gateway lifecycle, credentials and policy"
     },
     {
-      "path": "src/core/opensandbox-backend.ts",
+      "path": "src/core/sandbox/opensandbox-backend.ts",
       "category": "Core runtime",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md",
@@ -1302,7 +1306,7 @@
       "role": "Shared OpenSandbox lifecycle, session control, input polling and cleanup"
     },
     {
-      "path": "src/core/opensandbox-provider.ts",
+      "path": "src/core/sandbox/opensandbox-provider.ts",
       "category": "Core runtime",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
@@ -1310,7 +1314,7 @@
       "role": "Public Sandbox Provider contract, API and strict OpenSandbox preparation, and shared workspace capabilities"
     },
     {
-      "path": "src/core/sandbox-connection.ts",
+      "path": "src/core/sandbox/sandbox-connection.ts",
       "category": "Core runtime",
       "chapters": [
         "docs/architecture/07-run-configuration.md",
@@ -1327,7 +1331,7 @@
       "role": "Interruptible bounded polling schedule for a single Worker"
     },
     {
-      "path": "src/core/executor-driver.ts",
+      "path": "src/core/sandbox/executor-driver.ts",
       "category": "Core runtime",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
@@ -1335,7 +1339,7 @@
       "role": "Executor startup, version, configuration checks and capability contract"
     },
     {
-      "path": "src/agent/model-catalog.ts",
+      "path": "src/core/model/model-catalog.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
@@ -1367,7 +1371,7 @@
       "role": "Complete FileTree snapshot and single-step replacement request ownership and receipts"
     },
     {
-      "path": "scripts/core-file-seed.ts",
+      "path": "src/core/files/core-file-seed.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1384,7 +1388,7 @@
       "role": "Trusted Worker file snapshots, digest-checked replacement, verified write grant and close coordination"
     },
     {
-      "path": "scripts/core-collection.ts",
+      "path": "src/core/files/core-collection.ts",
       "category": "Pi and sandbox execution",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1402,15 +1406,15 @@
       "role": "Host artifact stream validation, private staging and manifest publication"
     },
     {
-      "path": "src/harnesses/shared/run-input.ts",
-      "category": "Execution and control",
+      "path": "src/harness/run-input.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
       ],
       "role": "Harness-owned exclusive idle Agent input wait and uncertain submission guard"
     },
     {
-      "path": "examples/taskpool/agent-coordinator.ts",
+      "path": "examples/taskpool/harness/agent-coordinator.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1436,7 +1440,7 @@
       "role": "Installed-package Notes Harness Service, role prompts, input order, archive verification and saved-report CLI"
     },
     {
-      "path": "examples/bridge-services/messages.ts",
+      "path": "examples/messages/messages.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1444,7 +1448,7 @@
       "role": "Shared Messages manifest and in-process or already-running HTTP Service adapter selection"
     },
     {
-      "path": "examples/bridge-services/handoff-config.ts",
+      "path": "examples/messages/handoff-config.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
@@ -1452,7 +1456,7 @@
       "role": "Standalone handoff backend, executor, model and existing Service configuration"
     },
     {
-      "path": "examples/bridge-services/handoff.ts",
+      "path": "examples/messages/handoff.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/08-prompts.md",
@@ -1461,7 +1465,7 @@
       "role": "Public SDK handoff, live Service and execution observation, and verified artifact reporting"
     },
     {
-      "path": "examples/bridge-services/tsconfig.handoff.json",
+      "path": "examples/messages/tsconfig.handoff.json",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
@@ -1469,7 +1473,7 @@
       "role": "Strict build configuration for the installed handoff sample"
     },
     {
-      "path": "examples/bridge-services/gh-issues.ts",
+      "path": "examples/services/github-issues/index.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1485,15 +1489,15 @@
       "role": "Sample host lifecycle, provider, model, output and resource configuration"
     },
     {
-      "path": "src/harnesses/shared/run-report.ts",
-      "category": "Execution and control",
+      "path": "src/harness/run-report.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Compatibility Harness reporting and shared atomic persistence for application outcome reports"
     },
     {
-      "path": "examples/taskpool/coordination-permissions.ts",
+      "path": "examples/taskpool/services/mission/coordination-permissions.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1502,7 +1506,7 @@
       "role": "TaskPool host-only validation and immutable copy of existing Task dependency, Material revocation and Mission submission grants"
     },
     {
-      "path": "examples/taskpool/task-service.ts",
+      "path": "examples/taskpool/services/task/agent-service.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1511,7 +1515,7 @@
       "role": "TaskPool trusted Service-v2 discovery and idempotent Task handoff entry"
     },
     {
-      "path": "examples/taskpool/task-handoff.ts",
+      "path": "examples/taskpool/harness/task-handoff.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1520,7 +1524,7 @@
       "role": "Preparation heartbeat, Core file handoff and stop-confirmed domain compensation"
     },
     {
-      "path": "examples/taskpool/prepare-inputs.ts",
+      "path": "examples/taskpool/harness/prepare-inputs.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1537,7 +1541,7 @@
       "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/harnesses/peermesh/board-process.ts",
+      "path": "examples/peermesh/services/board-process.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md"
@@ -1545,15 +1549,15 @@
       "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/harnesses/peermesh/http.ts",
-      "category": "Harness integration",
+      "path": "src/harness/http.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md"
       ],
-      "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
+      "role": "Shared host HTTP policy: bounded responses, no redirect/retry and sanitized failures"
     },
     {
-      "path": "src/harnesses/peermesh/index.ts",
+      "path": "examples/peermesh/harness/index.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md",
@@ -1562,7 +1566,7 @@
       "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/harnesses/peermesh/provision.ts",
+      "path": "examples/peermesh/harness/provision.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md"
@@ -1570,7 +1574,15 @@
       "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/harnesses/peermesh/resources.ts",
+      "path": "src/harness/owned-resources.ts",
+      "category": "harness-support",
+      "chapters": [
+        "docs/architecture/18-peermesh-harness.md"
+      ],
+      "role": "Shared application resource ownership and bounded cleanup with retained/pending receipts"
+    },
+    {
+      "path": "examples/peermesh/services/services.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md"
@@ -1578,15 +1590,7 @@
       "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/harnesses/peermesh/services.ts",
-      "category": "Harness integration",
-      "chapters": [
-        "docs/architecture/18-peermesh-harness.md"
-      ],
-      "role": "Single-peer PeerMesh ownership, trusted facility identity and Git integration"
-    },
-    {
-      "path": "src/harnesses/substrate/index.ts",
+      "path": "examples/substrate/harness/index.ts",
       "category": "Harness composition",
       "chapters": [
         "docs/architecture/19-substrate-harness.md",
@@ -1595,7 +1599,7 @@
       "role": "Fixed three-peer Harness drivers, serial exclusive inputs, independent stop and persistent content reporting"
     },
     {
-      "path": "src/harnesses/substrate/substrate.ts",
+      "path": "examples/substrate/services/substrate.ts",
       "category": "Harness composition",
       "chapters": [
         "docs/architecture/19-substrate-harness.md",
@@ -1604,7 +1608,7 @@
       "role": "Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking"
     },
     {
-      "path": "src/harnesses/substrate/collaboration-evidence.ts",
+      "path": "examples/substrate/harness/collaboration-evidence.ts",
       "category": "Harness composition",
       "chapters": [
         "docs/architecture/19-substrate-harness.md"
@@ -1612,7 +1616,7 @@
       "role": "Host-only verification of ordered immutable collaboration checkpoints and separate publisher stop evidence"
     },
     {
-      "path": "examples/subagents/collaboration-service.ts",
+      "path": "examples/subagents/services/collaboration-service.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-harness-reporting.md",
@@ -1657,7 +1661,7 @@
       "role": "Subagents host Profiles, live user input, one-shot or interactive execution and whole-tree reporting"
     },
     {
-      "path": "examples/subagents/controller.ts",
+      "path": "examples/subagents/harness/controller.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-harness-reporting.md",
@@ -1674,7 +1678,7 @@
       "role": "Optional four-group original-child identity and cumulative text adoption gate over actual controller admissions"
     },
     {
-      "path": "examples/subagents/prompts.ts",
+      "path": "examples/subagents/prompts/prompts.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-harness-reporting.md",
@@ -1691,7 +1695,7 @@
       "role": "Local subagents host model, resource and deadline configuration"
     },
     {
-      "path": "src/harnesses/peermesh/router.ts",
+      "path": "examples/peermesh/harness/router.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md",
@@ -1700,7 +1704,7 @@
       "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
     },
     {
-      "path": "src/harnesses/peermesh/routed.ts",
+      "path": "examples/peermesh/harness/routed.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md",
@@ -1709,7 +1713,7 @@
       "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
     },
     {
-      "path": "src/harnesses/peermesh/event-source.ts",
+      "path": "examples/peermesh/services/event-source.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md"
@@ -1717,7 +1721,7 @@
       "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
     },
     {
-      "path": "src/harnesses/lead-worker/board.ts",
+      "path": "examples/lead-worker/services/board.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -1725,7 +1729,7 @@
       "role": "Transactional durable Board, trusted caller ownership and proof acceptance"
     },
     {
-      "path": "src/harnesses/lead-worker/git.ts",
+      "path": "examples/lead-worker/harness/git.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -1733,7 +1737,7 @@
       "role": "Run-scoped fixed-team Git provisioning, PR authorization, head and pinned byte verification"
     },
     {
-      "path": "src/harnesses/lead-worker/index.ts",
+      "path": "examples/lead-worker/harness/index.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -1741,7 +1745,7 @@
       "role": "Public Core fixed-team Harness, exclusive short or four-stage workflow and pending cleanup ownership"
     },
     {
-      "path": "src/harnesses/lead-worker/prompts.ts",
+      "path": "examples/lead-worker/harness/prompts.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md",
@@ -1750,7 +1754,7 @@
       "role": "Lead/helper role and finite continuation instructions"
     },
     {
-      "path": "src/harnesses/lead-worker/team.ts",
+      "path": "examples/lead-worker/harness/team.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -1758,7 +1762,7 @@
       "role": "Validates fixed Lead-Worker configuration and exact trusted team identity"
     },
     {
-      "path": "examples/lead-worker/main.ts",
+      "path": "benchmarks/lead-worker-orders/main.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -1766,7 +1770,7 @@
       "role": "Editable Lead-Worker CLI with public backend assembly and report output"
     },
     {
-      "path": "examples/lead-worker/config.ts",
+      "path": "benchmarks/lead-worker-orders/config.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -1774,7 +1778,7 @@
       "role": "Kimi K3 fixed-team sample configuration and finite resource bounds"
     },
     {
-      "path": "examples/lead-worker/fixtures/oracle.mjs",
+      "path": "benchmarks/lead-worker-orders/fixtures/oracle.mjs",
       "category": "Controlled fixtures",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -1782,7 +1786,7 @@
       "role": "Frozen host-side JSONL task cases and candidate transcript checks for #235"
     },
     {
-      "path": "src/harnesses/peermesh/team.ts",
+      "path": "examples/peermesh/harness/team.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md",
@@ -1792,7 +1796,7 @@
       "role": "One Runtime with independently bound peers, exclusive routers and shared cleanup"
     },
     {
-      "path": "src/harnesses/peermesh/delivery.ts",
+      "path": "examples/peermesh/harness/delivery.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md"
@@ -1800,7 +1804,7 @@
       "role": "Trusted scoped fixed-head merge receipts and immutable main-file verification"
     },
     {
-      "path": "src/runtime/workspace-public-reads.ts",
+      "path": "examples/taskpool/services/workspace/workspace-public-reads.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md"
@@ -1808,7 +1812,7 @@
       "role": "Shared public Workspace read argument mapping shared by v1 Registry and Core TaskPool adapters"
     },
     {
-      "path": "examples/taskpool/publication-services.ts",
+      "path": "examples/taskpool/services/workspace/publication-services.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1819,7 +1823,7 @@
       "role": "TaskPool trusted publication, notification handling, optional fixed-revision Judge and checked merge with actual Core/Task authority"
     },
     {
-      "path": "src/judge/workspace-check-source.ts",
+      "path": "examples/taskpool/services/judge/workspace-check-source.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1828,7 +1832,7 @@
       "role": "Shared fixed-public-revision Judge source preparation with caller-owned before/after authority guards"
     },
     {
-      "path": "examples/taskpool/controller.ts",
+      "path": "examples/taskpool/harness/controller.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1838,7 +1842,7 @@
       "role": "TaskPool serial discovery, continuation, directed feedback and stop-confirmed replacement policy"
     },
     {
-      "path": "examples/taskpool/harness.ts",
+      "path": "examples/taskpool/harness/harness.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1856,8 +1860,8 @@
       "role": "Host CLI for saved result inspection using the shared reader"
     },
     {
-      "path": "src/harnesses/shared/read-result.ts",
-      "category": "launch and composition",
+      "path": "src/harness/read-result.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
@@ -1872,7 +1876,7 @@
       "role": "Foreground host CLI for explicit local Harness configuration and bounded control"
     },
     {
-      "path": "src/runtime/mission-submission-access.ts",
+      "path": "examples/taskpool/services/mission/mission-submission-access.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -1890,8 +1894,8 @@
       "role": "Installed project command, stream ownership, signal handling and protocol flush"
     },
     {
-      "path": "src/harnesses/shared/project-input.ts",
-      "category": "launch and composition",
+      "path": "src/harness/project-input.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md",
         "docs/architecture/23-project-harness.md"
@@ -1899,8 +1903,8 @@
       "role": "Bounded capture of the selected host project and canonical initial file digest"
     },
     {
-      "path": "src/harnesses/shared/project-harness.ts",
-      "category": "launch and composition",
+      "path": "src/harness/project-harness.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md",
         "docs/architecture/23-project-harness.md"
@@ -1908,8 +1912,8 @@
       "role": "ESM Harness module loading, application Run admission, lifecycle and result persistence"
     },
     {
-      "path": "src/harnesses/shared/project-rpc.ts",
-      "category": "launch and composition",
+      "path": "src/harness/project-rpc.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md",
         "docs/architecture/23-project-harness.md"
@@ -1917,16 +1921,16 @@
       "role": "Project Run JSONL protocol, request replay, bounded input queue and priority stop"
     },
     {
-      "path": "src/harnesses/shared/foreground-host.ts",
-      "category": "launch and composition",
+      "path": "src/cli/foreground-harnesses.ts",
+      "category": "cli",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
       "role": "Shared foreground Harness driver using existing mode controllers and lifecycle reports"
     },
     {
-      "path": "src/harnesses/shared/foreground-commands.ts",
-      "category": "launch and composition",
+      "path": "src/harness/foreground-commands.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
       ],
@@ -1957,7 +1961,7 @@
       "role": "Exclude the example default private run-output directory from npm distribution"
     },
     {
-      "path": "src/judge/lean-module-verify.LICENSE.txt",
+      "path": "examples/taskpool/services/judge/lean-module-verify.LICENSE.txt",
       "category": "Configuration and build",
       "chapters": [
         "docs/architecture/07-run-configuration.md",
@@ -1966,7 +1970,7 @@
       "role": "Pinned third-party license or provenance attachment distributed with identified Lean material"
     },
     {
-      "path": "src/judge/lean-module-verify.NOTICE.md",
+      "path": "examples/taskpool/services/judge/lean-module-verify.NOTICE.md",
       "category": "Configuration and build",
       "chapters": [
         "docs/architecture/07-run-configuration.md",
@@ -2016,7 +2020,7 @@
       "role": "Exclude default PeerMesh run evidence from packaged examples"
     },
     {
-      "path": "examples/taskpool/workspace-merge.ts",
+      "path": "examples/taskpool/services/workspace/workspace-merge.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -2027,8 +2031,8 @@
       "role": "TaskPool-owned trusted Workspace merge policy, final-tree checker ownership and bounded shutdown"
     },
     {
-      "path": "src/harnesses/shared/input-admission.ts",
-      "category": "Harness execution",
+      "path": "src/harness/input-admission.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/18-peermesh-harness.md",
         "docs/architecture/19-substrate-harness.md"
@@ -2140,7 +2144,7 @@
       "role": "Full Bridge operation trace and optional Service state snapshots"
     },
     {
-      "path": "src/core/model-trace.ts",
+      "path": "src/core/model/model-trace.ts",
       "category": "observability and evidence",
       "chapters": [
         "docs/architecture/17-harness-reporting.md"
@@ -2156,7 +2160,7 @@
       "role": "Native Pi Session prefix, tool pairing and credential removal"
     },
     {
-      "path": "examples/substrate/fate-checker.ts",
+      "path": "benchmarks/fate/fate-checker.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/19-substrate-harness.md"
@@ -2164,7 +2168,7 @@
       "role": "Frozen dependency checks and isolated Lean compilation and replay"
     },
     {
-      "path": "examples/substrate/fate-config.ts",
+      "path": "benchmarks/fate/fate-config.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/19-substrate-harness.md"
@@ -2172,7 +2176,7 @@
       "role": "Frozen FATE host settings, benchmark selection and model authorization inputs"
     },
     {
-      "path": "examples/substrate/fate-run.ts",
+      "path": "benchmarks/fate/fate-run.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/19-substrate-harness.md",
@@ -2181,7 +2185,7 @@
       "role": "Autonomous FATE startup, time fencing, observed progress, candidate freezing and grading"
     },
     {
-      "path": "examples/substrate/fate-service.ts",
+      "path": "benchmarks/fate/fate-service.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/19-substrate-harness.md"
@@ -2189,7 +2193,7 @@
       "role": "Task search, working Lean budget, stable request scope and durable proof submission"
     },
     {
-      "path": "src/harnesses/substrate/paper-substrate.ts",
+      "path": "benchmarks/fate/paper-substrate.ts",
       "category": "Environment composition",
       "chapters": [
         "docs/architecture/19-substrate-harness.md"
@@ -2197,7 +2201,7 @@
       "role": "Paper-style immutable publications, anonymous scoped retrieval, transactional replay and decaying citation ranking"
     },
     {
-      "path": "examples/substrate/FateProofGuard.lean",
+      "path": "benchmarks/fate/FateProofGuard.lean",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/19-substrate-harness.md"
@@ -2205,7 +2209,7 @@
       "role": "Single proof term parsing inside the trusted declaration"
     },
     {
-      "path": "examples/substrate/VerifyFateProof.lean",
+      "path": "benchmarks/fate/VerifyFateProof.lean",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/19-substrate-harness.md"
@@ -2742,7 +2746,7 @@
       "role": "Run-owned Profile and Service registration, retirement, access generations and management receipts"
     },
     {
-      "path": "src/harnesses/lead-worker/dynamic.ts",
+      "path": "examples/lead-worker/harness/dynamic.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -2750,7 +2754,7 @@
       "role": "Lead delegation, source and deployment receipts, and four-Agent membership admission"
     },
     {
-      "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",
+      "path": "examples/lead-worker/harness/dynamic-scheduler.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -2766,7 +2770,7 @@
       "role": "Bounded local Docker deployment, loopback Service adapter and owned resource cleanup"
     },
     {
-      "path": "examples/lead-worker/dynamic-orders.ts",
+      "path": "benchmarks/lead-worker-orders/dynamic-orders.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -2774,7 +2778,7 @@
       "role": "Frozen orders task, pinned Git tree extraction and host-side candidate execution"
     },
     {
-      "path": "examples/lead-worker/verify-orders.ts",
+      "path": "benchmarks/lead-worker-orders/verify-orders.ts",
       "category": "Harness integration",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -2782,7 +2786,7 @@
       "role": "Offline orders oracle and retained Run receipt validation"
     },
     {
-      "path": "examples/lead-worker/fixtures/initial-project/orders.mjs",
+      "path": "benchmarks/lead-worker-orders/fixtures/initial-project/orders.mjs",
       "category": "Controlled fixtures",
       "chapters": [
         "docs/architecture/20-lead-worker-harness.md"
@@ -2790,23 +2794,23 @@
       "role": "Minimal incomplete orders CLI seeded into the dynamic acceptance project"
     },
     {
-      "path": "src/harnesses/shared/project-git.ts",
-      "category": "launch and composition",
+      "path": "src/harness/project-git.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/23-project-harness.md"
       ],
       "role": "Exact Git seed, authenticated push and populated checkout instructions"
     },
     {
-      "path": "src/harnesses/shared/project-runtime.ts",
-      "category": "launch and composition",
+      "path": "src/harness/project-runtime.ts",
+      "category": "harness-support",
       "chapters": [
         "docs/architecture/23-project-harness.md"
       ],
       "role": "Ordered Runtime event observation, configuration loading and result projection"
     },
     {
-      "path": "examples/bridge-services/project.ts",
+      "path": "examples/messages/project.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/23-project-harness.md"
@@ -2928,7 +2932,7 @@
       "role": "Top-level /zh/latest/ shortcut redirecting to the Chinese Latest release feature guide"
     },
     {
-      "path": "scripts/file-tree-stream.ts",
+      "path": "src/core/files/file-tree-stream.ts",
       "category": "Core public runtime",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -2946,7 +2950,7 @@
       "role": "Root-owned executor descriptor, compatibility and capability verification"
     },
     {
-      "path": "src/agent/chat-completions-transport.ts",
+      "path": "src/core/model/chat-completions-transport.ts",
       "category": "Core public runtime",
       "chapters": [
         "docs/architecture/07-run-configuration.md",
@@ -2955,7 +2959,7 @@
       "role": "Chat Completions tool, stream and usage validation"
     },
     {
-      "path": "src/agent/model-request-validation.ts",
+      "path": "src/core/model/model-request-validation.ts",
       "category": "Core public runtime",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
@@ -2983,7 +2987,7 @@
       "role": "Public phase-specific project transfer and export bounds"
     },
     {
-      "path": "src/core/model-transport.ts",
+      "path": "src/core/model/model-transport.ts",
       "category": "Core public runtime",
       "chapters": [
         "docs/architecture/07-run-configuration.md",
@@ -3102,6 +3106,201 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Bundled Departure Mono font asset served by the static Trace Viewer demo"
+    },
+    {
+      "path": "deploy/README.md",
+      "category": "deployment",
+      "role": "Shared OpenSandbox and Worker installation, ownership and image publication",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ]
+    },
+    {
+      "path": "examples/services/README.md",
+      "category": "service-integrations",
+      "role": "Optional Service examples and protocol boundaries",
+      "chapters": [
+        "docs/architecture/04-services.md"
+      ]
+    },
+    {
+      "path": "examples/services/github-issues/README.md",
+      "category": "service-integrations",
+      "role": "Public SDK authoring guide for a scoped host GitHub CLI adapter",
+      "chapters": [
+        "docs/architecture/04-services.md"
+      ]
+    },
+    {
+      "path": "benchmarks/putnambench-taskpool/registration.ts",
+      "category": "benchmark-support",
+      "role": "Private Putnam registration parsing, model matching and pinned-code launch checks",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md"
+      ]
+    },
+    {
+      "path": "benchmarks/putnambench-taskpool/registration.test.ts",
+      "category": "benchmark-verification",
+      "role": "Offline validation of private Putnam registration gates",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md"
+      ]
+    },
+    {
+      "path": "examples/subagents/package.json",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Declares the independently installed SDK, compiler and local project commands"
+    },
+    {
+      "path": "examples/subagents/tsconfig.json",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Compiles the project entry and local modules against the installed SDK"
+    },
+    {
+      "path": "examples/taskpool/package.json",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Declares the independently installed SDK, compiler and local project commands"
+    },
+    {
+      "path": "examples/taskpool/tsconfig.json",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Compiles the project entry and local modules against the installed SDK"
+    },
+    {
+      "path": "examples/peermesh/package.json",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Declares the independently installed SDK, compiler and local project commands"
+    },
+    {
+      "path": "examples/peermesh/tsconfig.json",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Compiles the project entry and local modules against the installed SDK"
+    },
+    {
+      "path": "examples/lead-worker/package.json",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Declares the independently installed SDK, compiler and local project commands"
+    },
+    {
+      "path": "examples/lead-worker/tsconfig.json",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Compiles the project entry and local modules against the installed SDK"
+    },
+    {
+      "path": "examples/substrate/package.json",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Declares the independently installed SDK, compiler and local project commands"
+    },
+    {
+      "path": "examples/substrate/tsconfig.json",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Compiles the project entry and local modules against the installed SDK"
+    },
+    {
+      "path": "examples/taskpool/errors.ts",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Preserves legacy TaskPool service error codes and receipts"
+    },
+    {
+      "path": "examples/taskpool/services/mathlib/search-contract.ts",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Defines the search operation schema consumed by the optional TaskPool adapter"
+    },
+    {
+      "path": "src/harness/git-tree.ts",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/23-project-harness.md",
+        "docs/architecture/05-workspace-continuity.md"
+      ],
+      "role": "Writes and commits an initial project tree for Git-backed Harnesses"
+    },
+    {
+      "path": "src/protocol/stable-json.ts",
+      "category": "project harness",
+      "chapters": [
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Produces deterministic JSON for operation replay and evidence digests"
+    },
+    {
+      "path": "benchmarks/fate/main.ts",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/19-substrate-harness.md"
+      ],
+      "role": "Runs the explicit FATE benchmark preparation, scoring and execution entry points"
+    },
+    {
+      "path": "examples/taskpool/.npmignore",
+      "category": "distribution and build",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Excludes private Run output and local build state when packaging the editable example"
+    },
+    {
+      "path": "deploy/worker/tsconfig.json",
+      "category": "distribution and build",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Compiles Worker-only entry points and their dependency graph for the image"
+    },
+    {
+      "path": "examples/taskpool/deploy/service-hosts/tsconfig.json",
+      "category": "distribution and build",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Compiles only the source-built HTTP server, peers and their dependencies"
+    },
+    {
+      "path": "examples/services/mathlib-search/tsconfig.json",
+      "category": "distribution and build",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Compiles only the source-built HTTP server, peers and their dependencies"
     }
   ]
 }

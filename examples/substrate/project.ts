@@ -1,8 +1,8 @@
-import { createSandbox, type CreateRuntimeOptions, type SandboxConfig } from '@luna-shi/murm';
-import { runSubstrate } from '../../src/harnesses/substrate/index.js';
-import type { ProjectHarness } from '../../src/harnesses/shared/project-harness.js';
-import { ProjectPreflightError } from '../../src/harnesses/shared/project-input.js';
-import { observeProjectRuntime, projectConfiguration, projectResult } from '../../src/harnesses/shared/project-runtime.js';
+import {
+  createSandbox, type CreateRuntimeOptions, type SandboxConfig, type ProjectHarness,
+  ProjectPreflightError, observeProjectRuntime, projectConfiguration, projectResult,
+} from '@luna-shi/murm';
+import { runSubstrate } from './harness/index.js';
 import type { substrateConfiguration } from './project-config.js';
 
 type Configuration = Omit<ReturnType<typeof substrateConfiguration>, 'models' | 'sandbox'> &

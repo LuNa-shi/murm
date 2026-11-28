@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { listServices, listTools, getServiceMetadata } from '../src/sdk/service-catalog.js';
+import { listServices, listTools, getServiceMetadata } from '../examples/taskpool/services/service-catalog.js';
 
 test('Service catalog keeps internal ownership metadata and exposes the Task surface', () => {
   const services = listServices();

@@ -1,1 +1,5 @@
 /lead-worker-runs/
+/dist/
+/node_modules/
+/.murm/
+/.env*

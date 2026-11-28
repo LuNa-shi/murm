@@ -10,16 +10,16 @@ import { join } from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
-import { runWithReport } from '../src/harnesses/shared/run-report.js';
+import { runWithReport } from '../src/harness/run-report.js';
 import { leadWorkerCommand, adjustedDirection } from './fixtures/lead-worker-upstream.js';
 import { transport } from './fixtures/core-agent-service-backend.js';
 import { closeLeadWorkerFixture, drainLeadWorkerFixture } from './fixtures/lead-worker-scenario-cleanup.js';
 const execute = promisify(execFile);
 const hooks = registerHooks({ resolve(specifier, context, next) {
-  if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/lead-worker-backend.js', import.meta.url).href, shortCircuit: true };
+  if (specifier === './sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/lead-worker-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { createLeadWorkerHarness } = await import('../src/harnesses/lead-worker/index.js'); hooks.deregister();
+const { createLeadWorkerHarness } = await import('../examples/lead-worker/harness/index.js'); hooks.deregister();
 
 async function scenario(t, failure, fixturePrograms = false, helperCount = 2, staged = false) {
   const helpers = Array.from({ length: helperCount }, (_, index) => `helper${index + 1}`);

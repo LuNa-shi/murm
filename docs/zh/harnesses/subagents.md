@@ -47,7 +47,7 @@ swarm collaboration wait_agent --timeout-ms 60000 --request-id wait-reviewer
 
 ## 2. 控制器如何协调消息投递
 
-[examples/subagents/controller.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/controller.ts) 按成员串行化操作，在不唤醒空闲成员的前提下尝试投递通知，并把子成员结果送回直属父节点。下面的节选展示投递流程，完整控制器还负责接纳、重试与关闭：
+[examples/subagents/harness/controller.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/controller.ts) 按成员串行化操作，在不唤醒空闲成员的前提下尝试投递通知，并把子成员结果送回直属父节点。下面的节选展示投递流程，完整控制器还负责接纳、重试与关闭：
 
 ```ts
 // 1. 向成员投递消息：若正在 wait_agent 则直接唤醒，否则仅在 running 时 steer
@@ -161,6 +161,6 @@ try {
 ## 源码索引
 
 - 入口与交互 CLI：[examples/subagents/main.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/main.ts)
-- 控制器、邮箱与中断恢复：[examples/subagents/controller.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/controller.ts)
-- `collaboration` Service Manifest：[examples/subagents/collaboration-service.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/collaboration-service.ts)
-- 运行说明与实验记录：[examples/subagents/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md) · [ProgramBench `fd` 实验报告](https://github.com/LuNa-shi/murm/blob/main/docs/experiments/EXP-20261125-10-issue199-fd.md)
+- 控制器、邮箱与中断恢复：[examples/subagents/harness/controller.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/controller.ts)
+- `collaboration` Service Manifest：[examples/subagents/services/collaboration-service.ts](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/collaboration-service.ts)
+- 运行说明与实验记录：[examples/subagents/README.md](https://github.com/LuNa-shi/murm/blob/main/examples/subagents/README.md) · [ProgramBench `fd` 实验报告](https://github.com/LuNa-shi/murm/blob/207be6356c16e5fb60c4b3c5b236d7a98383f991/docs/experiments/EXP-20261125-10-issue199-fd.md)

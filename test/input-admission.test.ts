@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createInputAdmission } from '../src/harnesses/shared/input-admission.js';
+import { createInputAdmission } from '../src/harness/input-admission.js';
 
 test('permits bound actual inputs and are released before later peer lifecycle waits', async () => {
   const controller = new AbortController(), admission = createInputAdmission({ maxConcurrent: 2, maxPending: 6, signal: controller.signal });

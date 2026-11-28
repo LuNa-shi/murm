@@ -5,18 +5,17 @@ section: 参考手册
 order: 15
 ---
 
-本页汇总 **`@luna-shi/murm` `0.2.0`** 的全部公开运行时导出、方法契约与错误恢复规则。概念与实践请先阅读 [Runtime 与 Agent](../runtime.md) 和 [Service 与权限](../services.md)；完整 TypeScript 声明见 [类型定义与源码映射](./types.md)；宿主机与容器命令行参数见 [CLI 参考](./cli.md)。
+本页汇总 **`@luna-shi/murm` 当前源码**的公开运行时导出、方法契约与错误恢复规则。包版本仍为 `0.2.0`，但已发布的 v0.2.0 安装包不包含本页列出的部分新接口。概念与实践请先阅读 [Runtime 与 Agent](../runtime.md) 和 [Service 与权限](../services.md)；完整 TypeScript 声明见 [类型定义与源码映射](./types.md)；宿主机与容器命令行参数见 [CLI 参考](./cli.md)。
 
 ## 安装 SDK
 
-在 Node.js 22.19+ 项目中安装对应版本的 GitHub Release 压缩包：
+先按 [当前源码快速上手](../quickstart.md)构建候选包，再把同一份文件安装到 Node.js 22.19+ 项目：
 
 ```bash
-npm install --ignore-scripts --allow-remote=root \
-  https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+npm install --ignore-scripts /absolute/path/to/luna-shi-murm-0.2.0.tgz
 ```
 
-> 使用 npm 12+ 从包含远程 tarball URL 的 lockfile 重新安装时，同样需要传入 `--allow-remote=root`（如 `npm ci --allow-remote=root`）。运行沙箱前请按 [快速上手](../quickstart.md) 准备或连接 OpenSandbox。
+如果使用正式发行版，请遵循 [v0.2.0 安装指南](../latest.md)及其 [固定版本 API 参考](https://github.com/LuNa-shi/murm/blob/v0.2.0/docs/zh/reference/api.md)。所使用的安装包、Worker 镜像和文档应对应同一源码候选版本。
 
 ## 公开包入口
 
@@ -34,8 +33,15 @@ npm install --ignore-scripts --allow-remote=root \
 | `ServiceRegistry` | 类 | 存放传入 `createRuntime()` 的 Service 注册项。 |
 | `createInProcessAdapter(impl)` | 函数 | 将宿主进程内的 `invoke` 处理器（及可选 `exportState`）包装为 `ServiceAdapter`。 |
 | `createHttpJsonAdapter(options)` | 函数 | 将外部 HTTP JSON Service 包装为 `ServiceAdapter`（携带 `Idempotency-Key` 与可选 Bearer 认证）。 |
+| `ProjectHarness`、`ProjectHarnessContext`、`ProjectHarnessResult`、`HarnessInput`、`HarnessJson` | 类型 | 定义项目模块入口、采集的项目、宿主回调和最终结果。 |
+| `ProjectPreflightError`、`projectConfiguration`、`observeProjectRuntime`、`projectResult` | 类和函数 | 处理资源分配前的拒绝、配置、Runtime 状态和结果。 |
+| `runInput`、`createInputAdmission`、`runWithReport`、`readHarnessResult`、`createOwnedResources` | 函数 | 管理独占回合、停止接收输入、读写报告并清理本次运行拥有的资源。 |
+| `checkGitProject`、`seedTeamRepository`、`seededCheckoutInstruction`、`initializeGitRepository`、`importGitTree`、`commitGitTree`、`isGitTreePath` | 函数 | 检查 Git 项目，导入并提交采集的 FileTree，生成初始检出指令。 |
+| `decodeFileTree`、`snapshotFileTree`、`completeFileTreeDigest`、`stableStringify`、`MurmError`、`requestHttp`、`httpClient` | 函数和类 | 读取受限文件内容、计算稳定摘要、保留错误码并连接可信服务。 |
 
-> 仓库中 `examples/` 与 `src/harnesses/` 下的内置 Harness 属于可编辑参考实现，不作为 `@luna-shi/murm` 的额外包导出。
+五种[参考应用](../../../examples/README.md)都通过此包根入口编译。[Harness 作者契约](../../architecture/23-project-harness.md#authoring-an-example)说明了生命周期和文件处理。内置别名加载 SDK 中打包好的项目入口。
+
+Runtime 创建自己的 Bridge、模型网关与内置 `agent` Service。示例创建的进程内 Service 无须独立容器；外部协作设施和可选 [Mathlib Search](../../../examples/services/mathlib-search/README.md)按示例声明部署与资源归属，向 SDK 注册 Service 本身不会启动或销毁这些设施。详见 [部署说明](../../../deploy/README.md)。
 
 ## `createSandbox(config)` 与 `createRuntime(options)`
 

@@ -1,24 +1,29 @@
 # Subagents Harness
 
-## Run from your project
+## Run the project example
+
+Use Node.js 22.19 or newer on Linux. Set `MURM_ARCHIVE` to the absolute path of
+the SDK tarball built from this revision. The published v0.2.0 archive predates
+the project author API used here. See [SDK preparation](../README.md#run-an-example-from-its-directory)
+for the pack command, Sandbox setup and model configuration.
+
+From this example directory:
 
 ```sh
-cd my-project
-murm --harness subagents --prompt "Inspect this project and explain how to verify it"
+npm install --no-save "$MURM_ARCHIVE"
+npm run check
+npm run build
+npm run start -- --cwd /absolute/path/to/project \
+  --prompt 'Inspect the project, delegate an independent check and integrate the result'
 ```
 
-Subagents sends the prompt to Root and supplies the captured project to Root and each Child. The application uses separate Sandbox directories. Optional RPC input goes to Root.
+Root receives the prompt and can delegate to children with separate Sandbox
+directories. Each child starts with the captured project tree. The example
+starts its own in-process collaboration Service. Read `project-run.json` for
+the result and its report paths. The captured input project stays writable outside the run and the host does not write to it. The host exports files and releases its Sandbox resources on
+close. See the [mechanism guide](../../docs/en/harnesses/subagents.md).
 
-After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
-
-
-This example builds a recursive team using the public Runtime, Services and OpenSandbox SDK entries. Its `createSubagentsHarness` factory and `collaboration` controller are local example modules, not exports from `@luna-shi/murm`. See the [mechanism guide](../../docs/en/harnesses/subagents.md) and [Runtime guide](../../docs/en/runtime.md).
-
-TypeScript sources compile with `npm run build` into `dist/`. The package is currently marked private and distributed as a checkout-built tarball; `npm pack` builds the JavaScript and declarations before archiving.
-
-Give Root a task. Root looks for independent work it can delegate early, chooses the assignments, and works on a complementary part while the team is active. A Child can delegate again. Team members can send notices, assign more work, wait and interrupt. A Child's result goes to its direct parent.
-
-## Run from the checkout
+## Fixed and interactive host demonstration
 
 Use Node.js 22.19 or newer and npm on the Linux Controller. If you have a compatible Worker image and an OpenSandbox provider, build from the checkout root.
 
@@ -49,6 +54,12 @@ node --env-file=.env ../../dist/examples/subagents/main.js \
 ```
 
 The entry waits for Root's reply, closes the team, and writes the task result and cleanup receipts to `subagents-runs/<runtimeId>/harness-report.json`. Edit `config.ts` or `main.ts` here and rebuild from the checkout root to try changes.
+
+## Fixed or interactive host entry
+
+The `main.ts` command above is the direct host demonstration. For a captured
+project, use `murm --harness subagents --cwd /path/to/project --prompt '...'`.
+The collaboration Service is in-process and needs no separate deployment.
 
 ## Interactive mode
 
@@ -86,4 +97,4 @@ Import `createSubagentsHarness` from the local example module after building. Th
 
 ## Verification
 
-The [Subagents verification guide](../../test/README.md#subagents-verification) describes the regression and native OpenSandbox checks. The [ProgramBench fd experiment](../../docs/experiments/EXP-20261125-10-issue199-fd.md) records a real three-Agent run, including the file handoff, follow-up and independent score.
+The [Subagents verification guide](../../test/README.md#subagents-verification) describes the regression and native OpenSandbox checks. The [ProgramBench fd experiment](https://github.com/LuNa-shi/murm/blob/207be6356c16e5fb60c4b3c5b236d7a98383f991/docs/experiments/EXP-20261125-10-issue199-fd.md) records a real three-Agent run, including the file handoff, follow-up and independent score.

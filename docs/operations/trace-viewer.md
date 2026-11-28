@@ -55,7 +55,7 @@ Service calls appear across Harnesses. Subagents adds caller and destination lin
 
 ## Replay the private Pastel Run
 
-Use the saved `output` directory for [EXP-20261125-06](../experiments/EXP-20261125-06-issue199-pastel.md). It contains the original Runtime `4ea6a746-80ee-4d24-b224-82200a55f384` recorded at `67c21218bf6faa24e5f72a5901baf3028d24414a`. Set `PASTEL_RUN_DIR` to that private directory from the experiment evidence.
+Use the saved `output` directory for [EXP-20261125-06](https://github.com/LuNa-shi/murm/blob/207be6356c16e5fb60c4b3c5b236d7a98383f991/docs/experiments/EXP-20261125-06-issue199-pastel.md). It contains the original Runtime `4ea6a746-80ee-4d24-b224-82200a55f384` recorded at `67c21218bf6faa24e5f72a5901baf3028d24414a`. Set `PASTEL_RUN_DIR` to that private directory from the experiment evidence.
 
 ```bash
 ./node_modules/.bin/murm trace --root "$PASTEL_RUN_DIR" --port 8787

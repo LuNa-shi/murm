@@ -18,10 +18,10 @@ Keep Tasks small and coordinate via the public Task list. Save project changes a
 
 The default Added System Prompt is empty. Without a Core or injected live capture binding, the host includes this explanation after any supplied Profile text.
 
-Body SHA-256: `5371acb1ed023ed240934f27c739c3e6f2feed68e9618378e2165db46e6e97b9`
+Body SHA-256: `598459c8887bdd36cec17afedecb8d7dff907b55cc2ca51ffb23c9efcb6fddb7`
 
 ````text
-当前配置支持读取公开 Workspace 和发布 Material。请领取可通过这些能力完成的 Task，按照 Task 的真实完成条件提交结果。运行期间的私有文件只保留在 Agent 工作目录中。
+The current configuration supports reading the public Workspace and publishing Material. Take Tasks that can be completed with these capabilities, and submit results according to their actual completion conditions. Private files remain only in the Agent working directory during the run.
 ````
 ## Default discovery input
 
@@ -137,34 +137,34 @@ Common options:
 ````
 ## Default ordinary continuation with a snapshot binding
 
-Body SHA-256: `11354c574ae63980d2af9af6aa7730b36a000e71daa5e404789a3a856448295d`
+Body SHA-256: `7096c947ea9bd4c40973df5030627cdcfb37ffc240cb8d51c58a20898c5acbfd`
 
 ````text
-继续当前 Task/E。先核对剩余预算、真实 Workspace 状态和新的 Material/检查反馈，再推进当前责任。需要收尾时先保存有用文件、发布有用 Material，再以真实 outcome 调用 swarm task finish；未保存、未确认或失败的操作不能声明成功。
+Continue the current Task/E. Check the remaining budget, actual Workspace state, and new Material or checker feedback before advancing your current responsibility. When closing out, save useful files and publish useful Material, then call swarm task finish with the actual outcome. Do not claim success for unsaved, unconfirmed, or failed operations.
 ````
 ## Default ordinary continuation without a snapshot binding
 
 The host can override controller.continuationPrompt in either configuration. During soft closeout the controller selects the built-in text for the registered Workspace capabilities.
 
-Body SHA-256: `bdf02db3d2042df692dda0bf9b6f7ce38a65394b7d6adaa65a9adefae3b68e7f`
+Body SHA-256: `0220450fab308b5927c41e71eb7488ddb521a9d3765c19e422f71e7a1736d669`
 
 ````text
-继续当前 Task/E。先核对剩余预算、公开 Workspace 和新的 Material/检查反馈，再推进当前责任。收尾时发布有用 Material，并按真实完成条件调用 swarm task finish；只有已确认持久保存的成果才能作为完成依据。
+Continue the current Task/E. Check the remaining budget, public Workspace, and new Material or checker feedback before advancing your current responsibility. When closing out, publish useful Material and call swarm task finish according to the actual completion conditions. Only results with confirmed durable persistence can establish completion.
 ````
 ## Soft-closeout continuation without a snapshot binding
 
-Body SHA-256: `3e177e47997cd0fb80d79f6d7c9275813e385a53f00735132d77bcc9e7734717`
+Body SHA-256: `3bf815450df0bf5d15595461d5b8822e031a3fd3f33bc8c3d5b87f6bc58d53cb`
 
 ````text
-E <EXECUTION_ID> 接近 Execution 时间上限，收尾额度为 30000 ms。停止扩展，发布已有研究内容，再按真实结果 finish。
-当前 Task/E 已进入软收尾窗口。停止扩展责任和发起新计算；发布已有研究内容并调用 swarm task finish 给出真实 outcome。不要发起新 Judge 检查、Mission 验收或 merge main。已受理请求使用原 ID 查询或重放，未确认持久成功的成果不能声明成功。
+E <EXECUTION_ID> is approaching its Execution time limit. Remaining closeout budget: 30000 ms. Stop expanding work, publish existing research content, then finish with the actual outcome.
+The current Task/E has entered its soft closeout window. Stop expanding your responsibility or starting new computation. Publish existing research content and call swarm task finish with the actual outcome. Do not start new Judge checks or Mission acceptance, or merge main. Query or replay accepted requests with their original IDs. Do not claim success for results whose durable persistence has not been confirmed.
 ````
 ## Handoff warning without a snapshot binding
 
 The persisted warning payload supplies the Execution ID and deadline. The controller records the notification ID and fixed composed message before dispatch.
 
-Body SHA-256: `24b650f18b4bf3e0b099a71b812f3503150e377f22609336cbd4008e81faa008`
+Body SHA-256: `c903e4f11c43c8a1bac9c8cabeed479542483c36008cc0a2909f7071647203cd`
 
 ````text
-E <EXECUTION_ID> 接近 Execution 时间上限，收尾额度为 30000 ms。停止扩展，发布已有研究内容，再按真实结果 finish。 通知 ID: <NOTIFICATION_ID>
+E <EXECUTION_ID> is approaching its Execution time limit. Remaining closeout budget: 30000 ms. Stop expanding work, publish existing research content, then finish with the actual outcome. Notification ID: <NOTIFICATION_ID>
 ````

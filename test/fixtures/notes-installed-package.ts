@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFile, lstat, mkdir, mkdtemp, realpath, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, cp, lstat, mkdir, mkdtemp, realpath, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -98,7 +98,7 @@ export async function installNotesExample(selection, { requireCleanCheckout = fa
     const extension = compiled ? 'js' : 'mjs';
     await copyFile(join(executableRoot, `examples/notes/main.${extension}`), join(directory, 'main.mjs'));
     for (const name of ['run-input', 'run-report', 'read-result']) {
-      await copyFile(join(executableRoot, `src/harnesses/shared/${name}.js`), join(directory, `${name}.${extension}`));
+      await copyFile(join(executableRoot, `src/harness/${name}.js`), join(directory, `${name}.${extension}`));
     }
     const env = { ...process.env }; delete env.NODE_PATH; delete env.NODE_OPTIONS;
     return { directory, env, metadata: { name: metadata.name, version: metadata.version,
@@ -109,6 +109,21 @@ export async function installNotesExample(selection, { requireCleanCheckout = fa
 }
 
 // Native gates may consume an explicitly verified frozen archive or a clean checkout.
+// Some legacy parity tests inject a controlled backend with imports resolving
+// against the installed tree. Those files are test-owned, outside the archive.
+export async function stageInstalledTestFixtures(packageRoot: string) {
+  await cp(import.meta.dirname, join(packageRoot, 'dist/test/fixtures'), { recursive: true });
+}
+
+// Explicit developer workloads use the candidate SDK installation and the
+// checkout's compiled runner and fixtures. They are not part of the archive.
+export async function stageInstalledBenchmark(directory: string, name: 'fate' | 'lead-worker-orders') {
+  const root = join(directory, 'node_modules/@luna-shi/murm');
+  const target = join(root, 'dist/benchmarks', name);
+  await cp(join(repository, 'dist/benchmarks', name), target, { recursive: true, force: false, errorOnExist: true });
+  return target;
+}
+
 export function installNativeNotesExample({ parentDirectory } = {}) {
   return installNotesExample(undefined, { requireCleanCheckout: true, parentDirectory });
 }

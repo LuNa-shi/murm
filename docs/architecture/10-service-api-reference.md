@@ -32,23 +32,23 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `34da62ab9a42462e3a08837efa890009b1bfb4ca4bfb961319c2369cbb1df01d` |
-| [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `50f7a1132a0923a41174714489f7220215df9a30a3af59e3df75377d8fafe52a` |
-| [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `3759b5509820d4ee1793c802e1e5c99aee0f7095fc6d43244d1ca0a773776dd0` |
-| [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `ee72fba940f1e45926b4f8c04a13c355868e6d15b84df6cade45f2371b4db770` |
-| [src/agent/capability-profile.ts](../../src/agent/capability-profile.ts) | `53a57335eb59af29119a889b12044d94d838c5df9d138cc86e2d0da5bd01f0c5` |
-| [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `af9fd45a15bdf6edceccde3558264adec75c60c8709b60bee402c0388e4bb28f` |
-| [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
-| [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `f7d942b55b4b783620909aa05b0e7ea6e9e88bf54ebf5584ccf4f6c64c8b3dfe` |
+| [examples/taskpool/services/service-catalog.ts](../../examples/taskpool/services/service-catalog.ts) | `34da62ab9a42462e3a08837efa890009b1bfb4ca4bfb961319c2369cbb1df01d` |
+| [examples/taskpool/services/builtin-registry.ts](../../examples/taskpool/services/builtin-registry.ts) | `095a61e9242fcc37d88bf18758881b280317b8040a8c38a0fc8cac41aa894306` |
+| [examples/taskpool/deploy/service-hosts/service-manifest.ts](../../examples/taskpool/deploy/service-hosts/service-manifest.ts) | `78fcddbe31f5e2a01aa8702e88d5d15fd0e99d8e6da9809a4755f8530214d02c` |
+| [examples/taskpool/deploy/service-hosts/service-registry.ts](../../examples/taskpool/deploy/service-hosts/service-registry.ts) | `3c74387987c657134699ad39b160f415d7537a21f8e3dffd0b2b298bcd8f27aa` |
+| [test-support/taskpool-legacy/capability-profile.ts](../../test-support/taskpool-legacy/capability-profile.ts) | `8ff9b1fdcdb4a31421dbb59939a09d381db4de84c13a1b417593b46a533b65c5` |
+| [test-support/taskpool-legacy/services-bridge.ts](../../test-support/taskpool-legacy/services-bridge.ts) | `bddb5744b172e34d5939b958f5e92946f736d6816b31c9b54938976ded8e1ca6` |
+| [examples/services/mathlib-search/service.json](../../examples/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
+| [src/errors.ts](../../src/errors.ts) | `5b436c6d7062a7b9fb0fd434af1375b9c050999cfa76bd6d97dac88558dca8b3` |
+| [src/core/index.ts](../../src/core/index.ts) | `e6279b847e0afb9c46beae5fc5f77621cabd188baa0d352d3a466ef61a1e9b15` |
 | [src/core/types.ts](../../src/core/types.ts) | `1161fe11a40d1da8d229fc7f469bec00c7a139c709010daf7713e7708325619b` |
 | [src/core/services.ts](../../src/core/services.ts) | `823b7c83efd0fc61314c5511177b32b8863f469454cad5c5288bd04e5e82cf96` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
-| [src/core/opensandbox-backend.ts](../../src/core/opensandbox-backend.ts) | `54e0e38af06b81722bd4f72bcc3baa650092bc6451a3516091f8d7dba533c247` |
-| [src/core/executor-driver.ts](../../src/core/executor-driver.ts) | `949681fa831b28626abea25dec88beda744e76066f3653d56367441579893ee7` |
-| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `d3c72dbab8426517916d5deb92800556001d32f15593b7ae5cd146868cf0ede5` |
-| [src/core/opensandbox-provider.ts](../../src/core/opensandbox-provider.ts) | `38190bed297b4c5c47340609ed3732377bc1bdbdfd946ffebc0e0b8089b612d7` |
-| [src/core/sandbox-connection.ts](../../src/core/sandbox-connection.ts) | `27c35937b58ae31efb2192ddb0bc11100239b4932d25ea7292bb7df5e7eb80c4` |
+| [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `8346d93de03fc4a8ed1203a23dd5c7aeec3061dfc7f135ba0c77a76c5d959851` |
+| [src/core/sandbox/executor-driver.ts](../../src/core/sandbox/executor-driver.ts) | `56849cecb5e525d3752caca2feeb7571692c6e33afa7961619f40ad41272e6e7` |
+| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `8138466de523d6734f78202ce5a7412636a07d269d6410eb99aa1ecf6b6da2c3` |
+| [src/core/sandbox/opensandbox-provider.ts](../../src/core/sandbox/opensandbox-provider.ts) | `b9c953413bde9906cd7e5166f9442fcbe01d6980c23da6bb062d2e6d18d42256` |
+| [src/core/sandbox/sandbox-connection.ts](../../src/core/sandbox/sandbox-connection.ts) | `27c35937b58ae31efb2192ddb0bc11100239b4932d25ea7292bb7df5e7eb80c4` |
 
 ### Exact built-in command operation surface
 
@@ -3093,18 +3093,33 @@ These are the package entrypoint declarations and the declarations they referenc
 
 ```ts
 import type { CreateRuntimeOptions, Runtime } from './types.js';
-export { createSandbox } from './opensandbox-backend.js';
-export { resolveSandboxConnection } from './sandbox-connection.js';
-export { createCodexExecutor, createExecutorAdapter, createPiExecutor, getExecutorCapabilities } from './executor-driver.js';
+export type { HarnessInput, HarnessJson, ProjectHarness, ProjectHarnessContext, ProjectHarnessResult } from '../harness/project-harness.js';
+export { ProjectPreflightError } from '../harness/project-input.js';
+export { observeProjectRuntime, projectConfiguration, projectResult } from '../harness/project-runtime.js';
+export { runInput } from '../harness/run-input.js';
+export { runWithReport } from '../harness/run-report.js';
+export { readHarnessResult } from '../harness/read-result.js';
+export { createInputAdmission } from '../harness/input-admission.js';
+export { createOwnedResources } from '../harness/owned-resources.js';
+export { httpClient } from '../harness/http.js';
+export { checkGitProject, seedTeamRepository, seededCheckoutInstruction } from '../harness/project-git.js';
+export { initializeGitRepository, importGitTree, commitGitTree, isGitTreePath } from '../harness/git-tree.js';
+export { decodeFileSeed as decodeFileTree, snapshotFileSeed as snapshotFileTree, completeDigest as completeFileTreeDigest } from './files/core-file-seed.js';
+export { MurmError } from '../errors.js';
+export { requestHttp } from '../protocol/http-request.js';
+export { stableStringify } from '../protocol/stable-json.js';
+export { createSandbox } from './sandbox/opensandbox-backend.js';
+export { resolveSandboxConnection } from './sandbox/sandbox-connection.js';
+export { createCodexExecutor, createExecutorAdapter, createPiExecutor, getExecutorCapabilities } from './sandbox/executor-driver.js';
 export { EXECUTOR_ADAPTER_PROTOCOL } from './executor-adapter.js';
 export type { BuiltinExecutorSelection, ExecutorAdapter, ExecutorSelection } from './executor-adapter.js';
 export { DEFAULT_WORKER_IMAGE, workerImageFor } from './worker-image.js';
 export { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from './services.js';
 export type { ExecutorCapabilities, ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SandboxConfig, SandboxProviderConfig, SteeringMode } from './backend-config.js';
-export type { ModelCapabilities, ModelProtocol, ModelStreamTerminal, ModelTransport } from './model-transport.js';
+export type { ModelCapabilities, ModelProtocol, ModelStreamTerminal, ModelTransport } from './model/model-transport.js';
 export type { FileBudget, FilePolicy } from './file-policy.js';
-export type { SandboxPreparation, SandboxProvider } from './opensandbox-provider.js';
-export type { SandboxManager } from './opensandbox-backend.js';
+export type { SandboxPreparation, SandboxProvider } from './sandbox/opensandbox-provider.js';
+export type { SandboxManager } from './sandbox/opensandbox-backend.js';
 export type { HttpJsonAdapterOptions, ServiceRegistration } from './services.js';
 export type { JsonValue, ServiceAdapter, ServiceCaller, ServiceCapability, ServiceManifest, ServiceRequest } from './service-types.js';
 export type { AgentAccess, AgentAccessGrant, AgentAccessMutation, AgentAccessPolicy, AgentAccessRequest, AgentInfo, AgentInitialInputResult, AgentListFilter, AgentSpawnReceipt, AgentStatus, CloseOptions, CloseReceipt, CollectionSpec, CompleteFileDigest, CompleteFileSnapshot, CompleteFileSnapshotOptions, ConditionalInputReceipt, CreateRuntimeOptions, ErrorInfo, FileEntry, FileReplaceOptions, FileReplaceReceipt, FileSnapshot, FileSnapshotOptions, FileTree, InputMode, InputReceipt, InterruptOptions, InterruptReceipt, PartialFileDigest, PartialFileSnapshot, PendingCleanup, Profile, ProfileDefinition, ProfileRegistration, ResourceError, Runtime, RuntimeEvent, RuntimeFiles, RuntimeManagementChange, RuntimeManagementSnapshot, RuntimeServiceDefinition, RuntimeServiceRegistration, RuntimeState, SendOptions, ServiceRetirement, SpawnOptions, StopOptions, StopReceipt, WorkspaceOptions, } from './types.js';
@@ -3624,14 +3639,14 @@ export interface ServiceAdapter {
 }
 ```
 
-#### dist/src/core/opensandbox-backend.d.ts
+#### dist/src/core/sandbox/opensandbox-backend.d.ts
 
 ```ts
-import type { AgentEvent, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from './types.js';
-import type { SessionFork } from '../../scripts/core-session-fork.js';
-import type { createCoreBridge } from './bridge.js';
-import { type createCoreModelAccess } from './model-access.js';
-import { type ResolvedFilePolicy } from './file-policy.js';
+import type { AgentEvent, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from '../types.js';
+import type { SessionFork } from '../../../scripts/core-session-fork.js';
+import type { createCoreBridge } from '../bridge.js';
+import { type createCoreModelAccess } from '../model/model-access.js';
+import { type ResolvedFilePolicy } from '../file-policy.js';
 export type BackendEvent = {
     [Kind in AgentEvent['type']]: Omit<Extract<AgentEvent, {
         type: Kind;
@@ -3647,8 +3662,8 @@ export type BackendInputReceipt = {
     status: 'accepted';
     disposition: 'started' | 'queued' | 'handled';
 };
-import type { WorkerFileReplace, WorkerFileSnapshot } from './file-controls.js';
-import type { FileReplaceOptions, FileSnapshotOptions } from './types.js';
+import type { WorkerFileReplace, WorkerFileSnapshot } from '../file-controls.js';
+import type { FileReplaceOptions, FileSnapshotOptions } from '../types.js';
 type WorkerRecord = {
     worker_sequence: number;
     worker_at?: string;
@@ -3724,7 +3739,7 @@ export interface SandboxManager {
         requestId: string;
     }>;
     coreSessionSnapshot(agentId: string): Promise<SessionFork>;
-    collectCoreSession(agentId: string): AsyncIterable<import('./artifact-collection.js').ArtifactRecord>;
+    collectCoreSession(agentId: string): AsyncIterable<import('../artifact-collection.js').ArtifactRecord>;
     ensureExecution(options: Record<string, unknown>): Promise<{
         sandbox_id: string;
     }>;
@@ -3749,7 +3764,7 @@ export interface SandboxManager {
     stopAgent(agentId: string, signal: string, options: {
         preserveWorker: boolean;
     }): Promise<boolean>;
-    collectCoreFiles(agentId: string, specification: NonNullable<Profile['collect']>): AsyncIterable<import('./artifact-collection.js').ArtifactRecord>;
+    collectCoreFiles(agentId: string, specification: NonNullable<Profile['collect']>): AsyncIterable<import('../artifact-collection.js').ArtifactRecord>;
     coreResource(agentId: string): {
         resourceKey: string;
         sandboxId?: string;
@@ -3786,8 +3801,8 @@ interface BackendSpawnOptions {
     onTrace?: (record: Readonly<Record<string, unknown>>) => void;
     recordAllocation(record: AllocationRecord): void;
 }
-import type { CreateRuntimeOptions } from './types.js';
-import type { ExecutorCapabilities, OpenSandboxBackendConfig, Sandbox, SandboxConfig, SandboxProviderConfig } from './backend-config.js';
+import type { CreateRuntimeOptions } from '../types.js';
+import type { ExecutorCapabilities, OpenSandboxBackendConfig, Sandbox, SandboxConfig, SandboxProviderConfig } from '../backend-config.js';
 import { type ExecutorDriver } from './executor-driver.js';
 import { type OpenSandboxProvider } from './opensandbox-provider.js';
 export type ResolvedOpenSandboxBackendConfig = Omit<OpenSandboxBackendConfig, 'executor'> & {
@@ -3834,8 +3849,8 @@ export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBacken
     stopExecution(agentId: string): Promise<{
         collectable: boolean;
     }>;
-    collectSession(agentId: string): AsyncGenerator<import("./artifact-collection.js").ArtifactRecord, void, any>;
-    collect(agentId: string, specification: NonNullable<Profile['collect']>): AsyncGenerator<import("./artifact-collection.js").ArtifactRecord, void, any>;
+    collectSession(agentId: string): AsyncGenerator<import("../artifact-collection.js").ArtifactRecord, void, any>;
+    collect(agentId: string, specification: NonNullable<Profile['collect']>): AsyncGenerator<import("../artifact-collection.js").ArtifactRecord, void, any>;
     resource(agentId: string): {
         resourceKey: string;
         sandboxId?: string;
@@ -3849,12 +3864,12 @@ export declare function openOpenSandboxBackend(config: ResolvedOpenSandboxBacken
 export {};
 ```
 
-#### dist/src/core/executor-driver.d.ts
+#### dist/src/core/sandbox/executor-driver.d.ts
 
 ```ts
-import { resolvePiModelCatalog } from '../agent/model-catalog.js';
-import type { ExecutorCapabilities, ModelConfig } from './backend-config.js';
-import { type BuiltinExecutorSelection, type ExecutorAdapter, type ExecutorSelection } from './executor-adapter.js';
+import { resolvePiModelCatalog } from '../model/model-catalog.js';
+import type { ExecutorCapabilities, ModelConfig } from '../backend-config.js';
+import { type BuiltinExecutorSelection, type ExecutorAdapter, type ExecutorSelection } from '../executor-adapter.js';
 type Model = ModelConfig;
 export interface ExecutorDriver {
     readonly kind: string;
@@ -3910,8 +3925,8 @@ declare const sandboxBrand: unique symbol;
 export interface Sandbox {
     readonly [sandboxBrand]: true;
 }
-import type { OpenSandboxProvider, SandboxProvider } from './opensandbox-provider.js';
-import type { ModelCapabilities, ModelProtocol, ModelTransport } from './model-transport.js';
+import type { OpenSandboxProvider, SandboxProvider } from './sandbox/opensandbox-provider.js';
+import type { ModelCapabilities, ModelProtocol, ModelTransport } from './model/model-transport.js';
 import type { ExecutorSelection } from './executor-adapter.js';
 export interface SandboxProviderConfig {
     provider: SandboxProvider;
@@ -4030,10 +4045,10 @@ export interface OpenSandboxBackendConfig {
 export {};
 ```
 
-#### dist/src/core/opensandbox-provider.d.ts
+#### dist/src/core/sandbox/opensandbox-provider.d.ts
 
 ```ts
-import type { OpenSandboxBackendConfig } from './backend-config.js';
+import type { OpenSandboxBackendConfig } from '../backend-config.js';
 import type { SandboxManager } from './opensandbox-backend.js';
 type WorkspaceQuota = {
     bytes: number;
@@ -4086,7 +4101,7 @@ export declare function adaptSandboxProvider(provider: SandboxProvider): Sandbox
 export {};
 ```
 
-#### dist/src/core/sandbox-connection.d.ts
+#### dist/src/core/sandbox/sandbox-connection.d.ts
 
 ```ts
 export declare const defaultLifecycleUrl = "http://127.0.0.1:8080/v1";

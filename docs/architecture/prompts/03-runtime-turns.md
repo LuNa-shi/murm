@@ -7,16 +7,16 @@ The TaskPool controller selects these repository-owned texts from the durable Ex
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## TaskPool bound continuation
 
-Body SHA-256: `11354c574ae63980d2af9af6aa7730b36a000e71daa5e404789a3a856448295d`
+Body SHA-256: `7096c947ea9bd4c40973df5030627cdcfb37ffc240cb8d51c58a20898c5acbfd`
 
 ````text
-继续当前 Task/E。先核对剩余预算、真实 Workspace 状态和新的 Material/检查反馈，再推进当前责任。需要收尾时先保存有用文件、发布有用 Material，再以真实 outcome 调用 swarm task finish；未保存、未确认或失败的操作不能声明成功。
+Continue the current Task/E. Check the remaining budget, actual Workspace state, and new Material or checker feedback before advancing your current responsibility. When closing out, save useful files and publish useful Material, then call swarm task finish with the actual outcome. Do not claim success for unsaved, unconfirmed, or failed operations.
 ````
 ## Soft closeout continuation
 
-Body SHA-256: `6869dc8ef66d3642bef6d89d2d44f7ac614265551d03d11b6245bcf09dddeb8f`
+Body SHA-256: `35616bcc60b87f1a1048f5de0564c7e6feb4107786c75bd19b2106b68d84cfc9`
 
 ````text
-E <EXECUTION_ID> 接近 Execution 时间上限，收尾额度为 30000 ms。停止扩展，保存已有文件和研究内容，再按真实结果 finish。
-当前 Task/E 已进入软收尾窗口。停止扩展责任和发起新计算；仅保存已有有用文件、发布已有研究内容并调用 swarm task finish 给出真实 outcome。不要提出新 Task、发起新 Judge 检查、Mission 验收或 merge main。已受理请求使用原 ID 查询或重放，未确认持久成功的成果不能声明成功。
+E <EXECUTION_ID> is approaching its Execution time limit. Remaining closeout budget: 30000 ms. Stop expanding work, save existing files and research content, then finish with the actual outcome.
+The current Task/E has entered its soft closeout window. Stop expanding your responsibility or starting new computation. Only save existing useful files, publish existing research content, and call swarm task finish with the actual outcome. Do not propose new Tasks, start new Judge checks or Mission acceptance, or merge main. Query or replay accepted requests with their original IDs. Do not claim success for results whose durable persistence has not been confirmed.
 ````

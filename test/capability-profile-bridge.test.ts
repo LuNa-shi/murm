@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ServicesBridge } from '../src/agent/services-bridge.js';
-import { AGENT_ROLES } from '../src/agent/capability-profile.js';
+import { ServicesBridge } from '../test-support/taskpool-legacy/services-bridge.js';
+import { AGENT_ROLES } from '../test-support/taskpool-legacy/capability-profile.js';
 
 test('Bridge exposes one authenticated reusable-identity profile endpoint', async () => {
   const bridge = new ServicesBridge({

@@ -5,9 +5,9 @@ import { promisify } from 'node:util';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
-import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
-import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
+import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
+import { WorkspaceManager } from '../examples/taskpool/services/workspace/workspace-manager.js';
+import { createOpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
 const run = promisify(execFile);
 
 async function fixture(t) {

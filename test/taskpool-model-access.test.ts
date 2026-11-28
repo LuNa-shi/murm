@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { TaskService } from '../src/task/task-service.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 
 function fixture(t) {
   const tasks = new TaskService();
@@ -28,7 +28,7 @@ test('trusted Core readiness preserves returned identity and legacy capacity wit
 });
 
 test('trusted startup uses only Core returned Agent identity and keeps Runtime separate from legacy Slot', async t => {
-  const { createTaskPoolAgentCoordinator } = await import('../examples/taskpool/agent-coordinator.js');
+  const { createTaskPoolAgentCoordinator } = await import('../examples/taskpool/harness/agent-coordinator.js');
   const tasks = fixture(t);
   const requests = [];
   const runtime = { id: 'runtime:host', async spawn(options) { requests.push(options); return { id: 'core:actual', profile: 'readonly', status: 'idle' }; },

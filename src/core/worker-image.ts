@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { selectExecutorDriver } from './executor-driver.js';
+import { selectExecutorDriver } from './sandbox/executor-driver.js';
 import type { ExecutorSelection } from './executor-adapter.js';
 
 export const WORKER_IMAGE_REPOSITORY = 'ghcr.io/luna-shi/murm-worker';

@@ -21,7 +21,7 @@ This is a development benchmark run explicitly from a source checkout. [Reposito
 | TaskPool | The host seeds parser, formatter and integration Tasks. The integrator publishes source as Material attachments. The host checks the actual producer and consumer Executions, source hashes and `integration` consumption record. This runner gives each Task a cap equal to the configured work window. The outer window stops model traffic and candidate writes at the common deadline. |
 | PeerMesh | Two contributors start together. The host merges their pinned PR heads, then dispatches the integrator on the resulting main. The host checks Board publication and read order, fixed Git revisions and source bytes incorporated by the integrator. |
 
-The three registered Kimi K3 runs used an earlier revision and each reached its 30-minute deadline without an archive. Subagents delivered child results. TaskPool repeatedly expired at the previous 60-second Task limit. PeerMesh merged the first contribution and never reached the integrator. The version-bound report retains these outcomes and the cleanup evidence. [Issue #209](https://github.com/LuNa-shi/murm/issues/209) · [Formal results](../../docs/experiments/EXP-20261125-programbench-pastel.md)
+The three registered Kimi K3 runs used an earlier revision and each reached its 30-minute deadline without an archive. Subagents delivered child results. TaskPool repeatedly expired at the previous 60-second Task limit. PeerMesh merged the first contribution and never reached the integrator. The version-bound report retains these outcomes and the cleanup evidence. [Issue #209](https://github.com/LuNa-shi/murm/issues/209) · [Formal results](https://github.com/LuNa-shi/murm/blob/207be6356c16e5fb60c4b3c5b236d7a98383f991/docs/experiments/EXP-20261125-programbench-pastel.md)
 
 ## Prepare a local Worker
 
@@ -127,7 +127,7 @@ The private manifest takes `pins` as the JSON object printed above, `issue` as t
 node benchmarks/programbench-pastel/pastel-matrix.ts hosted "$manifest"
 ```
 
-Each mode has three concurrent Agent slots and its own 1,800-second monotonic window. The command exits nonzero if any mode misses the timed collaboration and cleanup checks. Active streams are interrupted at the deadline. The host verifies the archive and source-adoption evidence, then records the official evaluator outcome separately. Use the final matrix receipt and [experiment report template](../../docs/experiments/TEMPLATE.md) for reporting. Keep provider configuration, transcripts, databases, archives and logs in the ignored experiment directory.
+Each mode has three concurrent Agent slots and its own 1,800-second monotonic window. The command exits nonzero if any mode misses the timed collaboration and cleanup checks. Active streams are interrupted at the deadline. The host verifies the archive and source-adoption evidence, then records the official evaluator outcome separately. Use the final matrix receipt and [experiment workflow](../../docs/workflows/experiment.md) for reporting. Keep provider configuration, transcripts, databases, archives and logs in the ignored experiment directory.
 
 
 ## Pastel task through the ordinary Subagents example

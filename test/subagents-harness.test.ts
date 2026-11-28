@@ -11,7 +11,7 @@ import { delegationCommand } from './fixtures/subagents-upstream.js';
 const execute = promisify(execFile);
 import { transport } from './fixtures/core-agent-service-backend.js';
 const hooks = registerHooks({ resolve(specifier, context, next) {
-  if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/core-agent-service-backend.js', import.meta.url).href, shortCircuit: true };
+  if (specifier === './sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/core-agent-service-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
 const { runSubagentsHarness, checkDelivery } = await import('../test-support/subagents/communication-fixture.js'); hooks.deregister();
@@ -161,7 +161,7 @@ test('invalid subagents child counts fail before Agent creation', async () => {
 test('four staged groups use real Core and parent Agent Service inputs without ending at the first integration', async t => {
   const { createRuntime } = await import('@luna-shi/murm');
   const { ServiceRegistry } = await import('@luna-shi/murm');
-  const { runInput } = await import('../src/harnesses/shared/run-input.js');
+  const { runInput } = await import('../src/harness/run-input.js');
   const { createSubagentsStages } = await import('../test-support/subagents/stages.js');
   transport.reset(); transport.collectable = true;
   const outputDir = await mkdtemp(join(tmpdir(), 'subagents-stages-'));

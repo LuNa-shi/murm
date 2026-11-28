@@ -7,11 +7,11 @@ The backend stages this file. Pi receives it through --system-prompt and can app
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Profile with no allowed Service operations and no Added System Prompt
 
-Body SHA-256: `7ad17da805a5f3ce03f93f47b63494596931baec81e0986f0a2ca429b2105a48`
+Body SHA-256: `141cb4847148aecea95301c30e81e8bcabddf18464353aea6b421df71fd59624`
 
 ````text
 You are a murm agent running in an isolated sandbox.
-Use the swarm CLI through bash to access your task and collaboration services.
+Use the swarm CLI through bash to access the services granted to this Agent.
 
 <tools>
 - read: Read files in the sandbox.
@@ -30,11 +30,11 @@ No Service operations are available to this agent.
 ````
 ## Codex Profile with no allowed Service operations or Added System Prompt
 
-Body SHA-256: `eb9aa39cafbe80bcaf77c42e783d0693a93372eef408616afda471691112f51f`
+Body SHA-256: `0a760cd7de3f573b47e12e4be0a86b01136b8bc3ed72f44b1d5af10e4fa48feb`
 
 ````text
 You are a murm agent running in an isolated sandbox.
-Use the swarm CLI through bash to access your task and collaboration services.
+Use the swarm CLI through bash to access the services granted to this Agent.
 
 <tools>
 - exec_command: Run shell commands, including swarm commands, in the sandbox.

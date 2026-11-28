@@ -1,6 +1,6 @@
 export { createSandbox } from './core-input-backend.js';
 // Simulate external provider/Worker failures while retaining the real Runtime.
-import { completeDigest, decodeFileSeed } from '../../scripts/core-file-seed.js';
+import { completeDigest, decodeFileSeed } from '../../src/core/files/core-file-seed.js';
 import { openOpenSandboxBackend as openBase } from './core-input-backend.js';
 export { claimOpenSandboxBackend, transport } from './core-input-backend.js';
 export const controls={onStop:null,stopError:null,destroyError:null,credentials:new Map(),preparedFiles:new Map(),onPrepare:null};

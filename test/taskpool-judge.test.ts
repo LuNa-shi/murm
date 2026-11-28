@@ -6,19 +6,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
 import { controls, transport } from './fixtures/taskpool-controller-backend.js';
-import { createTaskPoolTaskService } from '../examples/taskpool/task-service.js';
-import { createTaskPoolPublicationServices } from '../examples/taskpool/publication-services.js';
 import { ServiceRegistry } from '../src/core/services.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
-import { JudgeService } from '../src/judge/judge-service.js';
 const hooks=registerHooks({resolve(specifier,context,next) {
-  if(specifier==='./opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
+  if(specifier==='./sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
+const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
+const { createTaskPoolTaskService } = await import('../examples/taskpool/services/task/agent-service.js');
+const { createTaskPoolPublicationServices } = await import('../examples/taskpool/services/workspace/publication-services.js');
+const { makeEnvelope } = await import('../examples/taskpool/persistence/envelope.js');
+const { JudgeService } = await import('../examples/taskpool/services/judge/judge-service.js');
 const {createRuntime}=await import('../src/core/index.js');hooks.deregister();
-const {runTaskPoolHarness}=await import('../examples/taskpool/harness.js');
+const {runTaskPoolHarness}=await import('../examples/taskpool/harness/harness.js');
 const execute=promisify(execFile);
 
 async function fixture(t,options={}) {

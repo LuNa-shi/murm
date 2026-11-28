@@ -5,16 +5,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { request } from 'node:http';
-import { createTaskPoolPublicationServices } from '../examples/taskpool/publication-services.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { transport, controls } from './fixtures/taskpool-controller-backend.js';
-import { createTaskPoolStores } from './fixtures/taskpool-task-stores.js';
-import { createTaskPoolController } from '../examples/taskpool/controller.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next){
-  if(specifier==='./opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
+  if(specifier==='./sandbox/opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/taskpool-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
+const { createTaskPoolPublicationServices } = await import('../examples/taskpool/services/workspace/publication-services.js');
+const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
+const { createTaskPoolController } = await import('../examples/taskpool/harness/controller.js');
+const { makeEnvelope } = await import('../examples/taskpool/persistence/envelope.js');
 const {createRuntime}=await import('../src/core/index.js'); hooks.deregister();
 async function fixture(t,options={}) {
   const root=await mkdtemp(join(tmpdir(),'taskpool-controller-'));
@@ -80,7 +80,7 @@ test('TaskPool owns one durable handoff warning at the persisted threshold witho
   const submitted=f.controller.snapshot().inputs.filter(row=>row.source==='handoff-warning');
   assert.equal(submitted.length,1);assert.equal(submitted[0].mode,'followUp');assert.equal(submitted[0].status,'accepted');
   const sent=[...transport.submissions.values()].filter(row=>row.input.includes(warning.notification_id));
-  assert.equal(sent.length,1);assert.match(sent[0].input,/停止扩展，保存已有文件和研究内容，再按真实结果 finish/);
+  assert.equal(sent.length,1);assert.match(sent[0].input,/Stop expanding work, save existing files and research content, then finish with the actual outcome/);
   await f.controller.tick();f.settle();await f.controller.flush();await f.controller.tick();
   assert.equal([...transport.submissions.values()].filter(row=>row.input.includes(warning.notification_id)).length,1);
   assert.equal(enqueues,1);assert.equal(signals,1);

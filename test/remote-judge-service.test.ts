@@ -7,10 +7,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { TaskService } from '../src/task/task-service.js';
-import { RemoteJudgeService } from '../src/sdk/remote-judge-service.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { RemoteJudgeService } from '../examples/taskpool/deploy/service-hosts/remote-judge-service.js';
 import { MurmError } from '../src/errors.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 const fixtureManifest = { fixture_id: 'remote-judge', putnambench_commit: 'a'.repeat(40), problem_file: 'input.lean',
   problem_file_hash: 'b'.repeat(64), lean_toolchain: 'leanprover/lean4:v4.33.1', mathlib_version: 'fixture',
   checker_ref: 'lean', checker_version: 'fixture', environment_ref: 'fixture' };

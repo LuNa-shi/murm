@@ -10,8 +10,8 @@ import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
-import { readHarnessResult } from '../src/harnesses/shared/read-result.js';
-import { installNotesExample } from './fixtures/notes-installed-package.js';
+import { readHarnessResult } from '../src/harness/read-result.js';
+import { installNotesExample, stageInstalledTestFixtures } from './fixtures/notes-installed-package.js';
 
 const execute = promisify(execFile);
 const repository = new URL('../..', import.meta.url);
@@ -164,6 +164,7 @@ test('installed terminal and saved-result entries preserve pending receipts with
   const installed = await installNotesExample();
   t.after(() => installed.close());
   const packageRoot = join(installed.directory, 'node_modules', '@luna-shi', 'murm');
+  await stageInstalledTestFixtures(packageRoot);
   for (const path of ['src/observability', 'trace-viewer', 'dist/scripts/serve-observability.js']) {
     await assert.rejects(access(join(packageRoot, path)), { code: 'ENOENT' });
   }

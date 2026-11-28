@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { finalizeRun } from '../src/harnesses/shared/run-finalization.js';
-import type { CloseReceipt } from '../src/harnesses/shared/run-finalization.js';
+import { finalizeRun } from '../src/harness/run-finalization.js';
+import type { CloseReceipt } from '../src/harness/run-finalization.js';
 
 test('public finalization verifies exported artifacts before releasing owned facilities', async t => {
   const outputDir = await mkdtemp(join(tmpdir(), 'murm-public-finalization-'));

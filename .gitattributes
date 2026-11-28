@@ -1,2 +1,2 @@
 # Preserve the exact upstream license bytes, including its final blank line.
-src/judge/lean-module-verify.LICENSE.txt -text whitespace=-blank-at-eof
+examples/taskpool/services/judge/lean-module-verify.LICENSE.txt -text whitespace=-blank-at-eof

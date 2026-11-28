@@ -5,7 +5,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
-import { createNativeEvidenceDirectory, installNativeNotesExample } from './fixtures/notes-installed-package.js';
+import { createNativeEvidenceDirectory, installNativeNotesExample, stageInstalledBenchmark } from './fixtures/notes-installed-package.js';
 import { createLocalPeerMeshStack } from './fixtures/peermesh-local-stack.js';
 import { createCleanupBudget } from './fixtures/peermesh-deadline.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
@@ -32,7 +32,7 @@ test('dynamic Lead-Worker runs via the installed package with native Pi, Gitea a
   const candidatePath = join(directory, 'candidate.json');
   await mkdir(outputDir);
   const installed = await installNativeNotesExample();
-  const packageDir = join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/lead-worker');
+  const packageDir = await stageInstalledBenchmark(installed.directory, 'lead-worker-orders');
   const stack = await createLocalPeerMeshStack({ directory: join(directory, 'facilities'), advertiseHost: host, giteaOnly: true });
   const cleanup = createCleanupBudget(80_000);
   const proof: Record<string, any> = { runId, image, serviceImage, installed: installed.metadata, configuration: {

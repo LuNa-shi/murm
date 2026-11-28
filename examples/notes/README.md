@@ -14,11 +14,17 @@ After installing the built tarball, configure the model route, compatible Worker
 
 The host imports only from `@luna-shi/murm` for Runtime, Sandbox and Service author APIs. See the [Runtime guide](../../docs/en/runtime.md) for configuration and resource ownership.
 
-The package is currently distributed from a checkout as a tarball (`private: true`). Install the checkout dependencies with `npm ci` first. TypeScript sources compile with `npm run build` into `dist/`; `npm pack` builds JavaScript and declarations before archiving.
+Install a release using [Quickstart](../../docs/en/quickstart.md), or build a checkout tarball. Install checkout dependencies with `npm ci --ignore-scripts` first. TypeScript sources compile with `npm run build` into `dist/`; `npm pack` builds JavaScript and declarations before archiving.
 
 Two independent Agents hand off one supplied source fact through a custom Notes Service. The writer publishes the exact seeded text using `swarm notes put --input note-request.json --request-id notes-put`. The host seeds this request with a string `text` field containing `review-input.json`; passing that JSON text through `--text` would coerce it to an object and fail schema validation. The reader checks it and saves `review.md`, then copies that file to `followup.md` in a second turn. The host checks the Service author and read record and opens both files from the archive after stopping the reader.
 
 The default `fact` is a fixture pinned to an earlier source revision. It is copied and compared as data; it is not a statement of the current architecture. Replace `fact` when you want the handoff to carry your own observation.
+
+## Fixed handoff fixture
+
+The `main.ts` entry below runs a seeded, fixed-turn verification fixture. The
+project command above instead captures your directory and derives its observation
+from your prompt. Both use the same custom Notes Service.
 
 ## Install and configure
 
@@ -32,20 +38,16 @@ cd "$example_dir"
 npm init -y
 npm pkg set type=module
 npm install --omit=dev --ignore-scripts ./luna-shi-murm-0.2.0.tgz
-tar -xOf luna-shi-murm-0.2.0.tgz package/dist/examples/notes/main.js > main.js
-tar -xOf luna-shi-murm-0.2.0.tgz package/dist/examples/notes/config.js > config.js
-tar -xOf luna-shi-murm-0.2.0.tgz package/dist/src/harnesses/shared/run-input.js > run-input.js
-tar -xOf luna-shi-murm-0.2.0.tgz package/dist/src/harnesses/shared/run-report.js > run-report.js
-tar -xOf luna-shi-murm-0.2.0.tgz package/dist/src/harnesses/shared/read-result.js > read-result.js
+example=node_modules/@luna-shi/murm/dist/examples/notes
 ```
 
 Set `MURM_NOTES_IMAGE` to your compatible worker image ID and `MURM_NOTES_MODEL_URL` to the trusted Responses endpoint, including the exact `/v1/responses` path. Set `MURM_NOTES_MODEL_TOKEN` if the endpoint requires a bearer token. Configure `MURM_NOTES_ADVERTISE_HOST` to the host's guest-reachable IPv4 address if it differs from `172.17.0.1`. The sample `config.js` also reads optional lifecycle host, endpoint host and token variables. Model and lifecycle secrets stay on the host.
 
-The sample uses Pi with Kimi K3 by default. To run Codex, set `MURM_NOTES_EXECUTOR=codex` and `MURM_NOTES_MODEL_ID` to the model served by your endpoint. `MURM_NOTES_MODEL_PROVIDER` labels the model and defaults to `openai` for Codex. For a custom configuration module, set `backend.executor` and its `models` mapping. The same Reader thread handles both reader inputs. See the [backend guide](../../docs/architecture/16-pi-opensandbox-backend.md#codex-app-server) for the credential and trace contract.
+The sample uses Pi and the configured common model route by default (`openai` / `gpt-5.4` when model labels are omitted). Common `MURM_MODEL_*` and `MURM_EXECUTOR` variables take precedence over scoped Notes variables. To run Codex, set `MURM_NOTES_EXECUTOR=codex` and `MURM_NOTES_MODEL_ID` to the model served by your endpoint. `MURM_NOTES_MODEL_PROVIDER` labels the model and defaults to `openai` for Codex. For a custom configuration module, set `executor` and its `models` mapping. The same Reader thread handles both reader inputs. See the [backend guide](../../docs/architecture/16-pi-opensandbox-backend.md#codex-app-server) for the credential and trace contract.
 
 ```sh
-node main.js --help
-node main.js config.js > notes-result.json
+node "$example/main.js" --help
+node "$example/main.js" "$example/config.js" > notes-result.json
 ```
 
 `main.js` imports Runtime, Service Registry and the configurable OpenSandbox backend from the public package exports. `run-input.js`, `run-report.js` and `read-result.js` are editable host modules. The Harness owns the turn order, the Notes manifest and adapter, the role grants and verification. It uses `followUp` on an idle Agent after subscribing, with one input source and a fresh ID. An unknown or queued submission remains explicit and sends no replacement.
@@ -59,7 +61,7 @@ Read the final CLI report from `notes-result.json`. It contains the Runtime iden
 ```sh
 runtime_id=$(node -e 'const fs=require("node:fs"); console.log(JSON.parse(fs.readFileSync("notes-result.json","utf8")).runtimeId)')
 run_dir=$(node -e 'const fs=require("node:fs"),path=require("node:path"); console.log(path.dirname(JSON.parse(fs.readFileSync("notes-result.json","utf8")).reportPath))')
-node main.js --result "$run_dir" --runtime-id "$runtime_id"
+node "$example/main.js" --result "$run_dir" --runtime-id "$runtime_id"
 ```
 
 Result inspection reads `harness-report.json` and `runtime.json`, checks both recorded identities, and projects business failure, recorded Core status, per-Agent execution/cleanup, pending count and artifact availability. It reports the Harness result's location without printing its content or interpreting business acceptance. Open the indicated Harness report's `result.verifiedFiles` and reader archive to inspect the actual checked deliverables. A pending receipt remains pending even if another recorded receipt later reports complete. This command reads saved files and does not contact or control a running Runtime.

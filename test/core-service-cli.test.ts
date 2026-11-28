@@ -31,8 +31,8 @@ test('public Bash CLI discovers permitted operations, renders manifest help and 
   assert.deepEqual(manifests, bridge.visibleServices(agent.services));
   const system = renderStartupPrompt(manifests, '  ');
   assert.equal(system.match(/<services>/g)?.length, 1);
-  assert.match(system, /swarm notes get/);
-  assert.doesNotMatch(system, /swarm notes put|<added_system_prompt>/);
+  assert.match(system, /swarm service invoke notes get/);
+  assert.doesNotMatch(system, /swarm service invoke notes put|<added_system_prompt>/);
   assert.deepEqual(JSON.parse((await cli('service', 'view', 'notes')).stdout).capabilities.map(item => item.operation), ['get']);
   await assert.rejects(cli('notes', 'put', '--key', 'one', '--text', 'changed', '--request-id', 'forbidden'));
   assert.equal(saved.text, 'fixed');
@@ -50,8 +50,8 @@ test('registered operations in a known command group can run exactly as advertis
   } }, { manifest });
   agent.services = { task: ['other_read', 'custom_read'] };
   const system = renderStartupPrompt(bridge.visibleServices(agent.services));
-  const advertised = system.match(/`swarm (task custom_read)`/)?.[1].split(' ');
-  assert.deepEqual(advertised, ['task', 'custom_read']);
+  const advertised = system.match(/`swarm (service invoke task custom_read)`/)?.[1].split(' ');
+  assert.deepEqual(advertised, ['service', 'invoke', 'task', 'custom_read']);
   const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
   const cli = (...args) => execute(process.execPath, ['dist/scripts/swarm.js', ...args], { env, timeout: 5000 });
   const operationHelp = (await cli(...advertised, '--help')).stdout;

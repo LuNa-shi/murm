@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRuntime } from '@luna-shi/murm';
 
-import { substratePeerProfile } from '../src/harnesses/substrate/index.js';
-import { createSubstrateService } from '../src/harnesses/substrate/substrate.js';
+import { substratePeerProfile } from '../examples/substrate/harness/index.js';
+import { createSubstrateService } from '../examples/substrate/services/substrate.js';
 import { substrateBackendConfiguration } from './fixtures/substrate-configuration.js';
 import { createSubstrateUpstream } from './fixtures/substrate-upstream.js';
 

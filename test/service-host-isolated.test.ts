@@ -18,7 +18,7 @@ async function freePort() {
 
 async function startService(serviceId, port, root, endpoints = {}) {
   const endpoint = `http://127.0.0.1:${port}`;
-  const child = spawn(process.execPath, ['dist/scripts/service-host.js'], {
+  const child = spawn(process.execPath, ['dist/examples/taskpool/deploy/service-hosts/start-service-host.js'], {
     cwd: process.cwd(),
     env: {
       ...process.env,
@@ -74,9 +74,9 @@ async function runCli(args, env) {
 }
 
 test('built-in service image includes the checker git dependency and prebuild entrypoint', async () => {
-  const dockerfile = await readFile(new URL('../deploy/builtin-services/Dockerfile', import.meta.url), 'utf8');
-  const entrypoint = await readFile(new URL('../scripts/service-host-entrypoint.sh', import.meta.url), 'utf8');
-  const compose = await readFile(new URL('../deploy/builtin-services/compose.yaml', import.meta.url), 'utf8');
+  const dockerfile = await readFile(new URL('../examples/taskpool/deploy/service-hosts/Dockerfile', import.meta.url), 'utf8');
+  const entrypoint = await readFile(new URL('../examples/taskpool/deploy/service-hosts/service-host-entrypoint.sh', import.meta.url), 'utf8');
+  const compose = await readFile(new URL('../examples/taskpool/deploy/service-hosts/compose.yaml', import.meta.url), 'utf8');
   assert.match(dockerfile, /apt-get install[\s\S]*ca-certificates git/);
   assert.match(dockerfile, /ENTRYPOINT \["\.\/scripts\/service-host-entrypoint\.sh"\]/);
   assert.match(entrypoint, /MURM_JUDGE_PREBUILD/);
@@ -92,7 +92,7 @@ test('built-in service image includes the checker git dependency and prebuild en
 test('service-host isolated mode owns one service database and HTTP manifest', async () => {
   const root = await mkdtemp(join(tmpdir(), 'murm-isolated-service-'));
   const port = await freePort();
-  const child = spawn(process.execPath, ['dist/scripts/service-host.js'], {
+  const child = spawn(process.execPath, ['dist/examples/taskpool/deploy/service-hosts/start-service-host.js'], {
     cwd: process.cwd(),
     env: {
       ...process.env,

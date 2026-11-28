@@ -4,7 +4,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { stableStringify } from '../src/protocol/envelope.js';
+import { stableStringify } from '../examples/taskpool/persistence/envelope.js';
 const run = promisify(execFile);
 const name = `swarm-project-probe-${randomUUID()}`;
 const token = 'controlled-worker-test-token';

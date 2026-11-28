@@ -11,7 +11,7 @@ order: 9
 - **两轮自主协同**：第 1 轮各自并行探索并上板；第 2 轮大家在保留原会话记忆的前提下，主动查看队友的发现、补充盲区或提出反驳。
 - **1 名综合员（`synthesizer`）**：仅拥有黑板只读权与本地文件写权限，在所有研究员完成后汇聚集体发现，产出 `report.md` 并由 `Profile.collect` 自动导出。
 
-整套实战**零外部数据库或 Git 容器依赖**，只要完成 [快速上手](quickstart.md) 中的 `murm setup` 就能直接运行。正文只展示拆解后的关键片段，完整可运行代码折叠在文末。
+先按[快速上手](quickstart.md)从源码安装，完成 `murm setup` 和模型配置，并保留生成的 SDK tarball。示例在本机运行，无需外部数据库或 Git 服务。正文展示关键片段，完整可运行代码在文末。
 
 ## 第 1 步：用普通 TypeScript 写共享黑板类（`board.ts`）
 
@@ -324,13 +324,12 @@ murm trace --root ./swarm-runs --port 8787 --open
 <details>
 <summary>展开查看完整可运行代码（含完整 JSON Schema 与严格 TypeScript 类型，可直接保存运行）</summary>
 
-先初始化目录并安装 `@luna-shi/murm`：
+初始化项目，再用快速上手中从源码构建的 tarball 安装 `@luna-shi/murm`。请在同一个 shell 中运行，或将 `pack_dir` 设为 tarball 所在目录的绝对路径。
 
 ```bash
 mkdir research-swarm && cd research-swarm
 npm init -y && npm pkg set type=module
-npm install --ignore-scripts --allow-remote=root \
-  https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
+npm install --ignore-scripts "$pack_dir"/*.tgz
 ```
 
 ### 完整文件 1：`board.ts`

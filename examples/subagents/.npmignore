@@ -1,2 +1,6 @@
 /subagents-runs/
 /experiments/
+/dist/
+/node_modules/
+/.murm/
+/.env*

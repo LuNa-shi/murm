@@ -13,7 +13,7 @@ test('concurrent coordinators initialize Execution Workspace tables under one SQ
   t.after(() => db.close());
   db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 1000');
   db.exec('BEGIN IMMEDIATE');
-  const module = new URL('../src/runtime/execution-workspace.js', import.meta.url).href;
+  const module = new URL('../examples/taskpool/services/workspace/execution-workspace.js', import.meta.url).href;
   const children = Array.from({ length: 2 }, () => {
     const child = spawn(process.execPath, ['--input-type=module', '-e', `
       import { DatabaseSync } from 'node:sqlite';

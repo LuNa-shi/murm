@@ -3,15 +3,15 @@ import { dirname, join } from 'node:path';
 import { constants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { DEFAULT_FILE_POLICY, type FileBudget, type ResolvedFilePolicy } from '../src/core/file-policy.js';
-import { checkFileSpace } from './file-tree-stream.js';
+import { checkFileSpace } from '../src/core/files/file-tree-stream.js';
 import type { FileReplaceOptions, FileSnapshotOptions, FileTree } from '../src/core/types.js';
 import type { WorkerFileReplace, WorkerFileSnapshot } from '../src/core/file-controls.js';
-import { collectCoreWorkDir } from './core-collection.js';
+import { collectCoreWorkDir } from '../src/core/files/core-collection.js';
 import { ProjectInstaller, canonical } from './project-install.js';
 import {
   assertFileManifest, completeDigest, decodeFileSeed, fileManifestDigest, fileSnapshotSelection,
   fileSpool, isFileTreePath, isGitPath, partialDigest, stagedFiles, type FileManifestEntry, type SpoolFile,
-} from './core-file-seed.js';
+} from '../src/core/files/core-file-seed.js';
 
 const failure = (code: string, message: string) => Object.assign(new Error(message), { code });
 const requestIdValid = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(value);
@@ -100,7 +100,7 @@ export class CoreWorkDir {
         this.assertOpen();
         const path = join(this.path, entry.path);
         await mkdir(dirname(path), { recursive: true, mode: 0o755 });
-        if (Buffer.isBuffer(entry.bytes)) await writeFile(path, entry.bytes, { flag: 'wx', mode: entry.mode });
+        if (entry.bytes instanceof Uint8Array) await writeFile(path, entry.bytes, { flag: 'wx', mode: entry.mode });
         else await copyFile(entry.bytes.file, path, constants.COPYFILE_EXCL);
         await chmod(path, entry.mode);
       }

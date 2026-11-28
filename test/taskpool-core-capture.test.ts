@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 
 test('TaskPool recovers exact binary workDir bytes through Core after a lost snapshot response', { timeout: 15000 }, async t => {
   const { createLifecycleProvider } = await import('./fixtures/core-lifecycle-provider.js');
-  const { completeDigest, decodeFileSeed } = await import('../scripts/core-file-seed.js');
+  const { completeDigest, decodeFileSeed } = await import('../src/core/files/core-file-seed.js');
   const seed = { 'lemma.lean': { encoding: 'utf8', data: '-- actual guest λ\n' }, 'sample.bin': { encoding: 'base64', data: 'AP+A' } };
   let snapshotRequests = 0;
   let receipt;
@@ -22,9 +22,9 @@ test('TaskPool recovers exact binary workDir bytes through Core after a lost sna
   const { createRuntime } = await import('../src/core/index.js');
   const { ServiceRegistry, snapshotServiceRegistry, invokeService } = await import('../src/core/services.js');
   const { createTaskPoolStores } = await import('./fixtures/taskpool-task-stores.js');
-  const { prepareTaskPoolInputs } = await import('../examples/taskpool/prepare-inputs.js');
-  const { createTaskPoolPublicationServices } = await import('../examples/taskpool/publication-services.js');
-  const { makeEnvelope } = await import('../src/protocol/envelope.js');
+  const { prepareTaskPoolInputs } = await import('../examples/taskpool/harness/prepare-inputs.js');
+  const { createTaskPoolPublicationServices } = await import('../examples/taskpool/services/workspace/publication-services.js');
+  const { makeEnvelope } = await import('../examples/taskpool/persistence/envelope.js');
   provider.allowDeletion();
   const outputDir = await mkdtemp(join(tmpdir(), 'taskpool-core-capture-'));
   const runtime = await createRuntime({ ...runtimeSettings({

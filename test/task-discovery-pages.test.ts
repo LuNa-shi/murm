@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { TaskService } from '../src/task/task-service.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
+import { TaskService } from '../examples/taskpool/services/task/task-service.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 
 function fixture(t) {
   const service = new TaskService(); t.after(() => service.close());

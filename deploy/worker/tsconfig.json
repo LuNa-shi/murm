@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": [],
+  "files": [
+    "../../scripts/opensandbox-agent-worker.ts",
+    "../../scripts/project-processes.ts",
+    "../../scripts/pi-rpc-submissions.ts",
+    "../../scripts/swarm.ts",
+    "../../scripts/git-credential-peermesh.ts"
+  ]
+}

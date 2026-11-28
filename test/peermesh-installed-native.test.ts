@@ -5,11 +5,11 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { createNativeEvidenceDirectory, installNativeNotesExample, execute } from './fixtures/notes-installed-package.js';
+import { createNativeEvidenceDirectory, installNativeNotesExample, execute, stageInstalledTestFixtures } from './fixtures/notes-installed-package.js';
 import { createTeamUpstream, teamInputs, teamFact, foregroundInput } from './fixtures/peermesh-team-upstream.js';
 import { createDeadline, createCleanupBudget } from './fixtures/peermesh-deadline.js';
-import { httpClient } from '../src/harnesses/peermesh/http.js';
-import { createPeerMeshDelivery } from '../src/harnesses/peermesh/delivery.js';
+import { httpClient } from '../src/harness/http.js';
+import { createPeerMeshDelivery } from '../examples/peermesh/harness/delivery.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { closeInstalledForeground } from './fixtures/peermesh-installed-cleanup.js';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';
@@ -95,6 +95,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
   try {
     // This source is a trusted fixture config. Backend consumption is through the public package export.
     // Stack ownership stays in this child, whose private IPC accepts cleanup only after terminal proof.
+    await stageInstalledTestFixtures(root);
     await copyFile(join(root, 'dist/test/fixtures/peermesh-installed-host.js'), join(installed.directory, 'host-config.mjs'));
 
     // The upstream deadline includes setup; its per-request work gate starts at facilities readiness.

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { chmod, cp, rm, stat } from 'node:fs/promises';
+import { chmod, cp, readdir, rm, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,7 +19,7 @@ compile('tsconfig.json');
 
 // Preserve the relative locations used by runtime scripts and compiled tests.
 // The Docker build supplies the production trees only.
-for (const directory of ['src', 'scripts', 'deploy', 'examples', 'test']) {
+for (const directory of ['src', 'scripts', 'deploy', 'examples', 'benchmarks/fate', 'benchmarks/lead-worker-orders', 'test']) {
   const source = resolve(root, directory);
   if (!(await stat(source).catch(error => {
     if (error.code === 'ENOENT') return null;
@@ -28,8 +28,16 @@ for (const directory of ['src', 'scripts', 'deploy', 'examples', 'test']) {
   if (directory === 'test') compile('tsconfig.tests.json');
   await cp(source, resolve(dist, directory), {
     recursive: true,
-    filter: (path) => !/\.[cm]?[jt]s$/.test(path),
+    filter: path => (!/\.[cm]?[jt]s$/.test(path) || path.includes('/lead-worker-orders/fixtures/')) &&
+      !/\/(?:dist|node_modules|\.murm)(?:\/|$)/.test(path.slice(root.length)) &&
+      !/\/examples\/[^/]+\/(?:package(?:-lock)?|tsconfig)\.json$/.test(path.slice(root.length)),
   });
+}
+
+// TypeScript emits package boundaries for separately installable examples.
+// The bundled CLI resolves those same modules inside the SDK package scope.
+for (const example of await readdir(resolve(dist, 'examples'), { withFileTypes: true })) {
+  if (example.isDirectory()) await rm(resolve(dist, 'examples', example.name, 'package.json'), { force: true });
 }
 
 // Ship the zero-dependency Trace Viewer modules and browser assets alongside compiled src/.

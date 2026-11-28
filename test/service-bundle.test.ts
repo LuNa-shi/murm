@@ -3,11 +3,11 @@ import test from 'node:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ERROR_CODES, MurmError } from '../src/errors.js';
-import { ServiceRegistry } from '../src/sdk/service-registry.js';
-import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
-import { makeEnvelope } from '../src/protocol/envelope.js';
-import { loadServiceBundle, resolveBundleDocument } from '../src/sdk/service-bundle.js';
+import { ERROR_CODES, MurmError } from '../examples/taskpool/errors.js';
+import { ServiceRegistry } from '../examples/taskpool/deploy/service-hosts/service-registry.js';
+import { createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
+import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
+import { loadServiceBundle, resolveBundleDocument } from '../examples/taskpool/deploy/service-hosts/service-bundle.js';
 
 const schema = {
   type: 'object',

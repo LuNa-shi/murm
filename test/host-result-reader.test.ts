@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { createRuntime } from '@luna-shi/murm';
 import { ServiceRegistry } from '@luna-shi/murm';
 
-import { runWithReport } from '../src/harnesses/shared/run-report.js';
+import { runWithReport } from '../src/harness/run-report.js';
 
 async function recordedRun(t, run = async () => ({ accepted: true, privateOutput: 'DO_NOT_PRINT_RESULT' })) {
   const outputDir = await mkdtemp(join(tmpdir(), 'host-result-reader-'));
@@ -26,7 +26,7 @@ async function recordedRun(t, run = async () => ({ accepted: true, privateOutput
 }
 
 test('reads actual Core and Environment reports without turning a returned accepted flag into business acceptance', async t => {
-  const { readHarnessResult } = await import('../src/harnesses/shared/read-result.js');
+  const { readHarnessResult } = await import('../src/harness/read-result.js');
   const input = await recordedRun(t);
   const result = await readHarnessResult(input);
   assert.equal(result.runtimeId, input.runtimeId);
@@ -45,7 +45,7 @@ test('reads actual Core and Environment reports without turning a returned accep
 });
 
 test('retains real pending cleanup independently of business failure and later Core reconciliation', async t => {
-  const { readHarnessResult } = await import('../src/harnesses/shared/read-result.js');
+  const { readHarnessResult } = await import('../src/harness/read-result.js');
   let runtime;
   const input = await recordedRun(t, async (owned, outputDir) => {
     runtime = owned;
@@ -70,7 +70,7 @@ test('retains real pending cleanup independently of business failure and later C
 });
 
 test('rejects foreign or corrupt saved identities without exposing their results and does not invent missing state', async t => {
-  const { readHarnessResult } = await import('../src/harnesses/shared/read-result.js');
+  const { readHarnessResult } = await import('../src/harness/read-result.js');
   const input = await recordedRun(t);
   const foreign = await readHarnessResult({ ...input, runtimeId: 'another-runtime' });
   assert.equal(foreign.harness.state, 'identity-mismatch');
@@ -102,7 +102,7 @@ test('rejects foreign or corrupt saved identities without exposing their results
 });
 
 test('reads an Environment-only factory failure and checks recorded artifact locations without dumping error details', async t => {
-  const { readHarnessResult } = await import('../src/harnesses/shared/read-result.js');
+  const { readHarnessResult } = await import('../src/harness/read-result.js');
   const root = await mkdtemp(join(tmpdir(), 'environment-only-result-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const report = await runWithReport({ outputDir: root,
@@ -134,7 +134,7 @@ test('host result CLI returns the same projection with explicit identity and rep
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const { fileURLToPath } = await import('node:url');
-  const { readHarnessResult } = await import('../src/harnesses/shared/read-result.js');
+  const { readHarnessResult } = await import('../src/harness/read-result.js');
   const execute = promisify(execFile);
   const cli = fileURLToPath(new URL('../scripts/read-harness-result.js', import.meta.url));
   const input = await recordedRun(t);

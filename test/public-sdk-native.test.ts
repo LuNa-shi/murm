@@ -102,7 +102,7 @@ test('a clean external project typechecks and runs the same public handoff on Pi
   const installed = join(project, 'node_modules/@luna-shi/murm');
   assert.equal((await lstat(installed)).isSymbolicLink(), false);
   for (const name of ['handoff.ts', 'handoff-config.ts', 'messages.ts', 'tsconfig.handoff.json']) {
-    await copyFile(join(installed, 'examples/bridge-services', name), join(project, name));
+    await copyFile(join(installed, 'examples/messages', name), join(project, name));
   }
   await execute(process.execPath, ['node_modules/typescript/bin/tsc', '--project', 'tsconfig.handoff.json'], { cwd: project, env });
   const pins = { sourceCommit: packed.sourceCommit, packageSha256, image, typeScriptVersion, nodeTypesVersion,
@@ -125,7 +125,7 @@ test('a clean external project typechecks and runs the same public handoff on Pi
       }
       const upstream = await scriptedResponses(scenario, executor, mode);
       const output = join(evidence, `${executor}-${mode}-${source}`);
-      let entry = source === 'installed' ? 'build/handoff.js' : 'dist/examples/bridge-services/handoff.js';
+      let entry = source === 'installed' ? 'build/handoff.js' : 'dist/examples/messages/handoff.js';
       if (mode === 'without-handoff' || mode === 'cancelled') {
         entry = 'fixture.mjs';
         await writeFile(join(project, entry), `
