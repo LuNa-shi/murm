@@ -1,4 +1,4 @@
-import { Ajv, type ValidateFunction } from 'ajv';
+import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
 import type { JsonValue, ServiceManifest, ServiceCapability, ServiceCaller, ServiceRequest, ServiceAdapter } from './service-types.js';
 export type * from './service-types.js';
 import { ERROR_CODES, MurmError } from '../errors.js';
@@ -201,6 +201,51 @@ export function snapshotServiceRegistry(services: ServiceRegistry): Map<string, 
   return new Map([...registryEntries.get(services)!].map(([id, registration]) => [id, captureRegistration(registration)]));
 }
 
+function schemaPropertyNames(value: unknown, names = new Set<string>()): Set<string> {
+  if (value && typeof value === 'object') {
+    for (const [key, child] of Object.entries(value)) {
+      if (key === 'properties' && child && typeof child === 'object') {
+        for (const property of Object.keys(child)) names.add(property);
+      }
+      schemaPropertyNames(child, names);
+    }
+  }
+  return names;
+}
+
+function jsonType(value: unknown): string {
+  if (value === undefined) return 'missing';
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  return typeof value;
+}
+
+function inputValidation(errors: ErrorObject[] | null | undefined, input: unknown, schema: unknown) {
+  if (!errors?.length) return [{ pointer: '', expected: 'JSON value', actual: jsonType(input) }];
+  const names = schemaPropertyNames(schema);
+  return errors.slice(0, 5).map(error => {
+    const parts = error.instancePath.slice(1).split('/').filter(Boolean).map(part => part.replaceAll('~1', '/').replaceAll('~0', '~'));
+    let value = input;
+    const path = parts.map(part => {
+      const index = Array.isArray(value) && /^\d+$/.test(part);
+      value = value && typeof value === 'object' && Object.hasOwn(value, part)
+        ? (value as Record<string, unknown>)[part] : undefined;
+      return index || names.has(part) ? part.replaceAll('~', '~0').replaceAll('/', '~1') : '*';
+    });
+    let expected = error.keyword;
+    if (error.keyword === 'type') expected = error.params.type;
+    if (error.keyword === 'required') {
+      const property = error.params.missingProperty;
+      path.push(names.has(property) ? property.replaceAll('~', '~0').replaceAll('/', '~1') : '*');
+      expected = 'required property';
+      value = undefined;
+    }
+    if (error.keyword === 'additionalProperties') expected = 'only declared properties';
+    if (typeof error.params.limit === 'number') expected += ` ${error.params.limit}`;
+    return { pointer: path.length ? '/' + path.join('/') : '', expected, actual: jsonType(value) };
+  });
+}
+
 // One invocation only. Service business logic owns idempotency and retries.
 export async function invokeService(registration: ServiceRegistration, { operation, input, envelope, caller, signal, recordService, assertAuthorized, trackCompletion }: ServiceInvocation, timeoutMs = 30_000): Promise<JsonValue> {
   const { manifest, adapter } = registration;
@@ -214,9 +259,14 @@ export async function invokeService(registration: ServiceRegistration, { operati
     throw new MurmError('NOT_FOUND', 'Service operation is not registered', identity);
   }
   const rules = validators.get(manifest)!.get(operation)!;
-  if (!isJson(input) || !rules.input(input)) {
+  const jsonInput = isJson(input);
+  if (!jsonInput || !rules.input(input)) {
     record('validation', 'not_executed', { code: 'SERVICE_INPUT_INVALID', retryable: false });
-    throw new MurmError('SERVICE_INPUT_INVALID', 'Service input violates its schema', { ...identity, request_outcome: 'not_executed' });
+    const validation = inputValidation(jsonInput ? rules.input.errors : undefined, input, capability.input_schema);
+    throw new MurmError('SERVICE_INPUT_INVALID', 'Service input violates its schema', {
+      ...identity, request_outcome: 'not_executed', validation,
+      remedy: 'Read the operation help and correct the indicated input. Use --stdin or --input for explicit JSON types.',
+    });
   }
   record('validation', 'passed');
   const controller = new AbortController();

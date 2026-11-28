@@ -15,7 +15,7 @@
     },
     {
       "path": "src/cli/swarm-cli.ts",
-      "sha256": "28b04858e08731781e8c4de4dc90095c041595b04ff58666d182e53aeaf79a00"
+      "sha256": "e2ef378e9f1e109f7518b4727b9e35d4a75604806d7953eeae3a56e342b53280"
     },
     {
       "path": "examples/taskpool/cli.ts",

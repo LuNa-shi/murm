@@ -79,7 +79,30 @@ function bootstrapTimings() {
   return { startedAt: Date.now(), timings: [] as Timing[] };
 }
 
-export async function runLocalCommand(command: LocalCommand, signal: AbortSignal) {
+function reportedEndpoint(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash) return url.href;
+  } catch {
+    // The Lifecycle check reports the failing configuration.
+  }
+}
+
+function installNextStep(command: LocalCommand): string {
+  return command.command === 'setup'
+    ? 'Run your Harness with the same environment and resolveSandboxConnection(), or repeat the probe with murm doctor --smoke.'
+    : 'Run your Harness with the same environment.';
+}
+
+const phaseLabels: Record<string, string> = {
+  host: 'Check local Docker', 'strict-host': 'Check strict host isolation',
+  'provider-start': 'Prepare local OpenSandbox (may pull images)',
+  provider: 'Check host to Lifecycle and authentication',
+  worker: 'Prepare Worker image (cache, pull or build)',
+  smoke: 'Start Worker and check Bridge, controlled Gateway, files and deletion',
+};
+
+export async function runLocalCommand(command: LocalCommand, signal: AbortSignal, progress?: (message: string) => void) {
   const { startedAt, timings } = bootstrapTimings();
   const checks: DiagnosticCheck[] = [];
   const report: {
@@ -87,6 +110,13 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     ok: boolean;
     mode?: 'existing' | 'local';
     lifecycleSource?: string;
+    connection?: {
+      lifecycleBaseUrl?: string;
+      endpointHost?: string;
+      advertiseHost?: string;
+      image: string;
+      resolveWith: 'resolveSandboxConnection';
+    };
     infrastructure: 'failed' | 'preflight-passed' | 'ready';
     model?: Model;
     configuration?: {
@@ -108,11 +138,15 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
   };
   async function timed<T>(id: string, action: () => Promise<T>) {
     signal.throwIfAborted();
+    const label = phaseLabels[id];
+    progress?.(label + '…');
     const start = performance.now();
     try {
       return await action();
     } finally {
-      timings.push({ id, elapsedMs: Math.round(performance.now() - start) });
+      const elapsedMs = Math.round(performance.now() - start);
+      timings.push({ id, elapsedMs });
+      progress?.(`${label} (${elapsedMs} ms)`);
     }
   }
 
@@ -152,6 +186,13 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     const mode = (command.command === 'setup' ? command.mode : undefined) ?? environment.mode;
     report.mode = mode;
     report.lifecycleSource = environment.endpointSource;
+    report.connection = {
+      lifecycleBaseUrl: reportedEndpoint(environment.lifecycleBaseUrl),
+      endpointHost: environment.endpointHost,
+      advertiseHost: environment.advertiseHost,
+      image: report.configuration.image,
+      resolveWith: 'resolveSandboxConnection',
+    };
     const strict = config?.sandbox?.isolation?.network === 'local-docker' || config?.sandbox?.isolation?.disk?.inodes !== undefined;
     stage = 'host';
     checks.push(...checkLinuxHost());
@@ -165,6 +206,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       if (!docker.docker) return report;
       rootlessDocker = docker.docker.rootless;
       advertiseHost ??= docker.docker.advertiseHost;
+      report.connection.advertiseHost = advertiseHost;
     }
     if (strict) {
       if (!/^(http:\/\/(127\.0\.0\.1|localhost))([:/]|$)/.test(environment.lifecycleBaseUrl)) {
@@ -179,6 +221,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     if (install && mode === 'local') {
       provider = await timed('provider-start', () => ensureLocalProvider(environment, { signal }));
       report.provider = { id: provider.id, created: provider.created, images: provider.images };
+      progress?.(provider.created ? 'Started managed OpenSandbox' : 'Reused managed OpenSandbox');
     }
     const active = provider?.config ?? environment;
     checks.push(...await timed('provider', () => checkLocalProvider(active, { requireAuth: !strict || mode === 'local' })));
@@ -194,6 +237,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       if (!worker.image || checks.some(check => !check.ok)) return report;
       report.worker = { ...worker.image, source: worker.source };
       image = worker.image.id;
+      progress?.(`Worker image source: ${worker.source}`);
     }
     report.infrastructure = 'preflight-passed';
     if (smoke) {
@@ -257,6 +301,14 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       }
     }
     report.elapsedMs = Date.now() - startedAt;
+    for (const check of checks.filter(check => !check.ok)) {
+      progress?.([check.id, check.detail, check.remedy].filter(Boolean).join(' '));
+    }
+    if (report.smoke) {
+      for (const check of report.smoke.checks) progress?.(`${check.id} ${check.status}: ${check.message}`);
+      progress?.('Controlled smoke completed. The configured model upstream was not contacted.');
+    }
+    if (report.ok) progress?.(installNextStep(command));
   }
   return report;
 }

@@ -64,6 +64,16 @@ jobs:
           mkdir "$package_dir"
           npm pack --loglevel=error --pack-destination "$package_dir"
           npm install --prefix "$RUNNER_TEMP/consumer" --prefer-offline --omit=dev --ignore-scripts --no-audit --no-fund "$archive"
+      - name: Compile the first SDK Harness against the installed candidate
+        shell: bash
+        run: |
+          consumer="$RUNNER_TEMP/consumer"
+          sdk="$consumer/node_modules/@luna-shi/murm"
+          test "$("$consumer/node_modules/.bin/murm" --version)" = "$(node -p "require('./package.json').version")"
+          npm pkg set --prefix "$consumer" type=module
+          cp "$sdk"/examples/first-harness/{config,handoff,main,turn}.ts "$sdk/examples/first-harness/tsconfig.json" "$consumer"/
+          npm install --prefix "$consumer" --ignore-scripts --no-audit --no-fund --save-dev typescript@7.0.2 @types/node@26.6.5
+          "$consumer/node_modules/.bin/tsc" -p "$consumer/tsconfig.json"
       - run: npm test
       - name: Prepare Release asset names and checksums
         working-directory: ${{ runner.temp }}/murm-release

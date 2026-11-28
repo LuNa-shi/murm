@@ -5,6 +5,8 @@ section: 版本与更新
 order: 16
 ---
 
+固定的 v0.2.0 归档及候选版安装说明见[搭建第一个 SDK Harness](first-harness.md)。
+
 本页同步记录 **murm**（`@luna-shi/murm`）的历次重要变更，与仓库根目录的 [`CHANGELOG.md`](../../CHANGELOG.md) 保持一致。如需了解当前最新版本的完整功能导览，请查看 [最新版本 (v0.2.0)](latest.md)。
 
 ## 尚未发布

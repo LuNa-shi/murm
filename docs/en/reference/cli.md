@@ -5,6 +5,8 @@ section: REFERENCE
 order: 16
 ---
 
+`murm --version` prints the installed candidate package version. In published v0.2.0 use `npm ls -g @luna-shi/murm --depth=0` with the prefix used to install it.
+
 `@luna-shi/murm` ships two binaries: **`murm`** (run on the trusted Linux host) and **`swarm`** (preinstalled inside Worker containers so Agents can call Services over the Bridge).
 
 ## Host CLI (`murm`)

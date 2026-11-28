@@ -5,6 +5,8 @@ section: GET STARTED
 order: 1
 ---
 
+To write an application with an installed SDK archive, follow [Build your first SDK Harness](first-harness.md).
+
 `murm` ships its CLI and TypeScript SDK in one package and runs Agents inside [OpenSandbox](sandbox.md) containers. You can run OpenSandbox locally with Docker Engine or connect to an existing OpenSandbox service.
 
 ## Prerequisites

@@ -5,6 +5,8 @@ section: RELEASES
 order: 16
 ---
 
+For the fixed v0.2.0 archive and current candidate instructions, see [Build your first SDK Harness](first-harness.md).
+
 All notable changes to **murm** (`@luna-shi/murm`) are tracked here and in the repository's [`CHANGELOG.md`](../../CHANGELOG.md). For an overview of everything available in the current release, see [Latest (v0.2.0)](latest.md).
 
 ## Unreleased

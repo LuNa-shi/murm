@@ -10,6 +10,7 @@ Start with the user guides to run a Harness or build your own. The English and C
 | Run your first Harness | [Quickstart](en/quickstart.md) | [快速上手](zh/quickstart.md) |
 | Build a 2-minute mental model | [Core Concepts](en/concepts.md) | [核心概念](zh/concepts.md) |
 | Master the 6 core building blocks | [Sandboxes](en/sandbox.md) · [Runtime](en/runtime.md) · [Agents](en/agents.md) · [Gateway](en/gateway.md) · [Services](en/services.md) · [Trace Viewer](en/trace-viewer.md) | [Sandbox](zh/sandbox.md) · [Runtime](zh/runtime.md) · [Agent](zh/agents.md) · [Gateway](zh/gateway.md) · [Services](zh/services.md) · [观测与调试](zh/trace-viewer.md) |
+| Build a two-Agent SDK Harness from an installed archive | [First SDK Harness](en/first-harness.md) | [搭建第一个 SDK Harness](zh/first-harness.md) |
 | Build a parallel Swarm step by step | [Build a Swarm Harness](en/build-your-harness.md) | [实战：构建 Swarm Harness](zh/build-your-harness.md) |
 | Compare the five collaboration patterns | [Choose a Harness](en/harnesses/index.md) | [选择 Harness](zh/harnesses/index.md) |
 | Look up SDK exports, CLI flags & types | [API](en/reference/api.md) · [CLI](en/reference/cli.md) · [Types](en/reference/types.md) | [API](zh/reference/api.md) · [CLI](zh/reference/cli.md) · [类型](zh/reference/types.md) |

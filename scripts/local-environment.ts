@@ -218,7 +218,7 @@ export async function checkLocalProvider(config: LocalEnvironmentConfig, { requi
   const [healthy, denied] = await Promise.all([providerHealthy(config, true), requireAuth ? providerHealthy(config, false) : true]);
   return [
     check('provider.health', healthy, healthy ? 'OpenSandbox lifecycle listing is reachable with the configured credentials.' : 'OpenSandbox lifecycle listing failed.',
-      'Check the endpoint, TLS trust, and lifecycle API key.'),
+      'Check MURM_LIFECYCLE_URL (or sandbox.lifecycleBaseUrl in --config), TLS trust, and the lifecycle API key. Rerun the same command.'),
     ...(requireAuth ? [check('provider.authentication', denied && !!config.apiKey,
       denied && config.apiKey ? 'Lifecycle rejects requests without the configured API key.' : 'Lifecycle authentication could not be confirmed.',
       'Configure a lifecycle API key on OpenSandbox and pass it through trusted murm configuration.')] : []),

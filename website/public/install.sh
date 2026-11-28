@@ -28,6 +28,11 @@ main() {
   npm install --global --prefix "$prefix" --ignore-scripts --allow-remote=root \
     https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz
 
+  installed="$prefix/bin/murm"
+  # Old releases do not implement --version. Read the installed package metadata.
+  version=$(node -e 'console.log(require(process.argv[1]).version)' "$(npm root --global --prefix "$prefix")/@luna-shi/murm/package.json")
+  printf 'Installed murm %s at %s\n' "$version" "$installed"
+
   if [ "$(command -v murm || true)" != "$prefix/bin/murm" ]; then
     printf '%s\n' 'To run the installed CLI in this shell, add its bin directory to PATH:' >&2
     if [ "$prefix" = "$HOME/.local" ]; then
