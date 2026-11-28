@@ -30,12 +30,13 @@ const settingsManager = sdk.SettingsManager.inMemory({ ...configuration, resourc
 const resourceHashes: any[] = [];
 async function resourceDigest(root: string) {
   const entries: { path: string; mode: number; bytes: number; sha256: string }[] = [];
-  let bytes = 0;
-  async function visit(path: string, relative: string) {
+  let bytes = 0, visited = 0;
+  async function visit(path: string, relative: string, depth = 0) {
+    if (++visited > 4096 || depth > 32) throw new Error('Guest resource bundle exceeds its traversal limit');
     const info = await lstat(path);
     if (info.isSymbolicLink()) throw new Error('Guest resource bundles cannot contain symbolic links');
     if (info.isDirectory()) {
-      for (const name of (await readdir(path)).sort()) await visit(join(path, name), relative ? relative + '/' + name : name);
+      for (const name of (await readdir(path)).sort()) await visit(join(path, name), relative ? relative + '/' + name : name, depth + 1);
       return;
     }
     if (!info.isFile() || entries.length >= 512 || bytes + info.size > 16 * 1024 * 1024) throw new Error('Guest resource bundle exceeds its bounds');
