@@ -24,7 +24,7 @@ export function snapshotSessionConfig(input: AgentSessionConfig | undefined, dyn
       if (name === 'enabled' ? typeof item !== 'boolean' : !Number.isSafeInteger(item) || (item as number) < (name === 'maxRetries' ? 0 : 1)) throw new TypeError(`Invalid ${key}.${name}`);
     }
   }
-  if (input.tools !== undefined && (!Array.isArray(input.tools) || new Set(input.tools).size !== input.tools.length || input.tools.some(tool => !tools.has(tool)))) throw new TypeError('Invalid tools loadout');
+  if (input.tools !== undefined && (!Array.isArray(input.tools) || new Set(input.tools).size !== input.tools.length || input.tools.some(tool => !tools.has(tool) && (!(input as AgentSessionConfig).resources?.extensions?.length || typeof tool !== 'string' || !/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(tool))))) throw new TypeError('Invalid tools loadout');
   if (input.resources !== undefined) {
     object(input.resources); keys(input.resources, ['skills', 'extensions', 'promptTemplates', 'contextFiles']);
     for (const paths of Object.values(input.resources)) {

@@ -76,7 +76,7 @@ type WorkerRecord = { worker_sequence: number; worker_at?: string; [key: string]
   | { type: 'worker_error'; message: string }
   | { type: 'worker_exit'; code?: string | number; signal?: string }
   | { type: 'agent_start' | 'agent_settled'; aborted?: boolean }
-  | { type: 'message_start' | 'message_update' | 'core_before_compact' | 'core_before_compact_result' | 'core_context_disposition' | 'core_session_event' | 'core_session_ready' | 'compaction_start' | 'compaction_end' | 'auto_compaction_start' | 'auto_compaction_end' | 'auto_retry_start' | 'auto_retry_end'; [key: string]: any }
+  | { type: 'message_start' | 'message_update' | 'core_before_compact' | 'core_before_compact_result' | 'core_context_disposition' | 'core_session_event' | 'core_session_ready' | 'compaction_start' | 'compaction_end' | 'queue_update' | 'thinking_level_changed' | 'summarization_retry_scheduled' | 'summarization_retry_attempt_start' | 'summarization_retry_finished' | 'auto_compaction_start' | 'auto_compaction_end' | 'auto_retry_start' | 'auto_retry_end'; [key: string]: any }
   | { type: 'tool_execution_start' | 'tool_execution_update' | 'tool_execution_end';
       toolCallId: string; toolName?: string; args?: unknown; result?: unknown; partialResult?: unknown; isError?: boolean }
 );
@@ -361,24 +361,24 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         }
       }
       if (record.type === 'message_start') {
-        agent.activeMessageId = randomUUID();
+        agent.activeMessageId = record.messageId ?? randomUUID();
         agent.onEvent({ type: 'session', event: { type: 'messageStart', messageId: agent.activeMessageId, role: record.message?.role } });
       }
       if (record.type === 'message_update') {
         const update = record.assistantMessageEvent;
         if (update?.type === 'text_delta' && typeof update.delta === 'string') {
-          agent.activeMessageId ??= randomUUID();
+          agent.activeMessageId ??= record.messageId ?? randomUUID();
           agent.onEvent({ type: 'session', event: { type: 'textDelta', messageId: agent.activeMessageId,
             blockIndex: update.contentIndex ?? 0, delta: update.delta } });
         }
       }
       if (record.type === 'message_end') {
-        agent.activeMessageId ??= randomUUID();
+        agent.activeMessageId ??= record.messageId ?? randomUUID();
         agent.onEvent({ type: 'session', event: { type: 'messageEnd', messageId: agent.activeMessageId, message: record.message } });
         agent.activeMessageId = undefined;
       }
       if (['tool_execution_start', 'tool_execution_update', 'tool_execution_end', 'compaction_start', 'compaction_end',
-          'auto_compaction_start', 'auto_compaction_end', 'auto_retry_start', 'auto_retry_end', 'core_session_event', 'core_context_disposition', 'core_before_compact_result'].includes(record.type)) {
+          'auto_compaction_start', 'auto_compaction_end', 'auto_retry_start', 'auto_retry_end', 'queue_update', 'thinking_level_changed', 'summarization_retry_scheduled', 'summarization_retry_attempt_start', 'summarization_retry_finished', 'core_session_event', 'core_context_disposition', 'core_before_compact_result'].includes(record.type)) {
         const { worker_sequence, worker_at, ...native } = record;
         const event = record.type === 'core_session_event' ? record.event : native;
         agent.onEvent({ type: 'session', event });
