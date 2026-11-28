@@ -129,6 +129,6 @@ context 必须明确 delivery。append 在原生安全边界追加，不启动�
 
 创建 Runtime 时可登记 `hooks.beforeCompact`。当 `request.reason !== 'manual' && request.successfulAutoCompactions >= 3` 时返回 stop，其余返回 allow，即可在第四次自动压缩机会的摘要请求前停止该 Agent。原生 Guest 等待有限期限内的真实决策，并沿普通归档、必需成果导出和清理路径收尾。handler 接收 AbortSignal，应停止处理已取消的决策。
 
-Session 事件通过 `{ type: 'session', agentId, event }` 发布。messageStart、textDelta 与 messageEnd 共享 messageId，delta 带内容块身份，终态携带完整消息用于替换累计内容。工具、压缩、重试、设置和 context 事件保留原生操作身份。Session usage 与当前 context usage 分开，fork 继承的历史可能贡献 Session 总量。
+Session 事件通过 `{ type: 'session', agentId, event }` 发布。messageStart、textDelta 与 messageEnd 共享 messageId，delta 带内容块身份，终态携带完整消息用于替换累计内容。工具、压缩、重试、设置和 context 事件保留原生操作身份。`toolActivity` 列出当前正在执行的工具调用。Session usage 与当前 context usage 分开，fork 继承的历史可能贡献 Session 总量。未配置价格时，费用为 null。
 
 随包提供的 `examples/agent-session.ts` 只从包根导入 SDK，读取应用明确提供的配置模块。构建后运行 `node dist/examples/agent-session.js /absolute/config.mjs worker '你的任务'`。模块默认导出完整的 CreateRuntimeOptions，并包含选定 Profile。程序安装三次成功自动压缩后的停止规则，追加 append 与 nextTurn context，查询实际状态、统计和消息，输出 Agent stop 与最终 cleanup 回执。工作窗口为 120 秒，清理窗口为 30 秒，执行环境与资源额度来自传入的模型和 Sandbox 配置。

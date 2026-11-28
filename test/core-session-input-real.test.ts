@@ -172,6 +172,7 @@ test('native Session inputs, isolated configuration, resources, retry and queue 
   const hold = await runtime.send(a.id, 'HOLD_TOOL', { requestId: 'hold' }); assert.equal(hold.status, 'accepted');
   const until = Date.now() + 15000;
   while (!events.some(event => event.type === 'session' && event.event.type === 'tool_execution_start' && event.event.toolCallId.startsWith('call_hold'))) { assert.ok(Date.now() < until); await delay(25); }
+  assert.ok((await runtime.session.getState(a.id)).toolActivity.some(tool => tool.toolName === 'bash' && tool.toolCallId.startsWith('call_hold')));
   await context('DISCARD_NEXT_TURN_CONTEXT', 'nextTurn', 'discard');
   const queued = await runtime.send(a.id, 'CANCEL_QUEUED_TEXT', { requestId: 'queued', mode: 'followUp' }); assert.equal(queued.disposition, 'queued');
   const cleared = await runtime.session.clearQueue(a.id, { requestId: 'clear' }); receipts.push({ id: 'clear', receipt: cleared });
@@ -195,6 +196,10 @@ test('native Session inputs, isolated configuration, resources, retry and queue 
   phase = 'compact'; phaseRequests = 0;
   const compacted = await runtime.session.compact(a.id, { requestId: 'compact' }); receipts.push({ id: 'compact', receipt: compacted }); assert.equal(compacted.status, 'completed');
   const stats = await runtime.session.getStats(a.id); assert.equal(stats.compactions.manual, 1); assert.equal(stats.compactions.successfulAutoCompactions, 0);
+  assert.equal(stats.sessionUsage.cost, null);
+  assert.equal(stats.sessionUsage.costStatus, 'not-configured');
+  assert.equal('contextUsage' in stats.sessionUsage, false);
+  assert.deepEqual((await runtime.session.getState(a.id)).toolActivity, []);
   assert.ok(events.some(event => event.type === 'session' && event.event.type === 'textDelta'));
   const stopped = await runtime.stop(a.id); receipts.push({ id: 'stop-a', receipt: stopped }); assert.equal(stopped.cleanup, 'complete'); assert.ok(stopped.sessionArchive);
   completed = true;

@@ -12,6 +12,7 @@ export function createPiSessionController(session: any, options: {
   const nativeMessageIds = new WeakMap<object, string>();
   const entryMessageIds = new Map<string, string>();
   const decisions = new Map<string, { epoch: number; finish(decision: string, reason?: string): void }>();
+  const toolActivity = new Map<string, string>();
   const counts = { successfulAutoCompactions: 0, manual: 0, failed: 0, cancelled: 0 };
   let epoch = 0;
   let fenced = false;
@@ -71,9 +72,10 @@ export function createPiSessionController(session: any, options: {
     return { observedAt: new Date().toISOString(), executor: { kind: 'pi', version: options.version ?? 'unknown' },
       capabilities: PI_SESSION_CAPABILITIES, configuration: configuration(),
       model: { provider: session.model?.provider ?? '', id: session.model?.id ?? '' },
-      thinkingLevels: session.getAvailableThinkingLevels?.() ?? [], active: !session.isIdle,
+      thinkingLevels: session.getAvailableThinkingLevels?.() ?? [], active: options.isStarting?.() || !session.isIdle,
       compacting: session.isCompacting, retrying: session.isRetrying,
       tools: session.getActiveToolNames?.() ?? [], resources: options.configuration?.resources ?? {},
+      toolActivity: [...toolActivity].map(([toolCallId, toolName]) => ({ toolCallId, toolName })),
       queue: { steering: [...session.getSteeringMessages()], followUp: [...session.getFollowUpMessages()] },
       pendingContext: [...pending.values()].map(({ inputId, delivery, status }) => ({ inputId, delivery, status })) };
   }
@@ -117,6 +119,9 @@ export function createPiSessionController(session: any, options: {
     },
     observe(event: any) {
       observeContexts();
+      if (event.type === 'tool_execution_start') toolActivity.set(event.toolCallId, event.toolName);
+      if (event.type === 'tool_execution_end') toolActivity.delete(event.toolCallId);
+      if (event.type === 'agent_settled') toolActivity.clear();
       if (['message_start', 'message_update', 'message_end'].includes(event.type) && event.message) {
         return { ...event, messageId: messageIdentity(event.message) };
       }
@@ -179,9 +184,9 @@ export function createPiSessionController(session: any, options: {
       }
       if (type === 'core_session_get_state') return state();
       if (type === 'core_session_get_stats') {
-        const { sessionFile: _privatePath, ...usage } = session.getSessionStats();
+        const { sessionFile: _privatePath, contextUsage: _sessionContext, cost: _unconfiguredPrice, ...usage } = session.getSessionStats();
         const context = session.getContextUsage();
-        return { sessionUsage: { source: 'pi-session', ...usage }, contextUsage: {
+        return { sessionUsage: { source: 'pi-session', ...usage, cost: null, costStatus: 'not-configured' }, contextUsage: {
           tokens: context?.tokens ?? null, contextWindow: context?.contextWindow ?? session.model?.contextWindow ?? null,
           percent: context?.percent ?? null }, compactions: { ...counts } };
       }

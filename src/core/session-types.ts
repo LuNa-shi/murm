@@ -64,13 +64,14 @@ export interface AgentSessionState {
   readonly compacting: boolean;
   readonly retrying: boolean;
   readonly tools: readonly string[];
+  readonly toolActivity: readonly { toolCallId: string; toolName: string }[];
   readonly resources: AgentSessionResources;
   readonly queue: { steering: readonly string[]; followUp: readonly string[] };
   readonly pendingContext: readonly { inputId: string; delivery: ContextDelivery; status: string }[];
   readonly [key: string]: unknown;
 }
 export interface AgentSessionStats {
-  readonly sessionUsage: { source: string; [key: string]: unknown };
+  readonly sessionUsage: { source: 'pi-session'; cost: null; costStatus: 'not-configured'; [key: string]: unknown };
   readonly contextUsage: { tokens: number | null; contextWindow: number | null; percent: number | null };
   readonly compactions: { successfulAutoCompactions: number; manual: number; failed: number; cancelled: number };
   readonly [key: string]: unknown;

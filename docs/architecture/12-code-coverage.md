@@ -35,7 +35,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/pi-session-bridge.ts](../../scripts/pi-session-bridge.ts) | Guest-local Pi AgentSession SDK loading, startup and resource attestation | [08-prompts](08-prompts.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `19eb9704e3a2aee2d2328fa2795d7ea3fb2ebc16395ddcc5f87bf085bb4022a8` |
-| [scripts/pi-session-controller.ts](../../scripts/pi-session-controller.ts) | Guest SDK Session settings, native input queues, retry, compaction, events and export | [08-prompts](08-prompts.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `94ebf78d73f0db0e2312c784cade150ecc59544e6425ac076153ea56e3d8f50a` |
+| [scripts/pi-session-controller.ts](../../scripts/pi-session-controller.ts) | Guest SDK Session settings, native input queues, retry, compaction, events and export | [08-prompts](08-prompts.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `de0fd144adb2f3891b1ecaaecbeef102ed7531677fd7d2aa569f0d5163567d55` |
 
 ### Configuration and build (9)
 
@@ -65,7 +65,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 | [src/core/runtime-admissions.ts](../../src/core/runtime-admissions.ts) | Runtime admission barriers coordinating delivery, input cancellation and Agent lifecycle | [15-core-runtime](15-core-runtime.md) | `2012e1dc8ef7097410e4ce104b81031ed069dce120ee86afaf7c1e3298b3bea2` |
 | [src/core/session-config.ts](../../src/core/session-config.ts) | Pi Session policy normalization, resource configuration and public input bounds | [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `7554c013fb1d213ae163264df43d88c6a03a21b6cbc0da3ac33bc110d9e65247` |
 | [src/core/session-controls.ts](../../src/core/session-controls.ts) | Per-Agent Session control dispatch, replay, action receipts and public queries | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `dd06deafa63eecdaf6b7c9de301478c9086013d9fe9d83e545790e579a0249d3` |
-| [src/core/session-types.ts](../../src/core/session-types.ts) | Public Pi Session controls, configuration, statistics and redacted messages | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `be242c24e05e9c65246f482685e3364f6dca71a4dfeffb230274af572a2d72e7` |
+| [src/core/session-types.ts](../../src/core/session-types.ts) | Public Pi Session controls, configuration, statistics and redacted messages | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `6182ff74a28beb49b2a46d9e084cbc3e00e35d3859524d8bb21c127d43b9a462` |
 
 ### Core public runtime (10)
 
