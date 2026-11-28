@@ -134,7 +134,7 @@ test('handled receipt cannot restore idle after actual Pi execution begins', asy
   const snapshot = await runtime.get(agent.id);
   assert.equal(snapshot.status, 'running');
   assert.equal(snapshot.latestOutput, 'Active execution output');
-  assert.deepEqual(events.filter(event => event.type !== 'agentChanged').map(event => event.type), ['output']);
+  assert.deepEqual(events.filter(event => event.type !== 'agentChanged').map(event => event.type), ['session', 'output']);
 });
 
 test('unknown original submission stays unknown when receipt lookup loses authorization or the Agent closes', async t => {
