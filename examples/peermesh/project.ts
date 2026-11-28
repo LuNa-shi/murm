@@ -43,6 +43,8 @@ const peerMesh = {
     catch { throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid PeerMesh sandbox configuration'); }
     let team: Awaited<ReturnType<typeof createPeerMeshTeam>> | undefined;
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
+    let statusRefresh: ReturnType<typeof setInterval> | undefined;
+    let cancelStatusRefresh: ReturnType<typeof addAbortListener> | undefined;
     try {
       const report = await runPeerMeshTeam({
         ...config, sandbox, runId: context.runId.replaceAll('-', '').slice(0, 24),
@@ -84,6 +86,12 @@ const peerMesh = {
             return ready.redact({ batchId: receipt.batchId, requestId: receipt.requestId,
               state: receipt.state, ...(receipt.inputId ? { inputId: receipt.inputId } : {}) });
           }, userBatchDescription);
+          // Router completion, source polling and Board delivery can change
+          // after the last Core event. Bound their public snapshot lag without
+          // triggering router.wait/poll or other business dispatch from reads.
+          statusRefresh = setInterval(() => { void observation?.refresh(); }, 250);
+          statusRefresh.unref();
+          cancelStatusRefresh = addAbortListener(context.signal, () => clearInterval(statusRefresh));
           context.markRunning();
         },
       }, async (team: { signal: AbortSignal; snapshot(): unknown }) => {
@@ -109,6 +117,8 @@ const peerMesh = {
         } : {}),
       };
     } finally {
+      clearInterval(statusRefresh);
+      cancelStatusRefresh?.[Symbol.dispose]();
       observation?.close();
     }
   },

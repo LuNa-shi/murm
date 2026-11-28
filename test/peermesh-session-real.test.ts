@@ -87,6 +87,8 @@ test('PeerMesh HarnessSession directs native next-batch input and stops one memb
     assert.equal(note.status, 'admitted'); release();
     await wait(() => batches.length === 3, 'targeted next batch'); assert.equal(batches[2].eventId, 'h6-user-a'); assert.equal(batches[2].text, input.input);
     await wait(async () => (await session!.agents.getState(a)).active === false, 'target idle');
+    await wait(async () => ((await session!.getState()).business as any).detail.peers.find((peer: any) => peer.key === 'a').router.batches
+      .some((batch: any) => batch.eventId === 'h6-user-a' && batch.state === 'completed'), 'router completion reflected after final Agent event');
     const stopped: any = await session.agents.stop(a, { requestId: 'h6-stop-a' });
     assert.equal(stopped.core.cleanup, 'complete'); assert.deepEqual(stopped.harnessEffects, { status: 'complete', routerStopped: true, sourceStopped: true });
     await wait(async () => (await ownedContainers(runtimeId!)).length === 1, 'one native member removed');
