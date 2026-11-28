@@ -7,7 +7,9 @@ order: 11
 
 **Subagents** 模拟常见的层级研发团队：由主 Agent（`/root`）拆解目标、按需创建子 Agent（最多 `maxDepth` 层）、通过邮箱收发消息并在必要时中途纠偏，最后由 `/root` 整合交付结果。源码：[examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents)。
 
-## 项目 Session
+## Harness Session
+
+模块默认导出 `Harness`。SDK Session、显式前台和 RPC 都使用这份定义。Harness 负责业务流程及资源清理。[Harness 编写指南](../first-harness.md)
 
 用 `--lifetime interactive` 保留 Root 以接收后续输入。公共 Session 接受 Root 文本或 `{ text, mode }`。Root 控制还支持结构化 context，`describe()` 列出当前允许的配置和操作。中断封锁旧执行，children 可以继续。中断后收到的结果保留在 inbox，等用户明确提交下一次输入。开启 `--interaction questions` 后，Agent 可通过 `swarm service invoke user-interaction ask` 发起授权问题。
 

@@ -217,6 +217,9 @@ export function createPiSessionController(session: any, options: {
         if (command.delivery === 'nextTurn') { disposition(entry, entry.status); return { status: entry.status, inputId: command.id }; }
         const triggerTurn = command.delivery !== 'append';
         if (triggerTurn && !active) await beforePrompt();
+        if (!pending.has(entry.inputId) || (triggerTurn && (fenced || entry.generation !== epoch))) {
+          throw error('Stale context submission', 'NOT_ALLOWED');
+        }
         const operation = session.sendCustomMessage(entry.input, { triggerTurn, ...(triggerTurn ? { deliverAs: command.delivery } : {}) });
         if (triggerTurn && !active) void operation.catch((failure: any) => emit({ type: 'error', message: failure.message }));
         else await operation;

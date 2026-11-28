@@ -6,7 +6,7 @@ import { installNotesExample, execute } from './fixtures/notes-installed-package
 
 test('external installed subagents example imports only package exports and adjacent host modules', { timeout: 210_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());
-  for (const name of ['main.js', 'harness/controller.js', 'services/collaboration-service.js', 'prompts/prompts.js', 'run-report.js']) {
+  for (const name of ['main.js', 'project.js', 'business.js', 'harness/controller.js', 'services/collaboration-service.js', 'prompts/prompts.js']) {
     const target = join(installed.directory, name);
     await mkdir(dirname(target), { recursive: true });
     await copyFile(join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/subagents', name), target);

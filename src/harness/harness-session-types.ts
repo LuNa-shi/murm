@@ -4,6 +4,8 @@ import type { HarnessInput, HarnessJson, Harness } from './project-harness.js';
 
 export type HarnessLifetime = 'task' | 'interactive';
 export type HarnessRequest = Readonly<{ requestId: string }>;
+/** Stable downstream identity for a request admitted by this Session. */
+export type HarnessDispatchRequest = HarnessRequest & Readonly<{ operationId: string; signal: AbortSignal }>;
 export type HarnessPhase = 'idle' | 'starting' | 'running' | 'stopping' | 'finished';
 export type HarnessOperation = 'getState' | 'getStats' | 'getMessages' | 'configure' | 'compact' | 'abortRetry' |
   'clearQueue' | 'send' | 'interrupt' | 'stop';
@@ -110,17 +112,19 @@ export type HarnessResult = Awaited<ReturnType<Harness['run']>> & {
   snapshotTruncated?: boolean;
   reportPath?: string;
 };
-export type HarnessAgentHandler = (agentId: string, payload: unknown, request: HarnessRequest & { signal: AbortSignal }) => Promise<unknown> | unknown;
+export type HarnessAgentHandler = (agentId: string, payload: unknown, request: HarnessDispatchRequest) => Promise<unknown> | unknown;
 export interface HarnessAgentRegistration {
   runtime: Runtime;
   /** Targets are refreshed for each query and dispatch. */
   targets?: () => readonly string[] | Promise<readonly string[]>;
   capabilities?: Partial<Record<HarnessOperation, HarnessCapability>> | ((agentId: string) => Partial<Record<HarnessOperation, HarnessCapability>>);
   handlers?: Partial<Record<HarnessOperation, HarnessAgentHandler>>;
+  /** Refresh Harness-owned state when the Runtime reports a lifecycle or membership change. */
+  onChange?: () => void;
   /** Stop new business dispatch synchronously, retaining cleanup ownership. */
   fence?: () => void;
   /** Optional reconciliation reads the original operation and never redispatches it. */
-  reconcile?: (operation: HarnessOperation, agentId: string, request: HarnessRequest, payload: unknown) => Promise<unknown>;
+  reconcile?: (operation: HarnessOperation, agentId: string, request: HarnessDispatchRequest, payload: unknown) => Promise<unknown>;
 }
 export type HarnessAgentReceipt<T> = T | Readonly<{ core: T; harnessEffects: HarnessJson }> | Readonly<{ status: 'unknown'; requestId: string }>;
 export interface HarnessAgents {

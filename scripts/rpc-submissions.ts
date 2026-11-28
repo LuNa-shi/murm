@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { isSessionQuery } from '../src/protocol/session-queries.js';
+import { isSessionQuery, maxSessionQueryBytes } from '../src/protocol/session-queries.js';
 
 function canonical(value: any): any  {
   if (Array.isArray(value)) return value.map(canonical);
@@ -71,7 +71,7 @@ export function createRpcSubmissions({ write }: any) {
           release();
           if (reply.state === 'complete') {
             const response = { ...reply.response, id };
-            result.resolve({ state: 'complete', response: Buffer.byteLength(JSON.stringify(response)) <= 512 * 1024
+            result.resolve({ state: 'complete', response: Buffer.byteLength(JSON.stringify(response)) <= maxSessionQueryBytes
               ? response : { type: 'response', id, command: message.type, success: false, code: 'CAPACITY_EXCEEDED', error: 'Worker Session reply exceeds its byte limit' } });
           } else result.resolve(reply);
         } };

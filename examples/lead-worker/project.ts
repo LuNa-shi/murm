@@ -1,7 +1,6 @@
 import {
   createSandbox, type CreateRuntimeOptions, type SandboxConfig, type Harness,
   ProjectPreflightError, checkGitProject, observeProjectRuntime, projectConfiguration,
-  projectResult,
 } from '@luna-shi/murm';
 import { runLeadWorker } from './harness/index.js';
 import { deployDynamicContainer } from './dynamic-container.js';
@@ -42,7 +41,7 @@ const leadWorker = {
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
     let unsubscribeBoard: (() => void) | undefined;
     try {
-      const report = await runLeadWorker({
+      const result = await runLeadWorker({
         ...config, sandbox, runId: context.runId.replaceAll('-', '').slice(0, 24), outputDir: context.outputDir,
         signal: context.signal, projectFiles: context.initial.files, initialDigest: context.initial.digest,
         dynamic: deploy ? { goal: context.input.prompt, projectFiles: context.initial.files, deploy } : undefined,
@@ -51,8 +50,8 @@ const leadWorker = {
           unsubscribeBoard = subscribeBoard(() => { void observation?.refresh(); });
         },
         beforeInitialDispatch: () => context.markRunning(),
-      }, { goal: context.input.prompt, signal: context.signal });
-      const result = projectResult(report, context, { team });
+      }, { goal: context.input.prompt, signal: context.signal },
+      options => context.runWithRuntime({ ...options, detail: () => ({ team }) }));
       return { ...result, acceptance: { status: 'not-run' } };
     } finally {
       unsubscribeBoard?.();

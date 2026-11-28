@@ -7,7 +7,9 @@ order: 13
 
 **PeerMesh**（`examples/peermesh/harness/`）模拟一个 2–8 人的扁平研发小组，没有中心管理员，也不强行对任务加独占锁。每位成员拥有独立的 Gitea 与 Mattermost 账号、持久化会话和本地 Git 仓库：大家在共享任务板上登记自己正在处理的模块（`CLAIM`）、通过频道和私信商量分工、各自在个人分支开发并提 PR，最后由宿主机核验代码后再合入受保护的 `main`。
 
-## 项目 Session
+## Harness Session
+
+模块默认导出 `Harness`。SDK Session、显式前台和 RPC 都使用这份定义。Harness 负责业务流程及资源清理。[Harness 编写指南](../first-harness.md)
 
 `session.input({ recipient, input }, { requestId })` 为指定 peer 排入用户批次。Router 在批次开始时读取最新共享 context。成员停止先关闭其 Router 和来源订阅，再停止 Agent。其他成员继续运行，整个 Run 收尾时导出 main。
 
@@ -53,7 +55,7 @@ swarm gitea pull_request_merge \
 
 ## 2. 每成员串行 Router 与途中转向
 
-在 [team.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/team.ts) 和 [router.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/router.ts) 中，每位成员都有一个专属串行 Router。事件订阅轮询 Mattermost 和 Gitea，成功的 Board 写入也会追加通知，Router 将这些事件投递到成员的持久化 Pi 会话中（其中的 `runInput` 是仓库共用的单轮执行辅助函数 `src/harness/run-input.ts`）。下面节选项目运行配置，完整工厂还会安装故障处理与关闭逻辑：
+在 [team.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/team.ts) 和 [router.ts](https://github.com/LuNa-shi/murm/blob/main/examples/peermesh/harness/router.ts) 中，每位成员都有一个专属串行 Router。事件订阅轮询 Mattermost 和 Gitea，成功的 Board 写入也会追加通知，Router 将这些事件投递到成员的持久化 Pi 会话中（其中的 `runInput` 是SDK 中用于运行排他 Agent 回合的辅助函数）。下面节选项目运行配置，完整工厂还会安装故障处理与关闭逻辑：
 
 ```ts
 const router = createPeerMeshRouter({

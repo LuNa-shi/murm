@@ -1,7 +1,7 @@
 import {
   createSandbox, type CreateRuntimeOptions, type SandboxConfig, decodeFileTree,
   type HarnessJson, type Harness, checkGitProject, ProjectPreflightError, observeProjectRuntime,
-  projectConfiguration, projectResult,
+  projectConfiguration,
 } from '@luna-shi/murm';
 import { join } from 'node:path';
 import { ContextService } from './services/material/context-service.js';
@@ -81,7 +81,7 @@ const taskpool = {
       context.signal.throwIfAborted();
       const deadlineAt = Date.now() + workTimeoutMs;
       storeCleanupConfirmed = false;
-      const report = await runTaskPoolHarness({
+      const result = await runTaskPoolHarness({
         sandbox, executor, models, connection, filePolicy: configuration.filePolicy, image, model, capacity, deadlineAt, closeTimeoutMs,
         taskService, contextService, missionWorkspace, workspaceManager, missionId, workspaceId,
         outputDir: context.outputDir, signal: context.signal, autonomousTasks: true, workspaceCapture: 'core', workspaceMergeEnabled: true,
@@ -116,22 +116,23 @@ const taskpool = {
           refreshWorkspace.unref();
           unsubscribe.push(() => clearInterval(refreshWorkspace));
           context.registerInput(
-            async (payload, { requestId, binding, signal }) => {
+            async (payload, { requestId, operationId, binding, signal }) => {
               signal.throwIfAborted();
               const feedback = feedbackInput(payload);
-              const receipt = await controller.feedback({ ...feedback, requestId },
+              const receipt = await controller.feedback({ ...feedback, requestId, operationId },
                 binding as unknown as ReturnType<typeof controller.captureFeedback>);
               refresh();
-              return JSON.parse(JSON.stringify(receipt));
+              return receipt;
             },
             feedbackDescription,
-            payload => JSON.parse(JSON.stringify(controller.captureFeedback(feedbackInput(payload).taskId))),
-            async (_payload, { requestId }) => JSON.parse(JSON.stringify(await controller.reconcileFeedback(requestId,
-              (agentId, originalId) => observation!.reconcile(agentId, 'send', originalId)))),
+            payload => controller.captureFeedback(feedbackInput(payload).taskId),
+            (_payload, { requestId }) => controller.reconcileFeedback(requestId,
+              (agentId, originalId) => observation!.reconcile(agentId, 'send', originalId)),
           );
         },
-      });
-      const result = projectResult(report, context, { missionId, workspaceId, initialRevision: workspace.main_revision });
+      }, options => context.runWithRuntime({ ...options,
+        detail: () => ({ missionId, workspaceId, initialRevision: workspace.main_revision }),
+      }));
       storeCleanupConfirmed = result.cleanup.status === 'complete';
       try {
         const main = await missionWorkspace.get({ workspaceId });

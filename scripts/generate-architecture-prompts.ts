@@ -33,19 +33,19 @@ const check = args[0] === '--check';
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 const sourcePaths = [
   'examples/taskpool/prompts/agent-contract.ts',
-  'examples/first-harness/main.ts', 'examples/first-harness/turn.ts', 'examples/first-harness/handoff.ts',
+  'examples/first-harness/main.ts', 'examples/first-harness/harness.ts', 'examples/first-harness/turn.ts', 'examples/first-harness/handoff.ts',
   'test-support/taskpool-legacy/capability-profile.ts',
   'test-support/taskpool-legacy/services-bridge.ts',
   'src/cli/swarm-cli.ts', 'examples/taskpool/cli.ts',
   'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/sandbox/opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts', 'scripts/codex-app-server-driver.ts',
   'scripts/local-setup-smoke.ts', 'scripts/local-setup-upstream.ts',
   'examples/messages/handoff.ts',
-  'examples/notes/main.ts', 'examples/notes/project.ts', 'examples/taskpool/project.ts', 'src/harness/project-git.ts', 'src/harness/run-input.ts', 'examples/substrate/harness/index.ts', 'examples/substrate/services/substrate.ts',
+  'examples/notes/main.ts', 'examples/notes/notes.ts', 'examples/notes/project.ts', 'examples/taskpool/project.ts', 'src/harness/project-git.ts', 'src/harness/run-input.ts', 'examples/substrate/harness/index.ts', 'examples/substrate/services/substrate.ts',
   'examples/taskpool/harness/controller.ts', 'examples/taskpool/harness/harness.ts',
   'benchmarks/fate/fate-run.ts', 'benchmarks/fate/fate-service.ts', 'benchmarks/fate/paper-substrate.ts',
   'benchmarks/putnambench-taskpool/run.ts',
   'benchmarks/programbench-pastel/subagents-example.ts',
-  'examples/subagents/main.ts', 'examples/subagents/harness/controller.ts',
+  'examples/subagents/business.ts', 'examples/subagents/harness/controller.ts',
   'examples/subagents/prompts/prompts.ts', 'examples/subagents/services/collaboration-service.ts',
   'test-support/subagents/communication-fixture.ts', 'test-support/subagents/communication-fixture-controller.ts', 'test-support/subagents/communication-fixture-prompts.ts',
   'examples/peermesh/harness/index.ts', 'examples/peermesh/harness/router.ts', 'examples/peermesh/harness/routed.ts', 'examples/peermesh/harness/team.ts',
@@ -178,7 +178,9 @@ output('07-notes-harness.md', header('Installed Notes Harness prompts',
   + block('Project Writer Profile prompt', between('examples/notes/project.ts', "export const projectNotesWriterPrompt = '", "';"),
     'The writer receives the original user prompt directly through followUp after the project FileTree is installed.')
   + block('Project Reader Profile prompt', between('examples/notes/project.ts', "export const projectNotesReaderPrompt = '", "';"),
-    'The reader receives JSON with task equal to the original user prompt and artifact equal to the Run-specific result filename.'));
+    'The reader receives JSON with task equal to the original user prompt and artifact equal to the Run-specific result filename.')
+  + block('Project same-reader follow-up instruction', between('examples/notes/project.ts', "export const projectNotesFollowupPrompt = '", "';"),
+    'The next input goes to the same Reader ID via runInput. Its task, source artifact and followup filename are supplied in the input JSON.'));
 const handoffPath = 'examples/messages/handoff.ts';
 const handoffVariables = { key: 'handoff-example', receivedFile: 'received.txt' };
 output('14-sdk-handoff.md', header('Installed public SDK handoff prompts',
@@ -322,6 +324,12 @@ output('08-taskpool-harness.md', header('TaskPool discovery and continuation pro
 for (const [index, line] of sources.get(flatControllerPath)!.split('\n').entries()) {
   if (line.includes('await runtime.send(')) sendSites.push({ path: flatControllerPath, line: index + 1, expression: line.trim() });
 }
+const candidateFirstHarnessPath = 'examples/first-harness/harness.ts';
+const candidatePublisher = between(candidateFirstHarnessPath, "prompt: '", "',", 'publisher: {');
+const candidateWriter = between(candidateFirstHarnessPath, "prompt: '", "',", 'writer: {');
+const candidatePublisherInput = ['<ORIGINAL_USER_PROMPT>', ...between(candidateFirstHarnessPath, 'runInput(runtime, publisher.id, [', "].join(' ')")
+  .split('\n').flatMap(line => /^\s*'(.+)',\s*$/.exec(line)?.[1] ?? [])].join(' ');
+const candidateWriterInput = between(candidateFirstHarnessPath, 'runInput(runtime, writer.id, `', '`');
 const firstHarnessPath = 'examples/first-harness/main.ts';
 const firstHarnessTurnPath = 'examples/first-harness/turn.ts';
 const firstHarnessServicePath = 'examples/first-harness/handoff.ts';
@@ -331,18 +339,26 @@ const publisherInput = between(firstHarnessPath, "await runTurn(publisher.id, ["
   .split('\n').flatMap(line => /^\s*'(.+)',\s*$/.exec(line)?.[1] ?? []).join(' ');
 const writerInput = between(firstHarnessPath, 'await runTurn(writer.id, `', '`');
 output('11-first-sdk-harness.md', '# First SDK Harness prompts\n\n'
-  + block('Publisher Profile', 'Read release-data.txt.' + publisherProfile,
+  + block('Candidate Publisher Profile', candidatePublisher,
+    'The Harness supplies the fresh reference in the Publisher FileTree. This Profile can only publish a handoff.')
+  + block('Candidate Writer Profile', candidateWriter,
+    'The Writer receives the initial project FileTree and can take the handoff. The reference itself reaches the Writer through the Service.')
+  + block('Candidate Publisher follow-up', candidatePublisherInput,
+    'runInput calls Runtime.send after verifying the Publisher is idle. The first field is the original Run prompt.')
+  + block('Candidate Writer follow-up', candidateWriterInput,
+    'The Harness interpolates channel after validating the reply from the current Session question or the configured noninteractive channel. runInput sends it to the spawned Writer.')
+  + block('Released v0.2.0 Publisher Profile', 'Read release-data.txt.' + publisherProfile,
     'The host registers this read-only Profile. The unique reference is in release-data.txt in the publisher workspace.')
-  + block('Writer Profile', 'Run swarm service invoke handoff take' + writerProfile,
+  + block('Released v0.2.0 Writer Profile', 'Run swarm service invoke handoff take' + writerProfile,
     'The host registers this writable Profile. The writer gets the reference and question from the permitted Service.')
   + block('Handoff Service discovery', [
     between(firstHarnessServicePath, "purpose: '", "',"),
     between(firstHarnessServicePath, "operation: 'publish', description: '", "',"),
     between(firstHarnessServicePath, "operation: 'take', description: '", "',"),
   ].join('\n'), 'Startup discovery includes the purpose and the description for the operation granted to that Agent.')
-  + block('Publisher follow-up', publisherInput,
+  + block('Released v0.2.0 Publisher follow-up', publisherInput,
     'The host sends this text after successfully spawning the publisher.')
-  + block('Writer follow-up', writerInput,
+  + block('Released v0.2.0 Writer follow-up', writerInput,
     'The host interpolates channel from its terminal reader after restricting it to a lowercase channel identifier, then starts the writer and sends this input.'));
 for (const [index, line] of sources.get(firstHarnessTurnPath)!.split('\n').entries()) {
   if (line.includes('await runtime.send(')) sendSites.push({ path: firstHarnessTurnPath, line: index + 1, expression: line.trim() });

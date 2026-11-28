@@ -1,6 +1,7 @@
+import { join } from 'node:path';
 import {
   createSandbox, type CreateRuntimeOptions, type SandboxConfig, type Harness,
-  ProjectPreflightError, observeProjectRuntime, projectConfiguration, projectResult,
+  ProjectPreflightError, observeProjectRuntime, projectConfiguration,
 } from '@luna-shi/murm';
 import { runSubstrate } from './harness/index.js';
 import type { substrateConfiguration } from './project-config.js';
@@ -31,7 +32,7 @@ const substrate = {
       void observation?.refresh();
     }
     try {
-      const report = await runSubstrate({
+      const result = await runSubstrate({
         sandbox: sandboxHandle, executor: configuration.executor, connection, filePolicy: configuration.filePolicy, models, image, model, poolSize, maxRounds, workTimeoutMs, turnTimeoutMs, closeTimeoutMs,
         runId: context.runId, outputDir: context.outputDir, question: context.input.prompt, files: context.initial.files,
         onRuntime: (runtime: Parameters<typeof observeProjectRuntime>[0]) => { observation = observeProjectRuntime(runtime, context, () => business); },
@@ -43,11 +44,10 @@ const substrate = {
           progress({ stage: 'cycle', agentId, round, attempt, publication: snapshot }),
         onPeerStop: ({ agentId, receipt, snapshot }: { agentId: string; receipt: unknown; snapshot: unknown }) =>
           progress({ stage: 'peer-stopped', agentId, receipt, publication: snapshot }),
-      }, context.signal);
-      const result = projectResult(report, context, report.substrate);
+      }, context.signal, context.runWithRuntime);
       return { ...result, acceptance: { status: 'not-run' },
         cleanup: result.cleanup.status === 'complete' ? result.cleanup : { ...result.cleanup,
-          retained: [{ kind: 'publication-store', path: report.databasePath }] } };
+          retained: [{ kind: 'publication-store', path: join(context.outputDir, 'substrate.sqlite') }] } };
     } finally {
       observation?.close();
     }

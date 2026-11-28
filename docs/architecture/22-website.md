@@ -41,3 +41,5 @@ For a repository-prefix build, use `BASE_PATH=/murm SITE_URL=https://luna-shi.gi
 
 
 The first SDK Harness documentation links the version 1 download route. The Markdown link processor maps the example's tracked source links to the deployment base, while GitHub continues to render those same links as repository paths. Astro emits the TypeScript files and compiler config directly from the executable example, so the two locales serve identical bytes and the link check covers each download.
+
+The first Harness download route serves the published launcher and turn helper at `downloads/first-harness/v1/` and the candidate definition and Session client at `downloads/first-harness/v2/`. The Markdown link transformer maps the corresponding source links to these static files. The shared Service, configuration and compiler files are available from the source links in either guide.

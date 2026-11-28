@@ -36,6 +36,29 @@ test('idle structured turn promotes deferred context before either delivery star
   }
 });
 
+test('interrupt during deferred-context promotion fences the idle submission before native start', async () => {
+  const appended = Promise.withResolvers<void>();
+  let starts = 0;
+  const native = {
+    isIdle: true,
+    async sendCustomMessage(_input: unknown, options: { triggerTurn: boolean }) {
+      if (options.triggerTurn) starts++;
+      else await appended.promise;
+    },
+    clearQueue() { return { steering: [], followUp: [] }; },
+    async abort() {},
+  };
+  const controller = createPiSessionController(native, { emit() {} });
+  const input = { type: 'context', content: 'distinct', customType: 'test' };
+  await controller.command({ type: 'core_context', id: 'next', input, delivery: 'nextTurn' });
+  const sending = assert.rejects(controller.command({ type: 'core_context', id: 'turn', input, delivery: 'followUp' }),
+    { code: 'NOT_ALLOWED' });
+  await controller.interrupt();
+  appended.resolve();
+  await sending;
+  assert.equal(starts, 0);
+});
+
 test('same-content native entries preserve input dispositions and message identities across projection', async () => {
   const records: any[] = [];
   const entries: any[] = [];

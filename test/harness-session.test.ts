@@ -130,7 +130,7 @@ test('question identities isolate concurrent sources and cancellation rejects la
   } finally { await rm(cwd, { recursive: true, force: true }); await rm(outputRoot, { recursive: true, force: true }); }
 });
 
-test('a question near the byte limit reserves its answer before admitting other questions', async t => {
+test('pending choice, text and confirm questions keep their budgets across a large live and final view', async t => {
   const cwd = await mkdtemp(join(tmpdir(), 'murm-question-budget-'));
   const outputRoot = await mkdtemp(join(tmpdir(), 'murm-question-budget-output-'));
   t.after(async () => {
@@ -138,30 +138,59 @@ test('a question near the byte limit reserves its answer before admitting other 
     await rm(outputRoot, { recursive: true, force: true });
   });
   const offered = Promise.withResolvers<void>();
+  const displayReady = Promise.withResolvers<void>();
   const choiceId = '选'.repeat(6_000);
+  const maxText = '答'.repeat(5_460) + 'ab';
+  const listed = Array.from({ length: 25 }, (_, index) => ({ id: 'agent-' + index, status: 'idle' }));
+  const runtime = { list: async () => listed, onEvent: () => () => {} } as unknown as import('@luna-shi/murm').Runtime;
   const session = createHarnessSession({ apiVersion: 1, id: 'budget', questions: true, async run(context) {
+    context.registerAgentControls({
+      runtime, capabilities: { configure: { supported: true, fields: ['setting-' + 's'.repeat(4_650)] } },
+    });
     context.markRunning();
     const source = { id: 'work', signal: context.signal };
     const choice = context.askUser({ requestId: 'choice', kind: 'choice', questionId: 'choice', text: 'Choose',
       options: [{ id: choiceId, label: 'First' }, { id: 'other', label: 'Other' }] }, source);
     const confirm = context.askUser({ requestId: 'confirm', kind: 'confirm', questionId: 'confirm', text: 'Confirm?' }, source);
-    void choice.catch(() => {});
-    void confirm.catch(() => {});
+    const text = context.askUser({ requestId: 'text', kind: 'text', questionId: 'text', text: 'Explain?' }, source);
+    for (const answer of [choice, confirm, text]) void answer.catch(() => {});
     await assert.rejects(context.askUser({ requestId: 'too-large', kind: 'text', text: '界'.repeat(6_000), timeoutMs: 100 }, source), { code: 'QUESTION_LIMIT' });
-    context.updateStatus({ agents: '界'.repeat(50_000), business: '界'.repeat(50_000) });
+    await displayReady.promise;
+    context.updateStatus({ business: '界'.repeat(9_700) });
+    for (let index = 0; index < 3; index++) {
+      context.emit({ type: 'session', agentId: listed[index].id, event: { type: 'textDelta', messageId: 'output-' + index, delta: 'o'.repeat(14_000) } });
+    }
     offered.resolve();
-    const result = await Promise.all([choice, confirm]);
-    return { outcome: 'completed', reason: 'done', artifacts: [], cleanup: { status: 'complete' }, result };
-  } }, { outputRoot, clientCapabilities: { questions: true }, limits: { questionBytes: 40_000 } });
+    const answers = await Promise.all([choice, confirm, text]);
+    return { outcome: 'completed', reason: 'done', artifacts: [], cleanup: { status: 'complete' },
+      result: { answers, business: '界'.repeat(50_000) } };
+  } }, { outputRoot, clientCapabilities: { questions: true }, limits: { questionBytes: 55_000 } });
   await session.start({ cwd, prompt: 'work' }, { requestId: 'start' });
+  const live = Promise.withResolvers<void>();
+  const off = session.onEvent(event => { if (event.type === 'state' && event.state.phase === 'running') live.resolve(); });
+  if ((await session.getState()).phase === 'running') live.resolve();
+  await live.promise;
+  off();
+  await session.describe();
+  displayReady.resolve();
   await Promise.race([offered.promise, session.completion!.then(result => { throw new Error(result.reason); })]);
   const state = await session.getState();
-  assert.deepEqual(state.questions.map(question => question.questionId), ['choice', 'confirm']);
+  assert.deepEqual(state.questions.map(question => question.questionId), ['choice', 'confirm', 'text']);
   assert.equal(state.questions[0].options?.[0].id, choiceId);
+  assert.equal(state.questions[2].maxAnswerBytes, 16 * 1024);
+  assert.ok(Buffer.byteLength(JSON.stringify(state)) >= 198 * 1024);
   assert.ok(Buffer.byteLength(JSON.stringify(state)) <= 256 * 1024);
+  const initial = Promise.withResolvers<unknown>();
+  const remove = session.onEvent(event => { if (event.type === 'snapshot') initial.resolve(event.state.questions); }, { initialSnapshot: true });
+  assert.deepEqual(await initial.promise, state.questions);
+  remove();
   await session.respond('choice', choiceId, { requestId: 'answer-choice' });
   await session.respond('confirm', false, { requestId: 'answer-confirm' });
-  assert.deepEqual((await session.completion)?.result, [choiceId, false]);
+  await assert.rejects(session.respond('text', maxText + 'x', { requestId: 'over-limit' }), { code: 'INVALID_ANSWER' });
+  await session.respond('text', maxText, { requestId: 'answer-text' });
+  const result = await session.completion;
+  assert.deepEqual(result?.result.answers, [choiceId, false, maxText]);
+  assert.ok(Buffer.byteLength(JSON.stringify(await session.getState())) <= 256 * 1024);
 });
 
 test('a timed-out input reconciles its original late receipt without invoking the handler twice', async () => {
@@ -287,9 +316,10 @@ test('input reconciliation keeps its captured binding and publishes changed rece
     captured.fence = 5;
     const accepted = await session.input('feedback', { requestId: 'feedback' });
     assert.equal(accepted.result.inputId, 'original-input');
+    accepted.result.inputId = 'caller-injection';
     original.resolve({ status: 'unknown' });
     await new Promise(resolve => setImmediate(resolve));
-    assert.deepEqual(await session.input('feedback', { requestId: 'feedback' }), accepted);
+    assert.equal((await session.input('feedback', { requestId: 'feedback' })).result.inputId, 'original-input');
     assert.equal(calls, 1);
     assert.deepEqual(receipts.map(receipt => receipt.status), ['unknown', 'accepted']);
     await session.stop({ requestId: 'stop' }); await session.completion;
@@ -340,4 +370,124 @@ test('question channel, deadline and capacity remain explicit through natural co
     await rm(cwd, { recursive: true, force: true });
     await rm(outputRoot, { recursive: true, force: true });
   }
+});
+
+test('a trusted source cancelled during target refresh is never published as pending', { timeout: 3_000 }, async t => {
+  const cwd = await mkdtemp(join(tmpdir(), 'murm-question-target-'));
+  const outputRoot = await mkdtemp(join(tmpdir(), 'murm-question-target-report-'));
+  t.after(() => Promise.all([cwd, outputRoot].map(path => rm(path, { recursive: true, force: true }))));
+  const ready = Promise.withResolvers<ProjectHarnessContext>();
+  const finish = Promise.withResolvers<void>();
+  const lookupStarted = Promise.withResolvers<void>();
+  const targetLookup = Promise.withResolvers<readonly string[]>();
+  const source = new AbortController();
+  let waitForLookup = false;
+  let authorized = true;
+  const allowedModes = ['followUp'];
+  let dispatched = 0;
+  const agent = { id: 'agent', status: 'idle' };
+  const runtime = { list: async () => [agent], onEvent: () => () => {} } as unknown as import('@luna-shi/murm').Runtime;
+  const session = createHarnessSession({ id: 'source-cancellation', apiVersion: 1, questions: true, async run(context) {
+    context.registerAgentControls({
+      runtime,
+      targets() {
+        if (!waitForLookup) return ['agent'];
+        lookupStarted.resolve();
+        return targetLookup.promise;
+      },
+      capabilities: { send: { supported: true, text: true, modes: allowedModes } },
+      handlers: { send() { dispatched++; return { status: 'accepted' }; } },
+    });
+    context.markRunning();
+    ready.resolve(context);
+    await finish.promise;
+    return { outcome: 'completed', reason: 'done', artifacts: [], cleanup: { status: 'complete' } };
+  } }, { outputRoot, clientCapabilities: { questions: true } });
+  const questions: string[] = [];
+  session.onEvent(event => { if (event.type === 'question') questions.push(event.question.status); });
+  try {
+    await session.start({ cwd, prompt: 'Check scope' }, { requestId: 'start' });
+    const context = await ready.promise;
+    await session.describe();
+
+    const state = await session.getState();
+    (state.capabilities.agents.agent.send!.modes as string[]).push('steer');
+    assert.deepEqual((await session.getState()).capabilities.agents.agent.send!.modes, ['followUp']);
+    await assert.rejects(session.agents.send('agent', 'outside Harness policy', { requestId: 'denied', mode: 'steer' }),
+      { code: 'OPERATION_UNSUPPORTED' });
+    assert.equal(dispatched, 0);
+
+    waitForLookup = true;
+    const result = assert.rejects(context.askUser({ requestId: 'cancel-during-lookup', questionId: 'q',
+      agentId: 'agent', kind: 'confirm', text: 'Can this continue?' }, {
+      id: 'caller', agentId: 'agent', signal: source.signal,
+      assertAuthorized() { if (!authorized) throw new Error('revoked'); },
+    }), { code: 'QUESTION_CANCELLED' });
+    await lookupStarted.promise;
+    source.abort();
+    authorized = false;
+    targetLookup.resolve(['agent']);
+    await result;
+    assert.deepEqual(questions, []);
+    assert.deepEqual((await session.getState()).questions, []);
+  } finally {
+    targetLookup.resolve([]);
+    finish.resolve();
+    await session.completion;
+  }
+});
+
+test('Session saves an unconfirmed close and never runs late reconciliation', { timeout: 3_000 }, async t => {
+  const cwd = await mkdtemp(join(tmpdir(), 'murm-close-late-'));
+  const outputRoot = await mkdtemp(join(tmpdir(), 'murm-close-late-report-'));
+  t.after(() => Promise.all([cwd, outputRoot].map(path => rm(path, { recursive: true, force: true }))));
+  const receipt = { cleanup: 'pending', agents: [],
+    pending: [{ kind: 'agent', id: 'producer', action: 'collect-artifacts', sandboxId: 'original-sandbox' }] };
+  const late = Promise.withResolvers<typeof receipt>();
+  const trace: string[] = [];
+  const session = createHarnessSession({ id: 'late-cleanup', apiVersion: 1, run: context => context.runWithRuntime({
+    createRuntime() { return { id: 'original-runtime', close() { trace.push('close'); return late.promise; } }; },
+    run() { trace.push('business'); return { accepted: true }; },
+    closeTimeoutMs: 10,
+    afterClose() { trace.push('release'); },
+  }) }, { outputRoot });
+  await session.start({ cwd, prompt: 'Preserve cleanup evidence' }, { requestId: 'start' });
+  const completed = (await session.completion)!;
+  assert.equal(completed.outcome, 'completed');
+  assert.equal(completed.cleanup.status, 'pending');
+  assert.equal(completed.result.cleanupFailure.code, 'CLOSE_WAIT_TIMEOUT');
+  assert.equal(completed.result.runtimeId, 'original-runtime');
+  const original = await readFile(completed.reportPath!, 'utf8');
+  late.resolve(receipt);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(trace, ['business', 'close']);
+  assert.equal(await readFile(completed.reportPath!, 'utf8'), original);
+});
+
+test('Session runs verification after an owned close and records a required export failure separately', async t => {
+  const cwd = await mkdtemp(join(tmpdir(), 'murm-export-owner-'));
+  const outputRoot = await mkdtemp(join(tmpdir(), 'murm-export-owner-report-'));
+  t.after(() => Promise.all([cwd, outputRoot].map(path => rm(path, { recursive: true, force: true }))));
+  const pending = [{ kind: 'agent', id: 'producer', action: 'collect-artifacts', sandboxId: 'original-sandbox' }];
+  const receipt = { agents: [], cleanup: 'pending', pending };
+  const trace: string[] = [];
+  const session = createHarnessSession({ id: 'export-owner', apiVersion: 1, async run(context) {
+    const result = await context.runWithRuntime({
+      createRuntime() { return { id: 'export-owner-runtime', async close() { trace.push('close'); return receipt; } }; },
+      run() { trace.push('business'); throw Object.assign(new Error('Handoff failed'), { code: 'HANDOFF_FAILED' }); },
+      afterClose(closed) {
+        trace.push('verify');
+        assert.deepEqual(closed, receipt);
+        if (closed.cleanup === 'complete') trace.push('release');
+      },
+    });
+    return { ...result, acceptance: { status: 'unverified' } };
+  } }, { outputRoot });
+  await session.start({ cwd, prompt: 'Verify original ownership receipt' }, { requestId: 'start' });
+  const completed = (await session.completion)!;
+  assert.deepEqual(trace, ['business', 'close', 'verify']);
+  assert.equal(completed.reason, 'HANDOFF_FAILED');
+  assert.equal(completed.export?.status, 'pending');
+  assert.deepEqual(completed.cleanup, { status: 'pending', receipt, pending });
+  assert.deepEqual(completed.acceptance, { status: 'unverified' });
 });

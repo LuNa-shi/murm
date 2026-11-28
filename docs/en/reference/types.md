@@ -480,6 +480,8 @@ export interface HttpJsonAdapterOptions {
 
 ## HarnessSession types
 
-`ProjectHarness` and `ProjectHarnessContext` are the author contracts. `HarnessSessionOptions` configures one instance, and `HarnessDescriptor` and `HarnessState` describe available actions and observed Run state. `HarnessEvent` distinguishes snapshots, state changes, questions, operation receipts, live events and the final result. `HarnessAgents` returns Runtime query results and Agent control receipts. A controller can attach `harnessEffects` alongside its `core` receipt. `HarnessResult` retains the outcome, artifact and cleanup evidence, submitted operations and terminal questions.
+`Harness` and `HarnessContext` are the author contracts. `HarnessSessionOptions` configures one instance, and `HarnessDescriptor` and `HarnessState` describe available actions and observed Run state. `HarnessEvent` distinguishes snapshots, state changes, questions, operation receipts, live events and the final result. `HarnessAgents` returns Runtime query results and Agent control receipts. A controller can attach `harnessEffects` alongside its `core` receipt. `HarnessResult` retains the outcome, artifact and cleanup evidence, submitted operations and terminal questions.
 
 `HarnessQuestionRequest` specifies text, choice or confirm. Choice uses stable option IDs. Text and choice answers are strings, and confirm takes a boolean. `HarnessQuestionSource` binds the question to a Run-owned source, with cancellation and optional authority checks.
+
+`HarnessDispatchRequest` carries the caller's `requestId`, the bounded Runtime `operationId` and the Run `signal` for input, control and reconciliation callbacks. Reuse the operation ID when querying the original Runtime receipt. `HarnessRuntimeRunOptions` describes the owned Runtime factory, business callback, optional `afterClose` verification and cleanup timeout for `context.runWithRuntime`.

@@ -23,7 +23,7 @@ export function substratePeerProfile({ image, model = 'default', exportLimit = 2
 
 /** Fixed no-Task pool. Harness owns content and drivers; Core owns all Agents. */
 export async function runSubstrate({ sandbox, executor, models, connection, filePolicy, runId, image, outputDir, question, model = 'default', poolSize = 3, maxRounds = 2,
-  workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000, files, onRuntime, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle, maxConcurrentInputs }: any, signal: any) {
+  workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000, files, onRuntime, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle, maxConcurrentInputs }: any, signal: any, run = runWithReport) {
   if (typeof outputDir !== 'string' || !outputDir || typeof question !== 'string' || !question.trim() || Buffer.byteLength(question) > 8192 ||
       typeof image !== 'string' || !image || !Number.isSafeInteger(maxRounds) || maxRounds < 2 || maxRounds > 32 ||
       ![workTimeoutMs, turnTimeoutMs, closeTimeoutMs].every(finite) || (signal !== undefined && !(signal instanceof AbortSignal)) ||
@@ -47,7 +47,7 @@ export async function runSubstrate({ sandbox, executor, models, connection, file
   const abort = () => { if (runtime) void runtime.close({ timeoutMs: 1 }).catch(() => {}); };
   workSignal.addEventListener('abort', abort, { once: true });
   try {
-    const report = await runWithReport({ outputDir, closeTimeoutMs,
+    const report = await run({ outputDir, closeTimeoutMs, detail: () => substrate.snapshot(),
       redact: (report: any) => ({ ...report, peers, events, substrate: substrate.snapshot(), databasePath: join(outputDir, 'substrate.sqlite'),
         policy: { poolSize, maxRounds, workTimeoutMs, turnTimeoutMs, closeTimeoutMs, replacement: false,
           ranking: 'token occurrences descending, incoming references descending, stable address ascending', maxSearchResults: 8 } }),
@@ -138,7 +138,7 @@ export async function runSubstrate({ sandbox, executor, models, connection, file
         } finally { workClosed = true; clearTimeout(timer); unsubscribe(); }
       },
     });
-    keepStore = Boolean(report.cleanupFailure);
+    keepStore = report.cleanup?.status === 'pending' || Boolean(report.cleanupFailure);
     return report;
   } finally {
     admission?.close();

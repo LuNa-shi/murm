@@ -64,7 +64,39 @@ The first preflight should fail at `provider.health` with the configuration entr
 
 ## 3. Make it your project
 
-Save these five files to the project directory. All application imports use the SDK package root.
+Install the pinned dependency in the directory where you will save the example. Set your model endpoint, model ID and credential. Omit the token for an upstream that requires none. Candidate Pi Workers also support `MURM_MODEL_PROTOCOL=chat-completions` with a streaming `/v1/chat/completions` endpoint.
+
+```bash
+npm init -y
+npm pkg set type=module
+npm install --ignore-scripts "$MURM_SDK_ARCHIVE"
+npm install --save-dev typescript @types/node
+export MURM_MODEL_URL='https://api.openai.com/v1/responses'
+export MURM_MODEL_ID='gpt-5-mini'
+read -rsp 'Model API token: ' MURM_MODEL_TOKEN && export MURM_MODEL_TOKEN && printf '\n'
+```
+
+### Candidate Harness and client
+
+Save [harness.ts](../../examples/first-harness/harness.ts), [session.ts](../../examples/first-harness/session.ts), [handoff.ts](../../examples/first-harness/handoff.ts), [config.ts](../../examples/first-harness/config.ts) and [tsconfig.json](../../examples/first-harness/tsconfig.json). The module's default export is a `Harness` with `apiVersion: 1`, `id: 'first-harness'` and `run(context)`.
+
+The Harness owns two Profiles and the Handoff Service. The publisher reads the unique reference from its Sandbox and publishes it with a question. `runInput` waits for the exclusive publisher turn. The Harness checks the Service's authenticated publisher, then calls `context.askUser` with that Agent and the Run signal. The writer fetches the same reference with its own permission and uses your answer in `delivery.txt`. The Harness checks the bytes in the Sandbox, requests required export and checks the exported bytes again. The Session manages question identities, answer admission, observation and the final Run report.
+
+`session.ts` handles terminal input and passes the reply to `respond`. Compile the files and run the same definition in process, over RPC, or in one-shot foreground mode.
+
+```bash
+./node_modules/.bin/tsc
+mkdir -p input
+node dist/session.js ./input 'Prepare a release handoff.'
+node dist/session.js --rpc ./input 'Prepare a release handoff.'
+MURM_FIRST_CHANNEL=beta-east murm --harness ./dist/harness.js --cwd ./input --prompt 'Prepare a release handoff.'
+```
+
+Use a separate input directory so capture excludes the example's dependencies and Run output. Both clients prompt for a channel such as `beta-east`. The one-shot foreground takes its channel from `MURM_FIRST_CHANNEL` and prints a final JSON record. JSONL clients may run explicit foreground with `--interaction questions` and answer by `questionId`. A successful run has `outcome: "completed"`, `acceptance.status: "verified"`, `export.status: "complete"` and `cleanup.status: "complete"`. Read the file named by the acceptance receipt, check its `channel=` line and compare its SHA‑256. Use the same Run's `reportPath` for the complete Host report.
+
+### Published v0.2.0 example
+
+For the released archive, save these five versioned files to the project directory. All application imports use the package root.
 
 - [main.ts](../../examples/first-harness/main.ts) runs the two turns, prints the question, verifies the bytes, and reports cleanup.
 - [handoff.ts](../../examples/first-harness/handoff.ts) registers `publish` and `take`. `take` returns the reference and question in one operation. The writer pipes `swarm service invoke handoff take --request-id take-release` into a formatter that writes two newline-terminated lines.
@@ -73,29 +105,17 @@ Save these five files to the project directory. All application imports use the 
 - [tsconfig.json](../../examples/first-harness/tsconfig.json) compiles the project.
 
 ```bash
-npm init -y
-npm pkg set type=module
-npm install --ignore-scripts "$MURM_SDK_ARCHIVE"
-npm install --save-dev typescript @types/node
 ./node_modules/.bin/tsc
-```
-
-Set your model endpoint, model ID and credential (omit the token for an upstream that requires none). For candidate Pi Workers, set `MURM_MODEL_PROTOCOL=chat-completions` for a streaming `/v1/chat/completions` endpoint. v0.2.0 requires a streaming `/v1/responses` endpoint.
-
-```bash
-export MURM_MODEL_URL='https://api.openai.com/v1/responses'
-export MURM_MODEL_ID='gpt-5-mini'
-read -rsp 'Model API token: ' MURM_MODEL_TOKEN && export MURM_MODEL_TOKEN && printf '\n'
 node dist/main.js
 ```
 
-Wait until the publisher's question appears before answering. Enter a channel such as `beta-east`. Success requires a verified `delivery.txt`, a SHA-256 receipt, `business.ok: true`, and `cleanup.status: "complete"`. The handoff receipt names both Agent IDs and Service request IDs. Verify the exported file with `sha256sum` and read its `channel=` line. Each run creates a new reference, so use the file path from that run's summary.
+In the v0.2.0 example, wait for the publisher’s question. Enter a channel such as `beta-east`. Success requires a verified `delivery.txt`, a SHA-256 receipt, `business.ok: true`, and `cleanup.status: "complete"`. The handoff receipt names both Agent IDs and Service request IDs. Verify the exported file with `sha256sum` and read its `channel=` line. Each run creates a new reference, so use the file path from that run's summary.
 
 ## 4. Diagnose and extend
 
 - Inside an Agent, `swarm service invoke handoff publish --help` shows the authorized schema. With the candidate CLI it also lists required fields and shows example calls when a valid example can be derived. Try a number for the reference and then correct it to the 12-character reference. `SERVICE_INPUT_INVALID` and `request_outcome: not_executed` mean the adapter did not run. For an unknown outcome, query or retry with the same request ID and payload. Use a new request ID when you correct the payload. See [Services](services.md).
-- Keep writes in the writable Agent workspace. For temporary files there, make a temporary subdirectory and remove it before collection. An image can restrict `/tmp`. For a large input pass a short summary and selected files or ranges. Set `MURM_CONTEXT_WINDOW` when you know the upstream's actual per-request limit. The run summary shows reported input/output tokens and the configured limit or `unknown`. Look up the model request ID and status in the linked result record for context-limit failures.
+- Keep writes in the writable Agent workspace. For temporary files there, make a temporary subdirectory and remove it before collection. An image can restrict `/tmp`. For a large input pass a short summary and selected files or ranges. Set `MURM_CONTEXT_WINDOW` when you know the upstream's actual per-request limit. The Runtime trace can show provider-reported input and output tokens. Treat missing usage as unknown.
 - Use `murm trace --root ./runs` and select the runtime ID. The failure summary gives the role, phase, error code, and available Agent and request IDs. Search `evidence.jsonl` and `service-calls.jsonl` in that run directory for those IDs. A closed or settled Agent does not attest business success. If cleanup is pending or unknown, inspect the close report before discarding the run directory.
-- Use one turn runner per Runtime and call it only on idle Agents whose input your application controls. Distinct Agents can run in parallel. The helper subscribes before sending, requires accepted admission and a successful settlement, and disposes its waiter on completion, error, abort or timeout. If admission or execution was uncertain, inspect `runtime.get` and close the Runtime or explicitly reconcile the request before reusing that Agent. A cancelled wait does not cancel Worker execution. See [Runtime](runtime.md) for `interrupt` and `close`.
+- Call the candidate SDK’s `runInput` only on idle Agents whose input your application reserves. Distinct Agents can run in parallel. The helper subscribes before sending, requires accepted admission and a successful settlement, and disposes its waiter on completion, error, abort or timeout. If admission or execution was uncertain, inspect `runtime.get` and close the Runtime or explicitly reconcile the request before reusing that Agent. A cancelled wait does not cancel Worker execution. See [Runtime](runtime.md) for `interrupt` and `close`.
 
 Continue with the [source-based parallel Swarm tutorial](build-your-harness.md) to add parallel research rounds and synthesis.

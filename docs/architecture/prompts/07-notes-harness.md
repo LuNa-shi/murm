@@ -44,3 +44,12 @@ Body SHA-256: `fc61ef0ba300ba64b83180539f16e5a535fe0d926bdd55bae62b522a78a238c0`
 ````text
 Retrieve project-observation with swarm notes get. Compare the observation with the project files, use it to address the task, and write your evidence and results to the specified result file. Include the exact note text so the handoff can be checked.
 ````
+## Project same-reader follow-up instruction
+
+The next input goes to the same Reader ID via runInput. Its task, source artifact and followup filename are supplied in the input JSON.
+
+Body SHA-256: `92e13fcbfd6138a07325b1890f338ecbb22e59659bd701b8abf3fe2520e9affb`
+
+````text
+In this same reader session, read the file you wrote in the preceding turn and copy its exact bytes to the followup filename. Finish when the copy is ready.
+````

@@ -64,6 +64,38 @@ murm doctor
 
 ## 3. 搭建项目
 
+先在保存示例的目录安装固定归档，再设置模型端点、模型 ID 和凭据。上游无需凭据时可省略 token。候选包的 Pi Worker 还支持 `MURM_MODEL_PROTOCOL=chat-completions`，对应流式 `/v1/chat/completions`。
+
+```bash
+npm init -y
+npm pkg set type=module
+npm install --ignore-scripts "$MURM_SDK_ARCHIVE"
+npm install --save-dev typescript @types/node
+export MURM_MODEL_URL='https://api.openai.com/v1/responses'
+export MURM_MODEL_ID='gpt-5-mini'
+read -rsp 'Model API token: ' MURM_MODEL_TOKEN && export MURM_MODEL_TOKEN && printf '\n'
+```
+
+### 候选包的 Harness 和客户端
+
+保存 [harness.ts](../../examples/first-harness/harness.ts)、[session.ts](../../examples/first-harness/session.ts)、[handoff.ts](../../examples/first-harness/handoff.ts)、[config.ts](../../examples/first-harness/config.ts) 和 [tsconfig.json](../../examples/first-harness/tsconfig.json)。`harness.ts` 默认导出一个 `Harness`，包含 `apiVersion: 1`、`id: 'first-harness'` 和 `run(context)`。
+
+Harness 负责两个 Profile 和 Handoff Service。发布者在 Sandbox 里读取唯一编号，将编号和问题发布到 Service。公共 `runInput` 等待发布者的排他回合。Harness 核对 Service 认证过的发布者，再将 Agent 身份和 Run 的取消信号交给 `context.askUser`。写作者用自己的权限读取同一个编号，按你的回答生成 `delivery.txt`。Harness 在 Sandbox 里核对文件，要求导出，再核对 Host 导出的字节。Session 管理提问身份、回答准入、观察和最终 Run 报告。
+
+`session.ts` 读取终端答案，调用 `respond`。编译后，通过 SDK、RPC 和显式前台运行同一份定义。
+
+```bash
+./node_modules/.bin/tsc
+mkdir -p input
+node dist/session.js ./input 'Prepare a release handoff.'
+node dist/session.js --rpc ./input 'Prepare a release handoff.'
+MURM_FIRST_CHANNEL=beta-east murm --harness ./dist/harness.js --cwd ./input --prompt 'Prepare a release handoff.'
+```
+
+使用独立的输入目录，避免采集示例依赖和 Run 输出。前两条命令会提示输入频道，例如 `beta-east`。单次前台命令从 `MURM_FIRST_CHANNEL` 读取频道并输出最终 JSON。JSONL 客户端也可以用 `--interaction questions` 启动显式前台并按 `questionId` 作答。成功时会看到 `outcome: "completed"`、`acceptance.status: "verified"`、`export.status: "complete"` 和 `cleanup.status: "complete"`。按验收回执找到文件，比较 `channel=` 行及 SHA‑256。完整 Host 报告位于同次 Run 的 `reportPath`。
+
+### 已发布的 v0.2.0 示例
+
 将这五个文件保存到项目目录。应用只从 SDK 包根入口导入。
 
 - [main.ts](../../examples/first-harness/main.ts) 运行两个回合、显示问题、校验文件并报告清理。
@@ -73,19 +105,7 @@ murm doctor
 - [tsconfig.json](../../examples/first-harness/tsconfig.json) 配置编译。
 
 ```bash
-npm init -y
-npm pkg set type=module
-npm install --ignore-scripts "$MURM_SDK_ARCHIVE"
-npm install --save-dev typescript @types/node
 ./node_modules/.bin/tsc
-```
-
-设置模型端点、模型 ID 和凭据。上游无需凭据时可省略 token。候选包的 Pi Worker 可设 `MURM_MODEL_PROTOCOL=chat-completions` 使用流式 `/v1/chat/completions`。v0.2.0 需要流式 `/v1/responses`。
-
-```bash
-export MURM_MODEL_URL='https://api.openai.com/v1/responses'
-export MURM_MODEL_ID='gpt-5-mini'
-read -rsp 'Model API token: ' MURM_MODEL_TOKEN && export MURM_MODEL_TOKEN && printf '\n'
 node dist/main.js
 ```
 
@@ -94,8 +114,8 @@ node dist/main.js
 ## 4. 排错与扩展
 
 - 在 Agent 内运行 `swarm service invoke handoff publish --help`，查看授权操作的 Schema。候选版还会显示必填字段，并在可以推导合法示例时生成调用命令。先输入数字编号，再改成 12 字符编号。收到 `SERVICE_INPUT_INVALID` 和 `request_outcome: not_executed` 时，适配器尚未执行。结果未知时，用相同请求 ID 和参数查询或重试。修正参数后用新的请求 ID。参见 [Service](services.md)。
-- 在可写工作区内写文件。临时文件可放工作区的临时子目录，收集前删除。镜像可能限制 `/tmp`。大输入先提供短摘要、选定文件或行范围。已知上游实际上下文限制时，设置 `MURM_CONTEXT_WINDOW`。运行摘要给出上游报告的输入、输出 token 数和配置的限制，缺失时显示 `unknown`。上下文问题可用模型请求 ID 和状态定位对应结果记录。
+- 在可写工作区内写文件。临时文件可放工作区的临时子目录，收集前删除。镜像可能限制 `/tmp`。大输入先提供短摘要、选定文件或行范围。已知上游实际上下文限制时，设置 `MURM_CONTEXT_WINDOW`。高级诊断可使用 Runtime Trace 查看上游报告的输入与输出 token 数。上游没提供的数据按 `unknown` 处理。
 - 运行 `murm trace --root ./runs` 并选中 Runtime ID。在失败摘要取角色、阶段、错误码、Agent 和请求 ID，用 ID 查该运行目录的 `evidence.jsonl` 和 `service-calls.jsonl`。回合结束后仍需检查业务产物。遇到 pending 或 unknown 清理状态时，先查看关闭回执，再处置运行目录。
-- 每个 Runtime 建一个回合 runner，应用负责向该空闲 Agent 发送输入。不同 Agent 可以并行。helper 先订阅再发送，要求受理且回合成功，在结束、出错、取消或超时后释放订阅。受理或执行状态不明时，通过 `runtime.get` 检查，关闭 Runtime 或明确核对原请求后再复用 Agent。取消等待不会取消 Worker 执行。参见 [Runtime](runtime.md) 的 `interrupt` 和 `close`。
+- 候选 SDK 的 `runInput` 用于由应用保留输入权的空闲 Agent。不同 Agent 可以并行。helper 先订阅再发送，要求受理且回合成功，在结束、出错、取消或超时后释放订阅。受理或执行状态不明时，通过 `runtime.get` 检查，关闭 Runtime 或明确核对原请求后再复用 Agent。取消等待只影响 Host，Worker 可继续执行。参见 [Runtime](runtime.md) 的 `interrupt` 和 `close`。
 
 可继续阅读[基于源码的并行 Swarm 教程](build-your-harness.md)，加入并行研究和汇总。

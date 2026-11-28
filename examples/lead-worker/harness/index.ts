@@ -324,9 +324,9 @@ export async function createLeadWorkerHarness(options: any) {
   } finally { startup.removeEventListener('abort', abortStartup); }
 }
 
-export function runLeadWorker(options: any, input: any) {
+export function runLeadWorker(options: any, input: any, run = runWithReport) {
   let owned: any;
-  return runWithReport({ outputDir: options.outputDir, closeTimeoutMs: options.closeTimeoutMs ?? 30_000,
+  return run({ outputDir: options.outputDir, closeTimeoutMs: options.closeTimeoutMs ?? 30_000,
     createRuntime: async () => { owned = await createLeadWorkerHarness(options); return owned; },
     run: (harness: any) => {
       options.signal?.throwIfAborted();

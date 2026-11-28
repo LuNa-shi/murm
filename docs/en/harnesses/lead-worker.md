@@ -7,7 +7,9 @@ order: 14
 
 **Lead-Worker** (`examples/lead-worker/harness/`) fits teams that want one explicit owner of direction while enforcing that worker feedback discovered during execution actually reaches the next round of planning. One `lead` and 2–7 workers (`helper1..helperN`) run in persistent sessions with separate Gitea accounts, personal Git branches, and a local SQLite **`board` Service**. It supports both a fixed team (default) and a **dynamic team** mode where the Lead can deploy a checking Service, register a Profile, admit a new member, and update Worker grants mid-Run (see [examples/lead-worker/README.md](../../../examples/lead-worker/README.md)).
 
-## Project Session
+## Harness Session
+
+The module default-exports a `Harness`. The SDK Session, explicit foreground and RPC all use that definition. The Harness owns the domain workflow and resource cleanup. [Harness authoring guide](../first-harness.md)
 
 Both static and dynamic topologies expose workflow stages, active members, Board state and delivery through the public Session. The implemented controls cover observation and ending the whole Run.
 
@@ -74,7 +76,7 @@ swarm board complete --input complete.json --request-id helper1-done
 
 In [examples/lead-worker/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/index.ts), `createLeadWorkerHarness()` spawns the fixed team upfront (`maxAgents: 1 + helperCount`), binds their IDs into `board` and `git`, and subscribes to `runtime.onEvent()` so any fatal error, non-completed settlement, or unexpected exit immediately calls `board.fence()` — freezing further Board mutations while preserving all records for inspection.
 
-The default workflow runs two alternating rounds. Its repository `runInput` helper sends one host-owned input after subscribing to settlement events. The following sketch omits the shared cancellation signal and validation around each stage:
+The default workflow runs two alternating rounds. The SDK helper `runInput` sends one host-owned input after subscribing to settlement events. The following sketch omits the shared cancellation signal and validation around each stage:
 
 ```ts
 // Stage 1a: Lead publishes initial direction, assignments, and ready subtasks

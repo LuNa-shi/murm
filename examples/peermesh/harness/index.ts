@@ -1,4 +1,4 @@
-import { createRuntime, seededCheckoutInstruction, runInput, runWithReport, createOwnedResources } from '@luna-shi/murm';
+import { createRuntime, seededCheckoutInstruction, runInput, createOwnedResources } from '@luna-shi/murm';
 import { preparePeerMeshFacilities } from './provision.js';
 import { createPeerMeshServices } from '../services/services.js';
 
@@ -108,20 +108,4 @@ export async function createPeerMeshHarness(options: any) {
     throw Object.assign(new Error('PeerMesh Harness initialization failed'), { code, runtimeId: runtime?.id ?? error.runtimeId,
       cleanup: cleanup.cleanup, ...(error.reportPath ? { reportPath: error.reportPath } : {}), details: [{ code, cleanup }, snapshot()] });
   } finally { options.signal?.removeEventListener('abort', abortStartup); }
-}
-
-/** Business and cleanup failures remain independent in the shared host report. */
-export function runPeerMeshPeer(options: any, business: any) {
-  let owned: any;
-  return runWithReport({ outputDir: options.outputDir, closeTimeoutMs: options.closeTimeoutMs ?? 60_000,
-    createRuntime: async () => { owned = await createPeerMeshHarness(options); return owned; },
-    run: async (harness: any) => {
-      try { return { business: await business(harness), harness: harness.snapshot() }; }
-      catch (error: any) { error.details = [...(error.details ?? []), harness.snapshot()]; throw error; }
-    },
-    redact: (value: any) => {
-      const safe = owned ? owned.redact(value) : value;
-      return options.redact ? options.redact(safe) : safe;
-    },
-  });
 }

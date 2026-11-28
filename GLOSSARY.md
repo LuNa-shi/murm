@@ -7,11 +7,11 @@ These terms describe the current implementation. Read [How murm works](docs/en/c
 | Term | Meaning |
 | --- | --- |
 | **Harness** | The host application that composes Profiles, Services and a collaboration policy. It chooses when to create Agents, route work, check results and finish. |
-| **ProjectHarness** | A project entry definition that supplies `run(context)`, declares its lifetime and registers the input and control policies for its work. |
+| **HarnessContext** | The SDK-supplied argument to `Harness.run`. It carries captured input, the Run signal, and the registration callbacks for business input, observations and questions. |
 | **HarnessSession** | The public handle for one foreground Harness Run. SDK and RPC clients share its admission, member controls, questions, live state and completion. |
 | **Core** | The reusable library exposed through the `@luna-shi/murm` package. Its root entry provides Sandbox and Runtime creation, Service author APIs and public types. |
 | **Runtime** | One live Core instance managing its Agents, capacity, authenticated Service access, input delivery, observation and cleanup. |
-| **Run** | One execution of a Harness, identified and recorded through a Runtime. A Harness adds its own business outcome and evidence. |
+| **Run** | One execution of a Harness, identified by the HarnessSession’s `runId`. It can use zero or more Runtimes, each with its own identity. |
 | **Agent** | A Runtime-owned execution identity with its own Sandbox, working directory and Session. A settled Agent can receive another input. |
 | **Profile** | A named Agent configuration containing its prompt, model, image, Service permissions and optional control/file settings. Runtime creation captures its definition. A host can register additional immutable definitions during the Run. |
 | **Backend** | The execution and resource integration used by the Runtime. The Runtime resolves the executor during assembly and uses a Sandbox Provider to allocate and control Agent resources. |

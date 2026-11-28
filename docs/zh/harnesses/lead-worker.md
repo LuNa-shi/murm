@@ -7,7 +7,9 @@ order: 15
 
 **Lead-Worker**（`examples/lead-worker/harness/`）适合需要一人统筹方向、同时确保一线执行反馈真正落入下一轮规划的团队。1 名主管（`lead`）与 2–7 名执行成员（`helper1..helperN`）通过本地 SQLite 任务板（`board`）和 Gitea 协作：系统在数据库层强制**先读后写**——主管必须先读完一线反馈才能发布新方向，成员必须先读完新方向才能提交交付。除固定团队外，还支持运行中动态扩编与新增检查 Service（见 [examples/lead-worker/README.md](../../../examples/lead-worker/README.md)）。
 
-## 项目 Session
+## Harness Session
+
+模块默认导出 `Harness`。SDK Session、显式前台和 RPC 都使用这份定义。Harness 负责业务流程及资源清理。[Harness 编写指南](../first-harness.md)
 
 static 和 dynamic 拓扑都通过公共 Session 公开工作阶段、活动成员、Board 和交付状态。当前开放观察和整次 Run 停止。
 
@@ -74,7 +76,7 @@ swarm board complete --input complete.json --request-id helper1-done
 
 在 [examples/lead-worker/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/lead-worker/harness/index.ts) 中，`createLeadWorkerHarness()` 一次性启动固定团队（`maxAgents: 1 + helperCount`），把团队成员绑定到 `board` 与 `git`，并订阅 `runtime.onEvent()`——一旦任何成员出现 `fatal` 错误、非 `completed` 收束或意外退出，立即调用 `board.fence()` 冻结后续写操作，同时完整保留所有证据与归属状态。
 
-默认工作流交替执行两轮。仓库辅助函数 `runInput` 先订阅收束事件，再投递一个由宿主独占管理的输入。下面的流程省略了每个阶段共用的取消信号与结果验证：
+默认工作流交替执行两轮。SDK 辅助函数 `runInput` 先订阅收束事件，再投递一个由宿主独占管理的输入。下面的流程省略了每个阶段共用的取消信号与结果验证：
 
 ```ts
 // 阶段 1a：Lead 发布初始方向、分工指派与就绪子任务

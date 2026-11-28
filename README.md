@@ -99,6 +99,10 @@ The repository includes five substantial Harnesses sharing the same Runtime with
 | **Substrate** | A fixed peer pool publishes, searches, reads, and cites immutable contributions (with optional Lean/FATE checking). | [Guide](docs/en/harnesses/substrate.md) · [Example](examples/substrate/README.md) |
 | **Lead-Worker** | A lead and fixed or dynamic helpers coordinate through a Board and retain deliveries in Git. | [Guide](docs/en/harnesses/lead-worker.md) · [Example](examples/lead-worker/README.md) |
 
+Use the [first SDK Harness](docs/en/first-harness.md) to write one two-Agent
+definition for `createHarnessSession`, explicit foreground and RPC. The Run
+handle manages input, questions, observations and completion.
+
 See [example dependencies and ownership](examples/README.md) and [common deployment](deploy/README.md) for the services each mechanism needs.
 
 Compare mechanisms in [Choose a Harness](docs/en/harnesses/index.md) or write your own in [Build Your Own Harness](docs/en/build-your-harness.md).

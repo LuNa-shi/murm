@@ -8,13 +8,14 @@ import type { HarnessRpcClient, HarnessState, HarnessEvent, HarnessResult } from
 /** Exercise the installed package's root client and installed foreground CLI. */
 export async function runInstalledHarnessRpc(installation: { directory: string; env: NodeJS.ProcessEnv }, options: {
   harness: string; cwd: string; prompt: string; configPath: string; outputDir: string; timeoutMs: number;
+  env?: NodeJS.ProcessEnv;
   interact?: (session: HarnessRpcClient) => Promise<void>;
 }) {
   const require = createRequire(join(installation.directory, 'native-consumer.mjs'));
   const installed = require('@luna-shi/murm') as typeof import('@luna-shi/murm');
   const child = spawn(process.execPath, ['node_modules/.bin/murm', '--harness', options.harness, '--mode', 'rpc', '--lifetime', 'task',
     '--interaction', 'none', '--config', options.configPath, '--output-dir', options.outputDir], {
-    cwd: installation.directory, env: installation.env, stdio: 'pipe',
+    cwd: installation.directory, env: { ...installation.env, ...options.env }, stdio: 'pipe',
   });
   const exited = once(child, 'close');
   let diagnostic = '';

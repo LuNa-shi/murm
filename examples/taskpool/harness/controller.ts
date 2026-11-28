@@ -155,8 +155,8 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
     }).catch(error => failures.push(info(error)));
     return pending.promise;
   }
-  async function submit(row: any,text: any,{source,requestId,mode='followUp',taskId,executionId,fence,notificationId}: any={}) {
-    const input: any={agentId:row.agentId,source,requestId,mode,taskId:taskId??null,executionId:executionId??null,fence:fence??null,status:'not_submitted'};
+  async function submit(row: any,text: any,{source,requestId,operationId=requestId,mode='followUp',taskId,executionId,fence,notificationId}: any={}) {
+    const input: any={agentId:row.agentId,source,requestId,...(operationId!==requestId?{operationId}:{}),mode,taskId:taskId??null,executionId:executionId??null,fence:fence??null,status:'not_submitted'};
     inputs.push(input);
     if(closing || remaining()<=0 || row.uncertain || row.stopReason) {input.reason='controller-closed-or-input-unknown';return input;}
     const live=await runtime.get(row.agentId);
@@ -191,7 +191,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
     }
     if(notificationId) taskService.recordNotificationAttempt(notificationId);
     try {
-      const receipt=await runtime.send(row.agentId,text,{requestId,mode});
+      const receipt=await runtime.send(row.agentId,text,{requestId:operationId,mode});
       Object.assign(input,{status:receipt.status,receipt});
       row.lastActivityAt=Date.now();
       if(receipt.status==='unknown') {row.uncertain=true;record('input-unknown-no-resend',row,{source,requestId});}
@@ -401,9 +401,9 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
     return { agentId: execution.owner_ref, executionId: execution.execution_id, fence: execution.fencing_version };
   }
 
-  function feedback({taskId,input,requestId,mode='steer'}: any, binding?: ReturnType<typeof captureFeedback>) {
+  function feedback({taskId,input,requestId,operationId,mode='steer'}: any, binding?: ReturnType<typeof captureFeedback>) {
       if(typeof taskId!=='string'||typeof input!=='string'||!input || typeof requestId!=='string'||!requestId||!['steer','followUp'].includes(mode)) throw new TypeError('Directed TaskPool feedback requires Task, text, stable request and mode');
-      const fingerprint=stableStringify({taskId,input,mode});
+      const fingerprint=stableStringify({taskId,input,mode,operationId:operationId??null});
       const previous=feedbackRequests.get(requestId);
       if(previous) {if(previous.fingerprint!==fingerprint) throw new MurmError('CONFLICT','Feedback request changed');return previous.work;}
       binding ??= captureFeedback(taskId);
@@ -423,7 +423,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
           inputs.push(result);
           return structuredClone(result);
         }
-        return structuredClone(await submit(row,input,{source:'user',requestId,mode,taskId,executionId:execution.execution_id,fence:execution.fencing_version}));
+        return structuredClone(await submit(row,input,{source:'user',requestId,operationId,mode,taskId,executionId:execution.execution_id,fence:execution.fencing_version}));
       });feedbackRequests.set(requestId,{fingerprint,work});return work;
     }
   return Object.freeze({
@@ -437,7 +437,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       if (!previous) return { status: 'unknown', requestId };
       const original = await previous.work;
       if (original.status !== 'unknown') return structuredClone(original);
-      const receipt = await query(original.agentId, requestId);
+      const receipt = await query(original.agentId, original.operationId ?? requestId);
       if (receipt.status === 'unknown') return structuredClone(original);
       const confirmed = { ...original, status: receipt.status, receipt };
       const input = inputs.find(row => row.requestId === requestId && row.agentId === original.agentId);
