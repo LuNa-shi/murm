@@ -189,6 +189,6 @@ test('Host Session reads release every large reply and stop at a Worker history 
   gap = true;
   assert.deepEqual(await read('gap', 1), { status: 'unknown' });
   assert.ok(events.some(event => event.type === 'error' && event.fatal && event.error.message.includes('history has a gap')));
-  assert.deepEqual(await read('new-after-gap', 1), { status: 'unknown' });
+  await assert.rejects(read('new-after-gap', 1), { code: 'SESSION_UNAVAILABLE' });
   assert.equal(pageRequests, 204);
 });
