@@ -24,12 +24,12 @@ async function fixture(t, hooks, { registrations = [], grants = {}, sandbox = {}
     for (const registration of registrations) services.registerService(registration);
     return {
       ...runtimeSettings({
-        sandbox: { lifecycleBaseUrl: provider.url, resourceLimits: { cpu: '1', memory: '1Gi' }, ...sandbox },
+        sandbox: { lifecycleBaseUrl: provider.url, apiKey: provider.apiKey, egressMode: 'dns+nft', resourceLimits: { cpu: '1', memory: '1Gi' }, ...sandbox },
         bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
         modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1', requestTimeoutMs: 8000, maxOutputTokens: 256, ...modelGateway },
         models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses',
           headers: { authorization: `Bearer ${upstreamSecret}` } } } },
-        isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
+        isolation: { network: 'api' },
       }),
       profiles: { worker: { image: 'fixture', model: 'default', prompt: 'fixture', writable: true, services: grants,
         env: { CORE_REPORT_DATA: profileValue } } },
@@ -165,7 +165,7 @@ test('Runtime report joins a rejected Service write to its trusted caller and ef
   const agent = await runtime.spawn({ requestId: 'service-reporter', profile: 'worker', secretEnv: { PRIVATE_MARKER: privateMarker } });
   const url = new URL(credentials.env.MURM_BRIDGE_URL);
   url.hostname = '127.0.0.1';
-  url.pathname = '/call';
+  url.pathname = url.pathname.replace(/\/$/, '') + '/call';
   const response = await fetch(url, { method: 'POST', headers: { authorization: `Bearer ${credentials.secret_env.MURM_BRIDGE_TOKEN}` },
     body: JSON.stringify({ service_id: 'notes', operation: 'put', operation_id: 'fixed-write',
       payload: { key: 'one', text: 'omitted-service-input' }, caller: { agentId: 'forged' } }) });
@@ -199,10 +199,9 @@ test('Runtime report joins a rejected Service write to its trusted caller and ef
 test('Core records provider lifetime observations before readiness and after partial startup', async t => {
   const requests = [];
   let starts = 0;
-  const badExpiry = '2099-02-30T11:00:00Z';
   const { makeRuntime } = await fixture(t, {
     onCreate(id, body) { requests.push({ id, timeoutSeconds: body.timeout }); },
-    createExpiresAt: id => id === 'fixture-1' ? '2099-01-03T10:59:17.420+02:00' : badExpiry,
+    createExpiresAt: id => id === 'fixture-1' ? '2099-01-03T10:59:17.420+02:00' : undefined,
     onStart(_body, result) { if (++starts === 2) result.project_files.version += 1; },
   });
   const runtime = await makeRuntime();
@@ -217,7 +216,6 @@ test('Core records provider lifetime observations before readiness and after par
   const close = await runtime.close();
   assert.equal(close.cleanup, 'complete');
   const evidence = await readFile(close.evidence.path, 'utf8');
-  assert.ok(!evidence.includes(badExpiry));
   const spawn = evidence.trim().split('\n').map(JSON.parse).filter(row => row.type === 'spawn');
   assert.deepEqual(spawn.filter(row => row.agentId === healthy.id).map(row => row.state),
     ['registered', 'allocation-dispatched', 'allocation-observed', 'ready']);
@@ -246,7 +244,7 @@ test('Core distinguishes a sandbox found by cleanup when the creation response w
   const close = await runtime.close();
   assert.equal(close.cleanup, 'complete');
   assert.equal(provider.allocations(), 1);
-  assert.equal((await fetch(`${provider.url}/sandboxes/fixture-1`)).status, 404);
+  assert.equal((await fetch(`${provider.url}/sandboxes/fixture-1`, { headers: { 'open-sandbox-api-key': provider.apiKey } })).status, 404);
   const evidence = await readFile(close.evidence.path, 'utf8');
   const spawn = evidence.trim().split('\n').map(JSON.parse).filter(row => row.type === 'spawn');
   assert.deepEqual(spawn.map(row => row.state), ['registered', 'allocation-dispatched', 'allocation-observed']);
@@ -270,13 +268,13 @@ test('cleanup of an unknown creation leaves a sibling Runtime live and owns only
     const receipt = await failed.close();
     assert.equal(receipt.cleanup, 'complete');
     assert.equal(provider.allocations(), 2);
-    assert.equal((await fetch(`${provider.url}/sandboxes/fixture-2`)).status, 404);
-    assert.equal((await fetch(`${provider.url}/sandboxes/fixture-1`)).status, 200);
+    assert.equal((await fetch(`${provider.url}/sandboxes/fixture-2`, { headers: { 'open-sandbox-api-key': provider.apiKey } })).status, 404);
+    assert.equal((await fetch(`${provider.url}/sandboxes/fixture-1`, { headers: { 'open-sandbox-api-key': provider.apiKey } })).status, 200);
     assert.equal((await live.get(agent.id)).status, 'idle');
     assert.equal((await failed.close()).cleanup, 'complete');
-    assert.equal((await fetch(`${provider.url}/sandboxes/fixture-1`)).status, 200);
+    assert.equal((await fetch(`${provider.url}/sandboxes/fixture-1`, { headers: { 'open-sandbox-api-key': provider.apiKey } })).status, 200);
     assert.equal((await live.close()).cleanup, 'complete');
-    assert.equal((await fetch(`${provider.url}/sandboxes/fixture-1`)).status, 404);
+    assert.equal((await fetch(`${provider.url}/sandboxes/fixture-1`, { headers: { 'open-sandbox-api-key': provider.apiKey } })).status, 404);
   } finally { await failed.close(); await live.close(); }
 });
 

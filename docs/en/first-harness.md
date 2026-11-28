@@ -60,7 +60,7 @@ MURM_LIFECYCLE_URL=http://127.0.0.1:1/v1 murm doctor
 murm doctor
 ```
 
-The first preflight should fail at `provider.health` with the configuration entry to check. The second should pass. Use `murm doctor --smoke` to repeat the Worker and callback checks. [Quickstart](quickstart.md#2-set-up-opensandbox--build-the-worker) covers image and Docker failures.
+The first preflight should fail at `provider.health` with the configuration entry to check. The second should pass. Use `murm doctor --smoke` to repeat the Worker and callback checks. [Quickstart](quickstart.md#2-prepare-opensandbox-and-the-worker) covers image and Docker failures.
 
 ## 3. Make it your project
 

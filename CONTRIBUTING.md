@@ -4,7 +4,7 @@ Thank you for your interest in contributing to **murm**!
 
 ## Local development setup
 
-Requires **Node.js 22.19+**. Deterministic development checks run without a model account or a running Sandbox. Native OpenSandbox checks run on Linux: the default API path can use an existing deployment, while local setup also needs Docker. Landlock ABI 5+, host namespace utilities and administrator-prepared access are required only for the optional strict `local-docker` policy. See [Quickstart](docs/en/quickstart.md) for the current source build and [v0.2.0](docs/en/latest.md) for the released installation contract.
+Requires **Node.js 22.19+**. Deterministic development checks run without a model account or a running Sandbox. Native checks use an authenticated OpenSandbox deployment. Linux local setup uses Docker to prepare that deployment and the Worker image. A Controller using an existing deployment only needs Node.js and network access to the advertised endpoints. See [Quickstart](docs/en/quickstart.md) for the current source build and [v0.2.0](docs/en/latest.md) for the released installation contract.
 
 ```bash
 git clone https://github.com/LuNa-shi/murm.git

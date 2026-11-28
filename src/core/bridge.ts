@@ -1,5 +1,6 @@
-import type { ServerResponse } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import type { RuntimeCallback } from './runtime-callback.js';
 import type { AgentInfo } from './types.js';
 import type { ServiceInvocationRecord, ServiceRegistration } from './services.js';
 
@@ -36,6 +37,7 @@ interface BridgeOptions {
   configuration: { host: string; publicUrl: string };
   getAgent(id: string | undefined): BridgeAgent | undefined;
   registrations: Map<string, ServiceRegistration>;
+  callback?: RuntimeCallback;
   serviceTimeoutMs?: number;
   onOwned?: (owner: { close(): Promise<void> }) => void;
   recordService?: (record: ServiceInvocationRecord) => void;
@@ -65,19 +67,21 @@ function invalid(message: string): never {
   throw new MurmError(ERROR_CODES.INVALID_CONTRACT, message);
 }
 
-export async function createCoreBridge({ runtimeId, configuration, getAgent, registrations, serviceTimeoutMs = 30_000, onOwned, recordService, traceService }: BridgeOptions) {
+export async function createCoreBridge({ runtimeId, configuration, getAgent, registrations, serviceTimeoutMs = 30_000, onOwned, recordService, traceService, callback }: BridgeOptions) {
   if (typeof runtimeId !== 'string' || !runtimeId || typeof getAgent !== 'function' || !(registrations instanceof Map)) {
     invalid('Bridge requires runtime identity, Agent lookup and Service registrations');
   }
-  if (!configuration || typeof configuration.host !== 'string' || !configuration.host ||
-      typeof configuration.publicUrl !== 'string' || !configuration.publicUrl.includes('{port}')) {
-    invalid('Bridge requires host and publicUrl containing {port}');
-  }
-  let advertised;
-  try { advertised = new URL(configuration.publicUrl.replaceAll('{port}', '1')); } catch { invalid('Bridge publicUrl must be a valid HTTP URL'); }
-  if (!['http:', 'https:'].includes(advertised.protocol) || advertised.username || advertised.password ||
-      advertised.pathname !== '/' || advertised.search || advertised.hash || ['0.0.0.0', '[::]'].includes(advertised.hostname)) {
-    invalid('Bridge publicUrl must be a concrete HTTP(S) origin without credentials');
+  if (!callback) {
+    if (!configuration || typeof configuration.host !== 'string' || !configuration.host ||
+        typeof configuration.publicUrl !== 'string' || !configuration.publicUrl.includes('{port}')) {
+      invalid('Bridge requires host and publicUrl containing {port}');
+    }
+    let advertised;
+    try { advertised = new URL(configuration.publicUrl.replaceAll('{port}', '1')); } catch { invalid('Bridge publicUrl must be a valid HTTP URL'); }
+    if (!['http:', 'https:'].includes(advertised.protocol) || advertised.username || advertised.password ||
+        advertised.pathname !== '/' || advertised.search || advertised.hash || ['0.0.0.0', '[::]'].includes(advertised.hostname)) {
+      invalid('Bridge publicUrl must be a concrete HTTP(S) origin without credentials');
+    }
   }
   const tokens = new Map<string | null | undefined, string>();
   const agentTokens = new Map<string, string>();
@@ -97,7 +101,7 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
     });
   }
   const visibleServices = (grants: BridgeAgent['services']) => permittedServiceManifests(registrations, grants);
-  const server = createServer(async (request, response) => {
+  const handle = async (request: IncomingMessage, response: ServerResponse) => {
     const attemptId = randomUUID();
     let accessVersion: number | undefined;
     let remoteWrite = false;
@@ -219,17 +223,23 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
       if (trace) traceService?.({ ...trace, phase: 'settled', endedAt: new Date().toISOString(),
         ...(traceError ? { error: traceError } : { output: traceOutput }) });
     }
-  });
-  server.requestTimeout = WAIT_TIMEOUT_MS;
-  server.headersTimeout = Math.min(10_000, WAIT_TIMEOUT_MS);
-  // Invocation deadlines are owned by the registered capability, including long waits.
-  server.timeout = 0;
+  };
+  const route = callback?.mount('/bridge', handle);
+  const server = route ? undefined : createServer(handle);
+  if (server) {
+    server.requestTimeout = WAIT_TIMEOUT_MS;
+    server.headersTimeout = Math.min(10_000, WAIT_TIMEOUT_MS);
+    // Invocation deadlines are owned by the registered capability, including long waits.
+    server.timeout = 0;
+  }
   function close() {
     if (closePromise) return closePromise;
     closing = true;
     for (const controller of active.keys()) controller.abort();
     tokens.clear();
     agentTokens.clear();
+    route?.remove();
+    if (!server) return Promise.resolve();
     closePromise = new Promise<void>((resolve, reject) => {
       server.close(error => error && (error as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING' ? reject(error) : resolve());
       server.closeAllConnections();
@@ -237,20 +247,22 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
     return closePromise;
   }
   onOwned?.({ close });
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      if (!onOwned) void close().catch(() => {});
-      reject(new MurmError(ERROR_CODES.SERVICE_TIMEOUT, 'Bridge listener startup timed out'));
-    }, WAIT_TIMEOUT_MS);
-    const onError = (error: Error) => { clearTimeout(timer); reject(error); };
-    server.once('error', onError);
-    server.listen(0, configuration.host, () => {
-      clearTimeout(timer);
-      server.removeListener('error', onError);
-      resolve();
+  if (server) {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (!onOwned) void close().catch(() => {});
+        reject(new MurmError(ERROR_CODES.SERVICE_TIMEOUT, 'Bridge listener startup timed out'));
+      }, WAIT_TIMEOUT_MS);
+      const onError = (error: Error) => { clearTimeout(timer); reject(error); };
+      server.once('error', onError);
+      server.listen(0, configuration.host, () => {
+        clearTimeout(timer);
+        server.removeListener('error', onError);
+        resolve();
+      });
     });
-  });
-  const publicUrl = configuration.publicUrl.replaceAll('{port}', String((server.address() as AddressInfo).port)).replace(/\/$/, '');
+  }
+  const publicUrl = route?.url ?? configuration.publicUrl.replaceAll('{port}', String((server!.address() as AddressInfo).port)).replace(/\/$/, '');
   function cancelAgentCalls(agentId: string) {
     for (const [controller, call] of active) {
       if (call.agentId === agentId) controller.abort();

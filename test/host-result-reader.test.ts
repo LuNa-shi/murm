@@ -19,7 +19,7 @@ async function recordedRun(t, run = async () => ({ accepted: true, privateOutput
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: { Authorization: 'PRIVATE_CONFIG_SECRET' } } } },
-      isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
+      isolation: { network: 'api' },
     }),
   }), run: runtime => run(runtime, outputDir) });
   return { report, runDirectory: join(outputDir, report.runtimeId), runtimeId: report.runtimeId };

@@ -1,3 +1,4 @@
+import { sdkFixtureFetch } from '../test-support/opensandbox-sdk-fixture.js';
 import { createWorkspaceMergeService } from '../examples/taskpool/services/workspace/workspace-merge.js';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -13,7 +14,8 @@ import { WorkspaceManager } from '../examples/taskpool/services/workspace/worksp
 import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
 import { createMissionCoordination } from '../examples/taskpool/services/mission/mission-coordination.js';
 import { createMissionSubmissionAccess } from '../examples/taskpool/services/mission/mission-submission-access.js';
-import { createOpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
+import { createOpenSandboxManager as createSdkManager } from '../src/core/sandbox/opensandbox-manager.js';
+
 import { makeEnvelope } from '../examples/taskpool/persistence/envelope.js';
 import { stableStringify } from '../examples/taskpool/persistence/envelope.js';
 import { createHash } from 'node:crypto';
@@ -25,6 +27,11 @@ import { ContextService } from '../examples/taskpool/services/material/context-s
 import { createBuiltinServiceRegistry } from '../examples/taskpool/services/builtin-registry.js';
 import { startIndependentServices } from '../examples/taskpool/deploy/service-hosts/independent-services.js';
 import { MurmError, ERROR_CODES } from '../examples/taskpool/errors.js';
+
+
+function createOpenSandboxManager(options) {
+  return createSdkManager({ ...options, fetchImpl: sdkFixtureFetch(options.fetchImpl), waitForExecdReady: options.waitForExecdReady ?? false });
+}
 
 async function assertExecutionReleased(runtime, service, executionId, timeoutMs) {
   const deadline = performance.now() + timeoutMs;
@@ -41,8 +48,7 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
   const calls = [];
   let sandboxNumber = 0;
   const deletedSandboxes = new Set();
-  const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'test:agent', waitForExecdReady: false,
-    fetchImpl: async (url, options) => {
+  const providerTransport = { fetch: async (url, options) => {
       calls.push({ url, method: options.method });
       await beforeFetch?.(url, options);
       if (options.method === 'DELETE') { deletedSandboxes.add(url); return new Response('{}'); }
@@ -50,15 +56,16 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
       if (url.endsWith('/sandboxes')) return new Response(JSON.stringify({ id: `sandbox:${++sandboxNumber}` }), { status: 202 });
       if (url.includes('/endpoints/')) return new Response(JSON.stringify({ url: 'http://execd.test' }));
       if (url.endsWith('/stop')) return new Response(JSON.stringify({ result: { stopped: true } }));
-      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: 'murm-core-v1', resources: [] }, project_files: { version: 0, writable: false } } }));
+      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: 'murm-core-v2', resources: [] }, project_files: { version: 0, writable: false } } }));
       if (url.includes('/project/')) {
         const input = JSON.parse(options.body);
         return new Response(JSON.stringify({ result: { state: url.endsWith('/prepare') ? 'PREPARED' : 'ACTIVE', execution_id: input.execution_id, binding_version: input.binding_version } }));
       }
-      if (url.endsWith('/command')) return new Response('event: execution_complete\ndata: {"exit_code":0}\n\n');
+      if (url.endsWith('/command')) return new Response('event: execution_complete\ndata: {"type":"execution_complete","exit_code":0}\n\n');
       return new Response('{}');
-    },
-  });
+    } };
+  const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'test:agent', waitForExecdReady: false,
+    fetchImpl: (url, options) => providerTransport.fetch(url, options) });
   const missionWorkspace = new MissionWorkspace({ rootDir: join(root, 'default-public') });
   await missionWorkspace.create({ missionId: 'mission:agents', workspaceId: 'workspace-default', initialFiles: { 'input.txt': 'public project input' } });
   const runtime = new Runtime({ taskService: service, missionWorkspace, missionWorkspaceId: 'workspace-default', workspaceManager: new WorkspaceManager({ rootDir: root }), sandboxManager: manager, ...runtimeOptions });
@@ -82,7 +89,7 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
     session.stop = async () => { session.closed = true; session.emit('close'); };
     return session;
   };
-  return { root, service, runtime, manager, startSession, calls, missionSubmission, domains };
+  return { root, service, runtime, manager, providerTransport, startSession, calls, missionSubmission, domains };
 }
 
 test('Mission timeout preserves a fresh Agent proposal after earlier Tasks finish and the previous Agent closes', async t => {
@@ -141,7 +148,7 @@ for (const checkpoint of ['sandbox dispatch', 'sandbox receipt', 'Pi dispatch', 
     let entered, resume, agentId;
     const reached = new Promise(resolve => { entered = resolve; });
     const gate = new Promise(resolve => { resume = resolve; });
-    const { service, runtime, manager, startSession, calls } = await fixture(t, {}, {
+    const { service, runtime, manager, providerTransport, startSession, calls } = await fixture(t, {}, {
       beforeFetch: async (url, { method }) => {
         if ((checkpoint === 'Pi dispatch' && url.endsWith('/health')) ||
             (checkpoint === 'sandbox receipt' && method === 'POST' && url.endsWith('/sandboxes'))) {
@@ -215,7 +222,7 @@ test('Execution binding rejects unregistered owners before preparing a Workspace
 });
 
 test('taken Agent keeps its original Sandbox and closes before a successor can use the Core', async (t) => {
-  const { service, runtime, manager, startSession, calls } = await fixture(t);
+  const { service, runtime, manager, providerTransport, startSession, calls } = await fixture(t);
   const { agent, session } = await runtime.startAgent({ missionId: 'mission:agents', coreId: 'core-1', startSession });
   const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: agent.mission_id, summary: 'Inspect a local question', expected_output: 'Reusable note', acceptance_conditions: ['Question answered'] }, makeEnvelope({ actorRef: agent.agent_id })).task;
   const taken = service.takeTask(task.task_id, { owner_ref: agent.agent_id, core_id: agent.core_id, take_key: 'take:bound' });
@@ -260,7 +267,7 @@ for (const cause of ['selection-budget', 'shutdown']) test(`startup ${cause} sto
 });
 
 test('pre-alias rollback stops the retained Agent Session and Sandbox', async (t) => {
-  const { service, runtime, manager, startSession } = await fixture(t);
+  const { service, runtime, manager, providerTransport, startSession } = await fixture(t);
   const { agent, session } = await runtime.startAgent({ missionId: 'mission:agents', coreId: 'core-1', startSession });
   const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: agent.mission_id, summary: 'Inspect one question while preparation is pending', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: agent.agent_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: agent.agent_id, core_id: agent.core_id, take_key: 'take:pre-alias' });
@@ -282,7 +289,7 @@ test('another owner cannot reserve a Task on the Core occupied by an unbound Age
 });
 
 test('a Agent that closes during input preparation cannot become ACTIVE', async (t) => {
-  const { service, runtime, manager, startSession } = await fixture(t);
+  const { service, runtime, manager, providerTransport, startSession } = await fixture(t);
   const { agent, session } = await runtime.startAgent({ missionId: 'mission:agents', coreId: 'core-1', startSession });
   const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: agent.mission_id, summary: 'Inspect a question with delayed preparation', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: agent.agent_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: agent.agent_id, core_id: agent.core_id, take_key: 'take:delayed' });
@@ -309,12 +316,12 @@ test('a Agent that closes during input preparation cannot become ACTIVE', async 
 });
 
 test('provider input-copy rejection fails preparation and cleans the original Agent resource', async (t) => {
-  const { service, runtime, manager, startSession } = await fixture(t);
+  const { service, runtime, manager, providerTransport, startSession } = await fixture(t);
   const { agent, session } = await runtime.startAgent({ missionId: 'mission:agents', coreId: 'core-1', startSession });
   const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: agent.mission_id, summary: 'Inspect one question with a rejected input copy', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: agent.agent_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: agent.agent_id, core_id: agent.core_id, take_key: 'take:copy-failed' });
-  const providerFetch = manager.fetch;
-  manager.fetch = (url, options) => url.endsWith('/project/prepare')
+  const providerFetch = providerTransport.fetch;
+  providerTransport.fetch = (url, options) => url.endsWith('/project/prepare')
     ? Promise.resolve(new Response(JSON.stringify({ message: 'project input rejected' }), { status: 400 })) : providerFetch(url, options);
   await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1' }), error => error.code === ERROR_CODES.INVALID_CONTRACT && error.details?.status === 400);
   assert.equal(session.closed, true);
@@ -324,15 +331,15 @@ test('provider input-copy rejection fails preparation and cleans the original Ag
 });
 
 test('preparing process exit retries a transient deletion failure without a bind caller', async (t) => {
-  const { service, runtime, manager, startSession } = await fixture(t, { finishCleanupRetryMs: 10, maxFinishCleanupRetries: 2 });
+  const { service, runtime, manager, providerTransport, startSession } = await fixture(t, { finishCleanupRetryMs: 10, maxFinishCleanupRetries: 2 });
   const { agent, session } = await runtime.startAgent({ missionId: 'mission:agents', coreId: 'core-1', startSession });
   const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: agent.mission_id, summary: 'Inspect pre-alias process failure cleanup', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: agent.agent_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: agent.agent_id, core_id: agent.core_id, take_key: 'take:retry' });
-  const providerFetch = manager.fetch;
+  const providerFetch = providerTransport.fetch;
   let deletes = 0;
   let deleted;
   const removed = new Promise(resolve => { deleted = resolve; });
-  manager.fetch = (url, options) => {
+  providerTransport.fetch = (url, options) => {
     if (options.method === 'DELETE') {
       deletes += 1;
       if (deletes === 1) return Promise.resolve(new Response('{}', { status: 503 }));
@@ -356,7 +363,7 @@ test('late factory Session is stopped even when it arrives inside a pending prov
   // alive until Runtime's unref'ed selection deadline can initiate cleanup.
   const keepAlive = setInterval(() => {}, 1000);
   t.after(() => clearInterval(keepAlive));
-  const { service, runtime, manager, startSession } = await fixture(t);
+  const { service, runtime, manager, providerTransport, startSession } = await fixture(t);
   let allowSession;
   const sessionGate = new Promise(resolve => { allowSession = resolve; });
   let resourceReady;
@@ -372,12 +379,12 @@ test('late factory Session is stopped even when it arrives inside a pending prov
   });
   const rejected = assert.rejects(starting, /stopped/);
   await resource;
-  const providerFetch = manager.fetch;
+  const providerFetch = providerTransport.fetch;
   let remove;
   let deleting;
   const deletionGate = new Promise(resolve => { remove = resolve; });
   const deletionStarted = new Promise(resolve => { deleting = resolve; });
-  manager.fetch = async (url, options) => {
+  providerTransport.fetch = async (url, options) => {
     if (options.method === 'DELETE') { deleting(); await deletionGate; }
     return providerFetch(url, options);
   };
@@ -393,18 +400,18 @@ test('late factory Session is stopped even when it arrives inside a pending prov
 });
 
 test('a new Agent finish cannot override a durable Runtime stop while provider deletion is pending', async (t) => {
-  const { service, runtime, manager, startSession } = await fixture(t);
+  const { service, runtime, manager, providerTransport, startSession } = await fixture(t);
   const { agent, session } = await runtime.startAgent({ missionId: 'mission:agents', coreId: 'core-1', startSession });
   const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: agent.mission_id, summary: 'Inspect competing terminal decisions safely', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: agent.agent_id })).task;
   const taken = service.takeTask(task.task_id, { owner_ref: agent.agent_id, core_id: agent.core_id, take_key: 'take:finish-race' });
   await runtime.bindAgentExecution(taken.execution.execution_id, session, { coreId: 'core-1' });
   const execution = service.getExecution(taken.execution.execution_id);
-  const providerFetch = manager.fetch;
+  const providerFetch = providerTransport.fetch;
   let remove;
   let deleting;
   const gate = new Promise(resolve => { remove = resolve; });
   const entered = new Promise(resolve => { deleting = resolve; });
-  manager.fetch = async (url, options) => { if (options.method === 'DELETE') { deleting(); await gate; } return providerFetch(url, options); };
+  providerTransport.fetch = async (url, options) => { if (options.method === 'DELETE') { deleting(); await gate; } return providerFetch(url, options); };
   const stopping = runtime.stopExecution(execution.execution_id, 'FAILED', 'operator-stop');
   await entered;
   try {
@@ -419,7 +426,7 @@ test('a new Agent finish cannot override a durable Runtime stop while provider d
 });
 
 test('prepare rollback joins the original stop and preserves its terminal reason', async (t) => {
-  const { service, runtime, manager, startSession } = await fixture(t);
+  const { service, runtime, manager, providerTransport, startSession } = await fixture(t);
   const { agent, session } = await runtime.startAgent({ missionId: 'mission:agents', coreId: 'core-1', startSession });
   const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: agent.mission_id, summary: 'Inspect prepare rollback joining an existing stop', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: agent.agent_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: agent.agent_id, core_id: agent.core_id, take_key: 'take:stop-race' });
@@ -1511,7 +1518,7 @@ test('Agent input preparation sends exact binary bytes through one authenticated
 });
 
 test('slow Agent preparation keeps its reservation lease live before activation', async t => {
-  const { service, runtime, manager, startSession } = await fixture(t);
+  const { service, runtime, manager, providerTransport, startSession } = await fixture(t);
   const { agent, session } = await runtime.startAgent({ missionId: 'mission:agents', coreId: 'core-1', startSession });
   const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: agent.mission_id, summary: 'Inspect a slow public input', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: agent.agent_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: agent.agent_id, core_id: agent.core_id, take_key: 'take:slow-lease' });

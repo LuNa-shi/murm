@@ -39,11 +39,11 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "473ffee5c3d7cc95b3888ee2ebd3bceda034a020b876d4b59a015229ca627dd1"
+      "sha256": "12fe51bdf08a37242e22645fefcf2a4303aec45ec37c089c7f2bd3a8598b09dc"
     },
     {
       "path": "src/core/bridge.ts",
-      "sha256": "003d80596d23c02543bd09db964a2bccc2e8739f9a269d62c047cf0d8a817538"
+      "sha256": "d914d2e9f1b2cc0716c9480945a4e7eab6b91ec871320dbc98d3d19dc6e26836"
     },
     {
       "path": "src/core/startup-prompt.ts",
@@ -51,11 +51,11 @@
     },
     {
       "path": "src/core/sandbox/opensandbox-backend.ts",
-      "sha256": "333fe51e4350d857449c62e76a4cc5f544ac05749858d4316e4a471e273fa09f"
+      "sha256": "5fb4a9e40dbcddbc193e62b44483ed4c14f20923ef5f6d51ecc13b78732de1c1"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "77eee82123b4719988d2fe90c015c6d98e6d978386788cd510b507d6677430d1"
+      "sha256": "e9dcfecf7c1cdf7b48a10bbbe6a1030e18779469d9f140b90fee1c3dbc30ebbb"
     },
     {
       "path": "scripts/codex-app-server-driver.ts",
@@ -63,7 +63,7 @@
     },
     {
       "path": "scripts/local-setup-smoke.ts",
-      "sha256": "8a95a9ea449b60750c4148a487e9e3c5dddf794a79fd67b0f7f208a7da58966f"
+      "sha256": "7fea735503fb17eaec5d3cea1c6efee551305dcc9333233584bd3bd40b11e198"
     },
     {
       "path": "scripts/local-setup-upstream.ts",
@@ -183,7 +183,7 @@
     },
     {
       "path": "test/peermesh-team-kimi-real.test.ts",
-      "sha256": "c687d138f60010e16001f9fcce638f08d9fcef6d51508ed1d45e126f2b212d34"
+      "sha256": "43143230f3b5b19b58f1873e0f74fa2ddd6a1021ba2fc708358f5af7484b8481"
     },
     {
       "path": "examples/lead-worker/harness/prompts.ts",
@@ -191,7 +191,7 @@
     },
     {
       "path": "examples/lead-worker/harness/index.ts",
-      "sha256": "97518262d8c84092209d6792e24a3318fac8ab11fa3dde7c6a0876822a760a59"
+      "sha256": "f4a7cc7eca0b233ab9f149a57fa0ecdbc292595ce74d00e93e56f94565589848"
     },
     {
       "path": "examples/lead-worker/harness/dynamic-scheduler.ts",
@@ -590,7 +590,7 @@
     {
       "path": "examples/lead-worker/harness/index.ts",
       "anchor": "                  const nextPath =",
-      "line": 247,
+      "line": 248,
       "sha256": "d899bf6da9a12ab775120db5f1068857fe565eb414938a7dc3d584039e096f28"
     },
     {

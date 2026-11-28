@@ -85,8 +85,8 @@ export async function createNotesHarnessUpstream({ onFailure = () => {}, observe
           const system = typeof developer === 'string' ? developer : developer?.map(item => item.text ?? '').join('');
           const task = role === 'writer' ? 'Read review-input.json and note-request.json' : 'Compare the note text with review-input.json';
           assert.equal(system.match(/<services>/g)?.length, 1);
-          assert.ok(system.includes(role === 'writer' ? 'swarm notes put' : 'swarm notes get'));
-          assert.ok(!system.includes(role === 'writer' ? 'swarm notes get' : 'swarm notes put'));
+          assert.ok(system.includes(role === 'writer' ? 'swarm service invoke notes put' : 'swarm service invoke notes get'));
+          assert.ok(!system.includes(role === 'writer' ? 'swarm service invoke notes get' : 'swarm service invoke notes put'));
           assert.ok(!system.includes(task) && !system.includes('<added_system_prompt>'));
           const users = body.input.filter(item => item.role === 'user').flatMap(item => item.content);
           assert.ok(users.some(item => (typeof item === 'string' ? item : item.text)?.includes(task)));

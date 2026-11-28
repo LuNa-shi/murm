@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 import { fileProtocol } from '../src/core/files/core-file-seed.js';
+import { WORKER_PROTOCOL } from '../src/core/worker-image.js';
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { readFile, writeFile, mkdir, chown, readdir, statfs } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, chown, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SandboxProject, AGENT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.js';
 import { CoreWorkDir } from './core-work-dir.js';
-import { collectCoreWorkDir, MAX_COLLECTION_ENTRIES } from '../src/core/files/core-collection.js';
+import { collectCoreWorkDir } from '../src/core/files/core-collection.js';
 import { once } from 'node:events';
 import { createRpcSubmissions } from './rpc-submissions.js';
 import { isSessionQuery } from '../src/protocol/session-queries.js';
@@ -33,14 +34,10 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('worke
 const project = new SandboxProject();
 let coreWorkDir: any;
 let executionStopped = false;
-let collectionMaxEntries = MAX_COLLECTION_ENTRIES;
-const quotaRequired = argv.includes('--require-project-quota');
 const catalogPath = '/opt/murm/pi-agent/models.json';
-const filesystemPolicy = '/opt/murm/agent-filesystem-policy';
 const unprivileged = ['--reuid', String(AGENT_UID), '--regid', String(AGENT_UID), '--clear-groups', '--no-new-privs',
   '--bounding-set=-all', '--inh-caps=-all', '--ambient-caps=-all', '--'];
-let initialized = !quotaRequired;
-if (initialized) await project.initialize();
+await project.initialize();
 let everStarted = false;
 let stopping: Promise<unknown> | null = null;
 let executorLaunched = false;
@@ -87,7 +84,7 @@ const rpcSubmissions = createRpcSubmissions({ write({ steeringMode, executionEpo
 function authorized(request: IncomingMessage) {
   const proxyToken = request.headers['x-murm-worker-token'];
   return proxyToken === undefined ? request.headers.authorization === `Bearer ${token}` :
-    proxyToken === token && request.headers.authorization === undefined;
+    proxyToken === token;
 }
 
 function send(response: ServerResponse, status: number, body: unknown) {
@@ -199,42 +196,11 @@ async function startAgent(input: any) {
   executorKind = input.command;
   filePolicy = resolveFilePolicy(input.file_policy);
   everStarted = true;
-  let projectQuota: { bytes: number; inodes: number } | null = null;
-  const sharedWorkspace = input.shared_workspace;
-  if (sharedWorkspace && (typeof sharedWorkspace.id !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(sharedWorkspace.id) ||
-      !['read-only', 'read-write'].includes(sharedWorkspace.mode) || input.files !== undefined ||
-      input.writable !== (sharedWorkspace.mode === 'read-write'))) throw startupContractError('Invalid shared workspace startup');
-  if (quotaRequired) {
-    const { bytes, inodes } = input.project_quota ?? {};
-    if (!Number.isSafeInteger(bytes) || !Number.isSafeInteger(inodes) || bytes <= 0 || inodes <= 0) throw startupContractError('Agent workspace quota is required');
-    const filesystem = await statfs('/workspace', { bigint: true });
-    const mounts = (await readFile('/proc/self/mountinfo', 'utf8')).trim().split('\n');
-    const mount = mounts.findLast(row => row.split(' ')[4] === '/workspace')?.split(' ');
-    const childMounts = mounts.filter(row => row.split(' ')[4]?.startsWith('/workspace/'));
-    const contents = await readdir('/workspace');
-    if ((sharedWorkspace ? childMounts.length !== 1 || childMounts[0].split(' ')[4] !== PROJECT_DIR || contents.length !== 1 || contents[0] !== 'project' : childMounts.length || contents.length) || filesystem.type !== 0x01021994n || filesystem.blocks * filesystem.bsize !== BigInt(bytes) ||
-        filesystem.files !== BigInt(inodes) || !mount?.[5]?.split(',').includes('nodev') ||
-        !mount[5].split(',').includes('nosuid')) throw startupContractError('Agent workspace quota is absent or mismatched');
-    const probe = spawnSync('setpriv', [...unprivileged, filesystemPolicy, '/usr/bin/true'], { cwd: '/', timeout: 2_000 });
-    if ((probe.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT' || (Number.isInteger(probe.status) && probe.status !== 0)) {
-      throw startupContractError('Agent filesystem policy could not be enforced');
-    }
-    if (probe.status !== 0) throw new Error('Agent filesystem policy probe did not complete');
-    if (project.closing) throw new Error('Agent stopped during filesystem validation');
-    if (sharedWorkspace) {
-      const projectFilesystem = await statfs(PROJECT_DIR, { bigint: true });
-      const options = childMounts[0].split(' ')[5].split(',');
-      if (projectFilesystem.type !== 0x01021994n || projectFilesystem.blocks * projectFilesystem.bsize !== BigInt(bytes) ||
-          projectFilesystem.files !== BigInt(inodes) || !options.includes('nodev') || !options.includes('nosuid') ||
-          options.includes('ro') !== (sharedWorkspace.mode === 'read-only')) throw startupContractError('Shared project mount is absent or mismatched');
-    }
-    await project.initialize({ shared: Boolean(sharedWorkspace) });
-    initialized = true;
-    projectQuota = { bytes, inodes };
-    collectionMaxEntries = Math.min(inodes, MAX_COLLECTION_ENTRIES);
-  } else if (input.project_quota) throw startupContractError('Worker must start in quota enforcement mode');
-  if (input.contract_version !== 'murm-core-v1' || typeof input.system_prompt !== 'string' || input.system_prompt_path !== `${RUNTIME_DIR}/profile-prompt.txt` || !Array.isArray(input.resources) || input.resources.length !== 0) {
-    throw startupContractError('Core startup requires a supported executor, an explicit role prompt and an empty resource set');
+  if (input.project_quota !== undefined || input.shared_workspace !== undefined) {
+    throw startupContractError('Built-in Worker supports independent project directories only');
+  }
+  if (input.contract_version !== WORKER_PROTOCOL || typeof input.system_prompt !== 'string' || input.system_prompt_path !== `${RUNTIME_DIR}/profile-prompt.txt` || !Array.isArray(input.resources) || input.resources.length !== 0) {
+    throw startupContractError('Core startup requires the matching Worker protocol, an explicit role prompt and an empty resource set');
   }
   if (project.closing) throw new Error('Agent stopped during resource validation');
   for (const path of ['home', 'tmp', ...(executorKind === 'pi' ? ['pi-agent'] : executorKind === 'codex' ? ['codex-home'] : []),
@@ -249,7 +215,7 @@ async function startAgent(input: any) {
     await chown(input.system_prompt_path, AGENT_UID, AGENT_UID);
   }
   coreWorkDir = new CoreWorkDir({ path: PROJECT_DIR, uid: AGENT_UID, gid: AGENT_UID, assertOpen: requireOpenWorkDir, policy: filePolicy });
-  const projectFiles = await coreWorkDir.initialize({ files: input.files, writable: input.writable === true, shared: Boolean(sharedWorkspace) });
+  const projectFiles = await coreWorkDir.initialize({ files: input.files, writable: input.writable === true });
   const suppliedEnv = { ...(input.env ?? {}), ...(input.secret_env ?? {}) };
   sessionPrivateValues = Object.values(input.secret_env ?? {});
   if (input.fork_session !== undefined) {
@@ -295,7 +261,7 @@ async function startAgent(input: any) {
     await expandPiModelCatalog(agentEnvironment);
     await chown(runtimeCatalogPath, AGENT_UID, AGENT_UID);
   } else if (executorKind === 'codex') {
-    const version = spawnSync('setpriv', [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : []), 'codex', '--version'],
+    const version = spawnSync('setpriv', [...unprivileged, 'codex', '--version'],
       { cwd, env: agentEnvironment, timeout: 5_000, encoding: 'utf8' });
     executorVersion = input.executor_version ?? '0.172.0';
     if (version.status !== 0 || version.stdout.trim() !== `codex-cli ${executorVersion}`) {
@@ -314,7 +280,7 @@ async function startAgent(input: any) {
     await chown(join(agentEnvironment.CODEX_HOME!, 'config.toml'), AGENT_UID, AGENT_UID);
   }
   if (project.closing) throw new Error('Agent stopped during startup');
-  const privilege = [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : [])];
+  const privilege = unprivileged;
   if (external) {
     const version = spawnSync('setpriv', [...privilege, external.command, ...external.versionArgs],
       { cwd, env: agentEnvironment, timeout: 5_000, encoding: 'utf8', maxBuffer: 8192 });
@@ -351,9 +317,7 @@ async function startAgent(input: any) {
   return { pid: child?.pid, ...(external ? { backend: external.contract } : nativeSession ? {
     backend: { kind: 'codex', version: executorVersion, authMode: 'api-key', threadId: nativeSession.threadId },
   } : {}), contract: { version: input.contract_version, resources: input.resources, file_protocol: fileProtocol },
-    ...(projectQuota ? { project_quota: projectQuota } : {}),
     ...(projectFiles ? { project_files: projectFiles } : {}),
-    ...(sharedWorkspace ? { shared_workspace: sharedWorkspace } : {}),
     ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}) };
 }
 
@@ -546,7 +510,6 @@ function stopAgent() {
       if (Date.now() >= deadline) throw new Error('Agent descendant stop was not confirmed');
       await new Promise<any>((resolve: any) => setTimeout(resolve, 10));
     }
-    if (!initialized) { executionStopped = true; return { stopped: true, project_installs: [] }; }
     await coreWorkDir?.drain();
     await project.close();
     executionStopped = true;
@@ -623,8 +586,8 @@ const server = createServer(async (request: any, response: any) => {
     if (request.method === 'GET' && url.pathname === '/health') { send(response, 200, { ok: true, pid: child?.pid ?? null }); return; }
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
     if (request.method === 'GET' && url.pathname === '/core/contract') {
-      send(response, 200, { ok: true, result: { file_protocol: fileProtocol, file_transfer: fileTransferProtocol,
-        pi_session_protocol: PI_SESSION_PROTOCOL } });
+      send(response, 200, { ok: true, result: { worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol,
+        file_transfer: fileTransferProtocol, pi_session_protocol: PI_SESSION_PROTOCOL } });
       return;
     }
     if (request.method === 'POST' && url.pathname === '/start') {
@@ -649,7 +612,7 @@ const server = createServer(async (request: any, response: any) => {
           return;
         }
         for await (const record of collectCoreWorkDir(sessionArchive ? join(RUNTIME_DIR, sessionDirectory(executorKind)) : PROJECT_DIR, input, {
-          signal: controller.signal, maxEntries: Math.min(collectionMaxEntries, budget.maxEntries), timeoutMs: budget.timeoutMs,
+          signal: controller.signal, maxEntries: budget.maxEntries, timeoutMs: budget.timeoutMs,
           fileTree: { validPath: () => true, excluded: () => false, maxFiles: budget.maxFiles, maxFileBytes: budget.maxFileBytes },
         })) {
           if (!response.write(`${JSON.stringify(record)}\n`)) await once(response, 'drain', { signal: controller.signal });
@@ -693,7 +656,6 @@ const server = createServer(async (request: any, response: any) => {
       await sendFileSnapshot(request, response);
       return;
     }
-    if (url.pathname.startsWith('/project/') && !initialized) throw new Error('Agent workspace is not initialized');
     if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request, 32 * 1024 * 1024)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/grant') { const input = await body(request); send(response, 200, { ok: true, result: await withAgentPaused(() => project.grant(input)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/snapshot') { const input = await body(request); send(response, 200, { ok: true, result: await withAgentPaused(() => project.snapshot(input)) }); return; }

@@ -39,10 +39,10 @@ test('installed native lead plus two helpers claim exclusively, push verified Gi
     } });
     const configuration = { runId, image, outputDir, goal: 'Build complementary input validation and caller authentication reports with actual evidence.', supplement: adjustedDirection,
       gitea: config.gitea, turnTimeoutMs: 30_000, workTimeoutMs: 120_000, closeTimeoutMs: 25_000, exportLimit: 8 * 1024 ** 2,
-      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000,
-        isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } },
-      connection: { bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-        modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 25_000, maxOutputTokens: 512 } },
+      sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000,
+        isolation: { network: 'api' } },
+      connection: { advertiseHost: host,
+        modelGateway: { requestTimeoutMs: 25_000, maxOutputTokens: 512 } },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
     };
     const configPath = join(directory, 'lead-worker-config.mjs'); await writeFile(configPath, `const config=${JSON.stringify(configuration)};config.sandbox.apiKey=process.env.MURM_CORE_TEST_API_KEY;export default config;\n`, { mode: 0o600 });

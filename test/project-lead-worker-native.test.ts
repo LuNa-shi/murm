@@ -157,8 +157,7 @@ test('installed Lead–Worker integrates the project through static and dynamic 
         team, gitea, image, workTimeoutMs: 95_000, turnTimeoutMs: 45_000, closeTimeoutMs: 30_000,
         sandbox: {
           lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-          endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
-          isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+          isolation: { network: 'api' },
         },
         connection: { advertiseHost: host, modelGateway: { requestTimeoutMs: 22_000, maxOutputTokens: 512 } },
         models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: {

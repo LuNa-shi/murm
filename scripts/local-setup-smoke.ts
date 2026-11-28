@@ -16,7 +16,9 @@ export interface LocalSmokeOptions {
   modelConfig?: ModelConfig;
   filePolicy?: FilePolicy;
   lifecycleBaseUrl: string;
-  endpointHost?: string;
+  publicUrl?: string;
+  useServerProxy?: boolean;
+  egressMode?: 'dns+nft';
   apiKey?: string;
   advertiseHost?: string;
   signal?: AbortSignal;
@@ -29,6 +31,7 @@ export interface LocalSmokeCheck {
   id: string;
   status: 'passed' | 'failed';
   message: string;
+  remedy?: string;
 }
 
 export interface LocalSmokeReceipt {
@@ -95,11 +98,12 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
       sandbox: createSandbox({
         commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' },
         ...options.sandbox,
-        lifecycleBaseUrl: options.lifecycleBaseUrl, endpointHost: options.endpointHost, apiKey: options.apiKey,
+        lifecycleBaseUrl: options.lifecycleBaseUrl, apiKey: options.apiKey,
+        useServerProxy: options.useServerProxy, egressMode: options.egressMode,
       }),
       executor: options.executor,
       connection: {
-        advertiseHost: options.advertiseHost, ...options.connection,
+        advertiseHost: options.advertiseHost, publicUrl: options.publicUrl, ...options.connection,
         modelGateway: { requestTimeoutMs: 20_000, maxOutputTokens: 128, ...options.connection?.modelGateway },
       },
       models: { default: model }, filePolicy: options.filePolicy,
@@ -159,7 +163,11 @@ export async function runLocalSmoke(options: LocalSmokeOptions): Promise<LocalSm
       ? (receipt.interrupted ? 'Local probe interrupted' : 'Local probe deadline exceeded')
       : error instanceof Error && 'code' in error && typeof error.code === 'string' && /^[A-Z_]+$/.test(error.code)
         ? `Infrastructure probe failed (${error.code}). Check the configured Worker and network routes.`
-        : 'Infrastructure probe failed. Check doctor diagnostics and retained resource identities' });
+        : 'Infrastructure probe failed. Check doctor diagnostics and retained resource identities',
+      ...(stage === 'agent-bridge-gateway' && !receipt.interrupted ? {
+        remedy: 'Check that the Sandbox can reach connection.publicUrl, the Runtime listener port, and the Bridge and Model Gateway proxy routes. Rerun murm doctor --smoke.',
+      } : {}),
+    });
   } finally {
     unsubscribe?.();
     if (runtime) {

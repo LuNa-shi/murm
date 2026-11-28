@@ -53,10 +53,7 @@ import {
   createSandbox,
 } from '@luna-shi/murm';
 
-const sandbox = createSandbox({
-  lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
-  apiKey: process.env.MURM_LIFECYCLE_TOKEN,
-});
+const sandbox = createSandbox(); // setup connection defaults
 
 const runtime = await createRuntime({
   sandbox,
@@ -79,15 +76,17 @@ const runtime = await createRuntime({
 });
 ```
 
-- **`createSandbox`**：默认采用 OpenSandbox API 策略；可设 `endpointHost` 或 `useServerProxy: true`，或传 `{ provider }` 接入自定义 `SandboxProvider`。需要严格本机 `tmpfs` 配额、实时共享挂载或 UID 防火墙白名单时，可显式传入 `isolation: { network: 'local-docker', disk: { bytes, inodes } }`。可选 `timeoutSeconds` 默认 `3600`（>= `60`）。
-- **`connection`**：`advertiseHost` 指定容器可达的主机名或 IP；`connection.bridge.publicUrl` 与 `connection.modelGateway.publicUrl` 支持包含 `{port}` 的显式 HTTP(S) 模板。`modelGateway` 可配置 `requestTimeoutMs`、`maxOutputTokens`（`null` 表示不裁剪）与 `maxRequests`。
+- **`createSandbox`** 读取 setup 默认连接，或接受显式 `endpoint`、`apiKey`、资源和初始生命周期。受信 `{ provider }` 保留自定义集成合同。旧精确配额与 endpoint host 重写在分配前拒绝。
+
+- **`connection`** 使用一个支持反向代理前缀的 `publicUrl`，`bindHost` 与 `bindPort` 控制监听。`modelGateway` 保留 `requestTimeoutMs`、`maxOutputTokens` 与 `maxRequests`。
+
 - **`models`**：默认使用流式 Responses 协议；Pi 也支持 `protocol: 'chat-completions'` 与 `capabilities: { contextWindow, maxOutputTokens, tools, reasoning }`；可信宿主还可通过 `ModelTransport` 自定义流式传输。上游凭据始终留在可信宿主机。
 - **`filePolicy`**：可选分别调整 `initial`、`snapshot`、`replace`、`export` 与 `session` 阶段的 `maxBytes`、`maxFileBytes`、`maxFiles`、`maxEntries`、`timeoutMs` 以及 `controllerSpoolBytes` / `workerSpoolBytes` 暂存上限。
 - **`getExecutorCapabilities(selection)`**：Pi（`1.3.0` / `1.4.0`）支持 `contextFork`、`activeSteer`、`followUp`、`one-at-a-time` 等完整能力；Codex（`0.172.0`）支持 `activeSteer`、`followUp`、`all` 模式且不支持上下文分叉。
 
 ## Agent 生命周期
 
-- **`runtime.spawn({ requestId, profile, parentId?, forkFrom?, writable?, files?, bindings?, secretEnv?, workspace?, collect? })`**：预占槽位（受 `maxAgents` 限制）、准备沙箱并返回处于 `idle` 的 `AgentInfo`。通过 `files` 灌入私有初始文件，或通过 `workspace: { id, mode: 'read-only' | 'read-write' }` 挂载共享目录。`forkFrom` 在支持的执行器（`pi`）上复制活跃 Agent 的会话上下文。
+- **`runtime.spawn({ requestId, profile, parentId?, forkFrom?, writable?, files?, bindings?, secretEnv?, workspace?, collect? })`**：预占槽位（受 `maxAgents` 限制）、准备沙箱并返回处于 `idle` 的 `AgentInfo`。通过 `files` 灌入私有初始文件，或向声明共享能力的受信 Provider 请求共享目录。`forkFrom` 在支持的执行器（`pi`）上复制活跃 Agent 的会话上下文。
 - **`runtime.get(agentId)`** / **`runtime.list({ parentId?, status? })`**：返回当前 `AgentInfo` 快照。
 - **`runtime.state`**：`'open' | 'closing' | 'closed'`。
 

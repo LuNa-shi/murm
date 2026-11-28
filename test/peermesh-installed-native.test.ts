@@ -119,7 +119,6 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
       outputDir: join(directory, 'core'),
       upstream: upstream.url,
       lifecycle: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
       apiKey: process.env.MURM_CORE_TEST_API_KEY
     }), {
       mode: 0o600

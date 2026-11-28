@@ -63,14 +63,13 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
     const backend = runtimeSettings({
       sandbox: {
         lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-        endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
         apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 20_000,
       },
       bridge: { host: '0.0.0.0', publicUrl: process.env.MURM_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
       modelGateway: { host: '0.0.0.0', advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1',
         requestTimeoutMs: 30_000, maxOutputTokens: 4096 },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: proxy.url, headers: {} } } },
-      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 * 1024, inodes: 4096 } },
+      isolation: { network: 'api' },
     });
     phase = 'runtime_create';
     runtime = await createRuntime({ ...backend, profiles: {

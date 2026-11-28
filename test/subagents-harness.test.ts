@@ -71,7 +71,7 @@ test('subagents host closes its complete dynamic tree and verifies adoption thro
     }
   }; }
   arm();
-  const report = await runSubagentsHarness({ ...runtimeSettings({ sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' }, models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 33554432, inodes: 2048 } } }), image: 'test', outputDir, supplements: ['USER_SUPPLEMENT'], workTimeoutMs: 3000, closeTimeoutMs: 1000 });
+  const report = await runSubagentsHarness({ ...runtimeSettings({ sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' }, models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'api' } }), image: 'test', outputDir, supplements: ['USER_SUPPLEMENT'], workTimeoutMs: 3000, closeTimeoutMs: 1000 });
   assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure) + String(nativeError ?? '')); assert.equal(report.cleanupFailure, null);
   assert.equal(report.cleanup.agents.length, 3); assert.equal(report.cleanup.cleanup, 'complete');
   assert.equal(report.result.eventSeq, 2, 'The premature first parent final cannot become valid after later dispatches');
@@ -135,7 +135,7 @@ for (const [childCount, pending] of [[3, false], [7, false], [3, true]]) {
     const report = await runSubagentsHarness({ childCount, ...runtimeSettings({ sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
-      isolation: { network: 'local-docker', disk: { bytes: 33554432, inodes: 2048 } } }), image: 'test', outputDir, workTimeoutMs: 3000, closeTimeoutMs: 1000 });
+      isolation: { network: 'api' } }), image: 'test', outputDir, workTimeoutMs: 3000, closeTimeoutMs: 1000 });
     assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure));
     assert.equal(report.result.childCount, childCount);
     assert.equal(transport.spawns.size, childCount + 1); assert.equal(report.cleanup.agents.length, childCount + 1);

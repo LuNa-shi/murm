@@ -144,10 +144,10 @@ test('two clean installed-package Lead-Worker Runs against the approved real pro
       const configuration = { runId, outputDir, image, gitea, turnTimeoutMs: Math.min(model.workMs, 300_000),
         workTimeoutMs: model.workMs, closeTimeoutMs: 55_000, dynamic: { variant, candidatePath, serviceImage },
         sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-          endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' },
-          isolation: { disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } },
-        connection: { bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-          modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 90_000,
+          resourceLimits: { cpu: '1', memory: '1Gi' },
+          isolation: { network: 'api' } },
+        connection: { advertiseHost: host,
+          modelGateway: { requestTimeoutMs: 90_000,
             maxOutputTokens: model.maxOutputTokens, maxRequests: model.requestsPerRun } },
         models: { default: { provider: model.provider, model: model.model, upstream: { url: model.url, headers: {} } } } };
       const configPath = join(directory, 'config.mjs');

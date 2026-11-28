@@ -1,11 +1,7 @@
 import type { OpenSandboxBackendConfig } from '../backend-config.js';
 import type { SandboxManager } from './opensandbox-backend.js';
-import { DockerAgentDisk } from './docker-agent-disk.js';
-import { DockerAgentNetwork } from './docker-agent-network.js';
 import { DEFAULT_WORKER_IMAGE } from '../worker-image.js';
 import { OpenSandboxManager } from './opensandbox-manager.js';
-
-type WorkspaceQuota = { bytes: number; inodes: number };
 
 export interface SandboxPreparation {
   sandboxId: string;
@@ -32,46 +28,27 @@ export interface OpenSandboxProvider {
   readonly id: string;
   readonly version?: string;
   readonly capabilities?: SandboxProvider['capabilities'];
-  readonly projectQuotaRequired?: boolean;
   preflight?(): Promise<void>;
+  beforeAllocation?(): Promise<void>;
   openManager(image: string): SandboxManager;
-  prepareSandbox(input: SandboxPreparation): Promise<void | WorkspaceQuota>;
+  prepareSandbox(input: SandboxPreparation): Promise<void>;
   createSharedWorkspace(runtimeId: string, workspaceId: string): Promise<void>;
   deleteSharedWorkspace(runtimeId: string, workspaceId: string): Promise<void>;
 }
 
-export function checkLocalWorkspaceQuota(quota: WorkspaceQuota): void {
-  new DockerAgentDisk(quota);
-}
-
-export function createLocalOpenSandboxProvider({ sandbox, isolation }: OpenSandboxBackendConfig): OpenSandboxProvider {
-  const network = new DockerAgentNetwork();
-  if (isolation.network !== 'local-docker') throw new TypeError('Strict local Docker isolation requires disk and inode limits');
-  const disk = new DockerAgentDisk(isolation.disk);
-  return {
-    id: 'local', version: 'strict-local-docker', capabilities: { sharedWorkspace: true, networkAllowlist: true },
-    openManager: image => new OpenSandboxManager({ ...sandbox, image }) as unknown as SandboxManager,
-    async prepareSandbox({ workspace, assertOpen, ...input }) {
-      await network.isolate(input);
-      assertOpen();
-      const quota = await disk.isolate(input);
-      if (workspace) {
-        await disk.sharedWorkspace('attach', { runtimeId: input.agent.runtime_id, workspaceId: workspace.id,
-          mode: workspace.mode, sandboxId: input.sandboxId, agent: input.agent });
-      }
-      return quota;
-    },
-    createSharedWorkspace: (runtimeId, workspaceId) => disk.sharedWorkspace('create', { runtimeId, workspaceId }),
-    deleteSharedWorkspace: (runtimeId, workspaceId) => disk.sharedWorkspace('delete', { runtimeId, workspaceId }),
-  };
-}
-
 export function createApiOpenSandboxProvider({ sandbox }: OpenSandboxBackendConfig): OpenSandboxProvider {
   const manager = (image = DEFAULT_WORKER_IMAGE) => new OpenSandboxManager({ ...sandbox, image, requireManagementAuth: true });
+  let verified: Promise<void> | undefined;
   return {
-    id: 'opensandbox', version: 'lifecycle-v1', capabilities: {},
-    projectQuotaRequired: false,
-    async preflight() { await manager().preflight(); },
+    id: 'opensandbox', version: 'sdk-1.2.1', capabilities: { networkAllowlist: sandbox.egressMode === 'dns+nft' },
+    beforeAllocation() {
+      verified ??= (async () => {
+        const probe = manager();
+        try { await probe.preflight(); }
+        finally { await probe.close(); }
+      })().catch(error => { verified = undefined; throw error; });
+      return verified;
+    },
     openManager: image => manager(image) as unknown as SandboxManager,
     async prepareSandbox() {},
     async createSharedWorkspace() { throw new Error('This OpenSandbox API deployment does not support live shared workspaces'); },
@@ -87,7 +64,7 @@ export function adaptSandboxProvider(provider: SandboxProvider): SandboxProvider
   const deleteSharedWorkspace = provider.deleteSharedWorkspace?.bind(provider);
   return {
     id: provider.id, version: provider.version, capabilities: Object.freeze({ ...provider.capabilities }),
-    projectQuotaRequired: false, preflight, openManager, prepareSandbox,
+    preflight, openManager, prepareSandbox,
     async createSharedWorkspace(runtimeId, workspaceId) {
       if (!createSharedWorkspace) throw new Error('Shared Workspace creation is unavailable');
       await createSharedWorkspace(runtimeId, workspaceId);

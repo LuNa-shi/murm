@@ -59,12 +59,12 @@ test('Core Context Fork inherits a live native Session with isolated credentials
   runtime = await createRuntime({
     ...runtimeSettings({
       sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-        endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
+        apiKey: process.env.MURM_CORE_TEST_API_KEY,
         commandTimeoutMs: 30000 },
       bridge: { host: '0.0.0.0', publicUrl: process.env.MURM_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
       modelGateway: { host: '0.0.0.0', advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', requestTimeoutMs: 20000, maxOutputTokens: 128 },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {} } } },
-      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+      isolation: { network: 'api' },
     }),
     profiles: {
       worker: { prompt: 'Perform the requested steps.', model: 'default', image, writable: true, services: {} },

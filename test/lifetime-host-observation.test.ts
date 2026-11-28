@@ -18,15 +18,15 @@ async function fixture(t, modify = value => value) {
   const { ServiceRegistry } = await import('@luna-shi/murm');
   const outputDir = await mkdtemp(join(tmpdir(), 'lifetime-observation-'));
   runtime = await createRuntime({ ...runtimeSettings({
-    sandbox: { lifecycleBaseUrl: provider.url, timeoutSeconds: 5100 }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
+    sandbox: { lifecycleBaseUrl: provider.url, apiKey: provider.apiKey, egressMode: 'dns+nft', timeoutSeconds: 5100 }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
     modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
+    isolation: { network: 'api' },
   }), profiles: { peer: { image: 'fixture', model: 'default', prompt: 'fixed', writable: false, services: {} } }, services: new ServiceRegistry(), maxAgents: 4, outputDir });
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const agents = []; for (let i = 0; i < 4; i++) agents.push(await runtime.spawn({ profile: 'peer', requestId: `spawn-${i}` }));
   const options = { runtime, outputDir, agentIds: agents.map(agent => agent.id), workMs: 3600000, cleanupMs: 180000, recoveryMs: 300000, marginMs: 120000,
-    observationTimeoutMs: 2000, maxObservationAgeMs: 1000, provider: { baseUrl: provider.url, uncertaintyMs: 1000 } };
+    observationTimeoutMs: 2000, maxObservationAgeMs: 1000, provider: { baseUrl: provider.url, headers: { 'open-sandbox-api-key': provider.apiKey }, uncertaintyMs: 1000 } };
   return { options, gets, runtime };
 }
 test('four actual Core resources receive conservative host lifetime admission from targeted provider reads', async t => {

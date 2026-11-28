@@ -79,7 +79,7 @@ try {
   }
   assert.equal(health?.status, 200);
   assert.equal((await call('/project/grant', { execution_id: 'e', binding_version: 1 }, false)).status, 401);
-  await accepted('/start', { contract_version: 'murm-core-v1', resources: [], command: 'pi', args: [], cwd: '/workspace/project',
+  await accepted('/start', { contract_version: 'murm-core-v2', resources: [], command: 'pi', args: [], cwd: '/workspace/project',
     system_prompt: 'Controlled project lifecycle probe', system_prompt_path: '/workspace/runtime/profile-prompt.txt',
     env: { PATH: '/opt/murm/probe-bin:/usr/local/bin:/usr/bin:/bin' }, secret_env: {} });
   const identity = await rpc({ type: 'identity' });

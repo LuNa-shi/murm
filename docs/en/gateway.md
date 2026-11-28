@@ -24,14 +24,17 @@ Inside a container, Pi or Codex sends `/v1/responses` requests only to the host 
 - **Instant revocation**: calling `stop()`, encountering a fatal error, or detecting an unexpected exit immediately revokes the Agent's token and aborts active streams.
 - **Optional lease gating (`modelAccessPolicy`)**: harnesses like [TaskPool](harnesses/taskpool.md) can check a synchronous permit before every model request and immediately abort inference if a task lease expires.
 - **Full model tracing**: raw forwarded Responses or Chat Completions requests and streamed responses (as well as custom trusted `ModelTransport` handlers) are archived under `model-trace/` for token auditing and debugging.
-- **Remote & TLS proxy callbacks**: when connecting to a remote OpenSandbox behind a domain or HTTPS reverse proxy, set `connection.bridge.publicUrl` and `connection.modelGateway.publicUrl` using URL templates containing `{port}`.
+- **One callback address**. Set `connection.publicUrl` to a Sandbox-reachable HTTP(S) address, including an optional proxy prefix. Runtime routes `/bridge` and `/model/<alias hash>` through one listener. Bridge and model tokens, authorization and budgets remain independently checked. Model responses stream through the existing handler.
 
-## 3. Fine-grained egress allowlists (strict local policy)
+## 3. Network policy
 
-When using the strict local isolation policy (`isolation.network: 'local-docker'`), the host firewall permits only Service Bridge and Model Gateway by default. When a role legitimately needs native tools to talk to an internal server (such as local Gitea in [PeerMesh](harnesses/peermesh.md)), explicitly grant only what it needs:
+An administrator can prepare OpenSandbox `dns+nft` egress and declare `egressMode: 'dns+nft'` on the connection. A Profile can then request exact non-loopback IPv4 HTTP(S) origins. Runtime includes its common callback in the allowlist before Sandbox creation.
 
-- `Profile.network: { allow: ['172.17.0.1:3000'] }` — opens only that non-loopback IPv4 destination in the sandbox firewall.
-- `runtime.spawn({ secretEnv: { GITEA_TOKEN: '...' } })` — injects a member-scoped token into the container while keeping admin credentials strictly on the host.
+```ts
+network: { allow: ['http://172.17.0.1:3000'] }
+```
+
+A different TCP port remains outside that rule. Domain-plus-port restrictions fail before allocation. A DNS-only deployment cannot satisfy this capability. Management-route authentication and unauthorized network destinations require their respective verification. Scoped application credentials can be passed through `runtime.spawn({ secretEnv })`.
 
 ---
 

@@ -8,7 +8,7 @@ import { provider } from './fixtures/core-pi-transport.js';
 
 const hooks = registerHooks({ resolve(specifier, context, next) {
   if (context.parentURL?.endsWith('/src/core/sandbox/opensandbox-provider.js') &&
-      /^\.\/(opensandbox-manager|docker-agent-network|docker-agent-disk)\.js$/.test(specifier)) {
+      /^\.\/opensandbox-manager\.js$/.test(specifier)) {
     return { url: new URL('./fixtures/core-pi-transport.js', import.meta.url).href, shortCircuit: true };
   }
   return next(specifier, context);
@@ -26,10 +26,10 @@ test('Codex uses an Agent gateway token and retains one executor across inputs w
     ...runtimeSettings({
       executor: 'codex',
       sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
-      bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
+      bindHost: '127.0.0.1', advertiseHost: '172.17.0.1',
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1', maxOutputTokens: null },
       models: { default: { provider: 'openai', model: 'explicit-codex-model', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: { authorization: 'Bearer host-only-secret' } } } },
-      isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
+      isolation: { network: 'api' },
     }),
     profiles: { worker: { model: 'default', image: 'codex-test', writable: true, services: {} } },
     services: new ServiceRegistry(), maxAgents: 1, outputDir,
@@ -41,8 +41,11 @@ test('Codex uses an Agent gateway token and retains one executor across inputs w
   assert.deepEqual(startup.args, []);
   assert.equal(startup.codex.model, 'explicit-codex-model');
   assert.equal(startup.codex.version, '0.172.0');
-  assert.match(startup.codex.baseUrl, /^http:\/\/172\.17\.0\.1:\d+\/v1$/);
+  assert.match(startup.codex.baseUrl, /^http:\/\/172\.17\.0\.1:\d+\/model\/[a-f0-9]{64}\/v1$/);
+  assert.equal(new URL(startup.codex.baseUrl).origin, new URL(startup.env.MURM_BRIDGE_URL).origin);
+  assert.equal(new URL(startup.env.MURM_BRIDGE_URL).pathname, '/bridge');
   assert.ok(startup.secretEnvironment.OPENAI_API_KEY);
+  assert.notEqual(startup.secretEnvironment.OPENAI_API_KEY, startup.secretEnvironment.MURM_BRIDGE_TOKEN);
   assert.equal(JSON.stringify(startup).includes('host-only-secret'), false);
   assert.equal(startup.modelCatalogResource, undefined);
   const before = provider.messages.length;

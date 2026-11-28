@@ -37,7 +37,7 @@
 ## Why murm
 
 - **One Runtime, any topology** — Swap between recursive Subagents, leased TaskPool, PeerMesh, Substrate, or Lead-Worker without modifying the Runtime.
-- **Sandbox Provider interface** — Use OpenSandbox on the same Linux host or connect to an existing service through its API. Supply a custom Provider through the root SDK when you need a different Sandbox integration. Model API keys and external Service tokens stay on the trusted Controller.
+- **Sandbox Provider interface** — Run `murm setup --mode local`, or save an existing OpenSandbox endpoint and one Runtime callback with `murm setup --mode existing`. Supply a custom Provider through the root SDK when you need a different Sandbox integration. Model API keys and external Service tokens stay on the trusted Controller.
 - **Configurable executors, models and file budgets** — Select Pi 1.3.0 or 1.4.0, Codex 0.172.0, or an image-installed adapter. Use Responses with Pi or Codex, Chat Completions with Pi, or a trusted Host transport. Configure import, live file operations and export separately.
 - **Single unified package** — `@luna-shi/murm` bundles the TypeScript SDK, `murm` CLI, `swarm` container CLI, built-in Harnesses, and the zero-dependency browser Trace Viewer (`murm trace`).
 
@@ -53,7 +53,7 @@ npm pack --pack-destination "$pack_dir"
 npm install -g --prefix "$HOME/.local" --ignore-scripts "$pack_dir"/*.tgz
 export PATH="$HOME/.local/bin:$PATH"
 
-# 2. Prepare OpenSandbox, then prepare and verify the Worker
+# 2. Prepare OpenSandbox and save its connection
 murm setup
 
 # 3. Point murm at any streaming OpenAI Responses-compatible endpoint

@@ -14,5 +14,15 @@ export function runtimeSettings({ sandbox, isolation, bridge, modelGateway, mode
   executor?: Settings['executor'];
 }): Settings {
   const { createSandbox } = require('@luna-shi/murm') as typeof import('@luna-shi/murm');
-  return { sandbox: createSandbox({ ...sandbox, isolation }), executor, models, connection: { bridge, modelGateway } };
+  const address = bridge?.publicUrl;
+  const isDynamic = address?.includes('{port}');
+  const advertiseHost = isDynamic ? new URL(address!.replace('{port}', '1')).hostname : modelGateway?.advertiseHost;
+  return { sandbox: createSandbox({ ...sandbox, isolation }), executor, models, connection: {
+    advertiseHost, bindHost: bridge?.host ?? modelGateway?.host,
+    ...(address && !isDynamic ? { publicUrl: address } : {}),
+    modelGateway: modelGateway && {
+      requestTimeoutMs: modelGateway.requestTimeoutMs, maxOutputTokens: modelGateway.maxOutputTokens,
+      maxRequests: modelGateway.maxRequests,
+    },
+  } };
 }

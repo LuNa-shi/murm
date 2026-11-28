@@ -31,7 +31,7 @@ test('TaskPool can finish with a public Material when no live Workspace capture 
       const [{agentId}]=controller.snapshot().agents;
       const credentials=controls.credentials.get(agentId);
       const env={...process.env,...credentials.environment,...credentials.secretEnvironment};
-      const bridge=new URL(env.MURM_BRIDGE_URL); bridge.hostname='127.0.0.1'; env.MURM_BRIDGE_URL=bridge.origin;
+      const bridge=new URL(env.MURM_BRIDGE_URL); bridge.hostname='127.0.0.1'; env.MURM_BRIDGE_URL=bridge.href.replace(/\/$/, '');
       const cli=async (...args)=>JSON.parse((await promisify(execFile)(process.execPath,['dist/scripts/swarm.js',...args],{env,timeout:5000})).stdout);
       const manifest=await cli('service','view','workspace');
       assert.deepEqual(manifest.capabilities.map(row=>row.name),['public-diff','view','read','files']);
@@ -232,11 +232,11 @@ async function runPublicationProbe(t, snapshotProject, probe) {
         const credentials = controls.credentials.get(agent.agentId);
         const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
         const bridge = new URL(env.MURM_BRIDGE_URL); bridge.hostname = '127.0.0.1';
-        env.MURM_BRIDGE_URL = bridge.origin;
+        env.MURM_BRIDGE_URL = bridge.href.replace(/\/$/, '');
         await promisify(execFile)(process.execPath, [new URL('../scripts/swarm.js', import.meta.url).pathname,
           'task', 'take', stores.task.task_id, '--request-id', 'probe-take'], { env, timeout: 5000 });
         const call = async (operation, operationId, payload = {}) => {
-          const response = await fetch(`${bridge.origin}/call`, { method: 'POST',
+          const response = await fetch(`${bridge.href.replace(/\/$/, '')}/call`, { method: 'POST',
             headers: { authorization: `Bearer ${env.MURM_BRIDGE_TOKEN}`, 'content-type': 'application/json' },
             body: JSON.stringify({ service_id: 'workspace', operation, operation_id: operationId, payload }),
             signal: AbortSignal.timeout(5000) });
@@ -463,7 +463,7 @@ for (const [operation, method, payload] of [
         const credentials = controls.credentials.get(agent.agentId);
         const url = new URL(credentials.environment.MURM_BRIDGE_URL);
         url.hostname = '127.0.0.1';
-        const response = await fetch(`${url.origin}/call`, { method: 'POST',
+        const response = await fetch(`${url.href.replace(/\/$/, '')}/call`, { method: 'POST',
           headers: { authorization: `Bearer ${credentials.secretEnvironment.MURM_BRIDGE_TOKEN}`,
             'content-type': 'application/json' },
           body: JSON.stringify({ service_id: operation === 'task_view' ? 'task' : 'workspace', operation, operation_id: requestId,
@@ -696,7 +696,7 @@ test('the ordinary TaskPool host exposes Mathlib search only to its current rese
       const [{ agentId }] = controller.snapshot().agents;
       const credentials = controls.credentials.get(agentId);
       const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
-      const bridge = new URL(env.MURM_BRIDGE_URL); bridge.hostname = '127.0.0.1'; env.MURM_BRIDGE_URL = bridge.origin;
+      const bridge = new URL(env.MURM_BRIDGE_URL); bridge.hostname = '127.0.0.1'; env.MURM_BRIDGE_URL = bridge.href.replace(/\/$/, '');
       const cli = async (...args) => JSON.parse((await promisify(execFile)(process.execPath,
         ['dist/scripts/swarm.js', ...args], { env, timeout: 5000 })).stdout);
       await assert.rejects(cli('mathlib-search', 'search', '--query', 'Nat.add_comm'), error => JSON.parse(error.stderr).code === 'NOT_ALLOWED');

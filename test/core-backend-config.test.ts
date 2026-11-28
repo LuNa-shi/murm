@@ -5,7 +5,7 @@ import { claimOpenSandboxBackend } from '../src/core/sandbox/opensandbox-backend
 
 const sandboxConfig = {
   lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
-  isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+  isolation: { network: 'api' },
 };
 const runtimeConfig = {
   connection: { advertiseHost: '172.17.0.1' },

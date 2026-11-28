@@ -14,7 +14,7 @@ test('generated Subagents installs a real archive outside the checkout and retai
   const directory = await mkdtemp(join(tmpdir(), 'murm-project-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const options = { directory, image: 'sha256:fixture-worker', lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
-    endpointHost: '127.0.0.1', advertiseHost: '172.17.0.1' };
+    advertiseHost: '172.17.0.1' };
   const env = { ...process.env };
   delete env.NODE_PATH;
   for (const key of Object.keys(env)) if (key.startsWith('MURM_SUBAGENTS_')) delete env[key];
@@ -26,7 +26,7 @@ test('generated Subagents installs a real archive outside the checkout and retai
   });
   const { project: first } = JSON.parse(initialized.stdout);
   assert.equal(first.installed, true);
-  assert.match(await readFile(join(directory, '.env'), 'utf8'), /MURM_SUBAGENTS_IMAGE="sha256:fixture-worker"/);
+  assert.doesNotMatch(await readFile(join(directory, '.env'), 'utf8'), /LIFECYCLE|ADVERTISE_HOST|ENDPOINT_HOST|IMAGE=/);
   assert.equal(JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')).scripts.start, 'murm');
   const help = await execute(process.execPath, ['main.js', '--help'], { cwd: directory, env });
   assert.match(help.stdout, /Usage: node main.js/);
@@ -54,7 +54,7 @@ test('an already aborted init creates no project resources', async t => {
   const parent = await mkdtemp(join(tmpdir(), 'murm-project-abort-'));
   t.after(() => rm(parent, { recursive: true, force: true }));
   const directory = join(parent, 'project');
-  await assert.rejects(prepareSubagentsProject({ directory, image: 'unused', lifecycleBaseUrl: 'unused', endpointHost: 'unused',
+  await assert.rejects(prepareSubagentsProject({ directory, image: 'unused', lifecycleBaseUrl: 'unused',
     advertiseHost: 'unused', signal: AbortSignal.abort() }), { name: 'AbortError' });
   await assert.rejects(access(directory), { code: 'ENOENT' });
 });
@@ -66,7 +66,7 @@ test('failed package preparation releases its lock and preserves existing projec
   await writeFile(archive, 'invalid archive');
   await writeFile(join(directory, 'config.js'), 'export default { userEdited: true };\n');
   await writeFile(join(directory, '.env'), 'MURM_SUBAGENTS_MODEL_TOKEN=retained-fixture\n');
-  await assert.rejects(prepareSubagentsProject({ directory, image: 'unused', lifecycleBaseUrl: 'unused', endpointHost: 'unused',
+  await assert.rejects(prepareSubagentsProject({ directory, image: 'unused', lifecycleBaseUrl: 'unused',
     advertiseHost: 'unused', packageArchive: archive }), { code: 'PACKAGE_ARCHIVE_INVALID' });
   assert.equal(await readFile(join(directory, 'config.js'), 'utf8'), 'export default { userEdited: true };\n');
   assert.equal(await readFile(join(directory, '.env'), 'utf8'), 'MURM_SUBAGENTS_MODEL_TOKEN=retained-fixture\n');

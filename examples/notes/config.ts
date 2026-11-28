@@ -8,7 +8,7 @@ function required(...names: string[]) {
   throw new Error(`Set ${names.join(' or ')} before running the Notes Harness`);
 }
 
-const { image, advertiseHost, endpointSource: _endpointSource, ...sandbox } = resolveSandboxConnection({}, 'NOTES');
+const { image, advertiseHost, publicUrl, endpointSource: _endpointSource, ...sandbox } = resolveSandboxConnection({}, 'NOTES');
 const upstream = required('MURM_MODEL_URL', 'MURM_NOTES_MODEL_URL');
 const token = process.env.MURM_MODEL_TOKEN ?? process.env.MURM_NOTES_MODEL_TOKEN;
 const executor = process.env.MURM_EXECUTOR ?? process.env.MURM_NOTES_EXECUTOR ?? 'pi';
@@ -27,7 +27,7 @@ export default {
     resourceLimits: { cpu: '1', memory: '1Gi' },
     commandTimeoutMs: 20_000,
   },
-  connection: { advertiseHost,
+  connection: { publicUrl, advertiseHost,
     modelGateway: { requestTimeoutMs: 25_000, maxOutputTokens: executor === 'codex' ? null : 4096 },
   },
   models: { default: { provider, model, upstream: {

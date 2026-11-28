@@ -1,3 +1,4 @@
+import { sdkFixtureFetch } from '../test-support/opensandbox-sdk-fixture.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFile } from 'node:child_process';
@@ -7,7 +8,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MissionWorkspace } from '../examples/taskpool/services/workspace/mission-workspace.js';
 import { WorkspaceManager } from '../examples/taskpool/services/workspace/workspace-manager.js';
-import { createOpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
+import { createOpenSandboxManager as createSdkManager } from '../src/core/sandbox/opensandbox-manager.js';
+
+
+function createOpenSandboxManager(options) {
+  return createSdkManager({ ...options, fetchImpl: sdkFixtureFetch(options.fetchImpl), waitForExecdReady: options.waitForExecdReady ?? false });
+}
+
 const run = promisify(execFile);
 
 async function fixture(t) {
@@ -64,7 +71,7 @@ test('OpenSandbox Agent preparation transfers exact manifest bytes including all
       if (url.includes('/endpoints/')) return new Response('{"url":"http://execd.test"}');
       if (url.endsWith('/health')) return new Response('{}');
       if (url.endsWith('/stop')) return new Response(JSON.stringify({ result: { stopped: true } }));
-      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: 'murm-core-v1', resources: [] }, project_files: { version: 0, writable: false } } }));
+      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: 'murm-core-v2', resources: [] }, project_files: { version: 0, writable: false } } }));
       if (url.endsWith('/project/prepare')) {
         const input = JSON.parse(request.body);
         assert.deepEqual(input.manifest, snapshot.manifest);

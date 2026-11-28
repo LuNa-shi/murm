@@ -61,6 +61,7 @@
     "predocs:check": "npm run build"
   },
   "dependencies": {
+    "@alibaba-group/opensandbox": "1.2.1",
     "ajv": "8.20.0",
     "js-tiktoken": "1.0.21"
   },

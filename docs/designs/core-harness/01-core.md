@@ -19,7 +19,13 @@ murm Core 是面向开发者的 minimal multi-agent harness。它负责运行独
 
 配套阅读：[2026-11-23｜Harness 设计：Build your own swarm](02-harness.md)。本文保留公共 API 的评审定义；配套文档展示相应五种 Harness 的装配、协作流程和验收。
 
+## 2026-11-27 已确认的 #272 接入调整
 
+本轮在基线 `f522a42f1b381394206b3ab650144dd9ca264702` 上采用 #272 的 owner 决定，覆盖早期保留内置严格 `local-docker` 的条款。生命周期、endpoint 与 Execd 交给固定官方 SDK 1.2.1；WorkerClient 管理 murm 输入、事件、项目文件和会话。Runtime 使用一个 `connection.publicUrl`，复用 listener 并分别校验 Bridge/模型身份与预算。
+
+普通本地部署由 setup 准备 OpenSandbox；已有远端 Controller 通过保存的 endpoint/key 与回调地址连接。旧精确 Workspace bytes/inodes、endpointHost 和内置共享挂载请求在资源创建前明确拒绝。Profile IP/port 许可通过官方 `dns+nft` 精确表达并验证，文件预算仍独立。Worker 握手升级为 `murm-core-v2`。活跃 Runtime 自动续租 owned 资源，关闭时保留现场具有实际 expiry 与有限窗口。
+
+#273 继续承担 Kubernetes、多节点、持久恢复、事件长轮询与容量验收。当前实现与可观察行为见 Architecture 07、15、16；验收完成情况以实现 PR 证据为准。大规模运行须先取得 owner 批准。
 
 ## 1. 目标、范围与职责
 
@@ -115,9 +121,9 @@ const runtime = await createRuntime({
 
 | 所属 | 参数及默认值 |
 | --- | --- |
-| Sandbox | `kind` 默认 `opensandbox`；默认通过 OpenSandbox API 接入本机或远端服务，管理与回连地址分别配置。也可经 `{ provider }` 接入外部 Provider。严格同机 `local-docker` 要求磁盘字节和 inode 上限，由显式配置或兼容的旧配额写法选择。资源默认 2 CPU、2 GiB，命令期限 120 秒，Sandbox 生命周期 3600 秒且至少 60 秒。 |
+| Sandbox | 通过固定官方 OpenSandbox SDK 连接本地或远端服务，`createSandbox()` 使用公共连接解析；受信 `{ provider }` 保留扩展合同。默认 2 CPU、2 GiB、初始 TTL 3600 秒；活跃 Runtime 自动续租。旧精确 Workspace bytes/inodes 和内置 local-docker 拒绝。 |
 | Runtime | `executor` 默认 Pi，可显式选 Codex。非空模型表、Profiles、Services、maxAgents 和专用 outputDir 由宿主提供。Responses 为默认协议，Pi 也接入 Chat Completions，Codex 使用 Responses。外部执行器可声明兼容协议，Host 可显式注册 transport。上游地址不内嵌凭据，用 headers 携带。 |
-| Runtime 连接 | `connection.advertiseHost` 接收 setup/项目配置确定的由 Agent 可达的 IP 或主机名。Bridge 和网关监听地址默认 `0.0.0.0`，两者都可分别使用带 `{port}` 的 HTTP(S) origin 模板。两处都已配置回连地址时可省略共同地址。严格本地模式仍要求可供 UID 网络规则验证的同机非回环 IPv4。 |
+| Runtime 连接 | 一个 `connection.publicUrl` 表示 Sandbox 可达的回调，支持路径前缀。`bindHost` 与 `bindPort` 为高级监听设置。Bridge 与模型处理器共享 listener，凭据与预算分别校验。旧 `{port}` 模板要求迁移。 |
 | 模型请求 | 网关默认 120 秒；Pi 默认最多 32768 输出 token，Codex 默认保留执行器参数。显式 `null` 保留参数，数值须为不小于 16 的安全整数。 |
 | Profile / spawn | Profile 选择模型别名、镜像、提示、服务权限、初始 writable、网络附加目标与产物政策；spawn 可提供父子关系、fork、文件、bindings、secretEnv 或共享挂载，以及允许的 writable/collect 覆盖。 |
 
@@ -387,7 +393,7 @@ ResourceError 在已创建身份时提供 runtimeId/agentId/requestId，并尽�
 | agent contract / Worker 资源校验 | Profile 装配 | 受信资源与镜像验证保留；角色 prompt 可配置 |
 | sandbox-project / manager | 完整树替换与独立收尾导出 | Core 持有文件回执，Service 持有领域版本与授权 |
 | public/secret env 过滤 | 显式宿主配置 | 保留键不能覆盖；合入 Git token 的位置不能再被旧 allowlist 删除 |
-| DockerAgentNetwork / 磁盘隔离 | 当前 backend | 保留本地身份校验，增加 Profile 端点；拒绝未支持部署 |
+| OpenSandbox 网络与存储能力 | SDK 适配器与部署 | 按 #272 移除宿主控制；精确转换 IP/port，拒绝无法兑现的存储请求 |
 | Task loop / controller / notification / watchdog | TaskPool Harness | 选工、续轮、stall 判断与 Task 完成规则不进入 Core |
 | kill / session.stop / stopAgent | 统一 stop/close | 停执行、导出、销毁拆开；删除只有一个组织入口 |
 
@@ -457,7 +463,7 @@ Q1–Q8 与上述交接要求保留为首版合同记录。后续实施引用适
 
 ## 附录 A：公共类型清单
 
-下列声明是 #255 的基础 SDK 目标清单，Sandbox 配置按 #262 更新。当前 Provider 生命周期类型及全部导出以包根声明和 SDK 参考为准。动态管理成员及类型按 #235 衔接；本附录不独立限制后续已确认扩展的根导出。
+下列声明是 #255 的基础 SDK 目标清单，Sandbox 配置按 #272 更新。当前 Provider 生命周期类型及全部导出以包根声明和 SDK 参考为准。动态管理成员及类型按 #235 衔接；本附录不独立限制后续已确认扩展的根导出。
 
 ```ts
 declare const sandboxBrand: unique symbol;
@@ -466,18 +472,18 @@ export interface Sandbox {
 }
 
 export interface SandboxConfig {
-  kind?: "opensandbox";
-  lifecycleBaseUrl: string;
+  kind?: 'opensandbox';
+  endpoint?: string;
+  /** Migration alias for endpoint. */
+  lifecycleBaseUrl?: string;
   apiKey?: string;
   execdToken?: string;
-  endpointHost?: string;
   useServerProxy?: boolean;
+  /** Assertion by the deployment administrator. Smoke verifies the actual policy. */
+  egressMode?: 'dns+nft';
   resourceLimits?: { cpu: string; memory: string };
   commandTimeoutMs?: number;
   timeoutSeconds?: number;
-  isolation?:
-    | { network?: "local-docker"; disk: { bytes: number; inodes: number } }
-    | { network?: "api"; disk?: { bytes: number; inodes?: never } };
 }
 
 export interface SandboxProviderConfig {
@@ -503,13 +509,19 @@ export interface ModelConfig {
 }
 
 export interface RuntimeConnectionOptions {
+  publicUrl?: string;
+  bindHost?: string;
+  bindPort?: number;
   advertiseHost?: string;
   bridge?: { host?: string; publicUrl?: string };
   modelGateway?: {
     host?: string;
     advertiseHost?: string;
+    publicUrl?: string;
     requestTimeoutMs?: number;
     maxOutputTokens?: number | null;
+    /** Maximum new upstream attempts per Runtime and model alias, including unknown outcomes. */
+    maxRequests?: number;
   };
 }
 
@@ -524,7 +536,7 @@ export interface CreateRuntimeOptions {
   outputDir: string;
 }
 
-export declare function createSandbox(config: SandboxConfig | SandboxProviderConfig): Sandbox;
+export declare function createSandbox(config?: SandboxConfig | SandboxProviderConfig): Sandbox;
 export declare function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
 export declare function getExecutorCapabilities(executor: ExecutorKind): ExecutorCapabilities;
 

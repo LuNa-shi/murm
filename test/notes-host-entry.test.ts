@@ -13,7 +13,7 @@ test('installed Notes entry documents and inspects real failed Runtime receipts'
   const outputDir = join(installed.directory, 'failed-runs');
   await writeFile(join(installed.directory, 'failed-config.mjs'), `export default {
 image:'unused',outputDir:${JSON.stringify(outputDir)},fact:{baseline:'',source:'x',finding:'x'},
-sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1',isolation:{disk:{bytes:67108864,inodes:4096}}},
+sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1',isolation: { network: 'api' }},
 connection:{advertiseHost:'172.17.0.1'},
 models:{default:{provider:'kimi_proxy',model:'k3',upstream:{url:'http://127.0.0.1:1/v1/responses',headers:{authorization:'PRIVATE_UNUSED_MODEL_KEY'}}}},
 };`);

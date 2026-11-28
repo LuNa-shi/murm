@@ -38,9 +38,9 @@ test('actual Agensh PR comment and targeted user input cross one serial router i
     upstream = await createRouterUpstream({ deadlineAt: work.deadlineAt, deniedOrigin: `http://${host}:${denied.address().port}`, onFailure: () => work.abort() });
     harness = await work.create(() => createPeerMeshRouterHarness({ ...configuration, runId, image, signal: work.signal, exportLimit: 8 * 1024 ** 2, outputDir: join(directory, 'core'),
       router: { workTimeoutMs: work.remaining(), turnTimeoutMs: 75_000, maxNudges: 0, maxBatches: 8, events: { pollIntervalMs: 1000, maxPolls: 120 } },
-      ...runtimeSettings({ sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
+      ...runtimeSettings({ sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', apiKey: process.env.MURM_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 128, requestTimeoutMs: 80_000 },
-        models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 128 * 1024 ** 2, inodes: 8192 } } }) }));
+        models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } }, isolation: { network: 'api' } }) }));
     report.runtimeId = harness.id; report.agentId = harness.peer.id; report.initial = harness.snapshot();
     const initial = await containers(harness.id); assert.equal(initial.length, 1); report.containerId = initial[0];
     assert.equal((await command('docker', ['exec', initial[0], 'pi', '--version'])).stdout.trim(), '1.3.0');

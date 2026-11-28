@@ -19,7 +19,7 @@ test('Runtime exposes a live state getter through onEvent and one input method',
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const runtime = await core.createRuntime({
     sandbox: core.createSandbox({ lifecycleBaseUrl: 'http://127.0.0.1:1/v1',
-      isolation: { disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } }),
+      isolation: { network: 'api' } }),
     connection: { advertiseHost: '192.0.2.1', bridge: { host: '127.0.0.1' },
       modelGateway: { host: '127.0.0.1' } },
     models: { default: { provider: 'kimi_proxy', model: 'k3',

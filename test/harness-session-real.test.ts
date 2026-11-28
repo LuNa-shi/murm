@@ -55,7 +55,7 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task', 'editable']) 
       sandbox: {
         lifecycleBaseUrl: endpoint.endsWith('/v1') ? endpoint : endpoint.replace(/\/$/, '') + '/v1',
         endpointHost: settings.endpointHost ?? '127.0.0.1', apiKey: settings.apiKey,
-        commandTimeoutMs: 20_000, isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+        commandTimeoutMs: 20_000, isolation: { network: 'api' },
       },
       connection: {
         bridge: { host: '0.0.0.0', publicUrl: `http://${settings.advertiseHost}:{port}` },

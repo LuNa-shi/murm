@@ -12,7 +12,7 @@ level = "INFO"
 
 [runtime]
 type = "docker"
-execd_image = "opensandbox/execd:v1.1.0@sha256:6cf7dba2f21f0b536e100563d841ac58a9f31c2b0a081b7ac76796a24d6f47e2"
+execd_image = "opensandbox/execd:release-1.2.1@sha256:6b12d17844ac7167271488302c71934e47f76abb9ddab19ec8529bd1c1c56b23"
 
 [storage]
 allowed_host_paths = []
@@ -35,6 +35,11 @@ seccomp_profile = ""
 
 [ingress]
 mode = "direct"
+
+[egress]
+image = "opensandbox/egress:release-1.2.1@sha256:84b98d3b5989a87389c977f6433f8cd3c7998d03aa15aaae41ebcb15b7eb8000"
+mode = "dns+nft"
+readiness_timeout_seconds = 30.0
 
 [renew_intent]
 enabled = false

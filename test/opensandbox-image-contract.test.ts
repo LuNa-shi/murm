@@ -155,7 +155,7 @@ test('built OpenSandbox image starts direct Pi with the Core prompt and empty re
       worker.kill('SIGKILL');
     }
   `;
-  const input = { contract_version: 'murm-core-v1', resources: [], system_prompt: 'Fixed image startup role',
+  const input = { contract_version: 'murm-core-v2', resources: [], system_prompt: 'Fixed image startup role',
     system_prompt_path: '/workspace/runtime/profile-prompt.txt', model_catalog_resource: modelCatalogResource };
   await runImageProbes([input,
     { ...input, expect_rejection: true, contract_version: 'swarm-agent-v1-draft.2' },

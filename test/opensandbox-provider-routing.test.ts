@@ -1,3 +1,4 @@
+import { WORKER_PROTOCOL } from '../src/core/worker-image.js';
 import { runtimeSettings } from './fixtures/core-runtime-settings.js';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -10,7 +11,11 @@ async function endpoint(t: TestContext, id: string, version: number,
   rpc?: (message: Record<string, unknown>) => Promise<unknown>,
 ) {
   const calls: string[] = [];
-  const quota = { bytes: 32 * 1024 ** 2, inodes: 2048 };
+  const apiKey = `fixture-key-${id}`;
+  let workerToken: string;
+  let execdToken: string;
+  const createdAt = '2026-01-01T00:00:00.000Z';
+  const expiresAt = '2099-01-01T00:00:00.000Z';
   let metadata: Record<string, string> | undefined;
   let loseCreateResponse = false;
   let rejectStart = false;
@@ -26,21 +31,36 @@ async function endpoint(t: TestContext, id: string, version: number,
       response.writeHead(status, { 'content-type': 'application/json' });
       response.end(JSON.stringify(data));
     };
+    if (url.pathname.startsWith('/v1/') && request.headers['open-sandbox-api-key'] !== apiKey) {
+      json({ message: 'Management authentication required' }, 401); return;
+    }
+    if ((url.pathname.startsWith('/worker/') && request.headers.authorization !== `Bearer ${workerToken}`) ||
+        (url.pathname.startsWith('/execd/') && (!execdToken || request.headers['x-execd-access-token'] !== execdToken))) {
+      json({ message: 'Data plane authentication required' }, 401); return;
+    }
     if (route === 'POST /v1/sandboxes') {
       metadata = input.metadata;
+      workerToken = input.env.MURM_WORKER_TOKEN;
+      execdToken = input.env.EXECD_ACCESS_TOKEN;
       if (loseCreateResponse) { request.socket.destroy(); return; }
-      json({ id: 'same-sandbox' }, 202);
-    } else if (route === 'GET /v1/sandboxes') json(metadata ? [{ id: 'same-sandbox', metadata }] : []);
+      json({ id: 'same-sandbox', createdAt, expiresAt, metadata, status: { state: 'Running' } }, 202);
+    } else if (route === 'GET /v1/sandboxes') json({ items: metadata ? [{ id: 'same-sandbox', metadata, createdAt, expiresAt, status: { state: 'Running' } }] : [],
+      pagination: { page: 1, pageSize: 100, totalItems: metadata ? 1 : 0, totalPages: 1, hasNextPage: false } });
     else if (route === 'DELETE /v1/sandboxes/same-sandbox') { metadata = undefined; json({}, 202); }
-    else if (route === 'GET /v1/sandboxes/same-sandbox') json({}, metadata ? 200 : 404);
+    else if (route === 'GET /v1/sandboxes/same-sandbox') json({ id: 'same-sandbox', createdAt, expiresAt, metadata, status: { state: 'Running' } }, metadata ? 200 : 404);
     else if (route === 'GET /v1/sandboxes/same-sandbox/endpoints/44772') json({ endpoint: `${origin}/execd` });
     else if (route.startsWith('GET /v1/sandboxes/same-sandbox/endpoints/')) json({ endpoint: `${origin}/worker` });
-    else if (route === 'GET /worker/health' || route === 'GET /execd/ready') json({});
-    else if (route === 'POST /execd/command') json({ exit_code: 0, stdout: JSON.stringify(input).includes('pi') ? '1.3.0' : 'v24.21.0' });
-    else if (route === 'GET /worker/core/contract') json({ result: { file_protocol: 'file-tree-v1' } });
+    else if (route === 'GET /worker/health' || route === 'GET /execd/ping') json({});
+    else if (route === 'POST /execd/command') {
+      const output = input.command?.includes('NoNewPrivs') ? JSON.stringify({ cpu: 1, memory: 1024 ** 3 }) :
+        input.command?.includes('pi') ? '1.3.0' : 'v24.21.0';
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.end(`data: ${JSON.stringify({ type: 'stdout', text: output })}\n\ndata: {"type":"execution_complete","exit_code":0}\n\n`);
+    }
+    else if (route === 'GET /worker/core/contract') json({ result: { worker_protocol: WORKER_PROTOCOL, file_protocol: 'file-tree-v1' } });
     else if (route === 'POST /worker/start' && rejectStart) json({ ok: false, code: 'FILE_SPACE_INSUFFICIENT' }, 400);
-    else if (route === 'POST /worker/start') json({ result: { contract: { version: 'murm-core-v1', file_protocol: 'file-tree-v1', resources: [] },
-      project_quota: quota, project_files: { version: 0, writable: false } } });
+    else if (route === 'POST /worker/start') json({ result: { contract: { version: WORKER_PROTOCOL, file_protocol: 'file-tree-v1', resources: [] },
+      project_files: { version: 0, writable: false } } });
     else if (route === 'POST /worker/rpc') json({ result: rpc ? await rpc(input.message) : { response: { command: 'get_state', success: true }, records: [] } });
     else if (route === 'POST /worker/core/files/snapshot') json({ result: { version } });
     else if (route === 'POST /worker/stop') json({ result: { stopped: true } });
@@ -51,10 +71,10 @@ async function endpoint(t: TestContext, id: string, version: number,
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
   origin = `http://127.0.0.1:${address.port}`;
-  return { id, origin, calls, quota, occupied: () => Boolean(metadata), loseCreate: () => { loseCreateResponse = true; },
+  return { id, origin, apiKey, calls, occupied: () => Boolean(metadata), loseCreate: () => { loseCreateResponse = true; },
     exhaustFileSpace: () => { loseCreateResponse = false; rejectStart = true; },
-    openManager: (image: string) => new OpenSandboxManager({ image, lifecycleBaseUrl: `${origin}/v1` }),
-    async prepareSandbox() { return quota; },
+    openManager: (image: string) => new OpenSandboxManager({ image, apiKey, requireManagementAuth: true, lifecycleBaseUrl: `${origin}/v1` }),
+    async prepareSandbox() {},
     async createSharedWorkspace() { assert.fail('The fixture only supports private directories'); },
     async deleteSharedWorkspace() { assert.fail('The fixture only supports private directories'); },
   };
@@ -64,11 +84,11 @@ test('one Backend routes identical sandbox IDs and lost creates to their origina
   const first = await endpoint(t, 'first', 11);
   const second = await endpoint(t, 'second', 22);
   const settings = runtimeSettings({
-    sandbox: { lifecycleBaseUrl: `${first.origin}/v1` },
+    sandbox: { lifecycleBaseUrl: `${first.origin}/v1`, apiKey: first.apiKey },
     bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
     modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `${first.origin}/v1/responses`, headers: {} } } },
-    isolation: { network: 'local-docker', disk: first.quota },
+    isolation: { network: 'api' },
   });
   const config = claimOpenSandboxBackend(settings.sandbox, settings);
   const publicUrl = 'http://172.17.0.1:9000';
@@ -97,7 +117,7 @@ test('one Backend routes identical sandbox IDs and lost creates to their origina
 
   first.loseCreate();
   await assert.rejects(spawn('lost'), { code: 'SERVICE_UNAVAILABLE' });
-  assert.deepEqual(backend.resource('lost'), { providerId: 'first', resourceKey: 'lost', creation: 'pending', executionStopped: false });
+  assert.deepEqual(backend.resource('lost'), { providerId: 'first', resourceKey: 'lost', creation: 'pending', executionStopped: false, expiresAt: null });
   await stop('lost');
   assert.equal(first.occupied(), false);
   assert.equal(second.occupied(), true);
@@ -150,9 +170,9 @@ test('Host Session reads release every large reply and stop at a Worker history 
       ...(type === messagesCommand ? { data: { messages: [{ content: '読'.repeat(22_000) }], limit } } : {}) } };
   });
   const publicUrl = 'http://172.17.0.1:9000';
-  const settings = runtimeSettings({ sandbox: { lifecycleBaseUrl: `${provider.origin}/v1` },
+  const settings = runtimeSettings({ sandbox: { lifecycleBaseUrl: `${provider.origin}/v1`, apiKey: provider.apiKey },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `${provider.origin}/v1/responses`, headers: {} } } },
-    isolation: { network: 'local-docker', disk: provider.quota },
+    isolation: { network: 'api' },
   });
   const backend = await openOpenSandboxBackend(claimOpenSandboxBackend(settings.sandbox, settings), {
     runtimeId: 'session-reads-test', outputDir: '', providers: [provider],

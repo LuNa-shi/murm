@@ -130,6 +130,7 @@ export async function createLeadWorkerHarness(options: any) {
     if (startup.aborted) throw fail('HARNESS_START_ABORTED');
     options.onRuntime?.(runtime, snapshot, board.subscribe);
     unsubscribe = runtime.onEvent((event: any) => {
+      if (event.type === 'session') return;
       if (events.length < (dynamic ? 2048 : 256)) events.push({ agentId: event.agentId, seq: events.length + 1, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
       if (!dynamic && events.length >= 256 || event.type === 'error' && event.fatal || event.type === 'settled' && event.outcome !== 'completed' || event.type === 'exit' && !event.expected) {
         if (!closing) { recordFence({ agentId: event.agentId, code: 'AGENT_FAILED' });

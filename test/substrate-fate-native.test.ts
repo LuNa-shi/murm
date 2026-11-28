@@ -119,8 +119,7 @@ test('installed FATE-M peer adopts exact anonymous bytes after the producer is p
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const backend = substrateBackendConfiguration({ upstreamUrl: `http://127.0.0.1:${server.address().port}/v1/responses`,
     host: process.env.MURM_CORE_TEST_ADVERTISE_HOST,
-    lifecycleUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL, endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST,
-    apiKey: process.env.MURM_CORE_TEST_API_KEY });
+    lifecycleUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL, apiKey: process.env.MURM_CORE_TEST_API_KEY });
   // The local fixture holds the consumer's first response until the producer
   // is physically gone. The production prompt and driver stay identical.
   backend.modelGateway.requestTimeoutMs = 120_000;
@@ -226,8 +225,7 @@ FATE_HANDOFF`;
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const backend = substrateBackendConfiguration({ upstreamUrl: `http://127.0.0.1:${server.address().port}/v1/responses`,
     host: process.env.MURM_CORE_TEST_ADVERTISE_HOST,
-    lifecycleUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL, endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST,
-    apiKey: process.env.MURM_CORE_TEST_API_KEY });
+    lifecycleUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL, apiKey: process.env.MURM_CORE_TEST_API_KEY });
   const configuration = join(installed.directory, 'fate-verified-native.mjs');
   await writeFile(configuration, `export default ${JSON.stringify({ backend,
     fate: { projectRoot: process.env.MURM_FATE_TEST_PROJECT, leanRoot: process.env.MURM_FATE_TEST_LEAN, verifiedCompletion: true },
@@ -292,7 +290,7 @@ FATE_HANDOFF`;
     t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
     const backend = substrateBackendConfiguration({ upstreamUrl: `http://127.0.0.1:${server.address().port}/v1/responses`,
       host: process.env.MURM_CORE_TEST_ADVERTISE_HOST, lifecycleUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL,
-      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST, apiKey: process.env.MURM_CORE_TEST_API_KEY });
+      apiKey: process.env.MURM_CORE_TEST_API_KEY });
     const configuration = join(installed.directory, 'fate-budget-native.mjs');
     await writeFile(configuration, `export default ${JSON.stringify({ backend, runId, outputDir,
       image: process.env.MURM_CORE_TEST_IMAGE, poolSize: 1, workTimeoutMs: 90_000, closeTimeoutMs: 30_000,

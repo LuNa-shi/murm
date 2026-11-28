@@ -16,11 +16,11 @@ async function openHarness(t, hooks) {
 
   const outputDir = await mkdtemp(join(tmpdir(), 'core-file-controls-'));
   const runtime = await createRuntime({ ...runtimeSettings({
-    sandbox: { lifecycleBaseUrl: provider.url },
+    sandbox: { lifecycleBaseUrl: provider.url, apiKey: provider.apiKey, egressMode: 'dns+nft' },
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
     modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
-    isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
+    isolation: { network: 'api' },
   }), profiles: { worker: { image: 'fixture-image', model: 'default', prompt: 'fixture', writable: false, services: {} } },
   services: new ServiceRegistry(), maxAgents: 1, outputDir });
   provider.allowDeletion();
