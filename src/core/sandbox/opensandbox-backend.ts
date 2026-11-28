@@ -19,7 +19,7 @@ export type BackendInputReceipt =
   | { status: 'accepted'; disposition: 'started' | 'queued' | 'handled' };
 
 interface InputSubmission {
-  input: string;
+  input: string | undefined;
   mode: InputMode;
   wakeIfIdle: boolean;
   first: boolean;
@@ -915,12 +915,14 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (agents.get(agentId)?.workspace) throw Object.assign(new Error('File replacement requires a private workDir'), { code: 'NOT_ALLOWED' });
       return fileOperation(agentId, 'replace', input);
     },
-    async send(agentId: string, input: string, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle, queryOnly }: { mode: InputMode; inputId: string; steeringMode?: SendOptions['steeringMode']; executionEpoch: number; wakeIfIdle: boolean; queryOnly?: boolean }): Promise<BackendInputReceipt> {
+    async send(agentId: string, input: string | undefined, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle, queryOnly }: { mode: InputMode; inputId: string; steeringMode?: SendOptions['steeringMode']; executionEpoch: number; wakeIfIdle: boolean; queryOnly?: boolean }): Promise<BackendInputReceipt> {
       const agent = agents.get(agentId);
       if (!agent) throw Object.assign(new Error('Agent is unavailable'), { code: 'NOT_ALLOWED' });
+      if (input === undefined && !queryOnly) throw Object.assign(new Error('Fresh input requires text'), { code: 'INVALID_CONTRACT' });
       agent.submissions ??= new Map();
       let submission = agent.submissions.get(inputId);
-      if (submission && (submission.input !== input || submission.mode !== mode || submission.wakeIfIdle !== wakeIfIdle)) {
+      if (submission && ((input !== undefined && submission.input !== undefined && submission.input !== input) ||
+          submission.mode !== mode || submission.wakeIfIdle !== wakeIfIdle)) {
         throw Object.assign(new Error('Input identity has different parameters'), { code: 'CONFLICT' });
       }
       if (!submission) {
@@ -930,7 +932,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       }
       if (submission!.receipt) return submission!.receipt;
       if (!submission.work) {
-        const dispatch = submission.first;
+        const dispatch = submission.first && !queryOnly;
         const command = wakeIfIdle ? 'prompt' : mode === 'steer' ? 'steer' : 'follow_up';
         submission.first = false;
         agent.pendingInputs++;

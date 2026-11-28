@@ -92,6 +92,11 @@ interface InterruptRequest {
   work?: Promise<void>;
 }
 
+type TextDelivery = Pick<SendOptions, 'source' | 'steeringMode'> & {
+  mode: NonNullable<SendOptions['mode']>;
+  wakeIfIdle: boolean;
+};
+
 interface InputRequest {
   inputId: string;
   dispatched?: boolean;
@@ -906,6 +911,101 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
     return work;
   }
 
+  // Fresh dispatch and recovered receipt lookup share one request lifecycle.
+  // A lookup needs neither the original text nor a new execution activity claim.
+  function registerTextInput(agent: RuntimeAgent, caller: string, requestId: string, delivery: TextDelivery,
+      inputFingerprint: string, storedInput?: AllocationInput, input?: string): InputRequest {
+    const agentId = agent.info.id;
+    const operation = 'send';
+    const { mode, source, steeringMode, wakeIfIdle } = delivery;
+    const inputId = storedInput?.inputId ?? randomUUID();
+    const queryOnly = storedInput !== undefined && storedInput.state !== 'reserved';
+    const executionEpoch = agent.executionEpoch;
+    const identity = { agentId, requestId: redactor.text(requestId), inputId, caller,
+      source: redactor.text(source) ?? caller, mode, steeringMode, wakeIfIdle };
+    records.record('input', { ...identity, state: 'registered' });
+    const releaseActivity = () => {
+      agent.activityClaims.delete(entry);
+      refreshActivity(agent);
+    };
+    const entry: InputRequest = { inputId, ...(queryOnly ? { dispatched: true } : {}), run: async () => {
+      if (entry.dispatched && agent.info.status === 'closed') return { inputId, status: 'unknown' };
+      if (!entry.dispatched && (closing || admissionsFenced || recovering || !isLive(agent) || executionEpoch !== agent.executionEpoch || !fileControls.canSend(agent))) {
+        releaseActivity();
+        throw problem('NOT_ALLOWED', 'Agent stopped before input dispatch', operation, agentId, requestId);
+      }
+      const querying = entry.dispatched === true;
+      try {
+        if (!querying) durable(owner => owner.recordInput(agentId, caller, requestId, 'dispatched'));
+        entry.dispatched = true;
+        records.record('input', { ...identity, state: querying ? 'receipt-query' : 'dispatched' });
+        const receipt = await backend.send(agentId, input, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle, ...(querying ? { queryOnly: true } : {}) });
+        if (wakeIfIdle && receipt.status === 'not-accepted') throw new Error('Backend declined an input with waking enabled');
+        if (receipt.status === 'not-accepted' || (receipt.status === 'accepted' && receipt.disposition === 'handled')) releaseActivity();
+        records.record('input', { ...identity, state: receipt.status,
+          ...(receipt.status === 'accepted' ? { disposition: receipt.disposition } : { reason: receipt.reason }), cursor: agent.eventSequence });
+        const result: ConditionalInputReceipt = receipt.status === 'unknown' ? { inputId, status: 'unknown' } : { inputId, ...receipt };
+        durable(owner => owner.recordInput(agentId, caller, requestId, result.status === 'unknown' ? 'unknown' : 'accepted', result));
+        return result;
+      } catch (error: any) {
+        if (ledgerFailed) return { inputId, status: 'unknown' };
+        if (knownInputRejections.has(error.code) && (!querying || error.inputRejected)) {
+          durable(owner => owner.recordInput(agentId, caller, requestId, 'rejected', errorInfo(error)));
+          releaseActivity();
+          records.record('input', { ...identity, state: 'rejected', error: errorInfo(error) });
+          throw problem(error.code, error.message, operation, agentId, requestId);
+        }
+        durable(owner => owner.recordInput(agentId, caller, requestId, 'unknown'));
+        records.record('input', { ...identity, state: 'unknown', error: errorInfo(error) });
+        return { inputId, status: 'unknown' };
+      }
+    } };
+    inputRequests.reserve(caller, agentId, requestId, inputFingerprint, () => entry);
+    if (wakeIfIdle && !queryOnly) agent.activityClaims.add(entry);
+    refreshActivity(agent);
+    return entry;
+  }
+
+  function inputResult(entry: InputRequest) {
+    if (!entry.result) {
+      entry.result = Promise.resolve().then(entry.run).then(result => {
+        if (result.status === 'unknown') entry.result = undefined;
+        return result;
+      });
+    }
+    return entry.result;
+  }
+
+  // Host sends and receipt-only queries select the same recorded input type.
+  function hostInputIdentity(agentId: string, requestId: string) {
+    const saved = finalClose ? undefined : durable(owner => owner.input(agentId, 'host', requestId));
+    const kind = saved ? ((saved.parameters as { sessionCommand?: string })?.sessionCommand === 'context' ? 'context' : 'text')
+      : inputRequests.peek('host', agentId, requestId) ? 'text'
+      : sessionControls.hasContext(agentId, requestId) ? 'context' : undefined;
+    return { saved, kind };
+  }
+
+  async function reconcileTextInput(agentId: string, requestId: string, saved?: AllocationInput) {
+    if (saved?.state === 'accepted') return structuredClone(saved.receipt);
+    if (saved?.state === 'rejected') {
+      const error = saved.receipt as ErrorInfo;
+      throw problem(error.code, error.message, 'send', agentId, requestId);
+    }
+    let entry = inputRequests.peek('host', agentId, requestId);
+    if (!entry) {
+      if (!saved || saved.state === 'reserved') return { status: 'unknown', requestId };
+      const agent = agents.get(agentId);
+      const delivery = saved.parameters as TextDelivery;
+      if (!agent || !['steer', 'followUp'].includes(delivery?.mode) || typeof delivery?.wakeIfIdle !== 'boolean') {
+        return { inputId: saved.inputId, status: 'unknown' };
+      }
+      entry = registerTextInput(agent, 'host', requestId, delivery, saved.parameterFingerprint, saved);
+    }
+    if (!entry.dispatched) return { inputId: entry.inputId, status: 'unknown' };
+    const result = await observe(inputResult(entry));
+    return result === timedOut ? { inputId: entry.inputId, status: 'unknown' } : structuredClone(result);
+  }
+
   function send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }, caller?: string): Promise<InputReceipt>;
   function send(agentId: string, input: string, options: SendOptions, caller?: string): Promise<ConditionalInputReceipt>;
   async function send(agentId: string, input: string, options: SendOptions, caller = 'host'): Promise<ConditionalInputReceipt> {
@@ -935,80 +1035,31 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
       }
     }
     let request: InputRequest | undefined;
-    try { request = inputRequests.get(caller, agentId, requestId, parameters); }
+    try { request = inputRequests.get(caller, agentId, requestId, inputFingerprint); }
     catch (caught) {
       const error = caught as Error & { code: string };
       throw problem(error.code, error.message, operation, agentId, requestId);
     }
     if (!request) {
-      if (closing || admissionsFenced || recovering || !isLive(agent) || agent.interruption || sessionControls.reserved(agentId) || !fileControls.canSend(agent)) {
-        if (storedInput && storedInput.state !== 'reserved') return { inputId: storedInput.inputId, status: 'unknown' };
-        throw problem('NOT_ALLOWED', 'Agent is not accepting input', operation, agentId, requestId);
-      }
-      if (ledger) {
-        const allocation = ledger.get(agentId);
-        const expiry = Date.parse(allocation.expiresAt ?? '');
-        if (!Number.isFinite(expiry) || expiry - Date.now() < 5000) {
-          throw problem('SERVICE_UNAVAILABLE', 'Sandbox lease has insufficient confirmed time for new input', operation, agentId, requestId, 'pending');
+      if (storedInput && storedInput.state !== 'reserved') {
+        request = registerTextInput(agent, caller, requestId, { mode, source, steeringMode, wakeIfIdle }, inputFingerprint, storedInput);
+      } else {
+        if (closing || admissionsFenced || recovering || !isLive(agent) || agent.interruption || sessionControls.reserved(agentId) || !fileControls.canSend(agent)) {
+          throw problem('NOT_ALLOWED', 'Agent is not accepting input', operation, agentId, requestId);
         }
-        storedInput ??= durable(owner => owner.reserveInput({ resourceKey: agentId, caller, requestId, inputId: randomUUID(),
-          parameterFingerprint: inputFingerprint, parameters: { mode, steeringMode, wakeIfIdle } }));
-      }
-      const inputId = storedInput?.inputId ?? randomUUID();
-      const queryOnly = storedInput !== undefined && storedInput.state !== 'reserved';
-      const executionEpoch = agent.executionEpoch;
-      const identity = { agentId, requestId: redactor.text(requestId), inputId, caller,
-        source: redactor.text(source) ?? caller, mode, steeringMode, wakeIfIdle };
-      records.record('input', { ...identity, state: 'registered' });
-      const releaseActivity = () => {
-        agent.activityClaims.delete(request);
-        refreshActivity(agent);
-      };
-      const entry: InputRequest = { inputId, ...(queryOnly ? { dispatched: true } : {}), run: async () => {
-        if (entry.dispatched && agent.info.status === 'closed') return { inputId, status: 'unknown' };
-        if (!entry.dispatched && (closing || admissionsFenced || recovering || !isLive(agent) || executionEpoch !== agent.executionEpoch || !fileControls.canSend(agent))) {
-          releaseActivity();
-          throw problem('NOT_ALLOWED', 'Agent stopped before input dispatch', operation, agentId, requestId);
-        }
-        const querying = entry.dispatched === true;
-        try {
-          if (!querying) durable(owner => owner.recordInput(agentId, caller, requestId, 'dispatched'));
-          entry.dispatched = true;
-          records.record('input', { ...identity, state: querying ? 'receipt-query' : 'dispatched' });
-          const receipt = await backend.send(agentId, input, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle, ...(querying ? { queryOnly: true } : {}) });
-          if (wakeIfIdle && receipt.status === 'not-accepted') throw new Error('Backend declined an input with waking enabled');
-          if (receipt.status === 'not-accepted' || (receipt.status === 'accepted' && receipt.disposition === 'handled')) releaseActivity();
-          records.record('input', { ...identity, state: receipt.status,
-            ...(receipt.status === 'accepted' ? { disposition: receipt.disposition } : { reason: receipt.reason }), cursor: agent.eventSequence });
-          const result: ConditionalInputReceipt = receipt.status === 'unknown' ? { inputId, status: 'unknown' } : { inputId, ...receipt };
-          durable(owner => owner.recordInput(agentId, caller, requestId, result.status === 'unknown' ? 'unknown' : 'accepted', result));
-          return result;
-        } catch (error: any) {
-          if (ledgerFailed) return { inputId, status: 'unknown' };
-          if (knownInputRejections.has(error.code) && (!querying || error.inputRejected)) {
-            durable(owner => owner.recordInput(agentId, caller, requestId, 'rejected', errorInfo(error)));
-            releaseActivity();
-            records.record('input', { ...identity, state: 'rejected', error: errorInfo(error) });
-            throw problem(error.code, error.message, operation, agentId, requestId);
+        if (ledger) {
+          const allocation = ledger.get(agentId);
+          const expiry = Date.parse(allocation.expiresAt ?? '');
+          if (!Number.isFinite(expiry) || expiry - Date.now() < 5000) {
+            throw problem('SERVICE_UNAVAILABLE', 'Sandbox lease has insufficient confirmed time for new input', operation, agentId, requestId, 'pending');
           }
-          durable(owner => owner.recordInput(agentId, caller, requestId, 'unknown'));
-          records.record('input', { ...identity, state: 'unknown', error: errorInfo(error) });
-          return { inputId, status: 'unknown' };
+          storedInput ??= durable(owner => owner.reserveInput({ resourceKey: agentId, caller, requestId, inputId: randomUUID(),
+            parameterFingerprint: inputFingerprint, parameters: { mode, steeringMode, wakeIfIdle } }));
         }
-      } };
-      request = entry;
-      if (wakeIfIdle) agent.activityClaims.add(request);
-      inputRequests.reserve(caller, agentId, requestId, parameters, () => entry);
-      refreshActivity(agent);
+        request = registerTextInput(agent, caller, requestId, { mode, source, steeringMode, wakeIfIdle }, inputFingerprint, storedInput, input);
+      }
     }
-    const entry = request;
-    if (!entry.result) {
-      entry.result = Promise.resolve().then(entry.run).then(result => {
-        if (result.status === 'unknown') entry.result = undefined;
-        return result;
-      });
-    }
-    const result = await observe(request.result);
+    const result = await observe(inputResult(request));
     if (result === timedOut) records.record('input', { agentId, requestId: redactor.text(requestId), inputId: request.inputId,
       caller, source: redactor.text(source) ?? caller, mode, steeringMode, wakeIfIdle, state: 'unknown', reason: 'host-wait-expired' });
     return result === timedOut ? { inputId: request.inputId, status: 'unknown' } : structuredClone(result);
@@ -1194,8 +1245,11 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
   function hostSend(id: string, input: ContextInput, options: ContextSendOptions): Promise<ContextInputReceipt>;
   async function hostSend(id: string, input: string | ContextInput, options: SendOptions | ContextSendOptions): Promise<any> {
     const requestId = options?.requestId;
-    if (validId(requestId) && (typeof input === 'string' ? sessionControls.hasContext(id, requestId) : inputRequests.peek('host', id, requestId))) {
-      return Promise.reject(problem('CONFLICT', 'send requestId already identifies another input type', 'send', id, requestId));
+    if (validId(requestId)) {
+      const { kind } = hostInputIdentity(id, requestId);
+      if (kind && kind !== (typeof input === 'string' ? 'text' : 'context')) {
+        throw problem('CONFLICT', 'send requestId already identifies another input type', 'send', id, requestId);
+      }
     }
     return typeof input === 'string' ? send(id, input, options as SendOptions) : sessionControls.context(id, input, options as ContextSendOptions);
   }
@@ -1337,8 +1391,8 @@ async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runti
       return entry ? interrupt(agentId, { requestId }) : { status: 'unknown', requestId };
     }
     if (operation === 'send') {
-      const entry = inputRequests.peek('host', agentId, requestId);
-      if (entry?.dispatched) return entry.result ?? entry.run();
+      const { saved, kind } = hostInputIdentity(agentId, requestId);
+      if (kind === 'text') return reconcileTextInput(agentId, requestId, saved);
     }
     return sessionControls.reconcile(agentId, operation, requestId);
   });
