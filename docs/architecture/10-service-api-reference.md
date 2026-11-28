@@ -42,13 +42,13 @@ This section is generated from executable exports and checked against the source
 | [src/errors.ts](../../src/errors.ts) | `5b436c6d7062a7b9fb0fd434af1375b9c050999cfa76bd6d97dac88558dca8b3` |
 | [src/core/index.ts](../../src/core/index.ts) | `ebb0e7fdb87620d971965e6fccbfe638d603ff00986017ea8e225a51508e879f` |
 | [src/core/types.ts](../../src/core/types.ts) | `e17977d64d7393e4120c95a76a5be8222a0fb3dc4de8a1ee8b0d224e6ddc57f7` |
-| [src/core/services.ts](../../src/core/services.ts) | `823b7c83efd0fc61314c5511177b32b8863f469454cad5c5288bd04e5e82cf96` |
+| [src/core/services.ts](../../src/core/services.ts) | `794352ccfa8e02f63c4db087f1c165308198c6766c0d8c3cf8872e1b9c0617ab` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
 | [src/core/sandbox/opensandbox-backend.ts](../../src/core/sandbox/opensandbox-backend.ts) | `d314392a70dc6c1360f5baf64df93d5b1033f16fb345c039f34cef8b1ddd199e` |
 | [src/core/sandbox/executor-driver.ts](../../src/core/sandbox/executor-driver.ts) | `182e80680d8ea6e1729d524a6927d800a91caffd3657ed796706ebaad9d28131` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `04d9109564513eb6996ebd3e05dbc95b842276decb47c133cdf3e92bdb754c58` |
 | [src/core/sandbox/opensandbox-provider.ts](../../src/core/sandbox/opensandbox-provider.ts) | `b9c953413bde9906cd7e5166f9442fcbe01d6980c23da6bb062d2e6d18d42256` |
-| [src/core/sandbox/sandbox-connection.ts](../../src/core/sandbox/sandbox-connection.ts) | `27c35937b58ae31efb2192ddb0bc11100239b4932d25ea7292bb7df5e7eb80c4` |
+| [src/core/sandbox/sandbox-connection.ts](../../src/core/sandbox/sandbox-connection.ts) | `b711f7ea720e2cb354138c99e0bbc2efe80eb3d79cf948718afaa63a08cb2c9e` |
 
 ### Exact built-in command operation surface
 
@@ -4131,13 +4131,28 @@ export {};
 export declare const defaultLifecycleUrl = "http://127.0.0.1:8080/v1";
 export declare function loopbackLifecycle(url: string): URL | undefined;
 export declare function localApiKeyPath(url: URL): string;
-export declare function resolveSandboxConnection(input?: {
+interface ConnectionInput {
     lifecycleBaseUrl?: string;
     apiKey?: string;
     endpointHost?: string;
     advertiseHost?: string;
     image?: string;
-}, scope?: string): {
+}
+export declare function resolveSandboxConnectionWithSources(input?: ConnectionInput, scope?: string): {
+    lifecycleBaseUrl: string;
+    apiKey: string | undefined;
+    endpointHost: string | undefined;
+    advertiseHost: string | undefined;
+    image: string | undefined;
+    endpointSource: string;
+    sources: {
+        lifecycleBaseUrl: string;
+        endpointHost: string | undefined;
+        advertiseHost: string | undefined;
+        image: string | undefined;
+    };
+};
+export declare function resolveSandboxConnection(input?: ConnectionInput, scope?: string): {
     lifecycleBaseUrl: string;
     apiKey: string | undefined;
     endpointHost: string | undefined;
@@ -4146,6 +4161,7 @@ export declare function resolveSandboxConnection(input?: {
     endpointSource: string;
 };
 export declare function loadMurmConfig(filename: string): Promise<unknown>;
+export {};
 ```
 
 <!-- END GENERATED REFERENCE -->

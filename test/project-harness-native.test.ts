@@ -190,6 +190,7 @@ cli('task','finish','--outcome','done','--request-id','project-finish')
 print('PROJECT_TASKPOOL_OK')
 MURM_PROJECT_TEST`;
   let calls = 0;
+  let feedbackObserved = false;
   let failure: unknown;
   const server = createServer(async (req, res) => {
     try {
@@ -208,6 +209,7 @@ MURM_PROJECT_TEST`;
         assert.match(String(output('project_taskpool_deliver')), /PROJECT_TASKPOOL_OK/);
         item = reply('taskpool_done', 'Completed Task');
       } else if (users.includes(feedback)) {
+        feedbackObserved = true;
         item = tool('project_taskpool_deliver', deliver);
       } else if (output('project_taskpool_claim')) {
         const taskId = /TAKEN_TASK:([^\s]+)/.exec(String(output('project_taskpool_claim')))?.[1];
@@ -280,7 +282,7 @@ export default config;
     },
   });
   assert.ifError(failure);
-  assert.ok(calls >= 4);
+  assert.equal(feedbackObserved, true);
   assert.equal(result.outcome, 'completed');
   assert.equal(result.cleanup.status, 'complete');
   assert.equal(result.acceptance.status, 'not-run');
