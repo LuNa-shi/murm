@@ -75,6 +75,14 @@ jobs:
           npm install --prefix "$consumer" --ignore-scripts --no-audit --no-fund --save-dev typescript@7.0.2 @types/node@26.6.5
           "$consumer/node_modules/.bin/tsc" -p "$consumer/tsconfig.json"
       - run: npm test
+      - name: Run the installed first SDK Harness with the controlled local model
+        shell: bash
+        env:
+          MURM_FIRST_HARNESS_DIRECTORY: ${{ runner.temp }}/consumer
+        run: |
+          export PATH="$MURM_FIRST_HARNESS_DIRECTORY/node_modules/.bin:$PATH"
+          murm setup
+          node --test dist/test/first-harness-installed.test.js
       - name: Prepare Release asset names and checksums
         working-directory: ${{ runner.temp }}/murm-release
         env:

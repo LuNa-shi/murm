@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { localApiKeyPath, loopbackLifecycle, resolveSandboxConnection } from '../src/core/sandbox/sandbox-connection.js';
+import { localApiKeyPath, loopbackLifecycle, resolveSandboxConnection, resolveSandboxConnectionWithSources } from '../src/core/sandbox/sandbox-connection.js';
 
 const execute = promisify(execFile);
 export const localProviderImage = 'opensandbox/server:release-1.2.0@sha256:25bebdcf1cf7724eb923faecbdbbf82d4038c6ab35c736151574726d14006f30';
@@ -64,7 +64,7 @@ async function commandCheck(id: string, command: string, args: string[], detail:
 }
 
 export async function resolveLocalEnvironment(partial: Partial<LocalEnvironmentConfig> = {}, scope?: string) {
-  const environment = resolveSandboxConnection(partial, scope);
+  const environment = resolveSandboxConnectionWithSources(partial, scope);
   return { ...environment, mode: environment.endpointSource === 'default' ? 'local' as const : 'existing' as const };
 }
 

@@ -240,8 +240,17 @@ function inputValidation(errors: ErrorObject[] | null | undefined, input: unknow
       expected = 'required property';
       value = undefined;
     }
-    if (error.keyword === 'additionalProperties') expected = 'only declared properties';
-    if (typeof error.params.limit === 'number') expected += ` ${error.params.limit}`;
+    if (error.keyword === 'additionalProperties') {
+      path.push('*');
+      expected = 'only declared properties';
+      value = value && typeof value === 'object' && Object.hasOwn(value, error.params.additionalProperty)
+        ? (value as Record<string, unknown>)[error.params.additionalProperty] : undefined;
+    }
+    if (error.keyword === 'pattern') expected = `pattern ${String(error.params.pattern).slice(0, 200)}`;
+    if (error.keyword === 'format') expected = `format ${error.params.format}`;
+    if ('allowedValue' in error.params) expected += ' ' + JSON.stringify(error.params.allowedValue).slice(0, 200);
+    if ('allowedValues' in error.params) expected += ' ' + JSON.stringify(error.params.allowedValues).slice(0, 200);
+    if (typeof error.params.limit === 'number') expected += ` ${error.params.comparison ?? ''}${error.params.limit}`;
     return { pointer: path.length ? '/' + path.join('/') : '', expected, actual: jsonType(value) };
   });
 }

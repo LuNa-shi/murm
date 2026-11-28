@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import {
   checkLinuxHost, checkLocalDocker, checkLocalProvider, checkStrictLocalHost, ensureLocalProvider, localExecdImage, localProviderImage, resolveLocalEnvironment,
@@ -88,6 +89,10 @@ function reportedEndpoint(value: string): string | undefined {
   }
 }
 
+function reportedHost(value?: string): string | undefined {
+  if (value && (/^[a-zA-Z0-9._-]+$/.test(value) || isIP(value))) return value;
+}
+
 function installNextStep(command: LocalCommand): string {
   return command.command === 'setup'
     ? 'Run your Harness with the same environment and resolveSandboxConnection(), or repeat the probe with murm doctor --smoke.'
@@ -115,10 +120,13 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       endpointHost?: string;
       advertiseHost?: string;
       image: string;
+      imageId?: string;
+      sources: { lifecycleBaseUrl: string; endpointHost?: string; advertiseHost?: string; image: string };
       resolveWith: 'resolveSandboxConnection';
     };
     infrastructure: 'failed' | 'preflight-passed' | 'ready';
     model?: Model;
+    modelUpstreamVerification: 'not-verified';
     configuration?: {
       executor: { id: string; version: string; compatibleVersions: readonly string[] };
       image: string;
@@ -134,7 +142,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     smoke?: Smoke;
   } = {
     command: command.command, ok: false, infrastructure: 'failed',
-    checks, timings, elapsedMs: 0, interrupted: false,
+    checks, timings, elapsedMs: 0, interrupted: false, modelUpstreamVerification: 'not-verified',
   };
   async function timed<T>(id: string, action: () => Promise<T>) {
     signal.throwIfAborted();
@@ -188,9 +196,10 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     report.lifecycleSource = environment.endpointSource;
     report.connection = {
       lifecycleBaseUrl: reportedEndpoint(environment.lifecycleBaseUrl),
-      endpointHost: environment.endpointHost,
-      advertiseHost: environment.advertiseHost,
+      endpointHost: reportedHost(environment.endpointHost),
+      advertiseHost: reportedHost(environment.advertiseHost),
       image: report.configuration.image,
+      sources: { ...environment.sources, image: environment.sources.image ?? 'executor-default' },
       resolveWith: 'resolveSandboxConnection',
     };
     const strict = config?.sandbox?.isolation?.network === 'local-docker' || config?.sandbox?.isolation?.disk?.inodes !== undefined;
@@ -205,8 +214,11 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       checks.push(docker.diagnostic);
       if (!docker.docker) return report;
       rootlessDocker = docker.docker.rootless;
-      advertiseHost ??= docker.docker.advertiseHost;
-      report.connection.advertiseHost = advertiseHost;
+      if (advertiseHost === undefined && docker.docker.advertiseHost !== undefined) {
+        advertiseHost = docker.docker.advertiseHost;
+        report.connection.advertiseHost = reportedHost(advertiseHost);
+        report.connection.sources.advertiseHost = 'docker-network';
+      }
     }
     if (strict) {
       if (!/^(http:\/\/(127\.0\.0\.1|localhost))([:/]|$)/.test(environment.lifecycleBaseUrl)) {
@@ -237,6 +249,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       if (!worker.image || checks.some(check => !check.ok)) return report;
       report.worker = { ...worker.image, source: worker.source };
       image = worker.image.id;
+      report.connection.imageId = image;
       progress?.(`Worker image source: ${worker.source}`);
     }
     report.infrastructure = 'preflight-passed';

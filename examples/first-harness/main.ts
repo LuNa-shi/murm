@@ -3,12 +3,15 @@ import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { createRuntime, createSandbox, ServiceRegistry, type AgentInfo, type CloseReceipt } from '@luna-shi/murm';
-import config, { contextWindow } from './config.js';
 import { createHandoff } from './handoff.js';
 import { createTurnRunner, TurnError } from './turn.js';
 
 async function modelEvidence(reportPath: string) {
   const path = join(dirname(reportPath), 'model-trace');
+  const report = await readFile(reportPath, 'utf8').then(text => JSON.parse(text)).catch(() => undefined);
+  const model = report?.config?.models?.default;
+  const contextSource = ['configured', 'shipped-catalog'].includes(model?.capabilitySource) ? model.capabilitySource : 'unknown';
+  const contextWindow = contextSource === 'unknown' ? 'unknown' : model?.capabilities?.contextWindow ?? 'unknown';
   const entries = await readdir(path).catch(() => []);
   const attempts = [];
   for (const entry of entries) {
@@ -19,7 +22,7 @@ async function modelEvidence(reportPath: string) {
         agentId: request.agentId, requestId: request.requestId, record: join(path, entry, 'result.json'),
         state: result.state, upstreamStatus: result.upstreamStatus, reason: result.reason,
         inputTokens: result.usage?.inputTokens ?? 'unknown', outputTokens: result.usage?.outputTokens ?? 'unknown',
-        contextWindow: contextWindow ?? 'unknown',
+        contextWindow, contextSource,
       });
     } catch {
       // A partially written or absent trace gives no trusted usage.
@@ -29,8 +32,9 @@ async function modelEvidence(reportPath: string) {
 }
 
 async function main() {
+  const { default: config } = await import('./config.js');
   if (!config.models.default.upstream.url) throw new Error('Set MURM_MODEL_URL before running the Harness.');
-  const reference = randomBytes(6).toString('hex');
+  const reference = 'a' + randomBytes(6).toString('hex').slice(1);
   const board = createHandoff();
   const services = new ServiceRegistry();
   services.registerService(board.registration);
@@ -118,8 +122,8 @@ async function main() {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
   }
-  if (!failure && cleanup && expected) {
-    const directory = cleanup.agents.find(agent => agent.agentId === writer?.id)?.artifacts.find(path => path.endsWith('/artifacts/files'));
+  if (!failure && expected) {
+    const directory = cleanup?.agents.find(agent => agent.agentId === writer?.id)?.artifacts.find(path => path.endsWith('/artifacts/files'));
     const file = directory ? join(directory, 'delivery.txt') : undefined;
     const bytes = file ? await readFile(file).catch(() => undefined) : undefined;
     if (file && bytes?.equals(expected)) {
