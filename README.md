@@ -43,7 +43,7 @@
 
 ## Quick start
 
-Use Node.js 22.19+ on Linux. This example uses a build of the current checkout. The [Quickstart](docs/en/quickstart.md) covers local deployment and connecting to an existing service. For the released CLI, follow the [v0.2.0 guide](docs/en/latest.md).
+Use Node.js 22.19+ and Git on Linux, with Docker Engine for local OpenSandbox. This example uses a build of the current checkout. The [Quickstart](docs/en/quickstart.md) covers prerequisites and connecting to an existing service. For the released CLI, follow the [v0.2.0 guide](docs/en/latest.md).
 
 ```sh
 # 1. Build and install the CLI from this checkout
@@ -54,18 +54,20 @@ npm install -g --prefix "$HOME/.local" --ignore-scripts "$pack_dir"/*.tgz
 export PATH="$HOME/.local/bin:$PATH"
 
 # 2. Prepare OpenSandbox, then prepare and verify the Worker
-murm setup --mode local
+murm setup
 
 # 3. Point murm at any streaming OpenAI Responses-compatible endpoint
 export MURM_MODEL_URL="https://api.openai.com/v1/responses"
 export MURM_MODEL_TOKEN="sk-..."
 
 # 4. Run a built-in Harness against your project
-cd my-project
-murm --harness subagents --prompt "Fix the parser and add tests"
+mkdir -p murm-first-example
+cd murm-first-example
+printf '# Hello from murm\n' > README.md
+murm --harness subagents --prompt 'Read README.md and report its heading.' --output-dir ./runs
 
 # 5. Inspect timelines, model exchanges, and artifacts in the built-in Trace Viewer
-murm trace --root ./subagents-runs --port 8787
+murm trace --root ./runs --port 8787
 ```
 
 `Subagents`, `TaskPool`, `Notes`, and `Messages` default to the versioned Worker image for the selected executor. Override it with `MURM_WORKER_IMAGE` when using a custom image. Use `--harness` to select any built-in (`subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes`, `messages`), a local ESM module, or an installed package. In `--mode rpc`, tasks arrive over JSONL with live `status` and `stop` control.

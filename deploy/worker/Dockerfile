@@ -1,13 +1,13 @@
-# syntax=docker/dockerfile:1.7
+ARG NODE_IMAGE=node:22.19.0-bookworm-slim
 
-FROM node:22.19.0-bookworm-slim AS filesystem-policy-build
+FROM ${NODE_IMAGE} AS filesystem-policy-build
 RUN apt-get update \
   && apt-get install --no-install-recommends --yes gcc libc6-dev linux-libc-dev \
   && rm -rf /var/lib/apt/lists/*
 COPY --chown=0:0 scripts/agent-filesystem-policy.c /tmp/agent-filesystem-policy.c
 RUN cc -O2 -Wall -Wextra -Werror -o /agent-filesystem-policy /tmp/agent-filesystem-policy.c
 
-FROM node:22.19.0-bookworm-slim AS typescript-build
+FROM ${NODE_IMAGE} AS typescript-build
 WORKDIR /build
 COPY package.json npm-shrinkwrap.json tsconfig.json ./
 RUN npm ci --include=dev --ignore-scripts --no-audit --no-fund
@@ -18,7 +18,7 @@ COPY test-support/subagents/communication-fixture-prompts.ts ./test-support/suba
 COPY deploy ./deploy
 RUN npm run build
 
-FROM node:22.19.0-bookworm-slim
+FROM ${NODE_IMAGE}
 
 ARG PI_VERSION=1.3.0
 ARG CODEX_VERSION=0.172.0

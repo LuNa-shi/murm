@@ -1,33 +1,44 @@
 ---
 title: Quickstart
-description: Install @luna-shi/murm on Linux, start or connect to OpenSandbox, and run your first multi-agent Harness in minutes.
+description: Install murm on Linux, verify OpenSandbox, and run your first Subagents example.
 section: GET STARTED
 order: 1
 ---
 
-`@luna-shi/murm` bundles the CLI, TypeScript SDK, and built-in Trace Viewer in one package. Every Agent runs inside an isolated container powered by the open-source **OpenSandbox** runtime.
+The murm CLI and SDK ship in one package. OpenSandbox runs the Agents. You can use a local Docker Engine or connect to an OpenSandbox service your team already operates.
 
-**Prerequisites**: a Linux machine with **Node.js 22.19+** and **Docker** for the default one-command local setup (if your team already runs a shared OpenSandbox service, the Controller only needs Node.js).
+## 1. Install murm
 
-## 1. Install `murm`
+On Linux, you need [Node.js 22.19 or later with npm](https://nodejs.org/en/download) and Git. Check `node --version` before installing. Some distribution repositories, including Ubuntu 24.04 and Debian 13, ship an older Node.js by default. Use a current LTS from the Node.js download page on those systems.
 
-Install the published CLI globally from the latest [GitHub Release](https://github.com/LuNa-shi/murm/releases):
+For a local OpenSandbox, also install [Docker Engine](https://docs.docker.com/engine/install/) if it is missing. On Ubuntu or Debian, the distribution packages for Docker, Git, and curl can be installed together:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y docker.io git curl ca-certificates
+sudo systemctl enable --now docker.service
+```
+
+For local OpenSandbox, run `docker info` as the user who will run murm. If access to the system socket is denied, have the host administrator grant access and sign in again after a group change. The [Docker group grants root-equivalent access](https://docs.docker.com/engine/install/linux-postinstall/). If Docker is already installed or you are using a shared OpenSandbox service, Ubuntu and Debian users can install just the client tools with `sudo apt-get update && sudo apt-get install -y git curl ca-certificates`.
 
 ```bash
 curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
 ```
 
-Or install directly with npm:
+The installer uses your npm global prefix if writable, or `$HOME/.local` otherwise. If it prints a `PATH` command, run it in your current shell before calling `murm`. For a direct npm install into your home directory:
 
 ```bash
-npm install -g --ignore-scripts --allow-remote=root \
+npm install -g --prefix "$HOME/.local" --ignore-scripts --allow-remote=root \
   https://github.com/LuNa-shi/murm/releases/latest/download/luna-shi-murm.tgz
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-<details>
-<summary>Testing unreleased changes from a source checkout? Expand to build and install a local tarball</summary>
+The public installer downloads the latest GitHub Release. **v0.2.0** additionally requires a local rootful engine, Landlock ABI 5+, host tools, and non-interactive sudo rules. Follow the [v0.2.0 host setup guide](https://github.com/LuNa-shi/murm/blob/v0.2.0/docs/en/quickstart.md#1-prerequisites-execution-host) before Step 2 when using that release. Ubuntu 24.04's default 6.8 kernel did not meet its Landlock requirement in testing. The current source's default OpenSandbox API mode uses the requirements above.
 
-### Install a candidate from a checkout
+<details>
+<summary>Install an unreleased candidate from a murm checkout</summary>
+
+Run these commands at the root of the checkout:
 
 ```bash
 npm ci --no-audit --no-fund
@@ -39,102 +50,78 @@ export PATH="$HOME/.local/bin:$PATH"
 
 </details>
 
-## 2. Initialize OpenSandbox
-
-By default, set up a managed local OpenSandbox service and Worker image on your machine with one command:
+## 2. Verify OpenSandbox
 
 ```bash
-murm setup --mode local
+murm setup
 ```
 
-This checks your Docker environment, starts a managed OpenSandbox server on `127.0.0.1:8080`, generates an owner-only Lifecycle key when needed, and prepares the Worker image. If Docker is missing, setup prints distribution-specific install instructions.
-
-### Verify readiness
-
-```bash
-# Fast config & Lifecycle auth check
-murm doctor
-
-# Live end-to-end smoke test (boots a real Worker and checks Bridge, gateway, files, and cleanup)
-murm doctor --smoke
-```
+With the current source's defaults, this starts a managed OpenSandbox on `127.0.0.1:8080`, prepares the selected Worker, then starts a real temporary sandbox, checks the Bridge, Model Gateway, and file export, and confirms deletion. Wait for `"infrastructure": "ready"` and `"ok": true` in the setup report. This probe uses a local test response and needs no model API key. On a fresh host, setup fetches the pinned OpenSandbox images and builds the selected Worker locally. This can take several minutes. Repeat the same command after correcting a failure.
 
 <details>
-<summary>Connect to an existing remote OpenSandbox service (optional)</summary>
+<summary>Connect to an existing OpenSandbox service</summary>
 
-If your team already runs a shared OpenSandbox service, point the Controller at it (ensure the Controller can reach the Lifecycle/Worker endpoints and Workers can reach your Controller's Bridge and Model Gateway):
+Use a CLI built from the current source or a release that supports `murm setup --mode existing`. Configure the endpoint and supply the operator's Lifecycle API key through `MURM_LIFECYCLE_TOKEN` in your shell. The controller needs access to the Lifecycle and Worker endpoints. Workers need access to the controller's Bridge and Model Gateway. Ask the service operator to make a compatible Worker image available if the engine cannot pull it.
 
 ```bash
 export MURM_LIFECYCLE_URL='https://sandbox.example.net/v1'
 export MURM_ADVERTISE_HOST='controller.internal.example.net'
-# Set MURM_LIFECYCLE_TOKEN from your service operator in your trusted environment
 murm setup --mode existing
 ```
 
-> Need proxy routing (`sandbox.endpointHost` / `sandbox.useServerProxy`) or HTTPS callback templates? See [Sandboxes](sandbox.md) and [Host Gateway](gateway.md).
+See [Sandboxes](sandbox.md) and [Host Gateway](gateway.md) for proxy routing and HTTPS callbacks.
 
 </details>
 
 <details>
-<summary>Enable strict local isolation (optional: tmpfs quotas, live shared mounts, UID firewall allowlists)</summary>
+<summary>Recover from an image pull failure</summary>
 
-The default OpenSandbox API policy provides container isolation, authenticated management, and verified CPU/memory limits.
+- **OpenSandbox server or Execd.** The local setup in the current source reports the failing image and its exact digest. Retry the displayed `docker pull` command in the same Docker context. If access is restricted, configure the [Docker daemon proxy](https://docs.docker.com/engine/daemon/proxy/) or ask your administrator to make those pinned references available. You can also use an existing OpenSandbox service. The murm Worker Dockerfile does not supply the OpenSandbox server or Execd.
+- **murm Worker.** Local setup reuses a compatible cached image or builds the selected executor directly from the installed package's `deploy/worker/Dockerfile`. The build needs a Node base image, Debian packages and npm dependencies. Check those sources and retry setup. The report includes a manual build command for diagnosing failures. An explicitly configured registry image can still be pulled if it is absent from the cache.
+- **Transfer a Worker from another machine.** On a machine with access to the registries, pull or build a compatible Worker for the target Docker Engine's CPU architecture and run `docker save -o worker.tar IMAGE`. Copy the archive and run `docker load -i worker.tar` in the target Docker context. If the imported tag differs from the selected default, export `MURM_WORKER_IMAGE=IMAGE` before setup and keep it set for the example. With an existing service, the Worker must be available on that service's engine.
 
-When your deployment requires **measured `tmpfs` disk quotas, live shared mounts, or local UID egress allowlists**, opt in to `local-docker` via `createSandbox()` (requires same-host rootful Docker, Linux namespaces, and Landlock ABI 5+; see [Sandboxes](sandbox.md)):
+If the Node base image is reachable through a trusted mirror, you can use it to build the default Pi Worker from the installed candidate. Replace the example registry with your mirror of the same base image:
 
-```ts
-isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } }
+```bash
+(
+  cd "$(dirname "$(readlink -f "$(command -v murm)")")/../.." &&
+    docker build -f deploy/worker/Dockerfile -t murm-worker:local \
+      --build-arg WORKER_EXECUTOR=pi \
+      --build-arg NODE_IMAGE=registry.example.net/library/node:22.19.0-bookworm-slim .
+) &&
+  export MURM_WORKER_IMAGE=murm-worker:local &&
+  murm setup
 ```
 
 </details>
 
-## 3. Configure your model and run your first Harness
+For a quick Lifecycle check later, run `murm doctor`. Use `murm doctor --smoke` to repeat the full infrastructure probe.
 
-Point `murm` at any streaming **OpenAI Responses-compatible endpoint (`/v1/responses`)** (credentials stay on the host Model Gateway; Pi also supports **Chat Completions** via project configuration):
+## 3. Run your first example
+
+For the example you need a model endpoint and an API key that can use the selected model. The example uses OpenAI Responses. Set your key as `MURM_MODEL_TOKEN` in your shell, then run:
 
 ```bash
 export MURM_MODEL_URL='https://api.openai.com/v1/responses'
-export MURM_MODEL_TOKEN='sk-...'
+export MURM_MODEL_ID='gpt-5-mini'
 
-# Optional: defaults to Pi (provider: openai, model: gpt-5.4). Override anytime:
-# export MURM_MODEL_PROVIDER='openai'
-# export MURM_MODEL_ID='gpt-4.1'
-# export MURM_EXECUTOR='codex'
+mkdir -p murm-first-example
+cd murm-first-example
+printf '# Hello from murm\n' > README.md
+murm --harness subagents --prompt 'Read README.md and report its heading.' --output-dir ./runs
 ```
 
-Run the built-in `Subagents` Harness against any project directory:
-
-```bash
-cd my-project
-murm --harness subagents --prompt "Inspect the tests and explain or fix any failures"
-```
-
-> You can also run bare `murm` to start an interactive session in the current directory, or scaffold an editable starter project with `murm init --template subagents --dir ./my-harness`.
-
-Inspect the run timeline, Service handoffs, and exported files in the built-in **Trace Viewer**:
+Look for the result in the terminal, then open the run in Trace Viewer:
 
 ```bash
 murm trace --root ./runs --port 8787 --open
 ```
 
-When started inside an SSH session on a remote Linux host, `murm trace` prints the exact `ssh -N -L` forwarding command to paste on your laptop.
+Over SSH, the Viewer prints a port-forwarding command to run on your laptop. If you connected using an SSH alias, mapped port, or jump host, use the same connection settings in that command.
 
-## 4. Using the TypeScript SDK in your own project
-
-Install `@luna-shi/murm` in any Node.js 22.19+ project (Node 22.19+ executes `.ts` files natively):
-
-```bash
-mkdir my-swarm && cd my-swarm
-npm init -y && npm pkg set type=module
-npm install --ignore-scripts --allow-remote=root \
-  https://github.com/LuNa-shi/murm/releases/download/v0.2.0/luna-shi-murm-0.2.0.tgz
-```
-
-> Testing from a source checkout? Install the local `.tgz` packed in Step 1 instead. For a minimal two-Agent handoff script, see [`examples/bridge-services/handoff.ts`](https://github.com/LuNa-shi/murm/blob/main/examples/bridge-services/handoff.ts).
+For a different provider, set `MURM_MODEL_URL` to its streaming Responses URL and choose a model your key can access. The [CLI Reference](reference/cli.md) covers configuration and executor selection.
 
 ## Next steps
 
-- **[Core Concepts](concepts.md)** — understand how the 6 building blocks fit together in 2 minutes.
-- **[Build a Swarm Harness](build-your-harness.md)** — build a 3-researcher parallel Research Swarm step by step.
-- **[Choose a Harness](harnesses/index.md)** — compare `Subagents`, `TaskPool`, `PeerMesh`, `Substrate`, and `Lead-Worker`.
-- **[CLI Reference](reference/cli.md)** · **[SDK & API Reference](reference/api.md)** — full flags, executor selection, model protocols, and `filePolicy` budgets.
+- [Choose a Harness](harnesses/index.md) to try another coordination pattern.
+- [Build a Swarm Harness](build-your-harness.md) using the [TypeScript SDK](reference/api.md).

@@ -92,9 +92,9 @@ async function dockerInstallRemedy(): Promise<string> {
     arch: 'sudo pacman -S docker',
     opensuse: 'sudo zypper install docker',
   };
-  return (install ? `${commands[install]} && sudo systemctl enable --now docker. ` :
-    'Install Docker Engine for this distribution from https://docs.docker.com/engine/install/. ') +
-    'Use an authorized Docker context, then rerun murm setup --mode local with the same configuration, or configure an existing OpenSandbox endpoint.';
+  return (install ? `Run:\n  ${commands[install]} && sudo systemctl enable --now docker.service\n` :
+    'Install Docker Engine for this distribution from https://docs.docker.com/engine/install/\n') +
+    'Confirm docker info works as your login user, then rerun the same murm setup command.';
 }
 
 export async function resolveLocalDocker() {
@@ -118,7 +118,7 @@ export async function checkLocalDocker() {
     const missing = (error as NodeJS.ErrnoException).code === 'ENOENT' &&
       (error as NodeJS.ErrnoException).syscall === 'spawn docker';
     const remedy = missing ? await dockerInstallRemedy() :
-      'Run docker context show and docker info. Start the selected engine or use a context with an accessible local Unix socket, then rerun the same murm setup command. For a remote service use murm setup --mode existing.';
+      'Run docker context show and docker info. Start the selected engine or use an authorized local Docker context. For a socket permission error, ask the host administrator to grant access and sign in again after any group change. Then rerun the same murm setup command.';
     return { diagnostic: check('host.docker-engine', false, 'Could not access a Linux Docker Engine through the selected local Unix Docker context.', remedy) };
   }
 }
@@ -273,6 +273,21 @@ function localPortInUse(url: URL) {
   });
 }
 
+async function prepareProviderImage(image: string, code: string, signal?: AbortSignal) {
+  try {
+    await run('docker', ['image', 'inspect', image], signal);
+  } catch {
+    signal?.throwIfAborted();
+    console.error(`murm setup: pulling ${image}`);
+    try {
+      await run('docker', ['pull', image], signal);
+    } catch {
+      signal?.throwIfAborted();
+      throw Object.assign(new Error('Docker could not pull the pinned OpenSandbox image'), { code });
+    }
+  }
+}
+
 async function ensureLocalProviderLocked(config: LocalEnvironmentConfig, { signal }: { signal?: AbortSignal } = {}): Promise<LocalProviderHandle> {
   const url = lifecycleUrl(config);
   if (!url) throw Object.assign(new Error('Local loopback OpenSandbox /v1 URL required'), { code: 'PROVIDER_CONFIGURATION_INVALID' });
@@ -290,7 +305,7 @@ async function ensureLocalProviderLocked(config: LocalEnvironmentConfig, { signa
   }
   if (!config.apiKey) throw new Error('Could not load the owner-only OpenSandbox lifecycle key.');
   if (existing && await providerHealthy(config, true)) {
-    await run('docker', ['image', 'inspect', localExecdImage], signal).catch(async () => { await run('docker', ['pull', localExecdImage], signal); });
+    await prepareProviderImage(localExecdImage, 'PROVIDER_EXECD_PULL_FAILED', signal);
     return reuse(existing);
   }
   if (existing) throw Object.assign(new Error('The pinned OpenSandbox provider exists but its lifecycle API is unavailable or unauthorized'), { code: 'PROVIDER_UNHEALTHY' });
@@ -347,8 +362,8 @@ async function ensureLocalProviderLocked(config: LocalEnvironmentConfig, { signa
     },
   };
   try {
-    await run('docker', ['image', 'inspect', localExecdImage], signal).catch(async () => { await run('docker', ['pull', localExecdImage], signal); });
-    await run('docker', ['image', 'inspect', localProviderImage], signal).catch(async () => { await run('docker', ['pull', localProviderImage], signal); });
+    await prepareProviderImage(localExecdImage, 'PROVIDER_EXECD_PULL_FAILED', signal);
+    await prepareProviderImage(localProviderImage, 'PROVIDER_SERVER_PULL_FAILED', signal);
     try {
       id = await run('docker', ['run', '-d', '--name', name, '--network', 'host', '--restart', 'unless-stopped', '--label', `org.murm.setup.profile=${profileVersion}`, '--label', `org.murm.setup.owner=${token}`, '--label', `org.murm.setup.state=${stateDir}`, '-v', `${socket}:/var/run/docker.sock`, '-v', `${join(stateDir, 'config.toml')}:/config/config.toml:ro`, '-v', `${join(stateDir, 'data')}:/root/.opensandbox`, localProviderImage, '--config', '/config/config.toml'], signal);
       created = true;

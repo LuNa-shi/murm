@@ -75,35 +75,30 @@ export async function prepareWorkerImage({ packageRoot, requestedImage, executor
 
   if (requestedImage && imageIdPattern.test(requestedImage)) return { ...cached, reference, source: 'cache' };
   if (requestedImage || driver.adapter) {
+    console.error('murm setup: pulling the configured Worker image');
     try {
       await exec('docker', ['pull', '--', reference], { signal, timeout: 15 * 60_000, maxBuffer: 12 * 1024 * 1024 });
     } catch {
       signal.throwIfAborted();
       return { ...cached, reference, source: 'pull', checks: [{ id: 'worker-pull', ok: false,
-        detail: 'Docker could not pull the Worker image.',
-        remedy: 'Check the requested image reference and registry access, or import the compatible Worker image locally.' }] };
+        detail: 'Docker could not pull the configured Worker image.',
+        remedy: 'Check the requested image and Docker daemon registry access, or use docker load to import the compatible Worker image into the selected Docker context.' }] };
     }
     return { ...(await inspectWorker(reference, driver, signal)), reference, source: 'pull' };
   }
 
-  // Prefer the prebuilt official GHCR image for fast onboarding; fall back to a local build when unavailable.
-  try {
-    await exec('docker', ['pull', '--', reference], { signal, timeout: 10 * 60_000, maxBuffer: 12 * 1024 * 1024 });
-    const pulled = await inspectWorker(reference, driver, signal);
-    if (pulled.image) return { ...pulled, reference, source: 'pull' };
-  } catch {
-    signal.throwIfAborted();
-  }
-
+  const buildArgs = ['--build-arg', `WORKER_EXECUTOR=${driver.kind}`, '--build-arg', `${driver.kind.toUpperCase()}_VERSION=${driver.version}`];
+  console.error('murm setup: building the selected Worker from the bundled Dockerfile');
   try {
     await exec('docker', ['build', '--file', join(packageRoot, 'deploy/worker/Dockerfile'), '--tag', reference,
-      '--build-arg', `WORKER_EXECUTOR=${driver.kind}`, '--build-arg', `${driver.kind.toUpperCase()}_VERSION=${driver.version}`, packageRoot],
-      { signal, timeout: 15 * 60_000, maxBuffer: 12 * 1024 * 1024 });
+      ...buildArgs, packageRoot], { signal, timeout: 15 * 60_000, maxBuffer: 12 * 1024 * 1024 });
   } catch {
     signal.throwIfAborted();
     return { ...cached, reference, source: 'build', checks: [{ id: 'worker-build', ok: false,
-      detail: 'Docker could not build the Worker image.',
-      remedy: `Run docker build -f deploy/worker/Dockerfile -t ${reference} . in the package or checkout to inspect the build failure.` }] };
+      detail: 'Docker could not build the selected Worker image.',
+      remedy: 'Check Docker access to the Node base image and build access to Debian and npm. To see the build error, run in the installed package directory or matching source checkout:\n' +
+        `  docker build -f deploy/worker/Dockerfile -t ${reference} ${buildArgs.join(' ')} .\n` +
+        'Or import a compatible Worker with docker load and use MURM_WORKER_IMAGE to select it.' }] };
   }
   return { ...(await inspectWorker(reference, driver, signal)), reference, source: 'build' };
 }
