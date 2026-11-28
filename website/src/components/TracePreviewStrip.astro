@@ -60,14 +60,10 @@ const barMap = Object.fromEntries(copy.bars.map((b) => [b.id, `${b.lane} · ${b.
 ---
 
 <div class="trace-preview-card" data-trace-preview>
-  <div class="trace-preview-head">
-    <div class="trace-preview-copy">
-      <div class="trace-preview-badges">
-        <span class="pixel-badge">{copy.badge}</span>
-        <span class="trace-preview-cmd"><code>murm trace --root ./runs</code></span>
-      </div>
-      <h3>{copy.title}</h3>
-      <p>{copy.desc}</p>
+  <div class="trace-preview-head trace-preview-head-compact">
+    <div class="trace-preview-badges">
+      <span class="pixel-badge">{copy.badge}</span>
+      <span class="trace-preview-cmd"><code>murm trace --root ./runs</code></span>
     </div>
     <div class="trace-preview-cta">
       <a class="btn btn-tactile" href={demoDocHref}>{copy.ctaPrimary}</a>
@@ -153,8 +149,8 @@ const barMap = Object.fromEntries(copy.bars.map((b) => [b.id, `${b.lane} · ${b.
         <text x="510" y="154.5" class="tp-bar-lbl">read · bash tests</text>
       </g>
       <g class="tp-bar" data-tp-bar="b4" tabindex="0">
-        <rect x="626" y="143" width="86" height="16" rx="3" fill="var(--sch-teal)" />
-        <text x="634" y="154.5" class="tp-bar-lbl">handoff result</text>
+        <rect x="626" y="143" width="96" height="16" rx="3" fill="var(--sch-teal)" />
+        <text x="634" y="154.5" class="tp-bar-lbl">return result</text>
       </g>
 
       <!-- Animated sweeping playhead -->

@@ -42,4 +42,15 @@ murm --harness subagents --prompt "修复解析器并补充测试"
 - **Substrate**：**自由探索、彼此引用**。没有“抢任务”的概念，大家各自推进并把有价值的结论发到库里，后面的人直接检索并引用。
 - **Subagents**：**由上级统筹划分**。父节点负责拆活、用消息提醒下属或在必要时中断调整，不额外加文件锁。
 
-> **想混搭自己的协作模式？** 例如像 `Substrate` 一样用共享黑板自由探索，同时在宿主机后端挂一个外部验证器或 Python 服务——请看 **[实战：构建 Swarm Harness](../build-your-harness.md)**。
+## 从需求出发设计你自己的多智能体系统
+
+如果内置模式不能完全贴合你的场景，可以按下面四个设计问题从需求反推出自己的 Harness：
+
+| 设计问题 | 你的需求特征 | 推荐选择 |
+| --- | --- | --- |
+| **1. 共享状态与 Services** | 轻量实验、单机内存状态 / 需要持久查询与事务防冲突 / 已有 Python·Go·Git 验证后端 | 内存 TS 类（`createInProcessAdapter`） / 宿主机 SQLite Service / 外部 HTTP Service（`createHttpJsonAdapter`） |
+| **2. 成员通信方式** | 开放探索、沉淀共享知识 / 明确上下游派活 / 长任务中途补充约束或提醒 | 共享黑板或引文库（主动读写） / 邮箱与定向消息 / `send({ mode: 'steer', wakeIfIdle: false })` 非唤醒转向 |
+| **3. 分工与防冲突机制** | 写同一代码库需严格互斥 / 扁平团队协商开发 / 开放式并行研究 | 只读起步 + 独占租约 + `files.replace({ writable: true })` / 个人分支 + PR 核验 / 自由探索 + 显式引用汇聚 |
+| **4. 控制循环与验收收尾** | 避免死等、避免空交付、避免容器泄漏 | 给每轮等待加超时并监听 `error` / 意外 `exit`；将 `settled.outcome === 'completed'`、**独立业务产物验收**与 **`receipt.cleanup === 'complete'`** 分开判定 |
+
+> **动手演练**：想把这四个选择落地成一个完整可运行的多智能体项目？直接阅读 **[实战：构建 Swarm Harness](../build-your-harness.md)**。

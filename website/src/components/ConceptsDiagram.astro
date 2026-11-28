@@ -71,9 +71,9 @@ const p = isZh ? 'zh' : 'en';
     <rect x="328" y="268" width="244" height="126" rx="6" class="dsvg-card" />
     <rect x="328" y="268" width="244" height="5" rx="2" fill="var(--sch-teal)" />
     <text x="344" y="294" class="dsvg-title">HOST GATEWAY</text>
-    <text x="344" y="319" class="dsvg-body">{isZh ? '• Service Bridge（鉴权 + 校验）' : '• Service Bridge (auth + schema)'}</text>
-    <text x="344" y="341" class="dsvg-body">{isZh ? '• Model Gateway（密钥留在宿主）' : '• Model Gateway (host API keys)'}</text>
-    <text x="344" y="363" class="dsvg-body">{isZh ? '• 统一把关权限并回传结果' : '• Enforces ACL & returns replies'}</text>
+    <text x="344" y="319" class="dsvg-body">{isZh ? '• Service Bridge（身份与参数校验）' : '• Service Bridge (identity & checks)'}</text>
+    <text x="344" y="341" class="dsvg-body">{isZh ? '• Model Gateway（密钥留在宿主）' : '• Model Gateway (host-only keys)'}</text>
+    <text x="344" y="363" class="dsvg-body">{isZh ? '• 核验权限并转发调用结果' : '• Enforces permissions & replies'}</text>
 
     <!-- Bottom-Right: RUN TRACES -->
     <rect x="620" y="268" width="236" height="126" rx="6" class="dsvg-card" />

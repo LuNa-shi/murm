@@ -1,31 +1,44 @@
 ---
 title: Quickstart
-description: Install murm on Linux, verify OpenSandbox, and run your first Subagents example.
+description: Prepare Linux prerequisites, install murm, initialize OpenSandbox and the Worker image, and run your first multi-agent example.
 section: GET STARTED
 order: 1
 ---
 
-The murm CLI and SDK ship in one package. OpenSandbox runs the Agents. You can use a local Docker Engine or connect to an OpenSandbox service your team already operates.
+`murm` ships its CLI and TypeScript SDK in one package and runs Agents inside [OpenSandbox](sandbox.md) containers. You can run OpenSandbox locally with Docker Engine or connect to an existing OpenSandbox service.
 
-## 1. Install murm
+## Prerequisites
 
-On Linux, you need [Node.js 22.19 or later with npm](https://nodejs.org/en/download) and Git. Check `node --version` before installing. Some distribution repositories, including Ubuntu 24.04 and Debian 13, ship an older Node.js by default. Use a current LTS from the Node.js download page on those systems.
+| Dependency | Requirement | Verify |
+| --- | --- | --- |
+| **Linux** | Controller host (e.g., Ubuntu / Debian) | `uname -s` |
+| **Node.js & npm** | `>= 22.19` (install LTS from [nodejs.org](https://nodejs.org/en/download); Ubuntu 24.04 and Debian 13 repos ship older versions) | `node --version` |
+| **Git & curl** | Required by the installer and workspace tools | `git --version` |
+| **Docker Engine** | Required for local OpenSandbox only; skip when using an existing service ([install guide](https://docs.docker.com/engine/install/)) | `docker info` |
 
-For a local OpenSandbox, also install [Docker Engine](https://docs.docker.com/engine/install/) if it is missing. On Ubuntu or Debian, the distribution packages for Docker, Git, and curl can be installed together:
+On Ubuntu or Debian, install the system packages in one step (drop `docker.io` and `systemctl` if Docker is already installed or you are connecting to a remote service):
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y docker.io git curl ca-certificates
+sudo apt-get update && sudo apt-get install -y docker.io git curl ca-certificates
 sudo systemctl enable --now docker.service
 ```
 
-For local OpenSandbox, run `docker info` as the user who will run murm. If access to the system socket is denied, have the host administrator grant access and sign in again after a group change. The [Docker group grants root-equivalent access](https://docs.docker.com/engine/install/linux-postinstall/). If Docker is already installed or you are using a shared OpenSandbox service, Ubuntu and Debian users can install just the client tools with `sudo apt-get update && sudo apt-get install -y git curl ca-certificates`.
+> **Docker permissions:** run `docker info` as the user who will run `murm`. If access to the Docker socket is denied, have your host administrator grant access and sign in again after the group change ([the `docker` group grants root-equivalent access](https://docs.docker.com/engine/install/linux-postinstall/)).
+
+## 1. Install murm
+
+### Option A: Install the latest release
 
 ```bash
 curl -fsSL https://luna-shi.github.io/murm/install.sh | sh
 ```
 
-The installer uses your npm global prefix if writable, or `$HOME/.local` otherwise. If it prints a `PATH` command, run it in your current shell before calling `murm`. For a direct npm install into your home directory:
+The installer writes to your npm global prefix when writable, or falls back to `$HOME/.local`. If it prints an `export PATH=...` command, run it in your current shell before invoking `murm`.
+
+> **Release note:** the public installer downloads the latest GitHub Release. **v0.2.0** still requires the legacy host setup (local rootful Docker, Landlock ABI 5+, and non-interactive sudo rules — Ubuntu 24.04's default 6.8 kernel does not meet this requirement; follow the [v0.2.0 host setup guide](https://github.com/LuNa-shi/murm/blob/v0.2.0/docs/en/quickstart.md#1-prerequisites-execution-host) before Step 2). To use the default OpenSandbox API mode with only the prerequisites above, install from source below.
+
+<details>
+<summary>Install the release directly with npm (without install.sh)</summary>
 
 ```bash
 npm install -g --prefix "$HOME/.local" --ignore-scripts --allow-remote=root \
@@ -33,14 +46,14 @@ npm install -g --prefix "$HOME/.local" --ignore-scripts --allow-remote=root \
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The public installer downloads the latest GitHub Release. **v0.2.0** additionally requires a local rootful engine, Landlock ABI 5+, host tools, and non-interactive sudo rules. Follow the [v0.2.0 host setup guide](https://github.com/LuNa-shi/murm/blob/v0.2.0/docs/en/quickstart.md#1-prerequisites-execution-host) before Step 2 when using that release. Ubuntu 24.04's default 6.8 kernel did not meet its Landlock requirement in testing. The current source's default OpenSandbox API mode uses the requirements above.
+</details>
 
-<details>
-<summary>Install an unreleased candidate from a murm checkout</summary>
+### Option B: Build and install from source (`main`)
 
-Run these commands at the root of the checkout:
+Run these commands from the repository root. `npm ci` installs dependencies, `npm pack` compiles and packages the tarball, and `npm install -g` installs the `murm` binary into `$HOME/.local/bin`:
 
 ```bash
+git clone https://github.com/LuNa-shi/murm.git && cd murm
 npm ci --no-audit --no-fund
 pack_dir=$(mktemp -d)
 npm pack --pack-destination "$pack_dir"
@@ -48,39 +61,42 @@ npm install -g --prefix "$HOME/.local" --ignore-scripts "$pack_dir"/*.tgz
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-</details>
-
-## 2. Verify OpenSandbox
+## 2. Set up OpenSandbox & build the Worker
 
 ```bash
 murm setup
 ```
 
-With the current source's defaults, this starts a managed OpenSandbox on `127.0.0.1:8080`, prepares the selected Worker, then starts a real temporary sandbox, checks the Bridge, Model Gateway, and file export, and confirms deletion. Wait for `"infrastructure": "ready"` and `"ok": true` in the setup report. This probe uses a local test response and needs no model API key. On a fresh host, setup fetches the pinned OpenSandbox images and builds the selected Worker locally. This can take several minutes. Repeat the same command after correcting a failure.
+`murm setup` walks through three stages automatically (allow a few minutes on a fresh machine while images are pulled and built):
+
+1. **Starts local OpenSandbox:** pulls the pinned OpenSandbox server and Execd images and launches a managed instance on `127.0.0.1:8080`.
+2. **Prepares the Worker image:** reuses a compatible local Docker cache when present, or builds the selected executor from the bundled `deploy/worker/Dockerfile` (default: Pi; requires the Node base image, Debian packages, and npm).
+3. **Runs an end-to-end smoke probe:** starts a temporary sandbox and verifies the Service Bridge, Model Gateway, file export, and deletion using a local test response (no model API key needed).
+
+Wait for `"infrastructure": "ready"` and `"ok": true` in the output. If a check fails, resolve the reported issue and rerun `murm setup`. Later, run `murm doctor` for a fast Lifecycle check or `murm doctor --smoke` to rerun the full probe.
 
 <details>
 <summary>Connect to an existing OpenSandbox service</summary>
 
-Use a CLI built from the current source or a release that supports `murm setup --mode existing`. Configure the endpoint and supply the operator's Lifecycle API key through `MURM_LIFECYCLE_TOKEN` in your shell. The controller needs access to the Lifecycle and Worker endpoints. Workers need access to the controller's Bridge and Model Gateway. Ask the service operator to make a compatible Worker image available if the engine cannot pull it.
+Export the service endpoint, controller callback host, and the operator's `MURM_LIFECYCLE_TOKEN` (the controller must reach Lifecycle and Worker endpoints, and Workers must reach the controller's Bridge and Model Gateway):
 
 ```bash
 export MURM_LIFECYCLE_URL='https://sandbox.example.net/v1'
+export MURM_LIFECYCLE_TOKEN='<your-lifecycle-token>'
 export MURM_ADVERTISE_HOST='controller.internal.example.net'
 murm setup --mode existing
 ```
 
-See [Sandboxes](sandbox.md) and [Host Gateway](gateway.md) for proxy routing and HTTPS callbacks.
+Ask the service operator to pre-load a compatible Worker image if the remote engine cannot pull it. See [Sandboxes](sandbox.md) and [Host Gateway](gateway.md) for proxy routing and HTTPS callbacks.
 
 </details>
 
 <details>
-<summary>Recover from an image pull failure</summary>
+<summary>Troubleshoot image pull or Worker build failures</summary>
 
-- **OpenSandbox server or Execd.** The local setup in the current source reports the failing image and its exact digest. Retry the displayed `docker pull` command in the same Docker context. If access is restricted, configure the [Docker daemon proxy](https://docs.docker.com/engine/daemon/proxy/) or ask your administrator to make those pinned references available. You can also use an existing OpenSandbox service. The murm Worker Dockerfile does not supply the OpenSandbox server or Execd.
-- **murm Worker.** Local setup reuses a compatible cached image or builds the selected executor directly from the installed package's `deploy/worker/Dockerfile`. The build needs a Node base image, Debian packages and npm dependencies. Check those sources and retry setup. The report includes a manual build command for diagnosing failures. An explicitly configured registry image can still be pulled if it is absent from the cache.
-- **Transfer a Worker from another machine.** On a machine with access to the registries, pull or build a compatible Worker for the target Docker Engine's CPU architecture and run `docker save -o worker.tar IMAGE`. Copy the archive and run `docker load -i worker.tar` in the target Docker context. If the imported tag differs from the selected default, export `MURM_WORKER_IMAGE=IMAGE` before setup and keep it set for the example. With an existing service, the Worker must be available on that service's engine.
-
-If the Node base image is reachable through a trusted mirror, you can use it to build the default Pi Worker from the installed candidate. Replace the example registry with your mirror of the same base image:
+- **OpenSandbox server or Execd pull failure:** setup prints the exact failing image digest and a `docker pull` command to retry in the same Docker context. On restricted networks, configure a [Docker daemon proxy](https://docs.docker.com/engine/daemon/proxy/), have an administrator pre-load the pinned references, or connect to an existing OpenSandbox service.
+- **Local Worker build failure:** verify Docker access to the Node base image, Debian packages, and npm, or run the manual `docker build` command shown in the error report. Explicitly configured registry images can still be pulled when absent from the cache.
+- **Build the default Pi Worker from a trusted mirror** (replace `registry.example.net` with your mirror):
 
 ```bash
 (
@@ -93,35 +109,36 @@ If the Node base image is reachable through a trusted mirror, you can use it to 
   murm setup
 ```
 
-</details>
+- **Transfer a Worker offline:** on a machine with registry access and the same CPU architecture, run `docker save -o worker.tar IMAGE`, copy the archive, and run `docker load -i worker.tar` in the target Docker context. If the loaded tag differs from the default, keep `export MURM_WORKER_IMAGE=IMAGE` set for both `murm setup` and your runs.
 
-For a quick Lifecycle check later, run `murm doctor`. Use `murm doctor --smoke` to repeat the full infrastructure probe.
+</details>
 
 ## 3. Run your first example
 
-For the example you need a model endpoint and an API key that can use the selected model. The example uses OpenAI Responses. Set your key as `MURM_MODEL_TOKEN` in your shell, then run:
+Export any streaming OpenAI Responses-compatible endpoint and API key (OpenAI shown below), then run the built-in `subagents` Harness in a fresh directory:
 
 ```bash
 export MURM_MODEL_URL='https://api.openai.com/v1/responses'
 export MURM_MODEL_ID='gpt-5-mini'
+export MURM_MODEL_TOKEN='<your-api-key>'
 
-mkdir -p murm-first-example
-cd murm-first-example
+mkdir -p murm-first-example && cd murm-first-example
 printf '# Hello from murm\n' > README.md
 murm --harness subagents --prompt 'Read README.md and report its heading.' --output-dir ./runs
 ```
 
-Look for the result in the terminal, then open the run in Trace Viewer:
+See the [CLI Reference](reference/cli.md) for other model providers and executor options (such as Codex).
+
+## 4. Inspect the run in Trace Viewer
 
 ```bash
 murm trace --root ./runs --port 8787 --open
 ```
 
-Over SSH, the Viewer prints a port-forwarding command to run on your laptop. If you connected using an SSH alias, mapped port, or jump host, use the same connection settings in that command.
-
-For a different provider, set `MURM_MODEL_URL` to its streaming Responses URL and choose a model your key can access. The [CLI Reference](reference/cli.md) covers configuration and executor selection.
+Over SSH, `murm trace` automatically prints a copy-pasteable `ssh -N -L` port-forwarding command (if you connect via an SSH alias, custom port, or jump host, reuse the same connection flags).
 
 ## Next steps
 
-- [Choose a Harness](harnesses/index.md) to try another coordination pattern.
-- [Build a Swarm Harness](build-your-harness.md) using the [TypeScript SDK](reference/api.md).
+- [Core Concepts](concepts.md) — understand the six building blocks in two minutes.
+- [Choose a Harness](harnesses/index.md) — compare all five built-in multi-agent patterns.
+- [Build a Swarm Harness](build-your-harness.md) — write your own coordination loop with the [TypeScript SDK](reference/api.md).
