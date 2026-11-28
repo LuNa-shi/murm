@@ -449,6 +449,29 @@ export function createSubagentsController(
         return submit(root, entry, text, 'user', `user:${requestId}`, undefined, options, signal);
       });
     },
+    async reconcileRootInput(requestId: string, query: () => Promise<unknown>) {
+      const entry = operations.get(requestId);
+      if (!entry?.inputDispatched) return { status: 'unknown' };
+      const delivery = rootDeliveries.get(requestId);
+      const receipt = await query() as ConditionalInputReceipt;
+      if (receipt.status === 'unknown') return receipt;
+      entry.result = Promise.resolve(JSON.parse(JSON.stringify(receipt)) as JsonValue);
+      if (delivery && rootDeliveries.get(requestId) === delivery && entry.rootEpoch === rootEpoch) {
+        delivery.inputId = receipt.inputId;
+        delivery.status = receipt.status === 'accepted' ? receipt.disposition : receipt.status;
+        if (receipt.status === 'accepted') {
+          for (const message of delivery.messages) removeMemberMessage(root, message);
+          if (!rootControl) rootPaused = false;
+          root.wait?.({ reason: 'input' });
+        } else {
+          for (const message of delivery.messages) message.state = 'pending';
+          releaseWait(root);
+        }
+        if (delivery.status !== 'queued') rootDeliveries.delete(requestId);
+        onChange?.();
+      }
+      return receipt;
+    },
     sendRootContext,
     compactRoot,
     rootQueueControl,

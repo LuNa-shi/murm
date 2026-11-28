@@ -106,3 +106,32 @@ test('late Root clear receipt restores its original child without deleting later
     assert.equal(JSON.parse(resumed.input).messages[0].text, 'CHILD_RETAINED');
   } finally { controller.beginClose(); controller.dispose(); }
 });
+
+test('reconciled queued Root input settles its child inbox and never resubmits the user work', async () => {
+  const boundary = executorBoundary();
+  const controller = createSubagentsController(boundary.runtime, { maxDepth: 2 });
+  controller.attachRoot('root');
+  try {
+    const signal = new AbortController().signal;
+    await controller.invoke({ caller: { runtimeId: boundary.runtime.id, agentId: 'root' },
+      capability: { operation: 'spawn_agent' }, envelope: { operation_id: 'spawn-child' },
+      input: { task_name: 'child', message: 'child task', fork_turns: 'none' }, signal, assertAuthorized() {} } as any);
+    boundary.emit({ type: 'settled', agentId: 'child', outcome: 'completed', output: 'CHILD_FOR_UNKNOWN_INPUT' });
+    await controller.drain();
+    const send = boundary.runtime.send;
+    boundary.runtime.send = async (...args) => {
+      const accepted = await send(...args);
+      return { inputId: accepted.inputId, status: 'unknown' };
+    };
+    await controller.submitUser('unknown work', 'unknown');
+    assert.equal((controller.exportState() as any).members[0].pending[0].state, 'in-input');
+    const count = boundary.runtime.sent.length;
+    const receipt = await controller.reconcileRootInput('user:unknown', async () => ({
+      inputId: 'original-native-input', status: 'accepted', disposition: 'queued',
+    }));
+    assert.equal(receipt.status, 'accepted');
+    assert.deepEqual((controller.exportState() as any).members[0].pending, []);
+    assert.deepEqual(await controller.submitUser('unknown work', 'unknown'), receipt);
+    assert.equal(boundary.runtime.sent.length, count);
+  } finally { controller.beginClose(); controller.dispose(); }
+});

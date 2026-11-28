@@ -128,6 +128,7 @@ export async function createSubagentsHarness(config: Config, controls: ProjectCo
     input: (text: string, requestId: string = randomUUID(), options?: Omit<SendOptions, 'requestId'>,
       signal?: AbortSignal, epoch?: number) => team.submitUser(text, requestId, options, signal, epoch),
     inputFence: team.rootEpoch,
+    reconcileInput: team.reconcileRootInput,
     status: team.list,
     onReply: team.onReply,
     lastReply: team.lastReply,

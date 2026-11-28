@@ -109,7 +109,9 @@ const subagents = {
               if (operation === 'interrupt' || operation === 'clearQueue') return team.reconcileRootControl(operation, request.requestId, query);
               if (operation === 'send') {
                 const text = typeof (payload as { input: unknown }).input === 'string';
-                return observation!.reconcile(agentId, text ? 'send' : 'context', text ? 'user:' + request.requestId : request.requestId);
+                const nativeId = text ? 'user:' + request.requestId : request.requestId;
+                const lookup = () => observation!.reconcile(agentId, text ? 'send' : 'context', nativeId);
+                return text ? team.reconcileRootInput(nativeId, lookup) : lookup();
               }
               return query();
             },
@@ -149,7 +151,9 @@ const subagents = {
             return harness.inputFence();
           }, async (_input, { requestId }) => {
             const id = createHash('sha256').update(requestId).digest('hex');
-            return JSON.parse(JSON.stringify(await observation!.reconcile(harness.rootId, 'send', `user:rpc:${id}`)));
+            const nativeId = `user:rpc:${id}`;
+            return JSON.parse(JSON.stringify(await harness.reconcileInput(nativeId,
+              () => observation!.reconcile(harness.rootId, 'send', nativeId))));
           });
           context.markRunning();
         },
