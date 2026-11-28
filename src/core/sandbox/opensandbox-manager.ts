@@ -638,7 +638,7 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ writable = false, files, forkSession, workspace, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, modelCatalogContent = null, codex, executorVersion, externalExecutor, filePolicy = DEFAULT_FILE_POLICY, controllerSpoolDirectory, signal, requireCoreFileProtocol = false, beforeAgentStart = null }: any = {}) {
+  async startAgent({ writable = false, files, forkSession, workspace, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, modelCatalogContent = null, codex, piSession, executorVersion, externalExecutor, filePolicy = DEFAULT_FILE_POLICY, controllerSpoolDirectory, signal, requireCoreFileProtocol = false, beforeAgentStart = null }: any = {}) {
     const contract = { protocolVersion: 'murm-core-v1', resources: [] };
     const record: any = this.#record(executionId);
     const signature = (values: any) => Array.isArray(values) && values.every((item: any) => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
@@ -714,6 +714,7 @@ export class OpenSandboxManager {
         command: codex ? 'codex' : required(agentCommand, 'agent_command'),
         ...(codex ? { codex: { model: codex.model, baseUrl: codex.baseUrl } } : {}),
         ...(executorVersion ? { executor_version: executorVersion } : {}),
+        ...(piSession ? { piSession } : {}),
         ...(externalExecutor ? { executor_adapter: {
           kind: externalExecutor.kind, protocol: externalExecutor.protocol, capabilities: externalExecutor.capabilities,
         } } : {}),

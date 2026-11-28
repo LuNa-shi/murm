@@ -24,8 +24,9 @@ const { runtimeSettings } = await import('./fixtures/core-runtime-settings.js');
 const { ServiceRegistry } = await import('@luna-shi/murm');
 hooks.deregister();
 
-async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', services = new ServiceRegistry(), permissions = {}, writable = true, maxAgents = 1, upstreamHeaders = {} } = {}) {
+async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', services = new ServiceRegistry(), permissions = {}, writable = true, maxAgents = 1, upstreamHeaders = {}, runtimeHooks = undefined } = {}) {
   provider.reset();
+  provider.attest = !!runtimeHooks;
   const outputDir = await mkdtemp(join(tmpdir(), 'core-pi-input-'));
   const runtime = await createRuntime({
     ...runtimeSettings({
@@ -36,7 +37,7 @@ async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', servi
       isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
     }),
     profiles: { worker: { prompt: 'fixed', model: 'default', image: 'test', writable, services: permissions } },
-    services, maxAgents, outputDir,
+    services, maxAgents, outputDir, hooks: runtimeHooks,
   });
   t.after(async () => { await runtime.close(); await rm(outputDir, { recursive: true, force: true }); });
   return { runtime, outputDir, agent: await runtime.spawn({ requestId: 'spawn', profile: 'worker' }) };
@@ -490,4 +491,68 @@ test('a pending close stays visible and an eventual close publishes the confirme
   await rm(summary, { recursive: true });
   assert.equal((await runtime.close()).cleanup, 'complete');
   assert.deepEqual(states, ['closing', 'closed']);
+});
+
+test('live session controls require Guest attestation and preserve native queue receipts across retries', async t => {
+  const { runtime, agent } = await setup(t);
+  await assert.rejects(runtime.session.getStats(agent.id), { code: 'OPERATION_UNSUPPORTED' });
+  provider.publish({ type: 'core_session_ready', version: '1.3.0', capabilities: {
+    configure: true, compact: true, abortRetry: true, clearQueue: true, state: true, stats: true, messages: true, context: true, beforeCompact: true,
+  } });
+  provider.wrapperReplay = true;
+  provider.wait = async message => {
+    provider.responses.set(message.id, { response: { id: message.id, command: message.type, success: true, data: { status: 'completed', discardedInputHashes: ['a'.repeat(64)], discardedContextIds: ['context-one'] } } });
+  };
+  await runtime.send(agent.id, 'attestation trigger', { requestId: 'attestation' });
+  const receipt = await runtime.session.clearQueue(agent.id, { requestId: 'clear' });
+  assert.equal(receipt.status, 'completed');
+  assert.deepEqual(receipt.discardedContextIds, ['context-one']);
+  assert.deepEqual(receipt.discardedInputHashes, ['a'.repeat(64)]);
+  assert.deepEqual(await runtime.session.clearQueue(agent.id, { requestId: 'clear' }), receipt);
+  assert.equal(provider.messages.filter(message => message.type === 'core_session_clear_queue').length, 1);
+});
+
+test('message delta redaction spans Worker chunks and terminal messages replace their content', async t => {
+  const { runtime, agent } = await setup(t, { upstreamHeaders: { authorization: 'Bearer split-secret-marker' } });
+  const events = [];
+  runtime.onEvent(event => { if (event.type === 'session') events.push(event.event); });
+  provider.wrapperReplay = true;
+  provider.wait = async message => {
+    provider.publish({ type: 'message_start', message: { role: 'assistant' } });
+    for (const delta of ['before split-sec', 'ret-marker after plus enough trailing text']) {
+      provider.publish({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta } });
+    }
+    provider.publish({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'before split-secret-marker after plus enough trailing text' }] } });
+    provider.responses.set(message.id, { response: { id: message.id, command: message.type, success: true, data: { disposition: 'handled' } } });
+  };
+  await runtime.send(agent.id, 'stream', { requestId: 'stream' });
+  assert.equal(events.filter(event => event.type === 'textDelta').map(event => event.delta).join(''), 'before [redacted] after plus enough trailing text');
+  assert.equal(events.at(-1).type, 'messageEnd');
+  assert.equal(new Set(events.map(event => event.messageId)).size, 1);
+  assert.equal(JSON.stringify(events).includes('split-secret-marker'), false);
+});
+
+
+test('beforeCompact awaits Host policy and stopping uses the correlated Guest decision before cleanup', async t => {
+  let received;
+  let release;
+  const policy = new Promise(resolve => { release = resolve; });
+  const { runtime, agent } = await setup(t, { runtimeHooks: { beforeCompact: { timeoutMs: 1000, handler(request) { received = request; return policy; } } } });
+  provider.wrapperReplay = true;
+  provider.wait = async message => {
+    if (message.type === 'prompt') provider.publish({ type: 'core_before_compact', compactionId: 'compact-first', sessionId: 'native-session', executionEpoch: 0, reason: 'threshold', successfulAutoCompactions: 3 });
+    provider.responses.set(message.id, { response: { id: message.id, command: message.type, success: true, data: message.type === 'prompt' ? { disposition: 'started' } : { status: 'completed' } } });
+  };
+  await runtime.send(agent.id, 'trigger native request', { requestId: 'trigger' });
+  assert.equal(received.agentId, agent.id);
+  assert.equal(received.successfulAutoCompactions, 3);
+  assert.equal(received.reason, 'threshold');
+  assert.equal(provider.messages.some(message => message.type === 'core_before_compact_decision'), false);
+  release('stop');
+  for (let attempt = 0; attempt < 100 && (await runtime.get(agent.id)).status !== 'closed'; attempt++) await delay(5);
+  const decision = provider.messages.find(message => message.type === 'core_before_compact_decision');
+  assert.equal(decision.compactionId, 'compact-first');
+  assert.equal(decision.executionEpoch, 0);
+  assert.equal(decision.decision, 'stop');
+  assert.equal((await runtime.get(agent.id)).lastStop.cleanup, 'complete');
 });

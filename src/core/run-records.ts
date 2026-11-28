@@ -164,7 +164,7 @@ export function runtimeConfiguration({ config, profiles, registrations, maxAgent
       model: profile.model, image: redact(profile.image), writable: profile.writable, services: profile.services,
       environmentKeys: Object.keys(profile.env ?? {}).sort(), network: profile.network, collect: profile.collect,
       spawnProfiles: profile.spawnProfiles, promptSha256: createHash('sha256').update(profile.prompt ?? '').digest('hex'),
-      stagedSystemPromptSha256: createHash('sha256').update(renderStartupPrompt(permittedServiceManifests(registrations, profile.services), profile.prompt, driver.kind)).digest('hex'),
+      stagedSystemPromptSha256: createHash('sha256').update(renderStartupPrompt(permittedServiceManifests(registrations, profile.services), profile.prompt, driver.kind, config.models[profile.model].capabilities?.tools === false ? [] : profile.session?.tools)).digest('hex'),
     }])),
     services: [...registrations.values()].map(({ manifest, adapter }) => ({
       id: manifest.id, transport: manifest.endpoint.transport, ...getAdapterMetadata(adapter),

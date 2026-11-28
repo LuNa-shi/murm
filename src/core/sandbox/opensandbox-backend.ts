@@ -55,6 +55,7 @@ interface BackendAgent {
   pendingInputs: number;
   historyLost?: boolean;
   started?: boolean;
+  executionEpoch?: number;
   sessionReady?: boolean;
   activeMessageId?: string;
   sessionCommands?: Map<string, { fingerprint: string; command: string }>;
@@ -351,11 +352,12 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
             sessionId: record.sessionId, reason: record.reason, successfulAutoCompactions: record.successfulAutoCompactions };
           void (async () => {
             const decision = agent.stopping || closing ? 'stop' : await agent.beforeCompact?.handler(request) ?? 'allow';
+            if (agent.stopping || agent.exited || closing || request.executionEpoch !== (agent.executionEpoch ?? 0)) return;
             const reply = await agent.manager.agentRpc(agent.id, { type: 'core_before_compact_decision', id: `decision-${record.compactionId}`,
               compactionId: record.compactionId, executionEpoch: record.executionEpoch, decision }, { timeoutMs: 10000, since: agent.cursor });
             consume(agent, reply.records ?? []);
             if (decision === 'stop') agent.onEvent({ type: 'session', event: { type: 'policyStop', reason: 'before_compact_stop', compactionId: record.compactionId } });
-          })().catch(() => { agent.onEvent({ type: 'session', event: { type: 'policyStop', reason: 'compaction_control_unconfirmed', compactionId: record.compactionId } }); });
+          })().catch(() => { if (!agent.stopping && !agent.exited && !closing && request.executionEpoch === (agent.executionEpoch ?? 0)) agent.onEvent({ type: 'session', event: { type: 'policyStop', reason: 'compaction_control_unconfirmed', compactionId: record.compactionId } }); });
         }
       }
       if (record.type === 'message_start') {
@@ -520,7 +522,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         executorVersion: driver.version,
         ...(driver.capabilities.session ? { piSession: { configuration: options.session ?? profile.session ?? {},
           ...(beforeCompact ? { beforeCompact: { timeoutMs: beforeCompact.timeoutMs } } : {}) } } : {}),
-        systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt, driver.kind),
+        systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt, driver.kind, model.capabilities?.tools === false ? [] : (options.session ?? profile.session)?.tools),
         systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
         writable: options.writable ?? profile.writable,
         files: options.files, forkSession, workspace,
@@ -676,6 +678,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
     async interrupt(agentId: string, { interruptId, executionEpoch }: { interruptId: string; executionEpoch: number }): Promise<Omit<InterruptReceipt, 'interruptId'>> {
       const agent = agents.get(agentId);
       if (!agent || agent.stopping || agent.exited || agent.historyLost || closing) return { status: 'unknown' };
+      agent.executionEpoch = executionEpoch;
       agent.eventPoll.wake();
       const result = await agent.manager.agentRpc(agentId, { type: 'core_interrupt', id: interruptId, executionEpoch },
         { timeoutMs: 30_000, since: agent.cursor });

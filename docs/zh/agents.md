@@ -99,3 +99,34 @@ const result = await runtime.interrupt(researcher.id, {
 ---
 
 **下一步**：看看沙箱里的 Agent 是如何穿过 **[Host Gateway 宿主机网关](gateway.md)** 安全调用模型与共享 Services 的。
+
+## Agent 会话设置与结构化 context
+
+Profile 和单次 spawn 可设置 `session`，包含 thinking、压缩与重试配置、两种队列模式、工具选择及显式 Guest 资源。spawn 的嵌套字段覆盖 Profile 中对应字段，省略的字段继承。每个 Agent 持有自己的实际配置，通过 `runtime.session.getState(agent.id)` 查询执行器已生效的值。
+
+```ts
+const agent = await runtime.spawn({
+  profile: 'researcher', requestId: 'researcher-session',
+  session: { thinkingLevel: 'low', tools: ['read', 'bash'], retry: { enabled: true } },
+});
+await runtime.session.configure(agent.id, {
+  thinkingLevel: 'medium', compaction: { enabled: true },
+}, { requestId: 'configure-researcher' });
+await runtime.send(agent.id, {
+  type: 'context', customType: 'project-reference', content: '使用已评审版本。',
+  display: false, details: { revision: 'reviewed' },
+}, { requestId: 'reference', delivery: 'append' });
+const state = await runtime.session.getState(agent.id);
+const stats = await runtime.session.getStats(agent.id);
+const messages = await runtime.session.getMessages(agent.id, { limit: 50, maxBytes: 65536 });
+```
+
+context 必须明确 delivery。append 在原生安全边界追加，不启动模型。nextTurn 留待下一次新 run。steer 与 followUp 使用对应输入时机，可通过 wakeIfIdle 决定是否唤醒 idle Agent。interrupt、clearQueue 和 stop 丢弃尚未交付的 nextTurn 与工作 context。已进入历史的内容保留，回执与事件记录实际 inputId 和处置。
+
+`runtime.session.compact(agent.id, { requestId })` 要求 Agent idle 且没有正在启动的输入，活动期间返回 busy。Harness 还需保护自己的调度窗口。abortRetry 取消当前执行器重试，可能影响该轮结果。clearQueue 返回原生执行器丢弃的文本哈希及 context 身份，Harness 同时负责自己的 inbox、batch 或 notice 队列对账。
+
+变更请求的 ID 保留原操作和参数。丢失回执后使用相同 ID 和相同载荷核对，改参返回 conflict。实际能力由执行器声明和 Guest 握手确定，查询无法取得存活 Session 时明确返回 unsupported 或 unavailable。getMessages 默认最多 100 条、64 KiB，可显式限制在 1,000 条和 256 KiB 内，并报告截断。
+
+创建 Runtime 时可登记 `hooks.beforeCompact`。当 `request.reason !== 'manual' && request.successfulAutoCompactions >= 3` 时返回 stop，其余返回 allow，即可在第四次自动压缩机会的摘要请求前停止该 Agent。原生 Guest 等待有限期限内的真实决策，并沿普通归档、必需成果导出和清理路径收尾。handler 接收 AbortSignal，应停止处理已取消的决策。
+
+Session 事件通过 `{ type: 'session', agentId, event }` 发布。messageStart、textDelta 与 messageEnd 共享 messageId，delta 带内容块身份，终态携带完整消息用于替换累计内容。工具、压缩、重试、设置和 context 事件保留原生操作身份。Session usage 与当前 context usage 分开，fork 继承的历史可能贡献 Session 总量。
