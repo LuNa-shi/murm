@@ -6,8 +6,9 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import termios
 
-from murm_terminal import ENTER, F1, F2, F4, F5, F6, INTERRUPT, Terminal
+from murm_terminal import ENTER, F1, F2, F4, F5, F6, INTERRUPT, Terminal, install_interrupt_handler
 
 
 def external_fixture(base):
@@ -26,7 +27,7 @@ export default {
     }
     const evidence = { prompt: context.input.prompt, received: [], answers: [] };
     const changed = () => context.updateStatus({ business: { annotationCount: evidence.received.length,
-      ready: 'EXTERNAL_READY', configuration: context.configuration?.label } });
+      ready: 'EXTERNAL_READY', answerCount: evidence.answers.filter(value => value !== undefined).length, configuration: context.configuration?.label } });
     context.registerInput(value => { evidence.received.push(value); changed(); return { status: 'queued' }; });
     context.markRunning();
     changed();
@@ -39,7 +40,9 @@ export default {
       const answers = [ask('text-test', 'text', 'Type the text answer'),
         ask('choice-test', 'choice', 'Choose an option', [{id: 'blue', label: 'Blue'}, {id: 'green', label: 'Green'}]),
         ask('confirm-test', 'confirm', 'Confirm choice')];
-      void Promise.all(answers).then(value => { evidence.answers = value; }).catch(() => {});
+      for (const [index, answer] of answers.entries()) {
+        void answer.then(value => { evidence.answers[index] = value; changed(); }).catch(() => {});
+      }
     }
     if (!context.signal.aborted) await new Promise(resolve => context.signal.addEventListener('abort', resolve, { once: true }));
     const path = join(context.outputDir, 'evidence.json');
@@ -142,14 +145,19 @@ def run():
         term.menu(2)
         term.wait("Yes")
         term.menu(0)
-        term.wait("answered")
+        term.key(F1)
+        term.wait('"answerCount": 3')
         term.key(INTERRUPT)
         term.wait("Cleanup")
         term.key(INTERRUPT)
         term.finish(1)
     evidence = [json.loads(path.read_text()) for path in launches.glob("*/evidence.json")]
     assert len(evidence) == 1
-    assert evidence[0] == {"prompt": draft, "received": ["独立注释"], "answers": ["文字", "green", True]}
+    actual = evidence[0]["prompt"]
+    mismatch = next((i for i, (left, right) in enumerate(zip(actual, draft)) if left != right), None)
+    assert actual == draft, (len(actual), len(draft), mismatch, actual[:25], actual[-25:])
+    assert evidence[0]["received"] == ["独立注释"], evidence[0]["received"]
+    assert evidence[0]["answers"] == ["文字", "green", True], evidence[0]["answers"]
 
     for mode, expected in [("SIGINT", 130), ("SIGTERM", 143), ("render", 1), ("disconnect", 1), ("preflight", 2)]:
         outputs = base / mode.lower()
@@ -186,4 +194,5 @@ def run():
 
 
 if __name__ == "__main__":
+    install_interrupt_handler()
     run()

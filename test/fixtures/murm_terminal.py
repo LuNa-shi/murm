@@ -30,6 +30,7 @@ INTERRUPT = b"\x03"
 class Terminal:
     def __init__(self, arguments, cwd, env, rows=24, columns=80, tty_in=True, tty_out=True):
         self.master, self.slave = pty.openpty()
+        os.set_blocking(self.master, False)
         self.before = termios.tcgetattr(self.slave)
         self.output = bytearray()
         self.mark = 0
@@ -49,6 +50,10 @@ class Terminal:
         return self
 
     def __exit__(self, *_):
+        transcript = os.environ.get("MURM_TUI_TEST_TRANSCRIPT")
+        if transcript:
+            with open(transcript, "wb") as evidence:
+                evidence.write(self.output)
         if self.process.poll() is None:
             self.process.send_signal(signal.SIGTERM)
             try:
@@ -72,7 +77,7 @@ class Terminal:
         try:
             data = os.read(self.master, 65536)
         except OSError as error:
-            if error.errno == errno.EIO:
+            if error.errno in (errno.EAGAIN, errno.EIO):
                 return
             raise
         self.output.extend(data)
@@ -95,12 +100,18 @@ class Terminal:
     def key(self, keys):
         if isinstance(keys, str):
             keys = keys.encode()
+        until = time.monotonic() + 10
         while keys:
+            if time.monotonic() >= until or self.process.poll() is not None:
+                raise AssertionError('CLI stopped accepting terminal input')
             _, writable, _ = select.select([], [self.master], [], 0.5)
             if not writable:
                 self.pump()
                 continue
-            count = os.write(self.master, keys[:4096])
+            try:
+                count = os.write(self.master, keys[:4096])
+            except BlockingIOError:
+                continue
             keys = keys[count:]
             self.pump(0)
 
@@ -138,3 +149,11 @@ class Terminal:
             assert select.select([self.slave], [], [], 0.25)[0], "canonical input unavailable"
             assert os.read(self.slave, 100) == b"echo-restored\n"
             self.wait("echo-restored", 1)
+
+
+
+def install_interrupt_handler():
+    def interrupt(*_):
+        raise SystemExit(143)
+
+    signal.signal(signal.SIGTERM, interrupt)
