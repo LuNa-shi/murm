@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createProjectHost, type HarnessInput, type HarnessJson, type HarnessInputHandler, type HarnessInputPreparation, type ProjectHarness } from './project-harness.js';
 import { projectError, resolveHarnessInput } from './project-input.js';
+import { fenceRuntimeAdmissions } from '../core/runtime-admissions.js';
 import { createRedactor } from '../core/run-records.js';
 import type { RuntimeSession } from '../core/session-types.js';
 import { stableStringify } from '../protocol/stable-json.js';
@@ -95,6 +96,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   let result: HarnessResult | undefined;
   let exitCode: number | undefined;
   let stopping = false;
+  let fenceFailed = false;
   let queuedCount = 0;
   let queuedBytes = 0;
   let questionBytes = 0;
@@ -106,13 +108,21 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     const agents: Record<string, NonNullable<HarnessDescriptor['agents'][string]>> = {};
     for (const [id, registration] of targets) {
       const declared = declaredCapabilities(registration, id);
-      agents[id] = Object.fromEntries(Object.entries(declared).map(([name, capability]) => [name, {
-        ...capability, supported: capability.supported && executorSupports(id, name as HarnessOperation), available: capability.supported && executorSupports(id, name as HarnessOperation) && !stopping && !result && !['stopped', 'failed'].includes(targetStates.get(id) ?? ''),
-        ...(stopping || result ? { reason: 'RUN_STOPPING' } : {}),
-      }]));
+      agents[id] = Object.fromEntries(Object.entries(declared).map(([name, capability]) => {
+        const operation = name as HarnessOperation;
+        const handlerRequired = ['send', 'interrupt', 'clearQueue', 'stop', 'compact', 'abortRetry'].includes(name);
+        const supported = capability.supported && executorSupports(id, operation) && (!handlerRequired || !!registration.handlers?.[operation]);
+        const state = targetStates.get(id);
+        const unavailable = stopping || !!result ? 'RUN_STOPPING' : ['exited', 'closing', 'closed'].includes(state ?? '') ? 'SESSION_UNAVAILABLE'
+          : state === 'starting' ? 'AGENT_NOT_READY' : name === 'compact' && state !== 'idle' ? 'OPERATION_BUSY' : undefined;
+        return [name, { ...capability, supported, available: supported && capability.available !== false && !unavailable,
+          ...(unavailable ? { reason: unavailable } : {}),
+          ...(name === 'send' ? { context: capability.context === true && nativeCapabilities.get(id)?.context !== false } : {}),
+        }];
+      }));
     }
     return { id: definition.id, apiVersion: 1, lifetimes,
-      input: { supported: definition.input === true, available: !!inputHandler && !stopping && !result, ...inputDescription },
+      input: { supported: definition.input === true, available: !!inputHandler && host.status().phase === 'running' && !stopping && !result, ...inputDescription },
       questions: { supported: definition.questions === true, available: definition.questions === true && clientCapabilities.questions && !stopping && !result,
         ...(!clientCapabilities.questions ? { reason: 'QUESTION_CHANNEL_UNAVAILABLE' } : {}) }, agents };
   }
@@ -166,7 +176,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     if (!stopping && !result) {
       stopping = true;
       for (const registration of registrations) {
-        try { registration.fence?.(); } catch { /* The Harness result must report unconfirmed cleanup. */ }
+        try { fenceRuntimeAdmissions(registration.runtime); registration.fence?.(); } catch { fenceFailed = true; }
       }
       closeQuestions(reason);
       host.stop(reason);
@@ -186,7 +196,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       },
       registerAgentControls(registration) {
         context.signal.throwIfAborted();
-        if (!registration?.runtime || registrations.has(registration)) throw projectError('INVALID_AGENT_REGISTRATION', 'Register one owned Runtime once');
+        if (!registration?.runtime || [...registrations].some(existing => existing.runtime === registration.runtime)) throw projectError('INVALID_AGENT_REGISTRATION', 'Register one owned Runtime once');
         registrations.add(registration);
         void refreshTargets(registration);
         const unsubscribe = registration.runtime.onEvent(event => {
@@ -213,18 +223,21 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   async function refreshTargets(registration: HarnessAgentRegistration) {
     try {
       const listed = await registration.runtime.list();
-      for (const agent of listed) targetStates.set(agent.id, agent.status);
+      let updated = false;
+      for (const agent of listed) { if (targetStates.get(agent.id) !== agent.status) updated = true; targetStates.set(agent.id, agent.status); }
       const ids = registration.targets ? await registration.targets() : listed.map(agent => agent.id);
       if (!registrations.has(registration)) return;
-      for (const [id, owner] of targets) if (owner === registration && !ids.includes(id)) targets.delete(id);
+      if (ids.some(id => !listed.some(agent => agent.id === id))) throw projectError('AGENT_NOT_FOUND', 'Registered target is outside its Runtime');
+      for (const [id, owner] of targets) if (owner === registration && !ids.includes(id)) { targets.delete(id); updated = true; }
       for (const id of ids) {
         if (targets.has(id) && targets.get(id) !== registration) throw projectError('AGENT_ID_CONFLICT', 'Agent belongs to another registered Runtime');
+        if (!targets.has(id)) updated = true;
         targets.set(id, registration);
       }
-      changed();
+      if (updated) changed();
     } catch (error) { publish({ type: 'event', runId: host.status().runId, event: { kind: 'observation-error', code: 'RUNTIME_STATE_UNAVAILABLE' } }); }
   }
-  function mutate<T>(operation: string, payload: unknown, request: HarnessRequest, run: () => Promise<T> | T, reserved = false): Promise<T> {
+  function mutate<T>(operation: string, payload: unknown, request: HarnessRequest, run: () => Promise<T> | T, reserved = false, validate?: () => void): Promise<T> {
     let id: string;
     let hash: string;
     try { id = requestIdentity(request); hash = fingerprint([operation, jsonCopy(payload)]); } catch (error) { return Promise.reject(error); }
@@ -236,6 +249,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       }
       return existing.settled ? Promise.resolve(existing.result as T) : existing.promise as Promise<T>;
     }
+    try { validate?.(); } catch (error) { return Promise.reject(error); }
     if ((!reserved && records.size >= limits.mutations) || records.size >= limits.mutations + limits.questions + 1) return Promise.reject(projectError('REQUEST_LIMIT', 'Session mutation identities are full'));
     const deferred = Promise.withResolvers<T>();
     const record: OperationRecord = { fingerprint: hash, promise: deferred.promise, settled: false };
@@ -246,7 +260,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
         record.settled = true;
         deferred.resolve(record.result as T);
         publish({ type: 'operation', runId: host.status().runId, requestId: id, operation, result: record.result });
-      }, error => deferred.reject(error));
+      }, error => deferred.reject(error)).catch(deferred.reject);
     } catch (error) { deferred.reject(error); }
     void deferred.promise.catch(() => {});
     return deferred.promise;
@@ -255,6 +269,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     const deferred = Promise.withResolvers<T>();
     const expired = () => deferred.resolve(unknown);
     const timer = setTimeout(expired, limits.handlerTimeoutMs);
+    void deferred.promise.finally(() => { clearTimeout(timer); host.signal.removeEventListener('abort', expired); }).catch(() => {});
     host.signal.addEventListener('abort', expired, { once: true });
     if (host.signal.aborted) expired();
     void work.then(value => {
@@ -322,14 +337,15 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     } catch (error) { return Promise.reject(error); }
   }
   function declaredCapabilities(registration: HarnessAgentRegistration, id: string) {
-    return typeof registration.capabilities === 'function' ? registration.capabilities(id) : registration.capabilities ?? {
-      getState: { supported: true }, getStats: { supported: true }, getMessages: { supported: true },
-    };
+    const declared = typeof registration.capabilities === 'function' ? registration.capabilities(id) : registration.capabilities;
+    return { getState: { supported: true }, getStats: { supported: true }, getMessages: { supported: true },
+      configure: { supported: false }, compact: { supported: false }, abortRetry: { supported: false }, clearQueue: { supported: false },
+      send: { supported: false }, interrupt: { supported: false }, stop: { supported: false }, ...declared };
   }
   function executorSupports(agentId: string, operation: HarnessOperation) {
     const capability = nativeCapabilities.get(agentId);
     if (!capability) return true;
-    const names = { getState: 'state', getStats: 'stats', getMessages: 'messages', send: 'context', interrupt: null, stop: null,
+    const names = { getState: 'state', getStats: 'stats', getMessages: 'messages', send: null, interrupt: null, stop: null,
       configure: 'configure', compact: 'compact', clearQueue: 'clearQueue', abortRetry: 'abortRetry' } as const;
     const name = names[operation];
     return name === null || capability[name];
@@ -361,13 +377,13 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       admit();
       const capability = declaredCapabilities(registration, agentId)[operation];
       if (!capability?.supported || !executorSupports(agentId, operation)) throw projectError('OPERATION_UNSUPPORTED', 'Harness or executor does not support this Agent operation');
-      if (capability.available === false) throw projectError('AGENT_BUSY', capability.reason ?? 'Agent operation is temporarily unavailable');
-      if (['stopped', 'failed'].includes(targetStates.get(agentId) ?? '')) throw projectError('SESSION_UNAVAILABLE', 'Agent Session is closed');
+      if (capability.available === false) throw projectError('OPERATION_BUSY', capability.reason ?? 'Agent operation is temporarily unavailable');
+      if (['exited', 'closing', 'closed'].includes(targetStates.get(agentId) ?? '')) throw projectError('SESSION_UNAVAILABLE', 'Agent Session is closed');
       if (operation === 'send') {
         const send = payload as { input: unknown; options: { mode?: string; delivery?: string } };
         if (typeof send.input === 'string') {
           if (capability.text !== true || (capability.modes && !capability.modes.includes(send.options.mode ?? 'steer'))) throw projectError('OPERATION_UNSUPPORTED', 'Harness does not support this text delivery');
-        } else if (capability.context !== true || !send.options.delivery || !capability.deliveries?.includes(send.options.delivery)) throw projectError('OPERATION_UNSUPPORTED', 'Harness does not support this context delivery');
+        } else if (nativeCapabilities.get(agentId)?.context === false || capability.context !== true || !send.options.delivery || !capability.deliveries?.includes(send.options.delivery)) throw projectError('OPERATION_UNSUPPORTED', 'Harness does not support this context delivery');
       }
       if (operation === 'configure' && capability.fields) {
         const paths = Object.entries(payload as Record<string, unknown>).flatMap(([key, value]) => value && typeof value === 'object' && !Array.isArray(value)
@@ -383,6 +399,19 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
         : native.configure(agentId, payload as Parameters<RuntimeSession['configure']>[1], request));
       return observeHandler(dispatched, request.requestId, { status: 'unknown', requestId: request.requestId });
     });
+  }
+  function answerRecord(questionId: string, answer: HarnessAnswer) {
+    const record = questions.get(questionId);
+    if (!record) throw projectError('QUESTION_UNKNOWN', 'Question does not exist');
+    const value = record.value;
+    if (value.status !== 'pending') throw projectError('QUESTION_CLOSED', 'Question is already terminal');
+    if (Date.now() >= Date.parse(value.deadline)) { settleQuestion(record, 'expired', 'deadline'); throw projectError('QUESTION_EXPIRED', 'Question deadline passed'); }
+    if (record.source.signal.aborted) { settleQuestion(record, 'cancelled', 'source-cancelled'); throw projectError('QUESTION_CANCELLED', 'Question source was cancelled'); }
+    try { record.source.assertAuthorized?.(); } catch (error) { settleQuestion(record, 'cancelled', 'source-unauthorized'); throw error; }
+    if ((value.kind === 'confirm' && typeof answer !== 'boolean') || (value.kind !== 'confirm' && typeof answer !== 'string') || (value.kind === 'choice' && !value.options!.some(option => option.id === answer))) throw projectError('INVALID_ANSWER', 'Answer does not match the question kind or options');
+    jsonCopy(answer, 65_536);
+    if (questionBytes + Buffer.byteLength(JSON.stringify(answer)) > Math.min(limits.questionBytes, Math.floor(limits.snapshotBytes / 3))) throw projectError('QUESTION_LIMIT', 'Answer exceeds the retained question budget');
+    return record;
   }
   const agents: HarnessAgents = {
     getState: agentId => query('getState', agentId) as ReturnType<HarnessAgents['getState']>,
@@ -423,7 +452,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
         completion = started.completion.then(finished => {
           exitCode = finished.code;
           closeQuestions('run-finished');
-          result = { ...finished.result, questions: [...questions.values()].map(record => structuredClone(record.value)) };
+          result = { ...finished.result, ...(fenceFailed ? { cleanup: { ...finished.result.cleanup, status: 'pending' as const, pending: ['runtime-dispatch-fence-unconfirmed'] } } : {}), questions: [...questions.values()].map(record => structuredClone(record.value)) };
           changed();
           publish({ type: 'result', result });
           return result;
@@ -458,23 +487,14 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     },
     respond(questionId, answer, request) {
       return mutate('answer', { questionId, answer }, request, () => {
-        const record = questions.get(questionId);
-        if (!record) throw projectError('QUESTION_UNKNOWN', 'Question does not exist');
+        const record = answerRecord(questionId, answer);
         const value = record.value;
-        if (value.status !== 'pending') throw projectError('QUESTION_CLOSED', 'Question is already terminal');
-        if (Date.now() >= Date.parse(value.deadline)) { settleQuestion(record, 'expired', 'deadline'); throw projectError('QUESTION_EXPIRED', 'Question deadline passed'); }
-        if (record.source.signal.aborted) { settleQuestion(record, 'cancelled', 'source-cancelled'); throw projectError('QUESTION_CANCELLED', 'Question source was cancelled'); }
-        try { record.source.assertAuthorized?.(); } catch (error) { settleQuestion(record, 'cancelled', 'source-unauthorized'); throw error; }
-        if ((value.kind === 'confirm' && typeof answer !== 'boolean') || (value.kind !== 'confirm' && typeof answer !== 'string') || (value.kind === 'choice' && !value.options!.some(option => option.id === answer))) throw projectError('INVALID_ANSWER', 'Answer does not match the question kind or options');
-        jsonCopy(answer, 65_536);
-        const answerBytes = Buffer.byteLength(JSON.stringify(answer));
-        if (questionBytes + answerBytes > Math.min(limits.questionBytes, Math.floor(limits.snapshotBytes / 3))) throw projectError('QUESTION_LIMIT', 'Answer exceeds the retained question budget');
-        questionBytes += answerBytes;
+        questionBytes += Buffer.byteLength(JSON.stringify(answer));
         value.status = 'answered'; value.answer = answer;
         record.release(); record.resolve(answer);
         publish({ type: 'question', runId: host.status().runId, question: structuredClone(value) });
         return { status: 'answered', questionId, answer } as HarnessAnswerReceipt;
-      }, true);
+      }, true, () => { answerRecord(questionId, answer); });
     },
     stop(request) {
       return mutate('stop', { reason: request.reason ?? 'requested' }, request, () => {

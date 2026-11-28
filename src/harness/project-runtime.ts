@@ -12,6 +12,20 @@ export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessC
   let pending = false;
   let refreshing = false;
   let closed = false;
+  const observation = new AbortController();
+  const signal = AbortSignal.any([context.signal, observation.signal]);
+  async function read<T>(work: Promise<T> | T): Promise<T> {
+    signal.throwIfAborted();
+    let timer: NodeJS.Timeout | undefined;
+    const cancelled = Promise.withResolvers<never>();
+    const abort = () => cancelled.reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+      return await Promise.race([Promise.resolve(work), cancelled.promise, new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error('Observation timed out')), 10_000);
+      })]);
+    } finally { clearTimeout(timer); signal.removeEventListener('abort', abort); }
+  }
 
   async function refresh() {
     pending = true;
@@ -21,8 +35,8 @@ export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessC
       while (pending && !closed) {
         pending = false;
         try {
-          const agents = await runtime.list();
-          const detail = await business?.() ?? null;
+          const agents = await read(runtime.list());
+          const detail = await read(business?.() ?? null);
           if (!closed && !context.signal.aborted) context.updateStatus({
             agents: json(agents), business: json({ runtimeId: runtime.id, runtimeState: runtime.state, detail }),
           });
@@ -43,7 +57,7 @@ export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessC
     }
   });
   void refresh();
-  return { refresh, close() { closed = true; unsubscribe(); unregister(); } };
+  return { refresh, close() { closed = true; observation.abort(); unsubscribe(); unregister(); } };
 }
 
 export async function projectConfiguration<C>(context: ProjectHarnessContext, defaults: () => Promise<{ default: unknown }>) {
