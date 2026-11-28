@@ -159,4 +159,4 @@ if (receipt.cleanup !== 'complete') {
 
 Runtime 的 session 分组针对指定 Agent 提供 configure、compact、abortRetry、clearQueue、getState、getStats 和 getMessages。结构化 context 继续经 send 提交，并明确 append、nextTurn、steer 或 followUp。配置和结果使用包根导出的 murm 类型，原生 Session 由 Guest 执行器持有，Host 使用实际确认的配置与回执。[Agent 指南](agents.md#agent-会话设置与结构化-context) 包含调用示例。
 
-Harness 可在异步关闭 dispatcher 之前同步调用 `fenceRuntimeAdmissions(runtime)`。它关闭新 spawn、send 和 Session 变更的接纳，并保留既有操作核对。Runtime 所有者继续通过 stop 或 close 完成归档、必需导出和资源清理。HarnessSession 对登记的 Runtime 使用相同边界。
+HarnessSession 整体停止时同步关闭 Runtime 和 dispatcher 的新工作接纳，既有操作仍可核对。登记 Runtime 的 Harness 负责后续 stop 或 close、归档、必需导出和物理清理。

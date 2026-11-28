@@ -12,7 +12,8 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
-const { createRuntime, fenceRuntimeAdmissions } = await import('@luna-shi/murm');
+const { createRuntime } = await import('@luna-shi/murm');
+const { fenceRuntimeAdmissions } = await import('../src/core/runtime-admissions.js');
 hooks.deregister();
 
 test('invalid session settings reject before allocating an Agent', async t => {

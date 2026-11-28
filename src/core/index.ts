@@ -1,5 +1,4 @@
 import { registerRuntimeAdmissionFence, registerRuntimeReceiptQuery } from './runtime-admissions.js';
-export { fenceRuntimeAdmissions } from './runtime-admissions.js';
 import type { BeforeCompactDecision, BeforeCompactRequest, ContextInput, ContextInputReceipt, ContextSendOptions } from './session-types.js';
 import { createSessionControls } from './session-controls.js';
 import type {

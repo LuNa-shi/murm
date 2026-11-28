@@ -91,6 +91,7 @@ export function createSubagentsController(
   let rootControl: 'compact' | 'interrupt' | 'clearQueue' | undefined;
   const rootOffers = new Map<string, { message: Message; discarded?: boolean }>();
   const reconciledRootControls = new Map<string, unknown>();
+  const rootControlQueries = new Map<string, Promise<unknown>>();
   const pendingRootControls = new Map<string, { deliveries: Set<string>; submitted: Set<string> }>();
   const rootDeliveries = new Map<string, { hash: string; messages: Message[]; inputId?: string; status: string }>();
 
@@ -475,12 +476,18 @@ export function createSubagentsController(
     sendRootContext,
     compactRoot,
     rootQueueControl,
-    async reconcileRootControl(operation: 'interrupt' | 'clearQueue', requestId: string, query: () => Promise<any>) {
+    reconcileRootControl(operation: 'interrupt' | 'clearQueue', requestId: string, query: () => Promise<any>) {
       const existing = reconciledRootControls.get(requestId);
-      if (existing) return existing;
-      const receipt = settleRootControl(operation, requestId, await query());
-      onChange?.();
-      return receipt;
+      if (existing) return Promise.resolve(existing);
+      const pending = rootControlQueries.get(requestId);
+      if (pending) return pending;
+      const work = Promise.resolve().then(query).then(core => {
+        const receipt = settleRootControl(operation, requestId, core);
+        onChange?.();
+        return receipt;
+      }).finally(() => rootControlQueries.delete(requestId));
+      rootControlQueries.set(requestId, work);
+      return work;
     },
     lastReply: () => lastReply,
     onReply(listener: (event: Reply) => void) {
