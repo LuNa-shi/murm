@@ -6,6 +6,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { readFile, writeFile, mkdir, chown, readdir, statfs } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { SandboxProject, AGENT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.js';
 import { CoreWorkDir } from './core-work-dir.js';
 import { collectCoreWorkDir, MAX_COLLECTION_ENTRIES } from '../src/core/files/core-collection.js';
@@ -42,6 +43,7 @@ let everStarted = false;
 let stopping: Promise<unknown> | null = null;
 let executorLaunched = false;
 let executorKind: string = 'pi';
+let piSessionBridge = false;
 let filePolicy = DEFAULT_FILE_POLICY;
 let receivingTree = false;
 const sessionDirectory = (executor: string) => executor === 'pi' ? 'pi-session' :
@@ -77,7 +79,7 @@ const rpcSubmissions = createRpcSubmissions({ write({ steeringMode, executionEpo
   if (steeringMode !== undefined && executorKind === 'pi') {
     child.stdin.write(`${JSON.stringify({ type: 'set_steering_mode', mode: steeringMode })}\n`);
   }
-  child.stdin.write(`${JSON.stringify(executorKind === 'pi' ? message : { ...message, steeringMode, onlyWhileActive })}\n`);
+  child.stdin.write(`${JSON.stringify(executorKind === 'pi' ? { ...message, ...(piSessionBridge && _executionEpoch !== undefined ? { executionEpoch: _executionEpoch } : {}) } : { ...message, steeringMode, onlyWhileActive })}\n`);
 } });
 
 function authorized(request: IncomingMessage) {
@@ -314,8 +316,16 @@ async function startAgent(input: any) {
       throw startupContractError('Actual Worker executor version differs from the selected adapter version');
     }
   }
-  child = spawn('setpriv', [...privilege, external?.command ?? input.command,
-    ...(external?.args ?? (executorKind === 'codex' ? ['app-server'] : input.args))],
+  let piBridgeArgs: string[] | undefined;
+  if (executorKind === 'pi' && input.piSession !== undefined) {
+    const bridgeOptionsPath = join(RUNTIME_DIR, 'pi-session-bridge.json');
+    await writeFile(bridgeOptionsPath, JSON.stringify({ ...input.piSession, args: input.args, systemPromptPath: input.system_prompt_path }), { mode: 0o600 });
+    await chown(bridgeOptionsPath, AGENT_UID, AGENT_UID);
+    piSessionBridge = true;
+    piBridgeArgs = [fileURLToPath(new URL('./pi-session-bridge.js', import.meta.url)), bridgeOptionsPath];
+  }
+  child = spawn('setpriv', [...privilege, piBridgeArgs ? process.execPath : external?.command ?? input.command,
+    ...(piBridgeArgs ?? external?.args ?? (executorKind === 'codex' ? ['app-server'] : input.args))],
     { cwd, env: agentEnvironment, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
   executorLaunched = child.pid !== undefined;
   if (executorKind === 'codex') codexDriver = createCodexAppServerDriver({ model: input.codex.model, cwd,
@@ -358,7 +368,7 @@ async function interruptExecutor({ id, executionEpoch: nextEpoch }: { id: string
     interruptions.set(id, operation);
     const command = async (type: string) => {
       const commandId = randomUUID();
-      await rpcSubmissions.submit({ type, id: commandId }, 10_000);
+      await rpcSubmissions.submit({ type, id: commandId, ...(executorKind === 'pi' && type === 'abort' ? { executionEpoch: nextEpoch } : {}) }, 10_000);
       await rpcSubmissions.completion(commandId);
       const { response } = rpcSubmissions.query(commandId);
       if (response.command !== type || !response.success) throw new Error('Executor did not confirm execution control');
@@ -399,7 +409,7 @@ async function rpc(input: any): Promise<{ records: any[]; response?: any; state?
   const message = input?.message ?? input;
   if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('worker RPC message must be an object');
   const queueOnly = message.type === 'steer' || message.type === 'follow_up';
-  const isInput = message.type === 'prompt' || queueOnly;
+  const isInput = message.type === 'prompt' || queueOnly || message.type === 'core_context';
   if (message.onlyWhileActive !== undefined && (!queueOnly || message.onlyWhileActive !== true || typeof message.id !== 'string' || !message.id)) {
     throw Object.assign(new Error('Invalid conditional input command'), { code: 'INVALID_CONTRACT' });
   }
