@@ -108,13 +108,21 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     const agents: Record<string, NonNullable<HarnessDescriptor['agents'][string]>> = {};
     for (const [id, registration] of targets) {
       const declared = declaredCapabilities(registration, id);
-      agents[id] = Object.fromEntries(Object.entries(declared).map(([name, capability]) => [name, {
-        ...capability, supported: capability.supported && executorSupports(id, name as HarnessOperation), available: capability.supported && executorSupports(id, name as HarnessOperation) && !stopping && !result && !['exited', 'closing', 'closed'].includes(targetStates.get(id) ?? ''),
-        ...(stopping || result ? { reason: 'RUN_STOPPING' } : {}),
-      }]));
+      agents[id] = Object.fromEntries(Object.entries(declared).map(([name, capability]) => {
+        const operation = name as HarnessOperation;
+        const handlerRequired = ['send', 'interrupt', 'clearQueue', 'stop', 'compact', 'abortRetry'].includes(name);
+        const supported = capability.supported && executorSupports(id, operation) && (!handlerRequired || !!registration.handlers?.[operation]);
+        const state = targetStates.get(id);
+        const unavailable = stopping || !!result ? 'RUN_STOPPING' : ['exited', 'closing', 'closed'].includes(state ?? '') ? 'SESSION_UNAVAILABLE'
+          : state === 'starting' ? 'AGENT_NOT_READY' : name === 'compact' && state !== 'idle' ? 'OPERATION_BUSY' : undefined;
+        return [name, { ...capability, supported, available: supported && capability.available !== false && !unavailable,
+          ...(unavailable ? { reason: unavailable } : {}),
+          ...(name === 'send' ? { context: capability.context === true && nativeCapabilities.get(id)?.context !== false } : {}),
+        }];
+      }));
     }
     return { id: definition.id, apiVersion: 1, lifetimes,
-      input: { supported: definition.input === true, available: !!inputHandler && !stopping && !result, ...inputDescription },
+      input: { supported: definition.input === true, available: !!inputHandler && host.status().phase === 'running' && !stopping && !result, ...inputDescription },
       questions: { supported: definition.questions === true, available: definition.questions === true && clientCapabilities.questions && !stopping && !result,
         ...(!clientCapabilities.questions ? { reason: 'QUESTION_CHANNEL_UNAVAILABLE' } : {}) }, agents };
   }
@@ -229,7 +237,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       if (updated) changed();
     } catch (error) { publish({ type: 'event', runId: host.status().runId, event: { kind: 'observation-error', code: 'RUNTIME_STATE_UNAVAILABLE' } }); }
   }
-  function mutate<T>(operation: string, payload: unknown, request: HarnessRequest, run: () => Promise<T> | T, reserved = false): Promise<T> {
+  function mutate<T>(operation: string, payload: unknown, request: HarnessRequest, run: () => Promise<T> | T, reserved = false, validate?: () => void): Promise<T> {
     let id: string;
     let hash: string;
     try { id = requestIdentity(request); hash = fingerprint([operation, jsonCopy(payload)]); } catch (error) { return Promise.reject(error); }
@@ -241,6 +249,7 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       }
       return existing.settled ? Promise.resolve(existing.result as T) : existing.promise as Promise<T>;
     }
+    try { validate?.(); } catch (error) { return Promise.reject(error); }
     if ((!reserved && records.size >= limits.mutations) || records.size >= limits.mutations + limits.questions + 1) return Promise.reject(projectError('REQUEST_LIMIT', 'Session mutation identities are full'));
     const deferred = Promise.withResolvers<T>();
     const record: OperationRecord = { fingerprint: hash, promise: deferred.promise, settled: false };
@@ -329,7 +338,9 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   }
   function declaredCapabilities(registration: HarnessAgentRegistration, id: string) {
     const declared = typeof registration.capabilities === 'function' ? registration.capabilities(id) : registration.capabilities;
-    return { getState: { supported: true }, getStats: { supported: true }, getMessages: { supported: true }, ...declared };
+    return { getState: { supported: true }, getStats: { supported: true }, getMessages: { supported: true },
+      configure: { supported: false }, compact: { supported: false }, abortRetry: { supported: false }, clearQueue: { supported: false },
+      send: { supported: false }, interrupt: { supported: false }, stop: { supported: false }, ...declared };
   }
   function executorSupports(agentId: string, operation: HarnessOperation) {
     const capability = nativeCapabilities.get(agentId);
@@ -388,6 +399,19 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
         : native.configure(agentId, payload as Parameters<RuntimeSession['configure']>[1], request));
       return observeHandler(dispatched, request.requestId, { status: 'unknown', requestId: request.requestId });
     });
+  }
+  function answerRecord(questionId: string, answer: HarnessAnswer) {
+    const record = questions.get(questionId);
+    if (!record) throw projectError('QUESTION_UNKNOWN', 'Question does not exist');
+    const value = record.value;
+    if (value.status !== 'pending') throw projectError('QUESTION_CLOSED', 'Question is already terminal');
+    if (Date.now() >= Date.parse(value.deadline)) { settleQuestion(record, 'expired', 'deadline'); throw projectError('QUESTION_EXPIRED', 'Question deadline passed'); }
+    if (record.source.signal.aborted) { settleQuestion(record, 'cancelled', 'source-cancelled'); throw projectError('QUESTION_CANCELLED', 'Question source was cancelled'); }
+    try { record.source.assertAuthorized?.(); } catch (error) { settleQuestion(record, 'cancelled', 'source-unauthorized'); throw error; }
+    if ((value.kind === 'confirm' && typeof answer !== 'boolean') || (value.kind !== 'confirm' && typeof answer !== 'string') || (value.kind === 'choice' && !value.options!.some(option => option.id === answer))) throw projectError('INVALID_ANSWER', 'Answer does not match the question kind or options');
+    jsonCopy(answer, 65_536);
+    if (questionBytes + Buffer.byteLength(JSON.stringify(answer)) > Math.min(limits.questionBytes, Math.floor(limits.snapshotBytes / 3))) throw projectError('QUESTION_LIMIT', 'Answer exceeds the retained question budget');
+    return record;
   }
   const agents: HarnessAgents = {
     getState: agentId => query('getState', agentId) as ReturnType<HarnessAgents['getState']>,
@@ -463,23 +487,14 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     },
     respond(questionId, answer, request) {
       return mutate('answer', { questionId, answer }, request, () => {
-        const record = questions.get(questionId);
-        if (!record) throw projectError('QUESTION_UNKNOWN', 'Question does not exist');
+        const record = answerRecord(questionId, answer);
         const value = record.value;
-        if (value.status !== 'pending') throw projectError('QUESTION_CLOSED', 'Question is already terminal');
-        if (Date.now() >= Date.parse(value.deadline)) { settleQuestion(record, 'expired', 'deadline'); throw projectError('QUESTION_EXPIRED', 'Question deadline passed'); }
-        if (record.source.signal.aborted) { settleQuestion(record, 'cancelled', 'source-cancelled'); throw projectError('QUESTION_CANCELLED', 'Question source was cancelled'); }
-        try { record.source.assertAuthorized?.(); } catch (error) { settleQuestion(record, 'cancelled', 'source-unauthorized'); throw error; }
-        if ((value.kind === 'confirm' && typeof answer !== 'boolean') || (value.kind !== 'confirm' && typeof answer !== 'string') || (value.kind === 'choice' && !value.options!.some(option => option.id === answer))) throw projectError('INVALID_ANSWER', 'Answer does not match the question kind or options');
-        jsonCopy(answer, 65_536);
-        const answerBytes = Buffer.byteLength(JSON.stringify(answer));
-        if (questionBytes + answerBytes > Math.min(limits.questionBytes, Math.floor(limits.snapshotBytes / 3))) throw projectError('QUESTION_LIMIT', 'Answer exceeds the retained question budget');
-        questionBytes += answerBytes;
+        questionBytes += Buffer.byteLength(JSON.stringify(answer));
         value.status = 'answered'; value.answer = answer;
         record.release(); record.resolve(answer);
         publish({ type: 'question', runId: host.status().runId, question: structuredClone(value) });
         return { status: 'answered', questionId, answer } as HarnessAnswerReceipt;
-      }, true);
+      }, true, () => { answerRecord(questionId, answer); });
     },
     stop(request) {
       return mutate('stop', { reason: request.reason ?? 'requested' }, request, () => {
