@@ -40,19 +40,22 @@ const leadWorker = {
       throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid Lead–Worker Sandbox or dynamic checker image');
     }
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
+    let unsubscribeBoard: (() => void) | undefined;
     try {
       const report = await runLeadWorker({
         ...config, sandbox, runId: context.runId.replaceAll('-', '').slice(0, 24), outputDir: context.outputDir,
         signal: context.signal, projectFiles: context.initial.files, initialDigest: context.initial.digest,
         dynamic: deploy ? { goal: context.input.prompt, projectFiles: context.initial.files, deploy } : undefined,
-        onRuntime: (runtime: Parameters<typeof observeProjectRuntime>[0], snapshot: () => unknown) => {
+        onRuntime: (runtime: Parameters<typeof observeProjectRuntime>[0], snapshot: () => unknown, subscribeBoard: (listener: () => void) => () => void) => {
           observation = observeProjectRuntime(runtime, context, snapshot);
+          unsubscribeBoard = subscribeBoard(() => { void observation?.refresh(); });
         },
         beforeInitialDispatch: () => context.markRunning(),
       }, { goal: context.input.prompt, signal: context.signal });
       const result = projectResult(report, context, { team });
       return { ...result, acceptance: { status: 'not-run' } };
     } finally {
+      unsubscribeBoard?.();
       observation?.close();
     }
   },

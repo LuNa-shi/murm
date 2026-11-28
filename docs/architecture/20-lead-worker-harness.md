@@ -122,3 +122,9 @@ The acceptance harness verifies the checker report from a delivered Git commit a
 ## Public project Session
 
 The project adapter registers the appropriate Runtime and observes workflow state before initial dispatch. Both topologies mark the Run ready before first work. They expose the current stage, roster, Board and delivery projection, including updates while Agent status is stable. Time limits, checked delivery and facility ownership remain with the selected Harness. The shared Session supplies observation and whole-Run stop.
+
+### Project Session observation of Board commits
+
+The static and dynamic project entry uses `observeProjectRuntime` for public `HarnessSession` state. Agent state transitions are one refresh source; Board commits are another. After Runtime creation, `onRuntime(runtime, snapshot, subscribeBoard)` gives the entry a read-only snapshot function and the existing Board subscription. The entry subscribes before initial dispatch. Each committed Board transaction queues its listener after SQLite commit, which requests a serialized observation refresh even if every Agent remains in the same execution state. The snapshot function reads the current Board from SQLite, rather than a cached business projection, and the resulting Session state event includes the fresh Board alongside the Agent vector. Multiple pending refresh requests may coalesce; this is current-state observation, not one state event per Board transaction.
+
+A failed or rolled-back transaction does not notify observers. Session stop cancels pending observation reads through the run signal. The entry releases its Board subscription and closes observation in `finally`; Board close also clears its listeners. No observation timer is installed. The public Session regression holds a Lead execution open, writes through the actual Board CLI/Bridge, and requires a fresh state event with the same complete Agent status vector without calling `getState()`.
