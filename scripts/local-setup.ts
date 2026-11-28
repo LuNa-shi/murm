@@ -118,6 +118,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     connection?: {
       lifecycleBaseUrl?: string;
       advertiseHost?: string;
+      callbackOrigin?: string;
       image: string;
       imageId?: string;
       sources: { lifecycleBaseUrl: string; advertiseHost?: string; image: string };
@@ -196,11 +197,13 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       filePolicy: resolveFilePolicy(config?.filePolicy),
     };
     const mode = (command.command === 'setup' ? command.mode : undefined) ?? environment.mode;
+    const publicUrl = environment.publicUrl ?? config?.connection?.bridge?.publicUrl ?? config?.connection?.modelGateway?.publicUrl;
     report.mode = mode;
     report.lifecycleSource = environment.endpointSource;
     report.connection = {
       lifecycleBaseUrl: reportedEndpoint(environment.lifecycleBaseUrl),
       advertiseHost: reportedHost(environment.advertiseHost),
+      callbackOrigin: publicUrl ? new URL(publicUrl).origin : undefined,
       image: report.configuration.image,
       sources: { ...environment.sources, image: environment.sources.image ?? 'executor-default' },
       resolveWith: 'resolveSandboxConnection',
