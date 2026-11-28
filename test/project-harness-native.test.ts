@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { runInstalledHarnessRpc } from './fixtures/installed-harness-rpc.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { createSubstrateUpstream } from './fixtures/substrate-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
@@ -95,15 +96,12 @@ test('installed Notes and Messages use the supplied prompt and project in both W
 config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;
 `, { mode: 0o600 });
-      const { stdout } = await execute(process.execPath, ['node_modules/.bin/murm', '--harness', id, '--cwd', project,
-        '--prompt', prompt, '--config', configPath, '--output-dir', join(evidenceDir, id)], {
-        cwd: installation.directory, env: installation.env, timeout: 115_000,
-      }).catch(error => {
-        assert.ifError(failure);
-        throw error;
-      });
+      const { result, status, observation } = await runInstalledHarnessRpc(installation, {
+        harness: id, cwd: project, prompt, configPath, outputDir: join(evidenceDir, id), timeoutMs: 115_000,
+      }).catch(error => { assert.ifError(failure); throw error; });
       assert.ifError(failure);
-      const { result } = JSON.parse(stdout);
+      assert.equal(status, 0);
+      assert.equal(observation.businessObserved, true);
       assert.equal(result.outcome, 'completed');
       assert.equal(result.cleanup.status, 'complete');
       assert.equal(result.acceptance.status, 'not-run');
@@ -118,7 +116,7 @@ export default config;
       assert.equal(await readFile(join(project, 'slot.txt'), 'utf8'), value + '\n');
       assert.deepEqual(await ownedContainers(result.result.runtimeId), []);
       evidence.push({ id, runId: result.runId, runtimeId: result.result.runtimeId, digest: result.initial.digest,
-        artifactVerified: true, resourcesClean: true });
+        artifactVerified: true, resourcesClean: true, observation });
     });
   }
   await writeFile(join(evidenceDir, 'verification.json'), JSON.stringify({
@@ -287,14 +285,11 @@ test('installed Substrate peers publish and cite bytes from the supplied project
 config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;
 `, { mode: 0o600 });
-  const { stdout } = await execute(process.execPath, ['node_modules/.bin/murm', '--harness', 'substrate', '--cwd', project,
-    '--prompt', projectSource.prompt, '--config', configPath, '--output-dir', join(evidence, 'output')], {
-    cwd: installation.directory, env: installation.env, timeout: 145_000, maxBuffer: 4 * 1024 ** 2,
-  }).catch(error => {
-    assert.ifError(upstream.receipt().failure);
-    throw error;
-  });
-  const { result } = JSON.parse(stdout);
+  const { result, status, observation } = await runInstalledHarnessRpc(installation, {
+    harness: 'substrate', cwd: project, prompt: projectSource.prompt, configPath, outputDir: join(evidence, 'output'), timeoutMs: 145_000,
+  }).catch(error => { assert.ifError(upstream.receipt().failure); throw error; });
+  assert.equal(status, 0);
+  assert.equal(observation.businessObserved, true);
   assert.equal(result.outcome, 'completed');
   assert.equal(result.cleanup.status, 'complete');
   assert.equal(result.acceptance.status, 'not-run');
@@ -311,6 +306,6 @@ export default config;
   assert.deepEqual(await ownedContainers(result.result.runtimeId), []);
   await writeFile(join(evidence, 'verification.json'), JSON.stringify({
     package: installation.metadata, image, controlledProvider: true, projectDigest: result.initial.digest,
-    runtimeId: result.result.runtimeId, adoption: true, cleanup: 'complete',
+    runtimeId: result.result.runtimeId, adoption: true, cleanup: 'complete', observation,
   }, null, 2), { mode: 0o600 });
 });

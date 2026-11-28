@@ -556,3 +556,12 @@ test('beforeCompact awaits Host policy and stopping uses the correlated Guest de
   assert.equal(decision.decision, 'stop');
   assert.equal((await runtime.get(agent.id)).lastStop.cleanup, 'complete');
 });
+
+test('an uncertain Session mutation stays reconcilable after the Agent closes', async t => {
+  const { runtime, agent } = await setup(t, { runtimeHooks: { beforeCompact: { handler: () => 'allow' } } });
+  provider.wait = async () => { throw new Error('Controlled dropped session acknowledgement'); };
+  const unknown = await runtime.session.configure(agent.id, { thinkingLevel: 'low' }, { requestId: 'lost-configure' });
+  assert.equal(unknown.status, 'unknown');
+  assert.equal((await runtime.stop(agent.id)).cleanup, 'complete');
+  assert.deepEqual(await runtime.session.configure(agent.id, { thinkingLevel: 'low' }, { requestId: 'lost-configure' }), unknown);
+});

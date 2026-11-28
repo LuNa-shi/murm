@@ -656,7 +656,10 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
     },
     async sessionCommand(agentId: string, command: string, payload: Record<string, unknown>, query: boolean): Promise<unknown> {
       const agent = agents.get(agentId);
-      if (!agent || agent.stopping || agent.exited || agent.historyLost || closing) throw Object.assign(new Error('Session is unavailable'), { code: 'SESSION_UNAVAILABLE' });
+      if (!agent || agent.stopping || agent.exited || agent.historyLost || closing) {
+        if (query) return { status: 'unknown' };
+        throw Object.assign(new Error('Session is unavailable'), { code: 'SESSION_UNAVAILABLE' });
+      }
       if (!agent.sessionReady) throw Object.assign(new Error('Worker does not support session controls'), { code: 'OPERATION_UNSUPPORTED' });
       agent.sessionCommands ??= new Map();
       const id = payload.id as string;
