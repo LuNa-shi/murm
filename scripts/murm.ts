@@ -54,7 +54,26 @@ if (args[0] === 'trace') {
     const { runProjectCommand } = await import('./murm-project.js');
     process.exit(await runProjectCommand(command, process.cwd()));
   }
-  if (command && 'command' in command && command.command !== 'interactive') {
+  if (command && 'command' in command && command.command === 'recover') {
+    let exitCode = 1;
+    let report: unknown;
+    try {
+      const { recoverRuntime } = await import('../src/core/index.js');
+      const module = await import(pathToFileURL(await realpath(resolve(command.configPath))).href);
+      const config = typeof module.default === 'function' ? await module.default() : module.default;
+      const runtime = await recoverRuntime({ ...config, runDirectory: command.directory, cleanupOnly: true });
+      const result = await runtime.close();
+      report = result;
+      exitCode = result.cleanup === 'complete' ? 0 : 1;
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+        && /^[A-Z][A-Z0-9_]*$/.test(error.code) ? error.code : 'RECOVERY_FAILED';
+      report = { cleanup: 'pending', error: code };
+    }
+    // Pending cleanup can still own open sockets and renewable resources. The
+    // one-shot command hands those back to the durable record on process exit.
+    process.stdout.write(JSON.stringify(report, null, 2) + '\n', () => process.exit(exitCode));
+  } else if (command && 'command' in command && command.command !== 'interactive') {
     const controller = new AbortController();
     let signalCode: number | undefined;
     const interrupt = (signal: NodeJS.Signals) => {

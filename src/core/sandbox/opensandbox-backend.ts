@@ -1,3 +1,5 @@
+import type { AllocationLedger, AllocationRecord as LedgerAllocation } from '../allocation-ledger.js';
+import type { OpenSandboxManager } from './opensandbox-manager.js';
 import type { AgentEvent, ErrorInfo, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from '../types.js';
 import type { SessionFork } from '../../../scripts/core-session-fork.js';
 import type { createCoreBridge } from '../bridge.js';
@@ -60,7 +62,11 @@ interface BackendAgent {
   lease?: { expiresAt: string | null; dueAt: number; work?: Promise<void> };
   retaining?: 'archive-session' | 'collect-artifacts';
   retainAtRisk?: boolean;
+  retainUntil?: string;
   deleting?: boolean;
+  workerIdentity?: { workerInstanceId: string; streamEpoch: string };
+  recovery?: () => Promise<void>;
+  uncertain?: boolean;
 }
 
 type WorkerRecord = { worker_sequence: number; worker_at?: string } & (
@@ -70,6 +76,7 @@ type WorkerRecord = { worker_sequence: number; worker_at?: string } & (
       stopReason?: string;
       errorMessage?: string;
     } }
+  | { type: 'controller_probe'; traceId: string }
   | { type: 'worker_error'; message: string }
   | { type: 'worker_exit'; code?: string | number; signal?: string }
   | { type: 'agent_start' | 'agent_settled'; aborted?: boolean }
@@ -133,6 +140,7 @@ interface BackendOptions {
   modelAccess: Awaited<ReturnType<typeof createCoreModelAccess>>;
   registerPrivateValues?: (values: readonly unknown[]) => void;
   providers?: readonly OpenSandboxProvider[];
+  durability?: { ledger: AllocationLedger; retainForMs: number };
 }
 
 interface AllocationRecord {
@@ -142,6 +150,7 @@ interface AllocationRecord {
   timeoutSeconds?: number;
   sandboxId?: string;
   observation?: string;
+  rejection?: boolean;
   expiresAt?: string | null;
 }
 
@@ -162,6 +171,7 @@ import { selectExecutorDriver, type ExecutorDriver } from './executor-driver.js'
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { isIP } from 'node:net';
+import { lookup } from 'node:dns/promises';
 import { createWorkerEventPoll } from '../worker-event-poll.js';
 import { loopbackLifecycle, normalizeRuntimePublicUrl, resolveSandboxConnection } from './sandbox-connection.js';
 import { validId } from '../config.js';
@@ -182,6 +192,18 @@ function invalid(message: string) {
 function freeze<T extends object>(value: T): Readonly<T> {
   for (const child of Object.values(value)) if (child && typeof child === 'object') freeze(child);
   return Object.freeze(value);
+}
+
+async function callbackPolicyTarget(destination: string) {
+  const url = new URL(destination);
+  if (isIP(url.hostname) === 4) return destination;
+  const addresses = await lookup(url.hostname, { family: 4, all: true }).catch(() => []);
+  const unique = [...new Set(addresses.map(({ address }) => address))];
+  if (unique.length !== 1 || unique[0].startsWith('127.') || unique[0] === '0.0.0.0') {
+    throw invalid('A DNS Runtime callback requires one stable non-loopback IPv4 address for the OpenSandbox network policy');
+  }
+  url.hostname = unique[0];
+  return url.href;
 }
 
 function networkAllowlist(destinations: readonly string[]) {
@@ -228,7 +250,7 @@ export function createSandbox(config: SandboxConfig | SandboxProviderConfig = {}
   }
   if ((config.kind !== undefined && config.kind !== 'opensandbox') ||
       Object.keys(config).some(key => !['kind', 'endpoint', 'lifecycleBaseUrl', 'apiKey', 'execdToken', 'endpointHost', 'useServerProxy', 'egressMode',
-        'resourceLimits', 'commandTimeoutMs', 'timeoutSeconds', 'isolation'].includes(key))) {
+        'resourceLimits', 'resourceRequests', 'commandTimeoutMs', 'timeoutSeconds', 'isolation'].includes(key))) {
     throw invalid('createSandbox requires an OpenSandbox configuration with only Sandbox settings');
   }
   const { kind: _kind, isolation, ...sandbox } = config;
@@ -245,11 +267,12 @@ export function createSandbox(config: SandboxConfig | SandboxProviderConfig = {}
   }
   if (isolation?.network !== undefined && isolation.network !== 'api') throw invalid('Unknown OpenSandbox isolation policy');
   if (sandbox.egressMode !== undefined && sandbox.egressMode !== 'dns+nft') throw invalid('Only dns+nft supports the requested IP and port allowlist');
-  if (sandbox.resourceLimits !== undefined) {
-    const { cpu, memory } = sandbox.resourceLimits;
-    if (typeof cpu !== 'string' || !/^\d+(?:\.\d+)?m?$/.test(cpu) || !(Number.parseFloat(cpu) > 0) || !Number.isFinite(Number.parseFloat(cpu)) ||
+  for (const [name, quantities] of Object.entries({ resourceLimits: sandbox.resourceLimits, resourceRequests: sandbox.resourceRequests })) {
+    if (quantities === undefined) continue;
+    const { cpu, memory } = quantities ?? {};
+    if (typeof cpu !== 'string' || !/^(?:\d+(?:\.\d+)?|\d+m)$/.test(cpu) || !(Number.parseFloat(cpu) > 0) || !Number.isFinite(Number.parseFloat(cpu)) ||
         typeof memory !== 'string' || !/^[1-9]\d*(?:[kmgt](?:i|b)?|b)?$/i.test(memory)) {
-      throw invalid('OpenSandbox resource limits require positive CPU and memory quantities, for example 500m and 512Mi');
+      throw invalid(`OpenSandbox ${name} require positive CPU and memory quantities, for example 500m and 512Mi`);
     }
   }
   const { lifecycleBaseUrl: _alias, endpoint: _endpoint, endpointHost: _endpointHost, ...settings } = sandbox;
@@ -313,9 +336,11 @@ export function claimOpenSandboxBackend(handle: Sandbox, options: Pick<CreateRun
 }
 
 export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendConfig, {
-  runtimeId, outputDir, bridge, modelAccess, registerPrivateValues = () => {}, providers = [config.provider ?? createApiOpenSandboxProvider(config)],
+  runtimeId, outputDir, bridge, modelAccess, registerPrivateValues = () => {}, durability, providers = [config.provider ?? createApiOpenSandboxProvider(config)],
 }: BackendOptions) {
   const { driver } = config;
+  const ledger = durability?.ledger;
+  const controllerEpoch = ledger?.run.controllerEpoch;
   const agents = new Map<string, BackendAgent>();
   const workspaces = new Map<string, WorkspaceOwners>();
   const targets = [...providers];
@@ -327,7 +352,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
   let nextTarget = 0;
   const lifetimeMs = (config.sandbox.timeoutSeconds ?? 3600) * 1000;
   const renewalLeadMs = Math.min(300_000, Math.max(20_000, Math.floor(lifetimeMs / 3)));
-  const retentionMs = 300_000;
+  const retentionMs = Math.min(300_000, durability?.retainForMs ?? 300_000);
   let leaseTimer: ReturnType<typeof setTimeout> | undefined;
   let periodicRenewal: Promise<void> | undefined;
 
@@ -336,15 +361,18 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
     if (closing || periodicRenewal) return;
     let next = Infinity;
     for (const agent of agents.values()) {
-      if (agent.lease && !agent.lease.work && !agent.deleting && agent.manager.renewExecution) next = Math.min(next, agent.lease.dueAt);
+      if (agent.lease && !agent.lease.work && !agent.deleting && agent.manager.renewExecution && shouldRenew(agent)) {
+        next = Math.min(next, agent.lease.dueAt);
+      }
     }
     if (next !== Infinity) {
       leaseTimer = setTimeout(() => {
         const now = Date.now();
         const due = [...agents.values()].find(agent => agent.lease && agent.lease.dueAt <= now &&
-          !agent.lease.work && !agent.deleting && agent.manager.renewExecution);
+          !agent.lease.work && !agent.deleting && agent.manager.renewExecution && shouldRenew(agent));
         if (due) {
-          periodicRenewal = renewLease(due, now + lifetimeMs)?.finally(() => {
+          const requested = due.retainUntil ? Math.min(now + lifetimeMs, Date.parse(due.retainUntil)) : now + lifetimeMs;
+          periodicRenewal = renewLease(due, requested)?.finally(() => {
             periodicRenewal = undefined;
             scheduleLeases();
           });
@@ -355,19 +383,32 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
     }
   }
 
+  function shouldRenew(agent: BackendAgent) {
+    if (!agent.retainUntil) return true;
+    const deadline = Date.parse(agent.retainUntil);
+    return deadline > Date.now() && (!agent.lease?.expiresAt || Date.parse(agent.lease.expiresAt) < deadline);
+  }
+
   function renewLease(agent: BackendAgent, minimum: number) {
     const { lease, manager } = agent;
     if (!lease || !manager.renewExecution || agent.deleting) return;
     if (lease.work) return lease.work;
     lease.work = Promise.resolve().then(async () => {
       try {
+        const requestedExpiresAt = new Date(minimum).toISOString();
+        ledger?.lease(agent.id, { requestedExpiresAt });
         const observation = await manager.renewExecution!(agent.id, minimum);
         const expiresAt = sandboxExpiry(observation.expiresAt);
         if (!expiresAt) throw new Error('OpenSandbox expiry could not be confirmed');
+        ledger?.lease(agent.id, { requestedExpiresAt, confirmedExpiresAt: expiresAt });
         lease.expiresAt = expiresAt;
-        lease.dueAt = Math.max(Date.now() + 5_000, Date.parse(expiresAt) - renewalLeadMs);
+        lease.dueAt = Math.max(Date.now() + 5_000, Date.parse(expiresAt) - renewalLeadMs - (ledger ? Math.random() * 2000 : 0));
         trace(agent, { type: 'sandbox-lease', state: 'observed', sandboxId: observation.sandboxId, expiresAt });
-      } catch {
+      } catch (error) {
+        if (ledger && !(error as { allocationLedger?: boolean }).allocationLedger) {
+          try { ledger.lease(agent.id, { requestedExpiresAt: new Date(minimum).toISOString(), confirmedExpiresAt: sandboxExpiry(manager.coreResource(agent.id)?.expiresAt) ?? lease.expiresAt, error: 'unconfirmed' }); }
+          catch (writeError) { freezeUnconfirmed(agent, writeError); }
+        } else if (ledger) freezeUnconfirmed(agent, error);
         lease.expiresAt = sandboxExpiry(manager.coreResource(agent.id)?.expiresAt) ?? lease.expiresAt;
         lease.dueAt = Date.now() + 5_000;
         trace(agent, { type: 'sandbox-lease', state: 'unconfirmed', expiresAt: lease.expiresAt });
@@ -397,6 +438,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         return;
       }
       agent.cursor = sequence;
+      if (record.type === 'controller_probe') agent.onEvent({ type: 'workerProbe', requestId: record.traceId });
       if (record.type === 'agent_start') {
         agent.nativeExecuting = true;
         agent.onExecutionStart?.();
@@ -432,9 +474,49 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
     }
   }
 
+  function freezeUnconfirmed(agent: BackendAgent, error: unknown) {
+    if (agent.historyLost) return;
+    agent.historyLost = true;
+    agent.eventPoll.stop();
+    try { ledger?.transition(agent.id, 'unknown'); } catch {}
+    const code = (error as { code?: string })?.code;
+    agent.onEvent({ type: 'error', error: { code: code === 'EVENT_GAP' ? code : 'OPERATION_UNKNOWN',
+      message: 'Durable Worker control or event continuity could not be confirmed', retryable: false }, fatal: true });
+  }
+
+  function useWorkerRecords(agent: BackendAgent, records: WorkerRecord[]) {
+    if (!agent.workerIdentity) consume(agent, records);
+  }
+
+  function startPolling(agent: BackendAgent) {
+    if (agent.workerIdentity) agent.eventPoll.useLongPoll();
+    agent.polling = agent.eventPoll.run(signal => readWorkerEvents(agent, signal));
+  }
+
+  async function readEventPage(agent: BackendAgent, waitMs: number, signal?: AbortSignal) {
+    const identity = agent.workerIdentity!;
+    const page = await (agent.manager as OpenSandboxManager).readWorkerEvents(agent.id, {
+      ...identity, afterSequence: agent.cursor, waitMs, maxRecords: 128, maxBytes: 512_000, signal,
+    });
+    if (signal?.aborted) return false;
+    let nativeExecuting: boolean | undefined;
+    for (const record of page.records) {
+      if (record.type === 'agent_start') nativeExecuting = true;
+      if (record.type === 'agent_settled' || record.type === 'worker_exit') nativeExecuting = false;
+    }
+    if (ledger && page.records.length) ledger.commitEvents(agent.id, { ...identity, nativeExecuting,
+      events: page.records.map(record => ({ sequence: record.worker_sequence, event: record })) });
+    consume(agent, page.records as WorkerRecord[]);
+    return page.hasMore;
+  }
+
   async function readWorkerEvents(agent: BackendAgent, signal: AbortSignal) {
     const since = agent.cursor;
     try {
+      if (agent.workerIdentity) {
+        const hasMore = await readEventPage(agent, 20_000, signal);
+        return !hasMore && since === agent.cursor;
+      }
       const result = await agent.manager.agentRpc(agent.id, { type: 'get_state', since },
         { timeoutMs: 2000, transportTimeoutMs: 2000, signal });
       if (signal.aborted) return false;
@@ -442,6 +524,10 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       return since === agent.cursor && !agent.nativeExecuting && !agent.pendingInputs && !agent.stopping;
     } catch (caught) {
       const error = caught as Error & { code: string };
+      if (!signal.aborted && (error.code === 'EVENT_GAP' || (error as { allocationLedger?: boolean }).allocationLedger)) {
+        freezeUnconfirmed(agent, error);
+      }
+      if (agent.workerIdentity && !signal.aborted) throw error;
       if (!signal.aborted && !agent.stopping) {
         agent.onEvent({ type: 'error', error: { code: error.code ?? 'SERVICE_UNAVAILABLE', message: 'Worker event polling failed', retryable: true }, fatal: false });
       }
@@ -487,7 +573,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         throw invalid('The selected Sandbox Provider cannot enforce the requested network allowlist');
       }
       const networkPolicy = provider.id === 'opensandbox' && !config.provider && profile.network
-        ? networkAllowlist([bridge.publicUrl, ...profile.network.allow]) : undefined;
+        ? networkAllowlist([await callbackPolicyTarget(bridge.publicUrl), ...profile.network.allow]) : undefined;
       await provider.beforeAllocation?.();
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
       const manager = provider.openManager(profile.image);
@@ -510,7 +596,10 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       assertOpen();
       const allocation = { providerId: provider.id, resourceKey: agentId };
       const sandbox = await manager.ensureExecution({ executionId: agentId, agentId, timeoutSeconds: config.sandbox.timeoutSeconds ?? 3600, projectQuotaRequired: false, cleanupOnFailure: false, networkPolicy,
-        metadata: { runtime_id: runtimeId }, onWorkerToken: (token: string) => registerPrivateValues([token]),
+        metadata: { runtime_id: runtimeId }, controllerEpoch,
+        ...(ledger ? { executionGeneration: 1, onControlCredentials: (privateState: Record<string, unknown>) => ledger.checkpoint(agentId, { privateState }) } : {}),
+        onWorkerToken: (token: string) => registerPrivateValues([token]),
+        onCreateRejected: () => recordAllocation({ ...allocation, state: 'allocation-rejected', rejection: true }),
         onCreateDispatch: (entry: { timeout_seconds: number }) => recordAllocation({ ...allocation, state: 'allocation-dispatched', timeoutSeconds: entry.timeout_seconds }),
         onCreated: (entry: { sandbox_id: string; expires_at?: string }) => {
           const expiresAt = sandboxExpiry(entry.expires_at);
@@ -525,6 +614,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       const credentials = modelAccess.credentialsForAgent(agentId, profile.model);
       const bridgeCredentials = bridge.credentialsForAgent(agentId);
       registerPrivateValues([...Object.values(credentials.secretEnvironment), ...Object.values(bridgeCredentials.secretEnvironment)]);
+      ledger?.checkpoint(agentId, { privateState: { modelToken: credentials.token, bridgeToken: bridgeCredentials.secretEnvironment.MURM_BRIDGE_TOKEN } });
       await provider.prepareSandbox({ sandboxId: sandbox.sandbox_id, agent: identity, bridgeUrl: bridge.publicUrl,
         modelUrl: credentials.baseUrl, additionalEndpoints: profile.network?.allow ?? [], workspace, assertOpen });
       const versions = await manager.agentVersions({ executionId: agentId, executor: driver.kind, externalExecutor: Boolean(driver.adapter) });
@@ -547,9 +637,19 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         files: options.files, forkSession, workspace,
         env: { ...(profile.env ?? {}), ...bridgeCredentials.environment, ...credentials.environment },
         secretEnvironment: { ...(options.secretEnv ?? {}), ...bridgeCredentials.secretEnvironment, ...credentials.secretEnvironment },
-        requireCoreFileProtocol: true, modelCatalogResource: credentials.catalogResource,
-        ...(credentials.catalogContent !== undefined ? { modelCatalogContent: credentials.catalogContent } : {}),
-        beforeAgentStart: assertOpen });
+        requireCoreFileProtocol: true,
+        beforeAgentStart: (identity: Record<string, unknown>) => {
+          assertOpen();
+          if (!ledger) return;
+          if (!identity.workerInstanceId || !identity.streamEpoch || identity.controllerEpoch !== controllerEpoch ||
+              identity.eventProtocol !== 'murm-events-v1' || identity.controlProtocol !== 'murm-control-v1') {
+            throw invalid('Durable Runtime requires a Worker with event and controller recovery support');
+          }
+          ledger.checkpoint(agentId, { privateState: { workerIdentity: identity } });
+          ledger.starting(agentId);
+        },
+        modelCatalogResource: credentials.catalogResource,
+        ...(credentials.catalogContent !== undefined ? { modelCatalogContent: credentials.catalogContent } : {}) });
       if (driver.adapter) {
         const receipt = startup?.backend;
         if (!receipt || !('protocol' in receipt) || receipt.kind !== driver.kind || receipt.version !== driver.version ||
@@ -564,13 +664,118 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       agent.started = true;
       const ready = await manager.agentRpc(agentId, { type: 'get_state', id: `ready-${randomUUID()}` }, { timeoutMs: 10_000, since: 0 });
       if (ready.response?.success !== true || ready.response.command !== 'get_state') throw invalid('Executor readiness response was not confirmed');
-      consume(agent, ready.records ?? []);
+      const worker = (manager as OpenSandboxManager).workerControl?.(agentId);
+      if (worker?.eventProtocol === 'murm-events-v1' && worker.workerInstanceId && worker.streamEpoch) {
+        agent.workerIdentity = { workerInstanceId: worker.workerInstanceId, streamEpoch: worker.streamEpoch };
+        ledger?.ready(agentId, agent.workerIdentity);
+      }
+      useWorkerRecords(agent, ready.records ?? []);
       assertOpen();
-      agent.polling = agent.eventPoll.run(signal => readWorkerEvents(agent, signal));
+      startPolling(agent);
       return { ...allocation, sandboxId: sandbox.sandbox_id, versions: {
         ...versions, ...(driver.adapter ? { [`${driver.kind}Version`]: startup?.backend?.version } : {}),
       },
         providerVersion: provider.version, effective, ...(startup?.backend ? { backend: startup.backend } : {}) };
+    },
+    async recover(record: LedgerAllocation, handlers: Pick<BackendSpawnOptions, 'onEvent' | 'onExecutionStart' | 'onTrace'>) {
+      if (!ledger || controllerEpoch === undefined) throw invalid('Runtime recovery requires an allocation ledger');
+      const provider = targets[0];
+      await provider.beforeAllocation?.();
+      const manager = provider.openManager(record.image) as OpenSandboxManager & SandboxManager;
+      const agent: BackendAgent = { id: record.agentId, provider, manager, ...handlers, cursor: record.afterSequence,
+        output: '', error: null, stopping: false, exited: false, nativeExecuting: false, pendingInputs: 0, eventPoll: createWorkerEventPoll() };
+      agents.set(agent.id, agent);
+      const identity = { runtimeId, agentId: record.agentId, resourceKey: record.resourceKey, generation: record.executionGeneration };
+      const stored = record.privateState ?? {};
+      const workerIdentity = stored.workerIdentity as { workerInstanceId: string; streamEpoch: string; controllerEpoch: number } | undefined;
+      const reconnect = async () => {
+        let row = ledger.get(record.resourceKey);
+        if (row.state === 'intent') {
+          ledger.rejectCreation(row.resourceKey, 'create-dispatch was never committed');
+          return;
+        }
+        const found = await manager.discoverExecution(identity);
+        for (const sandboxId of found) {
+          if (sandboxId !== row.sandboxId) ledger.observeResource(row.resourceKey, { sandboxId });
+        }
+        row = ledger.get(row.resourceKey);
+        if (!row.sandboxId || ledger.resources(row.resourceKey).length !== 1) {
+          throw Object.assign(new Error('Recovered Sandbox identity is unknown or has duplicates'), { code: 'OPERATION_UNKNOWN' });
+        }
+        const sandboxId = row.sandboxId;
+        let attached;
+        try {
+          attached = await manager.recoverExecution({
+            ...identity, sandboxId, workerToken: stored.workerToken, execdToken: stored.execdToken,
+            workerInstanceId: workerIdentity?.workerInstanceId, streamEpoch: workerIdentity?.streamEpoch,
+            controllerEpoch, filePolicy: config.filePolicy, controllerSpoolDirectory: outputDir, executionStopped: row.stopConfirmed,
+          });
+        } catch (error) {
+          if ((error as { details?: { status?: number } }).details?.status !== 404) throw error;
+          ledger.recordDeletion(row.resourceKey, sandboxId, 'Original authenticated Lifecycle GET returned 404');
+          if (!row.stopConfirmed && workerIdentity) throw error;
+          if (!row.stopConfirmed) ledger.recordStop(row.resourceKey, sandboxId, 'Worker start was never dispatched');
+          return;
+        }
+        const expiresAt = sandboxExpiry(attached.expiresAt);
+        ledger.observePresence(row.resourceKey, sandboxId, expiresAt);
+        if (workerIdentity) {
+          const observedEpoch = attached.observedControllerEpoch;
+          const proposedEpoch = row.privateState?.proposedEpoch;
+          const prior = Number(proposedEpoch ?? workerIdentity.controllerEpoch);
+          const expectedEpoch = observedEpoch === controllerEpoch && proposedEpoch === controllerEpoch
+            ? Number(row.privateState?.proposedExpectedEpoch) : observedEpoch;
+          if (!Number.isSafeInteger(expectedEpoch) || observedEpoch > prior || expectedEpoch >= controllerEpoch) {
+            throw Object.assign(new Error('Worker controller epoch has conflicting ownership'), { code: 'OPERATION_UNKNOWN' });
+          }
+          ledger.checkpoint(row.resourceKey, { privateState: { proposedEpoch: controllerEpoch, proposedExpectedEpoch: expectedEpoch } });
+          await manager.takeover(row.resourceKey, { requestId: `takeover-${controllerEpoch}`,
+            workerInstanceId: workerIdentity.workerInstanceId, expectedEpoch, nextEpoch: controllerEpoch });
+          agent.workerIdentity = workerIdentity;
+          agent.started = Boolean(row.workerInstanceId && attached.executorStarted);
+          agent.workerStartDispatched = true;
+          agent.executionStopped = attached.executionStopped;
+        }
+        if (row.state === 'ready' && agent.started && !agent.executionStopped && ledger.run.state === 'open') {
+          let drained = false;
+          for (let pages = 0; pages < 32; pages++) {
+            if (!await readEventPage(agent, 0)) {
+              drained = true;
+              break;
+            }
+          }
+          if (!drained) throw Object.assign(new Error('Worker event backlog exceeded the recovery window'), { code: 'EVENT_GAP' });
+        }
+        agent.lease = { expiresAt, dueAt: expiresAt ? Date.parse(expiresAt) - renewalLeadMs : Date.now() };
+        agent.recovery = undefined;
+        agent.uncertain = false;
+        if (row.retention) {
+          agent.retaining = row.retention.reason as BackendAgent['retaining'];
+          agent.retainUntil = row.retention.deadline;
+        }
+        scheduleLeases();
+      };
+      agent.recovery = reconnect;
+      try { await reconnect(); }
+      catch (error) {
+        agent.uncertain = true;
+        if ((error as { code?: string }).code === 'EVENT_GAP') freezeUnconfirmed(agent, error);
+        ledger.retry(record.resourceKey, (error as { code?: string }).code ?? 'SERVICE_UNAVAILABLE', new Date(Date.now() + 5000).toISOString());
+      }
+      const state = ledger.get(record.resourceKey).state;
+      const terminal = state === 'deleted' || state === 'rejected';
+      if (terminal) {
+        agents.delete(agent.id);
+        await manager.close();
+      }
+      return { available: !agent.uncertain && state === 'ready' && Boolean(agent.workerIdentity) && agent.started === true && !agent.executionStopped,
+        executionStopped: terminal || agent.executionStopped === true, terminal };
+    },
+    resume(agentId: string) {
+      const agent = agents.get(agentId)!;
+      if (!agent.workerIdentity || agent.uncertain) throw invalid('Worker recovery has not been confirmed');
+      ledger?.ready(agentId, agent.workerIdentity);
+      startPolling(agent);
     },
     async snapshotFiles(agentId: string, input: FileSnapshotOptions) {
       const agent = agents.get(agentId);
@@ -603,7 +808,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (agents.get(agentId)?.workspace) throw Object.assign(new Error('File replacement requires a private workDir'), { code: 'NOT_ALLOWED' });
       return fileOperation(agentId, 'replace', input);
     },
-    async send(agentId: string, input: string, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle }: { mode: InputMode; inputId: string; steeringMode?: SendOptions['steeringMode']; executionEpoch: number; wakeIfIdle: boolean }): Promise<BackendInputReceipt> {
+    async send(agentId: string, input: string, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle, queryOnly }: { mode: InputMode; inputId: string; steeringMode?: SendOptions['steeringMode']; executionEpoch: number; wakeIfIdle: boolean; queryOnly?: boolean }): Promise<BackendInputReceipt> {
       const agent = agents.get(agentId);
       if (!agent) throw Object.assign(new Error('Agent is unavailable'), { code: 'NOT_ALLOWED' });
       agent.submissions ??= new Map();
@@ -613,7 +818,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       }
       if (!submission) {
         if (agent.stopping || agent.exited || agent.historyLost || closing) throw Object.assign(new Error('Agent is unavailable'), { code: 'NOT_ALLOWED' });
-        submission = { input, mode, wakeIfIdle, first: true };
+        submission = { input, mode, wakeIfIdle, first: !queryOnly };
         agent.submissions.set(inputId, submission);
       }
       if (submission!.receipt) return submission!.receipt;
@@ -639,7 +844,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
             // writing stdin. Only a correlated executor response proves rejection.
             return { status: 'unknown', reason: 'worker-transport' };
           }
-          consume(agent, result.records ?? []);
+          useWorkerRecords(agent, result.records ?? []);
           if (result.response?.id !== inputId || result.response?.command !== command) return {
             status: 'unknown', reason: result.status === 'pending' ? 'worker-pending' : 'worker-uncorrelated-reply',
           };
@@ -664,13 +869,23 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       }
       return submission.work;
     },
+    async probeWorkerEvent(agentId: string, id: string, timeoutMs: number) {
+      const agent = agents.get(agentId);
+      if (!agent?.workerIdentity || agent.historyLost || agent.stopping || closing) {
+        throw Object.assign(new Error('Worker event probe requires a live cursor stream'), { code: 'NOT_ALLOWED' });
+      }
+      const reply = await agent.manager.agentRpc(agentId, { type: 'core_event_probe', id }, { timeoutMs });
+      if (reply.response?.command !== 'core_event_probe' || reply.response.id !== id || reply.response.success !== true) {
+        throw Object.assign(new Error('Worker event probe admission could not be confirmed'), { code: 'OPERATION_UNKNOWN' });
+      }
+    },
     async interrupt(agentId: string, { interruptId, executionEpoch }: { interruptId: string; executionEpoch: number }): Promise<Omit<InterruptReceipt, 'interruptId'>> {
       const agent = agents.get(agentId);
       if (!agent || agent.stopping || agent.exited || agent.historyLost || closing) return { status: 'unknown' };
       agent.eventPoll.wake();
       const result = await agent.manager.agentRpc(agentId, { type: 'core_interrupt', id: interruptId, executionEpoch },
         { timeoutMs: 30_000, since: agent.cursor });
-      consume(agent, result.records ?? []);
+      useWorkerRecords(agent, result.records ?? []);
       const confirmed = !agent.historyLost && !agent.exited && !agent.stopping && result.response?.id === interruptId &&
         result.response.command === 'core_interrupt' && result.response.success === true;
       if (!confirmed) return { status: 'unknown' };
@@ -682,11 +897,12 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
     async stopExecution(agentId: string) {
       const agent = agents.get(agentId);
       if (!agent) return { collectable: false };
+      if (agent.recovery) await agent.recovery();
       agent.stopping = true;
       agent.eventPoll.wake();
       const stopped = await agent.manager.stopAgent(agentId, 'SIGTERM', { preserveWorker: true });
       // The built-in manager returns false only before it has dispatched a Worker start.
-      if (!stopped && (agent.started || (config.provider && agent.workerStartDispatched))) {
+      if (!stopped && (agent.started || (Boolean(config.provider || ledger) && agent.workerStartDispatched))) {
         throw Object.assign(new Error('Sandbox Provider did not confirm execution stop'), { code: 'SERVICE_UNAVAILABLE', retryable: true });
       }
       agent.executionStopped = true;
@@ -727,23 +943,27 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         ...(agent.retaining ? { retention: {
           reason: agent.retaining,
           status: agent.retainAtRisk || !agent.lease?.expiresAt || Date.parse(agent.lease.expiresAt) <= Date.now()
-            ? 'retain-at-risk' : 'retained',
-          autoRenewing: !closing && Boolean(agent.lease && agent.manager.renewExecution),
+            ? 'retain-at-risk' as const : 'retained' as const,
+          autoRenewing: !closing && Boolean(agent.lease && agent.manager.renewExecution) && shouldRenew(agent),
+          ...(agent.retainUntil ? { deadline: agent.retainUntil, owner: runtimeId } : {}),
         } } : {}),
       };
     },
-    retain(agentId: string, reason: NonNullable<BackendAgent['retaining']>) {
+    retain(agentId: string, reason: NonNullable<BackendAgent['retaining']>, deadline?: string) {
       const agent = agents.get(agentId);
-      if (agent) agent.retaining = reason;
+      if (!agent) return;
+      agent.retaining = reason;
+      agent.retainUntil = deadline;
+      scheduleLeases();
     },
     async finishRetention() {
       closing = true;
       clearTimeout(leaseTimer);
       for (const agent of agents.values()) {
         if (!agent.retaining) continue;
-        const deadline = Date.now() + retentionMs;
+        const deadline = agent.retainUntil ? Date.parse(agent.retainUntil) : Date.now() + retentionMs;
         await agent.lease?.work;
-        if (!agent.lease?.expiresAt || Date.parse(agent.lease.expiresAt) < deadline) {
+        if (deadline > Date.now() && (!agent.lease?.expiresAt || Date.parse(agent.lease.expiresAt) < deadline)) {
           await renewLease(agent, deadline);
         }
         agent.retainAtRisk = !agent.lease?.expiresAt || Date.parse(agent.lease.expiresAt) < deadline;
@@ -776,6 +996,16 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       }
       agents.delete(agentId);
       scheduleLeases();
+    },
+    async detach() {
+      closing = true;
+      clearTimeout(leaseTimer);
+      await periodicRenewal;
+      for (const agent of agents.values()) agent.eventPoll.stop();
+      await Promise.allSettled([...agents.values()].map(async agent => {
+        await agent.polling;
+        await agent.manager.close?.();
+      }));
     },
     async close() {
       closing = true;

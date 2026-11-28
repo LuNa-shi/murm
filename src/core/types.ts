@@ -1,3 +1,4 @@
+import type { OperationLimits } from './operation-queue.js';
 import type { ModelConfig, RuntimeConnectionOptions, Sandbox, SteeringMode } from './backend-config.js';
 import type { ExecutorSelection } from './executor-adapter.js';
 import type { FilePolicy } from './file-policy.js';
@@ -31,6 +32,14 @@ export interface CreateRuntimeOptions {
   maxAgents: number;
   outputDir: string;
   agentAccessPolicy?: AgentAccessPolicy;
+  operationLimits?: OperationLimits;
+  persistence?: { deploymentId: string; contract: string; retainForMs?: number };
+}
+
+export interface RecoverRuntimeOptions extends CreateRuntimeOptions {
+  runDirectory: string;
+  cleanupOnly?: boolean;
+  restoreService?(definition: RuntimeServiceDefinition): Promise<ServiceRegistration | undefined>;
 }
 
 export interface FileEntry {
@@ -171,6 +180,7 @@ export interface AgentSpawnReceipt {
 }
 
 export type AgentEvent = { agentId: string } & (
+  | { type: 'workerProbe'; requestId: string }
   | { type: 'output'; text: string }
   | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
   | { type: 'error'; error: ErrorInfo; fatal: boolean }
@@ -207,6 +217,8 @@ export interface PendingCleanup {
     reason: 'archive-session' | 'collect-artifacts';
     status: 'retained' | 'retain-at-risk';
     autoRenewing: boolean;
+    deadline?: string;
+    owner?: string;
   };
 }
 
@@ -300,6 +312,7 @@ export interface AgentAccessMutation {
 export type AgentAccessGrant = AgentAccessMutation & { readonly binding?: string };
 
 export interface RuntimeManagementSnapshot {
+  readonly recoveryBlockedServices?: readonly string[];
   readonly sequence: number;
   readonly profiles: readonly ProfileDefinition[];
   readonly services: readonly RuntimeServiceDefinition[];
@@ -323,6 +336,7 @@ export interface Runtime {
   get(agentId: string): Promise<AgentInfo>;
   list(filter?: AgentListFilter): Promise<AgentInfo[]>;
   interrupt(agentId: string, options: InterruptOptions): Promise<InterruptReceipt>;
+  probeWorkerEvent(agentId: string, options: { requestId: string; timeoutMs?: number }): Promise<{ requestId: string; elapsedMs: number }>;
   send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
   send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
   onEvent(handler: (event: RuntimeEvent) => void | Promise<void>): () => void;

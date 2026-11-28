@@ -26,6 +26,7 @@ All public values and TypeScript types are imported from the single root entry `
 | `createSandbox(config)` | Function | Creates a reusable OpenSandbox connection handle or plugs in a custom `{ provider }` `SandboxProvider`. |
 | `resolveSandboxConnection(overrides?)` | Function | Resolves Lifecycle URL, local token, and image defaults matching the CLI (use only in trusted host config). |
 | `createRuntime(options)` | Async function | Opens a Run control plane (`outputDir/<runtimeId>/`, Service Bridge, Model Gateway) with configurable `executor` and `filePolicy`. |
+| `recoverRuntime(options)` | Async function | Reopens a durable Run under verified same-host ownership; supports cleanup-only and dynamic Service restoration. |
 | `createPiExecutor({ version })` / `createCodexExecutor({ version })` | Function | Selects a verified built-in executor version (Pi `1.3.0` / `1.4.0`, Codex `0.172.0`); `'pi'` / `'codex'` shorthands remain supported. |
 | `createExecutorAdapter(declaration)` / `EXECUTOR_ADAPTER_PROTOCOL` | Function / Constant | Declares an image-installed external executor adapter (`murm-executor-v1`). |
 | `DEFAULT_WORKER_IMAGE` / `workerImageFor(selection)` | Constant / Function | Default dual-executor Worker image, or the single-executor Worker image matching a chosen executor. |
@@ -152,3 +153,9 @@ For host `murm` commands, container `swarm` commands, and environment variables,
 | `OPERATION_UNKNOWN` / `status: 'unknown'` from Runtime input | Host wait expired or transport dropped after dispatch | Reconcile by repeating the **exact same `requestId` and arguments** |
 | `SERVICE_TIMEOUT` / unknown Service write | The adapter may already have performed its side effect | Retain `operation_id` and reconcile through that Service's own idempotency contract; Registry does not auto-retry writes |
 | `cleanup: 'pending'` | Execution stop, session archive, required `collect`, or Sandbox delete incomplete | Inspect `pending[].action` and `errors`, resolve the blocker, and retry `stop()` / `close()` on the same Runtime |
+
+## recoverRuntime and Worker probes
+
+`recoverRuntime(options: RecoverRuntimeOptions): Promise<Runtime>` is a public root export. Options extend `CreateRuntimeOptions` with `runDirectory`, optional `cleanupOnly`, and `restoreService(definition): Promise<ServiceRegistration | undefined>`. Creation options add `persistence: { deploymentId, contract, retainForMs? }` and `operationLimits`. Recovery verifies the original contract and same-host, same-boot ownership.
+
+`runtime.probeWorkerEvent(agentId, { requestId, timeoutMs? })` returns `{ requestId, elapsedMs }` after a correlated Worker event reaches Core. It requires a live Agent and uses the ordinary event ingestion path. See [Runtime recovery](../runtime.md#durable-recovery-and-kubernetes).

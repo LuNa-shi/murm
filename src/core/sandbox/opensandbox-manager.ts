@@ -96,6 +96,7 @@ export class OpenSandboxManager {
   declare execdToken: any;
   declare image: any;
   declare resourceLimits: any;
+  declare resourceRequests?: Record<string, string>;
   declare entrypoint: any;
   declare metadata: any;
   declare environment: any;
@@ -128,6 +129,7 @@ export class OpenSandboxManager {
     execdToken = globalThis.process?.env?.MURM_EXECD_ACCESS_TOKEN ?? null,
     image,
     resourceLimits = { cpu: '2', memory: '2Gi' },
+    resourceRequests,
     entrypoint = ['tail', '-f', '/dev/null'],
     metadata = {},
     environment = {},
@@ -155,6 +157,7 @@ export class OpenSandboxManager {
     this.execdToken = execdToken;
     this.image = required(image, 'image');
     this.resourceLimits = structuredClone(resourceLimits);
+    this.resourceRequests = structuredClone(resourceRequests);
     if (!Array.isArray(entrypoint) || entrypoint.length === 0 || !entrypoint.every((part: any) => typeof part === 'string')) throw new TypeError('entrypoint must be a non-empty string array');
     this.entrypoint = [...entrypoint];
     if (this.entrypoint.length !== 3 || this.entrypoint[0] !== 'tail' || this.entrypoint[1] !== '-f' || this.entrypoint[2] !== '/dev/null') {
@@ -377,7 +380,7 @@ export class OpenSandboxManager {
     throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox deletion is still pending', { sandbox_id: sandboxId }, { retryable: true });
   }
 
-  async ensureExecution({ executionId, agentId = null, onCreateDispatch = null, onCreateRejected = null, onCreated = null, onWorkerToken,
+  async ensureExecution({ executionId, agentId = null, onCreateDispatch = null, onCreateRejected = null, onCreated = null, onWorkerToken, onControlCredentials, controllerEpoch, executionGeneration,
     timeoutSeconds = 3600, projectQuotaRequired = false, cleanupOnFailure = true, workspaceRef = null, bindingVersion = null, environment = {}, metadata = {}, networkPolicy }: any = {}) {
     const id = required(executionId, 'execution_id');
     required(agentId, 'agent_id');
@@ -401,6 +404,7 @@ export class OpenSandboxManager {
     const workerEntrypoint = [...this.workerCommand, '--port', String(this.workerPort)];
     this.pendingCreations.set(id, creation);
     try {
+      onControlCredentials?.({ workerToken, execdToken: execdAccessToken });
       onWorkerToken?.(workerToken);
       if (execdAccessToken) onWorkerToken?.(execdAccessToken);
       const admission = onCreateDispatch?.({ provider: 'opensandbox', timeout_seconds: timeoutSeconds });
@@ -414,7 +418,8 @@ export class OpenSandboxManager {
         image: { uri: this.image },
         entrypoint: workerEntrypoint,
         resourceLimits: this.resourceLimits,
-        env: { ...launchBody, MURM_WORKER_TOKEN: workerToken, ...(execdAccessToken ? { EXECD_ACCESS_TOKEN: execdAccessToken } : {}) },
+        ...(this.resourceRequests ? { resourceRequests: this.resourceRequests } : {}),
+        env: { ...launchBody, ...(controllerEpoch === undefined ? {} : { MURM_CONTROLLER_EPOCH: String(controllerEpoch) }), MURM_WORKER_TOKEN: workerToken, ...(execdAccessToken ? { EXECD_ACCESS_TOKEN: execdAccessToken } : {}) },
         ...(this.volumes.length > 0 ? { volumes: this.volumes } : {}),
         ...(networkPolicy ? { networkPolicy } : {}),
         metadata: {
@@ -422,6 +427,7 @@ export class OpenSandboxManager {
           ...(configuredRuntime ? { runtime_key: openSandboxRuntimeKey(configuredRuntime) } : {}),
           ...(configuredMission ? { mission_key: openSandboxMissionKey(configuredMission) } : {}),
           agent_key: openSandboxAgentKey(agentId), resource_key: openSandboxAgentKey(id),
+          ...(executionGeneration === undefined ? {} : { execution_generation: String(executionGeneration) }),
           ...(bindingVersion === null || bindingVersion === undefined ? {} : { binding_version: String(bindingVersion) }),
         },
       }, AbortSignal.timeout(60_000))).catch(async (error: any) => {
@@ -444,7 +450,7 @@ export class OpenSandboxManager {
     let execdHeaders: Record<string, string> = {};
     // Retain the resource as soon as its provider ID exists. Endpoint/health
     // preparation failures must not erase responsibility for deletion.
-    const record: any = { executionId: id, agentId, projectQuotaRequired, boundExecutionId: null, sandboxId, execdUrl: null, execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), expiresAt: sdkExpiry(created.expiresAt), workerToken, onWorkerToken, preparing: true };
+    const record: any = { executionId: id, agentId, projectQuotaRequired, boundExecutionId: null, sandboxId, execdUrl: null, execdHeaders, bindingVersion, hostWorkspaceRef: workspaceRef, createdAt: this.now(), expiresAt: sdkExpiry(created.expiresAt), workerToken, onWorkerToken, controllerEpoch, preparing: true };
     this.executions.set(id, record);
     this.pendingCreations.delete(id);
     let registered = false;
@@ -476,6 +482,70 @@ export class OpenSandboxManager {
     this.logger?.({ event: 'sandbox.started', provider: 'opensandbox', execution_id: id, sandbox_id: sandboxId, binding_version: bindingVersion });
     return this.#snapshot(record);
   }
+
+  async discoverExecution({ runtimeId, agentId, resourceKey, generation }: {
+    runtimeId: string; agentId: string; resourceKey: string; generation: number;
+  }): Promise<string[]> {
+    const identity = this.#recoveryIdentity(runtimeId, agentId, resourceKey, generation);
+    const deadline = Date.now() + 30_000;
+    const remaining = () => {
+      if (Date.now() >= deadline) throw new MurmError(ERROR_CODES.SERVICE_TIMEOUT, 'Sandbox lookup timed out', {}, { retryable: true });
+      return deadline - Date.now();
+    };
+    const sandboxes = await this.#listSandboxes(remaining, identity);
+    return [...sandboxes].filter(([, metadata]) => Object.entries(identity).every(([key, value]) => metadata[key] === value)).map(([id]) => id);
+  }
+
+  async recoverExecution({ runtimeId, agentId, resourceKey, generation, sandboxId, workerToken, execdToken,
+    workerInstanceId, streamEpoch, controllerEpoch, filePolicy, controllerSpoolDirectory, executionStopped }: any) {
+    const expected = this.#recoveryIdentity(runtimeId, agentId, resourceKey, generation);
+    const current = await sdkOperation('verify recovered Sandbox', () => this.sdk.sandboxes.getSandbox(sandboxId));
+    if (!Object.entries(expected).every(([key, value]) => current.metadata?.[key] === value)) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Recovered Sandbox ownership does not match its allocation');
+    }
+    const record: any = { executionId: resourceKey, agentId, sandboxId, workerToken, controllerEpoch,
+      expiresAt: sdkExpiry(current.expiresAt), executionStopped: executionStopped === true, coreAgent: false };
+    if (!workerInstanceId) {
+      this.executions.set(resourceKey, record);
+      return { expiresAt: record.expiresAt, executionStopped: record.executionStopped };
+    }
+    const endpoint = await sdkOperation('resolve recovered Execd endpoint',
+      () => this.sdk.sandboxes.getSandboxEndpoint(sandboxId, this.execdPort, this.useServerProxy));
+    record.execdUrl = endpointUrl(endpoint, this.useServerProxy ? this.lifecycleBaseUrl : undefined);
+    if (!record.execdUrl) throw new MurmError(ERROR_CODES.START_FAILED, 'Recovered Execd endpoint is invalid');
+    record.execdHeaders = this.#dataPlaneHeaders(record.execdUrl, endpoint.headers);
+    const token = record.execdHeaders['x-execd-access-token'] ?? execdToken;
+    delete record.execdHeaders['x-execd-access-token'];
+    if (token) record.execdHeaders['X-EXECD-ACCESS-TOKEN'] = token;
+    this.executions.set(resourceKey, record);
+    try {
+      const attached = await this.worker.attach(resourceKey, {
+        workerToken, workerInstanceId, streamEpoch, controllerEpoch, filePolicy, controllerSpoolDirectory, executionStopped,
+      });
+      return { observedControllerEpoch: attached.observedControllerEpoch, expiresAt: record.expiresAt,
+        executionStopped: attached.executionStopped, executorStarted: attached.executorStarted };
+    } catch (error) {
+      this.executions.delete(resourceKey);
+      throw error;
+    }
+  }
+
+  #recoveryIdentity(runtimeId: string, agentId: string, resourceKey: string, generation: number) {
+    return { runtime_key: openSandboxRuntimeKey(runtimeId), agent_key: openSandboxAgentKey(agentId),
+      resource_key: openSandboxAgentKey(resourceKey), execution_generation: String(generation) };
+  }
+
+  workerControl(executionId: string) {
+    const worker = this.#record(executionId).agent;
+    return worker && { workerInstanceId: worker.workerInstanceId, streamEpoch: worker.streamEpoch,
+      controllerEpoch: worker.controllerEpoch, eventProtocol: worker.eventProtocol, controlProtocol: worker.controlProtocol };
+  }
+
+  readWorkerEvents(executionId: string, input: Parameters<WorkerClient['readEvents']>[1]) {
+    return this.worker.readEvents(executionId, input);
+  }
+
+  takeover(executionId: string, input: Parameters<WorkerClient['takeover']>[1]) { return this.worker.takeover(executionId, input); }
 
   async renewExecution(executionId: string, minimumExpiresAtMs: number) {
     if (!Number.isFinite(minimumExpiresAtMs) || minimumExpiresAtMs <= this.now()) {

@@ -104,3 +104,11 @@ node dist/scripts/read-harness-result.js --run-directory <dir> --runtime-id <id>
 ```
 
 Internal Harness helpers (`src/harness/run-input.ts` and `src/harness/run-report.ts`) are repository utilities rather than exports of `@luna-shi/murm`.
+
+## murm recover
+
+```sh
+murm recover --run-dir /private/runs/original-runtime-id --config /private/recovery.mjs
+```
+
+The config module default export is the original Runtime options object or an async zero-argument options factory. This command performs cleanup-only recovery, calls `close()`, prints its receipt and exits 0 only for complete cleanup. It requires the same-host, same-boot exclusive writer and matching durable configuration. Pending resources stay in the ledger with finite retention deadlines. See [Runtime recovery](../runtime.md#durable-recovery-and-kubernetes).

@@ -4,8 +4,10 @@ import { WORKER_PROTOCOL } from '../src/core/worker-image.js';
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID, createHash } from 'node:crypto';
+import { createWorkerEventStream, WORKER_EVENT_PROTOCOL } from '../src/core/worker-event-stream.js';
+import { createWorkerControl, WORKER_CONTROL_PROTOCOL } from '../src/core/worker-control.js';
 import { spawn, spawnSync } from 'node:child_process';
-import { readFile, writeFile, mkdir, chown, readdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, chown, readdir, open, rename, rm, chmod } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { SandboxProject, AGENT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.js';
 import { CoreWorkDir } from './core-work-dir.js';
@@ -48,9 +50,27 @@ let writerGate: Promise<unknown> = Promise.resolve();
 let child: any = null;
 let sessionPrivateValues: unknown[] = [];
 let stdoutBuffer = '';
+let discardingStdoutLine = false;
+const MAX_STDOUT_LINE_BYTES = 1024 * 1024;
+const eventStream = createWorkerEventStream();
+const controlDirectory = join(dirname(RUNTIME_DIR), '.murm-worker-control');
+await mkdir(controlDirectory, { recursive: true, mode: 0o700 });
+await chmod(controlDirectory, 0o700);
+const controls = createWorkerControl({ workerInstanceId: eventStream.workerInstanceId,
+  initialEpoch: Number(process.env.MURM_CONTROLLER_EPOCH ?? 0),
+  async persist(state) {
+    const temporary = join(controlDirectory, `state-${randomUUID()}.tmp`);
+    try {
+      const handle = await open(temporary, 'wx', 0o600);
+      try { await handle.writeFile(JSON.stringify(state)); await handle.sync(); }
+      finally { await handle.close(); }
+      await rename(temporary, join(controlDirectory, 'state.json'));
+      const directory = await open(controlDirectory, 'r');
+      try { await directory.sync(); } finally { await directory.close(); }
+    } finally { await rm(temporary, { force: true }); }
+  },
+});
 let sequence = 0;
-const records: any[] = [];
-const MAX_RECORDS = 2_048;
 let executionEpoch = 0;
 let nativeExecuting = false;
 const preflights = new Set<Promise<void>>();
@@ -104,10 +124,10 @@ async function body(request: IncomingMessage, maxBytes = 2 * 1024 * 1024) {
 function publish(record: any) {
   if (record.type === 'agent_start') nativeExecuting = true;
   if (['agent_settled', 'worker_exit'].includes(record.type)) nativeExecuting = false;
-  const value = { ...record, worker_sequence: ++sequence, worker_at: new Date().toISOString() };
-  records.push(value);
-  if (records.length > MAX_RECORDS) records.splice(0, records.length - MAX_RECORDS);
+  const value = eventStream.publish(record);
+  sequence = value.worker_sequence;
   rpcSubmissions.observe(value);
+  if (record.type === 'worker_exit') eventStream.close();
   return value;
 }
 
@@ -128,9 +148,26 @@ async function expandPiModelCatalog(environment: any) {
 }
 
 function processStdout(chunk: any) {
-  stdoutBuffer += chunk.toString();
+  let text = chunk.toString();
+  if (discardingStdoutLine) {
+    const newline = text.indexOf('\n');
+    if (newline < 0) return;
+    text = text.slice(newline + 1);
+    discardingStdoutLine = false;
+  }
+  stdoutBuffer += text;
   while (true) {
     const newline = stdoutBuffer.indexOf('\n');
+    const length = newline < 0 ? stdoutBuffer.length : newline;
+    if (Buffer.byteLength(stdoutBuffer.slice(0, length)) > MAX_STDOUT_LINE_BYTES) {
+      const discardedBytes = Buffer.byteLength(stdoutBuffer.slice(0, length));
+      eventStream.invalidate({ type: 'worker_output_gap', observedDiscardedBytes: discardedBytes });
+      sequence = eventStream.sequence;
+      discardingStdoutLine = newline < 0;
+      stdoutBuffer = newline < 0 ? '' : stdoutBuffer.slice(newline + 1);
+      if (discardingStdoutLine) return;
+      continue;
+    }
     if (newline < 0) return;
     const line = stdoutBuffer.slice(0, newline).replace(/\r$/, '');
     stdoutBuffer = stdoutBuffer.slice(newline + 1);
@@ -216,6 +253,7 @@ async function startAgent(input: any) {
     await chown(sessionPath, AGENT_UID, AGENT_UID);
   }
   delete suppliedEnv.MURM_WORKER_TOKEN;
+  delete suppliedEnv.MURM_CONTROLLER_EPOCH;
   const agentEnvironment = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', ...suppliedEnv,
     HOME: join(RUNTIME_DIR, 'home'), TMPDIR: join(RUNTIME_DIR, 'tmp'), PI_CODING_AGENT_DIR: join(RUNTIME_DIR, 'pi-agent'),
     ...(external ? { MURM_EXECUTOR_SESSION_DIR: join(RUNTIME_DIR, sessionDirectory(executorKind)), MURM_EXECUTOR_SYSTEM_PROMPT: input.system_prompt_path } : {}),
@@ -297,7 +335,7 @@ async function startAgent(input: any) {
     child = null;
   });
   const nativeSession = await codexDriver?.ready;
-  return { pid: child?.pid, ...(external ? { backend: external.contract } : nativeSession ? {
+  return { pid: child?.pid, worker_instance_id: controls.workerInstanceId, stream_epoch: eventStream.streamEpoch, controller_epoch: controls.controllerEpoch, ...(external ? { backend: external.contract } : nativeSession ? {
     backend: { kind: 'codex', version: executorVersion, authMode: 'api-key', threadId: nativeSession.threadId },
   } : {}), contract: { version: input.contract_version, resources: input.resources, file_protocol: fileProtocol },
     ...(projectFiles ? { project_files: projectFiles } : {}),
@@ -371,14 +409,21 @@ async function rpc(input: any): Promise<{ records: any[]; response?: any; state?
       ((!['prompt', 'steer'].includes(message.type)) || !['all', 'one-at-a-time'].includes(message.steeringMode))) {
     throw Object.assign(new Error('Invalid prompt steering mode'), { code: 'INVALID_CONTRACT' });
   }
+  if (message.type === 'core_event_probe') {
+    if (typeof message.id !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(message.id)) {
+      throw Object.assign(new Error('Event probe requires a bounded trace identity'), { code: 'INVALID_CONTRACT' });
+    }
+    const event = publish({ type: 'controller_probe', traceId: message.id });
+    return { state: 'complete', response: { id: message.id, command: message.type, success: true }, records: [event] };
+  }
   // Core polls bounded Worker history from an explicit sequence without
   // sending a synthetic command to Pi.
   if (message.type === 'get_state' && Number.isFinite(Number(message.since))) {
     const since = Math.max(0, Number(message.since));
-    return { records: records.filter((record: any) => record.worker_sequence > since) };
+    return { records: eventStream.records.filter((record: any) => record.worker_sequence > since) };
   }
   if (message.type === 'get_rpc_result') {
-    return { ...rpcSubmissions.query(message.id), records: records.filter((record: any) => record.worker_sequence > Number(message.since ?? 0)) };
+    return { ...rpcSubmissions.query(message.id), records: eventStream.records.filter((record: any) => record.worker_sequence > Number(message.since ?? 0)) };
   }
   const beforeSequence = sequence;
   if (input.since !== undefined && (!Number.isSafeInteger(input.since) || input.since < 0)) {
@@ -404,7 +449,7 @@ async function rpc(input: any): Promise<{ records: any[]; response?: any; state?
     }
     result = await pending;
   }
-  return { ...result, records: records.filter(record => record.worker_sequence > (input.since ?? beforeSequence)) };
+  return { ...result, records: eventStream.records.filter(record => record.worker_sequence > (input.since ?? beforeSequence)) };
 }
 
 async function agentProcesses() {
@@ -478,6 +523,7 @@ function withAgentPaused<T>(operation: (paused: number[]) => T | Promise<T>) {
 }
 
 function stopAgent() {
+  eventStream.close();
   project.beginClose();
   clearTimeout(installHoldTimer ?? undefined); installHoldTimer = null;
   heldWriters.clear();
@@ -569,100 +615,127 @@ const server = createServer(async (request: any, response: any) => {
     if (request.method === 'GET' && url.pathname === '/health') { send(response, 200, { ok: true, pid: child?.pid ?? null }); return; }
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
     if (request.method === 'GET' && url.pathname === '/core/contract') {
-      send(response, 200, { ok: true, result: { worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol, file_transfer: fileTransferProtocol } });
+      send(response, 200, { ok: true, result: {
+        worker_protocol: WORKER_PROTOCOL, file_protocol: fileProtocol, file_transfer: fileTransferProtocol,
+        event_protocol: WORKER_EVENT_PROTOCOL, control_protocol: WORKER_CONTROL_PROTOCOL,
+        worker_instance_id: controls.workerInstanceId, stream_epoch: eventStream.streamEpoch,
+        controller_epoch: controls.controllerEpoch, execution_stopped: executionStopped,
+        executor_started: everStarted, executor_launched: executorLaunched, execution_epoch: executionEpoch,
+      } });
       return;
     }
-    if (request.method === 'POST' && url.pathname === '/start') {
-      send(response, 200, { ok: true, result: await parseFileRequest(request, 'initial', startAgent) });
+    if (request.method === 'POST' && url.pathname === '/core/control/takeover') {
+      send(response, 200, { ok: true, result: await controls.takeover(await body(request, 8192)) });
       return;
     }
-    if (request.method === 'POST' && ['/core/files/collect', '/core/session/archive'].includes(url.pathname)) {
-      const sessionArchive = url.pathname === '/core/session/archive';
-      if (!executionStopped || (!sessionArchive && !coreWorkDir)) throw Object.assign(new Error('Core collection requires confirmed stopped execution'), { code: 'NOT_ALLOWED' });
-      const requested = await body(request);
-      const budget = filePolicy[sessionArchive ? 'session' : 'export'];
-      const input = sessionArchive ? { paths: ['.'], includeGit: false, required: true, maxBytes: budget.maxBytes } :
-        { ...requested, maxBytes: Math.min(requested.maxBytes, budget.maxBytes) };
-      const controller = new AbortController();
-      const deadline = setTimeout(() => { controller.abort(); response.destroy(); }, budget.timeoutMs);
-      const disconnected = () => controller.abort();
+    const epochHeader = request.headers['x-murm-controller-epoch'];
+    const controllerEpoch = epochHeader === undefined ? 0 : /^\d+$/.test(String(epochHeader)) ? Number(epochHeader) : -1;
+    if (request.method === 'POST' && url.pathname === '/core/events') {
+      controls.assertEpoch(controllerEpoch);
+      const cursor = await body(request, 8192);
+      const cancellation = new AbortController();
+      const disconnected = () => cancellation.abort();
       response.on('close', disconnected);
-      response.writeHead(200, { 'content-type': 'application/x-ndjson' });
       try {
-        if (sessionArchive && !executorLaunched) {
-          response.write(`${JSON.stringify({ type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 })}\n`);
-          return;
-        }
-        for await (const record of collectCoreWorkDir(sessionArchive ? join(RUNTIME_DIR, sessionDirectory(executorKind)) : PROJECT_DIR, input, {
-          signal: controller.signal, maxEntries: budget.maxEntries, timeoutMs: budget.timeoutMs,
-          fileTree: { validPath: () => true, excluded: () => false, maxFiles: budget.maxFiles, maxFileBytes: budget.maxFileBytes },
-        })) {
-          if (!response.write(`${JSON.stringify(record)}\n`)) await once(response, 'drain', { signal: controller.signal });
-        }
-      } catch (error: any) {
-        if (!response.destroyed) response.write(`${JSON.stringify({ type: 'error', code: error.code ?? 'SERVICE_UNAVAILABLE', message: error.message })}\n`);
-      } finally {
-        clearTimeout(deadline);
-        response.off('close', disconnected);
-        response.end();
+        const page = await eventStream.poll(cursor, cancellation.signal);
+        controls.assertEpoch(controllerEpoch);
+        if (!response.destroyed) send(response, 200, { ok: true, result: page });
+      } finally { response.off('close', disconnected); }
+      return;
+    }
+    await controls.run(controllerEpoch, async () => {
+      if (request.method === 'POST' && url.pathname === '/start') {
+        send(response, 200, { ok: true, result: await parseFileRequest(request, 'initial', startAgent) });
+        return;
       }
-      return;
-    }
-    if (request.method === 'POST' && url.pathname === '/core/files/replace') {
-      send(response, 200, { ok: true, result: await parseFileRequest(request, 'replace', input => controlCoreFiles('replace', input)) });
-      return;
-    }
-    if (request.method === 'POST' && ['/core/files/pause', '/core/files/resume'].includes(url.pathname)) {
-      const { requestId } = await body(request);
-      if (typeof requestId !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId)) throw Object.assign(new Error('Capture fence requires requestId'), { code: 'INVALID_CONTRACT' });
-      requireOpenWorkDir();
-      if (!child?.pid) throw Object.assign(new Error('Capture fence requires a live Agent'), { code: 'NOT_ALLOWED' });
-      const pause = url.pathname.endsWith('/pause');
-      send(response, 200, { ok: true, result: await withAgentPaused(() => {
-        if (pause) {
-          if (releasedSnapshotHolds.has(requestId)) throw Object.assign(new Error('Snapshot fence was already released'), { code: 'CONFLICT' });
-          if (!snapshotHolds.has(requestId)) snapshotHolds.set(requestId, setTimeout(() => {
+      if (request.method === 'POST' && ['/core/files/collect', '/core/session/archive'].includes(url.pathname)) {
+        const sessionArchive = url.pathname === '/core/session/archive';
+        if (!executionStopped || (!sessionArchive && !coreWorkDir)) throw Object.assign(new Error('Core collection requires confirmed stopped execution'), { code: 'NOT_ALLOWED' });
+        const requested = await body(request);
+        const budget = filePolicy[sessionArchive ? 'session' : 'export'];
+        const input = sessionArchive ? { paths: ['.'], includeGit: false, required: true, maxBytes: budget.maxBytes } :
+          { ...requested, maxBytes: Math.min(requested.maxBytes, budget.maxBytes) };
+        const controller = new AbortController();
+        const deadline = setTimeout(() => { controller.abort(); response.destroy(); }, budget.timeoutMs);
+        const disconnected = () => controller.abort();
+        response.on('close', disconnected);
+        response.writeHead(200, { 'content-type': 'application/x-ndjson' });
+        try {
+          if (sessionArchive && !executorLaunched) {
+            response.write(`${JSON.stringify({ type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 })}\n`);
+            return;
+          }
+          for await (const record of collectCoreWorkDir(sessionArchive ? join(RUNTIME_DIR, sessionDirectory(executorKind)) : PROJECT_DIR, input, {
+            signal: controller.signal, maxEntries: budget.maxEntries, timeoutMs: budget.timeoutMs,
+            fileTree: { validPath: () => true, excluded: () => false, maxFiles: budget.maxFiles, maxFileBytes: budget.maxFileBytes },
+          })) {
+            if (!response.write(`${JSON.stringify(record)}\n`)) await once(response, 'drain', { signal: controller.signal });
+          }
+        } catch (error: any) {
+          if (!response.destroyed) response.write(`${JSON.stringify({ type: 'error', code: error.code ?? 'SERVICE_UNAVAILABLE', message: error.message })}\n`);
+        } finally {
+          clearTimeout(deadline);
+          response.off('close', disconnected);
+          response.end();
+        }
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/core/files/replace') {
+        send(response, 200, { ok: true, result: await parseFileRequest(request, 'replace', input => controlCoreFiles('replace', input)) });
+        return;
+      }
+      if (request.method === 'POST' && ['/core/files/pause', '/core/files/resume'].includes(url.pathname)) {
+        const { requestId } = await body(request);
+        if (typeof requestId !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId)) throw Object.assign(new Error('Capture fence requires requestId'), { code: 'INVALID_CONTRACT' });
+        requireOpenWorkDir();
+        if (!child?.pid) throw Object.assign(new Error('Capture fence requires a live Agent'), { code: 'NOT_ALLOWED' });
+        const pause = url.pathname.endsWith('/pause');
+        send(response, 200, { ok: true, result: await withAgentPaused(() => {
+          if (pause) {
+            if (releasedSnapshotHolds.has(requestId)) throw Object.assign(new Error('Snapshot fence was already released'), { code: 'CONFLICT' });
+            if (!snapshotHolds.has(requestId)) snapshotHolds.set(requestId, setTimeout(() => {
+              releaseSnapshotHold(requestId);
+              releasedSnapshotHolds.add(requestId);
+              void withAgentPaused(() => ({})).catch(() => undefined);
+            }, 90_000));
+          } else {
             releaseSnapshotHold(requestId);
             releasedSnapshotHolds.add(requestId);
-            void withAgentPaused(() => ({})).catch(() => undefined);
-          }, 90_000));
-        } else {
-          releaseSnapshotHold(requestId);
-          releasedSnapshotHolds.add(requestId);
-        }
-        return { requestId, paused: pause };
-      }) });
-      return;
-    }
-    if (request.method === 'POST' && url.pathname === '/core/files/snapshot') {
-      await sendFileSnapshot(request, response);
-      return;
-    }
-    if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request, 32 * 1024 * 1024)) }); return; }
-    if (request.method === 'POST' && url.pathname === '/project/grant') { const input = await body(request); send(response, 200, { ok: true, result: await withAgentPaused(() => project.grant(input)) }); return; }
-    if (request.method === 'POST' && url.pathname === '/project/snapshot') { const input = await body(request); send(response, 200, { ok: true, result: await withAgentPaused(() => project.snapshot(input)) }); return; }
-    if (request.method === 'POST' && url.pathname === '/project/install') { const input = await body(request, 32 * 1024 * 1024); send(response, 200, { ok: true, result: await withAgentPaused((pids: any) => project.install(input, pids)) }); return; }
-    if (request.method === 'POST' && url.pathname === '/project/install-result') { const input = await body(request); send(response, 200, { ok: true, result: project.queryInstall(input) }); return; }
-    if (request.method === 'POST' && url.pathname === '/project/install-confirm') { const input = await body(request); send(response, 200, { ok: true, result: await withAgentPaused(() => project.confirmInstall(input)) }); return; }
-    if (request.method === 'POST' && url.pathname === '/core/session/snapshot') {
-      requireOpenWorkDir();
-      if (executorKind !== 'pi') throw Object.assign(new Error('Executor does not support cross-Sandbox Context Fork'), { code: 'NOT_ALLOWED' });
-      if (!child || executionStopped) throw Object.assign(new Error('Context Fork source is unavailable'), { code: 'NOT_ALLOWED' });
-      const result = await rpc({ message: { type: 'get_entries', id: `fork-${randomUUID()}` }, timeout_ms: 10_000 });
-      requireOpenWorkDir();
-      if (!child || executionStopped || result.response?.success !== true) throw Object.assign(new Error('Context Fork observation failed'), { code: 'NOT_ALLOWED' });
-      send(response, 200, { ok: true, result: snapshotSessionFork(result.response.data, sessionPrivateValues) });
-      return;
-    }
-    if (request.method === 'POST' && url.pathname === '/rpc') { send(response, 200, { ok: true, result: await rpc(await body(request)) }); return; }
-    if (request.method === 'POST' && url.pathname === '/stop') {
-      await body(request);
-      send(response, 200, { ok: true, result: await stopAgent() });
-      return;
-    }
-    send(response, 404, { ok: false, error: 'unknown worker route' });
+          }
+          return { requestId, paused: pause };
+        }) });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/core/files/snapshot') {
+        await sendFileSnapshot(request, response);
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request, 32 * 1024 * 1024)) }); return; }
+      if (request.method === 'POST' && url.pathname === '/project/grant') { const input = await body(request); send(response, 200, { ok: true, result: await withAgentPaused(() => project.grant(input)) }); return; }
+      if (request.method === 'POST' && url.pathname === '/project/snapshot') { const input = await body(request); send(response, 200, { ok: true, result: await withAgentPaused(() => project.snapshot(input)) }); return; }
+      if (request.method === 'POST' && url.pathname === '/project/install') { const input = await body(request, 32 * 1024 * 1024); send(response, 200, { ok: true, result: await withAgentPaused((pids: any) => project.install(input, pids)) }); return; }
+      if (request.method === 'POST' && url.pathname === '/project/install-result') { const input = await body(request); send(response, 200, { ok: true, result: project.queryInstall(input) }); return; }
+      if (request.method === 'POST' && url.pathname === '/project/install-confirm') { const input = await body(request); send(response, 200, { ok: true, result: await withAgentPaused(() => project.confirmInstall(input)) }); return; }
+      if (request.method === 'POST' && url.pathname === '/core/session/snapshot') {
+        requireOpenWorkDir();
+        if (executorKind !== 'pi') throw Object.assign(new Error('Executor does not support cross-Sandbox Context Fork'), { code: 'NOT_ALLOWED' });
+        if (!child || executionStopped) throw Object.assign(new Error('Context Fork source is unavailable'), { code: 'NOT_ALLOWED' });
+        const result = await rpc({ message: { type: 'get_entries', id: `fork-${randomUUID()}` }, timeout_ms: 10_000 });
+        requireOpenWorkDir();
+        if (!child || executionStopped || result.response?.success !== true) throw Object.assign(new Error('Context Fork observation failed'), { code: 'NOT_ALLOWED' });
+        send(response, 200, { ok: true, result: snapshotSessionFork(result.response.data, sessionPrivateValues) });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/rpc') { send(response, 200, { ok: true, result: await rpc(await body(request)) }); return; }
+      if (request.method === 'POST' && url.pathname === '/stop') {
+        await body(request);
+        send(response, 200, { ok: true, result: await stopAgent() });
+        return;
+      }
+      send(response, 404, { ok: false, error: 'unknown worker route' });
+    });
   } catch (error: any) {
-    if (!response.writableEnded && !response.destroyed) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT', 'AGENT_STARTUP_CONTRACT', 'CONFLICT', 'NOT_ALLOWED', 'OPERATION_UNKNOWN', 'FILE_SPACE_INSUFFICIENT'].includes(error.code) ? { code: error.code } : {}),
+    if (!response.writableEnded && !response.destroyed) send(response, error.code === 'SERVICE_UNAVAILABLE' ? 503 : 400, { ok: false, error: error.message, ...(['SERVICE_UNAVAILABLE', 'WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT', 'AGENT_STARTUP_CONTRACT', 'CONFLICT', 'NOT_ALLOWED', 'OPERATION_UNKNOWN', 'FILE_SPACE_INSUFFICIENT'].includes(error.code) ? { code: error.code } : {}),
       ...(['dirty', 'active_writer'].includes(error.applyBlocker) ? { apply_blocker: error.applyBlocker } : {}) });
   }
 });

@@ -9,6 +9,8 @@ All notable changes to **murm** (`@luna-shi/murm`) are tracked here and in the r
 
 ## Unreleased
 
+- Add opt-in Runtime recovery, cursor-based Worker events and a pinned OpenSandbox Kubernetes deployment recipe. All real cluster capacity tiers remain unverified.
+
 - The SDK root exports the Harness author contract. Subagents, TaskPool, PeerMesh, Lead–Worker and Substrate build and start in their own directories from the same candidate archive.
 - Service commands advertised at startup use `swarm service invoke <service> <operation>`. TaskPool retains its shorthand commands and owns its Task, Material, Workspace, Mission and Judge implementation.
 - Fixed Lead–Worker verification and FATE have dedicated checkout launch paths under `dist/benchmarks/`. The ordinary project examples take a directory and prompt.

@@ -13,6 +13,8 @@ For a feature walkthrough of the current release, see [What's New (v0.2.0)](docs
 - Remove built-in `local-docker`, exact byte/inode quotas and host shared mounts. IP and port allowlists require OpenSandbox dns+nft. Upgrade the Controller and Worker to Worker protocol v2 together.
 - The SDK accepts an external Sandbox Provider through `createSandbox`. Setup, doctor and built-in configurations share connection defaults. The infrastructure probe supports Pi and Codex.
 - The CLI installer falls back to a home-directory prefix when the global npm prefix is unwritable. Local setup builds a missing built-in Worker directly from the installed package. Setup also identifies failed OpenSandbox image pulls and explains how to retry a build with a mirrored Node base image.
+- Add opt-in durable Runtime allocation ownership, same-host recovery, cleanup-only `murm recover`, dynamic Service restoration, epoch-fenced Worker control, bounded cursor long polling, operation queues and end-to-end Worker event probes.
+- Add a pinned official Kubernetes deployment recipe and bounded 2/8/32/128/1,024 capacity tooling. All real cluster tiers remain `not-run`; no cluster capacity or automatic Controller failover is claimed.
 
 ## [0.2.0] - 2026-11-27
 

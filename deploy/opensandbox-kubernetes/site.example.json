@@ -1,0 +1,22 @@
+{
+  "gatewayAddress": "opensandbox-ingress-gateway.opensandbox-system.svc.cluster.local",
+  "trustedPrivateNetwork": true,
+  "storageClassName": "REPLACE_WITH_INSTALLED_STORAGE_CLASS",
+  "workerImage": "registry.example.net/murm-worker@sha256:REPLACE_WITH_64_HEX_DIGEST",
+  "runtimeImage": "registry.example.net/murm-runtime@sha256:REPLACE_WITH_64_HEX_DIGEST",
+  "runtimeCommand": [
+    "node",
+    "/opt/app/run.mjs"
+  ],
+  "runtimeConfigSecret": "murm-runtime-config",
+  "apiKeySecret": "opensandbox-api-key",
+  "signingKeySecret": "opensandbox-signing-keys",
+  "sandboxNodeSelector": {
+    "murm.opensandbox/worker": "true"
+  },
+  "runtimeNodeSelector": {},
+  "cniNamespace": "kube-system",
+  "cniSelector": "REPLACE_WITH_CNI_DAEMONSET_LABEL_SELECTOR",
+  "csiNamespace": "kube-system",
+  "csiSelector": null
+}

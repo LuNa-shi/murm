@@ -151,3 +151,49 @@ if (receipt.cleanup !== 'complete') {
 ---
 
 **Next:** learn how to define role Profiles, spawn persistent Agents, send messages, and recover from interrupts in **[Agents & Profiles](agents.md)**.
+
+## Durable recovery and Kubernetes
+
+For an application with a verified restoration contract, opt into persistent allocation ownership when creating the Run:
+
+```ts
+const options = {
+  // Supply your original sandbox, models, profiles, services and outputDir.
+  ...applicationOptions,
+  connection: {
+    publicUrl: 'http://murm-runtime.murm.svc.cluster.local:3100',
+    bindHost: '0.0.0.0',
+    bindPort: 3100,
+  },
+  persistence: { deploymentId: 'cluster-a', contract: 'harness-v1', retainForMs: 900_000 },
+  operationLimits: { prepare: 8, stop: 8, transfer: 4, queued: 1024, waitMs: 60_000 },
+};
+```
+
+Use a stable callback address reachable from every Worker, private durable Run storage, and matching original configuration. With Profile network restrictions, the trusted callback hostname must resolve on the Controller to exactly one non-loopback IPv4. Core pins that address and the exact callback port in policy; the Worker continues using the original URL. Prepare, stop and transfer have independent bounded queues. Retention is finite and defaults to 15 minutes in durable mode.
+
+After the old Controller has exited, the SDK can restore the same live Workers:
+
+```ts
+import { recoverRuntime } from '@luna-shi/murm';
+
+const runtime = await recoverRuntime({
+  ...options,
+  runDirectory: '/private/runs/original-runtime-id',
+  restoreService: async definition => trustedServiceResolver(definition),
+});
+```
+
+`trustedServiceResolver` is application code that returns a matching Service registration from its durable business state, or `undefined` when restoration is unavailable. Supply all original options, including fresh host secrets. Dynamically registered Services require this resolver when absent from initial configuration. An unresolved Service keeps Agents fenced. Harness scheduling and Service business recovery need their own durable contracts. Original input IDs and Worker cursors are reconciled; recovery sends no replacement initial prompt.
+
+Current takeover requires the same Linux host and OS boot plus the exclusive SQLite writer lock. The Kubernetes template supplies the original node identity through the downward API, so a new Pod name on that node can recover during the same boot. A new node or boot fails the ownership check. Automatic Controller failover and Worker-process replacement are unavailable. A closing Run continues cleanup only. To request cleanup explicitly, set `cleanupOnly: true` or use the recovery CLI.
+
+```sh
+murm recover --run-dir /private/runs/original-runtime-id --config /private/recovery.mjs
+```
+
+The module's default export is the original options object or an async zero-argument factory returning it. This command always performs cleanup-only recovery and then `close()`. It prints the receipt and exits 0 for complete cleanup, otherwise 1. Pending resources remain recorded. Required export failures retain the Sandbox with a known deadline and actual `expiresAt`; retry before that finite expiry. Check `retain-at-risk` when the service has not confirmed the desired window.
+
+`runtime.probeWorkerEvent(agentId, { requestId, timeoutMs })` measures the real authenticated Worker-to-Core event path without a model request. Current Workers use bounded cursor long polling and explicit gap detection; an event gap fences new work and preserves uncertain resources.
+
+The [Kubernetes deployment profile](../../deploy/opensandbox-kubernetes/README.md) pins official components and generates private deployment inputs. The [capacity workload](../../benchmarks/kubernetes/README.md) defaults to a `not-run` plan. All 2/8/32/128/1,024 real cluster tiers remain `not-run`, and no cluster capacity is verified. A passing workload still requires the separate failure and recovery matrix before a capacity claim. Obtain owner approval before large experiments. The full ownership and retry contract is in [Architecture](../architecture/24-runtime-recovery.md).

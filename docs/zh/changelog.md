@@ -9,6 +9,8 @@ order: 16
 
 ## 尚未发布
 
+- 新增可选的 Runtime 恢复、带游标的 Worker 事件及固定版本的 OpenSandbox Kubernetes 部署模板。真实集群容量尚未验证。
+
 - SDK 包根公开 Harness 作者契约。Subagents、TaskPool、PeerMesh、Lead–Worker 和 Substrate 可从同一份候选包安装，在各自目录构建和启动。
 - 启动提示使用 `swarm service invoke <service> <operation>` 调用已授权的操作。TaskPool 保留快捷命令，并拥有 Task、Material、Workspace、Mission 和 Judge 实现。
 - 固定 Lead–Worker 验证与 FATE 使用源码 checkout 构建后的 `dist/benchmarks/` 入口。常规项目示例接收目录和初始 prompt。

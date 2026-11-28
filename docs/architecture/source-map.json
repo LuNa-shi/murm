@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "runtime_baseline": "b747b89affd2931863c156fc64e70a29f7ba13c9",
-  "reviewed_date": "2026-11-27",
+  "reviewed_date": "2026-11-28",
   "scope_roots": [
     "src",
     "scripts",
@@ -11,7 +11,8 @@
     "examples/services",
     "examples/taskpool/deploy",
     "examples/taskpool/services/judge",
-    "test-support/taskpool-legacy"
+    "test-support/taskpool-legacy",
+    "benchmarks/kubernetes"
   ],
   "scope_root_files": [
     "package.json",
@@ -363,7 +364,8 @@
         "docs/architecture/01-agent-core.md",
         "docs/architecture/02-execution.md",
         "docs/architecture/07-run-configuration.md",
-        "docs/architecture/16-pi-opensandbox-backend.md"
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/24-runtime-recovery.md"
       ],
       "role": "Sandbox-resident Pi worker and authenticated RPC, file collection and lifecycle HTTP surface"
     },
@@ -870,7 +872,8 @@
       "chapters": [
         "docs/architecture/02-execution.md",
         "docs/architecture/07-run-configuration.md",
-        "docs/architecture/16-pi-opensandbox-backend.md"
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/24-runtime-recovery.md"
       ],
       "role": "OpenSandbox lifecycle and Execd provider boundary for one Execution"
     },
@@ -1201,7 +1204,8 @@
       "path": "src/core/index.ts",
       "category": "programmable Core",
       "chapters": [
-        "docs/architecture/15-core-runtime.md"
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/24-runtime-recovery.md"
       ],
       "role": "Runtime assembly, Agent admission, input and bounded lifecycle"
     },
@@ -1263,7 +1267,8 @@
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md",
         "docs/architecture/15-core-runtime.md",
-        "docs/architecture/08-prompts.md"
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/24-runtime-recovery.md"
       ],
       "role": "Shared OpenSandbox lifecycle, session control, input polling and cleanup"
     },
@@ -1288,7 +1293,8 @@
       "path": "src/core/worker-event-poll.ts",
       "category": "Core runtime",
       "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/24-runtime-recovery.md"
       ],
       "role": "Interruptible bounded polling schedule for a single Worker"
     },
@@ -2038,7 +2044,8 @@
       "role": "Published Core Runtime, Agent, event and receipt contracts",
       "category": "Core public runtime",
       "chapters": [
-        "docs/architecture/15-core-runtime.md"
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/24-runtime-recovery.md"
       ]
     },
     {
@@ -2583,7 +2590,8 @@
       "path": "scripts/murm.ts",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/24-runtime-recovery.md"
       ],
       "role": "Host CLI dispatch, current-project interactive entry, signal handling and exit status"
     },
@@ -2695,7 +2703,8 @@
       "category": "Core runtime",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
-        "docs/architecture/17-harness-reporting.md"
+        "docs/architecture/17-harness-reporting.md",
+        "docs/architecture/24-runtime-recovery.md"
       ],
       "role": "Run-owned Profile and Service registration, retirement, access generations and management receipts"
     },
@@ -2777,7 +2786,7 @@
       "chapters": [
         "docs/architecture/23-project-harness.md"
       ],
-      "role": "Lead\u2013Worker project resource, provider and Gitea defaults"
+      "role": "Lead–Worker project resource, provider and Gitea defaults"
     },
     {
       "path": "examples/lead-worker/project.ts",
@@ -2785,7 +2794,7 @@
       "chapters": [
         "docs/architecture/23-project-harness.md"
       ],
-      "role": "Static and dynamic Lead\u2013Worker project dispatch and final delivery receipt"
+      "role": "Static and dynamic Lead–Worker project dispatch and final delivery receipt"
     },
     {
       "path": "examples/notes/project.ts",
@@ -3286,9 +3295,122 @@
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md",
-        "docs/architecture/08-prompts.md"
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/24-runtime-recovery.md"
       ],
       "role": "Authenticated murm Worker startup, input, file and Session protocol"
+    },
+    {
+      "path": "src/core/allocation-ledger.ts",
+      "category": "runtime",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Durable allocation, bounded transport and operation ownership."
+    },
+    {
+      "path": "src/core/operation-queue.ts",
+      "category": "runtime",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Durable allocation, bounded transport and operation ownership."
+    },
+    {
+      "path": "src/core/worker-control.ts",
+      "category": "runtime",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Durable allocation, bounded transport and operation ownership."
+    },
+    {
+      "path": "src/core/worker-event-stream.ts",
+      "category": "runtime",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Durable allocation, bounded transport and operation ownership."
+    },
+    {
+      "path": "deploy/opensandbox-kubernetes/prepare.mjs",
+      "category": "deployment",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Reproducible Kubernetes deployment and capacity verification inputs."
+    },
+    {
+      "path": "deploy/opensandbox-kubernetes/bom.json",
+      "category": "deployment",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Reproducible Kubernetes deployment and capacity verification inputs."
+    },
+    {
+      "path": "deploy/opensandbox-kubernetes/site.example.json",
+      "category": "deployment",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Reproducible Kubernetes deployment and capacity verification inputs."
+    },
+    {
+      "path": "deploy/opensandbox-kubernetes/inspect.mjs",
+      "category": "deployment",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Reproducible Kubernetes deployment and capacity verification inputs."
+    },
+    {
+      "path": "deploy/opensandbox-kubernetes/chart.sh",
+      "category": "deployment",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Reproducible Kubernetes deployment and capacity verification inputs."
+    },
+    {
+      "path": "benchmarks/kubernetes/manifest.example.json",
+      "category": "deployment",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Reproducible Kubernetes deployment and capacity verification inputs."
+    },
+    {
+      "path": "benchmarks/kubernetes/offline-check.mjs",
+      "category": "deployment",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Reproducible Kubernetes deployment and capacity verification inputs."
+    },
+    {
+      "path": "benchmarks/kubernetes/capacity.ts",
+      "category": "deployment",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Reproducible Kubernetes deployment and capacity verification inputs."
+    },
+    {
+      "path": "deploy/opensandbox-kubernetes/README.md",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Operator procedure, acceptance boundaries and approval gates for Kubernetes deployment and workload verification."
+    },
+    {
+      "path": "benchmarks/kubernetes/README.md",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/24-runtime-recovery.md"
+      ],
+      "role": "Operator procedure, acceptance boundaries and approval gates for Kubernetes deployment and workload verification."
     }
   ]
 }

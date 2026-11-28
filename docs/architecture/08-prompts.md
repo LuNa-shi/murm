@@ -239,3 +239,7 @@ Implement an independent color-output formatting or conversion component. Publis
 ```text
 Read both earlier peers’ Board FACTs and use their components from the current main. Implement the CLI and offline build (compile.sh). Prioritize a runnable subset and verify it with the reference. Commit and push the full candidate and open a PR. Return plain JSON {"adopted_files":["relative file path"],"checks":["reference command and observed result"]}.
 ```
+
+## Durable Controller recovery
+
+Recovery reconnects the original Worker and restores receipts and event cursors. It stages no replacement system prompt and sends no new initial user prompt. Unknown submissions are queried by their original identities. Cleanup-only recovery and a persisted closing Run do not reopen business input. Unresolved Services, missing event history or conflicting Worker ownership fence input and require reconciliation. The control probe emits a transport event and supplies no model text. [Recovery ordering](24-runtime-recovery.md)

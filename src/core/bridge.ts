@@ -279,14 +279,15 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
     async drainService(id: string) { await Promise.all(serviceWork.get(id) ?? []); },
     hasUncertainWrites: (id: string) => uncertainWrites.has(id),
     visibleServices,
-    credentialsForAgent(agentId: string) {
+    credentialsForAgent(agentId: string, restoredToken?: string) {
       const agent = getAgent(agentId);
       if (closing || !agent || agent.unavailable || ['exited', 'closing', 'closed'].includes(agent.status)) {
         throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bridge credentials require a live Agent');
       }
       let token = agentTokens.get(agentId);
       if (!token) {
-        token = randomBytes(32).toString('hex');
+        token = restoredToken ?? randomBytes(32).toString('hex');
+        if (!/^[a-f0-9]{64}$/.test(token) || tokens.has(token)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bridge control identity is invalid');
         agentTokens.set(agentId, token);
         tokens.set(token, agentId);
       }

@@ -4,8 +4,8 @@ import type { ServiceRegistration } from './services.js';
 import { isJson } from './services.js';
 
 /** Private full Service trace, independent of the bounded public evidence index. */
-export function createServiceTrace(outputDir: string, redact: (value: unknown) => unknown) {
-  const path = join(outputDir, 'service-calls.jsonl');
+export function createServiceTrace(outputDir: string, redact: (value: unknown) => unknown, controllerEpoch?: number) {
+  const path = join(outputDir, controllerEpoch === undefined ? 'service-calls.jsonl' : `service-calls-recovery-${controllerEpoch}.jsonl`);
   let sequence = 0;
   let writer = Promise.resolve();
   let failure: unknown;

@@ -25,6 +25,7 @@ export interface SandboxConfig {
   /** Assertion by the deployment administrator. Smoke verifies the actual policy. */
   egressMode?: 'dns+nft';
   resourceLimits?: { cpu: string; memory: string };
+  resourceRequests?: { cpu: string; memory: string };
   commandTimeoutMs?: number;
   timeoutSeconds?: number;
   isolation?:
@@ -82,6 +83,7 @@ export interface OpenSandboxBackendConfig {
     publicUrl?: string;
     advertiseHost?: string;
     resourceLimits?: { cpu: string; memory: string };
+    resourceRequests?: { cpu: string; memory: string };
     commandTimeoutMs?: number;
     /** Sandbox creation lifetime in seconds; safe integer >= 60, default 3600. Provider limits also apply. */
     timeoutSeconds?: number;

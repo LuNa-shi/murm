@@ -10,6 +10,7 @@ Start with [00 System overview](00-overview.md). For an SDK application, continu
 | --- | --- |
 | [00 System overview](00-overview.md) | What does the Harness own, what does Core own, and how does one Run progress from assembly to finalization? |
 | [15 Core Runtime](15-core-runtime.md) | What are the public entries, Profiles, Agent controls, input receipts, file operations and observation contracts? |
+| [24 Durable recovery and Kubernetes](24-runtime-recovery.md) | How are allocations, controller ownership, recovery, long polling, retention and cluster verification bounded? |
 | [16 OpenSandbox backend](16-pi-opensandbox-backend.md) | How do Pi and Codex run in a Sandbox? How are model access, guest transport, stop, archives and deletion handled? |
 | [04 Services](04-services.md) | How do manifests, adapters, Bridge authorization, local and external Services work? How do the domain Services apply their own state rules? |
 | [17 Runtime evidence and Harness reports](17-harness-reporting.md) | How do SDK finalization, Messages, Notes, Subagents and foreground hosts record inputs, outputs, errors and cleanup? |

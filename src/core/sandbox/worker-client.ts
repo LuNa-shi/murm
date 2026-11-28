@@ -1,3 +1,5 @@
+import { WORKER_EVENT_PROTOCOL, validateWorkerEventPage, type WorkerEventCursor, type WorkerEventPage } from '../worker-event-stream.js';
+import { WORKER_CONTROL_PROTOCOL, type WorkerTakeover, type WorkerTakeoverReceipt } from '../worker-control.js';
 import { WORKER_PROTOCOL } from '../worker-image.js';
 import { createHash } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
@@ -72,7 +74,7 @@ export class WorkerClient {
     const { url: endpoint, headers: routingHeaders } = await this.resolveEndpoint(record);
     for (const value of Object.values(routingHeaders)) record.onWorkerToken?.(value);
     const workerHeaders = {
-      ...routingHeaders, ...(this.useServerProxy || new Headers(routingHeaders).has('authorization')
+      ...routingHeaders, ...(record.controllerEpoch === undefined ? {} : { 'X-Murm-Controller-Epoch': String(record.controllerEpoch) }), ...(this.useServerProxy || new Headers(routingHeaders).has('authorization')
         ? { 'X-Murm-Worker-Token': workerToken } : { authorization: `Bearer ${workerToken}` }),
     };
     await this.#waitWorker(endpoint, workerHeaders);
@@ -85,11 +87,13 @@ export class WorkerClient {
       }
     }
     let transfer = false;
+    let workerIdentity: Record<string, unknown> = {};
     if (requireCoreFileProtocol) {
       const probe = await this.request(`${endpoint}/core/contract`, {
         absolute: true, method: 'GET', extraHeaders: workerHeaders, timeoutMs: 15_000, allowStatuses: [400, 404],
       });
       const detected = probe.body?.result?.worker_protocol;
+      workerIdentity = this.#identity(probe.body?.result);
       if (detected !== WORKER_PROTOCOL) throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT,
         `Core requires Worker protocol ${WORKER_PROTOCOL}; detected ${detected ?? 'none'}. Prepare a matching Worker image with murm setup.`);
       const supported = probe.body?.result?.file_protocol;
@@ -106,7 +110,7 @@ export class WorkerClient {
       if (files !== undefined) snapshotFileSeed(files, DEFAULT_FILE_POLICY.initial);
     }
     const isolation = this.requireManagementAuth ? await this.checkAgentBoundary(executionId) : undefined;
-    beforeAgentStart?.();
+    await beforeAgentStart?.(workerIdentity);
     record.coreAgent = true;
     record.filePolicy = filePolicy;
     record.controllerSpoolDirectory = controllerSpoolDirectory;
@@ -170,13 +174,94 @@ export class WorkerClient {
     if (!workspace && (fileReceipt?.version !== expectedVersion || fileReceipt.writable !== writable || fileReceipt.digest !== expectedDigest)) {
       throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'worker did not attest initial Core files and workDir permissions');
     }
-    record.agent = { endpoint, token: workerToken, headers: workerHeaders, worker_port: this.workerPort, started_at: this.now(), contract: receipt,
+    record.agent = { endpoint, token: workerToken, headers: workerHeaders, worker_port: this.workerPort, started_at: this.now(), contract: receipt, ...workerIdentity,
       ...(codex || externalExecutor ? { backend } : {}),
     };
     this.logger?.({ event: 'sandbox.agent_started', provider: 'opensandbox', execution_id: executionId, sandbox_id: record.sandboxId, worker_port: this.workerPort });
     return { ...record.agent, isolation };
   }
 
+
+  #identity(contract: any) {
+    if (contract?.event_protocol !== WORKER_EVENT_PROTOCOL || contract?.control_protocol !== WORKER_CONTROL_PROTOCOL) return {};
+    if (typeof contract.worker_instance_id !== 'string' || !contract.worker_instance_id ||
+        typeof contract.stream_epoch !== 'string' || !contract.stream_epoch ||
+        !Number.isSafeInteger(contract.controller_epoch) || contract.controller_epoch < 0) {
+      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker identity contract is invalid');
+    }
+    return { workerInstanceId: contract.worker_instance_id, streamEpoch: contract.stream_epoch,
+      controllerEpoch: contract.controller_epoch, eventProtocol: WORKER_EVENT_PROTOCOL, controlProtocol: WORKER_CONTROL_PROTOCOL };
+  }
+
+  async attach(executionId: string, { workerToken, workerInstanceId, streamEpoch, controllerEpoch,
+    filePolicy = DEFAULT_FILE_POLICY, controllerSpoolDirectory, executionStopped }: {
+    workerToken: string; workerInstanceId: string; streamEpoch: string; controllerEpoch: number;
+    filePolicy?: typeof DEFAULT_FILE_POLICY; controllerSpoolDirectory?: string; executionStopped?: boolean;
+  }) {
+    const record = this.#record(executionId);
+    if (!Number.isSafeInteger(controllerEpoch) || controllerEpoch < 0 || !workerToken) {
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Worker attach requires its original private control identity');
+    }
+    const { url: endpoint, headers: routeHeaders } = await this.resolveEndpoint(record);
+    for (const value of [workerToken, ...Object.values(routeHeaders)]) record.onWorkerToken?.(value);
+    const headers = { ...routeHeaders, ...(this.useServerProxy || new Headers(routeHeaders).has('authorization')
+      ? { 'X-Murm-Worker-Token': workerToken } : { authorization: `Bearer ${workerToken}` }) };
+    const response = await this.request(`${endpoint}/core/contract`, { absolute: true, extraHeaders: headers, timeoutMs: 15_000 });
+    const contract = response.body?.result;
+    const identity = this.#identity(contract);
+    if (contract?.worker_protocol !== WORKER_PROTOCOL || contract?.file_protocol !== fileProtocol ||
+        identity.workerInstanceId !== workerInstanceId || identity.streamEpoch !== streamEpoch ||
+        identity.controlProtocol !== WORKER_CONTROL_PROTOCOL) {
+      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker cannot recover the persisted execution identity');
+    }
+    if (executionStopped === true && contract.execution_stopped !== true) {
+      throw new MurmError(ERROR_CODES.AGENT_STARTUP_CONTRACT, 'Worker stop observation conflicts with the durable receipt');
+    }
+    record.workerToken = workerToken;
+    record.executionStopped = contract.execution_stopped === true;
+    record.coreAgent = true;
+    record.filePolicy = filePolicy;
+    record.controllerSpoolDirectory = controllerSpoolDirectory;
+    record.fileTransfer = contract.file_transfer === fileTransferProtocol;
+    record.agent = { endpoint, headers, token: workerToken, worker_port: this.workerPort, started_at: this.now(),
+      ...identity, controllerEpoch, observedControllerEpoch: identity.controllerEpoch,
+      contract: { version: WORKER_PROTOCOL, file_protocol: fileProtocol, resources: [] } };
+    return { ...record.agent, executionStopped: record.executionStopped, executorStarted: contract.executor_started === true, executorLaunched: contract.executor_launched === true };
+  }
+
+  async takeover(executionId: string, input: WorkerTakeover): Promise<WorkerTakeoverReceipt> {
+    const record = this.#record(executionId);
+    if (!record.agent || record.agent.controlProtocol !== WORKER_CONTROL_PROTOCOL) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Worker does not support recoverable control takeover');
+    }
+    const response = await this.request(`${record.agent.endpoint}/core/control/takeover`, {
+      absolute: true, method: 'POST', extraHeaders: this.#workerHeaders(record), body: input, timeoutMs: 20_000,
+    });
+    const receipt = responseValue(response.body);
+    if (receipt?.workerInstanceId !== input.workerInstanceId || receipt?.requestId !== input.requestId ||
+        receipt?.expectedEpoch !== input.expectedEpoch || receipt?.nextEpoch !== input.nextEpoch ||
+        receipt?.controllerEpoch !== input.nextEpoch) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Worker takeover receipt is invalid');
+    record.agent.controllerEpoch = input.nextEpoch;
+    record.controllerEpoch = input.nextEpoch;
+    return receipt;
+  }
+
+  async readEvents(executionId: string, input: WorkerEventCursor & { signal?: AbortSignal }): Promise<WorkerEventPage> {
+    const record = this.#record(executionId);
+    if (!record.agent || record.agent.eventProtocol !== WORKER_EVENT_PROTOCOL) {
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Worker does not support the recoverable event protocol');
+    }
+    if (record.eventRead) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Worker already has an active event read');
+    const { signal, ...cursor } = input;
+    record.eventRead = true;
+    try {
+      const response = await this.request(`${record.agent.endpoint}/core/events`, {
+        absolute: true, method: 'POST', extraHeaders: this.#workerHeaders(record), body: cursor,
+        timeoutMs: (cursor.waitMs ?? 25_000) + 5_000, signal,
+      });
+      return validateWorkerEventPage(responseValue(response.body), cursor);
+    } finally { record.eventRead = false; }
+  }
 
   async syncWorkspace({ executionId, workspaceRef, manifest = null, maxFileBytes = 2 * 1024 * 1024, maxTotalBytes = 16 * 1024 * 1024 }: any = {}) {
     const record: any = this.#record(executionId);
@@ -406,7 +491,10 @@ export class WorkerClient {
   }
 
 
-  #workerHeaders(record: any) { return record.agent.headers ?? { authorization: `Bearer ${record.agent.token}` }; }
+  #workerHeaders(record: any) {
+    return { ...(record.agent.headers ?? { authorization: `Bearer ${record.agent.token}` }),
+      ...(record.agent.controllerEpoch === undefined ? {} : { 'X-Murm-Controller-Epoch': String(record.agent.controllerEpoch) }) };
+  }
 
 
   async request(path: any, { method = 'GET', body = undefined, tree, fileBudget, timeoutMs = this.commandTimeoutMs, absolute = false, extraHeaders = {}, allowStatuses = [], workerStart = false, signal, omitLifecycleKey = false }: any = {}) {

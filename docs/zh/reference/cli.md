@@ -104,3 +104,11 @@ node dist/scripts/read-harness-result.js --run-directory <dir> --runtime-id <id>
 ```
 
 内置 Harness 复用的辅助模块（`src/harness/run-input.ts`、`src/harness/run-report.ts`）属于仓库内部源码，而非 `@luna-shi/murm` 包的额外导出。
+
+## murm recover
+
+```sh
+murm recover --run-dir /private/runs/original-runtime-id --config /private/recovery.mjs
+```
+
+配置模块默认导出原始 Runtime options 对象或返回 options 的零参数异步工厂。命令只恢复清理权限，调用 `close()` 并输出回执；仅清理完成时退出 0。需要同主机、同 boot 的独占 writer 和匹配的持久化配置。待处理资源继续留账，并保留有限截止时间。参见 [Runtime 恢复](../runtime.md#持久化恢复与-kubernetes)。

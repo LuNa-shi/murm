@@ -487,3 +487,20 @@ export interface HttpJsonAdapterOptions {
 ```
 
 [服务接口与 HTTP 传输见 API 参考。](api.md#service-协议与内置-agent-service)
+
+## Durable Runtime options
+
+```ts
+import type { CreateRuntimeOptions, RecoverRuntimeOptions } from "@luna-shi/murm";
+
+// CreateRuntimeOptions additions
+// persistence?: { deploymentId: string; contract: string; retainForMs?: number };
+// operationLimits?: { prepare?: number; stop?: number; transfer?: number; queued?: number; waitMs?: number };
+
+// RecoverRuntimeOptions extends CreateRuntimeOptions
+// runDirectory: string;
+// cleanupOnly?: boolean;
+// restoreService?(definition: RuntimeServiceDefinition): Promise<ServiceRegistration | undefined>;
+```
+
+默认值和恢复前提见 [Runtime](../runtime.md#持久化恢复与-kubernetes)。

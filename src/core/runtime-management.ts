@@ -41,7 +41,7 @@ const generationKey = (service: string, operation: string) => JSON.stringify([se
 const protectedServices = new Set(['agent', 'manage', 'team']);
 
 export function createRuntimeManagement({
-  profiles, registrations, validateProfile, isClosing, redact, addSecrets, changed, drainService, hasUncertainWrites, exportService, isAgentLive, cancelAccess,
+  profiles, registrations, validateProfile, isClosing, redact, addSecrets, changed, commit, drainService, hasUncertainWrites, exportService, isAgentLive, cancelAccess,
 }: {
   profiles: Map<string, Profile>;
   registrations: Map<string, ServiceRegistration>;
@@ -55,6 +55,7 @@ export function createRuntimeManagement({
   hasUncertainWrites(id: string): boolean;
   exportService(registration: ServiceRegistration): Promise<ExportResult | undefined>;
   changed(change: RuntimeManagementChange): void;
+  commit?(): void;
 }) {
   let sequence = 0;
   const definitions = new Map<string, Omit<ProfileDefinition, 'profile'>>(
@@ -104,6 +105,7 @@ export function createRuntimeManagement({
     definitions.set(id, { id, digest: digest(snapshot), sequence: ++sequence, ...(actorId ? { actorId } : {}) });
     const definition = profileGet(id)!;
     requests.set(key, { digest: definitionDigest, definition });
+    commit?.();
     changed({ operation: 'profile.register', sequence, caller, requestId, definition });
     return structuredClone(definition);
   }
@@ -146,6 +148,7 @@ export function createRuntimeManagement({
     services.set(id, { registration: snapshot, definition, dynamic: true });
     registerServicePrivateValues(new Map([[id, snapshot]]), addSecrets);
     serviceRequests.set(key, { digest: fingerprint, adapter: registration.adapter, result: definition });
+    commit?.();
     changed({ operation: 'service.register', sequence, caller, requestId, definition });
     return serviceGet(id)!;
   }
@@ -153,6 +156,7 @@ export function createRuntimeManagement({
   function updateRetirement(service: RegisteredService, state: 'retiring' | 'retired', error?: ErrorInfo) {
     const { error: _error, ...prior } = service.definition;
     service.definition = { ...prior, state, sequence: ++sequence, ...(error ? { error } : {}) };
+    commit?.();
     changed({ operation: 'service.retire', sequence, ...service.retirement!, definition: service.definition });
   }
 
@@ -232,6 +236,7 @@ export function createRuntimeManagement({
   }
 
   function initAccess(agentId: string, services: AgentAccess['services'], bindings?: AccessState['bindings']) {
+    if (access.has(agentId)) return;
     access.set(agentId, { version: 0, services, bindings: bindings ?? {}, generations: new Map() });
   }
 
@@ -292,8 +297,10 @@ export function createRuntimeManagement({
     }
     const result = accessGet(agentId)!;
     accessRequests.set(key, { fingerprint, access: result });
+    if (affected.length || bind) ++sequence;
+    commit?.();
     if (affected.length || bind) changed({
-      operation: kind === 'grant' ? 'access.grant' : 'access.revoke', sequence: ++sequence, caller, requestId,
+      operation: kind === 'grant' ? 'access.grant' : 'access.revoke', sequence, caller, requestId,
       access: result, serviceId, operations,
     });
     return structuredClone(result);
@@ -305,13 +312,60 @@ export function createRuntimeManagement({
       accessGeneration: (serviceId: string, operation: string) => state.generations.get(generationKey(serviceId, operation)) ?? 0 };
   }
 
+  function checkpoint() {
+    return { sequence,
+      profiles: [...definitions].map(([id, definition]) => [id, { ...definition, profile: profiles.get(id)! }] as const),
+      profileRequests: [...requests],
+      services: [...services].map(([id, { definition, dynamic, retirement, exported }]) => [id, { definition, dynamic, retirement, exported }] as const),
+      serviceRequests: [...serviceRequests].map(([key, { digest, result }]) => [key, { digest, result }] as const),
+      access: [...access].map(([id, state]) => [id, { ...state, generations: [...state.generations] }] as const),
+      accessRequests: [...accessRequests],
+    };
+  }
+
+  async function restore(state: ReturnType<typeof checkpoint>,
+    resolveService: (definition: RuntimeServiceDefinition) => Promise<ServiceRegistration | undefined>) {
+    const blocked: string[] = [];
+    sequence = state.sequence;
+    const restoredAdapters = new Map<string, ServiceRegistration>();
+    for (const [id, stored] of state.services) {
+      const registration = (stored.dynamic ? await resolveService(stored.definition) : registrations.get(id));
+      if (!registration || digest(registration.manifest) !== digest(stored.definition.manifest)) {
+        if (stored.definition.state !== 'retired') blocked.push(id);
+        registrations.delete(id);
+        continue;
+      }
+      const snapshot = stored.dynamic ? snapshotServiceRegistration(registration) : registration;
+      registerServicePrivateValues(new Map([[id, snapshot]]), addSecrets);
+      restoredAdapters.set(id, snapshot);
+      services.set(id, { ...stored, registration: snapshot });
+      if (stored.definition.state === 'ready') registrations.set(id, snapshot);
+      else registrations.delete(id);
+    }
+    for (const [id, { profile, ...definition }] of state.profiles) {
+      profiles.set(id, profile);
+      definitions.set(id, definition);
+    }
+    for (const [key, entry] of state.profileRequests) requests.set(key, entry);
+    for (const [key, entry] of state.serviceRequests) {
+      const registration = restoredAdapters.get(entry.result.id);
+      if (registration) serviceRequests.set(key, { ...entry, adapter: registration.adapter });
+    }
+    for (const [key, entry] of state.accessRequests) accessRequests.set(key, entry);
+    for (const [id, { generations, ...entry }] of state.access) {
+      addSecrets(Object.values(entry.bindings));
+      access.set(id, { ...entry, generations: new Map(generations) });
+    }
+    return blocked;
+  }
+
   return {
     profiles: Object.freeze({ register: (input: ProfileRegistration) => registerProfile(input), get: profileGet, list: profileList }),
     services: Object.freeze({ register: (input: RuntimeServiceRegistration) => registerService(input), get: serviceGet, list: serviceList,
       retire: (input: ServiceRetirement) => retireService(input) }),
     access: Object.freeze({ get: accessGet,
       grant: (input: AgentAccessGrant) => mutateAccess('grant', input), revoke: (input: AgentAccessMutation) => mutateAccess('revoke', input) }),
-    mutateAccess, initAccess, bridgeAccess,
+    mutateAccess, initAccess, bridgeAccess, checkpoint, restore,
     retireAll, pendingServices, knowsService: (id: string) => services.has(id),
     retiredExports: () => ownedRetirements().flatMap(({ definition, exported }) => exported ? [{ serviceId: definition.id, ...exported }] : []),
     profileDigest: (id: string) => definitions.get(id)?.digest,

@@ -1,11 +1,14 @@
 import type {
   AgentInfo, AgentListFilter, CollectionSpec, ConditionalInputReceipt,
-  CreateRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, PendingCleanup, Profile, Runtime,
-  RuntimeEvent, SendOptions,
+  CreateRuntimeOptions, RecoverRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, PendingCleanup, Profile, Runtime,
+  RuntimeEvent, SendOptions, StopReceipt,
 } from './types.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
+import { AllocationLedger, type AllocationInput, type AllocationRecord } from './allocation-ledger.js';
+import { operationLimits, operationQueue } from './operation-queue.js';
+import { stableStringify } from '../protocol/stable-json.js';
 import { openRuntimeCallback } from './runtime-callback.js';
 import { createCoreBridge } from './bridge.js';
 import { snapshotProfiles, snapshotSpawn, validId } from './config.js';
@@ -47,6 +50,7 @@ export { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from '
 export type { ExecutorCapabilities, ExecutorKind, ModelConfig, RuntimeConnectionOptions, Sandbox, SandboxConfig, SandboxProviderConfig, SteeringMode } from './backend-config.js';
 export type { ModelCapabilities, ModelProtocol, ModelStreamTerminal, ModelTransport } from './model/model-transport.js';
 export type { FileBudget, FilePolicy } from './file-policy.js';
+export type { OperationLimits } from './operation-queue.js';
 export type { SandboxPreparation, SandboxProvider } from './sandbox/opensandbox-provider.js';
 export type { SandboxManager } from './sandbox/opensandbox-backend.js';
 export type { HttpJsonAdapterOptions, ServiceRegistration } from './services.js';
@@ -55,7 +59,7 @@ export type {
   AgentAccess, AgentAccessGrant, AgentAccessMutation, AgentAccessPolicy, AgentAccessRequest,
   AgentInfo, AgentInitialInputResult, AgentListFilter, AgentSpawnReceipt, AgentStatus, CloseOptions, CloseReceipt,
   CollectionSpec, CompleteFileDigest, CompleteFileSnapshot, CompleteFileSnapshotOptions, ConditionalInputReceipt,
-  CreateRuntimeOptions, ErrorInfo, FileEntry, FileReplaceOptions, FileReplaceReceipt, FileSnapshot, FileSnapshotOptions,
+  CreateRuntimeOptions, RecoverRuntimeOptions, ErrorInfo, FileEntry, FileReplaceOptions, FileReplaceReceipt, FileSnapshot, FileSnapshotOptions,
   FileTree, InputMode, InputReceipt, InterruptOptions, InterruptReceipt, PartialFileDigest, PartialFileSnapshot,
   PendingCleanup, Profile, ProfileDefinition, ProfileRegistration, ResourceError, Runtime, RuntimeEvent, RuntimeFiles,
   RuntimeManagementChange, RuntimeManagementSnapshot, RuntimeServiceDefinition, RuntimeServiceRegistration,
@@ -127,9 +131,29 @@ async function writeRecord(path: any, value: any) {
   }
 }
 
+function fingerprint(value: unknown) {
+  return createHash('sha256').update(stableStringify(value)).digest('hex');
+}
+
 export async function createRuntime(options: CreateRuntimeOptions): Promise<Runtime> {
-  const runtimeId = randomUUID();
-  const context = { operation: 'createRuntime', runtimeId };
+  return assembleRuntime(options);
+}
+
+export async function recoverRuntime(options: RecoverRuntimeOptions): Promise<Runtime> {
+  const directory = resolve(options.runDirectory);
+  const prior = AllocationLedger.inspect(directory);
+  if (!options.persistence || prior.state === 'closed' || basename(directory) !== prior.runtimeId) {
+    throw resourceError('NOT_ALLOWED', 'Runtime recovery requires a pending durable Run and matching configuration',
+      { operation: 'recoverRuntime', runtimeId: prior.runtimeId });
+  }
+  return assembleRuntime({ ...options, outputDir: dirname(directory) }, {
+    runtimeId: prior.runtimeId, directory, restoreService: options.restoreService, cleanupOnly: options.cleanupOnly,
+  });
+}
+
+async function assembleRuntime(options: CreateRuntimeOptions, recovery?: { runtimeId: string; directory: string; restoreService?: RecoverRuntimeOptions['restoreService']; cleanupOnly?: boolean }): Promise<Runtime> {
+  const runtimeId = recovery?.runtimeId ?? randomUUID();
+  const context = { operation: recovery ? 'recoverRuntime' : 'createRuntime', runtimeId };
   const redactor = createRedactor([process.env.OPEN_SANDBOX_API_KEY, process.env.MURM_EXECD_ACCESS_TOKEN]);
   const errorInfo = redactor.error;
   let config: ReturnType<typeof claimOpenSandboxBackend>;
@@ -138,6 +162,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     if (profile.allowContextFork && !config.driver.capabilities.contextFork) throw new TypeError('Backend does not support Profile Context Fork authority');
   }
   let registrations: Map<string, ServiceRegistration>, profiles: Map<string, Profile>, outputDir: string;
+  let ledger: AllocationLedger | undefined;
+  let limits: ReturnType<typeof operationLimits>;
+  let retainForMs = 300_000;
+  let connectionFingerprint = '';
   try {
     if (!Number.isSafeInteger(options?.maxAgents) || options.maxAgents < 1 ||
         typeof options.outputDir !== 'string' || !options.outputDir.trim()) {
@@ -157,12 +185,53 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       mutateAccess: (kind, input, caller) => management.mutateAccess(kind, input, caller) }));
     profiles = snapshotProfiles(options.profiles, config.models, registrations);
     for (const profile of profiles.values()) validateProfileExecution(profile);
-    outputDir = join(resolve(options.outputDir), runtimeId);
+    outputDir = recovery?.directory ?? join(resolve(options.outputDir), runtimeId);
+    limits = operationLimits(options.operationLimits);
+    if (options.persistence) {
+      const { deploymentId, contract, retainForMs: duration = 900_000 } = options.persistence;
+      if (!validId(deploymentId) || !validId(contract) || !Number.isSafeInteger(duration) || duration < 300_000 || duration > 3_600_000 ||
+          config.provider || !config.callback?.port || config.callback.publicUrl.includes('{port}') ||
+          /^(localhost|127\.|\[::1\]$)/.test(new URL(config.callback.publicUrl).hostname)) {
+        throw new TypeError('Durable Runtime requires a deployment ID, restoration contract, fixed public callback and listener port');
+      }
+      retainForMs = duration;
+      connectionFingerprint = fingerprint([deploymentId, config.sandbox.lifecycleBaseUrl, config.sandbox.useServerProxy]);
+      const modelConfig = Object.fromEntries(Object.entries(config.models).map(([alias, value]) => {
+        const { upstream, protocol, ...rest } = value;
+        return [alias, { ...rest, url: upstream.url, protocol: typeof protocol === 'object' ? [protocol.id, protocol.version] : protocol }];
+      }));
+      const configFingerprint = fingerprint({ contract, connectionFingerprint, callback: config.callback, limits, retainForMs,
+        models: modelConfig, modelGateway: config.modelGateway, executor: [config.driver.kind, config.driver.version],
+        profiles: Object.fromEntries(profiles), services: [...registrations.values()].map(registration => registration.manifest).sort((a, b) => a.id.localeCompare(b.id)),
+        files: config.filePolicy, requests: config.sandbox.resourceRequests, limitsSandbox: config.sandbox.resourceLimits });
+      ledger = AllocationLedger.open({ directory: outputDir, runtimeId, configFingerprint, maxAgents: options.maxAgents });
+    }
   } catch (error: any) {
-    throw resourceError('INVALID_CONTRACT', redactor.text(error.message), context, { details: [errorInfo(error, 'INVALID_CONTRACT')] });
+    const code = error.code ?? 'INVALID_CONTRACT';
+    throw resourceError(code, redactor.text(error.message), context, { details: [errorInfo(error, code)] });
   }
 
   const maxAgents = options.maxAgents;
+  const prepareQueue = operationQueue(limits.prepare, limits.queued, limits.waitMs);
+  const stopQueue = operationQueue(limits.stop, limits.queued, limits.waitMs);
+  const transferQueue = operationQueue(limits.transfer, limits.queued, limits.waitMs);
+  let ledgerFailed = false;
+  let closing = false;
+  let recovering = Boolean(recovery);
+  let blockedServices: string[] = [];
+  function durable<T>(write: (owner: AllocationLedger) => T) {
+    if (!ledger) return;
+    if (ledgerFailed) throw resourceError('OPERATION_UNKNOWN', 'Runtime lost its durable writer', context, { cleanup: 'pending' });
+    try { return write(ledger); }
+    catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code === 'LEDGER_UNAVAILABLE' || code === 'SERVICE_UNAVAILABLE' || code === 'OPERATION_UNKNOWN' || code?.startsWith('ERR_SQLITE')) {
+        ledgerFailed = true;
+        for (const agent of agents.values()) revoke(agent.info.id, { abortServices: true });
+      }
+      throw error;
+    }
+  }
   // Transport retention bounds apply independently of provider disk quotas.
   const artifactBounds = (phase: 'export' | 'session') => {
     const budget = config.filePolicy[phase];
@@ -172,9 +241,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const assemblyDeadline = performance.now() + defaultTimeoutMs;
   const agents = new Map<any, any>();
   const reportPath = join(outputDir, 'runtime.json');
-  const records = createRunRecords(outputDir, runtimeId);
+  const traceEpoch = recovery ? ledger!.run.controllerEpoch : undefined;
+  const records = createRunRecords(outputDir, runtimeId, traceEpoch);
   const modelTrace = createModelTrace(outputDir, redactor);
-  const serviceTrace = createServiceTrace(outputDir, redactor.value);
+  const serviceTrace = createServiceTrace(outputDir, redactor.value, traceEpoch);
   const effectiveConfig = runtimeConfiguration({ config, profiles, registrations, maxAgents, defaultTimeoutMs }, redactor.text);
   const sandboxObservations = new Map<string, unknown>();
   const saveSummary = (status: any, data: any = {}) => writeRecord(reportPath, {
@@ -190,13 +260,13 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     const agent = agents.get(agentId);
     return agent && {
       profile: agent.info.profile, model: agent.profile.model, status: agent.info.status,
-      unavailable: agent.fatal === true,
+      unavailable: agent.fatal === true || ledgerFailed || recovering,
       ...management.bridgeAccess(agentId), parentId: agent.info.parentId, spawnProfiles: agent.profile.spawnProfiles, allowContextFork: agent.profile.allowContextFork,
     };
   };
   let callbackOwner: { close(): Promise<void> } | undefined;
-  let bridge: any, modelAccess: any, backend: any;
-  let closing = false;
+  let bridge: any, modelAccess: any;
+  let backend!: Awaited<ReturnType<typeof openOpenSandboxBackend>>;
   const management = createRuntimeManagement({
     profiles, registrations,
     validateProfile(id, profile) {
@@ -204,7 +274,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       validateProfileExecution(snapshot);
       return snapshot;
     },
-    isClosing: () => closing,
+    isClosing: () => closing || ledgerFailed || recovering || blockedServices.length > 0,
     isAgentLive: id => agents.has(id) && isLive(agents.get(id)),
     cancelAccess: (agentId, serviceId, operations) => bridge.cancelAccess(agentId, serviceId, operations),
     redact: redactor.value,
@@ -215,12 +285,16 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       const [result] = await exportServiceStates(new Map([[registration.manifest.id, registration]]), outputDir, redactor.value);
       return result as { path?: string; error?: ErrorInfo } | undefined;
     },
+    commit: () => saveManagement(),
     changed(change) {
       const safe = redactor.value(change) as typeof change;
       records.record('management', safe);
       publish({ type: 'management', change: safe });
     },
   });
+  function saveManagement() {
+    durable(owner => owner.putRuntimeState({ privateState: { management: management.checkpoint() } }));
+  }
   let recordsReady = false;
   let reportSaved = false;
   const assertAssembling = () => {
@@ -258,6 +332,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     recordsReady = true;
     await records.initialize();
     await Promise.all([modelTrace.initialize(), serviceTrace.initialize()]);
+    if (ledger && !recovery) saveManagement();
     await saveSummary('starting');
     reportSaved = true;
     assertAssembling();
@@ -276,7 +351,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       onOwned: (owner: any) => { bridge = owner; } });
     assertAssembling();
     backend = await openOpenSandboxBackend(config, { runtimeId, outputDir, bridge, modelAccess,
-      registerPrivateValues: redactor.add });
+      registerPrivateValues: redactor.add, ...(ledger ? { durability: { ledger, retainForMs } } : {}) });
     await saveSummary('open');
   })();
   const closeEndpoints = () => Promise.all([
@@ -285,6 +360,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const rollbackAssembly = async () => {
     const failure = await assembly.then(() => undefined, (error: any) => errorInfo(error));
     await Promise.all([closeEndpoints(), closeEndpoint('backend', backend)]);
+    ledger?.close();
     const pending = pendingEndpoints();
     const errors = pending.flatMap((item: any) => item.error ? [item.error] : []);
     if (recordsReady) {
@@ -322,13 +398,19 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     });
   }
 
-  const handlers = new Set<{ handler: Parameters<Runtime['onEvent']>[0] }>();
+  const handlers = new Set<{ handler: Parameters<Runtime['onEvent']>[0]; active: number; dropped: number }>();
   const notifications: { event: RuntimeEvent; seq?: number }[] = [];
+  const workerProbes = new Map<string, () => void>();
   let notifying = false;
   const spawnRequests = new Map<any, any>();
   const inputRequests = createInputLedger<InputRequest>(runtimeId);
-  const fileControls = createFileControls({ backend, findAgent, problem, observe, timedOut, filePolicy: config.filePolicy,
-    isLive: (agent: any) => !closing && isLive(agent) });
+  const boundedFiles = {
+    ...backend,
+    snapshotFiles: (...args: Parameters<typeof backend.snapshotFiles>) => transferQueue.run(() => backend.snapshotFiles(...args)),
+    replaceFiles: (...args: Parameters<typeof backend.replaceFiles>) => transferQueue.run(() => backend.replaceFiles(...args)),
+  };
+  const fileControls = createFileControls({ backend: boundedFiles, findAgent, problem, observe, timedOut, filePolicy: config.filePolicy,
+    isLive: (agent: any) => !closing && !ledgerFailed && !recovering && isLive(agent) });
   const handlerErrors: any[] = [];
   let handlerErrorCount = 0;
   let closeWork: any;
@@ -364,7 +446,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   }
 
   function isLive(agent: any) {
-    return !agent.fatal && liveStates.has(agent.info.status);
+    return !agent.fatal && !ledgerFailed && (!ledger || ledger.healthy) && liveStates.has(agent.info.status);
   }
 
   function publish(event: RuntimeEvent, seq?: number, statusChanged = false) {
@@ -389,10 +471,27 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           if (handlerErrors.length < 32) handlerErrors.push(entry);
           records.record('subscriber-error', entry);
         };
+        if (queued.event.type === 'workerProbe') workerProbes.get(queued.event.requestId)?.();
         for (const subscription of [...handlers]) {
           if (!handlers.has(subscription)) continue;
-          try { Promise.resolve(subscription.handler(structuredClone(queued.event))).catch(recordFailure); }
-          catch (error) { recordFailure(error); }
+          if (subscription.active >= 32) {
+            subscription.dropped++;
+            if (subscription.dropped === 1) records.record('subscriber-overflow', { eventSeq: queued.seq, maximumPending: 32 });
+            continue;
+          }
+          try {
+            const result = subscription.handler(structuredClone(queued.event));
+            if (result) {
+              subscription.active++;
+              Promise.resolve(result).catch(recordFailure).finally(() => {
+                subscription.active--;
+                if (subscription.dropped) {
+                  records.record('subscriber-resumed', { dropped: subscription.dropped });
+                  subscription.dropped = 0;
+                }
+              });
+            }
+          } catch (error) { recordFailure(error); }
         }
       }
     } finally {
@@ -455,7 +554,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     publish(event, seq, previousStatus !== info.status);
   }
 
-  function stopReceipt(agent: any, pendingError?: ErrorInfo) {
+  function stopReceipt(agent: any, pendingError?: ErrorInfo): StopReceipt {
     const agentId = agent.info.id;
     const error = pendingError ?? agent.cleanupError;
     return { agentId, execution: agent.executionStopped ? 'stopped' : 'unknown',
@@ -485,6 +584,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     if (agent.info.status === 'closed') return Promise.resolve(agent.info.lastStop);
     if (agent.stopWork) return agent.stopWork;
     const { info } = agent;
+    if (ledger) durable(owner => {
+      const row = owner.get(info.id);
+      if (row.state === 'intent') owner.rejectCreation(info.id, 'No create dispatch was committed');
+      else if (['starting', 'ready', 'unknown', 'created', 'dispatched'].includes(row.state)) owner.transition(info.id, 'stopping');
+    });
     info.status = 'closing';
     agent.controller.abort();
     revoke(info.id);
@@ -492,46 +596,78 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     records.record('stop', { agentId: info.id, state: 'started', collect: agent.collect });
     agent.stopWork = (async () => {
       await agent.start?.catch(() => {});
+      return stopQueue.run(async () => {
       try {
         if (!agent.executionStopped) {
           stopPhase(agent, 'stop-execution');
           const { collectable } = await backend.stopExecution(info.id);
           agent.executionStopped = true;
           agent.collectable = collectable;
+          durable(owner => {
+            const row = owner.get(info.id);
+            if (row.sandboxId && !row.stopConfirmed) owner.recordStop(info.id, row.sandboxId, 'Worker stop was confirmed or startup was never dispatched');
+            owner.checkpoint(info.id, { publicState: { collectable } });
+          });
         }
         if (agent.collectable && !agent.sessionArchive && backend.collectSession) {
           stopPhase(agent, 'archive-session');
           const bounds = artifactBounds('session');
           const collect = { paths: ['.'], includeGit: false, maxBytes: bounds.bytes, required: true };
-          [agent.sessionArchive] = await saveAgentArtifacts({ outputDir, agentId: info.id, collect,
+          durable(owner => owner.transition(info.id, 'exporting'));
+          [agent.sessionArchive] = await transferQueue.run(() => saveAgentArtifacts({ outputDir, agentId: info.id, collect,
             bounds, records: () => backend.collectSession(info.id),
-            destination: 'session', redactStream: redactor.jsonl, privateFiles: true });
+            destination: 'session', redactStream: redactor.jsonl, privateFiles: true }));
+          durable(owner => owner.checkpoint(info.id, { archive: agent.sessionArchive }));
           records.record('session-archive', { agentId: info.id, manifestPath: agent.sessionArchive });
         }
         if (agent.collect && agent.collectable && !agent.artifacts && !agent.optionalCollectionError) {
           stopPhase(agent, 'collect-artifacts');
           try {
-            agent.artifacts = await saveAgentArtifacts({ outputDir, agentId: info.id, collect: agent.collect,
-              bounds: artifactBounds('export'), records: () => backend.collect(info.id, agent.collect) });
+            durable(owner => owner.transition(info.id, 'exporting'));
+            agent.artifacts = await transferQueue.run(() => saveAgentArtifacts({ outputDir, agentId: info.id, collect: agent.collect,
+              bounds: artifactBounds('export'), records: () => backend.collect(info.id, agent.collect) }));
+            durable(owner => owner.checkpoint(info.id, { artifacts: agent.artifacts }));
           } catch (error: any) {
             if (agent.collect.required) throw error;
             agent.optionalCollectionError = errorInfo(error);
           }
         }
         stopPhase(agent, 'delete-sandbox');
+        durable(owner => {
+          const record = owner.get(info.id);
+          if (record.state !== 'rejected' && record.state !== 'deleted') owner.transition(info.id, 'deleting');
+        });
         await backend.destroy(info.id);
+        durable(owner => {
+          const row = owner.get(info.id);
+          if (row.state === 'rejected' || row.state === 'deleted') return;
+          if (!row.sandboxId) throw resourceError('OPERATION_UNKNOWN', 'Sandbox creation remains unconfirmed', { ...context, agentId: info.id });
+          if (!row.stopConfirmed) owner.recordStop(info.id, row.sandboxId, 'Worker startup was never dispatched');
+          owner.recordDeletion(info.id, row.sandboxId, 'Original Lifecycle confirmed deletion after stop');
+        });
         agent.cleanupError = undefined;
         info.status = 'closed';
       } catch (error: any) {
         agent.cleanupError = errorInfo(error);
         if (agent.cleanupAction === 'archive-session' || agent.cleanupAction === 'collect-artifacts') {
-          backend.retain(info.id, agent.cleanupAction);
+          const deadline = durable(owner => {
+            const row = owner.get(info.id);
+            const expires = row.retention?.deadline ?? new Date(Date.now() + retainForMs).toISOString();
+            owner.retain(info.id, { reason: agent.cleanupAction, deadline: expires, owner: runtimeId });
+            return expires;
+          });
+          backend.retain(info.id, agent.cleanupAction, deadline);
         }
       }
       info.lastStop = stopReceipt(agent);
       records.record('stop', { agentId: info.id, state: 'observed', receipt: info.lastStop });
       agentChanged(agent);
       return info.lastStop;
+      }).catch(error => {
+        agent.cleanupError = errorInfo(error);
+        info.lastStop = stopReceipt(agent);
+        return info.lastStop;
+      });
     })().finally(() => { agent.stopWork = undefined; });
     agentChanged(agent);
     return agent.stopWork;
@@ -556,7 +692,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         throw problem('CONFLICT', 'spawn requestId already has different parameters', 'spawn', request.agent.info.id, requestId);
       }
     } else {
-      if (closing) throw problem('NOT_ALLOWED', 'Runtime is closing', 'spawn', undefined, requestId);
+      if (closing || recovering || ledgerFailed || blockedServices.length) throw problem('NOT_ALLOWED', 'Runtime is not accepting new Agents', 'spawn', undefined, requestId);
       if (parameters.parentId && !isLive(findAgent(parameters.parentId, 'spawn', requestId))) {
         throw problem('NOT_ALLOWED', 'Parent Agent is unavailable', 'spawn', parameters.parentId, requestId);
       }
@@ -572,6 +708,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       }
       const info: AgentInfo = { id: randomUUID(), profile: parameters.profile, status: 'starting',
         ...(parameters.parentId ? { parentId: parameters.parentId } : {}) };
+      durable(owner => owner.reserveIntent({ agentId: info.id, resourceKey: info.id, requestId, caller, parameterFingerprint: fingerprint,
+        profile: info.profile, image: profile.image, executor: config.driver.kind, providerId: 'opensandbox', connectionFingerprint,
+        executionGeneration: 1, timeoutSeconds: config.sandbox.timeoutSeconds ?? 3600,
+        publicState: { parentId: info.parentId, collect: parameters.collect, writable: parameters.writable ?? profile.writable },
+        privateState: { bindings: parameters.bindings } }));
       redactor.add(Object.values(parameters.secretEnv ?? {}));
       const agent: RuntimeAgent = {
         info, profile, controller: new AbortController(),
@@ -588,16 +729,23 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         requestId: redactor.text(requestId), source: caller, collect: parameters.collect, writable: parameters.writable ?? agent.profile.writable });
       agent.start = Promise.resolve().then(async () => {
         agent.controller.signal.throwIfAborted();
-        const resource = await backend.spawn({ agentId: info.id, profile: agent.profile, options: parameters,
+        const resource = await prepareQueue.run(() => backend.spawn({ agentId: info.id, profile: agent.profile, options: parameters,
           signal: agent.controller.signal, onEvent: (event: any) => emit(agent, event),
           onTrace: ({ type, ...record }: Readonly<Record<string, unknown>>) => records.record(String(type),
             redactor.value({ ...record, agentId: info.id }) as Record<string, unknown>),
-          recordAllocation: (allocation: any) => records.record('spawn', { ...allocation, agentId: info.id,
-            requestId: redactor.text(requestId), sandboxId: redactor.text(allocation.sandboxId) }),
+          recordAllocation: allocation => {
+            durable(owner => {
+              if (allocation.rejection) owner.rejectCreation(info.id, 'Original Lifecycle definitively rejected creation');
+              else if (allocation.state === 'allocation-dispatched') owner.dispatched(info.id);
+              else if (allocation.sandboxId) owner.observeResource(info.id, { sandboxId: allocation.sandboxId, expiresAt: allocation.expiresAt });
+            });
+            records.record('spawn', { ...allocation, agentId: info.id,
+              requestId: redactor.text(requestId), sandboxId: redactor.text(allocation.sandboxId) });
+          },
           onExecutionStart: () => {
             agent.nativeExecuting = true;
             refreshActivity(agent);
-          } });
+          } }), agent.controller.signal);
         if (agent.fatal || info.status !== 'starting') throw new Error('Agent stopped before becoming idle');
         info.status = 'idle';
         sandboxObservations.set(info.id, redactor.value({
@@ -663,6 +811,19 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     if (steeringMode !== undefined && !config.driver.capabilities.steeringModes.includes(steeringMode)) throw problem('NOT_ALLOWED', 'Backend does not support the requested steeringMode', operation, agentId, requestId);
     const agent = findAgent(agentId, operation, requestId);
     const parameters = { input, mode, source, steeringMode, wakeIfIdle };
+    const inputFingerprint = fingerprint(parameters);
+    let storedInput: AllocationInput | undefined;
+    if (ledger) {
+      storedInput = ledger.input(agentId, caller, requestId);
+      if (storedInput && storedInput.parameterFingerprint !== inputFingerprint) {
+        throw problem('CONFLICT', 'send requestId already has different parameters', operation, agentId, requestId);
+      }
+      if (storedInput?.state === 'accepted') return structuredClone(storedInput.receipt as ConditionalInputReceipt);
+      if (storedInput?.state === 'rejected') {
+        const saved = storedInput.receipt as ErrorInfo;
+        throw problem(saved.code, saved.message, operation, agentId, requestId);
+      }
+    }
     let request: InputRequest | undefined;
     try { request = inputRequests.get(caller, agentId, requestId, parameters); }
     catch (caught) {
@@ -670,10 +831,21 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       throw problem(error.code, error.message, operation, agentId, requestId);
     }
     if (!request) {
-      if (closing || !isLive(agent) || agent.interruption || !fileControls.canSend(agent)) {
+      if (closing || recovering || !isLive(agent) || agent.interruption || !fileControls.canSend(agent)) {
+        if (storedInput && storedInput.state !== 'reserved') return { inputId: storedInput.inputId, status: 'unknown' };
         throw problem('NOT_ALLOWED', 'Agent is not accepting input', operation, agentId, requestId);
       }
-      const inputId = randomUUID();
+      if (ledger) {
+        const allocation = ledger.get(agentId);
+        const expiry = Date.parse(allocation.expiresAt ?? '');
+        if (!Number.isFinite(expiry) || expiry - Date.now() < 5000) {
+          throw problem('SERVICE_UNAVAILABLE', 'Sandbox lease has insufficient confirmed time for new input', operation, agentId, requestId, 'pending');
+        }
+        storedInput ??= durable(owner => owner.reserveInput({ resourceKey: agentId, caller, requestId, inputId: randomUUID(),
+          parameterFingerprint: inputFingerprint, parameters: { mode, steeringMode, wakeIfIdle } }));
+      }
+      const inputId = storedInput?.inputId ?? randomUUID();
+      const queryOnly = storedInput !== undefined && storedInput.state !== 'reserved';
       const executionEpoch = agent.executionEpoch;
       const identity = { agentId, requestId: redactor.text(requestId), inputId, caller,
         source: redactor.text(source) ?? caller, mode, steeringMode, wakeIfIdle };
@@ -682,7 +854,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         agent.activityClaims.delete(request);
         refreshActivity(agent);
       };
-      const entry: InputRequest = { inputId, run: async () => {
+      const entry: InputRequest = { inputId, ...(queryOnly ? { dispatched: true } : {}), run: async () => {
         if (entry.dispatched && agent.info.status === 'closed') return { inputId, status: 'unknown' };
         if (!entry.dispatched && (closing || !isLive(agent) || executionEpoch !== agent.executionEpoch || !fileControls.canSend(agent))) {
           releaseActivity();
@@ -690,20 +862,26 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         }
         const querying = entry.dispatched === true;
         try {
+          if (!querying) durable(owner => owner.recordInput(agentId, caller, requestId, 'dispatched'));
           entry.dispatched = true;
           records.record('input', { ...identity, state: querying ? 'receipt-query' : 'dispatched' });
-          const receipt = await backend.send(agentId, input, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle });
+          const receipt = await backend.send(agentId, input, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle, ...(querying ? { queryOnly: true } : {}) });
           if (wakeIfIdle && receipt.status === 'not-accepted') throw new Error('Backend declined an input with waking enabled');
           if (receipt.status === 'not-accepted' || (receipt.status === 'accepted' && receipt.disposition === 'handled')) releaseActivity();
           records.record('input', { ...identity, state: receipt.status,
             ...(receipt.status === 'accepted' ? { disposition: receipt.disposition } : { reason: receipt.reason }), cursor: agent.eventSequence });
-          return receipt.status === 'unknown' ? { inputId, status: 'unknown' } : { inputId, ...receipt };
+          const result: ConditionalInputReceipt = receipt.status === 'unknown' ? { inputId, status: 'unknown' } : { inputId, ...receipt };
+          durable(owner => owner.recordInput(agentId, caller, requestId, result.status === 'unknown' ? 'unknown' : 'accepted', result));
+          return result;
         } catch (error: any) {
+          if (ledgerFailed) return { inputId, status: 'unknown' };
           if (knownInputRejections.has(error.code) && (!querying || error.inputRejected)) {
+            durable(owner => owner.recordInput(agentId, caller, requestId, 'rejected', errorInfo(error)));
             releaseActivity();
             records.record('input', { ...identity, state: 'rejected', error: errorInfo(error) });
             throw problem(error.code, error.message, operation, agentId, requestId);
           }
+          durable(owner => owner.recordInput(agentId, caller, requestId, 'unknown'));
           records.record('input', { ...identity, state: 'unknown', error: errorInfo(error) });
           return { inputId, status: 'unknown' };
         }
@@ -739,6 +917,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       if (closing || !isLive(agent)) throw problem('NOT_ALLOWED', 'Agent is not available to interrupt', 'interrupt', agentId, requestId);
       if (agent.interruption) throw problem('CONFLICT', 'A previous interrupt is unconfirmed', 'interrupt', agentId, requestId);
       request = { interruptId: randomUUID(), executionEpoch: ++agent.executionEpoch };
+      durable(owner => owner.checkpoint(agentId, { publicState: { executionEpoch: request!.executionEpoch, interruptPending: true } }));
       agent.interruptRequests.set(requestId, request);
       agent.interruption = request;
       bridge.cancelAgentCalls(agentId);
@@ -755,6 +934,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         if (closing || !isLive(agent)) return;
         const result = await backend.interrupt(agentId, request);
         if (result.status === 'interrupted' && isLive(agent)) {
+          durable(owner => owner.checkpoint(agentId, { publicState: { interruptPending: false } }));
           request.confirmed = true;
           request.discardedInputHashes = result.discardedInputHashes;
           agent.interruption = undefined;
@@ -775,9 +955,37 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
 
   function onEvent(handler: Parameters<Runtime['onEvent']>[0]) {
     if (typeof handler !== 'function') throw problem('INVALID_CONTRACT', 'Event handler must be a function', 'onEvent');
-    const subscription = { handler };
+    const subscription = { handler, active: 0, dropped: 0 };
     handlers.add(subscription);
     return () => { handlers.delete(subscription); };
+  }
+
+  const activeProbes = new Set<string>();
+  async function probeWorkerEvent(agentId: string, options: { requestId: string; timeoutMs?: number }) {
+    const timeoutMs = bound(options, 'probeWorkerEvent', agentId);
+    const requestId = options?.requestId;
+    if (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(requestId)) {
+      throw problem('INVALID_CONTRACT', 'A Worker probe requires a 1–128 character trace ID', 'probeWorkerEvent', agentId);
+    }
+    const agent = findAgent(agentId, 'probeWorkerEvent', requestId);
+    if (closing || recovering || !isLive(agent)) throw problem('NOT_ALLOWED', 'Worker probe requires a live Agent', 'probeWorkerEvent', agentId, requestId);
+    if (activeProbes.has(requestId) || activeProbes.size >= 1024) {
+      throw problem('OPERATION_LIMIT', 'Worker probe is already active or the probe queue is full', 'probeWorkerEvent', agentId, requestId);
+    }
+    activeProbes.add(requestId);
+    const start = performance.now();
+    const traceId = randomUUID();
+    let received!: (elapsedMs: number) => void;
+    const arrival = new Promise<number>(resolve => { received = resolve; });
+    workerProbes.set(traceId, () => received(performance.now() - start));
+    try {
+      const result = await observe(Promise.all([backend.probeWorkerEvent(agentId, traceId, timeoutMs), arrival]), timeoutMs);
+      if (result === timedOut) throw problem('OPERATION_UNKNOWN', 'Worker probe was not observed before the deadline', 'probeWorkerEvent', agentId, requestId);
+      return { requestId, elapsedMs: result[1] };
+    } finally {
+      workerProbes.delete(traceId);
+      activeProbes.delete(requestId);
+    }
   }
 
   async function stop(agentId: string, options?: { timeoutMs?: number }) {
@@ -807,6 +1015,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     const timeoutMs = bound(options, 'close');
     if (finalClose) return structuredClone(finalClose);
     const wasClosing = closing;
+    durable(owner => owner.beginClose());
     closing = true;
     if (!closeWork) {
       for (const agent of agents.values()) revoke(agent.info.id);
@@ -852,7 +1061,9 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           reportSaved = false;
           receipt = closeReceipt(agentReceipts, errors, failure);
         } finally { savingClose = false; }
-        if (receipt.cleanup === 'complete') {
+        if (receipt.cleanup === 'complete' && !ledgerFailed) {
+          durable(owner => owner.completeClose());
+          ledger?.close();
           finalClose = receipt;
           publish({ type: 'runtimeChanged' });
         }
@@ -873,12 +1084,101 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     return send(id, input, options);
   }
 
+  async function restoreAgents() {
+    const allocations = ledger!.list();
+    if (recovery?.cleanupOnly) durable(owner => owner.beginClose());
+    closing = ledger!.run.state === 'closing';
+    const managementState = ledger!.run.privateState.management as ReturnType<typeof management.checkpoint> | undefined;
+    if (managementState) blockedServices = await management.restore(managementState, async definition => {
+      try { return closing ? undefined : await recovery?.restoreService?.(definition); }
+      catch { return undefined; }
+    });
+    if (blockedServices.length) records.record('runtime', { state: 'authority-blocked', serviceIds: blockedServices });
+    const resumed: { agent: RuntimeAgent; row: AllocationRecord }[] = [];
+    for (const row of allocations) {
+      const publicState = row.publicState ?? {};
+      const profile = profiles.get(row.profile);
+      if (!profile || row.connectionFingerprint !== connectionFingerprint || row.providerId !== 'opensandbox') {
+        throw resourceError('NOT_ALLOWED', 'Allocation requires its original Profile and deployment', context, { cleanup: 'pending' });
+      }
+      const terminal = row.state === 'deleted' || row.state === 'rejected';
+      const info: AgentInfo = { id: row.agentId, profile: row.profile, status: terminal ? 'closed' : 'closing',
+        ...(typeof publicState.parentId === 'string' ? { parentId: publicState.parentId } : {}) };
+      const agent = { info, profile, controller: new AbortController(), activityClaims: new Set(),
+        nativeExecuting: publicState.nativeExecuting === true, executionStopped: row.stopConfirmed, executionEpoch: Number(publicState.executionEpoch ?? 0),
+        eventSequence: row.afterSequence, interruptRequests: new Map(), collect: publicState.collect as CollectionSpec | undefined,
+        collectable: publicState.collectable === true, sessionArchive: row.archive, artifacts: row.artifacts } as RuntimeAgent;
+      management.initAccess(info.id, profile.services, row.privateState?.bindings as Record<string, string> | undefined);
+      agents.set(info.id, agent);
+      fileControls.register(agent, { writable: publicState.writable === true, shared: false });
+      const request = { fingerprint: row.parameterFingerprint, agent, result: Promise.resolve(info) };
+      spawnRequests.set(JSON.stringify([row.caller ?? 'host', row.requestId]), request);
+      if (terminal) {
+        info.lastStop = stopReceipt(agent);
+        continue;
+      }
+      const status = await stopQueue.run(() => backend.recover(row, {
+        onEvent: event => emit(agent, event),
+        onExecutionStart: () => { agent.nativeExecuting = true; refreshActivity(agent); },
+        onTrace: ({ type, ...entry }) => records.record(String(type), redactor.value({ ...entry, agentId: info.id }) as Record<string, unknown>),
+      }));
+      agent.executionStopped ||= status.executionStopped;
+      if (status.executionStopped && !status.terminal && row.sandboxId && !row.stopConfirmed) {
+        durable(owner => owner.recordStop(row.resourceKey, row.sandboxId!, 'Original Worker attested that its executor stopped'));
+        (agent as RuntimeAgent & { collectable?: boolean }).collectable = Boolean(row.workerInstanceId);
+      }
+      if (status.terminal) {
+        info.status = 'closed';
+        info.lastStop = stopReceipt(agent);
+      } else if (!closing && !blockedServices.length && status.available && publicState.interruptPending !== true) {
+        resumed.push({ agent, row });
+      } else {
+        agent.fatal = true;
+        info.lastError = { code: 'OPERATION_UNKNOWN', message: 'Only cleanup is available until Worker and authority recovery are confirmed', retryable: true };
+      }
+    }
+    recovering = false;
+    for (const { agent, row } of resumed) {
+      const { bridgeToken, modelToken } = row.privateState ?? {};
+      if (typeof bridgeToken !== 'string' || typeof modelToken !== 'string') {
+        agent.fatal = true;
+        continue;
+      }
+      try {
+        redactor.add([bridgeToken, modelToken]);
+        agent.info.status = 'starting';
+        bridge.credentialsForAgent(agent.info.id, bridgeToken);
+        modelAccess.credentialsForAgent(agent.info.id, agent.profile.model, modelToken);
+        backend.resume(agent.info.id);
+        agent.info.status = agent.nativeExecuting ? 'running' : 'idle';
+      } catch (error) {
+        revoke(agent.info.id, { abortServices: true });
+        agent.fatal = true;
+        agent.info.status = 'closing';
+        agent.info.lastError = errorInfo(error, 'OPERATION_UNKNOWN');
+      }
+    }
+    await saveSummary(closing ? 'closing' : 'open');
+  }
+
+  if (recovery) {
+    try { await restoreAgents(); }
+    catch (error) {
+      closing = true;
+      await Promise.all([closeEndpoints(), backend.detach()]);
+      ledger?.close();
+      const failure = errorInfo(error, 'OPERATION_UNKNOWN');
+      throw resourceError(failure.code, failure.message, context, { cleanup: 'pending', details: [failure] });
+    }
+  }
+
   return Object.freeze<Runtime>({
     id: runtimeId,
     get state() { return finalClose ? 'closed' : closing ? 'closing' : 'open'; },
     profiles: management.profiles, services: management.services, access: management.access,
-    management: Object.freeze({ get: management.snapshot }),
+    management: Object.freeze({ get: () => ({ ...management.snapshot(),
+      ...(blockedServices.length ? { recoveryBlockedServices: [...blockedServices] } : {}) }) }),
     spawn: input => spawn(input), get, list, send: hostSend,
-    interrupt, onEvent, stop, close, files: fileControls.api,
+    interrupt, probeWorkerEvent, onEvent, stop, close, files: fileControls.api,
   });
 }

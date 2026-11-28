@@ -104,3 +104,9 @@ TaskPool 现有宿主注入 `snapshotProject` 和已支持的公共 Workspace、
 ### 执行器、模型与文件配置的后续合同
 
 [#263](https://github.com/LuNa-shi/murm/issues/263) 在 #262 的接入与安装边界上扩展执行器版本、外部 adapter、模型协议与分阶段文件预算；这些决定替代首版 Q1 的封闭执行器限制及较早的仅 Responses 描述。实现行为见 [运行配置](../../architecture/07-run-configuration.md#executor-and-file-policy-selection) 与 [后端](../../architecture/16-pi-opensandbox-backend.md)，验收状态仍以原 Issue/PR 的候选和证据为准。
+
+### OpenSandbox Kubernetes 与持久化恢复的后续合同
+
+[#273](https://github.com/LuNa-shi/murm/issues/273) 在 #272 的统一 SDK 接入上增加 Kubernetes 部署、资源账本、受限恢复、长轮询和分级验证。核查基线为 `main@b747b89affd2931863c156fc64e70a29f7ba13c9`；本轮 owner 允许 #273 草稿叠加在 #272 实施分支上。该决定不改变一票一个完整 PR，也不授权合并或大规模实验。
+
+当前恢复实现采用同主机、同 OS boot 的独占 SQLite writer，拒绝无法证明旧 Controller 已失权的跨节点接管。应用负责可验证的 Harness 和 Service 重建；动态 Service 必须重新解析适配器。关闭意图、未知资源、原始输入身份、事件游标和有限保留截止时间均需持久化。节点 API 404 不证明旧进程停止。实现说明见 [Architecture](../../architecture/24-runtime-recovery.md)。2/8/32/128/1,024 档真实集群验收均为 `not-run`，原票的基础关闭门槛、时延目标、真实 Worker 要求和独立清理对账保持不变。大规模实验开始前必须获得 owner 批准。
