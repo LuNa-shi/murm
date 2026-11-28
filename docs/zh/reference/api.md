@@ -153,3 +153,9 @@ const receipt = await runtime.files.replace(agentId, {
 | Runtime 输入 `OPERATION_UNKNOWN` / `status: 'unknown'` | 派发后宿主等待超时或传输中断 | 必须使用**完全相同的 `requestId` 与参数**重放对账 |
 | `SERVICE_TIMEOUT` / 未知 Service 写入 | Adapter 可能已经产生副作用 | 保留 `operation_id` 并按该 Service 的幂等契约核对状态；Registry 不会自动重试写入 |
 | `cleanup: 'pending'` | 停止执行、会话归档、必选 `collect` 或删除沙箱尚未完成 | 检查 `pending[].action` 与 `errors`，排除障碍后在同一 Runtime 上重试 `stop()` / `close()` |
+
+## HarnessSession
+
+从包根调用 `createHarnessSession(projectHarness, options)` 创建一轮协作的句柄。选项包括 `lifetime`、已解析的 `configuration` 或 `configPath`、`outputRoot`、以及可选的 `clientCapabilities.questions`。通过 `describe()` 查询可用输入、生命周期和成员操作。调用 `start({ cwd, prompt }, { requestId })` 接纳一次 Run，再通过 `onEvent(handler, { initialSnapshot: true })` 和 `getState()` 观察。`input` 根据 Harness 规则追加工作，`respond` 按 ID 回答问题。`stop({ requestId, reason })` 接纳结束请求，`completion` 包含实际导出、业务与清理结果。
+
+`HarnessRpcClient` 使用调用方管理的管道子进程，在 `ready` 后提供同一组方法。[包外示例](../../../examples/harness-session/README.md) 包含进程内 SDK、RPC 和文本客户端用法。[运行手册](../../architecture/23-project-harness.md)

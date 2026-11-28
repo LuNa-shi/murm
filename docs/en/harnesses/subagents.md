@@ -7,6 +7,10 @@ order: 10
 
 **Subagents** models a hierarchical team where a lead Agent (`/root`) breaks down work, spawns named child Agents recursively (up to `maxDepth`), steers busy children without waking idle ones, and integrates child results. Source: [examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents).
 
+## Project Session
+
+Use `--lifetime interactive` to retain Root across replies. The public Session accepts Root text or `{ text, mode }`. Root Agent controls also support structured context and expose the currently allowed settings and operations in `describe()`. Interrupt fences the old execution while children can finish. Child results that arrive after interruption stay in the inbox until the next explicit Root input. With `--interaction questions`, the Agent can call `swarm service invoke user-interaction ask` for an authorized question.
+
 ## Quick run (CLI)
 
 With `MURM_MODEL_URL` and `MURM_MODEL_TOKEN` configured (see [Quickstart](../quickstart.md)), run Subagents directly against any project directory:

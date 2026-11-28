@@ -128,7 +128,7 @@ export async function createLeadWorkerHarness(options: any) {
     }));
     runtime = await createRuntime({ sandbox, executor, models, connection, filePolicy, services, profiles, maxAgents: roles.length + (dynamic ? 1 : 0), outputDir, ...(dynamicControl ? { agentAccessPolicy: dynamicControl.agentAccessPolicy } : {}) });
     if (startup.aborted) throw fail('HARNESS_START_ABORTED');
-    options.onRuntime?.(runtime, snapshot);
+    options.onRuntime?.(runtime, snapshot, board.subscribe);
     unsubscribe = runtime.onEvent((event: any) => {
       if (events.length < (dynamic ? 2048 : 256)) events.push({ agentId: event.agentId, seq: events.length + 1, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
       if (!dynamic && events.length >= 256 || event.type === 'error' && event.fatal || event.type === 'settled' && event.outcome !== 'completed' || event.type === 'exit' && !event.expected) {

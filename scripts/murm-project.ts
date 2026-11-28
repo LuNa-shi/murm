@@ -1,4 +1,4 @@
-import { createProjectHost, failureCode, loadProjectHarness } from '../src/harness/project-harness.js';
+import { captureHarnessSnapshot, createHarnessSession, failureCode, getHarnessExitCode, loadProjectHarness, stopHarnessTransport } from '../src/harness/project-harness.js';
 import { resolveHarnessInput } from '../src/harness/project-input.js';
 import { runProjectRpc } from '../src/harness/project-rpc.js';
 import type { ProjectCommand } from './murm-arguments.js';
@@ -17,19 +17,20 @@ export async function runProjectCommand(command: ProjectCommand, launchDirectory
   const stdout = process.stdout.write;
   const transport = stdout.bind(process.stdout);
   const startup = new AbortController();
-  let host: ReturnType<typeof createProjectHost> | undefined;
+  let session: ReturnType<typeof createHarnessSession> | undefined;
   let signalCode: number | undefined;
   let outputFailed = false;
   let lastWrite: Promise<void> | undefined;
   let outstanding = 0;
 
   const signal = (name: 'SIGINT' | 'SIGTERM') => {
-    if (!host || host.stop(name).stopReason === name) signalCode ??= name === 'SIGINT' ? 130 : 143;
+    if (session) stopHarnessTransport(session, name);
+    if (!session || captureHarnessSnapshot(session).stopReason === name) signalCode ??= name === 'SIGINT' ? 130 : 143;
     startup.abort();
   };
   const pipeFailed = () => {
     outputFailed = true;
-    host?.stop('output-failed');
+    if (session) stopHarnessTransport(session, 'output-failed');
     startup.abort();
   };
   const write = (record: unknown): Promise<void> => {
@@ -43,7 +44,7 @@ export async function runProjectCommand(command: ProjectCommand, launchDirectory
     }
     const data = encoded + '\n';
     const bytes = Buffer.byteLength(data);
-    if (outstanding !== 0 && outstanding + bytes > 1_048_576) {
+    if (bytes > 8 * 1024 * 1024 || (outstanding !== 0 && outstanding + bytes > 1_048_576)) {
       pipeFailed();
       return Promise.resolve();
     }
@@ -66,7 +67,8 @@ export async function runProjectCommand(command: ProjectCommand, launchDirectory
   // Only the host's captured transport can write protocol output.
   process.stdout.write = process.stderr.write.bind(process.stderr);
   try {
-    const config = { launchDirectory, configPath: command.configPath, outputRoot: command.outputRoot };
+    const config = { launchDirectory, configPath: command.configPath, outputRoot: command.outputRoot,
+      lifetime: command.lifetime, clientCapabilities: { questions: command.interaction === 'questions' } };
     const stopped = Promise.withResolvers<never>();
     const abortStartup = () => stopped.reject(startup.signal.reason);
     startup.signal.addEventListener('abort', abortStartup, { once: true });
@@ -77,17 +79,19 @@ export async function runProjectCommand(command: ProjectCommand, launchDirectory
     } finally {
       startup.signal.removeEventListener('abort', abortStartup);
     }
-    if (command.mode === 'rpc') {
-      host = createProjectHost(definition, config, record => void write(record));
-      const code = await runProjectRpc(host, process.stdin, write, launchDirectory);
+    session = createHarnessSession(definition, config);
+    const input = command.mode === 'foreground'
+      ? resolveHarnessInput({ cwd: command.cwd, prompt: command.prompt }, launchDirectory)
+      : undefined;
+    if (command.mode === 'rpc' || command.lifetime === 'interactive' || config.clientCapabilities.questions) {
+      const code = await runProjectRpc(session, process.stdin, write, launchDirectory, input);
       await lastWrite;
       return signalCode ?? (outputFailed ? 1 : code);
     }
-    const input = resolveHarnessInput({ cwd: command.cwd, prompt: command.prompt }, launchDirectory);
-    host = createProjectHost(definition, config, () => {});
-    const { result, code } = await host.start(input).completion;
+    await session.start(input!, { requestId: 'foreground-start' });
+    const result = await session.completion!;
     await write({ type: 'result', runId: result.runId, result });
-    return signalCode ?? (outputFailed ? 1 : code);
+    return signalCode ?? (outputFailed ? 1 : getHarnessExitCode(session));
   } catch (error) {
     if (!startup.signal.aborted) {
       const code = failureCode(error, 'HARNESS_COMMAND_FAILED');
@@ -98,5 +102,7 @@ export async function runProjectCommand(command: ProjectCommand, launchDirectory
     process.stdout.write = stdout;
     process.off('SIGINT', signal);
     process.off('SIGTERM', signal);
+    process.stdout.off('error', pipeFailed);
+    process.stderr.off('error', ignoreDiagnosticError);
   }
 }

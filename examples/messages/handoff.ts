@@ -16,7 +16,7 @@ export async function runMessageHandoff(
   config: HandoffConfig,
   abort: AbortSignal,
   onEvent: (event: RuntimeEvent) => void = () => {},
-  project?: { files: FileTree; prompt: string; artifact: string; ready(): void; observe(runtime: Runtime): () => void },
+  project?: { files: FileTree; prompt: string; artifact: string; ready(): void; observe(runtime: Runtime): () => void; progress?(state: unknown): void },
 ) {
   abort.throwIfAborted();
   const signal = AbortSignal.any([abort, AbortSignal.timeout(config.workTimeoutMs)]);
@@ -58,6 +58,7 @@ export async function runMessageHandoff(
     const requestId = `input-${operationId}`;
     const submission: (typeof submissions)[number] = { agentId, requestId };
     submissions.push(submission);
+    project?.progress?.({ stage: operation, key, agentId, operationId, requestId });
     const execution = Promise.withResolvers<void>();
     const unsubscribeRole = runtime.onEvent(event => {
       if (!('agentId' in event) || event.agentId !== agentId) return;
@@ -112,6 +113,7 @@ export async function runMessageHandoff(
     abortListener[Symbol.dispose]();
   }
 
+  project?.progress?.({ stage: 'closing', key, business: business.status });
   let coreClose: { status: 'complete' | 'pending'; receipt: CloseReceipt } | { status: 'unknown' };
   try {
     const receipt = await runtime.close({ timeoutMs: config.cleanupTimeoutMs });
@@ -119,7 +121,7 @@ export async function runMessageHandoff(
   } catch {
     coreClose = { status: 'unknown' };
   }
-  closeObservation?.();
+  project?.progress?.({ stage: 'verification', key, business: business.status, close: coreClose.status });
   let artifactVerification: { status: 'not-requested' | 'passed' | 'pending' | 'failed' } = { status: 'not-requested' };
   const handoffMissing = business.status === 'failed' && business.error.code === 'HANDOFF_SERVICE_UNCONFIRMED';
   if (readerId !== undefined || handoffMissing) {
@@ -135,6 +137,9 @@ export async function runMessageHandoff(
       } catch { /* The expected bytes could not be verified. */ }
     }
   }
+  project?.progress?.({ stage: 'finished', key, business: business.status, close: coreClose.status,
+    artifactVerification: artifactVerification.status });
+  closeObservation?.();
   const report = { runtimeId: runtime.id, business, coreClose, artifactVerification,
     reportSaveFailure: null as null | { code: string }, reportPath: undefined as string | undefined };
   try {

@@ -4,9 +4,11 @@ import type { FilePolicy } from './file-policy.js';
 import type { ServiceRegistration, ServiceRegistry } from './services.js';
 import type { ServiceManifest } from './service-types.js';
 
+import type { AgentSessionConfig, ContextInput, ContextInputReceipt, ContextSendOptions, RuntimeHooks, RuntimeSession, SessionEvent } from './session-types.js';
 export {};
 
 export interface Profile {
+  session?: AgentSessionConfig;
   /** Optional Harness instructions added to the standard startup prompt. */
   prompt?: string;
   model: string;
@@ -31,6 +33,7 @@ export interface CreateRuntimeOptions {
   maxAgents: number;
   outputDir: string;
   agentAccessPolicy?: AgentAccessPolicy;
+  hooks?: RuntimeHooks;
 }
 
 export interface FileEntry {
@@ -94,6 +97,7 @@ export interface CollectionSpec {
 export type WorkspaceOptions = { id: string; mode: 'read-only' | 'read-write' };
 
 export interface SpawnOptions {
+  session?: AgentSessionConfig;
   forkFrom?: string;
   requestId: string;
   profile: string;
@@ -171,6 +175,7 @@ export interface AgentSpawnReceipt {
 }
 
 export type AgentEvent = { agentId: string } & (
+  | SessionEvent
   | { type: 'output'; text: string }
   | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
   | { type: 'error'; error: ErrorInfo; fatal: boolean }
@@ -313,12 +318,14 @@ export type RuntimeManagementChange = {
 export interface Runtime {
   readonly id: string;
   readonly state: RuntimeState;
+  readonly session: RuntimeSession;
   spawn(options: SpawnOptions): Promise<AgentInfo>;
   get(agentId: string): Promise<AgentInfo>;
   list(filter?: AgentListFilter): Promise<AgentInfo[]>;
   interrupt(agentId: string, options: InterruptOptions): Promise<InterruptReceipt>;
   send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
   send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
+  send(agentId: string, input: ContextInput, options: ContextSendOptions): Promise<ContextInputReceipt>;
   onEvent(handler: (event: RuntimeEvent) => void | Promise<void>): () => void;
   stop(agentId: string, options?: StopOptions): Promise<StopReceipt>;
   close(options?: CloseOptions): Promise<CloseReceipt>;

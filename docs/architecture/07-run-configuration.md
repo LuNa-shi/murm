@@ -257,6 +257,11 @@ Setup and doctor load the same editable config, validate models and capabilities
 
 Initial import, snapshot and replace each default to 2 MiB per file, 16 MiB total, 10,000 files, 50,000 entries and 30 seconds. WorkDir and session export each default to 256 MiB total and 16,384 entries, with deadlines of 30 seconds and 600 seconds respectively. Config fields are `maxFileBytes`, `maxBytes`, `maxFiles`, `maxEntries`, and `timeoutMs`. Controller staging defaults to 256 MiB and Worker staging to 512 MiB. Per-call bounds can only tighten the relevant Runtime budget. Workspace quotas and mount capabilities are verified separately by the Sandbox Provider.
 
+## HarnessSession options
+
+The direct SDK accepts one resolved configuration object or a config module path. The CLI resolves relative paths from the launch directory. Set `--lifetime task|interactive` and `--interaction none|questions` independently. Both default to `task` and `none` respectively. The options control the Session's work lifecycle and the client's ability to answer; initial project capture always takes `cwd` and `prompt`. Subagents can configure `rootSession` and `childSession` defaults and a trusted Runtime `hooks.beforeCompact` through the run config. Consult the [Session lifecycle](23-project-harness.md) and [Runtime configuration](15-core-runtime.md) for dispatch and cleanup.
+
+Worker start passes each Agent's resolved session config and the before-compact decision timeout to the installed Pi SDK bridge. The Worker loads the selected Pi pin from its own executor directory. The capability attestation must match the Host's declared version and controls before new session operations are accepted. Explicit skills, extensions, prompt templates and context files are loaded from trusted paths and included in the effective resource view.
 
 ## Installed first SDK Harness
 

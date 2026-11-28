@@ -1,3 +1,6 @@
+import { registerRuntimeAdmissionFence, registerRuntimeReceiptQuery, registerRuntimeSessionCapabilities } from './runtime-admissions.js';
+import type { BeforeCompactDecision, BeforeCompactRequest, ContextInput, ContextInputReceipt, ContextSendOptions } from './session-types.js';
+import { createSessionControls } from './session-controls.js';
 import type {
   AgentInfo, AgentListFilter, CollectionSpec, ConditionalInputReceipt,
   CreateRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, PendingCleanup, Profile, Runtime,
@@ -20,10 +23,24 @@ import { createAgentService } from './agent-service.js';
 import { createServiceTrace, exportServiceStates } from './service-trace.js';
 import { registerServicePrivateValues, snapshotServiceRegistry, type ServiceRegistration } from './services.js';
 
-export type { HarnessInput, HarnessJson, ProjectHarness, ProjectHarnessContext, ProjectHarnessResult } from '../harness/project-harness.js';
+export type * from './session-types.js';
+export { createHarnessSession } from '../harness/project-harness.js';
+export type {
+  HarnessInput, HarnessInputHandler, HarnessInputPreparation, HarnessJson, HarnessStatusInfo,
+  ProjectHarness, ProjectHarnessContext, ProjectHarnessResult,
+} from '../harness/project-harness.js';
+export type {
+  HarnessAgentHandler, HarnessAgentReceipt, HarnessAgentRegistration, HarnessAgents, HarnessAnswer,
+  HarnessAnswerReceipt, HarnessCapability, HarnessDescriptor, HarnessEvent, HarnessInputDescriptor,
+  HarnessInputReceipt, HarnessLifetime, HarnessOperation, HarnessPhase, HarnessQuestion, HarnessQuestionKind,
+  HarnessQuestionRequest, HarnessQuestionSource, HarnessRequest, HarnessResult, HarnessSession,
+  HarnessSessionOptions, HarnessStartReceipt, HarnessState, HarnessStopReceipt,
+} from '../harness/harness-session-types.js';
 export { ProjectPreflightError } from '../harness/project-input.js';
+export { HarnessRpcClient } from '../harness/project-rpc-client.js';
+export type { HarnessRpcClientOptions, HarnessRpcReady, HarnessRpcTransport } from '../harness/project-rpc-client.js';
 export { observeProjectRuntime, projectConfiguration, projectResult } from '../harness/project-runtime.js';
-export { runInput } from '../harness/run-input.js';
+export { runInput, type RunInputResult } from '../harness/run-input.js';
 export { runWithReport } from '../harness/run-report.js';
 export { readHarnessResult } from '../harness/read-result.js';
 export { createInputAdmission } from '../harness/input-admission.js';
@@ -89,6 +106,7 @@ interface RuntimeAgent {
   executionStopped: boolean;
   cleanupAction?: PendingCleanup['action'];
   eventSequence: number;
+  streamRedactors?: Map<string, ReturnType<ReturnType<typeof createRedactor>['stream']>>;
   fatal?: boolean;
   collect?: CollectionSpec;
   start?: Promise<AgentInfo>;
@@ -133,6 +151,8 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const errorInfo = redactor.error;
   let config: ReturnType<typeof claimOpenSandboxBackend>;
   function validateProfileExecution(profile: Profile) {
+    if (profile.session?.tools?.length && config.models[profile.model]?.capabilities?.tools === false) throw new TypeError('Model does not support configured tools');
+    if (profile.session && !config.driver.capabilities.session) throw new TypeError('Executor does not support session configuration');
     config.driver.assertEnvironment?.(profile.env);
     if (profile.allowContextFork && !config.driver.capabilities.contextFork) throw new TypeError('Backend does not support Profile Context Fork authority');
   }
@@ -146,6 +166,12 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       throw new TypeError('agentAccessPolicy must be a synchronous function');
     }
     config = claimOpenSandboxBackend(options.sandbox, options);
+    if (options.hooks !== undefined && (!options.hooks || Object.keys(options.hooks).some(key => key !== 'beforeCompact'))) throw new TypeError('Unsupported Runtime hook');
+    if (options.hooks?.beforeCompact) {
+      const hook = options.hooks.beforeCompact;
+      if (typeof hook.handler !== 'function' || !Number.isSafeInteger(hook.timeoutMs ?? 10000) || (hook.timeoutMs ?? 10000) < 1 || (hook.timeoutMs ?? 10000) > 60000) throw new TypeError('beforeCompact needs a handler and timeoutMs between 1 and 60000');
+      if (!config.driver.capabilities.session?.beforeCompact) throw new TypeError('Executor does not support beforeCompact');
+    }
     redactor.add([config.sandbox.apiKey, config.sandbox.execdToken,
       ...Object.values(config.models).flatMap((model) => Object.values(model.upstream.headers))]);
     registrations = snapshotServiceRegistry(options.services);
@@ -161,6 +187,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     throw resourceError('INVALID_CONTRACT', redactor.text(error.message), context, { details: [errorInfo(error, 'INVALID_CONTRACT')] });
   }
 
+  let admissionsFenced = false;
   const maxAgents = options.maxAgents;
   // Transport retention bounds apply independently of provider disk quotas.
   const artifactBounds = (phase: 'export' | 'session') => {
@@ -260,7 +287,8 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     await saveSummary('starting');
     reportSaved = true;
     assertAssembling();
-    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getAgent, modelTrace,
+    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, modelTrace,
+      getAgent: id => agents.get(id)?.interruption ? undefined : getAgent(id),
       onOwned: owner => { modelAccess = owner; } });
     assertAssembling();
     bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getAgent, registrations,
@@ -324,6 +352,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const inputRequests = createInputLedger<InputRequest>(runtimeId);
   const fileControls = createFileControls({ backend, findAgent, problem, observe, timedOut, filePolicy: config.filePolicy,
     isLive: (agent: any) => !closing && isLive(agent) });
+  const sessionControls = createSessionControls({ capabilities: config.driver.capabilities, backend, findAgent, problem,
+    available: (agent: any) => !closing && !admissionsFenced && isLive(agent),
+    canSend: (agent: any) => fileControls.canSend(agent), record: records.record, sanitize: redactor.value,
+    activity: (agent: any) => refreshActivity(agent) });
+  const hookRequests = new Map<string, { controller: AbortController; work: Promise<BeforeCompactDecision> }>();
   const handlerErrors: any[] = [];
   let handlerErrorCount = 0;
   let closeWork: any;
@@ -408,16 +441,37 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     if (notify) agentChanged(agent);
   }
 
-  function emit(agent: any, payload: any) {
+  function emit(agent: any, payload: any, streamProcessed = false) {
     const { info } = agent;
     const previousStatus = info.status;
     const { type, ...values } = payload;
-    const event = structuredClone({ ...values, type, agentId: info.id });
+    const event: any = structuredClone({ ...values, type, agentId: info.id });
+    if (!streamProcessed && event.type === 'session' && event.event.type === 'textDelta') {
+      const delta = event.event;
+      agent.streamRedactors ??= new Map();
+      const key = `${delta.messageId}:${delta.blockIndex}`;
+      let stream = agent.streamRedactors.get(key);
+      if (!stream) { stream = redactor.stream(); agent.streamRedactors.set(key, stream); }
+      delta.delta = stream.write(Buffer.from(delta.delta));
+      if (!delta.delta) return;
+    }
+    if (event.type === 'session' && event.event.type === 'messageEnd') {
+      for (const [key, stream] of agent.streamRedactors ?? []) {
+        if (!key.startsWith(`${event.event.messageId}:`)) continue;
+        const suffix = stream.end();
+        if (suffix) emit(agent, { type: 'session', event: { type: 'textDelta', messageId: event.event.messageId, blockIndex: Number(key.slice(key.lastIndexOf(':') + 1)), delta: suffix } }, true);
+        agent.streamRedactors.delete(key);
+      }
+    }
+    Object.assign(event, redactor.value(event));
     const seq = ++agent.eventSequence;
     if (event.text !== undefined) event.text = redactor.text(event.text);
     if (event.output !== undefined) event.output = redactor.text(event.output);
     if (event.reason !== undefined) event.reason = redactor.text(event.reason);
     if (event.error !== undefined) event.error = errorInfo(event.error);
+    if (event.type === 'session' && event.event.type === 'policyStop') {
+      setImmediate(() => { void beginStop(agent); });
+    }
     if (event.type === 'output') info.latestOutput = event.text;
     if (event.type === 'settled') {
       agent.nativeExecuting = false;
@@ -480,6 +534,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     if (agent.info.status === 'closed') return Promise.resolve(agent.info.lastStop);
     if (agent.stopWork) return agent.stopWork;
     const { info } = agent;
+    cancelHooks(info.id);
     info.status = 'closing';
     agent.controller.abort();
     revoke(info.id);
@@ -539,6 +594,8 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     catch (error) { throw problem('INVALID_CONTRACT', (error as Error).message, 'spawn', undefined, requestId); }
     if (parameters.forkFrom !== undefined && !config.driver.capabilities.contextFork) throw problem('NOT_ALLOWED', 'Backend does not support Context Fork', 'spawn', undefined, requestId);
     if (caller !== 'host' && parameters.workspace) throw problem('NOT_ALLOWED', 'Only the host can select workspace mounts', 'spawn', undefined, requestId);
+    if (parameters.session?.tools?.length && config.models[profiles.get(parameters.profile)!.model]?.capabilities?.tools === false) throw problem('INVALID_CONTRACT', 'Model does not support configured tools', 'spawn', undefined, requestId);
+    if (parameters.session && !config.driver.capabilities.session) throw problem('OPERATION_UNSUPPORTED', 'Executor does not support session configuration', 'spawn', undefined, requestId);
     const { files, ...selection } = parameters;
     const fingerprint = createHash('sha256').update(JSON.stringify([Object.entries(selection).sort(), fileDigest])).digest('hex');
     const requestKey = JSON.stringify([caller, requestId]);
@@ -548,7 +605,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         throw problem('CONFLICT', 'spawn requestId already has different parameters', 'spawn', request.agent.info.id, requestId);
       }
     } else {
-      if (closing) throw problem('NOT_ALLOWED', 'Runtime is closing', 'spawn', undefined, requestId);
+      if (closing || admissionsFenced) throw problem('NOT_ALLOWED', 'Runtime is closing', 'spawn', undefined, requestId);
       if (parameters.parentId && !isLive(findAgent(parameters.parentId, 'spawn', requestId))) {
         throw problem('NOT_ALLOWED', 'Parent Agent is unavailable', 'spawn', parameters.parentId, requestId);
       }
@@ -558,7 +615,8 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       if ([...agents.values()].filter(agent => agent.info.status !== 'closed').length >= maxAgents) {
         throw problem('CONFLICT', 'Runtime has no free Agent Slot', 'spawn', undefined, requestId);
       }
-      const profile = profiles.get(parameters.profile)!;
+      const definition = profiles.get(parameters.profile)!;
+      const profile = parameters.session ? { ...definition, session: parameters.session } : definition;
       if ([...Object.keys(profile.services), ...Object.keys(parameters.bindings ?? {})].some(id => !registrations.has(id))) {
         throw problem('NOT_ALLOWED', 'Profile requires an unavailable Service', 'spawn', undefined, requestId);
       }
@@ -577,10 +635,12 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       spawnRequests.set(requestKey, request);
       records.record('spawn', { state: 'registered', agentId: info.id, parentId: info.parentId, profile: info.profile, profileDigest: management.profileDigest(info.profile),
         ...(parameters.forkFrom ? { forkFrom: parameters.forkFrom } : {}),
-        requestId: redactor.text(requestId), source: caller, collect: parameters.collect, writable: parameters.writable ?? agent.profile.writable });
+        requestId: redactor.text(requestId), source: caller, session: redactor.value(parameters.session), collect: parameters.collect, writable: parameters.writable ?? agent.profile.writable });
       agent.start = Promise.resolve().then(async () => {
         agent.controller.signal.throwIfAborted();
         const resource = await backend.spawn({ agentId: info.id, profile: agent.profile, options: parameters,
+          beforeCompact: options.hooks?.beforeCompact ? { timeoutMs: options.hooks.beforeCompact.timeoutMs ?? 10000,
+            handler: (request: Omit<BeforeCompactRequest, 'agentId' | 'profile' | 'signal'>) => beforeCompact(agent, request) } : undefined,
           signal: agent.controller.signal, onEvent: (event: any) => emit(agent, event),
           onTrace: ({ type, ...record }: Readonly<Record<string, unknown>>) => records.record(String(type),
             redactor.value({ ...record, agentId: info.id }) as Record<string, unknown>),
@@ -640,6 +700,46 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       (status === undefined || statuses.includes(info.status))).map(agentSnapshot);
   }
 
+  function cancelHooks(agentId: string) {
+    for (const [key, pending] of hookRequests) if (key.startsWith(`${agentId}:`)) pending.controller.abort();
+  }
+  async function beforeCompact(agent: RuntimeAgent, request: Omit<BeforeCompactRequest, 'agentId' | 'profile' | 'signal'>): Promise<BeforeCompactDecision> {
+    const key = `${agent.info.id}:${request.compactionId}`;
+    if (!hookRequests.has(key) && hookRequests.size >= 8192) {
+      emit(agent, { type: 'session', event: { type: 'beforeCompact', ...request, decision: 'stop', error: { code: 'CAPACITY_EXCEEDED', message: 'Compaction decision identity capacity reached', retryable: false } } });
+      return 'stop';
+    }
+    const previous = hookRequests.get(key);
+    if (previous) return previous.work;
+    const controller = new AbortController();
+    const hook = options.hooks!.beforeCompact!;
+    const epoch = agent.executionEpoch;
+    const work = (async (): Promise<BeforeCompactDecision> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let failure: unknown;
+      try {
+        if (closing || admissionsFenced || !isLive(agent) || request.executionEpoch !== epoch) return 'stop';
+        const result = await Promise.race([
+          Promise.resolve().then(() => hook.handler({ ...request, agentId: agent.info.id, profile: agent.info.profile, signal: controller.signal })),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error('beforeCompact timed out'), { code: 'HOOK_TIMEOUT' })), hook.timeoutMs ?? 10000); }),
+          new Promise<never>((_, reject) => { controller.signal.addEventListener('abort', () => reject(Object.assign(new Error('beforeCompact cancelled'), { code: 'HOOK_CANCELLED' })), { once: true }); }),
+        ]);
+        if (!['allow', 'cancel', 'stop'].includes(result)) throw new TypeError('Invalid beforeCompact decision');
+        const decision = closing || admissionsFenced || controller.signal.aborted || agent.executionEpoch !== epoch ? 'stop' : result;
+        records.record('before-compact', { agentId: agent.info.id, ...request, decision });
+        return decision;
+      } catch (error) {
+        failure = error;
+        if ((error as any).code === 'HOOK_CANCELLED' && !closing && !admissionsFenced && isLive(agent)) return 'cancel';
+        const info = { ...errorInfo(error), code: (error as any).code ?? 'HOOK_FAILED' };
+        emit(agent, { type: 'session', event: { type: 'beforeCompact', ...request, decision: 'stop', error: info } });
+        return 'stop';
+      } finally { clearTimeout(timer); controller.abort(failure); }
+    })();
+    hookRequests.set(key, { controller, work });
+    return work;
+  }
+
   function send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }, caller?: string): Promise<InputReceipt>;
   function send(agentId: string, input: string, options: SendOptions, caller?: string): Promise<ConditionalInputReceipt>;
   async function send(agentId: string, input: string, options: SendOptions, caller = 'host'): Promise<ConditionalInputReceipt> {
@@ -662,7 +762,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       throw problem(error.code, error.message, operation, agentId, requestId);
     }
     if (!request) {
-      if (closing || !isLive(agent) || agent.interruption || !fileControls.canSend(agent)) {
+      if (closing || admissionsFenced || !isLive(agent) || agent.interruption || sessionControls.reserved(agentId) || !fileControls.canSend(agent)) {
         throw problem('NOT_ALLOWED', 'Agent is not accepting input', operation, agentId, requestId);
       }
       const inputId = randomUUID();
@@ -676,7 +776,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       };
       const entry: InputRequest = { inputId, run: async () => {
         if (entry.dispatched && agent.info.status === 'closed') return { inputId, status: 'unknown' };
-        if (!entry.dispatched && (closing || !isLive(agent) || executionEpoch !== agent.executionEpoch || !fileControls.canSend(agent))) {
+        if (!entry.dispatched && (closing || admissionsFenced || !isLive(agent) || executionEpoch !== agent.executionEpoch || !fileControls.canSend(agent))) {
           releaseActivity();
           throw problem('NOT_ALLOWED', 'Agent stopped before input dispatch', operation, agentId, requestId);
         }
@@ -734,6 +834,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       agent.interruptRequests.set(requestId, request);
       agent.interruption = request;
       bridge.cancelAgentCalls(agentId);
+      cancelHooks(agentId);
     }
     const identity = { agentId, requestId: redactor.text(requestId), interruptId: request.interruptId, executionEpoch: request.executionEpoch };
     const receipt = (): InterruptReceipt => ({
@@ -855,16 +956,38 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
 
   function hostSend(id: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
   function hostSend(id: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
-  function hostSend(id: string, input: string, options: SendOptions) {
-    return send(id, input, options);
+  function hostSend(id: string, input: ContextInput, options: ContextSendOptions): Promise<ContextInputReceipt>;
+  function hostSend(id: string, input: string | ContextInput, options: SendOptions | ContextSendOptions): Promise<any> {
+    const requestId = options?.requestId;
+    if (validId(requestId) && (typeof input === 'string' ? sessionControls.hasContext(id, requestId) : inputRequests.peek('host', id, requestId))) {
+      return Promise.reject(problem('CONFLICT', 'send requestId already identifies another input type', 'send', id, requestId));
+    }
+    return typeof input === 'string' ? send(id, input, options as SendOptions) : sessionControls.context(id, input, options as ContextSendOptions);
   }
 
-  return Object.freeze<Runtime>({
+  const runtime = Object.freeze<Runtime>({
     id: runtimeId,
     get state() { return finalClose ? 'closed' : closing ? 'closing' : 'open'; },
     profiles: management.profiles, services: management.services, access: management.access,
     management: Object.freeze({ get: management.snapshot }),
     spawn: input => spawn(input), get, list, send: hostSend,
-    interrupt, onEvent, stop, close, files: fileControls.api,
+    interrupt, onEvent, stop, close, files: fileControls.api, session: sessionControls.api,
   });
+  registerRuntimeReceiptQuery(runtime, async (agentId, operation, requestId) => {
+    if (operation === 'interrupt') {
+      const entry = agents.get(agentId)?.interruptRequests.get(requestId);
+      return entry ? interrupt(agentId, { requestId }) : { status: 'unknown', requestId };
+    }
+    if (operation === 'send') {
+      const entry = inputRequests.peek('host', agentId, requestId);
+      if (entry?.dispatched) return entry.result ?? entry.run();
+    }
+    return sessionControls.reconcile(agentId, operation, requestId);
+  });
+  registerRuntimeAdmissionFence(runtime, () => {
+    admissionsFenced = true;
+    for (const agent of agents.values()) cancelHooks(agent.info.id);
+  });
+  registerRuntimeSessionCapabilities(runtime, backend.sessionCapabilities);
+  return runtime;
 }

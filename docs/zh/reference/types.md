@@ -477,3 +477,9 @@ export interface HttpJsonAdapterOptions {
 ```
 
 [服务接口与 HTTP 传输见 API 参考。](api.md#service-协议与内置-agent-service)
+
+## HarnessSession 类型
+
+`ProjectHarness` 和 `ProjectHarnessContext` 是作者合同。`HarnessSessionOptions` 配置一次协作，`HarnessDescriptor` 与 `HarnessState` 提供能力与当前投影。`HarnessEvent` 区分初始快照、实时状态、问题、操作回执、运行事件和结果。`HarnessAgents` 返回 Runtime 查询和控制回执。协作控制器可以在 `core` 回执旁附 `harnessEffects`。`HarnessResult` 保留业务、产物、清理、命令和问题的处置证据。
+
+`HarnessQuestionRequest` 支持文字、选择、确认。选择项有固定 ID，文字和选择的回答为字符串，确认为布尔值。`HarnessQuestionSource` 提供 Run 内来源、取消信号和可选授权检查。

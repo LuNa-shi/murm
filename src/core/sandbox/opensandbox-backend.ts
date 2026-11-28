@@ -1,3 +1,4 @@
+import type { BeforeCompactDecision, BeforeCompactRequest } from '../session-types.js';
 import type { AgentEvent, ErrorInfo, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from '../types.js';
 import type { SessionFork } from '../../../scripts/core-session-fork.js';
 import type { createCoreBridge } from '../bridge.js';
@@ -41,6 +42,7 @@ interface BackendAgent {
   manager: SandboxManager;
   onEvent(event: BackendEvent): void;
   onExecutionStart?: () => void;
+  beforeCompact?: { timeoutMs: number; handler(request: Omit<BeforeCompactRequest, 'agentId' | 'profile' | 'signal'>): Promise<BeforeCompactDecision> };
   onTrace?: (record: Readonly<Record<string, unknown>>) => void;
   cursor: number;
   output: string;
@@ -53,13 +55,19 @@ interface BackendAgent {
   pendingInputs: number;
   historyLost?: boolean;
   started?: boolean;
+  executionEpoch?: number;
+  sessionReady?: boolean;
+  loadedResources?: readonly unknown[];
+  activeMessageId?: string;
+  sessionCommands?: Map<string, { fingerprint: string; command: string }>;
+  decisions?: Set<string>;
   workerStartDispatched?: boolean;
   polling?: Promise<void>;
   submissions?: Map<string, InputSubmission>;
   executionStopped?: boolean;
 }
 
-type WorkerRecord = { worker_sequence: number; worker_at?: string } & (
+type WorkerRecord = { worker_sequence: number; worker_at?: string; [key: string]: any } & (
   | { type: 'message_end'; message: {
       role: string;
       content?: { type: string; text: string }[];
@@ -69,6 +77,7 @@ type WorkerRecord = { worker_sequence: number; worker_at?: string } & (
   | { type: 'worker_error'; message: string }
   | { type: 'worker_exit'; code?: string | number; signal?: string }
   | { type: 'agent_start' | 'agent_settled'; aborted?: boolean }
+  | { type: 'message_start' | 'message_update' | 'core_before_compact' | 'core_before_compact_result' | 'core_context_disposition' | 'core_session_event' | 'core_session_ready' | 'compaction_start' | 'compaction_end' | 'queue_update' | 'thinking_level_changed' | 'summarization_retry_scheduled' | 'summarization_retry_attempt_start' | 'summarization_retry_finished' | 'auto_compaction_start' | 'auto_compaction_end' | 'auto_retry_start' | 'auto_retry_end'; [key: string]: any }
   | { type: 'tool_execution_start' | 'tool_execution_update' | 'tool_execution_end';
       toolCallId: string; toolName?: string; args?: unknown; result?: unknown; partialResult?: unknown; isError?: boolean }
 );
@@ -81,7 +90,7 @@ interface WorkerReply {
     success?: boolean;
     error?: string;
     code?: string;
-    data?: { disposition?: 'started' | 'queued' | 'handled'; discardedInputHashes?: string[] };
+    data?: { disposition?: 'started' | 'queued' | 'handled'; discardedInputHashes?: string[]; [key: string]: any };
   };
   status?: string;
 }
@@ -145,6 +154,7 @@ interface BackendSpawnOptions {
   signal?: AbortSignal;
   onEvent(event: BackendEvent): void;
   onExecutionStart?: () => void;
+  beforeCompact?: { timeoutMs: number; handler(request: Omit<BeforeCompactRequest, 'agentId' | 'profile' | 'signal'>): Promise<BeforeCompactDecision> };
   onTrace?: (record: Readonly<Record<string, unknown>>) => void;
   recordAllocation(record: AllocationRecord): void;
 }
@@ -330,6 +340,58 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         return;
       }
       agent.cursor = sequence;
+      if (record.type === 'core_session_ready') {
+        if (!isDeepStrictEqual(record.capabilities, driver.capabilities.session) || record.version !== driver.version) {
+          agent.onEvent({ type: 'error', error: { code: 'EXECUTOR_CAPABILITY_MISMATCH', message: 'Guest session bridge does not match selected capabilities', retryable: false }, fatal: true });
+        } else {
+          agent.sessionReady = true;
+          agent.loadedResources = Array.isArray(record.resources) ? record.resources : [];
+          trace(agent, { type: 'session-resources', executor: driver.kind, version: record.version, resources: agent.loadedResources });
+        }
+      }
+      if (record.type === 'core_before_compact') {
+        agent.decisions ??= new Set();
+        if (!agent.decisions.has(record.compactionId)) {
+          agent.decisions.add(record.compactionId);
+          const request = { compactionId: record.compactionId, executionEpoch: record.executionEpoch,
+            sessionId: record.sessionId, reason: record.reason, successfulAutoCompactions: record.successfulAutoCompactions };
+          void (async () => {
+            const decision = agent.stopping || closing ? 'stop' : await agent.beforeCompact?.handler(request) ?? 'allow';
+            if (agent.stopping || agent.exited || closing || request.executionEpoch !== (agent.executionEpoch ?? 0)) return;
+            const reply = await agent.manager.agentRpc(agent.id, { type: 'core_before_compact_decision', id: `decision-${record.compactionId}`,
+              compactionId: record.compactionId, executionEpoch: record.executionEpoch, decision }, { timeoutMs: 10000, since: agent.cursor });
+            consume(agent, reply.records ?? []);
+            if (decision === 'stop') agent.onEvent({ type: 'session', event: { type: 'policyStop', reason: 'before_compact_stop', compactionId: record.compactionId } });
+          })().catch(() => { if (!agent.stopping && !agent.exited && !closing && request.executionEpoch === (agent.executionEpoch ?? 0)) agent.onEvent({ type: 'session', event: { type: 'policyStop', reason: 'compaction_control_unconfirmed', compactionId: record.compactionId } }); });
+        }
+      }
+      if (record.type === 'message_start') {
+        agent.activeMessageId = record.messageId ?? randomUUID();
+        agent.onEvent({ type: 'session', event: { type: 'messageStart', messageId: agent.activeMessageId, role: record.message?.role } });
+      }
+      if (record.type === 'message_update') {
+        const update = record.assistantMessageEvent;
+        if (update?.type === 'text_delta' && typeof update.delta === 'string') {
+          agent.activeMessageId ??= record.messageId ?? randomUUID();
+          agent.onEvent({ type: 'session', event: { type: 'textDelta', messageId: agent.activeMessageId,
+            blockIndex: update.contentIndex ?? 0, delta: update.delta } });
+        }
+      }
+      if (record.type === 'message_end') {
+        agent.activeMessageId ??= record.messageId ?? randomUUID();
+        agent.onEvent({ type: 'session', event: { type: 'messageEnd', messageId: agent.activeMessageId, message: record.message } });
+        agent.activeMessageId = undefined;
+      }
+      if (['tool_execution_start', 'tool_execution_update', 'tool_execution_end', 'compaction_start', 'compaction_end',
+          'auto_compaction_start', 'auto_compaction_end', 'auto_retry_start', 'auto_retry_end', 'queue_update', 'thinking_level_changed', 'summarization_retry_scheduled', 'summarization_retry_attempt_start', 'summarization_retry_finished', 'core_session_event', 'core_context_disposition', 'core_before_compact_result'].includes(record.type)) {
+        const { worker_sequence, worker_at, ...native } = record;
+        const event = record.type === 'core_session_event' ? record.event : native;
+        agent.onEvent({ type: 'session', event });
+        trace(agent, { type: 'session-event', event });
+        if (record.type === 'core_before_compact_result' && (record.decision === 'stop' || ['timeout', 'failed', 'cancelled'].includes(record.status))) {
+          agent.onEvent({ type: 'session', event: { type: 'policyStop', reason: record.reason ?? record.status, compactionId: record.compactionId } });
+        }
+      }
       if (record.type === 'agent_start') {
         agent.nativeExecuting = true;
         agent.onExecutionStart?.();
@@ -394,7 +456,10 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
   }
 
   return {
-    async spawn({ agentId, profile, options = {} as SpawnOptions, signal, onEvent, onExecutionStart, onTrace, recordAllocation }: BackendSpawnOptions) {
+    sessionCapabilities(agentId: string) {
+      return agents.get(agentId)?.sessionReady ? driver.capabilities.session : undefined;
+    },
+    async spawn({ agentId, profile, options = {} as SpawnOptions, signal, onEvent, onExecutionStart, onTrace, recordAllocation, beforeCompact }: BackendSpawnOptions) {
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
       if (options.forkFrom !== undefined && !driver.capabilities.contextFork) throw Object.assign(new Error('Backend does not support Context Fork'), { code: 'NOT_ALLOWED' });
       let forkSession;
@@ -419,7 +484,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       }
       const manager = provider.openManager(profile.image);
       const agent: BackendAgent = { id: agentId, provider, manager, onEvent, onExecutionStart, onTrace, cursor: 0, output: '', error: null,
-        stopping: false, exited: false, eventPoll: createWorkerEventPoll(), nativeExecuting: false, pendingInputs: 0 };
+        beforeCompact, stopping: false, exited: false, eventPoll: createWorkerEventPoll(), nativeExecuting: false, pendingInputs: 0 };
       agents.set(agentId, agent);
       if (workspace) {
         if (!entry) {
@@ -463,7 +528,12 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         controllerSpoolDirectory: outputDir,
         signal,
         executorVersion: driver.version,
-        systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt, driver.kind),
+        ...(driver.kind === 'pi' ? {
+          piSession: { configuration: options.session ?? profile.session ?? {},
+            ...(beforeCompact ? { beforeCompact: { timeoutMs: beforeCompact.timeoutMs } } : {}) },
+          requirePiSessionProtocol: options.session !== undefined || beforeCompact !== undefined,
+        } : {}),
+        systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt, driver.kind, model.capabilities?.tools === false ? [] : (options.session ?? profile.session)?.tools),
         systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
         writable: options.writable ?? profile.writable,
         files: options.files, forkSession, workspace,
@@ -491,6 +561,7 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       if (ready.response?.success !== true || ready.response.command !== 'get_state') throw invalid('Executor readiness response was not confirmed');
       consume(agent, ready.records ?? []);
       assertOpen();
+      if ((options.session || beforeCompact) && !agent.sessionReady) throw Object.assign(new Error('Worker does not attest session controls'), { code: 'OPERATION_UNSUPPORTED' });
       agent.polling = agent.eventPoll.run(signal => readWorkerEvents(agent, signal));
       return { ...allocation, sandboxId: sandbox.sandbox_id, versions: {
         ...versions, ...(driver.adapter ? { [`${driver.kind}Version`]: startup?.backend?.version } : {}),
@@ -589,9 +660,39 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
       }
       return submission.work;
     },
+    async sessionCommand(agentId: string, command: string, payload: Record<string, unknown>, query: boolean): Promise<unknown> {
+      const agent = agents.get(agentId);
+      if (!agent || agent.stopping || agent.exited || agent.historyLost || closing) {
+        if (query) return { status: 'unknown' };
+        throw Object.assign(new Error('Session is unavailable'), { code: 'SESSION_UNAVAILABLE' });
+      }
+      if (!agent.sessionReady) throw Object.assign(new Error('Worker does not support session controls'), { code: 'OPERATION_UNSUPPORTED' });
+      agent.sessionCommands ??= new Map();
+      const id = payload.id as string;
+      const previous = agent.sessionCommands.get(id);
+      const fingerprint = JSON.stringify(payload);
+      if (previous && (previous.command !== command || previous.fingerprint !== fingerprint)) throw Object.assign(new Error('Session operation identity conflict'), { code: 'CONFLICT' });
+      if (!previous && !query) agent.sessionCommands.set(id, { fingerprint, command });
+      agent.eventPoll.wake();
+      let result;
+      try {
+        result = await agent.manager.agentRpc(agentId, query ? { type: 'get_rpc_result', id, since: agent.cursor } : { type: command, ...payload }, { timeoutMs: 30000, since: agent.cursor });
+      } catch { return { status: 'unknown' }; }
+      consume(agent, result.records ?? []);
+      const response = result.response;
+      if (response?.id !== id || response.command !== command || response.success === undefined) return { status: 'unknown' };
+      if (!response.success) throw Object.assign(new Error(response.error ?? 'Executor rejected session operation'), { code: response.code ?? 'INVALID_CONTRACT' });
+      const data = response.data;
+      if (!data || typeof data !== 'object') return { status: 'unknown' };
+      if (command === 'core_context' && ['appended', 'pending-append', 'pending-next-turn', 'started', 'queued'].includes(data.status)) {
+        return { ...data, status: 'accepted', disposition: data.status };
+      }
+      return command === 'core_session_get_state' ? { ...data, loadedResources: agent.loadedResources ?? [] } : data;
+    },
     async interrupt(agentId: string, { interruptId, executionEpoch }: { interruptId: string; executionEpoch: number }): Promise<Omit<InterruptReceipt, 'interruptId'>> {
       const agent = agents.get(agentId);
       if (!agent || agent.stopping || agent.exited || agent.historyLost || closing) return { status: 'unknown' };
+      agent.executionEpoch = executionEpoch;
       agent.eventPoll.wake();
       const result = await agent.manager.agentRpc(agentId, { type: 'core_interrupt', id: interruptId, executionEpoch },
         { timeoutMs: 30_000, since: agent.cursor });

@@ -154,3 +154,9 @@ if (receipt.cleanup !== 'complete') {
 ---
 
 **下一步**：学习如何定义角色、拉起持久化 Agent 会话、发消息与中断恢复——**[Agent 与 Profile](agents.md)**。
+
+## 会话控制与 Harness 收尾
+
+Runtime 的 session 分组针对指定 Agent 提供 configure、compact、abortRetry、clearQueue、getState、getStats 和 getMessages。结构化 context 继续经 send 提交，并明确 append、nextTurn、steer 或 followUp。配置和结果使用包根导出的 murm 类型，原生 Session 由 Guest 执行器持有，Host 使用实际确认的配置与回执。[Agent 指南](agents.md#agent-会话设置与结构化-context) 包含调用示例。
+
+HarnessSession 整体停止时同步关闭 Runtime 和 dispatcher 的新工作接纳，既有操作仍可核对。登记 Runtime 的 Harness 负责后续 stop 或 close、归档、必需导出和物理清理。

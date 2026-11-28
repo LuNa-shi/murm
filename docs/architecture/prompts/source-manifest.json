@@ -35,7 +35,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "e6279b847e0afb9c46beae5fc5f77621cabd188baa0d352d3a466ef61a1e9b15"
+      "sha256": "d256ac6f8efd9b859b24ebc902ce2a02552d0091d1bc17031f9f5d5d043700d1"
     },
     {
       "path": "src/core/bridge.ts",
@@ -43,15 +43,15 @@
     },
     {
       "path": "src/core/startup-prompt.ts",
-      "sha256": "d94f6c4cfcd02d7d2976352e3e08d5a12c615f0df2f5355a445631808d101bb8"
+      "sha256": "5f5b0bf369c074f9265d4666911a3614bbccd2ad305eb38cbb64210f32045763"
     },
     {
       "path": "src/core/sandbox/opensandbox-backend.ts",
-      "sha256": "8346d93de03fc4a8ed1203a23dd5c7aeec3061dfc7f135ba0c77a76c5d959851"
+      "sha256": "b7853856aae700455d06a9f399903cfb5c49a8c2d1e61c0b313662c56e197d68"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "f06cfffea01618c103074b6833d2784377f7ce062f17679ebe178e20ad7036a7"
+      "sha256": "f3727bbe4c306a6fe8744fa646711cf71efdb9f8918a45d3c2f6da9a3a0e36ee"
     },
     {
       "path": "scripts/codex-app-server-driver.ts",
@@ -67,7 +67,7 @@
     },
     {
       "path": "examples/messages/handoff.ts",
-      "sha256": "69d6e0ce7b3cb1bd0ca33eaf2625ddc7283acb8391495f28c1181fe88ab69c01"
+      "sha256": "82c2e7da6f09fcc335bbe13c2b030e736ce18a05744175562b972c37f7d2de27"
     },
     {
       "path": "examples/notes/main.ts",
@@ -75,11 +75,11 @@
     },
     {
       "path": "examples/notes/project.ts",
-      "sha256": "5226acaa72af276bb22bab5915ec2997666ee98142d15b16632924d38d5eb4c8"
+      "sha256": "cf34aad317ae3104adf9fcadf11bf5dc603caaa7863a761655758f49469f745b"
     },
     {
       "path": "examples/taskpool/project.ts",
-      "sha256": "4899d45200733657d7560df41eedcaec7b8da1ac7de1e0b2e67e6c650dd596a4"
+      "sha256": "2f226e6299a801f561c4dea30bceaafdb520c48391d4079a5be98431c3e5fc0c"
     },
     {
       "path": "src/harness/project-git.ts",
@@ -99,7 +99,7 @@
     },
     {
       "path": "examples/taskpool/harness/controller.ts",
-      "sha256": "fb3f15d2650f019f01914eeba2433f39a56073bfa8bf1b09e4d7cb2e27a43803"
+      "sha256": "f7c5d36359f3a77cd4096aac13b06777c71cd3cd550107d88cb579aa0ed359db"
     },
     {
       "path": "examples/taskpool/harness/harness.ts",
@@ -127,11 +127,11 @@
     },
     {
       "path": "examples/subagents/main.ts",
-      "sha256": "18810c1d18f6a29122b08157a77c60790f1cdaeb4e6009ed886b7c7d568ce428"
+      "sha256": "a866c4ed479dd187d73e97e8c8caa11238f544809ce7c64fc3f3f11324a83699"
     },
     {
       "path": "examples/subagents/harness/controller.ts",
-      "sha256": "6ef6c88fba00f6e23602d2a8798a3c6225edc935160193e41b164335a230b971"
+      "sha256": "c4c5dbae4ea7f92946ee123017244653064d23ac050ec819b74b255a9e82a3c5"
     },
     {
       "path": "examples/subagents/prompts/prompts.ts",
@@ -167,7 +167,7 @@
     },
     {
       "path": "examples/peermesh/harness/team.ts",
-      "sha256": "5e056077d001583081329383966c460af7b51e59fd085a6270b72fb176c5181f"
+      "sha256": "32c38b0a4ea564821c8e862f2a6883adeecad14cb7f2eac953ac141e0ed848a5"
     },
     {
       "path": "test/fixtures/peermesh-team-kimi.ts",
@@ -183,7 +183,7 @@
     },
     {
       "path": "examples/lead-worker/harness/index.ts",
-      "sha256": "229af144929b57f6c947b6fa88457f28225225af3612bb598398e8090d1d3da9"
+      "sha256": "27abc7c641265f5457a494ce52c4a2b289f649ba4bbaf69c3fe590f4f0b70c6e"
     },
     {
       "path": "examples/lead-worker/harness/dynamic-scheduler.ts",
@@ -270,13 +270,13 @@
     {
       "path": "examples/notes/project.ts",
       "anchor": "export const projectNotesWriterPrompt = '",
-      "line": 20,
+      "line": 16,
       "sha256": "7c837d4ea04e4ebeb80b4d8a77c479247fb9552ffeee1eaa46da945b60a84182"
     },
     {
       "path": "examples/notes/project.ts",
       "anchor": "export const projectNotesReaderPrompt = '",
-      "line": 21,
+      "line": 17,
       "sha256": "fc61ef0ba300ba64b83180539f16e5a535fe0d926bdd55bae62b522a78a238c0"
     },
     {
@@ -294,25 +294,25 @@
     {
       "path": "examples/messages/handoff.ts",
       "anchor": "`Publish",
-      "line": 98,
+      "line": 99,
       "sha256": "8a7fe8d7d3f66f1d87f7433cb71cf6ebf4abc286d73f539b107ae2c908d2ed9c"
     },
     {
       "path": "examples/messages/handoff.ts",
       "anchor": "`Receive",
-      "line": 104,
+      "line": 105,
       "sha256": "cde44c4b0ea9925676271d20960d61c567ddc218c147cdded5ecd9ab24c18291"
     },
     {
       "path": "examples/messages/handoff.ts",
       "anchor": "`Inspect",
-      "line": 97,
+      "line": 98,
       "sha256": "e42a8b191a851a669fba935c512ac3564dfee3c59ff5b24a921b82c8b9280c4d"
     },
     {
       "path": "examples/messages/handoff.ts",
       "anchor": "`Check",
-      "line": 103,
+      "line": 104,
       "sha256": "67f49aa87701b2da1a9fb0cacd2f31841cf82f8ef53471fd6c57cd37ea80ce9e"
     },
     {
@@ -426,7 +426,7 @@
     {
       "path": "examples/peermesh/harness/team.ts",
       "anchor": "router.kickoff(",
-      "line": 173,
+      "line": 197,
       "sha256": "44a86c7b2af129d1bc52061deff91cd39283d1e6b62f805dcb688a5e4997e936"
     },
     {
@@ -612,7 +612,7 @@
     {
       "path": "examples/taskpool/project.ts",
       "anchor": "discoveryWorkflow: '",
-      "line": 69,
+      "line": 90,
       "sha256": "73ab49e2d714b512d60b202d907d936aeef6878330a345eaf517063aaf7849ae"
     },
     {
@@ -673,13 +673,18 @@
   "prompt_send_sites": [
     {
       "path": "examples/subagents/harness/controller.ts",
-      "line": 163,
-      "expression": "const receipt = await runtime.send(member.id!, body, {"
+      "line": 182,
+      "expression": "receipt = await runtime.send(member.id!, body, {"
     },
     {
       "path": "examples/subagents/harness/controller.ts",
-      "line": 248,
-      "expression": "receipt = await runtime.send(member.id!, body, { requestId, source: from, wakeIfIdle: true });"
+      "line": 285,
+      "expression": "receipt = await runtime.send(member.id!, body, { source: from, wakeIfIdle: true, ...options, requestId });"
+    },
+    {
+      "path": "examples/subagents/harness/controller.ts",
+      "line": 413,
+      "expression": "const receipt = await runtime.send(root.id, input, options);"
     },
     {
       "path": "test-support/subagents/communication-fixture-controller.ts",

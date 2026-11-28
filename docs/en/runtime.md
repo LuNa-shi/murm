@@ -151,3 +151,9 @@ if (receipt.cleanup !== 'complete') {
 ---
 
 **Next:** learn how to define role Profiles, spawn persistent Agents, send messages, and recover from interrupts in **[Agents & Profiles](agents.md)**.
+
+## Session controls and Harness shutdown
+
+The `session` group on Runtime controls a specified Agent. It exposes configure, compact, abortRetry, clearQueue, getState, getStats and getMessages. Structured context uses the existing send method with explicit append, nextTurn, steer or followUp delivery. All configuration values and results use root-exported murm types. The selected Guest executor owns the native Session and the Host uses its confirmed configuration and receipts. The [Agent guide](agents.md#agent-session-settings-and-context) gives runnable call shapes.
+
+HarnessSession closes new Runtime and dispatcher admission synchronously at Run stop. Previously admitted operations remain available for reconciliation. The Harness that registered the Runtime owns the subsequent stop or close, archival, required exports and physical cleanup.

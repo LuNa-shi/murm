@@ -3,6 +3,7 @@ import type { OpenSandboxBackendConfig } from './backend-config.js';
 import type { ServiceRegistration } from './services.js';
 import { DEFAULT_FILE_POLICY, type FileBudget } from './file-policy.js';
 
+import { snapshotSessionConfig, mergeSessionConfig } from './session-config.js';
 import { isIPv4 } from 'node:net';
 import { snapshotFileSeed } from './files/core-file-seed.js';
 import { snapshotCollectionSpec } from './files/core-collection.js';
@@ -59,6 +60,7 @@ export function snapshotProfiles(profiles: Readonly<Record<string, Profile>>, mo
       throw new TypeError(`Profile ${name} network must contain non-loopback IPv4 HTTP(S) origins`);
     }
     const collect = snapshotCollection(input.collect);
+    const session = snapshotSessionConfig(input.session);
     if (input.allowContextFork !== undefined && typeof input.allowContextFork !== 'boolean') {
       throw new TypeError(`Profile ${name} has invalid allowContextFork`);
     }
@@ -72,7 +74,7 @@ export function snapshotProfiles(profiles: Readonly<Record<string, Profile>>, mo
         throw new TypeError(`Profile ${name} references unknown Service operations in ${service}`);
       }
     }
-    snapshots.set(name, { ...structuredClone(input), ...(collect === undefined ? {} : { collect }) });
+    snapshots.set(name, { ...structuredClone(input), ...(session === undefined ? {} : { session }), ...(collect === undefined ? {} : { collect }) });
   }
   for (const [name, profile] of snapshots) {
     if (profile.spawnProfiles?.some(target => !snapshots.has(target) && !existing?.has(target))) {
@@ -85,7 +87,7 @@ export function snapshotProfiles(profiles: Readonly<Record<string, Profile>>, mo
 export function snapshotSpawn(input: SpawnOptions, profiles: ReadonlyMap<string, Profile>, knowsService: (id: string) => boolean,
   budget: FileBudget = DEFAULT_FILE_POLICY.initial) {
   if (!record(input) || !validId(input.requestId) || !profiles.has(input.profile) ||
-      Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'files', 'bindings', 'secretEnv', 'collect', 'forkFrom', 'workspace'].includes(key)) ||
+      Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'files', 'bindings', 'secretEnv', 'collect', 'forkFrom', 'workspace', 'session'].includes(key)) ||
       (input.writable !== undefined && typeof input.writable !== 'boolean') ||
       (input.parentId !== undefined && !validId(input.parentId)) ||
       (input.forkFrom !== undefined && !validId(input.forkFrom))) {
@@ -105,8 +107,10 @@ export function snapshotSpawn(input: SpawnOptions, profiles: ReadonlyMap<string,
       throw new TypeError('Shared workspace requires an id and read-only or read-write mode');
     }
   }
+  const session = mergeSessionConfig(profiles.get(input.profile)?.session, snapshotSessionConfig(input.session));
   const { files, ...configuration } = input;
   const snapshot: SpawnOptions = structuredClone(configuration);
+  if (session !== undefined) snapshot.session = session;
   if (input.workspace) snapshot.writable = input.workspace.mode === 'read-write';
   const collect = snapshotCollection(input.collect) ?? profiles.get(input.profile)!.collect;
   if (collect !== undefined) snapshot.collect = collect;

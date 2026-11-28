@@ -11,14 +11,17 @@ export const configuration = {
   models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
 };
 export const transport = {
+  sessionCalls: [], sessionReply: undefined, spawned: [],
   submissions: new Map(), listeners: new Map(), interruptCalls: [],
-  reset() { this.submissions.clear(); this.listeners.clear(); this.interruptCalls = []; this.onInterrupt = undefined; this.next = undefined; },
+  reset() { this.sessionCalls = []; this.sessionReply = undefined; this.spawned = []; this.submissions.clear(); this.listeners.clear(); this.interruptCalls = []; this.onInterrupt = undefined; this.next = undefined; },
   confirm(id, disposition) { this.submissions.get(id).receipt = { status: 'accepted', disposition }; },
 };
 export const claimOpenSandboxBackend = () => ({ ...configuration, driver: selectExecutorDriver() });
 export async function openOpenSandboxBackend() {
   return {
-    async spawn({ agentId, onEvent }) {
+    sessionCapabilities() { return selectExecutorDriver().capabilities.session; },
+    async spawn({ agentId, onEvent, options }) {
+      transport.spawned.push({ agentId, options });
       transport.listeners.set(agentId, onEvent);
       return { sandboxId: `fixture-${agentId}`, versions: { piVersion: '1.3.0' } };
     },
@@ -29,6 +32,10 @@ export async function openOpenSandboxBackend() {
         await next?.(inputId);
       }
       return transport.submissions.get(inputId).receipt;
+    },
+    async sessionCommand(agentId, command, payload, query) {
+      transport.sessionCalls.push({ agentId, command, payload, query });
+      return transport.sessionReply?.({ agentId, command, payload, query }) ?? { status: 'applied' };
     },
     async interrupt(agentId, { interruptId, executionEpoch }) {
       transport.interruptCalls.push({ agentId, interruptId, executionEpoch });
