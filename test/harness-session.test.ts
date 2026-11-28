@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createHarnessSession, type ProjectHarness } from '../src/harness/project-harness.js';
+import { createHarnessSession, type ProjectHarness, type ProjectHarnessContext } from '../src/harness/project-harness.js';
 
 test('a repeated start retains its admitted Run and a changed operation conflicts', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'murm-session-project-'));
@@ -167,5 +167,48 @@ test('input reconciliation keeps its captured binding and publishes changed rece
   } finally {
     original.resolve({ status: 'unknown' });
     await rm(cwd, { recursive: true, force: true }); await rm(outputRoot, { recursive: true, force: true });
+  }
+});
+
+test('question channel, deadline and capacity remain explicit through natural completion', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'murm-question-project-'));
+  const outputRoot = await mkdtemp(join(tmpdir(), 'murm-question-output-'));
+  const complete = Promise.withResolvers<void>();
+  const waiting = Promise.withResolvers<ProjectHarnessContext>();
+  const harness: ProjectHarness = { apiVersion: 1, id: 'question-deadline', questions: true, async run(context) {
+    context.markRunning();
+    waiting.resolve(context);
+    await complete.promise;
+    return { outcome: 'completed', reason: 'done', artifacts: [], cleanup: { status: 'complete' } };
+  } };
+  const blocked = createHarnessSession({ ...harness, async run(context) {
+    await assert.rejects(context.askUser({ requestId: 'disabled', kind: 'text', text: 'Unavailable?' },
+      { id: 'work', signal: context.signal }), { code: 'OPERATION_UNSUPPORTED' });
+    return { outcome: 'completed', reason: 'checked', artifacts: [], cleanup: { status: 'complete' } };
+  } }, { outputRoot });
+  const session = createHarnessSession(harness, { outputRoot, clientCapabilities: { questions: true }, limits: { questions: 2 } });
+  try {
+    await blocked.start({ cwd, prompt: 'work' }, { requestId: 'disabled-start' });
+    assert.equal((await blocked.completion)!.outcome, 'completed');
+    await session.start({ cwd, prompt: 'work' }, { requestId: 'start' });
+    const context = await waiting.promise;
+    const source = { id: 'work', signal: context.signal };
+    const expiry = assert.rejects(context.askUser({ requestId: 'short', questionId: 'short', kind: 'confirm', text: 'Expire?', timeoutMs: 20 }, source),
+      { code: 'QUESTION_EXPIRED' });
+    const pending = assert.rejects(context.askUser({ requestId: 'finish', questionId: 'finish', kind: 'text', text: 'Still running?' }, source),
+      { code: 'QUESTION_CANCELLED' });
+    await assert.rejects(context.askUser({ requestId: 'overflow', kind: 'text', text: 'Over capacity?' }, source), { code: 'QUESTION_LIMIT' });
+    await expiry;
+    await assert.rejects(session.respond('short', true, { requestId: 'late-expiry' }), { code: 'QUESTION_CLOSED' });
+    complete.resolve();
+    const result = await session.completion;
+    await pending;
+    assert.deepEqual(result?.questions?.map(question => question.status), ['expired', 'cancelled']);
+    await assert.rejects(session.respond('finish', 'late', { requestId: 'late-completion' }), { code: 'QUESTION_CLOSED' });
+  } finally {
+    complete.resolve();
+    await session.completion;
+    await rm(cwd, { recursive: true, force: true });
+    await rm(outputRoot, { recursive: true, force: true });
   }
 });
