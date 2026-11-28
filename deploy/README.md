@@ -38,9 +38,8 @@ For development or an explicit custom build, run from the checkout/package root:
 docker build -f deploy/worker/Dockerfile -t murm-worker:local .
 ```
 
-A Worker Dockerfile is a maintainer/customization recipe. Normal installation
-uses the published image when it is available. This repository's release
-workflow does not publish a generic built-in-services or Mathlib-search image.
+The release workflow publishes Worker variants. The optional TaskPool and Mathlib
+Search images use the source build recipes below.
 
 ## Optional example deployments
 
