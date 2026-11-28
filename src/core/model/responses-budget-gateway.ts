@@ -407,6 +407,14 @@ export class ResponsesBudgetGateway {
   }
 
   #prepareResponses(body: any) {
+    if (this.#executor === 'codex' && Array.isArray(body?.input)) {
+      // Codex serializes omitted reasoning content as null when replaying a provider summary.
+      body = { ...body, input: body.input.map((item: any) => {
+        if (item?.type !== 'reasoning' || item.content !== null) return item;
+        const { content: _content, ...summary } = item;
+        return summary;
+      }) };
+    }
     if (!validPayload(body, this.policy.model, this.#executor)) return null;
     if (this.#capabilities?.tools === false && (body.tools?.length || body.parallel_tool_calls !== undefined ||
         (body.tool_choice !== undefined && body.tool_choice !== 'none') ||

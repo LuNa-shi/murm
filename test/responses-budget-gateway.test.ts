@@ -162,6 +162,29 @@ test('accepts pinned Codex client metadata without forwarding it upstream', asyn
   assert.equal(pi.requests.length, 0);
 });
 
+test('Codex can continue after a provider reasoning summary omits content', async t => {
+  const { gateway, call, requests } = await fixture(t, undefined, { executor: 'codex' });
+  const token = gateway.issueToken({ runtimeId: 'r', agentId: 'codex' });
+  const reasoning = {
+    type: 'reasoning', id: 'rs_provider',
+    summary: [{ type: 'summary_text', text: 'Use the requested tool.' }],
+    encrypted_content: null,
+  };
+  const toolHistory = [
+    { type: 'function_call', call_id: 'call_1', name: 'exec_command', arguments: '{}' },
+    { type: 'function_call_output', call_id: 'call_1', output: 'tool result' },
+  ];
+  const response = await call(token, 'continue', { model, input: [{ ...reasoning, content: null }, ...toolHistory] });
+  assert.equal(response.status, 200);
+  await response.text();
+  assert.deepEqual(requests[0].body.input, [reasoning, ...toolHistory]);
+  const withContent = await call(token, 'unsupported', {
+    model, input: [{ ...reasoning, content: [{ type: 'reasoning_text', text: 'unsupported' }] }, ...toolHistory],
+  });
+  assert.equal(withContent.status, 400);
+  assert.equal(requests.length, 1);
+});
+
 test('rejects alternate routes, tools, remote inputs, tier and stateful Responses modes', async t => {
   const { gateway, call, requests } = await fixture(t);
   const token = gateway.issueToken({ runtimeId: 'r', agentId: 'b' });
