@@ -90,6 +90,8 @@ export function createSubagentsController(
   let rootPaused = false;
   let rootControl: 'compact' | 'interrupt' | 'clearQueue' | undefined;
   const rootOffers = new Map<string, { message: Message; discarded?: boolean }>();
+  const reconciledRootControls = new Map<string, unknown>();
+  const pendingRootControls = new Map<string, { deliveries: Set<string>; submitted: Set<string> }>();
   const rootDeliveries = new Map<string, { hash: string; messages: Message[]; inputId?: string; status: string }>();
 
   function open() {
@@ -325,7 +327,7 @@ export function createSubagentsController(
     });
   }
 
-  function restoreRootQueue(hashes: readonly string[]) {
+  function restoreRootQueue(hashes: readonly string[], scope?: { deliveries: Set<string>; submitted: Set<string> }) {
     const discarded = new Set(hashes);
     const inputs: { requestId: string; inputId?: string }[] = [];
     const inbox: string[] = [];
@@ -341,16 +343,18 @@ export function createSubagentsController(
       inbox.push(message.id);
     };
     for (const [hash, message] of root.submitted) {
+      if (scope && !scope.submitted.has(hash)) continue;
       if (discarded.has(hash)) restore(message);
+      root.submitted.delete(hash);
     }
-    root.submitted.clear();
     for (const [hash, offer] of rootOffers) {
-      if (discarded.has(hash)) {
+      if (discarded.has(hash) && (!scope || scope.submitted.has(hash))) {
         offer.discarded = true;
         restore(offer.message);
       }
     }
     for (const [requestId, delivery] of rootDeliveries) {
+      if (scope && !scope.deliveries.has(requestId)) continue;
       if (discarded.has(delivery.hash)) {
         inputs.push({ requestId, ...(delivery.inputId ? { inputId: delivery.inputId } : {}) });
         for (const message of delivery.messages) restore(message);
@@ -364,28 +368,33 @@ export function createSubagentsController(
     return { discardedUserInputs: inputs, restoredInbox: inbox };
   }
 
+  function settleRootControl(operation: 'interrupt' | 'clearQueue', requestId: string, core: any) {
+    const existing = reconciledRootControls.get(requestId);
+    if (existing) return existing;
+    const paused = operation === 'interrupt' ? { paused: rootPaused } : {};
+    const confirmed = operation === 'interrupt' ? core.status === 'interrupted' : ['completed', 'noop'].includes(core.status);
+    const scope = pendingRootControls.get(requestId);
+    if (!confirmed || !scope) return { core, harnessEffects: { status: 'unknown', ...paused } };
+    const result = { core, harnessEffects: { status: 'complete', ...restoreRootQueue(core.discardedInputHashes ?? [], scope), ...paused } };
+    pendingRootControls.delete(requestId);
+    reconciledRootControls.set(requestId, result);
+    return result;
+  }
+
   async function rootQueueControl(operation: 'interrupt' | 'clearQueue', requestId: string) {
     open();
     if (!root.id) fail('RUN_NOT_READY', 'Root is not available yet');
     if (rootControl) fail('OPERATION_BUSY', 'Root already has a reserved control');
     rootControl = operation;
     rootEpoch++;
+    pendingRootControls.set(requestId, { deliveries: new Set(rootDeliveries.keys()),
+      submitted: new Set([...root.submitted.keys(), ...rootOffers.keys()]) });
     if (operation === 'interrupt') rootPaused = true;
     try {
-      if (operation === 'interrupt') {
-        const receipt = await runtime.interrupt(root.id, { requestId });
-        root.wait?.({ reason: 'cancelled' });
-        const harnessEffects = receipt.status === 'interrupted'
-          ? { status: 'complete', ...restoreRootQueue(receipt.discardedInputHashes ?? []) }
-          : { status: 'unknown' };
-        return { core: receipt, harnessEffects: { ...harnessEffects, paused: rootPaused } };
-      }
-      const receipt = await runtime.session.clearQueue(root.id, { requestId });
-      const hashes = 'discardedInputHashes' in receipt ? receipt.discardedInputHashes : undefined;
-      const harnessEffects = receipt.status === 'completed' || receipt.status === 'noop'
-        ? { status: 'complete', ...restoreRootQueue(Array.isArray(hashes) ? hashes : []) }
-        : { status: 'unknown' };
-      return { core: receipt, harnessEffects };
+      const core = operation === 'interrupt' ? await runtime.interrupt(root.id, { requestId })
+        : await runtime.session.clearQueue(root.id, { requestId });
+      if (operation === 'interrupt') root.wait?.({ reason: 'cancelled' });
+      return settleRootControl(operation, requestId, core);
     } finally {
       rootControl = undefined;
       releaseWait(root);
@@ -443,6 +452,13 @@ export function createSubagentsController(
     sendRootContext,
     compactRoot,
     rootQueueControl,
+    async reconcileRootControl(operation: 'interrupt' | 'clearQueue', requestId: string, query: () => Promise<any>) {
+      const existing = reconciledRootControls.get(requestId);
+      if (existing) return existing;
+      const receipt = settleRootControl(operation, requestId, await query());
+      onChange?.();
+      return receipt;
+    },
     lastReply: () => lastReply,
     onReply(listener: (event: Reply) => void) {
       replyListeners.add(listener);

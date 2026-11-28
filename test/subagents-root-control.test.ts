@@ -73,3 +73,34 @@ for (const operation of ['interrupt', 'clearQueue'] as const) {
     });
   }
 }
+
+test('late Root clear receipt restores its original child without deleting later queued work', async () => {
+  const boundary = executorBoundary();
+  const controller = createSubagentsController(boundary.runtime, { maxDepth: 2 });
+  controller.attachRoot('root');
+  try {
+    const signal = new AbortController().signal;
+    await controller.invoke({ caller: { runtimeId: boundary.runtime.id, agentId: 'root' },
+      capability: { operation: 'spawn_agent' }, envelope: { operation_id: 'spawn-child' },
+      input: { task_name: 'child', message: 'child task', fork_turns: 'none' }, signal, assertAuthorized() {} } as any);
+    boundary.emit({ type: 'settled', agentId: 'child', outcome: 'completed', output: 'CHILD_RETAINED' });
+    await controller.drain();
+    boundary.runtime.agents.get('root').status = 'running';
+    await controller.submitUser('original', 'old');
+    const original = boundary.runtime.sent.find(row => row.options.requestId === 'user:old');
+    boundary.runtime.session.clearQueue = async () => ({ status: 'unknown' });
+    await controller.rootQueueControl('clearQueue', 'clear');
+    await controller.submitUser('later', 'later');
+    const hashes = [createHash('sha256').update(original.input).digest('hex')];
+    let queries = 0;
+    const query = async () => { queries++; return { status: 'completed', discardedInputHashes: hashes }; };
+    const receipt = await controller.reconcileRootControl('clearQueue', 'clear', query);
+    assert.equal(receipt.harnessEffects.restoredInbox.length, 1);
+    assert.equal((controller.exportState() as any).rootInputs.some(row => row.requestId === 'user:later'), true);
+    assert.deepEqual(await controller.reconcileRootControl('clearQueue', 'clear', query), receipt);
+    assert.equal(queries, 1);
+    await controller.submitUser('resume', 'resume');
+    const resumed = boundary.runtime.sent.find(row => row.options.requestId === 'user:resume');
+    assert.equal(JSON.parse(resumed.input).messages[0].text, 'CHILD_RETAINED');
+  } finally { controller.beginClose(); controller.dispose(); }
+});

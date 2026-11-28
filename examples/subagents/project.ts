@@ -104,6 +104,15 @@ const subagents = {
           const native = getExecutorCapabilities(config.executor ?? 'pi');
           observation = observeProjectRuntime(runtime, context, team.exportState, {
             fence: team.beginClose,
+            reconcile: (operation, agentId, request, payload) => {
+              const query = () => observation!.reconcile(agentId, operation, request.requestId);
+              if (operation === 'interrupt' || operation === 'clearQueue') return team.reconcileRootControl(operation, request.requestId, query);
+              if (operation === 'send') {
+                const text = typeof (payload as { input: unknown }).input === 'string';
+                return observation!.reconcile(agentId, text ? 'send' : 'context', text ? 'user:' + request.requestId : request.requestId);
+              }
+              return query();
+            },
             capabilities: agentId => {
               if (agentId !== team.rootId()) return {};
               return {

@@ -1,3 +1,4 @@
+import { reconcileRuntimeReceipt } from '../core/runtime-admissions.js';
 import type { Runtime } from '@luna-shi/murm';
 import { ProjectPreflightError } from './project-input.js';
 import type { HarnessAgentRegistration } from './harness-session-types.js';
@@ -57,7 +58,7 @@ export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessC
     }
   });
   void refresh();
-  return { refresh, close() { closed = true; observation.abort(); unsubscribe(); unregister(); } };
+  return { refresh, reconcile: (agentId: string, operation: string, requestId: string) => reconcileRuntimeReceipt(runtime, agentId, operation, requestId), close() { closed = true; observation.abort(); unsubscribe(); unregister(); } };
 }
 
 export async function projectConfiguration<C>(context: ProjectHarnessContext, defaults: () => Promise<{ default: unknown }>) {

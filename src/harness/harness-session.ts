@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createProjectHost, type HarnessInput, type HarnessJson, type HarnessInputHandler, type HarnessInputPreparation, type ProjectHarness } from './project-harness.js';
 import { projectError, resolveHarnessInput } from './project-input.js';
-import { fenceRuntimeAdmissions } from '../core/runtime-admissions.js';
+import { fenceRuntimeAdmissions, reconcileRuntimeReceipt } from '../core/runtime-admissions.js';
 import { createRedactor } from '../core/run-records.js';
 import type { RuntimeSession } from '../core/session-types.js';
 import { stableStringify } from '../protocol/stable-json.js';
@@ -258,7 +258,11 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
     if (existing) {
       if (existing.fingerprint !== hash) return Promise.reject(projectError('REQUEST_ID_CONFLICT', 'requestId already identifies different parameters or operation'));
       if (existing.settled && existing.reconcile && isUnknown(existing.result)) {
-        return existing.reconcile().then(value => { existing.result = jsonCopy(value); return existing.result as T; });
+        return existing.reconcile().then(value => {
+          existing.result = jsonCopy(value);
+          publish({ type: 'operation', runId: host.status().runId, requestId: id, operation, result: existing.result });
+          return existing.result as T;
+        });
       }
       return existing.settled ? Promise.resolve(existing.result as T) : existing.promise as Promise<T>;
     }
@@ -301,7 +305,9 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
   }
   function isUnknown(value: unknown) {
     return !!value && typeof value === 'object' && ((value as { status?: string }).status === 'unknown' ||
-      ((value as { core?: { status?: string } }).core?.status === 'unknown'));
+      ((value as { core?: { status?: string } }).core?.status === 'unknown') ||
+      ((value as { core?: { cleanup?: string } }).core?.cleanup === 'pending') ||
+      ((value as { harnessEffects?: { status?: string } }).harnessEffects?.status === 'pending'));
   }
   function admit() {
     if (stopping || result || host.signal.aborted) throw projectError('RUN_STOPPING', 'Run admission is closed');
@@ -411,7 +417,8 @@ export function createHarnessSession(definition: ProjectHarness, options: Harnes
       if (!handler && operation !== 'configure') throw projectError('OPERATION_UNSUPPORTED', 'Harness has no scheduling handler for this operation');
       const native = (registration.runtime as typeof registration.runtime & { session: RuntimeSession }).session;
       const operationRecord = records.get(request.requestId)!;
-      if (registration.reconcile) operationRecord.reconcile = () => registration.reconcile!(operation, agentId, request);
+      if (registration.reconcile) operationRecord.reconcile = () => registration.reconcile!(operation, agentId, request, payload);
+      else if (!handler && operation === 'configure') operationRecord.reconcile = () => reconcileRuntimeReceipt(registration.runtime, agentId, operation, request.requestId);
       const dispatched = Promise.resolve(handler ? handler(agentId, payload, { ...request, signal: host.signal })
         : native.configure(agentId, payload as Parameters<RuntimeSession['configure']>[1], request));
       return observeHandler(dispatched, request.requestId, { status: 'unknown', requestId: request.requestId });

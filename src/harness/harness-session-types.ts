@@ -112,7 +112,7 @@ export interface HarnessAgentRegistration {
   /** Stop new business dispatch synchronously, retaining cleanup ownership. */
   fence?: () => void;
   /** Optional reconciliation reads the original operation and never redispatches it. */
-  reconcile?: (operation: HarnessOperation, agentId: string, request: HarnessRequest) => Promise<unknown>;
+  reconcile?: (operation: HarnessOperation, agentId: string, request: HarnessRequest, payload: unknown) => Promise<unknown>;
 }
 export type HarnessAgentReceipt<T> = T | Readonly<{ core: T; harnessEffects: HarnessJson }> | Readonly<{ status: 'unknown'; requestId: string }>;
 export interface HarnessAgents {

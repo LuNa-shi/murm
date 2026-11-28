@@ -1,4 +1,4 @@
-import { registerRuntimeAdmissionFence } from './runtime-admissions.js';
+import { registerRuntimeAdmissionFence, registerRuntimeReceiptQuery } from './runtime-admissions.js';
 export { fenceRuntimeAdmissions } from './runtime-admissions.js';
 import type { BeforeCompactDecision, BeforeCompactRequest, ContextInput, ContextInputReceipt, ContextSendOptions } from './session-types.js';
 import { createSessionControls } from './session-controls.js';
@@ -969,6 +969,17 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     management: Object.freeze({ get: management.snapshot }),
     spawn: input => spawn(input), get, list, send: hostSend,
     interrupt, onEvent, stop, close, files: fileControls.api, session: sessionControls.api,
+  });
+  registerRuntimeReceiptQuery(runtime, async (agentId, operation, requestId) => {
+    if (operation === 'interrupt') {
+      const entry = agents.get(agentId)?.interruptRequests.get(requestId);
+      return entry ? interrupt(agentId, { requestId }) : { status: 'unknown', requestId };
+    }
+    if (operation === 'send') {
+      const entry = inputRequests.peek('host', agentId, requestId);
+      if (entry?.dispatched) return entry.result ?? entry.run();
+    }
+    return sessionControls.reconcile(agentId, operation, requestId);
   });
   registerRuntimeAdmissionFence(runtime, () => {
     admissionsFenced = true;

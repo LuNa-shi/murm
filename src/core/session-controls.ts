@@ -11,8 +11,11 @@ interface Agent {
   activityClaims: Set<unknown>;
   nativeExecuting: boolean;
 }
+type SessionMutation = 'configure' | 'compact' | 'abortRetry' | 'clearQueue' | 'context';
 interface ControlEntry {
   id: string;
+  name: SessionMutation;
+  payload: Record<string, unknown>;
   fingerprint: string;
   dispatched: boolean;
   executionEpoch: number;
@@ -51,7 +54,7 @@ export function createSessionControls(options: {
     if (!result || (result as any).status === 'unknown') throw options.problem('SESSION_UNAVAILABLE', 'Native Session query was not confirmed', operation, agentId);
     return options.sanitize(result);
   }
-  async function mutation(agentId: string, name: 'configure' | 'compact' | 'abortRetry' | 'clearQueue' | 'context', payload: Record<string, unknown>, requestId: string): Promise<any> {
+  async function mutation(agentId: string, name: SessionMutation, payload: Record<string, unknown>, requestId: string): Promise<any> {
     const operation = name === 'context' ? 'send' : `session.${name}`;
     if (!validId(requestId)) throw options.problem('INVALID_CONTRACT', 'A session operation requires requestId', operation, agentId, requestId);
     const agent = options.findAgent(agentId, operation, requestId);
@@ -64,7 +67,7 @@ export function createSessionControls(options: {
       live(agentId, operation, requestId);
       if (requests.size >= 8192) throw options.problem('CAPACITY_EXCEEDED', 'Session request identity capacity reached', operation, agentId, requestId);
       if (agent.interruption || !options.canSend(agent) || reservations.has(agentId)) throw options.problem('BUSY', 'Agent has a pending exclusive operation', operation, agentId, requestId);
-      entry = { id: randomUUID(), fingerprint, dispatched: false, executionEpoch: agent.executionEpoch };
+      entry = { id: randomUUID(), name, payload, fingerprint, dispatched: false, executionEpoch: agent.executionEpoch };
       requests.set(key, entry);
     }
     if (entry.result !== undefined) return structuredClone(entry.result);
@@ -128,6 +131,12 @@ export function createSessionControls(options: {
   };
   return {
     api: Object.freeze(api),
+    reconcile(agentId: string, operation: string, requestId: string) {
+      const entry = requests.get(JSON.stringify([agentId, requestId]));
+      const name = operation === 'send' ? 'context' : operation;
+      if (!entry || !entry.dispatched || entry.name !== name) return Promise.resolve({ status: 'unknown', requestId });
+      return mutation(agentId, entry.name, entry.payload, requestId);
+    },
     reserved: (agentId: string) => reservations.has(agentId),
     async context(agentId: string, input: ContextInput, request: ContextSendOptions): Promise<ContextInputReceipt> {
       let snapshot;

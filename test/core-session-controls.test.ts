@@ -77,3 +77,35 @@ test('manual compact refuses pending input and admission fencing rejects new wor
   await assert.rejects(runtime.session.clearQueue(agent.id, { requestId: 'late-clear' }), { code: 'SESSION_UNAVAILABLE' });
   assert.deepEqual(await runtime.session.configure(agent.id, { thinkingLevel: 'low' }, { requestId: 'known' }), applied);
 });
+
+test('public Harness control reconciles the original native receipt after the Agent has stopped', async t => {
+  const { createHarnessSession, observeProjectRuntime } = await import('@luna-shi/murm');
+  const project = await mkdtemp(join(tmpdir(), 'harness-reconcile-'));
+  const outputRoot = await mkdtemp(join(tmpdir(), 'harness-reconcile-output-'));
+  t.after(async () => { await rm(project, { recursive: true, force: true }); await rm(outputRoot, { recursive: true, force: true }); });
+  const { runtime, agent } = await setup(t);
+  let observation;
+  const ready = Promise.withResolvers<void>();
+  const session = createHarnessSession({ id: 'native-receipt', apiVersion: 1, async run(context) {
+    observation = observeProjectRuntime(runtime, context, undefined, {
+      capabilities: { configure: { supported: true } },
+    });
+    context.markRunning(); ready.resolve();
+    await new Promise(resolve => context.signal.addEventListener('abort', resolve, { once: true }));
+    observation.close();
+    return { outcome: 'cancelled', reason: 'stopped', artifacts: [], cleanup: { status: 'complete' } };
+  } }, { outputRoot });
+  await session.start({ cwd: project, prompt: 'work' }, { requestId: 'start' });
+  await ready.promise;
+  transport.sessionReply = ({ query }) => query ? { status: 'applied' } : { status: 'unknown' };
+  const first = await session.agents.configure(agent.id, { thinkingLevel: 'low' }, { requestId: 'setting' });
+  assert.equal(first.status, 'unknown');
+  await runtime.stop(agent.id);
+  const confirmed = await session.agents.configure(agent.id, { thinkingLevel: 'low' }, { requestId: 'setting' });
+  assert.equal(confirmed.status, 'applied');
+  assert.equal(confirmed.operationId, first.operationId);
+  assert.deepEqual(transport.sessionCalls.map(call => call.query), [false, true]);
+  assert.deepEqual(await session.agents.configure(agent.id, { thinkingLevel: 'low' }, { requestId: 'setting' }), confirmed);
+  assert.equal(transport.sessionCalls.length, 2);
+  await session.stop({ requestId: 'stop' }); await session.completion;
+});

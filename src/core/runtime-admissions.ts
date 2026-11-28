@@ -10,3 +10,15 @@ export function fenceRuntimeAdmissions(runtime: Runtime): void {
   if (!fence) throw new TypeError('Runtime was not created by this SDK');
   fence();
 }
+
+type ReceiptQuery = (agentId: string, operation: string, requestId: string) => Promise<unknown>;
+const receiptQueries = new WeakMap<Runtime, ReceiptQuery>();
+export function registerRuntimeReceiptQuery(runtime: Runtime, query: ReceiptQuery): void {
+  receiptQueries.set(runtime, query);
+}
+/** Query only a previously dispatched operation using its original identity. */
+export function reconcileRuntimeReceipt(runtime: Runtime, agentId: string, operation: string, requestId: string): Promise<unknown> {
+  const query = receiptQueries.get(runtime);
+  if (!query) return Promise.resolve({ status: 'unknown', requestId });
+  return query(agentId, operation, requestId);
+}

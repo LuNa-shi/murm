@@ -258,3 +258,29 @@ test('targeted user input waits for the next peer batch and stopPeer fences its 
   assert.equal(f.harness.snapshot().peers[1].stopped, undefined);
   transport.onStop = undefined;
 });
+
+test('a pending peer source stop is retried before Core cleanup while its sibling remains available', async t => {
+  let blocked = true;
+  let sourceAttempts = 0;
+  const f = await setup(t, { router: {
+    subscribe: async ({ mapping }) => ({ ready: true, async stop() {
+      if (mapping.workerId === 'worker-a') {
+        sourceAttempts++;
+        if (blocked) await new Promise(() => {});
+      }
+    } }),
+  } });
+  const aId = f.harness.snapshot().peers[0].agentId;
+  let coreStops = 0;
+  transport.onStop = agentId => { if (agentId === aId) coreStops++; };
+  await assert.rejects(f.harness.stopPeer('a', { timeoutMs: 10 }), { code: 'SOURCE_STOP_PENDING' });
+  assert.equal(coreStops, 0);
+  assert.throws(() => f.harness.input({ recipient: 'a', input: 'closed', requestId: 'closed' }), { code: 'UNKNOWN_RECIPIENT' });
+  blocked = false;
+  const receipt = await f.harness.stopPeer('a', { timeoutMs: 1000 });
+  assert.equal(receipt.cleanup, 'complete');
+  assert.equal(sourceAttempts, 2);
+  assert.equal(coreStops, 1);
+  assert.equal(f.harness.snapshot().peers[1].stopped, undefined);
+  transport.onStop = undefined;
+});

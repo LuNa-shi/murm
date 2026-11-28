@@ -55,6 +55,18 @@ const peerMesh = {
         onRuntime: (runtime: Parameters<typeof observeProjectRuntime>[0], snapshot: () => unknown) => {
           observation = observeProjectRuntime(runtime, context, snapshot, {
             fence: () => team?.halt(),
+            async reconcile(operation, agentId) {
+              const peer = team?.currentPeers().peers.find((entry: { agentId: string }) => entry.agentId === agentId);
+              if (operation !== 'stop' || !peer) return { status: 'unknown' };
+              try {
+                const core = await team!.stopPeer(peer.key);
+                return { core, harnessEffects: { status: core.cleanup === 'complete' ? 'complete' : 'pending',
+                  routerStopped: true, sourceStopped: true } };
+              } catch (error) {
+                if ((error as { code?: string }).code !== 'SOURCE_STOP_PENDING') throw error;
+                return { core: null, harnessEffects: { status: 'pending', routerStopped: true, sourceStopped: false } };
+              } finally { void observation?.refresh(); }
+            },
             capabilities: agentId => {
               const peer = team?.currentPeers().peers.find((entry: { agentId: string }) => entry.agentId === agentId);
               return { stop: { supported: true, available: !!peer && !peer.stopped, reason: peer?.stopped ? 'peer-closed' : undefined } };
@@ -66,7 +78,7 @@ const peerMesh = {
                 if (!peer) throw Object.assign(new Error('Unknown peer Agent'), { code: 'UNKNOWN_RECIPIENT' });
                 try {
                   const receipt = await team!.stopPeer(peer.key);
-                  return { core: receipt, harnessEffects: { status: 'complete', routerStopped: true, sourceStopped: true } };
+                  return { core: receipt, harnessEffects: { status: receipt.cleanup === 'complete' ? 'complete' : 'pending', routerStopped: true, sourceStopped: true } };
                 } catch (error) {
                   if ((error as { code?: string }).code !== 'SOURCE_STOP_PENDING') throw error;
                   return { core: null, harnessEffects: { status: 'pending', routerStopped: true, sourceStopped: false } };
