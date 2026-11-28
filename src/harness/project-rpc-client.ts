@@ -1,20 +1,28 @@
 import { randomUUID } from 'node:crypto';
 import type { ContextInput, ContextInputReceipt, ContextSendOptions } from '../core/session-types.js';
 import type { ConditionalInputReceipt, SendOptions } from '../core/types.js';
-import type { EventEmitter } from 'node:events';
-import type { Readable, Writable } from 'node:stream';
 import { projectError } from './project-input.js';
-import { readRpcLines } from './project-rpc-lines.js';
+import { readRpcLines, type RpcReadable } from './project-rpc-lines.js';
 import { MAX_COMMAND_BYTES } from './foreground-commands.js';
 import type {
   HarnessAgentReceipt, HarnessDescriptor, HarnessEvent, HarnessResult, HarnessSession, HarnessState,
 } from './harness-session-types.js';
 
-export interface HarnessRpcTransport extends Pick<EventEmitter, 'on' | 'off'> {
-  readonly stdin: Writable | null;
-  readonly stdout: Readable | null;
+interface RpcWritable {
+  readonly destroyed: boolean;
+  readonly writableLength: number;
+  write(line: string, callback: (error?: Error | null) => void): boolean;
+  on(event: 'error', listener: () => void): unknown;
+  off(event: 'error', listener: () => void): unknown;
+}
+
+export interface HarnessRpcTransport {
+  readonly stdin: RpcWritable | null;
+  readonly stdout: RpcReadable | null;
   readonly exitCode?: number | null;
-  readonly signalCode?: NodeJS.Signals | null;
+  readonly signalCode?: string | null;
+  on(event: 'close' | 'error', listener: () => void): unknown;
+  off(event: 'close' | 'error', listener: () => void): unknown;
 }
 
 export interface HarnessRpcReady {
@@ -44,7 +52,7 @@ export class HarnessRpcClient implements HarnessSession {
   readonly #result = Promise.withResolvers<HarnessResult>();
   readonly #pending = new Map<string, Pending>();
   readonly #listeners = new Set<Subscription>();
-  readonly #stdin: Writable;
+  readonly #stdin: RpcWritable;
   readonly #timeout: number;
   readonly #prefix = randomUUID();
   #next = 0;

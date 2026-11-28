@@ -244,8 +244,8 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 |---|---|---|---|
 | [src/harness/harness-session-types.ts](../../src/harness/harness-session-types.ts) | Public HarnessSession operations, capability descriptors, state, questions and result contracts | [23-project-harness](23-project-harness.md) | `4ccdc3d194347f91e2aeeca0dd92d4198567890198cc5d160f94cda6995f6b36` |
 | [src/harness/harness-session.ts](../../src/harness/harness-session.ts) | Shared project Session admission, request replay, question lifecycle, events and stop barriers | [23-project-harness](23-project-harness.md) | `5ec0cf7205ed158118b90fddf43257d6ec1ec2060261e4fba3156b8faad35ef0` |
-| [src/harness/project-rpc-client.ts](../../src/harness/project-rpc-client.ts) | Typed package-root JSONL RPC client and event subscription | [23-project-harness](23-project-harness.md) | `b36e40e407ca0e7b265174760b1db7d0a6b9d13254d1389172cc5e58f00a49e6` |
-| [src/harness/project-rpc-lines.ts](../../src/harness/project-rpc-lines.ts) | Strict UTF-8 encoding and bounded byte framing for JSON Lines | [23-project-harness](23-project-harness.md) | `81a13d4dc232bc01501ff2f67a33d7f4d6a7c9150634ac3eb634303fd8e94c48` |
+| [src/harness/project-rpc-client.ts](../../src/harness/project-rpc-client.ts) | Typed package-root JSONL RPC client and event subscription | [23-project-harness](23-project-harness.md) | `6be73546d67cf79b3498758e14dc520d63cbdcd9f7d38827e4dedbf5100e58c4` |
+| [src/harness/project-rpc-lines.ts](../../src/harness/project-rpc-lines.ts) | Strict UTF-8 encoding and bounded byte framing for JSON Lines | [23-project-harness](23-project-harness.md) | `cf48a22ce438da7bf7c51bd68087ec0b5cff9c938956f737b16a0c1c2e5f8b49` |
 
 ### SDK example (5)
 

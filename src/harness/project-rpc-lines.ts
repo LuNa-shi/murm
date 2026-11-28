@@ -1,4 +1,12 @@
-import type { Readable } from 'node:stream';
+export interface RpcReadable {
+  readonly readableEnded: boolean;
+  on(event: 'data', listener: (chunk: Uint8Array | string) => void): unknown;
+  on(event: 'error', listener: (error: Error) => void): unknown;
+  once(event: 'end', listener: () => void): unknown;
+  off(event: 'data', listener: (chunk: Uint8Array | string) => void): unknown;
+  off(event: 'error', listener: (error: Error) => void): unknown;
+  off(event: 'end', listener: () => void): unknown;
+}
 
 type LineHandlers = {
   line(value: string): void;
@@ -7,14 +15,14 @@ type LineHandlers = {
   error(error: Error): void;
 };
 
-export function readRpcLines(stream: Readable, maxBytes: number, handlers: LineHandlers) {
+export function readRpcLines(stream: RpcReadable, maxBytes: number, handlers: LineHandlers) {
   const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
   const line = Buffer.allocUnsafe(maxBytes);
   let length = 0;
   let discarding = false;
   let attached = true;
-  function data(value: Buffer | string) {
-    const chunk = typeof value === 'string' ? Buffer.from(value) : value;
+  function data(value: Uint8Array | string) {
+    const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
     for (let start = 0; attached && start < chunk.length;) {
       const lf = chunk.indexOf(10, start);
       const end = lf === -1 ? chunk.length : lf;
