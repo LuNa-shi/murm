@@ -503,7 +503,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 | [website/src/components/LandingPage.astro](../../website/src/components/LandingPage.astro) | Shared bilingual landing page component | [22-website](22-website.md) | `57d2d47df67e53c524edf97be4516508f9c6f1506cabf030f8df4ab4eea4a4d1` |
 | [website/src/components/MurmLogo.astro](../../website/src/components/MurmLogo.astro) | Shared murm wordmark and icon | [22-website](22-website.md) | `37deb2538a3c36ac773e086f3ac9efad5028e2ba106089473a854ec46bc5e48c` |
 | [website/src/components/MurmurationCanvas.astro](../../website/src/components/MurmurationCanvas.astro) | Animated landing page canvas | [22-website](22-website.md) | `f23420853eb2c6a78285f85cc40cb94d2875c6937bb2c629ad3d2123b86f3b1c` |
-| [website/src/components/NoRebuildGrid.astro](../../website/src/components/NoRebuildGrid.astro) | Landing page examples of reusable Runtime capabilities | [22-website](22-website.md) | `bdec544cd629d27039769ed9bc9979513a003bbe16758b703ab1ab869576eda5` |
+| [website/src/components/NoRebuildGrid.astro](../../website/src/components/NoRebuildGrid.astro) | Landing page examples of reusable Runtime capabilities | [22-website](22-website.md) | `250cc6e344d03e4ee17000b399ddf537e6ec1bb86e19c5983cc2609d3f5a25c5` |
 | [website/src/components/PillarSchematics.astro](../../website/src/components/PillarSchematics.astro) | Landing page architecture diagrams | [22-website](22-website.md) | `52daa398334a4f93f940d5a2c7a1af06e34dd1e02e1675f3a38a944bdf193128` |
 | [website/src/components/SearchModal.astro](../../website/src/components/SearchModal.astro) | Client-side documentation search, keyboard shortcuts and result navigation | [22-website](22-website.md) | `f456fc947a423dfa3af5ef83daf091be46157468407d0fcc3964bea9c319e21d` |
 | [website/src/components/Sidebar.astro](../../website/src/components/Sidebar.astro) | Documentation section navigation | [22-website](22-website.md) | `9c771bb389221552797d8284215224c7d3f57efe757dfab6d15de08746b79468` |
@@ -523,7 +523,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `test-support/subagents/`, `websi
 | [website/src/pages/zh/docs/[...slug].astro](../../website/src/pages/zh/docs/[...slug].astro) | Chinese documentation dynamic route (/zh/docs/*) | [22-website](22-website.md) | `266a6aefb999cd0d9f7ee74a459b82e08d8f5818a59a5219699c49f91b7460b9` |
 | [website/src/pages/zh/index.astro](../../website/src/pages/zh/index.astro) | Chinese landing page route (/zh/) | [22-website](22-website.md) | `1a6fc0977115bd88fc5c82286a30949d2dc1dad6e87fd41e9c395dfe07dcea1a` |
 | [website/src/pages/zh/latest.astro](../../website/src/pages/zh/latest.astro) | Top-level /zh/latest/ shortcut redirecting to the Chinese Latest release feature guide | [22-website](22-website.md) | `8082a15cf0e5507203bc5bdcfc4e15eab0ecb057c0197ae68f7affacf4399531` |
-| [website/src/styles/global.css](../../website/src/styles/global.css) | Responsive styles, font declarations and browser theme colors | [22-website](22-website.md) | `5f490e35b5b7dc0d23594cd99d6658e01dc9cedb2c01743e115d679be2c837be` |
+| [website/src/styles/global.css](../../website/src/styles/global.css) | Responsive styles, font declarations and browser theme colors | [22-website](22-website.md) | `0b449337a6c29665b7077d167a67b20e8c2c05b55e4c3db309c8ce916cb7086c` |
 | [website/tsconfig.json](../../website/tsconfig.json) | Astro TypeScript source configuration | [22-website](22-website.md) | `8ac0c34ca488883dfa22bccd923af5072ef84b18dbd73fcd23e797c29398d387` |
 
 ### runtime and execution (14)
