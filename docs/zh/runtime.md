@@ -199,7 +199,7 @@ murm recover --run-dir /private/runs/original-runtime-id --config /private/recov
 
 `runtime.probeWorkerEvent(agentId, { requestId, timeoutMs })` 通过真实鉴权 Worker 事件链路测量 Core 的观测时间，不调用模型。当前 Worker 使用有界游标长轮询；事件缺口会暂停新工作权限并保留不确定资源。
 
-[Kubernetes 部署配置](../../deploy/opensandbox-kubernetes/README.md) 固定官方组件并生成私有部署输入。[容量工作负载](../../benchmarks/kubernetes/README.md) 默认只输出 `not-run` 计划。2/8 档真实集群实验仍未运行。owner 后续要求 32/128/1,024 档通过本机 mock Agent API 验证正式 SDK 的接纳、持久归属、事件、导出与回收，结果明确记为 `passed-mock-api`。集群实际容量仍未验证。工作负载通过后仍需独立完成故障与恢复矩阵，才能声明容量。大规模实验开始前必须得到 owner 批准。完整归属、重试和回收流程见 [Architecture](../architecture/24-runtime-recovery.md)。
+[Kubernetes 部署配置](../../deploy/opensandbox-kubernetes/README.md) 固定官方组件并生成私有部署输入。[容量工作负载](../../benchmarks/kubernetes/README.md) 默认只输出 `not-run` 计划。两台 worker VM 上的验收覆盖了 2 个 Sandbox 使用真实 Kimi K3 交接，以及 8 个 Sandbox 使用受控模型接口持续工作 15 分钟。32、128 和 1,024 档各通过三轮本机 mock Agent API 验证，覆盖正式 SDK 的接纳、持久归属、事件、导出与回收。这三个档位的真实集群容量仍未验证。工作负载通过后仍需独立完成故障与恢复矩阵，才能声明容量。大规模实验开始前必须得到 owner 批准。完整归属、重试和回收流程见 [Architecture](../architecture/24-runtime-recovery.md)。
 
 ## 会话控制与 Harness 收尾
 

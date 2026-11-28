@@ -73,4 +73,4 @@ Custom integrations use `createSandbox({ provider, timeoutSeconds })` and retain
 
 ## Kubernetes deployment
 
-Use one OpenSandbox cluster endpoint and a stable Runtime callback. Kubernetes schedules Sandbox Pods across prepared worker nodes. Persistent ownership supports same-host, same-boot recovery under an exclusive writer; automatic cross-node Controller takeover is unavailable. Real cluster tiers 2 and 8 remain `not-run`. Tiers 32, 128 and 1,024 use local mock Agent APIs to verify Sandbox lifecycle behavior. See [Runtime](runtime.md) · [Deployment](../../deploy/opensandbox-kubernetes/README.md)
+Use one OpenSandbox cluster endpoint and a stable Runtime callback. Kubernetes schedules Sandbox Pods across prepared worker nodes. Persistent ownership supports same-host, same-boot recovery under an exclusive writer; automatic cross-node Controller takeover is unavailable. Cluster acceptance ran real Sandbox workloads at sizes 2 and 8 on two worker VMs. Tiers 32, 128 and 1,024 passed local mock Agent API checks for the Sandbox lifecycle. See [Runtime](runtime.md) · [Deployment](../../deploy/opensandbox-kubernetes/README.md)
