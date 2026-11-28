@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { readFile, realpath, stat, readdir, lstat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -28,13 +28,32 @@ const resources = configuration.resources ?? {};
 const settingsManager = sdk.SettingsManager.inMemory({ ...configuration, resources: undefined, tools: undefined,
   defaultProvider: argument('--provider'), defaultModel: argument('--model') });
 const resourceHashes: any[] = [];
+async function resourceDigest(root: string) {
+  const entries: { path: string; mode: number; bytes: number; sha256: string }[] = [];
+  let bytes = 0;
+  async function visit(path: string, relative: string) {
+    const info = await lstat(path);
+    if (info.isSymbolicLink()) throw new Error('Guest resource bundles cannot contain symbolic links');
+    if (info.isDirectory()) {
+      for (const name of (await readdir(path)).sort()) await visit(join(path, name), relative ? relative + '/' + name : name);
+      return;
+    }
+    if (!info.isFile() || entries.length >= 512 || bytes + info.size > 16 * 1024 * 1024) throw new Error('Guest resource bundle exceeds its bounds');
+    const content = await readFile(path);
+    bytes += content.length;
+    if (bytes > 16 * 1024 * 1024) throw new Error('Guest resource bundle exceeds its byte limit');
+    entries.push({ path: relative, mode: info.mode & 0o777, bytes: content.length, sha256: createHash('sha256').update(content).digest('hex') });
+  }
+  await visit(root, '');
+  const info = await stat(root);
+  return info.isFile() ? entries[0].sha256 : createHash('sha256').update(JSON.stringify(entries)).digest('hex');
+}
 for (const paths of Object.values(resources) as any[]) for (const path of paths) {
   if (typeof path !== 'string' || !path.startsWith('/')) throw new Error('Guest resources require absolute installed paths');
   const resolved = await realpath(path);
   // Guest executable resources are selected by the Host and must stay outside task content.
   if (resolved === cwd || resolved.startsWith(cwd + '/')) throw new Error('Guest resources cannot be loaded from the task directory');
-  const info = await stat(resolved);
-  resourceHashes.push({ path: resolved, ...(info.isFile() ? { sha256: createHash('sha256').update(await readFile(resolved)).digest('hex') } : {}) });
+  resourceHashes.push({ path: resolved, sha256: await resourceDigest(resolved) });
 }
 const systemPrompt = await readFile(argument('--system-prompt') ?? options.systemPromptPath, 'utf8');
 for (const path of resources.contextFiles ?? []) {
