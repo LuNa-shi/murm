@@ -391,28 +391,47 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
     unsubscribeTask?.();
     unsubscribeExecution?.();
   }
-  return Object.freeze({
-    start(){return enqueue(async()=>{if(started) return snapshot();started=true;deadlineTimer=setTimeout(()=>finish('mission-deadline'),Math.max(1,remaining()));await refill();if(!closing) timer=setInterval(()=>{void enqueue(reconcile).catch(()=>{});},heartbeatMs);return snapshot();});},
-    tick:()=>enqueue(reconcile),
-    notify(){checkDomain();if(!closing) void enqueue(reconcile).catch(()=>{});},
-    feedback({taskId,input,requestId,mode='steer'}: any) {
+  function captureFeedback(taskId: string) {
+    const task = taskService.getTask(taskId);
+    if (!task) return { reason: 'task-not-found' } as const;
+    if (task.mission_id !== missionId) return { reason: 'task-outside-mission' } as const;
+    const execution = task.state === 'RUNNING'
+      ? taskService.listExecutions(taskId).find((row: any) => row.state === 'RUNNING') : undefined;
+    if (!execution) return { reason: 'task-not-running' } as const;
+    return { agentId: execution.owner_ref, executionId: execution.execution_id, fence: execution.fencing_version };
+  }
+
+  function feedback({taskId,input,requestId,mode='steer'}: any, binding?: ReturnType<typeof captureFeedback>) {
       if(typeof taskId!=='string'||typeof input!=='string'||!input || typeof requestId!=='string'||!requestId||!['steer','followUp'].includes(mode)) throw new TypeError('Directed TaskPool feedback requires Task, text, stable request and mode');
       const fingerprint=stableStringify({taskId,input,mode});
       const previous=feedbackRequests.get(requestId);
       if(previous) {if(previous.fingerprint!==fingerprint) throw new MurmError('CONFLICT','Feedback request changed');return previous.work;}
-      const selectedTask=taskService.getTask(taskId);
-      const selectedExecution=selectedTask?.mission_id===missionId?taskService.listExecutions(taskId).find((row: any)=>row.state==='RUNNING'):null;
-      const selected=selectedExecution?{agentId:selectedExecution.owner_ref,executionId:selectedExecution.execution_id,fence:selectedExecution.fencing_version}:null;
+      binding ??= captureFeedback(taskId);
+      const captured = binding;
       const work=enqueue(async()=>{
         const task=taskService.getTask(taskId);
+        const selected = 'agentId' in captured ? captured : null;
         const execution=selected&&taskService.getExecution(selected.executionId);
         const row=selected&&agents.get(selected.agentId);
-        if(closing || task?.state!=='RUNNING' || !row || execution?.state!=='RUNNING' || execution.owner_ref!==selected.agentId || execution.fencing_version!==selected.fence) {
-          const result: any={source:'user',requestId,mode,taskId,status:'not_submitted',reason:'task-not-running',taskState:task?.state??null};inputs.push(result);return structuredClone(result);
+        const reason = closing ? 'controller-closed' : 'reason' in captured ? captured.reason
+          : task?.mission_id !== missionId ? 'task-outside-mission'
+          : task.state !== 'RUNNING' ? 'task-not-running'
+          : !row || execution?.state !== 'RUNNING' || execution.owner_ref !== selected?.agentId ||
+            execution.fencing_version !== selected?.fence ? 'task-binding-changed' : null;
+        if (reason) {
+          const result = { source: 'user', requestId, mode, taskId, status: 'not_submitted', reason, taskState: task?.state ?? null };
+          inputs.push(result);
+          return structuredClone(result);
         }
         return structuredClone(await submit(row,input,{source:'user',requestId,mode,taskId,executionId:execution.execution_id,fence:execution.fencing_version}));
       });feedbackRequests.set(requestId,{fingerprint,work});return work;
-    },
+    }
+  return Object.freeze({
+    start(){return enqueue(async()=>{if(started) return snapshot();started=true;deadlineTimer=setTimeout(()=>finish('mission-deadline'),Math.max(1,remaining()));await refill();if(!closing) timer=setInterval(()=>{void enqueue(reconcile).catch(()=>{});},heartbeatMs);return snapshot();});},
+    tick:()=>enqueue(reconcile),
+    notify(){checkDomain();if(!closing) void enqueue(reconcile).catch(()=>{});},
+    captureFeedback,
+    feedback,
     flush:()=>chain,
     snapshot,
     wait:()=>complete.promise,

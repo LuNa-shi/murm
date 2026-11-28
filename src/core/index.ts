@@ -22,8 +22,10 @@ import { registerServicePrivateValues, snapshotServiceRegistry, type ServiceRegi
 
 export type { HarnessInput, HarnessJson, ProjectHarness, ProjectHarnessContext, ProjectHarnessResult } from '../harness/project-harness.js';
 export { ProjectPreflightError } from '../harness/project-input.js';
+export { HarnessRpcClient } from '../harness/project-rpc-client.js';
+export type { HarnessRpcClientOptions, HarnessRpcReady, HarnessRpcTransport } from '../harness/project-rpc-client.js';
 export { observeProjectRuntime, projectConfiguration, projectResult } from '../harness/project-runtime.js';
-export { runInput } from '../harness/run-input.js';
+export { runInput, type RunInputResult } from '../harness/run-input.js';
 export { runWithReport } from '../harness/run-report.js';
 export { readHarnessResult } from '../harness/read-result.js';
 export { createInputAdmission } from '../harness/input-admission.js';

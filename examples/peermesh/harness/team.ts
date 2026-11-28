@@ -45,6 +45,7 @@ export async function createPeerMeshTeam(options: any) {
     if (signal.aborted) throw fencedFailure ?? fail(hostStreamFailure() ?? 'HARNESS_START_ABORTED');
   };
   const peerStates = () => [...peers].map(([key, agent]: any) => ({ key, agentId: agent.id, profile: agent.profile,
+    ...(stoppedPeers.has(key) ? { stopped: true } : {}),
     ...(unavailablePeers.has(agent.id) ? { unavailable: unavailablePeers.get(agent.id) } : {}),
     router: routers.get(key)?.snapshot(), subscription: subscriptions.get(key)?.snapshot?.() }));
   const snapshot = () => redact({ runId, runtimeId: runtime?.id, closing, identities: services?.identities(), ...(delivery ? { project: { repository: facilities.repository, issue: facilities.issueNumber,
@@ -165,14 +166,8 @@ export async function createPeerMeshTeam(options: any) {
       check();
     }
     for (const router of routers.values()) router.markReady();
-    if (options.project) {
-      startedAt = new Date().toISOString();
-      deadlineTimer = setTimeout(() => stop(fail('PEERMESH_PROJECT_DEADLINE')), durationMs);
-      check();
-      options.beforeInitialDispatch?.();
-      for (const router of routers.values()) router.kickoff(options.project.body);
-    }
-    return Object.freeze({ id: runtime.id, snapshot, redact, close, signal, getAgent: runtime.get,
+    const team = Object.freeze({ id: runtime.id, snapshot, redact, close, signal, getAgent: runtime.get,
+      halt: () => stop(fail('HARNESS_STOP_REQUESTED')),
       currentPeers: () => ({ closing, peers: peerStates() }),
       async stopPeer(key: any, { timeoutMs = 60_000 }: any = {}) {
         if (closing || !peers.has(key)) throw fail('UNKNOWN_RECIPIENT');
@@ -186,9 +181,22 @@ export async function createPeerMeshTeam(options: any) {
       },
       kickoff(key: any, text: any) { if (closing || !routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).kickoff(text); },
       ingest(key: any, event: any) { if (closing || !routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).ingest(event); },
+      input({ recipient, input, requestId }: { recipient: string; input: string; requestId: string }) {
+        if (closing || !routers.has(recipient) || stoppedPeers.has(recipient)) throw fail('UNKNOWN_RECIPIENT');
+        const router = routers.get(recipient);
+        return router.ingest({ source: 'user', kind: 'user', eventId: requestId, targetWorker: router.snapshot().mapping.workerId, text: input });
+      },
       wait(key: any, batchId: any, wait: any) { if (!routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).wait(batchId, wait); },
       poll: () => Promise.all([...subscriptions].filter(([key]: any) => !stoppedPeers.has(key)).map(([, source]: any) => source.poll?.())),
     });
+    if (options.project) {
+      startedAt = new Date().toISOString();
+      deadlineTimer = setTimeout(() => stop(fail('PEERMESH_PROJECT_DEADLINE')), durationMs);
+      check();
+      options.beforeInitialDispatch?.(team);
+      for (const router of routers.values()) router.kickoff(options.project.body);
+    }
+    return team;
   } catch (error: any) {
     const code = fencedFailure?.code ?? hostStreamFailure() ?? error.code ?? 'TEAM_START_FAILED';
     const receipt = !runtime && error.cleanup === 'pending' ? { cleanup: 'pending' } : await close({ timeoutMs: options.closeTimeoutMs ?? 60_000 }).catch(() => ({ cleanup: 'pending' }));
