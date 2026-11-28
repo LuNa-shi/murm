@@ -27,14 +27,20 @@ function oneLine(description: string) {
   return description.replace(/\s+/g, ' ').trim().replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
-export function renderStartupPrompt(services: readonly ServiceManifest[], addedSystemPrompt?: string, executor: string = 'pi'): string {
+export function renderStartupPrompt(services: readonly ServiceManifest[], addedSystemPrompt?: string, executor: string = 'pi', enabledTools?: readonly string[]): string {
   const directory = services.map(({ id, purpose, capabilities }) => [
     `${id} — ${oneLine(purpose)}`,
     ...capabilities.map(({ operation, description }) => `- \`swarm service invoke ${id} ${operation}\` ${oneLine(description)}`),
   ].join('\n')).join('\n\n');
-  const tools = executor === 'codex' ? codexTools : executor === 'pi' ? piTools : null;
+  const toolDescriptions: Record<string, string> = {
+    read: 'Read files in the sandbox.', write: 'Create or replace files where you have write access.',
+    edit: 'Make targeted changes to files where you have write access.', bash: 'Run shell commands, including swarm commands.',
+    grep: 'Search file contents in the sandbox.', find: 'Find files in the sandbox.', ls: 'List directories in the sandbox.',
+  };
+  const tools = executor === 'codex' ? codexTools : executor === 'pi'
+    ? enabledTools === undefined ? piTools : enabledTools.map(name => `- ${name}: ${toolDescriptions[name] ?? 'Explicitly registered Guest tool.'}`).join('\n') : null;
   const sections = [
-    preamble,
+    executor === 'pi' && enabledTools !== undefined && !enabledTools.includes('bash') ? preamble.split('\n')[0] : preamble,
     ...(tools ? [`<tools>\n${tools}\n</tools>`] : []),
     `<services>\n${serviceHelp}\n\n${directory || 'No Service operations are available to this agent.'}\n</services>`,
   ];

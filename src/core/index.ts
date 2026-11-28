@@ -152,6 +152,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   const errorInfo = redactor.error;
   let config: ReturnType<typeof claimOpenSandboxBackend>;
   function validateProfileExecution(profile: Profile) {
+    if (profile.session?.tools?.length && config.models[profile.model]?.capabilities?.tools === false) throw new TypeError('Model does not support configured tools');
     if (profile.session && !config.driver.capabilities.session) throw new TypeError('Executor does not support session configuration');
     config.driver.assertEnvironment?.(profile.env);
     if (profile.allowContextFork && !config.driver.capabilities.contextFork) throw new TypeError('Backend does not support Profile Context Fork authority');
@@ -593,6 +594,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     catch (error) { throw problem('INVALID_CONTRACT', (error as Error).message, 'spawn', undefined, requestId); }
     if (parameters.forkFrom !== undefined && !config.driver.capabilities.contextFork) throw problem('NOT_ALLOWED', 'Backend does not support Context Fork', 'spawn', undefined, requestId);
     if (caller !== 'host' && parameters.workspace) throw problem('NOT_ALLOWED', 'Only the host can select workspace mounts', 'spawn', undefined, requestId);
+    if (parameters.session?.tools?.length && config.models[profiles.get(parameters.profile)!.model]?.capabilities?.tools === false) throw problem('INVALID_CONTRACT', 'Model does not support configured tools', 'spawn', undefined, requestId);
     if (parameters.session && !config.driver.capabilities.session) throw problem('OPERATION_UNSUPPORTED', 'Executor does not support session configuration', 'spawn', undefined, requestId);
     const { files, ...selection } = parameters;
     const fingerprint = createHash('sha256').update(JSON.stringify([Object.entries(selection).sort(), fileDigest])).digest('hex');
@@ -703,6 +705,10 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
   }
   async function beforeCompact(agent: RuntimeAgent, request: Omit<BeforeCompactRequest, 'agentId' | 'profile' | 'signal'>): Promise<BeforeCompactDecision> {
     const key = `${agent.info.id}:${request.compactionId}`;
+    if (!hookRequests.has(key) && hookRequests.size >= 8192) {
+      emit(agent, { type: 'session', event: { type: 'beforeCompact', ...request, decision: 'stop', error: { code: 'CAPACITY_EXCEEDED', message: 'Compaction decision identity capacity reached', retryable: false } } });
+      return 'stop';
+    }
     const previous = hookRequests.get(key);
     if (previous) return previous.work;
     const controller = new AbortController();
@@ -724,6 +730,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         return decision;
       } catch (error) {
         failure = error;
+        if ((error as any).code === 'HOOK_CANCELLED' && !closing && !admissionsFenced && isLive(agent)) return 'cancel';
         const info = { ...errorInfo(error), code: (error as any).code ?? 'HOOK_FAILED' };
         emit(agent, { type: 'session', event: { type: 'beforeCompact', ...request, decision: 'stop', error: info } });
         return 'stop';
