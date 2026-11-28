@@ -21,6 +21,11 @@ interface Configuration extends Pick<CreateRuntimeOptions, 'connection' | 'model
   closeTimeoutMs?: number;
 }
 
+export async function defaultConfiguration() {
+  const { default: config } = await import('./config.js');
+  return typeof config === 'function' ? config() : config;
+}
+
 const feedbackDescription = {
   description: 'Deliver feedback to the current execution of a Task.',
   schema: { type: 'object', required: ['taskId', 'input'], additionalProperties: false, properties: {
@@ -44,7 +49,7 @@ const taskpool = {
   input: true,
   inputDescriptor: feedbackDescription,
   async run(context) {
-    const configuration = await projectConfiguration<Configuration>(context, () => import('./config.js'));
+    const configuration = await projectConfiguration<Configuration>(context, async () => ({ default: await defaultConfiguration() }));
     const { executor, models, connection, image, model = 'default', capacity = 2, workTimeoutMs = 120_000,
       closeTimeoutMs = 30_000 } = configuration;
     if (![workTimeoutMs, closeTimeoutMs].every(value => Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647) ||
@@ -97,7 +102,7 @@ const taskpool = {
             const tasks = taskService.listTasks({ missionId, availableOnly: false, scanAll: true, limit: 100,
               states: ['OPEN', 'RUNNING', 'BLOCKED', 'DONE', 'CANCELED'] });
             return {
-              missionId, workspaceId, workspaceRevision: current.main_revision, closing: view.closing,
+              missionId, workspaceId, deadlineAt, workspaceRevision: current.main_revision, closing: view.closing,
               completion: view.completion, agents: view.agents, inputs: view.inputs.slice(-32),
               tasks: tasks.map((task: { task_id: string; state: string }) => ({
                 taskId: task.task_id, state: task.state,

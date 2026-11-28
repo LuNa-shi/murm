@@ -27,7 +27,11 @@ test('generated Subagents installs a real archive outside the checkout and retai
   const { project: first } = JSON.parse(initialized.stdout);
   assert.equal(first.installed, true);
   assert.doesNotMatch(await readFile(join(directory, '.env'), 'utf8'), /LIFECYCLE|ADVERTISE_HOST|ENDPOINT_HOST|IMAGE=/);
-  assert.equal(JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')).scripts.start, 'murm');
+  assert.deepEqual(JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')).scripts, {
+    start: 'node ./main.js ./config.js --interactive',
+    tui: 'murm --harness subagents --config ./config.js',
+    doctor: 'murm doctor --config ./config.js',
+  });
   const help = await execute(process.execPath, ['main.js', '--help'], { cwd: directory, env });
   assert.match(help.stdout, /Usage: node main.js/);
   const config = (await readFile(join(directory, 'config.js'), 'utf8')).replace('maxAgents: Number(process.env.MURM_SUBAGENTS_MAX_AGENTS ?? 4)', 'maxAgents: 2');

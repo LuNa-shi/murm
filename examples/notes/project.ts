@@ -17,12 +17,17 @@ export const projectNotesWriterPrompt = 'Read your local project and publish one
 export const projectNotesFollowupPrompt = 'In this same reader session, read the file you wrote in the preceding turn and copy its exact bytes to the followup filename. Finish when the copy is ready.';
 export const projectNotesReaderPrompt = 'Retrieve project-observation with swarm notes get. Compare the observation with the project files, use it to address the task, and write your evidence and results to the specified result file. Include the exact note text so the handoff can be checked.';
 
+export async function defaultConfiguration() {
+  const { default: config } = await import('./config.js');
+  return typeof config === 'function' ? config() : config;
+}
+
 const notesHarness = {
   id: 'notes', apiVersion: 1,
   async run(context) {
     const artifact = `murm-notes-${context.runId}.md`;
     const followup = `murm-notes-followup-${context.runId}.md`;
-    const config = await projectConfiguration<Config>(context, () => import('./config.js'));
+    const config = await projectConfiguration<Config>(context, async () => ({ default: await defaultConfiguration() }));
     const { image, model = 'default', turnTimeoutMs = 30_000, closeTimeoutMs = 30_000 } = config;
     if (![turnTimeoutMs, closeTimeoutMs].every(ms => Number.isSafeInteger(ms) && ms > 0 && ms <= 2_147_483_647) ||
         typeof image !== 'string' || !image) throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Invalid Notes image or time limit');

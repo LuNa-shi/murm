@@ -142,6 +142,7 @@ test('installed PeerMesh uses the captured project for peer coordination and mer
   const config = {
     image, durationMs: 34_000, closeTimeoutMs: 30_000, gitea, mattermost,
     sandbox: {
+      egressMode: process.env.MURM_CORE_TEST_EGRESS_MODE,
       lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       isolation: { network: 'api' },
     },

@@ -48,7 +48,7 @@ This section is generated from executable exports and checked against the source
 | [src/core/sandbox/executor-driver.ts](../../src/core/sandbox/executor-driver.ts) | `182e80680d8ea6e1729d524a6927d800a91caffd3657ed796706ebaad9d28131` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `be1c5c7db4876f5632f6f855af3e16e8f59c46a5a76b3f27a934508e15cbdf47` |
 | [src/core/sandbox/opensandbox-provider.ts](../../src/core/sandbox/opensandbox-provider.ts) | `eb98901a846c1ce294621d7a173cec46787ba4bf18b4edc65afc5c867e968c37` |
-| [src/core/sandbox/sandbox-connection.ts](../../src/core/sandbox/sandbox-connection.ts) | `2f7337b6fcbfd9f3df6735dfdf42be0d8f06b4c732963b21d4cdbd331b2f9249` |
+| [src/core/sandbox/sandbox-connection.ts](../../src/core/sandbox/sandbox-connection.ts) | `a6f7594852f92f96959af0ac93a99215013fea321805cbd0e133faae220d27bf` |
 
 ### Exact built-in command operation surface
 
@@ -4333,7 +4333,9 @@ export declare function resolveSandboxConnection(...settings: Parameters<typeof 
 export declare function saveSandboxConnection(input: ConnectionInput & {
     lifecycleBaseUrl: string;
 }): Promise<void>;
-export declare function loadMurmConfig(filename: string): Promise<unknown>;
+export declare function loadMurmConfig(filename: string, options?: {
+    reloadScopedEnvironment: true;
+}): Promise<unknown>;
 export {};
 ```
 

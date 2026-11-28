@@ -15,13 +15,25 @@ order: 16
 
 | 命令 | 用途 |
 | --- | --- |
-| `murm` | 在当前 murm 项目目录（如由 `murm init` 生成的目录）启动交互式会话 |
+| `murm` | 在当前目录打开 Subagents 终端界面 |
 | `murm setup [--mode existing\|local] [--endpoint <url>] [--public-url <url>] [--config <module>]` | 本地启动托管 OpenSandbox 并自动生成密钥（`--mode local`），或验证连接已有 OpenSandbox 服务（`--mode existing`），随后准备所选 Worker 镜像 |
 | `murm doctor [--config <module>] [--smoke]` | 只读诊断配置与 Lifecycle 鉴权；加 `--smoke` 拉起真实 Pi/Codex Worker 运行端到端冒烟验证 |
 | `murm init --template subagents --dir <directory>` | 在指定目录生成可编辑的独立 Subagents 项目脚手架 |
 | `murm --harness <module> --prompt <text> [options]` | 在前台对项目目录运行内置、本地 ESM 或 npm 包 Harness |
 | `murm --harness <module> --mode rpc [options]` | 通过 JSONL `stdin`/`stdout` 以 RPC 模式运行 Harness，支持 `ready`、`run`、`status`、`stop` 控制 |
 | `murm trace [--root] <runs-dir> [--port 8787] [--open]` | 在 `127.0.0.1` 启动内置浏览器 [Trace Viewer](../trace-viewer.md) |
+
+### 前台终端界面
+
+使用 `murm`、`murm --harness notes` 或 `murm --mode tui --harness subagents --prompt '预填草稿'` 打开界面。stdin 和 stdout 均需连接终端。`--cwd` 指定提交时要捕获的项目。相对 Harness 路径、`--config` 与 `--output-dir` 从执行命令的目录解析。
+
+- F1 查看 Run 和配置，F2 查看 Agent，F3 查看结果，F4 查看待答和已结算问题。
+- F5 编辑初始任务或发送 Run 输入。F6 选择配置、Agent 或问题。F7 打开 Agent 操作、在 Subagents 的 Run 页选择 followUp，或预览保存的报告。F8 确认停止整个 Run，F9 核对结果未知的操作。Alt+Enter 换行，Esc 关闭编辑器并保留草稿。Page Up 和 Page Down 滚动，End 恢复跟随最新 Agent 输出。
+- 在 F6 选择可信的 ESM 配置，或使用内置环境变量。Doctor 执行只读检查，Setup 需要明确确认。记住配置只将绝对路径与适用 Harness ID 保存到 `$XDG_CONFIG_HOME/murm/launcher.json`（通常为 `~/.config/murm/launcher.json`）。`--config` 优先于已保存路径，可在 F6 清除偏好。缺少模型或模板时仍能打开配置。
+- Subagents 在 TUI 默认保持交互。`--lifetime task` 允许任务完成后自动结束，`--interaction none` 单独关闭问答。运行时 Ctrl+C 请求有序停止并停留在结果页，运行前或结算后按 Ctrl+C 可退出。
+- 退出码 0 表示成功或运行前正常退出，1 表示失败、取消或收尾未确认，2 表示启动、参数或终端错误。收到 SIGINT 或 SIGTERM 时先请求停止活动 Run，退出码分别为 130 和 143。
+
+旧模板用户若要继续运行自定义 host，可在项目目录执行 `node ./main.js ./config.js --interactive`。新模板的 `npm start` 已指向该命令。`npm run tui` 使用已安装的内置 Harness 和项目的配置。Init 保留已有项目文件。
 
 ### 运行 Harness（`murm --harness`）
 

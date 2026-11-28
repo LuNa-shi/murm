@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { runInstalledHarnessRpc } from './fixtures/installed-harness-rpc.js';
+import { runInstalledHarnessTerminal, useNativeTerminal } from './fixtures/installed-harness-terminal.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { createNativeEvidenceDirectory, execute, installNativeNotesExample } from './fixtures/notes-installed-package.js';
@@ -156,6 +157,7 @@ test('installed Lead–Worker integrates the project through static and dynamic 
       const config = {
         team, gitea, image, workTimeoutMs: 95_000, turnTimeoutMs: 45_000, closeTimeoutMs: 30_000,
         sandbox: {
+          egressMode: process.env.MURM_CORE_TEST_EGRESS_MODE,
           lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
           isolation: { network: 'api' },
         },
@@ -170,7 +172,7 @@ config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;
 `, { mode: 0o600 });
       allowStackClose = false;
-      const { result, status, observation } = await runInstalledHarnessRpc(installation, {
+      const { result, status, observation } = await (useNativeTerminal ? runInstalledHarnessTerminal : runInstalledHarnessRpc)(installation, {
         harness: 'lead-worker', cwd: project, prompt, configPath: path, outputDir: join(directory, team), timeoutMs: 148_000,
       });
       const runtimeId = result.result?.runtimeId;

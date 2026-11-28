@@ -15,13 +15,25 @@ order: 16
 
 | Command | Purpose |
 | --- | --- |
-| `murm` | Starts an interactive session in the current murm project directory |
+| `murm` | Opens the Subagents terminal launcher in the current directory |
 | `murm setup [--mode existing\|local] [--endpoint <url>] [--public-url <url>] [--config <module>]` | Starts a managed local OpenSandbox with auto-generated credentials (`--mode local`), or validates an existing service (`--mode existing`), local mode prepares the selected Worker and probes it, existing mode saves the connection |
 | `murm doctor [--config <module>] [--smoke]` | Read-only configuration and Lifecycle auth diagnostics; pass `--smoke` for a live Pi/Codex Worker end-to-end probe |
 | `murm init --template subagents --dir <directory>` | Scaffolds an editable standalone Subagents project directory |
 | `murm --harness <module> --prompt <text> [options]` | Runs a built-in, local ESM, or package Harness in foreground against a project directory |
 | `murm --harness <module> --mode rpc [options]` | Runs a Harness over JSONL `stdin`/`stdout` with `ready`, `run`, `status`, and `stop` control |
 | `murm trace [--root] <runs-dir> [--port 8787] [--open]` | Starts the built-in browser [Trace Viewer](../trace-viewer.md) on `127.0.0.1` |
+
+### Foreground terminal interface
+
+Open the TUI with `murm`, `murm --harness notes`, or `murm --mode tui --harness subagents --prompt 'Draft only'`. It requires a terminal on both standard streams. Use `--cwd` to select the project to capture. Relative Harness, `--config` and `--output-dir` paths resolve from the directory where you run `murm`.
+
+- F1 opens Run and configuration. F2 selects Agent details, F3 shows the result, and F4 lists pending and resolved questions.
+- F5 edits the initial prompt or Run input. F6 selects a configuration, Agent or question. F7 opens Agent actions, selects followUp on the Subagents Run page, or previews a saved result report. F8 stops the Run with confirmation and F9 reconciles an unknown operation. Press Alt+Enter for a newline and Escape to leave a draft in memory. Page Up and Page Down scroll, and End follows the latest Agent output.
+- In F6, choose a trusted ESM configuration, use the built-in environment, run read-only Doctor, or explicitly run Setup. Remember stores only the absolute configuration path and Harness ID in `$XDG_CONFIG_HOME/murm/launcher.json` (normally `~/.config/murm/launcher.json`). `--config` takes precedence over a saved path. Use Forget to clear the preference. The launcher can be opened without a model route or existing project scaffold.
+- Subagents defaults to an interactive lifetime in the TUI. `--lifetime task` lets it end when its task ends. `--interaction none` disables the question channel independently. Ctrl+C requests ordered stop during a Run and exits after the result page. Before starting a Run, it exits directly.
+- Exit 0 means success or ordinary exit before starting, 1 means failure, cancellation or unconfirmed cleanup, and 2 means startup, usage or terminal error. SIGINT exits 130 and SIGTERM exits 143 after any outstanding Run has been stopped.
+
+For an editable project created with an older template, run `node ./main.js ./config.js --interactive` from the project directory. New templates use that command for `npm start`. `npm run tui` uses the installed built-in Harness with the project's config. Init preserves existing project files.
 
 ### Running Harnesses (`murm --harness`)
 

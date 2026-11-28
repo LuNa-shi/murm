@@ -11,6 +11,7 @@ All notable changes to **murm** (`@luna-shi/murm`) are tracked here and in the r
 
 ## Unreleased
 
+- Bare `murm` opens the foreground terminal interface. One public Harness Session provides the Run, Agent, question and result pages. Editable projects can use `node ./main.js ./config.js --interactive` or the new template's `npm start`.
 - `createHarnessSession` and `HarnessRpcClient` expose one run contract for the seven built-in Harnesses. Subagents can keep Root available across turns, TaskPool routes feedback to the current fenced Execution, and PeerMesh accepts directed batches and controlled member stop.
 - Native Pi Worker Sessions expose per-Agent configuration, structured context, bounded inspection, retry and queue controls, and compaction decisions.
 - Follow the [first SDK Harness](first-harness.md) to run a verified two-Agent handoff from an installed archive. The candidate CLI adds `murm --version`, setup connection and timing reports, and schema-derived Service help and input diagnostics.

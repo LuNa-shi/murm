@@ -7,6 +7,7 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { runInstalledHarnessRpc } from './fixtures/installed-harness-rpc.js';
+import { runInstalledHarnessTerminal, useNativeTerminal } from './fixtures/installed-harness-terminal.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { createSubstrateUpstream } from './fixtures/substrate-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
@@ -101,6 +102,7 @@ test('installed Notes and Messages use the supplied prompt and project in both W
       t.after(() => { server.closeAllConnections(); server.close(); });
       const config = {
         sandbox: {
+          egressMode: process.env.MURM_CORE_TEST_EGRESS_MODE,
           lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
           isolation: { network: 'api' },
         },
@@ -117,7 +119,7 @@ config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 if (process.env.MURM_TEST_MESSAGES_URL) config.externalMessages = { url: process.env.MURM_TEST_MESSAGES_URL, token: process.env.MURM_TEST_MESSAGES_TOKEN };
 export default config;
 `, { mode: 0o600 });
-      const { result, status, observation } = await runInstalledHarnessRpc(installation, {
+      const { result, status, observation } = await (useNativeTerminal ? runInstalledHarnessTerminal : runInstalledHarnessRpc)(installation, {
         harness: id, cwd: project, prompt, configPath, outputDir: join(evidenceDir, scenario), timeoutMs: 115_000,
         ...(external ? { env: { MURM_TEST_MESSAGES_URL: external.url, MURM_TEST_MESSAGES_TOKEN: external.token } } : {}),
       }).catch(error => { assert.ifError(failure); throw error; });
@@ -158,8 +160,10 @@ export default config;
   }, null, 2), { mode: 0o600 });
 });
 
-test('installed TaskPool routes fenced feedback to an installed native execution and publishes to seeded main', {
-  skip: process.env.MURM_PROJECT_NATIVE_TEST !== '1' && 'Requires the local OpenSandbox Worker',
+for (const stopAfterClaim of [false, true]) test(stopAfterClaim
+  ? 'installed TaskPool recovers the terminal and its native Worker on SIGTERM during an Execution'
+  : 'installed TaskPool routes fenced feedback to an installed native execution and publishes to seeded main', {
+  skip: (process.env.MURM_PROJECT_NATIVE_TEST !== '1' || (stopAfterClaim && !useNativeTerminal)) && 'Requires the local OpenSandbox Worker',
   timeout: 200_000,
 }, async t => {
   const image = process.env.MURM_CORE_TEST_IMAGE;
@@ -225,8 +229,19 @@ print('PROJECT_TASKPOOL_OK')
 MURM_PROJECT_TEST`;
   let calls = 0;
   let feedbackObserved = false;
+  let claimedTaskId: string | undefined;
   let failure: unknown;
   const server = createServer(async (req, res) => {
+    if (useNativeTerminal && req.method === 'GET' && req.url === '/claimed-task') {
+      res.end(claimedTaskId ?? '');
+      return;
+    }
+    if (useNativeTerminal && req.method === 'GET' && req.url === '/release-feedback') {
+      release.resolve();
+      res.writeHead(200);
+      res.end();
+      return;
+    }
     try {
       assert.ok(++calls <= 8);
       const { input } = await new Response(req).json();
@@ -248,6 +263,7 @@ MURM_PROJECT_TEST`;
       } else if (output('project_taskpool_claim')) {
         const taskId = /TAKEN_TASK:([^\s]+)/.exec(String(output('project_taskpool_claim')))?.[1];
         assert.ok(taskId);
+        claimedTaskId = taskId;
         binding.resolve(taskId);
         await release.promise;
         item = reply('taskpool_claimed', 'Claimed the Task');
@@ -267,6 +283,7 @@ MURM_PROJECT_TEST`;
   const configuration = {
     image, capacity: 1, workTimeoutMs: 100_000, closeTimeoutMs: 35_000,
     sandbox: {
+      egressMode: process.env.MURM_CORE_TEST_EGRESS_MODE,
       lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       isolation: { network: 'api' },
     },
@@ -281,8 +298,13 @@ MURM_PROJECT_TEST`;
 config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;
 `, { mode: 0o600 });
-  const { result, observation } = await runInstalledHarnessRpc(installation, {
+  const options = {
     harness: 'taskpool', cwd: project, prompt, configPath, outputDir: join(evidence, 'output'), timeoutMs: 155_000,
+  };
+  const { result, observation, status } = useNativeTerminal ? await runInstalledHarnessTerminal(installation, {
+    ...options, stopAfterClaim, taskFeedback: { text: feedback, release: `http://127.0.0.1:${server.address().port}/release-feedback` },
+  }) : await runInstalledHarnessRpc(installation, {
+    ...options,
     async interact(session) {
       const taskId = await binding.promise;
       const receipts: any[] = [];
@@ -315,6 +337,16 @@ export default config;
     },
   });
   assert.ifError(failure);
+  if (stopAfterClaim) {
+    assert.equal(status, 143);
+    assert.equal(result.outcome, 'cancelled');
+    assert.equal(result.stopReason, 'SIGTERM');
+    assert.equal(result.cleanup.status, 'complete');
+    assert.ok(claimedTaskId);
+    assert.equal(feedbackObserved, false);
+    assert.deepEqual(await ownedContainers(result.result.runtimeId), []);
+    return;
+  }
   assert.equal(feedbackObserved, true);
   assert.equal(result.outcome, 'completed');
   assert.equal(result.cleanup.status, 'complete');
@@ -356,6 +388,7 @@ test('installed Substrate peers publish and cite bytes from the supplied project
   const configuration = {
     image, poolSize: 3, maxRounds: 2, workTimeoutMs: 95_000, turnTimeoutMs: 35_000, closeTimeoutMs: 30_000,
     sandbox: {
+      egressMode: process.env.MURM_CORE_TEST_EGRESS_MODE,
       lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       isolation: { network: 'api' },
     },
@@ -368,7 +401,7 @@ test('installed Substrate peers publish and cite bytes from the supplied project
 config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
 export default config;
 `, { mode: 0o600 });
-  const { result, status, observation } = await runInstalledHarnessRpc(installation, {
+  const { result, status, observation } = await (useNativeTerminal ? runInstalledHarnessTerminal : runInstalledHarnessRpc)(installation, {
     harness: 'substrate', cwd: project, prompt: projectSource.prompt, configPath, outputDir: join(evidence, 'output'), timeoutMs: 145_000,
   }).catch(error => { assert.ifError(upstream.receipt().failure); throw error; });
   assert.ifError(upstream.receipt().failure);

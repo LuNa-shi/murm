@@ -7,7 +7,7 @@ import type { RuntimeSession } from '../core/session-types.js';
 import type { AgentInfo } from '../core/types.js';
 import { maxSessionQueryBytes } from '../protocol/session-queries.js';
 import { stableStringify } from '../protocol/stable-json.js';
-import { boundHarnessState, defaultSnapshotBytes, jsonBytes, publicHarnessResult } from './harness-session-view.js';
+import { unresolvedHarnessReceipt, boundHarnessState, defaultSnapshotBytes, jsonBytes, publicHarnessResult } from './harness-session-view.js';
 import { collectRuntimeEvidence } from './run-report.js';
 import { projectRuntimeEvidence } from './project-runtime.js';
 import { HarnessEventStream } from './harness-event-stream.js';
@@ -191,12 +191,30 @@ export function createHarnessSession(definition: Harness, options: HarnessSessio
     const event = runtimeObject.event;
     if (!event || typeof event !== 'object' || Array.isArray(event) || !('messageId' in event) || typeof event.messageId !== 'string') return;
     const eventObject = event as { readonly [key: string]: HarnessJson };
-    const key = String(runtimeObject.agentId ?? '') + ':' + eventObject.messageId;
-    const previous = output.get(key) as { text?: string } | undefined;
-    if (eventObject.type === 'textDelta' && typeof eventObject.delta === 'string') {
-      output.set(key, { agentId: runtimeObject.agentId ?? null, messageId: eventObject.messageId, text: ((previous?.text ?? '') + eventObject.delta).slice(-16_384), truncated: (previous?.text?.length ?? 0) + eventObject.delta.length > 16_384, complete: false });
+    const agentId = runtimeObject.agentId ?? null;
+    const messageId = eventObject.messageId;
+    const key = JSON.stringify([agentId, messageId]);
+    const previous = output.get(key) as { blocks?: readonly (readonly [number, string])[]; complete?: boolean; truncated?: boolean } | undefined;
+    if (eventObject.type === 'textDelta' && typeof eventObject.delta === 'string' && !previous?.complete) {
+      const index = Number.isSafeInteger(eventObject.blockIndex) ? Number(eventObject.blockIndex) : 0;
+      const blocks = new Map(previous?.blocks);
+      blocks.set(index, (blocks.get(index) ?? '') + eventObject.delta);
+      let truncated = previous?.truncated ?? false;
+      if (blocks.size > 64) { blocks.delete(blocks.keys().next().value!); truncated = true; }
+      const ordered = [...blocks].sort(([left], [right]) => left - right);
+      let available = 16_384;
+      for (let position = ordered.length - 1; position >= 0; position--) {
+        const block = ordered[position];
+        if (block[1].length > available) {
+          block[1] = available ? block[1].slice(-available) : '';
+          truncated = true;
+        }
+        available -= block[1].length;
+      }
+      output.set(key, { agentId, messageId, text: ordered.map(([, text]) => text).join(''),
+        blocks: ordered, truncated, complete: false });
     } else if (eventObject.type === 'messageEnd') {
-      output.set(key, { agentId: runtimeObject.agentId ?? null, messageId: eventObject.messageId, message: boundedView(eventObject.message ?? null, 16_384), complete: true });
+      output.set(key, { agentId, messageId, message: boundedView(eventObject.message ?? null, 16_384), complete: true });
     }
     while (output.size > 8 || Buffer.byteLength(JSON.stringify([...output.values()])) > Math.floor(limits.snapshotBytes / 4)) output.delete(output.keys().next().value!);
   }
@@ -336,7 +354,7 @@ export function createHarnessSession(definition: Harness, options: HarnessSessio
     const existing = records.get(id);
     if (existing) {
       if (existing.fingerprint !== hash) return Promise.reject(projectError('REQUEST_ID_CONFLICT', 'requestId already identifies different parameters or operation'));
-      if (existing.settled && existing.reconcile && isUnknown(existing.result)) {
+      if (existing.settled && existing.reconcile && unresolvedHarnessReceipt(existing.result)) {
         return observeHandler(existing.reconcile(), id, existing.result).then(value => structuredClone(updateReceipt(id, value)) as T);
       }
       return existing.settled ? Promise.resolve(structuredClone(existing.result) as T) : existing.promise as Promise<T>;
@@ -362,7 +380,7 @@ export function createHarnessSession(definition: Harness, options: HarnessSessio
     if (!record) return jsonCopy(value);
     const copy = jsonCopy(value);
     // Preserve the first confirmed outcome if an older timeout or query arrives later.
-    if (record.settled && !isUnknown(record.result)) return record.result;
+    if (record.settled && !unresolvedHarnessReceipt(record.result)) return record.result;
     if (record.settled && stableStringify(record.result) === stableStringify(copy)) return record.result;
     record.result = copy;
     record.settled = true;
@@ -390,13 +408,7 @@ export function createHarnessSession(definition: Harness, options: HarnessSessio
   }
   function operationSummaries(): NonNullable<HarnessResult['operations']> {
     return [...records].map(([requestId, record]) => ({ requestId, operation: record.operation,
-      status: record.failed ? 'failed' : isUnknown(record.result) ? 'unknown' : record.settled ? 'confirmed' : 'pending' }));
-  }
-  function isUnknown(value: unknown) {
-    return !!value && typeof value === 'object' && ((value as { status?: string }).status === 'unknown' ||
-      ((value as { core?: { status?: string } }).core?.status === 'unknown') ||
-      ((value as { core?: { cleanup?: string } }).core?.cleanup === 'pending') ||
-      ((value as { harnessEffects?: { status?: string } }).harnessEffects?.status === 'pending'));
+      status: record.failed ? 'failed' : unresolvedHarnessReceipt(record.result) ? 'unknown' : record.settled ? 'confirmed' : 'pending' }));
   }
   function admit() {
     if (stopping || finalizing || host.signal.aborted) throw projectError('RUN_STOPPING', 'Run admission is closed');

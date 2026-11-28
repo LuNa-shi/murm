@@ -17,7 +17,9 @@ const projectUsage = [
   'The project directory defaults to the invocation directory. In RPC mode send cwd and prompt in the run request.',
 ].join('\n');
 export const murmUsage = [
-  'Usage: murm                         Start an interactive session in the current project',
+  'Usage: murm                         Open the foreground TUI (interactive terminal required)',
+  '       murm --mode tui [--harness <module>] [--cwd <directory>] [--config <module>] [--prompt <draft>] [--output-dir <directory>]',
+  'TUI exit codes: 0 completed or exited before starting; 1 failed, cancelled or cleanup unconfirmed; 2 startup or terminal error; 130 SIGINT; 143 SIGTERM.',
   'Usage: murm --version',
   projectUsage, setupUsage, initUsage, doctorUsage, recoverUsage,
   'Usage: murm trace --root <runs-dir> [--port 8787] [--open]',
@@ -27,20 +29,21 @@ export type LocalCommand =
   | { command: 'setup'; mode?: 'existing' | 'local'; endpoint?: string; publicUrl?: string; configPath?: string }
   | { command: 'doctor'; configPath?: string; smoke: boolean };
 
-export type ProjectCommand = {
-  command: 'harness';
-  harness: string;
+type HarnessOptions = {
   configPath?: string;
   outputRoot?: string;
   lifetime?: 'task' | 'interactive';
   interaction?: 'none' | 'questions';
-} & ({ mode: 'foreground'; cwd?: string; prompt: string } | { mode: 'rpc' });
+};
+export type ProjectCommand = HarnessOptions & { command: 'harness'; harness: string }
+  & ({ mode: 'foreground'; cwd?: string; prompt: string } | { mode: 'rpc' });
+export type TuiCommand = HarnessOptions & { command: 'tui'; harness: string; cwd?: string; prompt?: string };
 
-type MurmCommand = LocalCommand | { command: 'init'; directory: string } | { command: 'interactive' } | ProjectCommand | { command: 'recover'; directory: string; configPath: string };
+type MurmCommand = LocalCommand | { command: 'init'; directory: string } | TuiCommand | ProjectCommand | { command: 'recover'; directory: string; configPath: string };
 
 export function parseMurmCommand(args: string[]): MurmCommand | { help: string } {
   const [command, ...options] = args;
-  if (command === undefined) return { command: 'interactive' };
+  if (command === undefined) return { command: 'tui', harness: 'subagents' };
   if (command === '--help' && options.length === 0) return { help: murmUsage };
   const usages = { setup: setupUsage, init: initUsage, doctor: doctorUsage, recover: recoverUsage };
   const usage = Object.hasOwn(usages, command) ? usages[command as keyof typeof usages] : murmUsage;
@@ -52,13 +55,18 @@ export function parseMurmCommand(args: string[]): MurmCommand | { help: string }
         mode: { type: 'string' }, config: { type: 'string' }, 'output-dir': { type: 'string' },
         lifetime: { type: 'string' }, interaction: { type: 'string' },
       } });
-      if (!values.harness || values.config === '' || values['output-dir'] === '') throw new Error();
+      if (values.harness === '' || values.cwd === '' || values.config === '' || values['output-dir'] === '') throw new Error();
       const { lifetime, interaction } = values;
       if ((lifetime !== undefined && lifetime !== 'task' && lifetime !== 'interactive') ||
           (interaction !== undefined && interaction !== 'none' && interaction !== 'questions')) throw new Error();
-      const project = { command: 'harness' as const, harness: values.harness, configPath: values.config,
+      const settings: HarnessOptions = { configPath: values.config,
         outputRoot: values['output-dir'],
-        lifetime: lifetime as ProjectCommand['lifetime'], interaction: interaction as ProjectCommand['interaction'] };
+        lifetime, interaction };
+      if (values.mode === 'tui' || (values.mode === undefined && values.prompt === undefined)) {
+        return { ...settings, command: 'tui', harness: values.harness ?? 'subagents', cwd: values.cwd, prompt: values.prompt };
+      }
+      if (!values.harness) throw new Error();
+      const project = { ...settings, command: 'harness' as const, harness: values.harness };
       if (values.mode === 'rpc' && values.prompt === undefined && values.cwd === undefined) return { ...project, mode: 'rpc' };
       if (values.mode === undefined && values.prompt?.trim() && values.cwd !== '') {
         return { ...project, mode: 'foreground', cwd: values.cwd, prompt: values.prompt };

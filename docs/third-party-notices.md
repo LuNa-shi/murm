@@ -13,3 +13,5 @@ The terms in [LICENSE](../LICENSE) cover murm's original code and documentation.
 | Trace Viewer fonts | SIL Open Font License 1.1. [Departure Mono](../src/trace-viewer/public/licenses/departure-mono.txt) · [Inter](../src/trace-viewer/public/licenses/inter.txt) · [Space Grotesk](../src/trace-viewer/public/licenses/space-grotesk.txt) |
 
 Installed dependencies and externally fetched benchmark inputs carry terms from their respective projects. Consult their accompanying notices when redistributing them.
+
+- `@earendil-works/pi-tui@1.3.0` (MIT) supplies the foreground terminal editor, layout, lists and scroll controls.

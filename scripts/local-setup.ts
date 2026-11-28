@@ -25,7 +25,7 @@ type Smoke = Awaited<ReturnType<typeof runLocalSmoke>>;
 type Timing = { id: string; elapsedMs: number; cached?: boolean };
 type Model = { configuration: 'complete' | 'missing' | 'invalid'; verification: 'not-verified' };
 
-function modelState(config: ProjectConfig, executor: string): Model {
+export function modelState(config: ProjectConfig, executor: string): Model {
   if (config.models === undefined) return { configuration: 'missing', verification: 'not-verified' };
   const aliases = new Set([config.rootModel ?? config.model ?? 'default', config.childModel ?? config.model ?? 'default']);
   const routes = [...aliases].map(alias => config.models?.[alias]);
@@ -42,7 +42,7 @@ function modelState(config: ProjectConfig, executor: string): Model {
   return { configuration, verification: 'not-verified' };
 }
 
-function checkProjectRuntime(config: ProjectConfig, sandbox: SandboxConfig): DiagnosticCheck {
+export function checkProjectRuntime(config: ProjectConfig, sandbox: SandboxConfig): DiagnosticCheck {
   try {
     // The real backend validates every infrastructure field without allocating.
     // Missing model endpoints are reported separately while preparing the host.
@@ -107,7 +107,7 @@ const phaseLabels: Record<string, string> = {
   smoke: 'Start Worker and check Bridge, controlled Gateway, files and deletion',
 };
 
-export async function runLocalCommand(command: LocalCommand, signal: AbortSignal, progress?: (message: string) => void) {
+export async function runLocalCommand(command: LocalCommand, signal: AbortSignal, progress?: (message: string) => void, configuration?: ProjectConfig) {
   const { startedAt, timings } = bootstrapTimings();
   const checks: DiagnosticCheck[] = [];
   const report: {
@@ -162,8 +162,8 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
   let rootlessDocker = false;
   let stage = 'config';
   try {
-    const config = command.configPath
-      ? await loadLocalProjectConfig(command.configPath) : undefined;
+    const config = configuration ?? (command.configPath
+      ? await loadLocalProjectConfig(command.configPath) : undefined);
     const executor = (config?.executor ?? process.env.MURM_EXECUTOR) as ExecutorSelection | undefined;
     let driver;
     try { driver = selectExecutorDriver(executor); }

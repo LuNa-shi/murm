@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -17,6 +17,7 @@ import { createLocalPeerMeshStack } from './fixtures/peermesh-local-stack.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { installNativeNotesExample } from './fixtures/notes-installed-package.js';
+import { runInstalledHarnessTerminal, useNativeTerminal } from './fixtures/installed-harness-terminal.js';
 const execute = promisify(execFile);
 
 // Same public built-in project consumed by SDK/RPC, with actual facilities,
@@ -41,6 +42,9 @@ test('PeerMesh HarnessSession directs native next-batch input and stops one memb
   const batches: any[] = []; const sockets = new Set<any>(); let failure: string | undefined;
   let session: ReturnType<typeof sdk.createHarnessSession> | undefined, facilities: any, runtimeId: string | undefined;
   let result: any, facilityCleanup: any;
+  let boardTarget: { origin: string; boardId: string; workerId: string } | undefined;
+  let startBoard: Awaited<ReturnType<typeof stack.start>>['startBoard'] | undefined;
+  let terminalFailed = false;
   let deadline = Date.now() + 360_000;
   const wait = async (check: () => unknown | Promise<unknown>, label: string) => {
     while (Date.now() < deadline) { if (await check()) return; if (session && (await session.getState()).phase === 'finished') throw new Error(`Run ended before ${label}: ${(await session.completion)?.reason}`); await new Promise(resolve => setTimeout(resolve, 50)); }
@@ -48,6 +52,28 @@ test('PeerMesh HarnessSession directs native next-batch input and stops one memb
   };
   const upstream = createServer(async (request, response) => {
     try {
+      if (useNativeTerminal && request.method === 'GET' && request.url?.startsWith('/terminal/')) {
+        if (request.url === '/terminal/release') {
+          assert.ok(boardTarget && batches.length === 2);
+          const { origin, boardId, workerId } = boardTarget;
+          const note = await httpClient(origin)('POST', `/board/${boardId}/note`, {
+            thread_id: workerId, type: 'FACT', content: 'H6_LATEST_SHARED_CONTEXT', detail: null, delegation_id: null,
+          });
+          assert.equal(note.status, 'admitted');
+          release();
+        } else assert.equal(request.url, '/terminal/count');
+        response.end(String(batches.length));
+        return;
+      }
+      if (useNativeTerminal && request.method === 'POST' && request.url === '/start-board') {
+        assert.ok(startBoard);
+        const { boardId, workerId, workerIds } = await new Response(request).json();
+        const board = await startBoard({ boardId, workerId, workerIds, own() {}, signal: AbortSignal.timeout(60_000) });
+        boardTarget = { origin: board.origin, boardId, workerId: workerIds[1] };
+        response.setHeader('content-type', 'application/json');
+        response.end(JSON.stringify(board));
+        return;
+      }
       assert.equal(request.method, 'POST'); assert.equal(request.url, '/v1/responses'); assert.ok(batches.length < 4 && Date.now() < deadline);
       let size = 0; const chunks = [];
       for await (const chunk of request) { size += chunk.length; assert.ok(size <= 2 * 1024 ** 2); chunks.push(chunk); }
@@ -69,15 +95,50 @@ test('PeerMesh HarnessSession directs native next-batch input and stops one memb
     limits: { agents: 2, modelRequests: 4, setupMs: 180_000, workMs: 120_000, cleanupMs: 100_000 } };
   try {
     const config = await stack.start(); deadline = Date.now() + 120_000;
-    session = sdk.createHarnessSession(peerMesh, { outputRoot: join(directory, 'runs'), stopTimeoutMs: 90_000, configuration: {
-      ...config, image, executor: sdk.createPiExecutor({ version: process.env.MURM_CORE_TEST_PI_VERSION ?? '1.3.0' }), peerKeys: ['a', 'b'], durationMs: 120_000, closeTimeoutMs: 70_000,
+    startBoard = config.startBoard;
+    const base = `http://127.0.0.1:${(upstream.address() as any).port}`;
+    const executor = { kind: 'pi', version: process.env.MURM_CORE_TEST_PI_VERSION ?? '1.3.0' } as const;
+    const configuration = {
+      ...config, image, executor, peerKeys: ['a', 'b'], durationMs: 120_000, closeTimeoutMs: 70_000,
       sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
+        egressMode: process.env.MURM_CORE_TEST_EGRESS_MODE,
         resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000, isolation: { network: 'api' } },
       connection: { advertiseHost: host, modelGateway: { maxOutputTokens: 128, requestTimeoutMs: 60_000 } },
-      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `http://127.0.0.1:${(upstream.address() as any).port}/v1/responses`, headers: {} } } },
+      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: base + '/v1/responses', headers: {} } } },
       router: { workTimeoutMs: 120_000, turnTimeoutMs: 60_000, maxBatches: 4, maxNudges: 0 },
       prepare: async (options: any) => { facilities = await preparePeerMeshFacilities(options); return facilities; },
-    } });
+    };
+    if (useNativeTerminal) {
+      assert.ok(installed, 'PeerMesh PTY requires the exact installed candidate');
+      const path = join(directory, 'peermesh.mjs');
+      await writeFile(path, `const config = ${JSON.stringify(configuration)};
+config.startBoard = async ({ boardId, workerId, workerIds, signal }) => {
+  const response = await fetch(${JSON.stringify(base + '/start-board')}, {
+    method: 'POST', body: JSON.stringify({ boardId, workerId, workerIds }), signal
+  });
+  if (!response.ok) throw new Error('Could not start the local Board');
+  return response.json();
+};
+export default config;
+`, { mode: 0o600 });
+      terminalFailed = true;
+      ({ result } = await runInstalledHarnessTerminal(installed, { harness: 'peermesh', cwd, prompt: 'H6_KICKOFF',
+        configPath: path, outputDir: join(directory, 'runs'), timeoutMs: 220_000, peerControl: base + '/terminal' }));
+      runtimeId = result.result.runtimeId;
+      assert.equal(result.cleanup.status, 'complete');
+      assert.deepEqual(await ownedContainers(runtimeId!), []);
+      terminalFailed = false;
+      assert.equal(result.export.status, 'complete');
+      assert.deepEqual(batches.map(batch => batch.source), ['kickoff', 'kickoff', 'user', 'user']);
+      assert.deepEqual(batches.slice(2).map(batch => batch.text), ['H6_TARGETED_USER_A', 'H6_TARGETED_USER_B']);
+      const stopped = result.operations.find((entry: any) => entry.operation === 'agent.stop' && entry.status === 'confirmed');
+      assert.ok(stopped, 'the member stop reached a confirmed receipt on the public Session');
+      assert.equal(failure, undefined);
+      report.batches = batches;
+      report.stop = stopped;
+      return;
+    }
+    session = sdk.createHarnessSession(peerMesh, { outputRoot: join(directory, 'runs'), stopTimeoutMs: 90_000, configuration });
     const events: any[] = []; session.onEvent(event => { if (event.type === 'snapshot' || event.type === 'state') events.push({ type: event.type, phase: event.state.phase }); }, { initialSnapshot: true });
     assert.equal((await session.describe()).input.supported, true);
     await session.start({ cwd, prompt: 'H6_KICKOFF' }, { requestId: 'h6-start' });
@@ -113,12 +174,21 @@ test('PeerMesh HarnessSession directs native next-batch input and stops one memb
   } finally {
     release(); deadline = Date.now() + 100_000;
     if (session && !result) { await session.stop({ requestId: 'h6-finally-stop', reason: 'fixture-cleanup' }); result = await session.completion; }
-    if (!session || result?.cleanup.status === 'complete') facilityCleanup = await stack.close();
+    if (terminalFailed && !result) {
+      const [runId] = await readdir(join(directory, 'runs')).catch(() => []);
+      if (runId) {
+        result = await readFile(join(directory, 'runs', runId, 'project-run.json'), 'utf8').then(JSON.parse).catch(() => undefined);
+        if (result?.cleanup.status === 'complete' && result.result.runtimeId) {
+          terminalFailed = (await ownedContainers(result.result.runtimeId)).length > 0;
+        }
+      }
+    }
+    if (!terminalFailed && (!session || result?.cleanup.status === 'complete')) facilityCleanup = await stack.close();
     else facilityCleanup = { cleanup: 'pending', dependenciesRetained: true };
     for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => upstream.close(() => resolve()));
     report.result = result; report.facilities = stack.receipt(); report.facilityCleanup = facilityCleanup; report.failure = failure;
     let body = JSON.stringify(report, null, 2); for (const secret of stack.secrets) body = body.split(JSON.stringify(secret).slice(1, -1)).join('[redacted]');
     await writeFile(join(directory, 'acceptance.json'), body + '\n', { mode: 0o600 });
+    if (!terminalFailed) assert.equal(facilityCleanup.cleanup, 'complete');
   }
-  assert.equal(facilityCleanup.cleanup, 'complete');
 });

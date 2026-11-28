@@ -9,14 +9,18 @@ import { leadWorkerConfig } from './project-config.js';
 type Config = Omit<ReturnType<typeof leadWorkerConfig>, 'models' | 'sandbox'> &
   Pick<CreateRuntimeOptions, 'executor' | 'models' | 'filePolicy'> & { sandbox: SandboxConfig; team?: 'static' | 'dynamic'; checkingImage?: string };
 
+export async function defaultConfiguration() {
+  return {
+    ...leadWorkerConfig(),
+    team: process.env.MURM_LEAD_WORKER_TEAM,
+    checkingImage: process.env.MURM_LEAD_WORKER_CHECKING_IMAGE,
+  };
+}
+
 const leadWorker = {
   id: 'lead-worker', apiVersion: 1,
   async run(context) {
-    const config = await projectConfiguration<Config>(context, async () => ({ default: {
-      ...leadWorkerConfig(),
-      team: process.env.MURM_LEAD_WORKER_TEAM,
-      checkingImage: process.env.MURM_LEAD_WORKER_CHECKING_IMAGE,
-    } }));
+    const config = await projectConfiguration<Config>(context, async () => ({ default: await defaultConfiguration() }));
     const { team = 'static' } = config;
     if ((team !== 'static' && team !== 'dynamic') ||
         (team === 'dynamic' && config.helperCount !== undefined && config.helperCount !== 2)) {

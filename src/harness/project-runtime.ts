@@ -14,14 +14,14 @@ export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessC
   let closed = false;
   const observation = new AbortController();
   const signal = AbortSignal.any([context.signal, observation.signal]);
-  async function read<T>(work: Promise<T> | T): Promise<T> {
+  async function read<T>(work: () => Promise<T> | T): Promise<T> {
     signal.throwIfAborted();
     let timer: NodeJS.Timeout | undefined;
     const cancelled = Promise.withResolvers<never>();
     const abort = () => cancelled.reject(signal.reason);
     signal.addEventListener('abort', abort, { once: true });
     try {
-      return await Promise.race([Promise.resolve(work), cancelled.promise, new Promise<never>((_resolve, reject) => {
+      return await Promise.race([Promise.resolve(work()), cancelled.promise, new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => reject(new Error('Observation timed out')), 10_000);
       })]);
     } finally { clearTimeout(timer); signal.removeEventListener('abort', abort); }
@@ -35,12 +35,12 @@ export function observeProjectRuntime(runtime: Runtime, context: ProjectHarnessC
       while (pending && !closed) {
         pending = false;
         try {
-          const detail = await read(business?.() ?? null);
+          const detail = await read(() => business?.() ?? null);
           if (!closed && !signal.aborted) context.updateStatus({
             business: json({ runtimeId: runtime.id, runtimeState: runtime.state, detail }),
           });
         } catch {
-          if (!closed) context.emit({ kind: 'observation-error', code: 'RUNTIME_STATE_UNAVAILABLE' });
+          if (!closed && !signal.aborted) context.emit({ kind: 'observation-error', code: 'RUNTIME_STATE_UNAVAILABLE' });
         }
       }
     } finally {

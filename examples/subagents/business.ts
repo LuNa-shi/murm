@@ -4,7 +4,7 @@ import { createRuntime, createSandbox, getExecutorCapabilities, runWithReport, S
   type SendOptions, type ServiceRegistration, type SpawnOptions } from '@luna-shi/murm';
 import { collaborationOperations, createCollaborationService } from './services/collaboration-service.js';
 import { createSubagentsController } from './harness/controller.js';
-import { childPrompt, rootPrompt } from './prompts/prompts.js';
+import { childPrompt, profileQuestionGuide, rootPrompt } from './prompts/prompts.js';
 
 export interface Config extends Pick<CreateRuntimeOptions, 'connection' | 'executor' | 'models' | 'filePolicy' | 'hooks'> {
   sandbox: SandboxConfig;
@@ -20,6 +20,7 @@ export interface Config extends Pick<CreateRuntimeOptions, 'connection' | 'execu
   maxDepth?: number;
   workTimeoutMs?: number;
   closeTimeoutMs?: number;
+  questionTimeoutMs?: number;
   files?: FileTree;
   collect?: CollectionSpec;
   workspace?: { root: SpawnOptions['workspace']; child: SpawnOptions['workspace'] };
@@ -39,6 +40,7 @@ type ProjectControls = {
   onRuntime?: (runtime: Runtime, team: ReturnType<typeof createSubagentsController>) => void;
   userQuestions?: ServiceRegistration;
   onChange?: () => void;
+  onDeadline?: (deadlineAt: number) => void;
 };
 
 export async function createSubagentsHarness(config: Config, controls: ProjectControls = {}) {
@@ -50,6 +52,7 @@ export async function createSubagentsHarness(config: Config, controls: ProjectCo
     throw Object.assign(new TypeError('Use maxAgents from 1 to 64 (including Root) and maxDepth from 0 to 16'), { code: 'INVALID_RUN_CONFIGURATION' });
   }
   deadline(closeTimeoutMs, 'closeTimeoutMs');
+  const questionGuidance = controls.userQuestions ? '\n\n' + profileQuestionGuide : '';
   const services = new ServiceRegistry();
   let team: ReturnType<typeof createSubagentsController>;
   const { contextFork: allowContextFork } = getExecutorCapabilities(config.executor ?? 'pi');
@@ -63,8 +66,8 @@ export async function createSubagentsHarness(config: Config, controls: ProjectCo
     sandbox: createSandbox(config.sandbox), executor: config.executor, models: config.models,
     connection: config.connection, filePolicy: config.filePolicy, hooks: config.hooks, outputDir, services, maxAgents,
     profiles: {
-      root: { ...common, model: rootModel, prompt: rootPrompt, session: config.rootSession },
-      child: { ...common, model: childModel, prompt: childPrompt, session: config.childSession },
+      root: { ...common, model: rootModel, prompt: rootPrompt + questionGuidance, session: config.rootSession },
+      child: { ...common, model: childModel, prompt: childPrompt + questionGuidance, session: config.childSession },
     },
   });
   team = createSubagentsController(runtime, {
@@ -167,7 +170,9 @@ export type SubagentsRun = Awaited<ReturnType<typeof createSubagentsHarness>>;
 export async function runSubagentsHarness(config: Config, signal?: AbortSignal,
   interact?: (harness: SubagentsRun, signal: AbortSignal) => Promise<unknown>,
   controls?: Omit<ProjectControls, 'signal'> & { onReady?: (harness: SubagentsRun) => void }, run = runWithReport) {
-  const timeout = AbortSignal.timeout(deadline(config.workTimeoutMs ?? 120_000, 'workTimeoutMs'));
+  const workTimeoutMs = deadline(config.workTimeoutMs ?? 120_000, 'workTimeoutMs');
+  const timeout = AbortSignal.timeout(workTimeoutMs);
+  controls?.onDeadline?.(Date.now() + workTimeoutMs);
   const work = signal ? AbortSignal.any([signal, timeout]) : timeout;
   let harness: SubagentsRun | undefined;
   const redact = reportRedactor(config);

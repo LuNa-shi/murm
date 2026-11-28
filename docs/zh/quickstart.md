@@ -114,6 +114,8 @@ murm --harness subagents --prompt 'Read README.md and report its heading.' --out
 
 如需切换其他模型服务商或执行器（如 Codex），请查看 [CLI 参考](reference/cli.md)。
 
+如果使用方式 B 构建当前源码，可在项目目录的终端执行 `murm --output-dir ./runs`。按 F5 输入并提交任务，Run 结束后按 F3 查看结果。上面的显式前台命令也适用于已发布版本。[终端操作](reference/cli.md#前台终端界面)
+
 ## 4. 在 Trace Viewer 中回放
 
 ```bash

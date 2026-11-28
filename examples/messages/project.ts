@@ -2,10 +2,14 @@ import { observeProjectRuntime, projectConfiguration, ProjectPreflightError, typ
 import { runMessageHandoff } from './handoff.js';
 import { handoffConfig, type HandoffConfig } from './handoff-config.js';
 
+export async function defaultConfiguration() {
+  return handoffConfig();
+}
+
 const messages = {
   id: 'messages', apiVersion: 1,
   async run(context) {
-    const config = await projectConfiguration<HandoffConfig>(context, async () => ({ default: handoffConfig() }));
+    const config = await projectConfiguration<HandoffConfig>(context, async () => ({ default: await defaultConfiguration() }));
     for (const ms of [config.workTimeoutMs, config.cleanupTimeoutMs]) {
       if (!Number.isSafeInteger(ms) || ms < 1 || ms > 2_147_483_647) {
         throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'Messages requires finite work and cleanup time limits');

@@ -1,6 +1,6 @@
 import { constants, closeSync, fstatSync, openSync, readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { lstat, mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, networkInterfaces } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -188,9 +188,24 @@ export async function saveSandboxConnection(input: ConnectionInput & { lifecycle
   }
 }
 
-export async function loadMurmConfig(filename: string): Promise<unknown> {
+export async function loadMurmConfig(filename: string, options?: { reloadScopedEnvironment: true }): Promise<unknown> {
   const configPath = resolve(filename);
-  try { process.loadEnvFile(join(dirname(configPath), '.env')); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-  return (await import(pathToFileURL(configPath).href)).default;
+  const envFile = join(dirname(configPath), '.env');
+  const url = pathToFileURL(configPath);
+  const environment = options ? new Set(Object.keys(process.env)) : undefined;
+  if (options) {
+    const revision = (path: string) => stat(path, { bigint: true }).then(file => file.mtimeNs.toString())
+      .catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; return ''; });
+    url.searchParams.set('revision', (await Promise.all([revision(configPath), revision(envFile)])).join(':'));
+  }
+  try {
+    try { process.loadEnvFile(envFile); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    const { default: config } = await import(url.href);
+    return typeof config === 'function' ? await config() : config;
+  } finally {
+    if (environment) for (const key of Object.keys(process.env)) {
+      if (!environment.has(key)) delete process.env[key];
+    }
+  }
 }

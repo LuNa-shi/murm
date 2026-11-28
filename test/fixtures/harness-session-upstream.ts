@@ -14,14 +14,26 @@ function service(id: string, operation: string, input: Record<string, unknown>) 
   return tool(id, 'bash', { command: `printf '%s' '${JSON.stringify(input)}' | swarm ${operation} --stdin --request-id ${id}`, timeout: 45 });
 }
 
-export async function createHarnessSessionUpstream(seed: string, editable?: { prompt: string; controller: string }) {
+export async function createHarnessSessionUpstream(seed: string, editable?: { prompt: string; controller: string }, terminal = false) {
   const slowChild = Promise.withResolvers<void>();
+  const heldStream = Promise.withResolvers<void>();
+  const childQuestionAllowed = Promise.withResolvers<void>();
   const heldQueue = Promise.withResolvers<void>();
   const heldIdentity = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
   const requests: { stage: string; count: number }[] = [];
   let failure: string | undefined;
   let ordinal = 0;
   const server = createServer(async (request, response) => {
+    if (terminal && request.method === 'GET' && request.url?.startsWith('/terminal-control/')) {
+      switch (request.url) {
+        case '/terminal-control/stream': heldStream.resolve(); break;
+        case '/terminal-control/child': slowChild.resolve(); break;
+        case '/terminal-control/child-question': childQuestionAllowed.resolve(); break;
+      }
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ requests, failure }));
+      return;
+    }
     let stage = 'parse';
     const number = ++ordinal;
     try {
@@ -38,7 +50,7 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       const rows: any[] = body.input;
       const users = rows.filter(row => row.role === 'user').flatMap(row => row.content ?? []).map(block => block.text ?? '');
-      const marker = users.filter(value => /SESSION_(READ|SECOND|INTERRUPT|CHILD|RESUME|QUESTIONS|ASKER|QOLD|QNEW|HOLD_QUEUE|IDENTITY_HOLD|IDENTITY_RESUME|CONTEXT_STEER|CONTEXT_FOLLOW|AFTER_QUEUE|RETRY)/.test(value)).at(-1);
+      const marker = users.filter(value => /SESSION_(READ|SECOND|BUSY_STEER|BUSY_FOLLOW|INTERRUPT|CHILD|RESUME|QUESTIONS|ASKER|QOLD|QNEW|HOLD_QUEUE|IDENTITY_HOLD|IDENTITY_RESUME|CONTEXT_STEER|CONTEXT_FOLLOW|AFTER_QUEUE|RETRY)/.test(value)).at(-1);
       const output = (id: string) => rows.find(row => row.type === 'function_call_output' && row.call_id === id)?.output;
       const all = JSON.stringify(rows);
       let item;
@@ -46,7 +58,7 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
         stage = 'summary';
         item = text('summary', 'Summary of the controlled project work.');
       } else if (marker?.includes('SESSION_READ')) {
-        stage = output('seed-read') ? 'seed-result' : 'seed-read';
+        stage = !output('seed-read') ? 'seed-read' : terminal && !output('seed-artifact') ? 'seed-artifact' : 'seed-result';
         if (stage === 'seed-read') {
           assert.ok(!all.includes(seed), 'capture was not embedded in the initial prompt');
           if (editable) {
@@ -54,17 +66,25 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
             assert.ok(marker.includes(editable.controller), 'the actual Root turn passes through the edited controller');
           }
           item = tool('seed-read', 'read', { path: 'seed.txt' });
+        } else if (stage === 'seed-artifact') {
+          assert.ok(String(output('seed-read')).includes(seed));
+          item = tool('seed-artifact', 'bash', { command: 'cp -- seed.txt terminal-artifact.txt && wc -c < terminal-artifact.txt', timeout: 10 });
         } else {
           assert.ok(String(output('seed-read')).includes(seed), 'actual read result includes captured bytes');
-          item = text('seed-result', 'SEED_READ_OK');
+          item = text('seed-result', terminal ? 'NATIVE_STREAM_START ' + '.'.repeat(512) + ' SEED_READ_OK' : 'SEED_READ_OK');
         }
+      } else if (marker?.includes('SESSION_BUSY_STEER')) {
+        stage = 'busy-steer';
+        item = text(stage, 'BUSY_STEER_OK');
+      } else if (marker?.includes('SESSION_BUSY_FOLLOW')) {
+        stage = 'busy-follow';
+        item = text(stage, 'BUSY_FOLLOW_OK');
       } else if (marker?.includes('SESSION_SECOND')) {
         stage = 'second';
         assert.ok(all.includes('APPENDED_CONTEXT_VALUE'));
         item = text('second', 'SECOND_TURN_OK');
       } else if (marker?.includes('SESSION_CHILD')) {
         stage = 'slow-child';
-        await slowChild.promise;
         item = text('slow-child', 'LATE_CHILD_RESULT');
       } else if (marker?.includes('SESSION_INTERRUPT')) {
         stage = output('spawn-slow') ? 'root-wait' : 'spawn-slow';
@@ -81,7 +101,12 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
         item = text('resume', 'SAME_ROOT_RESUMED');
       } else if (marker?.includes('SESSION_ASKER')) {
         stage = output('child-question') ? 'child-answer' : 'child-question';
-        if (stage === 'child-question') item = service('child-question', 'service invoke user-interaction ask', { text: 'Which child value?' });
+        if (stage === 'child-question') {
+          if (terminal) await childQuestionAllowed.promise;
+          item = service('child-question', 'service invoke user-interaction ask', terminal
+            ? { kind: 'choice', text: 'Which child value?', options: [{ id: 'CHILD_VALUE', label: 'Child value' }, { id: 'other', label: 'Other value' }] }
+            : { text: 'Which child value?' });
+        }
         else {
           assert.ok(String(output('child-question')).includes('CHILD_VALUE'));
           assert.ok(!String(output('child-question')).includes('ROOT_VALUE'));
@@ -93,10 +118,11 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
           item = service('spawn-asker', 'collaboration spawn_agent', { task_name: 'asker', message: 'SESSION_ASKER', fork_turns: 'none' });
         } else if (!output('root-question')) {
           stage = 'root-question';
-          item = service('root-question', 'service invoke user-interaction ask', { text: 'Which Root value?' });
+          item = service('root-question', 'service invoke user-interaction ask',
+            terminal ? { kind: 'confirm', text: 'Which Root value?' } : { text: 'Which Root value?' });
         } else {
           stage = 'root-answer';
-          assert.ok(String(output('root-question')).includes('ROOT_VALUE'));
+          assert.ok(String(output('root-question')).includes(terminal ? 'true' : 'ROOT_VALUE'));
           assert.ok(!String(output('root-question')).includes('CHILD_VALUE'));
           item = text('root-answer', 'ROOT_ANSWER_OK');
         }
@@ -148,6 +174,7 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
         return;
       } else throw new Error('Unexpected controlled work request');
       requests.push({ stage, count: number });
+      if (stage === 'slow-child') await slowChild.promise;
       if (response.destroyed) return;
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       let bodyText = streamResponse('k3', number, item);
@@ -161,6 +188,19 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
         terminal.response.output.push(second);
         bodyText = [...firstFrames, ...secondFrames, terminal]
           .map(frame => `event: ${frame.type}\ndata: ${JSON.stringify(frame)}\n\n`).join('');
+      }
+      if (terminal && stage === 'seed-result') {
+        const frames = bodyText.trimEnd().split('\n\n');
+        const index = frames.findIndex(frame => frame.startsWith('event: response.output_text.delta'));
+        const parts = frames[index].split('\ndata: ');
+        const delta = JSON.parse(parts[1]);
+        const prefix = 'NATIVE_STREAM_START ' + '.'.repeat(512);
+        frames[index] = parts[0] + '\ndata: ' + JSON.stringify({ ...delta, delta: prefix });
+        response.write(frames.slice(0, index + 1).join('\n\n') + '\n\n');
+        await heldStream.promise;
+        if (response.destroyed) return;
+        frames[index] = parts[0] + '\ndata: ' + JSON.stringify({ ...delta, delta: delta.delta.slice(prefix.length) });
+        bodyText = frames.slice(index).join('\n\n') + '\n\n';
       }
       response.end(bodyText);
     } catch (error) {
@@ -183,6 +223,8 @@ export async function createHarnessSessionUpstream(seed: string, editable?: { pr
     releaseIdentity: (index: number) => heldIdentity[index].resolve(),
     close() {
       slowChild.resolve();
+      heldStream.resolve();
+      childQuestionAllowed.resolve();
       heldQueue.resolve();
       for (const hold of heldIdentity) hold.resolve();
       return new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });

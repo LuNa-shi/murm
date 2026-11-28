@@ -5,6 +5,7 @@ For a feature walkthrough of the current release, see [What's New (v0.2.0)](docs
 
 ## Unreleased
 
+- Bare `murm` opens the foreground terminal interface. One public Harness Session provides the Run, Agent, question and result pages. Editable projects can use `node ./main.js ./config.js --interactive` or the new template's `npm start`.
 - `createHarnessSession` and `HarnessRpcClient` expose one run contract for the seven built-in Harnesses. Subagents can keep Root available across turns, TaskPool routes feedback to the current fenced Execution, and PeerMesh accepts directed batches and controlled member stop.
 - Native Pi Worker Sessions expose per-Agent configuration, structured context, bounded inspection, retry and queue controls, and compaction decisions.
 - Added a versioned, independently installable two-Agent SDK walkthrough, `murm --version`, setup phase timings and connection details, and Service input examples with field diagnostics.

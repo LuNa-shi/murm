@@ -95,3 +95,10 @@ export function boundHarnessState(state: HarnessState, bytes: number): HarnessSt
   }
   return view;
 }
+
+export function unresolvedHarnessReceipt(value: unknown) {
+  return !!value && typeof value === 'object' && ((value as { status?: string }).status === 'unknown' ||
+    ((value as { core?: { status?: string } }).core?.status === 'unknown') ||
+    ((value as { core?: { cleanup?: string } }).core?.cleanup === 'pending') ||
+    ((value as { harnessEffects?: { status?: string } }).harnessEffects?.status === 'pending'));
+}
