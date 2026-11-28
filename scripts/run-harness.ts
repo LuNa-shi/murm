@@ -33,10 +33,12 @@ try {
   } else {
     if (args.length !== 2 || args[0] !== '--config' || !args[1] || args[1].startsWith('--')) throw Object.assign(new Error(), { code: 'HOST_ARGUMENTS_INVALID' });
     const { default: configuration } = await import(pathToFileURL(resolve(args[1])).href);
-    const { isPeerMeshMode, runForegroundHarness } = await import('../src/cli/foreground-harnesses.js');
+    const { keepsForegroundCommandsOpen, runForegroundHarness } = await import('../src/cli/foreground-harnesses.js');
     const { runForegroundCommands } = await import('../src/harness/foreground-commands.js');
     const { summarizeCleanupReceipt } = await import('../src/harness/read-result.js');
-    const report = await runForegroundHarness({ ...configuration, signal: lifetime.signal }, (host: any) => runForegroundCommands(host, { keepOpenOnEof: isPeerMeshMode(configuration.mode) && Boolean(configuration.options?.project) }));
+    const keepOpenOnEof = keepsForegroundCommandsOpen(configuration.mode, configuration.options);
+    const report = await runForegroundHarness({ ...configuration, signal: lifetime.signal },
+      (host: any) => runForegroundCommands(host, { keepOpenOnEof }));
     const code = (error: any) => typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(error.code) ? error.code : error ? 'HOST_RUN_FAILED' : null;
     await writeOutput(`${JSON.stringify({ type: 'result', runtimeId: report.runtimeId, reportPath: report.reportPath ?? null,
       businessFailureCode: code(report.businessFailure),

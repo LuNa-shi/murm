@@ -20,6 +20,8 @@ order: 2
 
 而运行在宿主机上的 **Harness**，就是**你编写的编排程序**：它定义角色 Profile、注册需要用到的 Services、启动并调度各个 Agent，最后验收结果并结束运行。
 
+同一份 **Harness** 可以交给 SDK、显式前台命令和 RPC。调用者通过 **HarnessSession** 管理一次 Run。如果工作需要 Agent，Harness 可以使用一个或多个 **Runtime**，分别管理所属 Agent、权限和资源。[搭建第一个 SDK Harness](first-harness.md)。
+
 ## 一次运行从开始到结束发生了什么？
 
 以一个多人协作研究任务为例，整个过程非常直观：

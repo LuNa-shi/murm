@@ -2,6 +2,17 @@
 
 本页记录随 [#257](https://github.com/LuNa-shi/murm/issues/257) 实施 PR 一起评审的共同入口合同；当前实现见 [Project Harness](../../architecture/23-project-harness.md)，验收状态由原 Issue/PR 跟踪。Core 文件、事件和停止合同以 [#255](https://github.com/LuNa-shi/murm/issues/255) 的最终实现版本为准。仓库的 [Architecture](../../architecture/INDEX.md) 说明已实现的行为。
 
+## #281 作者合同与可恢复的交互
+
+[#281](https://github.com/LuNa-shi/murm/issues/281) 依据 [f36055f2 设计修订](https://github.com/LuNa-shi/murm/tree/f36055f286687e7658b2818e7c065a1d5588f1b2/docs/designs/core-harness) 收敛作者入口。`Harness.run(HarnessContext)` 定义协作，`HarnessSession` 提供一次前台 Run 的控制和观察，Core Runtime 管理其 Agent 资源。SDK、显式前台和 JSONL RPC 使用同一个定义。Session 管理受理、回执核对、提问、观察和最终报告。Harness 继续管理业务、调度、产物核验及自有设施。原类型名以弃用别名兼容。新的终端界面由 [#280](https://github.com/LuNa-shi/murm/issues/280) 在此合同上消费。
+
+- 已接纳 Run 的结束顺序为封闭新工作、结算提问、记录当时的回执和持久报告。迟到物理回执沿原身份核对。Run 保存失败和客户端传输失败各有独立结果。
+- 原生 context disposition 带真实持久条目和消息 ID。实时逐消息增量和查询投影共享身份。已丢弃输入不可由下一轮重新注入。
+- 全部待答问题占用实际恢复及最大合法答案预算。展示字段在 256 KiB 默认快照预算内裁剪。进程内 completion、最终事件和前台协议共享有界结果和可信 Host 报告引用。
+- 只读查询按在途寿命释放身份和响应。变更继续保留原请求身份。慢订阅者超限时失效，通过独立错误回调请求重新订阅。运行结果和原始事件源缺口仍沿原合同处理。
+
+当前实现、预算和失败语义见 [Harness 生命周期](../../architecture/23-project-harness.md)。两种 Pi 及包外候选的验收归 #281。
+
 ## 模块与路径
 
 ```ts

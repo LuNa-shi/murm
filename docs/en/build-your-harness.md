@@ -735,7 +735,7 @@ Once the baseline Swarm runs, you can evolve the coordination policy without tou
 | **Push urgent updates mid-turn** | After `publish`, notify busy peers via `runtime.send(..., { mode: 'steer', wakeIfIdle: false })` | [Subagents](harnesses/subagents.md) · [PeerMesh](harnesses/peermesh.md) |
 | **Prevent duplicate work** | Add time-bounded exclusive claims and unlock writes on handoff via `files.replace({ writable: true })` | [TaskPool](harnesses/taskpool.md) |
 | **Reuse an existing Python / verifier backend** | Keep your domain code in Python/Lean/SQLite and mount it via `createHttpJsonAdapter` | [Services & Permissions](services.md#3-connecting-external-http-services-python-go-existing-backends) · [Substrate](harnesses/substrate.md) |
-| **Package for the `murm` CLI** | Export `runHarness(context)` and invoke `murm --harness ./my-swarm.mjs --prompt "..."` | [CLI Reference](reference/cli.md) |
+| **Package for the `murm` CLI** | Export a default `Harness` object as in the first SDK Harness and invoke `murm --harness ./my-swarm.mjs --prompt "..."` | [CLI Reference](reference/cli.md) |
 
 ---
 
@@ -743,4 +743,4 @@ Once the baseline Swarm runs, you can evolve the coordination policy without tou
 
 ## Expose the Run to a client
 
-Export a default `ProjectHarness` with `apiVersion: 1` and `run(context)`. Register a supported input handler before `markRunning()`. Keep its admission work short and publish changes through `updateStatus` and `emit`. A Runtime observation helper binds membership and read-only queries. Register a control only when your scheduler can reserve the required dispatch window, reconcile affected work and confirm its actual disposition. Use `context.askUser` with a stable source and cancellation signal when the client enables questions. The [standalone author and client example](../../examples/harness-session/README.md) shows the same module used in-process and over JSONL.
+The [first SDK Harness](first-harness.md#candidate-harness-and-client) exports a default `Harness` with `apiVersion: 1`, a stable `id` and `run(context)`. Use its entry shape when turning the standalone Swarm above into a loadable module. Register a supported input handler before `markRunning()`. Keep its admission work short and publish changes through `updateStatus` and `emit`. `context.registerAgentControls({ runtime })` binds membership and supported read-only queries. Declare the fields and delivery modes the Harness authorizes. Register a control only when your scheduler can reserve the required dispatch window, reconcile affected work and confirm its actual disposition. Use `context.askUser` with a stable source and cancellation signal when the client enables questions. The [standalone author and client example](../../examples/harness-session/README.md) shows the same module used in-process and over JSONL.

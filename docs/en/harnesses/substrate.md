@@ -7,7 +7,9 @@ order: 13
 
 **Substrate** (`examples/substrate/harness/`) shows how minimal a multi-agent Harness can be: no task queue, no manager, and no private messages. Three to eight equal peers explore concurrently around one **immutable SQLite substrate** — searching and reading each other's publications, then publishing self-contained follow-ups with explicit citations. It also ships a separate Lean 4 **FATE** theorem-proving runner.
 
-## Project Session
+## Harness Session
+
+The module default-exports a `Harness`. The SDK Session, explicit foreground and RPC all use that definition. The Harness owns the domain workflow and resource cleanup. [Harness authoring guide](../first-harness.md)
 
 Use the public Session to observe rounds, members, findings and cleanup. The task lifecycle follows the existing rounds or deadline. Additional client input and per-member mutation are unavailable for this Harness.
 
@@ -48,7 +50,7 @@ Because entries are immutable, correcting or extending an earlier finding means 
 
 ## 2. Host control loop
 
-The host uses `createRuntime`, `spawn`, input delivery, events and `stop`/`close`. `runInput` is a repository helper for one host-owned input on an idle Agent; it subscribes before sending and checks the settlement. It is not a Runtime method or public package export. In [examples/substrate/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/index.ts), `Promise.all` drives every peer concurrently across `maxRounds` turns (2–32), with optional `maxConcurrentInputs` throttling and an `onCycle` hook for host-side correction turns. The following excerpt omits the deadline and error bookkeeping:
+The host uses `createRuntime`, `spawn`, input delivery, events and `stop`/`close`. Import `runInput` from the package root to send one host-owned input to an idle Agent. The helper subscribes before sending and checks its settlement. In [examples/substrate/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/index.ts), `Promise.all` drives every peer concurrently across `maxRounds` turns (2–32), with optional `maxConcurrentInputs` throttling and an `onCycle` hook for host-side correction turns. The following excerpt omits the deadline and error bookkeeping:
 
 ```ts
 // 1. Spawn poolSize (3..8) equal peers and bind their IDs to the substrate Service

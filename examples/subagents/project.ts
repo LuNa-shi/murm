@@ -1,10 +1,10 @@
-import { addAbortListener } from 'node:events';
 import { createHash } from 'node:crypto';
-import { runSubagentsHarness } from './main.js';
+import { addAbortListener } from 'node:events';
+import { runSubagentsHarness } from './business.js';
 import {
-  createInProcessAdapter, getExecutorCapabilities, type AgentSessionPatch, type ContextInput, type ContextSendOptions,
-  type HarnessJson, type ProjectHarness, type ProjectHarnessContext, type SendOptions, type ServiceManifest,
-  ProjectPreflightError, observeProjectRuntime, projectConfiguration, projectResult,
+  createInProcessAdapter, getExecutorCapabilities, type ContextInput, type ContextSendOptions,
+  type HarnessJson, type Harness, type HarnessContext, type SendOptions, type ServiceManifest,
+  ProjectPreflightError, observeProjectRuntime, projectConfiguration,
 } from '@luna-shi/murm';
 
 const rootInput = {
@@ -40,7 +40,7 @@ const questionManifest: ServiceManifest = {
   }],
 };
 
-function userQuestions(context: ProjectHarnessContext) {
+function userQuestions(context: HarnessContext) {
   return {
     manifest: questionManifest,
     adapter: createInProcessAdapter({
@@ -77,7 +77,7 @@ const subagents = {
     if (config.workspace) throw new ProjectPreflightError('INVALID_RUN_CONFIGURATION', 'The project entry uses private Subagents work directories');
     let observation: ReturnType<typeof observeProjectRuntime> | undefined;
     try {
-      const report = await runSubagentsHarness({
+      const result = await runSubagentsHarness({
         ...config, goal: context.input.prompt, files: context.initial.files, outputDir: context.outputDir,
         collect: config.collect ?? { paths: ['.'], includeGit: false, maxBytes: 16 * 1024 ** 2, required: true },
       }, context.signal, context.lifetime === 'interactive' ? async (harness, signal) => {
@@ -104,65 +104,53 @@ const subagents = {
           const native = getExecutorCapabilities(config.executor ?? 'pi');
           observation = observeProjectRuntime(runtime, context, team.exportState, {
             fence: team.beginClose,
-            reconcile: (operation, agentId, request, payload) => {
-              const query = () => observation!.reconcile(agentId, operation, request.requestId);
-              if (operation === 'interrupt' || operation === 'clearQueue') return team.reconcileRootControl(operation, request.requestId, query);
-              if (operation === 'send') {
-                const text = typeof (payload as { input: unknown }).input === 'string';
-                const nativeId = text ? 'user:' + request.requestId : request.requestId;
-                const lookup = () => observation!.reconcile(agentId, text ? 'send' : 'context', nativeId);
-                return text ? team.reconcileRootInput(nativeId, lookup) : lookup();
-              }
-              return query();
+            reconcile: (operation, agentId, { operationId }, payload) => {
+              const text = operation === 'send' && typeof (payload as { input: unknown }).input === 'string';
+              const nativeOperation = operation === 'send' && !text ? 'context' : operation;
+              const lookup = () => observation!.reconcile(agentId, nativeOperation, operationId);
+              if (operation === 'interrupt' || operation === 'clearQueue') return team.reconcileRootControl(operation, operationId, lookup);
+              return text ? team.reconcileRootInput(operationId, lookup) : lookup();
             },
             capabilities: agentId => {
               if (agentId !== team.rootId()) return {};
               return {
-                configure: { supported: !!native.session?.configure, fields: configureFields },
-                compact: { supported: !!native.session?.compact, ...(team.rootBusy() ? { available: false, reason: 'OPERATION_BUSY' } : {}) },
-                abortRetry: { supported: !!native.session?.abortRetry },
-                clearQueue: { supported: !!native.session?.clearQueue },
-                send: { supported: true, text: true, context: !!native.session?.context,
-                  modes, deliveries: native.session?.context ? deliveries : [] },
+                configure: { supported: true, fields: configureFields },
+                compact: { supported: true, ...(team.rootBusy() ? { available: false, reason: 'OPERATION_BUSY' } : {}) },
+                abortRetry: { supported: true },
+                clearQueue: { supported: true },
+                send: { supported: true, text: true, context: true, modes, deliveries },
                 interrupt: { supported: native.queuedInputCancellation },
               };
             },
             handlers: {
-              configure: (agentId, patch, request) => runtime.session.configure(agentId, patch as AgentSessionPatch, request),
-              compact: (_agentId, payload, request) => team.compactRoot({ ...(payload as { customInstructions?: string }), requestId: request.requestId }),
-              abortRetry: (agentId, _payload, request) => runtime.session.abortRetry(agentId, request),
-              clearQueue: (_agentId, _payload, request) => team.rootQueueControl('clearQueue', request.requestId),
-              interrupt: (_agentId, _payload, request) => team.rootQueueControl('interrupt', request.requestId),
+              compact: (_agentId, payload, request) => team.compactRoot({ ...(payload as { customInstructions?: string }), requestId: request.operationId }),
+              clearQueue: (_agentId, _payload, request) => team.rootQueueControl('clearQueue', request.operationId),
+              interrupt: (_agentId, _payload, request) => team.rootQueueControl('interrupt', request.operationId),
               send(_agentId, payload, request) {
                 const { input, options } = payload as { input: string | ContextInput; options: Omit<SendOptions, 'requestId'> | ContextSendOptions };
-                return typeof input === 'string' ? team.submitUser(input, request.requestId, options as SendOptions, request.signal)
-                  : team.sendRootContext(input, { ...options, requestId: request.requestId } as ContextSendOptions, request.signal);
+                return typeof input === 'string' ? team.submitUser(input, request, options as SendOptions, request.signal)
+                  : team.sendRootContext(input, { ...options, requestId: request.operationId } as ContextSendOptions, request.signal);
               },
             },
           });
         },
         onReady: harness => {
-          context.registerInput(async (input, { requestId, signal, binding }) => {
+          context.registerInput((input, { operationId, signal, binding }) => {
             const { text, mode } = parseInput(input);
-            const id = createHash('sha256').update(requestId).digest('hex');
-            return JSON.parse(JSON.stringify(await harness.input(text, `rpc:${id}`, { mode }, signal, binding as number)));
+            return harness.input(text, { operationId }, { mode }, signal, binding as number);
           }, rootInput, input => {
             parseInput(input);
             return harness.inputFence();
-          }, async (_input, { requestId }) => {
-            const id = createHash('sha256').update(requestId).digest('hex');
-            const nativeId = `user:rpc:${id}`;
-            return JSON.parse(JSON.stringify(await harness.reconcileInput(nativeId,
-              () => observation!.reconcile(harness.rootId, 'send', nativeId))));
-          });
+          }, (_input, { operationId }) => harness.reconcileInput(operationId,
+            () => observation!.reconcile(harness.rootId, 'send', operationId)));
           context.markRunning();
         },
-      });
-      return { ...projectResult(report, context, report.collaboration), acceptance: { status: 'not-run' } };
+      }, context.runWithRuntime);
+      return { ...result, acceptance: { status: 'not-run' } };
     } finally {
       observation?.close();
     }
   },
-} satisfies ProjectHarness;
+} satisfies Harness;
 
 export default subagents;

@@ -6,6 +6,12 @@ prepare its listed dependencies, and give it a **project directory and prompt**.
 A Task/Mission database, Board, chat service or Git workflow belongs to the
 example that uses it.
 
+Start with the [first SDK Harness](../docs/en/first-harness.md) for one real
+Publisher and Writer, their Service handoff, a user answer and verified
+artifact export. Its same default definition is used by SDK, foreground and
+RPC. [HarnessSession clients](harness-session/README.md) exercise the public
+protocol with a zero-Runtime fixture.
+
 ## Choose a collaboration example
 
 | Directory | Coordination | Services created by the example | Facilities you supply |

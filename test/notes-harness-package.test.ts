@@ -78,7 +78,8 @@ try {
 const domainRoots=['dist/src/task/','dist/src/context/','dist/src/judge/','dist/examples/taskpool/'];
 assert.deepEqual([...loaded].filter(path=>path==='dist/examples/taskpool/prompts/agent-contract.js'||domainRoots.some(root=>path.startsWith(root))),[],
  'Public Core imports must load independently of flat Task, Mission and role contracts');
-const {runNotesHarness,createNotes,fixedFact}=await import('./main.mjs');
+const {runNotesHarness,fixedFact}=await import('./main.mjs');
+const {createNotes}=await import('./notes.js');
 const {createCoreBridge}=await import('./node_modules/@luna-shi/murm/dist/src/core/bridge.js');
 const {snapshotServiceRegistry}=await import('./node_modules/@luna-shi/murm/dist/src/core/services.js');
 const notes=createNotes();

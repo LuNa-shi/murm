@@ -3,25 +3,25 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { createRequire } from 'node:module';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as sourceSdk from '@luna-shi/murm';
 import type { Runtime } from '@luna-shi/murm';
 import sourceSubagents from '../examples/subagents/project.js';
-import { installNativeNotesExample } from './fixtures/notes-installed-package.js';
+import { execute, installNativeNotesExample } from './fixtures/notes-installed-package.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { createHarnessSessionUpstream } from './fixtures/harness-session-upstream.js';
 
 const cli = fileURLToPath(new URL('../scripts/murm.js', import.meta.url));
 const nativeEnabled = process.env.MURM_HARNESS_SESSION_REAL_TEST === '1';
 
-for (const via of ['sdk', 'rpc', 'export-failure', 'default-task']) {
+for (const via of ['sdk', 'rpc', 'export-failure', 'default-task', 'editable']) {
   test(`interactive Subagents controls, interruption and Service questions traverse real OpenSandbox via ${via}`, {
-    skip: !nativeEnabled && 'Requires candidate Worker and configured local OpenSandbox',
+    skip: (!nativeEnabled || (via === 'editable' && !process.env.MURM_TEST_PACKAGE_ARCHIVE)) && 'Requires candidate Worker and configured local OpenSandbox. Editable mode also requires an installed candidate archive.',
     timeout: 150_000,
   }, async t => {
     const image = process.env.MURM_CORE_TEST_IMAGE;
@@ -32,7 +32,7 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task']) {
     const installedRoot = installed && join(installed.directory, 'node_modules', '@luna-shi', 'murm');
     const sdk = installed ? createRequire(join(installed.directory, 'native-consumer.mjs'))('@luna-shi/murm') as typeof sourceSdk : sourceSdk;
     const subagents = installedRoot ? (await import(pathToFileURL(join(installedRoot, 'dist/examples/subagents/project.js')).href)).default as typeof sourceSubagents : sourceSubagents;
-    const runCli = installed ? join(installed.directory, 'node_modules', '.bin', 'murm') : cli;
+    let runCli = installed ? join(installed.directory, 'node_modules', '.bin', 'murm') : cli;
     const settings = JSON.parse(await readFile(configPath, 'utf8'));
     const endpoint = process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? settings.endpoint ?? settings.lifecycleBaseUrl;
     assert.ok(endpoint && settings.apiKey && settings.advertiseHost);
@@ -45,15 +45,17 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task']) {
     const seed = 'NATIVE_SEED_8f4fd9d7d362\n';
     const seededPath = join(cwd, 'seed.txt');
     await writeFile(seededPath, seed);
-    const upstream = await createHarnessSessionUpstream(seed.trim());
-    const rpc = via === 'rpc' || via === 'default-task';
+    const edits = via === 'editable' ? { prompt: 'EDITED_ROOT_PROMPT_281', controller: 'EDITED_ROOT_CONTROLLER_281' } : undefined;
+    const upstream = await createHarnessSessionUpstream(seed.trim(), edits);
+    const task = via === 'default-task' || via === 'editable';
+    const rpc = via === 'rpc' || task;
     const launchConfig = {
       image,
       executor: { kind: 'pi', version: process.env.MURM_CORE_TEST_PI_VERSION ?? '1.3.0' },
       sandbox: {
         lifecycleBaseUrl: endpoint.endsWith('/v1') ? endpoint : endpoint.replace(/\/$/, '') + '/v1',
         endpointHost: settings.endpointHost ?? '127.0.0.1', apiKey: settings.apiKey,
-        commandTimeoutMs: 20_000, isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+        commandTimeoutMs: 20_000, isolation: { network: 'api' },
       },
       connection: {
         bridge: { host: '0.0.0.0', publicUrl: `http://${settings.advertiseHost}:{port}` },
@@ -82,10 +84,29 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task']) {
         });
       }
       else {
+        let definition = 'subagents';
+        if (edits) {
+          const editor = join(installed!.directory, 'editable-template');
+          const init = await execute(process.execPath, [runCli, 'init', '--template', 'subagents', '--dir', editor], {
+            cwd: installed!.directory, env: installed!.env, timeout: 60_000,
+          });
+          assert.equal(JSON.parse(init.stdout).ok, true);
+          async function edit(filename: string, before: string, after: string) {
+            const file = join(editor, filename);
+            const text = await readFile(file, 'utf8');
+            assert.ok(text.includes(before), `editable template includes ${filename}`);
+            await writeFile(file, text.replace(before, after));
+          }
+          await edit('prompts/prompts.js', 'You are Root.', `You are Root. ${edits.prompt}`);
+          await edit('harness/controller.js', 'submitUser(text, request, options = {}, signal, epoch = rootEpoch) {',
+            `submitUser(text, request, options = {}, signal, epoch = rootEpoch) {\n            text += " ${edits.controller}";`);
+          definition = join(editor, 'project.js');
+          runCli = join(editor, 'node_modules', '.bin', 'murm');
+        }
         const modulePath = join(temporary, 'candidate-config.mjs');
         await writeFile(modulePath, 'export default JSON.parse(process.env.HARNESS_NATIVE_TEST_CONFIG);\n', { mode: 0o600 });
-        child = spawn(process.execPath, [runCli, '--harness', 'subagents', '--mode', 'rpc',
-          ...(via === 'default-task' ? [] : ['--lifetime', 'interactive', '--interaction', 'questions']),
+        child = spawn(process.execPath, [runCli, '--harness', definition, '--mode', 'rpc',
+          ...(task ? [] : ['--lifetime', 'interactive', '--interaction', 'questions']),
           '--config', modulePath, '--output-dir', outputRoot], {
           cwd, stdio: 'pipe', env: { ...(installed?.env ?? process.env), HARNESS_NATIVE_TEST_CONFIG: JSON.stringify(launchConfig) },
         });
@@ -93,8 +114,8 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task']) {
         exited = once(child, 'close');
         session = new sdk.HarnessRpcClient(child);
         const ready = await session.ready;
-        assert.equal(ready.status.clientCapabilities.questions, via !== 'default-task');
-        assert.equal(ready.status.lifetime, via === 'default-task' ? 'task' : 'interactive');
+        assert.equal(ready.status.clientCapabilities.questions, !task);
+        assert.equal(ready.status.lifetime, task ? 'task' : 'interactive');
       }
     } catch (error) {
       child?.kill('SIGTERM');
@@ -146,7 +167,7 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task']) {
     const start = await session.start({ cwd, prompt: 'SESSION_READ ' + 'Read and verify the seeded project file. '.repeat(128) }, { requestId: 'begin' });
     const first = await completed('SEED_READ_OK');
     const root = first.agentId;
-    if (via === 'default-task') {
+    if (task) {
       result = await session.completion;
       assert.equal(result.outcome, 'completed');
       assert.equal(result.cleanup.status, 'complete');
@@ -239,6 +260,75 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task']) {
     await session.respond(newQuestion.questionId, 'NEW_EXECUTION_ANSWER', { requestId: 'answer-new-execution' });
     assert.equal((await completed('NEW_EXECUTION_ANSWER_OK')).agentId, root);
 
+    const nativeIdentityEvidence = [];
+    const dispositions = inputId => nativeEvents()
+      .filter(event => event.type === 'session' && event.event.type === 'core_context_disposition' && event.event.inputId === inputId)
+      .map(event => event.event);
+    for (const [index, variant] of ['FIRST', 'SECOND'].entries()) {
+      await send('SESSION_IDENTITY_HOLD_' + variant, 'identity-hold-' + index);
+      await wait('controlled upstream holding the native request', () => upstream.requests.find(row => row.stage === 'identity-hold-' + index));
+      const content = 'SAME_CONTENT_281_' + variant;
+      const deliver = async delivery => {
+        const request = { requestId: `identity-${index}-${delivery}`, delivery };
+        const input = { ...context(content), display: index === 1 && delivery === 'append', details: { code: 'identical' } };
+        const receipt = agentReceipt(await session.agents.send(root, input, request));
+        assert.deepEqual(agentReceipt(await session.agents.send(root, input, request)), receipt);
+        await assert.rejects(session.agents.send(root, { ...input, content: 'changed' }, request), { code: 'REQUEST_ID_CONFLICT' });
+        return receipt;
+      };
+      const deliveries = index === 0 ? ['followUp', 'append'] : ['append', 'followUp'];
+      const byDelivery = new Map();
+      for (const delivery of deliveries) byDelivery.set(delivery, await deliver(delivery));
+      const follow = byDelivery.get('followUp');
+      const append = byDelivery.get('append');
+      assert.equal(follow.disposition, 'queued');
+      assert.notEqual(follow.inputId, append.inputId);
+      const next = agentReceipt(await session.agents.send(root, context('DISCARDED_NEXT_TURN_281'), {
+        requestId: 'identity-next-' + index, delivery: 'nextTurn',
+      }));
+      const interrupted = agentReceipt(await session.agents.interrupt(root, { requestId: 'identity-interrupt-' + index }));
+      assert.equal(interrupted.status, 'interrupted');
+      upstream.releaseIdentity(index);
+      const appended = await wait('archive-backed append receipt', () => dispositions(append.inputId).find(event => event.status === 'appended'));
+      assert.ok(appended.entryId && appended.messageId);
+      assert.deepEqual(dispositions(follow.inputId).map(event => event.status), ['queued', 'discarded']);
+      assert.deepEqual(dispositions(next.inputId).map(event => event.status), ['pending-next-turn', 'discarded']);
+      assert.equal(dispositions(follow.inputId).find(event => event.status === 'appended'), undefined);
+      assert.equal(upstream.requests.filter(row => row.stage === 'identity-hold-' + index).length, 1);
+      nativeIdentityEvidence.push({ ...appended, content, display: index === 1 });
+      const resumed = upstream.requests.filter(row => row.stage === 'identity-resume').length;
+      await send('SESSION_IDENTITY_RESUME_' + variant, 'identity-resume-' + index);
+      await wait('actual next SSE request', () => upstream.requests.filter(row => row.stage === 'identity-resume').length === resumed + 1);
+      await wait('identity resume settles', async () => !(await session.agents.getState(root)).active);
+    }
+    for (let index = 0; index < 20; index++) {
+      const receipt = agentReceipt(await session.agents.send(root, { ...context('TWENTY_IDENTICAL_281'), details: { same: true } },
+        { requestId: 'identical-append-' + index, delivery: 'append' }));
+      assert.equal(receipt.disposition, 'appended');
+      const appended = await wait('identity of repeated append', () => dispositions(receipt.inputId).find(event => event.status === 'appended'));
+      nativeIdentityEvidence.push({ ...appended, content: 'TWENTY_IDENTICAL_281', display: false });
+    }
+    const messages = await session.agents.getMessages(root, { limit: 1000 });
+    assert.equal(messages.truncated, false);
+    assert.equal(new Set(messages.messages.map(message => message.id)).size, messages.messages.length);
+    const again = await session.agents.getMessages(root, { limit: 1000 });
+    assert.deepEqual(again.messages, messages.messages);
+    const liveMessages = nativeEvents().filter(event => event.agentId === root && event.type === 'session').map(event => event.event);
+    for (const recorded of nativeIdentityEvidence) {
+      const message = messages.messages.find(message => message.id === recorded.messageId);
+      assert.equal(message?.content, recorded.content);
+      assert.equal(message?.display, recorded.display);
+      assert.ok(liveMessages.some(event => event.type === 'messageEnd' && event.messageId === recorded.messageId));
+    }
+    assert.equal(new Set(nativeIdentityEvidence.map(entry => entry.entryId)).size, 22);
+    assert.equal(new Set(nativeIdentityEvidence.map(entry => entry.messageId)).size, 22);
+    const ids = new Set(messages.messages.map(message => message.id));
+    const complete = new Set(liveMessages.filter(event => event.type === 'messageEnd' && ids.has(event.messageId)).map(event => event.messageId));
+    assert.ok(messages.messages.some(message => message.role === 'toolResult' && complete.has(message.id)));
+    const resumedText = liveMessages.filter(event => event.type === 'textDelta' && /IDENTITY_|RESUME_OK/.test(event.delta));
+    assert.ok(resumedText.length >= 4);
+    assert.ok(resumedText.every(event => complete.has(event.messageId)));
+
     await send('SESSION_HOLD_QUEUE', 'hold-queue');
     await wait('active Root before clearing queue', async () => (await session.agents.getState(root)).active);
     assert.equal(agentReceipt(await session.agents.send(root, 'QUEUED_TEXT_TO_DISCARD', { requestId: 'queued-text', mode: 'followUp' })).disposition, 'queued');
@@ -283,6 +373,20 @@ for (const via of ['sdk', 'rpc', 'export-failure', 'default-task']) {
     assert.equal(result.initial.digest.startsWith('complete:sha256:'), true);
     assert.ok(result.artifacts.some(artifact => artifact.kind === 'session-archive' && typeof artifact.path === 'string'));
     assert.equal(result.reportSaveFailure, null);
+    const rootArchive = result.artifacts.find(artifact => artifact.kind === 'session-archive' && artifact.agentId === root);
+    assert.ok(rootArchive);
+    const archiveFiles = join(dirname(rootArchive.path), 'files');
+    const logs = (await readdir(archiveFiles, { recursive: true })).filter(path => path.endsWith('.jsonl'));
+    const entries = (await Promise.all(logs.map(path => readFile(join(archiveFiles, path), 'utf8'))))
+      .flatMap(content => content.trim().split('\n').map(line => JSON.parse(line)));
+    for (const observed of nativeIdentityEvidence) {
+      const entry = entries.find(entry => entry.id === observed.entryId);
+      assert.equal(entry?.type, 'custom_message');
+      assert.equal(entry.content, observed.content);
+      assert.equal(entry.display, observed.display);
+    }
+    assert.equal(entries.filter(entry => entry.type === 'custom_message' && /^SAME_CONTENT_281_/.test(entry.content)).length, 2);
+    assert.equal(entries.some(entry => entry.type === 'custom_message' && entry.content === 'DISCARDED_NEXT_TURN_281'), false);
     assert.equal(result.questions.filter(question => question.status === 'answered').length, 3);
     assert.equal(result.questions.filter(question => question.status === 'cancelled').length, 1);
     assert.equal(upstream.failure, undefined);

@@ -7,7 +7,9 @@ order: 13
 
 **Substrate**（`examples/substrate/harness/`）展示了一个多智能体 Harness 可以精简到什么程度：没有任务表、没有管理员、也没有私信。3–8 位对等成员围绕同一份 **SQLite 不可变共享库（substrate）** 并行探索——检索并阅读彼此先前的发现，再发布自包含的后续成果并显式声明引用。同时仓库还内置了面向 Lean 4 的 **FATE** 形式化定理证明运行器。
 
-## 项目 Session
+## Harness Session
+
+模块默认导出 `Harness`。SDK Session、显式前台和 RPC 都使用这份定义。Harness 负责业务流程及资源清理。[Harness 编写指南](../first-harness.md)
 
 通过公共 Session 观察轮次、成员、发现和清理。任务生命周期沿用现有轮次或期限。此 Harness 暂不开放追加输入和单成员变更。
 
@@ -48,7 +50,7 @@ swarm substrate publish \
 
 ## 2. 宿主控制循环
 
-宿主使用 `createRuntime`、`spawn`、输入投递、事件和 `stop`/`close`。`runInput` 是仓库中的辅助函数，用于向空闲 Agent 投递一个由宿主独占管理的输入；它先订阅事件，再发送输入并检查执行收束结果。它不是 Runtime 方法，也没有从公共包入口导出。在 [examples/substrate/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/index.ts) 中，`Promise.all` 并行驱动每位成员执行 `maxRounds` 轮（2–32 轮），并支持可选 `maxConcurrentInputs` 限流与 `onCycle` 宿主纠偏钩子。下面的节选省略了截止时间与错误记录逻辑：
+宿主使用 `createRuntime`、`spawn`、输入投递、事件和 `stop`/`close`。从包根导入 `runInput`，向空闲 Agent 投递一个由宿主独占管理的输入。它先订阅事件，再发送输入并检查回合收束。在 [examples/substrate/harness/index.ts](https://github.com/LuNa-shi/murm/blob/main/examples/substrate/harness/index.ts) 中，`Promise.all` 并行驱动每位成员执行 `maxRounds` 轮（2–32 轮），并支持可选 `maxConcurrentInputs` 限流与 `onCycle` 宿主纠偏钩子。下面的节选省略了截止时间与错误记录逻辑：
 
 ```ts
 // 1. 启动 poolSize (3..8) 个对等成员并绑定到 substrate Service

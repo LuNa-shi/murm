@@ -5,8 +5,11 @@ import { createServer } from 'node:http';
 import { test, type TestContext } from 'node:test';
 import { claimOpenSandboxBackend, openOpenSandboxBackend } from '../src/core/sandbox/opensandbox-backend.js';
 import { OpenSandboxManager } from '../src/core/sandbox/opensandbox-manager.js';
+import { getExecutorCapabilities } from '../src/core/sandbox/executor-driver.js';
 
-async function endpoint(t: TestContext, id: string, version: number) {
+async function endpoint(t: TestContext, id: string, version: number,
+  rpc?: (message: Record<string, unknown>) => Promise<unknown>,
+) {
   const calls: string[] = [];
   const apiKey = `fixture-key-${id}`;
   let workerToken: string;
@@ -58,7 +61,7 @@ async function endpoint(t: TestContext, id: string, version: number) {
     else if (route === 'POST /worker/start' && rejectStart) json({ ok: false, code: 'FILE_SPACE_INSUFFICIENT' }, 400);
     else if (route === 'POST /worker/start') json({ result: { contract: { version: WORKER_PROTOCOL, file_protocol: 'file-tree-v1', resources: [] },
       project_files: { version: 0, writable: false } } });
-    else if (route === 'POST /worker/rpc') json({ result: { response: { command: 'get_state', success: true }, records: [] } });
+    else if (route === 'POST /worker/rpc') json({ result: rpc ? await rpc(input.message) : { response: { command: 'get_state', success: true }, records: [] } });
     else if (route === 'POST /worker/core/files/snapshot') json({ result: { version } });
     else if (route === 'POST /worker/stop') json({ result: { stopped: true } });
     else json({}, 404);
@@ -139,5 +142,76 @@ test('one Backend routes identical sandbox IDs and lost creates to their origina
   assert.deepEqual(await backend.stopExecution('no-space'), { collectable: false });
   await backend.destroy('no-space');
   assert.equal(second.occupied(), false);
+  await backend.close();
+});
+
+test('Host Session reads release every large reply and stop at a Worker history gap', { timeout: 15_000 }, async t => {
+  const messagesCommand = 'core_session_get_messages';
+  const barrier = Promise.withResolvers<void>();
+  let pageRequests = 0;
+  let attest = true;
+  let failRead = false;
+  let gap = false;
+  const capabilities = getExecutorCapabilities('pi').session;
+  const provider = await endpoint(t, 'session-reads', 1, async message => {
+    const { type, id, limit } = message;
+    const records = [];
+    if (attest) {
+      attest = false;
+      records.push({ type: 'core_session_ready', worker_sequence: 1, version: '1.3.0', capabilities });
+    }
+    if (type === messagesCommand) {
+      pageRequests++;
+      if (id === 'held') await barrier.promise;
+      if (failRead) return { records };
+      if (gap) records.push({ type: 'agent_settled', worker_sequence: 3 });
+    }
+    return { records, response: { command: type, id, success: true,
+      ...(type === messagesCommand ? { data: { messages: [{ content: '読'.repeat(22_000) }], limit } } : {}) } };
+  });
+  const publicUrl = 'http://172.17.0.1:9000';
+  const settings = runtimeSettings({ sandbox: { lifecycleBaseUrl: `${provider.origin}/v1`, apiKey: provider.apiKey },
+    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `${provider.origin}/v1/responses`, headers: {} } } },
+    isolation: { network: 'api' },
+  });
+  const backend = await openOpenSandboxBackend(claimOpenSandboxBackend(settings.sandbox, settings), {
+    runtimeId: 'session-reads-test', outputDir: '', providers: [provider],
+    bridge: { publicUrl, visibleServices: () => [], credentialsForAgent: () => ({ environment: {}, secretEnvironment: {} }) },
+    modelAccess: { credentialsForAgent: () => ({ baseUrl: publicUrl, environment: {}, secretEnvironment: {} }) },
+  });
+  const events = [];
+  await backend.spawn({ agentId: 'reader', onEvent: event => events.push(event), recordAllocation() {},
+    profile: { model: 'default', image: 'test-image', writable: false, services: {} } });
+  assert.deepEqual(backend.sessionCapabilities('reader'), capabilities);
+  const read = (id: string, limit: number) => backend.sessionCommand('reader', messagesCommand, { id, limit }, false);
+  const held = read('held', 4);
+  const joined = read('held', 4);
+  await assert.rejects(read('held', 9), { code: 'CONFLICT' });
+  barrier.resolve();
+  assert.deepEqual(await held, await joined);
+  assert.equal(pageRequests, 1);
+  for (let index = 0; index < 100; index++) {
+    const id = `read-${index}`;
+    const page = await read(id, 1) as { messages: { content: string }[] };
+    assert.equal(Buffer.byteLength(page.messages[0].content), 66_000);
+  }
+  // Every completed identity can be reused with new arguments. A retained
+  // fingerprint would conflict, and a retained response would have limit 1.
+  for (let index = 0; index < 100; index++) {
+    assert.equal((await read(`read-${index}`, 2) as { limit: number }).limit, 2);
+  }
+  assert.equal(pageRequests, 201);
+  failRead = true;
+  assert.deepEqual(await read('rejected', 1), { status: 'unknown' });
+  failRead = false;
+  assert.equal((await read('rejected', 2) as { limit: number }).limit, 2);
+  gap = true;
+  assert.deepEqual(await read('gap', 1), { status: 'unknown' });
+  assert.ok(events.some(event => event.type === 'error' && event.fatal && event.error.message.includes('history has a gap')));
+  await assert.rejects(read('new-after-gap', 1), { code: 'SESSION_UNAVAILABLE' });
+  assert.equal(pageRequests, 204);
+  await backend.stopExecution('reader');
+  await backend.destroy('reader');
+  assert.equal(provider.occupied(), false);
   await backend.close();
 });

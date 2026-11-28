@@ -1,4 +1,4 @@
-import { observeProjectRuntime, projectConfiguration, ProjectPreflightError, type ProjectHarness } from '@luna-shi/murm';
+import { observeProjectRuntime, projectConfiguration, ProjectPreflightError, type Harness } from '@luna-shi/murm';
 import { runMessageHandoff } from './handoff.js';
 import { handoffConfig, type HandoffConfig } from './handoff-config.js';
 
@@ -40,6 +40,6 @@ const messages = {
       cleanup: { status: cleanup ? 'complete' : 'pending', receipt: JSON.parse(JSON.stringify(receipt)) },
     };
   },
-} satisfies ProjectHarness;
+} satisfies Harness;
 
 export default messages;

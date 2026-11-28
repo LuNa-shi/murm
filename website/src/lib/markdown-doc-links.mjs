@@ -31,6 +31,8 @@ export default function markdownDocLinks({ base = '/' } = {}) {
       const slug = doc[2].replace(/\/index$/, '');
       destination = '/' + [prefix, doc[1] === 'zh' ? 'zh' : '', 'docs', slug]
         .filter(Boolean).join('/') + '/' + suffix;
+    } else if (/^examples\/first-harness\/(?:harness|session)\.ts$/.test(repoPath)) {
+      destination = '/' + [prefix, 'downloads/first-harness/v2', repoPath.split('/').at(-1)].filter(Boolean).join('/') + suffix;
     } else if (/^examples\/first-harness\/(?:config\.ts|handoff\.ts|main\.ts|tsconfig\.json|turn\.ts)$/.test(repoPath)) {
       destination = '/' + [prefix, 'downloads/first-harness/v1', repoPath.split('/').at(-1)].filter(Boolean).join('/') + suffix;
     } else {

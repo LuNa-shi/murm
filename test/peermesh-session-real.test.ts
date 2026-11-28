@@ -7,21 +7,29 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createHarnessSession, createPiExecutor } from '@luna-shi/murm';
-import peerMesh from '../examples/peermesh/project.js';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+import * as sourceSdk from '@luna-shi/murm';
+import sourcePeerMesh from '../examples/peermesh/project.js';
 import { preparePeerMeshFacilities } from '../examples/peermesh/harness/provision.js';
 import { httpClient } from '../src/harness/http.js';
 import { createLocalPeerMeshStack } from './fixtures/peermesh-local-stack.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
+import { installNativeNotesExample } from './fixtures/notes-installed-package.js';
 const execute = promisify(execFile);
 
 // Same public built-in project consumed by SDK/RPC, with actual facilities,
 // native Worker/Pi and bounded local model responses. No external model access.
 test('PeerMesh HarnessSession directs native next-batch input and stops one member while its peer continues', {
   skip: process.env.MURM_PEERMESH_SESSION_REAL_TEST !== '1', timeout: 420_000,
-}, async () => {
+}, async t => {
   const image = process.env.MURM_CORE_TEST_IMAGE; assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
+  const installed = process.env.MURM_TEST_PACKAGE_ARCHIVE ? await installNativeNotesExample() : undefined;
+  if (installed) t.after(installed.close);
+  const sdk = installed ? createRequire(join(installed.directory, 'consumer.mjs'))('@luna-shi/murm') as typeof sourceSdk : sourceSdk;
+  const installedModule = installed && join(installed.directory, 'node_modules/@luna-shi/murm/dist/examples/peermesh/project.js');
+  const peerMesh: typeof sourcePeerMesh = installedModule ? (await import(pathToFileURL(installedModule).href)).default : sourcePeerMesh;
   const host = process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const directory = join(process.cwd(), 'experiments', `peermesh-session-${randomBytes(6).toString('hex')}`);
   const cwd = join(directory, 'project'); await mkdir(cwd, { recursive: true, mode: 0o700 });
@@ -31,7 +39,7 @@ test('PeerMesh HarnessSession directs native next-batch input and stops one memb
   const stack = await createLocalPeerMeshStack({ directory: join(directory, 'facilities'), advertiseHost: host });
   let release!: () => void; const held = new Promise<void>(resolve => { release = resolve; });
   const batches: any[] = []; const sockets = new Set<any>(); let failure: string | undefined;
-  let session: ReturnType<typeof createHarnessSession> | undefined, facilities: any, runtimeId: string | undefined;
+  let session: ReturnType<typeof sdk.createHarnessSession> | undefined, facilities: any, runtimeId: string | undefined;
   let result: any, facilityCleanup: any;
   let deadline = Date.now() + 360_000;
   const wait = async (check: () => unknown | Promise<unknown>, label: string) => {
@@ -57,13 +65,14 @@ test('PeerMesh HarnessSession directs native next-batch input and stops one memb
   });
   upstream.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
   upstream.listen(0, '127.0.0.1'); await once(upstream, 'listening');
-  const report: any = { image, limits: { agents: 2, modelRequests: 4, setupMs: 180_000, workMs: 120_000, cleanupMs: 100_000 } };
+  const report: any = { image, package: installed?.metadata ?? null,
+    limits: { agents: 2, modelRequests: 4, setupMs: 180_000, workMs: 120_000, cleanupMs: 100_000 } };
   try {
     const config = await stack.start(); deadline = Date.now() + 120_000;
-    session = createHarnessSession(peerMesh, { outputRoot: join(directory, 'runs'), stopTimeoutMs: 90_000, configuration: {
-      ...config, image, executor: createPiExecutor({ version: process.env.MURM_CORE_TEST_PI_VERSION ?? '1.3.0' }), peerKeys: ['a', 'b'], durationMs: 120_000, closeTimeoutMs: 70_000,
+    session = sdk.createHarnessSession(peerMesh, { outputRoot: join(directory, 'runs'), stopTimeoutMs: 90_000, configuration: {
+      ...config, image, executor: sdk.createPiExecutor({ version: process.env.MURM_CORE_TEST_PI_VERSION ?? '1.3.0' }), peerKeys: ['a', 'b'], durationMs: 120_000, closeTimeoutMs: 70_000,
       sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: '127.0.0.1', apiKey: process.env.MURM_CORE_TEST_API_KEY,
-        resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000, isolation: { network: 'local-docker', disk: { bytes: 128 * 1024 ** 2, inodes: 8192 } } },
+        resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000, isolation: { network: 'api' } },
       connection: { bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 128, requestTimeoutMs: 60_000 } },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `http://127.0.0.1:${(upstream.address() as any).port}/v1/responses`, headers: {} } } },
       router: { workTimeoutMs: 120_000, turnTimeoutMs: 60_000, maxBatches: 4, maxNudges: 0 },

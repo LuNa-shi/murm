@@ -12,11 +12,34 @@ export function describe(error: any) {
 /** Harness owns input ordering, business deadlines and external Services.
  * This helper preserves independent failures and bounds only its close wait.
  * redact must scrub any configured secrets from intentional report content. */
-export async function runWithReport({ createRuntime, run, afterClose, outputDir, closeTimeoutMs = 60_000, redact = (value: any) => value }: any) {
-  if (typeof createRuntime !== 'function' || typeof run !== 'function' || typeof redact !== 'function' ||
+export async function runWithReport({ outputDir, redact = (value: any) => value, ...options }: any) {
+  if (typeof outputDir !== 'string' || !outputDir || typeof redact !== 'function') {
+    throw new TypeError('Host reporting requires an output directory and a report projector');
+  }
+  return saveReport(outputDir, 'harness-report.json', await collectRuntimeEvidence(options), redact);
+}
+
+export interface CloseableRuntime {
+  id: string;
+  close(options: { timeoutMs: number }): Promise<unknown>;
+}
+
+export interface HarnessRuntimeRunOptions<R extends CloseableRuntime> {
+  createRuntime(): R | Promise<R>;
+  run(runtime: R): unknown;
+  afterClose?(receipt: Awaited<ReturnType<R['close']>>): unknown;
+  closeTimeoutMs?: number;
+  /** Optional projection of the evidence before it becomes part of the Run report. */
+  redact?(evidence: object): unknown;
+  /** Business detail evaluated after close and domain reconciliation. */
+  detail?: () => unknown;
+}
+
+export async function collectRuntimeEvidence({ createRuntime, run, afterClose, closeTimeoutMs = 60_000 }: any) {
+  if (typeof createRuntime !== 'function' || typeof run !== 'function' ||
       (afterClose !== undefined && typeof afterClose !== 'function') ||
-      typeof outputDir !== 'string' || !outputDir || !Number.isSafeInteger(closeTimeoutMs) || closeTimeoutMs < 1 || closeTimeoutMs > 2147483647) {
-    throw new TypeError('Host reporting requires factory, business function, output directory and a finite close wait');
+      !Number.isSafeInteger(closeTimeoutMs) || closeTimeoutMs < 1 || closeTimeoutMs > 2147483647) {
+    throw new TypeError('Host reporting requires a factory, business function and finite close wait');
   }
   let runtime: any;
   const report: any = { closeTimeoutMs, result: null, businessFailure: null, cleanup: null, cleanupFailure: null, reportSaveFailure: null };
@@ -52,7 +75,7 @@ export async function runWithReport({ createRuntime, run, afterClose, outputDir,
   }
   const candidateId = runtime?.id ?? report.businessFailure?.runtimeId;
   report.runtimeId = typeof candidateId === 'string' && /^[A-Za-z0-9_:-][A-Za-z0-9_.:-]{0,127}$/.test(candidateId) ? candidateId : randomUUID();
-  return saveReport(outputDir, 'harness-report.json', report, redact);
+  return report;
 }
 
 export async function saveReport<R extends ({ runtimeId: string } | { runId: string }) & { reportSaveFailure: { code: string; message: string; details?: readonly unknown[] } | null }>(

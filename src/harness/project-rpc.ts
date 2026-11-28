@@ -5,17 +5,17 @@ import { createHash } from 'node:crypto';
 import { stableStringify } from '../protocol/stable-json.js';
 import { MAX_COMMAND_BYTES } from './foreground-commands.js';
 import {
-  captureHarnessSnapshot, failureCode, getHarnessExitCode, harnessSessionSignal, stopHarnessTransport,
+  captureHarnessSnapshot, failureCode, getHarnessExitCode, getHarnessRunId, harnessSessionSignal, stopHarnessTransport,
   type HarnessInput, type HarnessJson,
 } from './project-harness.js';
 import { projectError, resolveHarnessInput } from './project-input.js';
 import { readRpcLines } from './project-rpc-lines.js';
 import type { HarnessEvent, HarnessSession } from './harness-session-types.js';
 
-type Writer = (record: unknown) => Promise<void>;
+type Writer = (record: unknown, replaceableState?: boolean) => Promise<void>;
 type ParametersObject = Record<string, unknown>;
 type RpcRequest = { id: string; operation: string; input?: HarnessJson; requestId?: string };
-type QueryReceipt = { fingerprint: string; reply: Promise<unknown> };
+type QueryReceipt = { fingerprint: string; timer: NodeJS.Timeout };
 
 const queryOperations = new Set(['status', 'describe', 'agent.getState', 'agent.getStats', 'agent.getMessages']);
 const mutationOperations = new Set([
@@ -165,13 +165,15 @@ export async function runProjectRpc(
   let closed = false;
   let watchingCompletion = false;
   const location = () => {
-    const { runId } = captureHarnessSnapshot(session);
+    const runId = getHarnessRunId(session);
     return runId === null ? {} : { runId };
   };
   const errorRecord = (code: string, id?: string) => ({ type: 'error', ...(id ? { id } : {}), ...location(), code });
   const reply = (id: string, result: unknown) => ({ type: 'reply', id, ...location(), result });
-  const send = (record: unknown) => {
-    if (!closed) void write(record).catch(() => stopHarnessTransport(session, 'output-failed'));
+  const send = (record: unknown, replaceableState = false) => {
+    // The CLI writer handles pipe failures. A replaced state can share the
+    // previous frame's flush promise without retaining a callback per update.
+    if (!closed) void write(record, replaceableState);
   };
 
   function watchCompletion() {
@@ -201,23 +203,28 @@ export async function runProjectRpc(
         const previous = queryReceipts.get(request.id);
         if (previous) {
           if (previous.fingerprint !== fingerprint) send(errorRecord('REQUEST_ID_CONFLICT', request.id));
-          else void previous.reply.then(send);
           return;
         }
-        if (queryReceipts.size >= 4096) throw projectError('REQUEST_LIMIT', 'RPC query identity limit reached');
         if (operation === 'status') {
           if (request.input !== undefined) throw projectError('INVALID_REQUEST', 'Status takes no input');
           // Snapshot and writer invocation are synchronous with live event publication.
           const record = reply(request.id, captureHarnessSnapshot(session));
-          queryReceipts.set(request.id, { fingerprint, reply: Promise.resolve(record) });
           send(record);
           return;
         }
-        const record = Promise.resolve(dispatch(session, request, launchDirectory)).then(
-          value => reply(request.id, value), error => errorRecord(failureCode(error, 'INVALID_REQUEST'), request.id),
+        if (queryReceipts.size >= 128) throw projectError('REQUEST_LIMIT', 'RPC query capacity is full');
+        const work = dispatch(session, request, launchDirectory);
+        const finish = (record: unknown) => {
+          if (queryReceipts.get(request.id) !== receipt) return;
+          clearTimeout(receipt.timer);
+          queryReceipts.delete(request.id);
+          send(record);
+        };
+        const receipt = { fingerprint, timer: setTimeout(() => finish(errorRecord('RPC_TIMEOUT', request.id)), 30_000) };
+        queryReceipts.set(request.id, receipt);
+        void Promise.resolve(work).then(
+          value => finish(reply(request.id, value)), error => finish(errorRecord(failureCode(error, 'INVALID_REQUEST'), request.id)),
         );
-        queryReceipts.set(request.id, { fingerprint, reply: record });
-        void record.then(send);
         return;
       }
       if (queryReceipts.has(request.id)) throw projectError('REQUEST_ID_CONFLICT', 'RPC query identity is already in use');
@@ -245,7 +252,7 @@ export async function runProjectRpc(
   signal.addEventListener('abort', stopTransport, { once: true });
   const unsubscribe = session.onEvent(event => {
     const record = eventRecord(event);
-    if (record) send(record);
+    if (record) send(record, event.type === 'state');
   });
   let detach: (() => void) | undefined;
   try {
@@ -264,6 +271,8 @@ export async function runProjectRpc(
     return await done.promise;
   } finally {
     closed = true;
+    for (const { timer } of queryReceipts.values()) clearTimeout(timer);
+    queryReceipts.clear();
     signal.removeEventListener('abort', stopTransport);
     unsubscribe();
     detach?.();

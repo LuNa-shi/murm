@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import type { createSubagentsHarness } from '../examples/subagents/main.js';
+import type { createSubagentsHarness } from '../examples/subagents/business.js';
 import { resolveSubagentsEnvironment } from './local-environment.js';
 import { loadMurmConfig } from '../src/core/sandbox/sandbox-connection.js';
 import { workerImageFor } from '../src/core/worker-image.js';
@@ -114,11 +114,11 @@ export async function prepareSubagentsProject(options: SubagentsProjectOptions) 
     }, null, 2) + '\n');
     const projectPackage = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
     if (projectPackage.type !== 'module') throw Object.assign(new Error('The target package.json must declare type "module" for this Subagents project.'), { code: 'PROJECT_PACKAGE_INCOMPATIBLE' });
-    const modules = ['main.js', 'harness/controller.js', 'services/collaboration-service.js', 'prompts/prompts.js', 'run-report.js'];
+    const modules = ['main.js', 'project.js', 'business.js', 'harness/controller.js', 'services/collaboration-service.js', 'prompts/prompts.js'];
     for (const filename of modules) {
       await mkdir(dirname(join(directory, filename)), { recursive: true });
       const text = await readFile(join(packageRoot, 'dist/examples/subagents', filename), 'utf8');
-      await create(filename, filename === 'main.js' ? "import './environment.js';\n" + text : text);
+      await create(filename, (filename === 'main.js' || filename === 'project.js') ? "import './environment.js';\n" + text : text);
     }
     for (const filename of ['environment.js', 'config.js']) {
       await create(filename, await readFile(join(packageRoot, 'scripts/local-setup/templates', filename), 'utf8'));

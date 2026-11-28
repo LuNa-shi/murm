@@ -20,6 +20,8 @@ Every multi-agent system built on `murm` combines the **six building blocks** sh
 
 Your **Harness** is simply the host-side program you write: it defines the Profiles, registers the Services, schedules when Agents act, and decides when the job is done.
 
+A module can expose the same **Harness** to the SDK, foreground CLI and RPC. The caller manages one Run through **HarnessSession**. Your Harness uses one or more **Runtimes** if its work needs Agents. Each Runtime manages its own Agents, permissions and resources. [Build the first SDK Harness](first-harness.md).
+
 ## What happens during a typical run
 
 1. **Set up the stage**: Your Harness defines Sandbox limits, role Profiles, and shared Services (such as a shared findings board), then calls `createRuntime()`.

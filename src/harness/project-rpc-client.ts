@@ -4,8 +4,9 @@ import type { ConditionalInputReceipt, SendOptions } from '../core/types.js';
 import { projectError } from './project-input.js';
 import { readRpcLines, type RpcReadable } from './project-rpc-lines.js';
 import { MAX_COMMAND_BYTES } from './foreground-commands.js';
+import { HarnessEventStream } from './harness-event-stream.js';
 import type {
-  HarnessAgentReceipt, HarnessDescriptor, HarnessEvent, HarnessResult, HarnessSession, HarnessState,
+  HarnessAgentReceipt, HarnessDescriptor, HarnessEvent, HarnessResult, HarnessSession, HarnessState, HarnessSubscriptionOptions,
 } from './harness-session-types.js';
 
 interface RpcWritable {
@@ -40,10 +41,8 @@ export interface HarnessRpcClientOptions {
 type Pending = {
   resolve(value: unknown): void;
   reject(error: unknown): void;
-  timer: NodeJS.Timeout;
+  release(): void;
 };
-
-type Subscription = { handler: (event: HarnessEvent) => void; initializing: boolean };
 
 export class HarnessRpcClient implements HarnessSession {
   readonly ready: Promise<HarnessRpcReady>;
@@ -51,13 +50,14 @@ export class HarnessRpcClient implements HarnessSession {
   readonly #ready = Promise.withResolvers<HarnessRpcReady>();
   readonly #result = Promise.withResolvers<HarnessResult>();
   readonly #pending = new Map<string, Pending>();
-  readonly #listeners = new Set<Subscription>();
+  readonly #events = new HarnessEventStream();
   readonly #stdin: RpcWritable;
   readonly #timeout: number;
   readonly #prefix = randomUUID();
   #next = 0;
   #started = false;
   #failure?: Error;
+  #resultConfirmed = false;
 
   constructor(transport: HarnessRpcTransport, options: HarnessRpcClientOptions = {}) {
     const { stdin, stdout } = transport;
@@ -148,29 +148,18 @@ export class HarnessRpcClient implements HarnessSession {
     return this.#started ? this.#result.promise : undefined;
   }
 
-  onEvent(handler: (event: HarnessEvent) => void, options?: { initialSnapshot?: boolean }) {
-    if (typeof handler !== 'function') throw projectError('INVALID_REQUEST', 'Expected an event handler');
-    if (this.#listeners.size >= 64) throw projectError('REQUEST_LIMIT', 'RPC listener limit reached');
+  onEvent(handler: (event: HarnessEvent) => void, options?: HarnessSubscriptionOptions) {
     if (this.#failure) throw this.#failure;
-    const subscription = { handler, initializing: options?.initialSnapshot === true };
-    this.#listeners.add(subscription);
-    if (subscription.initializing) {
+    const subscription = this.#events.subscribe(handler, options);
+    const cancellation = options?.initialSnapshot ? new AbortController() : undefined;
+    if (cancellation) {
       // Deliver at the status reply in the frame parser, before the next event
       // in the same chunk. Frames ahead of that reply are covered by its state.
-      void this.#call<HarnessState>('status', undefined, undefined, state => {
-        if (!this.#listeners.has(subscription)) return;
-        subscription.initializing = false;
-        this.#deliver(subscription, { type: 'snapshot', state });
-      }).catch(() => this.#listeners.delete(subscription));
+      void this.#call<HarnessState>('status', undefined, undefined,
+        state => subscription.start({ type: 'snapshot', state }), cancellation.signal,
+      ).catch(error => subscription.close(error));
     }
-    return () => { this.#listeners.delete(subscription); };
-  }
-
-  #deliver(subscription: Subscription, event: HarnessEvent) {
-    try {
-      // Async consumers cannot block incoming frames or reject the transport.
-      void Promise.resolve(subscription.handler(structuredClone(event))).catch(() => {});
-    } catch { /* One consumer cannot affect other subscriptions. */ }
+    return () => { subscription.close(); cancellation?.abort(); };
   }
 
   #disconnect(error: Error) {
@@ -178,12 +167,12 @@ export class HarnessRpcClient implements HarnessSession {
     this.#failure = error;
     this.#ready.reject(error);
     this.#result.reject(projectError('RPC_RESULT_UNKNOWN', 'RPC closed before a final result was confirmed'));
-    for (const { reject, timer } of this.#pending.values()) {
-      clearTimeout(timer);
+    for (const { reject, release } of this.#pending.values()) {
+      release();
       reject(error);
     }
     this.#pending.clear();
-    this.#listeners.clear();
+    this.#events.close(error, this.#resultConfirmed);
   }
 
   #record(record: any) {
@@ -200,35 +189,31 @@ export class HarnessRpcClient implements HarnessSession {
         const pending = this.#pending.get(record.id);
         if (!pending) break;
         this.#pending.delete(record.id);
-        clearTimeout(pending.timer);
+        pending.release();
         if (record.type === 'reply') pending.resolve(record.result);
         else pending.reject(projectError(record.code, 'Harness RPC request failed'));
         break;
       }
       case 'event': {
         if (!record.event || typeof record.event !== 'object') throw new Error('Invalid RPC event');
-        for (const subscription of [...this.#listeners]) {
-          if (!subscription.initializing && this.#listeners.has(subscription)) this.#deliver(subscription, record.sessionEvent ?? record);
-        }
+        this.#events.publish(record.sessionEvent ?? record);
         break;
       }
       case 'result':
         if (!record.result || typeof record.result !== 'object') throw new Error('Invalid RPC result');
         this.#started = true;
+        this.#resultConfirmed = true;
         this.#result.resolve(record.result);
-        for (const subscription of [...this.#listeners]) {
-          if (!subscription.initializing && this.#listeners.has(subscription)) {
-            this.#deliver(subscription, { type: 'result', result: record.result });
-          }
-        }
+        this.#events.publish({ type: 'result', result: record.result });
         break;
       default:
         throw new Error('Invalid RPC record type');
     }
   }
 
-  async #call<T>(operation: string, input?: unknown, requestId?: string, atReply?: (value: T) => void): Promise<T> {
+  async #call<T>(operation: string, input?: unknown, requestId?: string, atReply?: (value: T) => void, signal?: AbortSignal): Promise<T> {
     await this.ready;
+    signal?.throwIfAborted();
     if (this.#failure) throw this.#failure;
     const reserve = operation === 'stop' ? 65 : operation === 'answer' ? 64 : 0;
     const requestLimit = 256 + reserve;
@@ -240,17 +225,21 @@ export class HarnessRpcClient implements HarnessSession {
     const line = JSON.stringify({ id, operation, input, requestId }) + '\n';
     if (Buffer.byteLength(line) > MAX_COMMAND_BYTES + 1) throw projectError('INVALID_REQUEST', 'RPC request line is too large');
     return new Promise<T>((resolve, reject) => {
+      const release = () => { clearTimeout(timer); signal?.removeEventListener('abort', cancel); };
+      const cancel = () => { this.#pending.delete(id); release(); reject(signal?.reason); };
       const timer = setTimeout(() => {
         this.#pending.delete(id);
+        release();
         reject(projectError(requestId === undefined ? 'RPC_TIMEOUT' : 'OPERATION_UNKNOWN', 'RPC reply deadline expired'));
       }, this.#timeout);
       this.#pending.set(id, {
-        timer, reject,
+        release, reject,
         resolve(value) {
           atReply?.(value as T);
           resolve(value as T);
         },
       });
+      signal?.addEventListener('abort', cancel, { once: true });
       this.#stdin.write(line, error => {
         if (error) this.#disconnect(projectError('RPC_DISCONNECTED', 'RPC request transport failed'));
       });

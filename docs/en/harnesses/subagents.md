@@ -7,7 +7,9 @@ order: 10
 
 **Subagents** models a hierarchical team where a lead Agent (`/root`) breaks down work, spawns named child Agents recursively (up to `maxDepth`), steers busy children without waking idle ones, and integrates child results. Source: [examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents).
 
-## Project Session
+## Harness Session
+
+The module default-exports a `Harness`. The SDK Session, explicit foreground and RPC all use that definition. The Harness owns the domain workflow and resource cleanup. [Harness authoring guide](../first-harness.md)
 
 Use `--lifetime interactive` to retain Root across replies. The public Session accepts Root text or `{ text, mode }`. Root Agent controls also support structured context and expose the currently allowed settings and operations in `describe()`. Interrupt fences the old execution while children can finish. Child results that arrive after interruption stay in the inbox until the next explicit Root input. With `--interaction questions`, the Agent can call `swarm service invoke user-interaction ask` for an authorized question.
 
